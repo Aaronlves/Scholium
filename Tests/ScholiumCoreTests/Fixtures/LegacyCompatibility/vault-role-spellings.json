@@ -1,0 +1,15 @@
+[
+  { "spelling": "source_corpus", "canonical": "source_corpus" },
+  { "spelling": "sources", "canonical": "source_corpus" },
+  { "spelling": "Analyses", "canonical": "source_corpus" },
+  { "spelling": "topic_knowledge", "canonical": "topic_knowledge" },
+  { "spelling": "knowledge", "canonical": "topic_knowledge" },
+  { "spelling": "Topics", "canonical": "topic_knowledge" },
+  { "spelling": "dissertation_control", "canonical": "dissertation_control" },
+  { "spelling": "dissertation", "canonical": "dissertation_control" },
+  { "spelling": "draft_project", "canonical": "draft_project" },
+  { "spelling": "project", "canonical": "draft_project" },
+  { "spelling": "Works", "canonical": "draft_project" },
+  { "spelling": "other", "canonical": "other" },
+  { "spelling": "unclassified", "canonical": "other" }
+]

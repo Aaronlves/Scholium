@@ -1,0 +1,253 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --scholium-vector-support: #006d6b;
+  --scholium-vector-incompatible: #7136a8;
+  --scholium-symbol-link: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAGKADAAQAAAABAAAAGAAAAADiNXWtAAACV0lEQVRIDe3US0hVQRjA8atpD3uIFYVWBIYkRIsWbQqyMFq4KF1EhVAQEe1EEkRbSItA3FRQFBHUwkKCHkJQ5EYMQty46GVU0KYWtehhLwur/z/uwFw9V68Grfzg55lz5pyZ+b6Zayo1E5NUIG+S/qTuOTzcgVqU4QVuoRej+KdYwded+IrfGE5ff3E9CyefVuTzVQV68AnnsRHlMJu7+I4zKMSUwjI6+D18RCsWIo4l3NzBT1TFHbm0V/NSGLyF9oIsH5mJZTudpT/xcQlPL8CVN2M55qMAY2MND9yb7rjD2k4Uu+jcjnO4hg7cQB3mIo6l3LjJb+KHSRPM4oVlsK7V8IRchh+/hftxEbsRTs0i2ocxgpvIGk5YiXbUwNMxiFKE2EZjCM9gWdyTNljGSwiT0swMT0sZuvASrvAK/CFtgJmFOEbDY7kX+/EBt2HmGRF/VELPQeyBA5vqPGyBkz+Gg1oyN9nBH6bbZt6A10gMB9iJAZyCv1jDqxm5wpOogiWoxRc0Yj1WwTHGRThuxfRsgpvl6sNJcEXH4fHbmr660fVw0gcwM7NKjDBBEb2L8Rlulj+YEE9pHIWbb581dzFX8QhZB6cvZe2MHzBla+6/gfCc5t94z99X2IcDuA9LaWY5xWzeOoQnaILHMkzidSVOwNK5J2uRWHOeZ0Q4Rf4fdzUO5Gab9gg84+U4AuvehzY8R1xGbpMjXoUrrYAZbE6//o2r+zOM6+iEWeQ0OO+NS9MJ3UwnWAczeId+uPqxB4BHE0ecQfxmITceXffG0k15YL75P/EHCCx3R5I0KkcAAAAASUVORK5CYII=");
+  --scholium-symbol-supports: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACTUlEQVQ4EdXUPUhVYRzH8Zu9v1lmZVb0wkVILMReKInIorbApWjJhlpaCsHBQMSpralyU2lpCGppDrqGi1T2oqgpSmARBb1aiSXl93v13O4591Q4NPiDD97znHOe1/8xkZhtmfOPCedzvxTbUIg36Ec3vmPGWcMb59GJH/iVZYLfD3AODhyb6Izn8tRhNGAn3iGFxxiFs7bdZwrQgXo8gQPGxkEq8AwfcBXlyEM022logYP1YA/+mI3cuYa3qIUz+lvmc7MRX9CO5ciJW3Aaz3EJRYhmGQ3rYIdB5vGjFR6ke56TTbS4tEG4HdG9pylxHM7sKLI7L+P6FR5hMUKp5soDuo2103dcxQLYiTbjFrpxCAthnMQNWD27kU5wMEmunLUjf4WdWr9VODLNWr4Dl+/B7oLPWYpdsN130vHCuH/OwE5/YhUuwk6ddRD3cgl8/gxc5RjewxRP/Zkaxd/f4Evukav4hDbch9tgHNBKOQU7d/Yu3wQfinUfigfTg5tYHbrz+8KXL6MPJxCs1ok4iQlUIpStXFkVdm6xu3fRHKMhhZMIOuVnYgeG8RArEIr7eBb+g2nCBnja2bG27STYGu+5NVfwGX5UsUnS2owBWOx2HjdzmtODOtAFfEQKfjyZZL/ogfnQQVinrsIqGYez99lFWIkSWBV1sET9tJ8ik+hyfXkvalAFD6QXrzEGy8ySqoAVcRfX0QWrJpNox96wLYkD2I99WA9XYEm+gPV7D+14CT+SUOI6Dh6wI/fZL2wLlmIUQ7DjEeR0SNv/zSRjEXIpUvpbJgAAAABJRU5ErkJggg==");
+  --scholium-symbol-supported-by: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACVUlEQVQ4EdXUuWtUURSA8WhcIhpNkLgjyiAobhgNCYi4FuksrUwRmzSGSBALESv/AZdOQRIsLGy1CVlAkBCNKxKVyIDZFNw1oonL903mPsY7L4iFhQd+zJvz3rv33HvPTEnJ/xYz/lDwQu5vwHosxksM4CG+4a+jijeOohcT+Flgkus+NMGJUyOuuJSn9uEkqvEa3biLj7Bq8z5TiZs4gXtwwtRwkm14gLc4h62YiTg2kbgIJ3uEGkwbq7hzHq/QAisKEa/M/Gycwif0oBxF4RY04AnOYClCzOFiJRwojlkkLsGDdM+LYjUZl/YMbkeo0Bcb4V66XAuIYyOJYdzBvPjmQRIe0DUsyd8s4/MQsjgLV2H1Vu5n2HuLuAK7ZwdyEW5m+GbVzvwZVlYP9zCLW3Al+3Eg/+k7vm8r9sPV2fO58IuxAHPhoD9QgcPwZSu1YicLYZVXcQxf8AbG8qmPqVm8HocH4B5ZhW10A+7fGK7DSQvDrQu/vvBDse9zESrO8m0EzujgDtIG99nW+4p2fEAcFmK/f8fj+OZaEnZFaPawbA/qODqxBSHPZRKbuXqO21iUZPMXnvIR+AdzGvZtaDmr9uDKEUclCffflbiy1MiQvYCnaIKDp1VIOjeph9qMd+jGMiRR+OJ7sj60G3vhKtxr99fqfdbqK7AOjWiFLWpb3kcSYbkh4cu1sNX2YBIeyChsK9vSA3Zr/EF04DL6YZsmEQ/sDXMZ7MJO1GEFXIHtlYWt1oUeDMEfyW+RNnB4wIHc5+1Yg/mwvwfhwC9QNCC5fxu/AGL/diOPbj0lAAAAAElFTkSuQmCC");
+  --scholium-symbol-incompatible: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACXklEQVQ4EdXUyW9NYRyH8WuoIaihNYuQRkJUm6IhRAz/gJWN0AUbXVSkXYhII5FgIU0TZUFIbOyQ2IlItGIjhmtoTE2liSlETTUENTzPdd/rPfdexMLCN/n03HPec97zDr/TVOp/y4A/DLiU9jmYjTI8xR3cxCf8dcbzRAMu4jO+Rfr5fQmb4IuLJn/Eg7hrFbZjPnrRjjT64Ki97j1jcQFbcQ2+sGh8SQ1u4CXaUI2ByE8lFw7Dl3WiFr/MNFr24xm2wBH9LiU0NuMtOjAKBXEJ6nAXuzARXivHUMQZxol74AwH4wjcSNe8INO54tS64HL4UBVOoR6jYUZiN85gMsxcPMIVDEciqzlL4wQmZFsmcTyE52hEBVphybUgVISDOAarZyES8cFe7MOIqGUqv4/Dzs7jFQ4gzICfmTTx15Jc/+P05447RdfyHb6GRo5OcQ9eYwluY2/2nEMuL7K/wvLkSuk9DW6AaxTKyymOw1o4i/twOdZgDOKEZXHWmYROejh7DN8YNsBZNGAdTsKq8YPYBqccqsU+qvEFt5DITM6sik7UwlKrhOu7E35xxlo/iNOwJM08OJvLyF/71BAuboT/YHbATXPEPuQxjh06whL4Ebnhb+BHVTSunzt+Dxa7nTvyYnH9fcFmWCntsDxziR90571pOVbCWVglH2FH3utX58bNwgZYZlZOM64jFx+I48OL4OasQD/ckCf4AJfFDa6BH8RZHMVVxGWaGQnXEvFlFViGpViMKXAGlmQP0jiHDjyEH0ci+SOOG+3IdV6AGbCW+9ANO36Agg659m/zHXhgeAFG9B1zAAAAAElFTkSuQmCC");
+}
+
+html,
+body,
+#editor {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: Canvas;
+}
+
+.cm-editor {
+  color: CanvasText;
+  background: Canvas;
+  font-size: 15px;
+}
+
+.cm-scroller {
+  line-height: 1.65;
+}
+
+.scholium-live-mode .cm-scroller {
+  font-family: "Alegreya", Georgia, serif;
+  font-size: 12pt;
+}
+
+.scholium-source-mode .cm-scroller {
+  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 15px;
+}
+
+.cm-content {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 28px 42px 45vh;
+  caret-color: AccentColor;
+}
+
+.cm-gutters {
+  color: GrayText;
+  background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+  border-right: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+}
+
+/* Live Preview is a body projection, not an exact-source surface. Keep YAML
+   and source locators available in Source mode without exposing either here. */
+.scholium-live-mode .cm-gutters,
+.scholium-live-mode .cm-live-frontmatter {
+  display: none;
+}
+
+.cm-activeLine,
+.cm-activeLineGutter {
+  background: color-mix(in srgb, AccentColor 8%, transparent);
+}
+
+.cm-selectionBackground,
+.cm-content ::selection {
+  background: color-mix(in srgb, AccentColor 24%, transparent) !important;
+}
+
+.cm-researcher-comment {
+  color: inherit;
+  background: color-mix(in srgb, AccentColor 14%, transparent);
+  border-radius: 3px;
+  box-shadow: inset 0 -2px AccentColor;
+  cursor: pointer;
+}
+
+.cm-researcher-comment-resolved {
+  background: color-mix(in srgb, GrayText 8%, transparent);
+  box-shadow: inset 0 -1px GrayText;
+  text-decoration: underline dashed GrayText;
+  text-underline-offset: 0.14em;
+}
+
+.cm-focused {
+  outline: none;
+}
+
+.cm-live-heading {
+  font-family: "Alegreya", Georgia, serif;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.cm-live-h1 { font-size: 150%; padding-top: 0.55em; }
+.cm-live-h2 { font-size: 130%; padding-top: 0.45em; }
+.cm-live-h3 { font-size: 115%; padding-top: 0.35em; }
+.cm-live-h4 { font-size: 100%; }
+.cm-live-h5,
+.cm-live-h6 { font-size: 100%; }
+
+.cm-live-strong { font-weight: 700; }
+.cm-live-emphasis { font-style: italic; }
+.cm-live-highlight {
+  color: CanvasText;
+  background: color-mix(in srgb, Mark 72%, transparent);
+  border-radius: 3px;
+  padding-inline: 0.06em;
+}
+.cm-live-strike { text-decoration: line-through; color: GrayText; }
+
+.cm-live-code {
+  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  padding: 0.08em 0.28em;
+  border-radius: 4px;
+  background: color-mix(in srgb, CanvasText 8%, transparent);
+}
+
+.cm-live-wikilink,
+.cm-live-link {
+  color: LinkText;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, LinkText 42%, transparent);
+  text-underline-offset: 0.15em;
+}
+
+.cm-live-vector-link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 46%, transparent);
+  text-underline-offset: 0.15em;
+}
+.cm-live-vector-neutral { color: LinkText; }
+.cm-live-vector-supports-target,
+.cm-live-vector-supported-by-target { color: var(--scholium-vector-support); }
+.cm-live-vector-incompatible { color: var(--scholium-vector-incompatible); }
+
+.cm-live-vector-icon {
+  --scholium-vector-symbol: var(--scholium-symbol-link);
+  display: inline-block;
+  inline-size: .92em;
+  block-size: .92em;
+  margin-inline-end: .24em;
+  vertical-align: -.08em;
+  background-color: currentColor;
+  -webkit-mask: var(--scholium-vector-symbol) center / contain no-repeat;
+  mask: var(--scholium-vector-symbol) center / contain no-repeat;
+}
+.cm-live-vector-icon-neutral { color: LinkText; }
+.cm-live-vector-icon-supports-target {
+  --scholium-vector-symbol: var(--scholium-symbol-supports);
+  color: var(--scholium-vector-support);
+}
+.cm-live-vector-icon-supported-by-target {
+  --scholium-vector-symbol: var(--scholium-symbol-supported-by);
+  color: var(--scholium-vector-support);
+}
+.cm-live-vector-icon-incompatible {
+  --scholium-vector-symbol: var(--scholium-symbol-incompatible);
+  color: var(--scholium-vector-incompatible);
+}
+
+.cm-live-embed {
+  color: LinkText;
+  font-weight: 650;
+  padding: 0.08em 0.3em;
+  border: 1px solid color-mix(in srgb, LinkText 28%, transparent);
+  border-radius: 5px;
+}
+
+.cm-live-list { padding-inline-start: 0.5em; }
+.cm-live-list-marker {
+  display: inline-block;
+  min-width: 1.35em;
+  color: color-mix(in srgb, AccentColor 78%, CanvasText);
+  font-family: system-ui, sans-serif;
+  font-weight: 650;
+}
+
+.cm-live-codeblock {
+  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  background: color-mix(in srgb, CanvasText 6%, transparent);
+  padding-inline: 0.8em;
+}
+
+.cm-live-table {
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 -1px color-mix(in srgb, CanvasText 15%, transparent);
+}
+.cm-live-table-separator { color: color-mix(in srgb, CanvasText 38%, transparent); }
+
+.cm-live-footnote-reference {
+  color: LinkText;
+  font-family: system-ui, sans-serif;
+  font-size: 0.72em;
+  font-weight: 700;
+  vertical-align: super;
+}
+.cm-live-footnote-definition { color: color-mix(in srgb, CanvasText 78%, transparent); }
+
+.cm-live-relation {
+  background: color-mix(in srgb, AccentColor 5%, transparent);
+  padding-inline: 0.35em;
+}
+.cm-live-relation-predicate { color: color-mix(in srgb, AccentColor 80%, CanvasText); font-weight: 700; }
+.cm-live-relation-arrow { color: color-mix(in srgb, CanvasText 45%, transparent); }
+
+.cm-live-quote {
+  box-shadow: inset 3px 0 color-mix(in srgb, AccentColor 55%, transparent);
+  color: color-mix(in srgb, CanvasText 72%, transparent);
+  padding-left: 12px;
+}
+
+/* Protected Callout presentation is injected from callouts.css by the app. */
+
+.cm-live-rule {
+  border-top: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+  height: 0;
+  margin: 0.9em 0;
+}
+
+.cm-live-frontmatter {
+  color: color-mix(in srgb, CanvasText 68%, transparent);
+  background: color-mix(in srgb, AccentColor 5%, transparent);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .cm-gutters,
+  .cm-activeLine,
+  .cm-activeLineGutter,
+  .cm-live-frontmatter,
+  .cm-live-code {
+    background: Canvas;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --scholium-vector-support: #63d4cf;
+    --scholium-vector-incompatible: #c79aff;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .cm-live-vector-link {
+    text-decoration-thickness: 2px;
+  }
+
+  .cm-researcher-comment {
+    box-shadow: inset 0 -3px AccentColor;
+  }
+}
