@@ -372,7 +372,7 @@ Conflict comparison uses **Return to Editing** and **Reload from Disk** and keep
 - Use **New Triptych…**, **Open Triptych**, **New Window**, and **Manage Triptychs…** consistently. Settings lists complete Triptychs and edits the selected Triptych’s three roots; it never presents Works folders as projects.
 - Keep task-specific settings near their task, except prompt-template mechanics,
   which remain centralized in **Research Guidance** under decision D-028.
-- First launch explains local-first behavior, vault access, generated-state location, and the agent boundary, then gets the researcher to usable folders quickly.
+- First launch explains local-first behavior, vault access, generated-state location, and the agent boundary, then gets the researcher to usable folders quickly. After Works is chosen, use a standard Open panel for the one-time authorization of its containing folder so the sibling `.scholium/` directory remains reachable in the sandbox; explain that this is not a fourth vault.
 - Use standard Open panels for vault and import selection. The 0.1 target has
   no export workflow requiring a Save panel; document, HTML, PDF, and DOCX
   export are deferred future capabilities rather than permanent boundaries.

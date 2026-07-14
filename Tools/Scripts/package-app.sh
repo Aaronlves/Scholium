@@ -57,7 +57,18 @@ xcrun vtool \
   -output "${STAGING_APP}/Contents/MacOS/Scholium.sdk-fixed" \
   "${STAGING_APP}/Contents/MacOS/Scholium"
 mv "${STAGING_APP}/Contents/MacOS/Scholium.sdk-fixed" "${STAGING_APP}/Contents/MacOS/Scholium"
+
+# SwiftPM release binaries retain source and object paths in symbol metadata.
+# Strip that non-runtime metadata before signing so a distributed package does
+# not disclose the builder's home-directory path.
+xcrun strip -S -x "${STAGING_APP}/Contents/MacOS/Scholium"
+xcrun strip -S -x "${OUTPUT}/scholium"
 xcrun vtool -show-build "${STAGING_APP}/Contents/MacOS/Scholium" | rg -q "sdk ${SDK_VERSION}"
+if LC_ALL=C grep -aEq '/Users/[^/]+/' \
+  "${STAGING_APP}/Contents/MacOS/Scholium" "${OUTPUT}/scholium"; then
+  print -u2 "Refusing to package binaries containing a user home-directory path."
+  exit 65
+fi
 xattr -cr "${STAGING_APP}"
 
 codesign --force --deep --options runtime \

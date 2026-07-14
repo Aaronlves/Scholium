@@ -10,6 +10,7 @@ UI_TEST_DERIVED="/tmp/Scholium-UITests"
 REGISTERED_QA="${HOME}/Applications/Scholium-Codex-QA-Do-Not-Use.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 QA_RUN_LOCK="/tmp/com.kbmanager.qa.ui-tests.lock"
+DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 acquire_qa_run_lock() {
   if mkdir "${QA_RUN_LOCK}" 2>/dev/null; then
@@ -58,8 +59,7 @@ cleanup() {
 acquire_qa_run_lock
 trap cleanup EXIT
 
-DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" \
-  "${ROOT}/Tools/Scripts/build-qa-app.sh"
+DEVELOPER_DIR="${DEVELOPER_DIR}" "${ROOT}/Tools/Scripts/build-qa-app.sh"
 [[ -d "${QA_APP}" && -d "${FIXTURES}" ]] || {
   print -u2 "The isolated QA app or disposable fixture copy was not created."
   exit 1
@@ -89,7 +89,7 @@ if (( ${#test_arguments[@]} == 0 )); then
     "-only-testing:ScholiumUITests/ScholiumUITests/testCanonicalAcceptanceJourney"
   )
 fi
-DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" xcodebuild \
+DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
   -project "${ROOT}/ScholiumUITests.xcodeproj" \
   -scheme ScholiumUITests \
   -destination "platform=macOS" \

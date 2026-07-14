@@ -1411,6 +1411,7 @@ private struct WorkspacePathEditor: View {
     @State private var paperAnalysisURL: URL?
     @State private var topicKnowledgeURL: URL?
     @State private var outputURL: URL?
+    @State private var portableContainerURL: URL?
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var loadedCurrentValues = false
@@ -1458,6 +1459,7 @@ private struct WorkspacePathEditor: View {
 
                 Section("Triptych") {
                     TextField("Name", text: $triptychName)
+                        .accessibilityIdentifier("scholium.triptychName")
                     Text("The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1482,6 +1484,16 @@ private struct WorkspacePathEditor: View {
                         symbol: "square.and.pencil",
                         url: $outputURL
                     )
+                }
+
+                Section("Portable Triptych Data") {
+                    PortableControlFolderRow(
+                        worksURL: outputURL,
+                        containerURL: $portableContainerURL
+                    )
+                    Text("Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -1532,9 +1544,19 @@ private struct WorkspacePathEditor: View {
         .task {
             await appState.refreshWorkspaceAssignment()
             loadCurrentValuesIfNeeded()
+            await loadPortableContainerIfAvailable()
         }
         .onChange(of: appState.workspaceAssignment) { _, _ in
             loadCurrentValuesIfNeeded(force: true)
+            Task { await loadPortableContainerIfAvailable() }
+        }
+        .onChange(of: outputURL) { oldValue, newValue in
+            let oldParent = oldValue?.deletingLastPathComponent().standardizedFileURL.path
+            let newParent = newValue?.deletingLastPathComponent().standardizedFileURL.path
+            if oldParent != newParent {
+                portableContainerURL = nil
+            }
+            Task { await loadPortableContainerIfAvailable() }
         }
     }
 
@@ -1543,7 +1565,11 @@ private struct WorkspacePathEditor: View {
     }
 
     private var canSave: Bool {
-        allFoldersSelected
+        guard allFoldersSelected,
+              let outputURL,
+              let portableContainerURL else { return false }
+        return outputURL.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.path
+            == portableContainerURL.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     private var haveCommonParent: Bool {
@@ -1562,6 +1588,16 @@ private struct WorkspacePathEditor: View {
         triptychName = targetAssignment?.triptych.name ?? ""
     }
 
+    private func loadPortableContainerIfAvailable() async {
+        guard let outputURL else {
+            portableContainerURL = nil
+            return
+        }
+        if let registered = await appState.portableContainerURL(for: outputURL) {
+            portableContainerURL = registered
+        }
+    }
+
     private var targetAssignment: TriptychAssignment? {
         if let targetTriptychID {
             return appState.registeredTriptychs.first(where: { $0.id == targetTriptychID })
@@ -1577,6 +1613,10 @@ private struct WorkspacePathEditor: View {
 
     private func save() {
         guard let paperAnalysisURL, let topicKnowledgeURL, let outputURL else { return }
+        guard let portableContainerURL else {
+            errorMessage = "Authorize the folder containing Works before saving this Triptych."
+            return
+        }
         isSaving = true
         errorMessage = nil
         Task {
@@ -1585,6 +1625,7 @@ private struct WorkspacePathEditor: View {
                     paperAnalysisURL: paperAnalysisURL,
                     topicKnowledgeURL: topicKnowledgeURL,
                     outputURL: outputURL,
+                    portableContainerURL: portableContainerURL,
                     triptychID: targetTriptychID,
                     triptychName: triptychName
                 )
@@ -1595,6 +1636,63 @@ private struct WorkspacePathEditor: View {
                 isSaving = false
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+}
+
+private struct PortableControlFolderRow: View {
+    let worksURL: URL?
+    @Binding var containerURL: URL?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder.badge.gearshape")
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Folder Containing Works")
+                    .font(.body.weight(.medium))
+                Text("Authorizes portable settings stored beside Works")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
+                    .font(.caption)
+                    .foregroundStyle(containerURL == nil ? Color.secondary : Color.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 12)
+
+            Button(containerURL == nil ? "Authorize…" : "Authorize Again…") {
+                authorizeFolder()
+            }
+            .disabled(worksURL == nil)
+            .accessibilityLabel("Authorize folder containing Works")
+        }
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("scholium.portableControlAccess")
+    }
+
+    private func authorizeFolder() {
+        guard let expected = worksURL?
+            .deletingLastPathComponent()
+            .resolvingSymlinksInPath()
+            .standardizedFileURL else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Authorize the Folder Containing Works"
+        panel.message = "Choose '\(expected.lastPathComponent)' so Scholium can use the portable .scholium folder beside Works."
+        panel.prompt = "Authorize"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.directoryURL = expected.deletingLastPathComponent()
+        if panel.runModal() == .OK {
+            containerURL = panel.url
         }
     }
 }

@@ -126,7 +126,9 @@ The researcher may synchronize `.scholium` through ordinary cloud storage or Git
 
 Machine-specific and replaceable state remains in Application Support:
 
-- security-scoped bookmarks and absolute paths;
+- security-scoped bookmarks and absolute paths, including the separate bookmark
+  for the folder containing Works that authorizes the sibling `.scholium/`
+  directory without creating a fourth vault;
 - window sessions and open tabs;
 - search, link, graph, and render indexes;
 - temporary files and caches;

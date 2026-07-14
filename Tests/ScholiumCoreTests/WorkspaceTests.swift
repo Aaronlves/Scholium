@@ -499,4 +499,67 @@ struct WorkspaceTests {
         #expect(try Data(contentsOf: registryURL) == corrupt)
     }
 
+    @Test("Portable control authorization is keyed by the folder containing Works")
+    func portableControlAuthorizationPersists() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let container = base.appendingPathComponent("Triptych", isDirectory: true)
+        let works = container.appendingPathComponent("Works", isDirectory: true)
+        try FileManager.default.createDirectory(at: works, withIntermediateDirectories: true)
+        let registry = PortableControlAccessRegistry(applicationSupportURL: base)
+        let bookmark = Data("synthetic security-scoped bookmark".utf8)
+
+        let registered = try await registry.register(
+            containerURL: container,
+            bookmarkData: bookmark
+        )
+        let restored = await PortableControlAccessRegistry(
+            applicationSupportURL: base
+        ).access(forWorksURL: works)
+
+        #expect(registered.canonicalContainerPath == container.path)
+        #expect(restored?.canonicalContainerPath == container.path)
+        #expect(restored?.bookmarkData == bookmark)
+    }
+
+    @Test("Portable control authorization rejects a folder other than the Works parent")
+    func portableControlAuthorizationValidatesParent() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let expected = base.appendingPathComponent("Expected", isDirectory: true)
+        let works = expected.appendingPathComponent("Works", isDirectory: true)
+        let selected = base.appendingPathComponent("Selected", isDirectory: true)
+        for url in [works, selected] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let registry = PortableControlAccessRegistry(applicationSupportURL: base)
+
+        await #expect(throws: PortableControlAccessRegistryError.self) {
+            _ = try await registry.register(containerURL: selected, forWorksURL: works)
+        }
+    }
+
+    @Test("A corrupt portable control access registry is preserved")
+    func corruptPortableControlAccessRegistryFailsClosed() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let registryURL = base.appendingPathComponent("portable-control-access.json")
+        let corrupt = Data("{broken portable access registry".utf8)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        try corrupt.write(to: registryURL)
+        let registry = PortableControlAccessRegistry(applicationSupportURL: base)
+
+        #expect(await registry.healthError() != nil)
+        await #expect(throws: PortableControlAccessRegistryError.self) {
+            _ = try await registry.register(
+                containerURL: base,
+                bookmarkData: Data("replacement".utf8)
+            )
+        }
+        #expect(try Data(contentsOf: registryURL) == corrupt)
+    }
+
 }

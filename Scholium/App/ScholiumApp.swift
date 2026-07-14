@@ -855,6 +855,7 @@ final class AppState: ObservableObject {
     private let applicationSupportURL: URL
     private let lastVaultURL: URL
     private let identityRegistry: VaultIdentityRegistry
+    private let portableControlAccessRegistry: PortableControlAccessRegistry
     private let workspaceRegistry: WorkspaceRegistry
     private let savedSearchStore: SavedSearchStore
     private let windowSessionStore: WindowSessionSnapshotStore
@@ -899,6 +900,7 @@ final class AppState: ObservableObject {
         applicationSupportURL = appSupport
         lastVaultURL = appSupport.appendingPathComponent("last-vault.txt")
         identityRegistry = workspaceStore.identityRegistry
+        portableControlAccessRegistry = workspaceStore.portableControlAccessRegistry
         workspaceRegistry = workspaceStore.workspaceRegistry
         savedSearchStore = workspaceStore.savedSearchStore
         windowSessionStore = workspaceStore.windowSessionStore
@@ -1957,6 +1959,11 @@ final class AppState: ObservableObject {
             try await activateTriptychServices(assignment: assignment)
             return true
         } catch {
+            if let recovery = workspaceAccessRecoveryMessage(for: error) {
+                workspaceRecoveryMessage = recovery
+                vaultError = nil
+                return false
+            }
             let message = "Scholium could not activate this Triptych's shared files, search, and research history. The registered locations remain unchanged. \(error.localizedDescription)"
             workspaceRecoveryMessage = message
             vaultError = message
@@ -1968,9 +1975,20 @@ final class AppState: ObservableObject {
         paperAnalysisURL: URL,
         topicKnowledgeURL: URL,
         outputURL: URL,
+        portableContainerURL: URL,
         triptychID: UUID? = nil,
         triptychName: String? = nil
     ) async throws {
+        let portableScopeStarted = portableContainerURL.startAccessingSecurityScopedResource()
+        defer {
+            if portableScopeStarted {
+                portableContainerURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        _ = try await portableControlAccessRegistry.register(
+            containerURL: portableContainerURL,
+            forWorksURL: outputURL
+        )
         let selections: [(WorkspaceVaultSlot, URL)] = [
             (.paperAnalysis, paperAnalysisURL),
             (.topicKnowledge, topicKnowledgeURL),
@@ -2028,6 +2046,28 @@ final class AppState: ObservableObject {
 
     func activateRegisteredTriptych(id: UUID) async {
         await refreshWorkspaceAssignment(preferredTriptychID: id)
+    }
+
+    func portableContainerURL(for worksURL: URL) async -> URL? {
+        guard let access = await portableControlAccessRegistry.access(forWorksURL: worksURL) else {
+            return nil
+        }
+        var stale = false
+        guard let resolved = try? URL(
+            resolvingBookmarkData: access.bookmarkData,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &stale
+        ), !stale else {
+            return nil
+        }
+        let canonical = resolved.resolvingSymlinksInPath().standardizedFileURL
+        guard canonical.path == access.canonicalContainerPath,
+              resolved.startAccessingSecurityScopedResource() else {
+            return nil
+        }
+        resolved.stopAccessingSecurityScopedResource()
+        return canonical
     }
 
     var isCreatingNewTriptych: Bool {
@@ -3087,7 +3127,8 @@ final class AppState: ObservableObject {
                 try await configureThreeVaultWorkspace(
                     paperAnalysisURL: root.appendingPathComponent("01-analyses", isDirectory: true),
                     topicKnowledgeURL: root.appendingPathComponent("02-topics", isDirectory: true),
-                    outputURL: root.appendingPathComponent("03-works", isDirectory: true)
+                    outputURL: root.appendingPathComponent("03-works", isDirectory: true),
+                    portableContainerURL: root
                 )
 #if DEBUG
                 if let requestedSlot = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_SLOT"],
@@ -3133,14 +3174,25 @@ final class AppState: ObservableObject {
             try await openWorkspaceVault(slotToOpen)
             openRequestedTestNoteIfNeeded()
         } catch {
-            if let workspaceError = error as? WorkspaceRegistryError,
-               case .vaultAccessUnavailable(let path) = workspaceError {
-                workspaceRecoveryMessage = "Scholium needs renewed access to '\(path)'. Choose that folder again, then use these vaults."
+            if let recovery = workspaceAccessRecoveryMessage(for: error) {
+                workspaceRecoveryMessage = recovery
                 vaultError = nil
             } else {
                 vaultError = error.localizedDescription
             }
             showWorkspaceSetup = true
+        }
+    }
+
+    private func workspaceAccessRecoveryMessage(for error: Error) -> String? {
+        guard let workspaceError = error as? WorkspaceRegistryError else { return nil }
+        switch workspaceError {
+        case .vaultAccessUnavailable(let path):
+            return "Scholium needs renewed access to '\(path)'. Choose that folder again, then use these vaults."
+        case .portableControlAccessUnavailable(let path):
+            return "Scholium needs access to '\(path)' so it can use the portable .scholium folder beside Works. Authorize that folder, then save the Triptych."
+        default:
+            return nil
         }
     }
 

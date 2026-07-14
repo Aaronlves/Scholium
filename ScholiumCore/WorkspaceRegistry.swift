@@ -206,6 +206,7 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
     case vaultIdentityMismatch(UUID, String, String)
     case incompleteWorkspace
     case vaultAccessUnavailable(String)
+    case portableControlAccessUnavailable(String)
 
     public var errorDescription: String? {
         switch self {
@@ -232,6 +233,8 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
             return "The Triptych is incomplete. Choose Analyses, Topics, and Works again."
         case .vaultAccessUnavailable(let path):
             return "Scholium no longer has access to '\(path)'. Open Manage Triptychs and choose that folder again."
+        case .portableControlAccessUnavailable(let path):
+            return "Scholium needs access to '\(path)' because the portable .scholium folder sits beside Works. Open Manage Triptychs and authorize that folder again."
         }
     }
 }

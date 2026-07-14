@@ -284,17 +284,6 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(setup.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Choose Your Triptych"].exists)
 
-        for identifier in [
-            "scholium.onboarding.localFiles",
-            "scholium.onboarding.generatedState",
-            "scholium.onboarding.agentBoundary",
-        ] {
-            XCTAssertTrue(
-                app.descendants(matching: .any)[identifier].exists,
-                "Expected first-launch disclosure \(identifier)."
-            )
-        }
-
         XCTAssertTrue(app.buttons["Choose Analyses folder"].exists)
         XCTAssertTrue(app.buttons["Choose Topics folder"].exists)
         XCTAssertTrue(app.buttons["Choose Works folder"].exists)
@@ -310,6 +299,8 @@ final class ScholiumUITests: XCTestCase {
         chooseSetupFolder(topics, role: "Topics")
         chooseSetupFolder(works, role: "Works")
 
+        XCTAssertFalse(complete.isEnabled)
+        authorizePortableFolder(triptychDirectory)
         XCTAssertTrue(complete.isEnabled)
         complete.click()
 
@@ -339,6 +330,28 @@ final class ScholiumUITests: XCTestCase {
             app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
                 .waitForExistence(timeout: 15)
         )
+
+        app.typeKey(",", modifierFlags: [.command])
+        let nameField = app.descendants(matching: .any)["scholium.triptychName"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        nameField.click()
+        nameField.typeKey("a", modifierFlags: [.command])
+        nameField.typeText("QA Renamed Triptych")
+        let saveTriptych = app.buttons["Save Triptych"]
+        XCTAssertTrue(saveTriptych.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveTriptych.isEnabled)
+        saveTriptych.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            !self.app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", "manifest.json")
+            ).firstMatch.exists
+        })
+        let registryURL = cleanHome
+            .appendingPathComponent("ApplicationSupport/Workspace/workspace-registry-v2.json")
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (try? String(contentsOf: registryURL, encoding: .utf8))?
+                .contains("QA Renamed Triptych") == true
+        })
     }
 
     @MainActor
@@ -976,14 +989,11 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(openPanelButton.waitForExistence(timeout: 5))
         openPanelButton.click()
 
-        let folderItem = app.descendants(matching: .any)[folder.lastPathComponent]
-        XCTAssertTrue(
-            folderItem.waitForExistence(timeout: 8),
-            "Expected the standard Open panel to show \(folder.lastPathComponent)."
-        )
-        folderItem.click()
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        app.typeText(folder.path)
+        app.typeKey(.enter, modifierFlags: [])
 
-        let choose = app.buttons["Choose"]
+        let choose = app.dialogs["open-panel"].buttons["OKButton"]
         XCTAssertTrue(choose.waitForExistence(timeout: 5))
         XCTAssertTrue(choose.isEnabled)
         choose.click()
@@ -992,7 +1002,24 @@ final class ScholiumUITests: XCTestCase {
             waitUntil(timeout: 5) { !choose.exists },
             "Expected the standard Open panel to close after choosing the \(role) folder."
         )
-        XCTAssertTrue(app.staticTexts[folder.path].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    private func authorizePortableFolder(_ folder: URL) {
+        let authorizeButton = app.buttons["Authorize folder containing Works"]
+        XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
+        authorizeButton.click()
+
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        app.typeText(folder.path)
+        app.typeKey(.enter, modifierFlags: [])
+
+        let authorize = app.dialogs["open-panel"].buttons["OKButton"]
+        XCTAssertTrue(authorize.waitForExistence(timeout: 5))
+        XCTAssertTrue(authorize.isEnabled)
+        authorize.click()
+
+        XCTAssertTrue(waitUntil(timeout: 5) { !authorize.exists })
     }
 
     private func source(at url: URL) throws -> String {

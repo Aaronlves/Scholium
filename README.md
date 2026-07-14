@@ -87,7 +87,7 @@ instructions.
 
 ## Triptych setup
 
-First launch asks the researcher to choose independently located **Analyses**, **Topics**, and **Works** folders. Co-location under one parent is recommended but not required. Add or change complete Triptychs later through **Manage Triptychs…** in Scholium Settings.
+First launch asks the researcher to choose independently located **Analyses**, **Topics**, and **Works** folders. Because portable `.scholium/` data sits beside Works, macOS also asks once for access to the folder containing Works; that folder is an access boundary, not a fourth vault. Co-location under one parent is recommended but not required. Add or change complete Triptychs later through **Manage Triptychs…** in Scholium Settings.
 
 Use **File → New Triptych…** to configure another complete research domain, **File → Open Triptych** to open a registered Triptych in a separate window, and **File → New Window** to open another independent window for the focused Triptych. Every Triptych still contains exactly Analyses, Topics, and Works; Works subfolders are not app-managed projects.
 

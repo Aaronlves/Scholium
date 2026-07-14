@@ -591,6 +591,7 @@ final class WorkspaceStore: ObservableObject {
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
     let identityRegistry: VaultIdentityRegistry
+    let portableControlAccessRegistry: PortableControlAccessRegistry
     let workspaceRegistry: WorkspaceRegistry
     let savedSearchStore: SavedSearchStore
     let windowSessionStore: WindowSessionSnapshotStore
@@ -612,6 +613,7 @@ final class WorkspaceStore: ObservableObject {
     private var vaultTriptychIDs: [UUID: Set<UUID>] = [:]
     private var activeTriptychVaultIDs: [UUID: [WorkspaceVaultSlot: UUID]] = [:]
     private var securityScopeLeases: [UUID: VaultSecurityScopeLease] = [:]
+    private var portableControlScopeLeases: [String: VaultSecurityScopeLease] = [:]
     private var editorFlushRegistrations: [UUID: WorkspaceEditorFlushRegistration] = [:]
 
     init() {
@@ -627,6 +629,9 @@ final class WorkspaceStore: ObservableObject {
         cssSnippetStore = CSSSnippetStore(applicationSupportURL: applicationSupportURL)
         zoteroBridge = ZoteroBridge(applicationSupportURL: applicationSupportURL)
         identityRegistry = VaultIdentityRegistry(applicationSupportURL: applicationSupportURL)
+        portableControlAccessRegistry = PortableControlAccessRegistry(
+            applicationSupportURL: applicationSupportURL
+        )
         let workspaceURL = applicationSupportURL.appendingPathComponent("Workspace", isDirectory: true)
         workspaceRegistry = WorkspaceRegistry(storageURL: workspaceURL)
         savedSearchStore = SavedSearchStore(workspaceStorageURL: workspaceURL)
@@ -661,6 +666,10 @@ final class WorkspaceStore: ObservableObject {
     /// Callers may read through the returned references, but may not create
     /// replacement repositories, indexes, watchers, or security-scope leases.
     func access(for assignment: TriptychAssignment) async throws -> WorkspaceAccess {
+        guard let registeredWorks = assignment.vault(for: .output) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        _ = try await accessPortableControlContainer(for: registeredWorks)
         let runtimes = try await activateTriptych(assignment)
         guard let worksRuntime = runtimes[.output],
               let analyses = runtimes[.paperAnalysis]?.rootURL,
@@ -1129,12 +1138,17 @@ final class WorkspaceStore: ObservableObject {
         }
         guard let bookmark = identity.bookmarkData else { return canonical }
         var stale = false
-        let resolved = try URL(
-            resolvingBookmarkData: bookmark,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &stale
-        )
+        let resolved: URL
+        do {
+            resolved = try URL(
+                resolvingBookmarkData: bookmark,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            )
+        } catch {
+            throw WorkspaceRegistryError.vaultAccessUnavailable(vault.canonicalPath)
+        }
         let resolvedCanonical = resolved.resolvingSymlinksInPath().standardizedFileURL
         guard !stale,
               resolvedCanonical.path == canonical.path,
@@ -1142,6 +1156,46 @@ final class WorkspaceStore: ObservableObject {
             throw WorkspaceRegistryError.vaultAccessUnavailable(vault.canonicalPath)
         }
         securityScopeLeases[vault.id] = VaultSecurityScopeLease(url: resolved, started: true)
+        return resolved
+    }
+
+    private func accessPortableControlContainer(
+        for worksVault: RegisteredVault
+    ) async throws -> URL {
+        let worksURL = URL(
+            fileURLWithPath: worksVault.canonicalPath,
+            isDirectory: true
+        ).resolvingSymlinksInPath().standardizedFileURL
+        let expectedContainer = worksURL.deletingLastPathComponent()
+        if let lease = portableControlScopeLeases[expectedContainer.path] {
+            return lease.url
+        }
+        guard let access = await portableControlAccessRegistry.access(forWorksURL: worksURL),
+              access.canonicalContainerPath == expectedContainer.path else {
+            throw WorkspaceRegistryError.portableControlAccessUnavailable(expectedContainer.path)
+        }
+        var stale = false
+        let resolved: URL
+        do {
+            resolved = try URL(
+                resolvingBookmarkData: access.bookmarkData,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            )
+        } catch {
+            throw WorkspaceRegistryError.portableControlAccessUnavailable(expectedContainer.path)
+        }
+        let canonical = resolved.resolvingSymlinksInPath().standardizedFileURL
+        guard !stale,
+              canonical.path == expectedContainer.path,
+              resolved.startAccessingSecurityScopedResource() else {
+            throw WorkspaceRegistryError.portableControlAccessUnavailable(expectedContainer.path)
+        }
+        portableControlScopeLeases[expectedContainer.path] = VaultSecurityScopeLease(
+            url: resolved,
+            started: true
+        )
         return resolved
     }
 
