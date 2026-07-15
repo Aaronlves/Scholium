@@ -1,5 +1,5 @@
+import ScholiumContracts
 import Foundation
-import ScholiumCore
 
 enum AttentionPreferences {
     static let dismissalLedgerKey = "attention.dismissalLedger"

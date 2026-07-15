@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Triptych workspace catalog")
@@ -56,6 +57,118 @@ struct WorkspaceCatalogTests {
         #expect(Set(matches.map(\.id)).count == 2)
         #expect(snapshot.quickOpenResults(for: "", limit: 1).count == 1)
         #expect(snapshot.quickOpenResults(for: "", limit: 0).isEmpty)
+    }
+
+    @Test("Search expansion uses only direct links from one exact Topic concept")
+    func relatedSearchIsDirectExplainableAndScopeBounded() throws {
+        let analyses = vault("Analyses", .sourceCorpus)
+        let topics = vault("Topics", .topicKnowledge)
+        let works = vault("Works", .draftProject)
+        let concept = note(
+            "Agency.md",
+            "---\ntitle: Agency\naliases: [Practical Identity]\n---\n+[[Paper Analysis]]"
+        )
+        let analysis = note(
+            "Paper.md",
+            "---\ntitle: Paper Analysis\n---\n[[Remote Source]]"
+        )
+        let remote = note("Remote.md", "---\ntitle: Remote Source\n---\nSource")
+        let work = note(
+            "Argument.md",
+            "---\ntitle: Argument Draft\n---\n+[[Agency]]"
+        )
+        let documents: [(RegisteredVault, NoteDocument)] = [
+            (analyses, analysis),
+            (analyses, remote),
+            (topics, concept),
+            (works, work),
+        ]
+        let semantics = Dictionary(uniqueKeysWithValues: documents.map { vault, document in
+            let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
+            return (id, MarkdownSemanticDocument(parsing: document))
+        })
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: documents.map { vault, document in
+                let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
+                return LinkCatalogNote(vaultID: vault.id, document: document, semantic: semantics[id])
+            },
+            documents: semantics,
+            resolutionScope: .workspace
+        )
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [analyses, topics, works],
+            documents: [
+                analyses.id: [analysis, remote],
+                topics.id: [concept],
+                works.id: [work],
+            ],
+            graph: graph
+        )
+
+        let related = snapshot.relatedSearchResults(
+            for: "Practical Identity",
+            scope: .workspace
+        )
+        #expect(related.map(\.note.title) == ["Argument Draft", "Paper Analysis"])
+        #expect(related.first?.relationship == .itemSupportsConcept)
+        #expect(related.first?.explanation == "Supports Agency")
+        #expect(related.first?.sourceLine == 4)
+        #expect(related.last?.relationship == .conceptSupportsItem)
+        #expect(related.last?.explanation == "Supported by Agency")
+        #expect(!related.contains { $0.note.title == "Remote Source" })
+
+        let analysesOnly = snapshot.relatedSearchResults(
+            for: "Agency",
+            scope: .currentVault(analyses.id)
+        )
+        #expect(analysesOnly.map(\.note.title) == ["Paper Analysis"])
+        #expect(snapshot.relatedSearchResults(
+            for: "Agency",
+            scope: .currentNote(VaultQualifiedNoteID(
+                vaultID: topics.id,
+                relativePath: concept.relativePath
+            ))
+        ).isEmpty)
+
+        let analysisID = VaultQualifiedNoteID(
+            vaultID: analyses.id,
+            relativePath: analysis.relativePath
+        )
+        #expect(snapshot.relatedSearchResults(
+            for: "Agency",
+            scope: .workspace,
+            excluding: [analysisID]
+        ).map(\.note.title) == ["Argument Draft"])
+        #expect(snapshot.relatedSearchResults(for: "title:Agency", scope: .workspace).isEmpty)
+    }
+
+    @Test("Ambiguous Topic aliases never trigger graph expansion")
+    func relatedSearchDoesNotGuessBetweenConcepts() {
+        let topics = vault("Topics", .topicKnowledge)
+        let first = note("Agency.md", "---\ntitle: Agency\naliases: [Identity]\n---\n")
+        let second = note("Personhood.md", "---\ntitle: Personhood\naliases: [Identity]\n---\n")
+        let documents = [first, second]
+        let semantics = Dictionary(uniqueKeysWithValues: documents.map { document in
+            let id = VaultQualifiedNoteID(vaultID: topics.id, relativePath: document.relativePath)
+            return (id, MarkdownSemanticDocument(parsing: document))
+        })
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: documents.map { document in
+                let id = VaultQualifiedNoteID(vaultID: topics.id, relativePath: document.relativePath)
+                return LinkCatalogNote(vaultID: topics.id, document: document, semantic: semantics[id])
+            },
+            documents: semantics,
+            resolutionScope: .workspace
+        )
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: documents],
+            graph: graph
+        )
+
+        #expect(snapshot.relatedSearchResults(for: "Identity", scope: .workspace).isEmpty)
     }
 
     @Test("A legacy catalog note without aliases remains readable")

@@ -1,81 +1,70 @@
+import ScholiumContracts
 import SwiftUI
-import ScholiumCore
 
 // MARK: - Properties Editor
 
 /// Schema-aware sheet for editing a note's frontmatter.
 struct FrontmatterEditorView: View {
-    @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    let note: Note
+    let note: WindowDocumentLocation
+    let configuredEditableFields: Set<String>?
+    let initialExpectedRevision: DocumentFingerprint?
+    let save: @MainActor (
+        [String: YAMLValue],
+        ResearchUnitEdit?,
+        DocumentFingerprint
+    ) async throws -> Void
 
     @State private var fieldValues: [String: String] = [:]
     @State private var originalFieldValues: [String: String] = [:]
     @State private var fieldErrors: [String: String] = [:]
     @State private var tagInput: String = ""
     @State private var isSaving = false
-    @State private var resolvedCitation: String?
     @State private var expectedRevision: DocumentFingerprint?
     @State private var saveError: String?
     @State private var showAvailableProperties = false
+    @State private var researchUnitEnabled = false
+    @State private var originalResearchUnitEnabled = false
+    @State private var researchUnitScope = ""
+    @State private var originalResearchUnitScope = ""
+    @State private var researchUnitLimitationsText = ""
+    @State private var originalResearchUnitLimitationsText = ""
+    @State private var researchUnitWasInvalid = false
 
-    private var schema: FrontmatterSchema {
-        FrontmatterSchema.schema(for: note)
+    init(
+        note: WindowDocumentLocation,
+        configuredEditableFields: Set<String>? = nil,
+        expectedRevision: DocumentFingerprint? = nil,
+        save: @escaping @MainActor (
+            [String: YAMLValue],
+            ResearchUnitEdit?,
+            DocumentFingerprint
+        ) async throws -> Void
+    ) {
+        self.note = note
+        self.configuredEditableFields = configuredEditableFields
+        self.initialExpectedRevision = expectedRevision
+        self.save = save
     }
 
-    /// `nil` is the compatibility policy for notes outside a classified
-    /// Triptych vault. An empty set is a deliberate vault-wide choice to make
-    /// no fields editable through structured controls.
-    private var configuredEditableFields: Set<String>? {
-        appState.currentPropertiesConfiguration.map { Set($0.editableFields) }
+    private var editorModel: PropertyEditorModel {
+        PropertyEditorModel(
+            note: note,
+            configuredEditableFields: configuredEditableFields
+        )
     }
 
-    private var presentFields: [FrontmatterSchema.FieldDefinition] {
-        let known = schema.fields.filter {
-            note.property(at: $0.key) != nil
-                && ResearcherPropertyPolicy.isHumanEditable($0.key)
-                && (configuredEditableFields?.contains($0.key) ?? true)
-        }
-        let knownKeys = Set(schema.fields.map(\.key))
-        let legacyKeys = Set(schema.fields.flatMap { TriptychProperty.legacyAliases[$0.key] ?? [] })
-        let custom = note.frontmatter.keys
-            .filter {
-                !knownKeys.contains($0)
-                    && !legacyKeys.contains($0)
-                    && ResearcherPropertyPolicy.isHumanEditable($0)
-                    && (configuredEditableFields?.contains($0) ?? true)
-            }
-            .sorted()
-            .compactMap { key in
-                note.frontmatter[key].map { inferredField(key: key, value: $0) }
-            }
-        return known + custom
-    }
+    private var presentFields: [PropertyEditorField] { editorModel.presentFields }
 
-    private var availableFields: [FrontmatterSchema.FieldDefinition] {
-        return schema.fields.filter {
-            note.property(at: $0.key) == nil
-                && ResearcherPropertyPolicy.isHumanEditable($0.key)
-                && (configuredEditableFields?.contains($0.key) ?? true)
-        }
-    }
+    private var availableFields: [PropertyEditorField] { editorModel.availableFields }
 
-    private var allFields: [FrontmatterSchema.FieldDefinition] {
-        presentFields + availableFields
-    }
+    private var allFields: [PropertyEditorField] { editorModel.allFields }
 
-    private var missingRequiredFields: [FrontmatterSchema.FieldDefinition] {
-        availableFields.filter(\.required)
-    }
+    private var missingRequiredFields: [PropertyEditorField] { editorModel.missingRequiredFields }
 
-    private var groupedPresentFields: [(name: String, fields: [FrontmatterSchema.FieldDefinition])] {
-        let order = ["About", "Source", "Progress", "Use", "History", "Other"]
-        let grouped = Dictionary(grouping: presentFields, by: { category(for: $0.key) })
-        return order.compactMap { name in
-            guard let fields = grouped[name], !fields.isEmpty else { return nil }
-            return (name, fields)
-        }
+    private var groupedPresentFields: [(group: PropertyPresentationGroup, fields: [PropertyEditorField])] {
+        editorModel.groupedPresentFields
     }
 
     var body: some View {
@@ -136,9 +125,11 @@ struct FrontmatterEditorView: View {
                     Text("Researcher Properties")
                         .font(.headline)
 
+                    researchStatusEditor
+
                     if allFields.isEmpty {
                         Label(
-                            "No fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML.",
+                            "No other fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML.",
                             systemImage: "lock"
                         )
                         .font(.callout)
@@ -154,8 +145,8 @@ struct FrontmatterEditorView: View {
                         .foregroundStyle(.secondary)
                     }
 
-                    ForEach(groupedPresentFields, id: \.name) { group in
-                        GroupBox(group.name) {
+                    ForEach(groupedPresentFields, id: \.group) { group in
+                        GroupBox(group.group.label) {
                             VStack(alignment: .leading, spacing: 14) {
                                 ForEach(group.fields) { field in
                                     fieldEditor(for: field)
@@ -210,23 +201,30 @@ struct FrontmatterEditorView: View {
                 fieldValues[key] = stringValue
                 originalFieldValues[key] = stringValue
             }
-            for field in schema.fields where fieldValues[field.key] == nil {
+            for field in allFields where fieldValues[field.key] == nil {
                 guard let value = note.property(at: field.key) else { continue }
                 let stringValue = frontmatterToString(value)
                 fieldValues[field.key] = stringValue
                 originalFieldValues[field.key] = stringValue
             }
-            expectedRevision = appState.documentRevisions[note.relativePath]
-            // Resolve Zotero citation
-            if let zoteroKey = note.zoteroKey {
-                do {
-                    if let citation = try await appState.zoteroBridge.resolveCitation(zoteroKey: zoteroKey) {
-                        resolvedCitation = citation.inlineCitation
-                    }
-                } catch {
-                    // Citation not resolved
-                }
+            let declaration = note.researchUnit
+            switch declaration.state {
+            case .absent:
+                researchUnitEnabled = false
+                originalResearchUnitEnabled = false
+            case .declared:
+                researchUnitEnabled = true
+                originalResearchUnitEnabled = true
+                researchUnitScope = declaration.scope ?? ""
+                originalResearchUnitScope = researchUnitScope
+                researchUnitLimitationsText = declaration.limitations.joined(separator: "\n")
+                originalResearchUnitLimitationsText = researchUnitLimitationsText
+            case .invalid:
+                researchUnitWasInvalid = true
+                researchUnitEnabled = false
+                originalResearchUnitEnabled = false
             }
+            expectedRevision = initialExpectedRevision
         }
         .alert("Could Not Save", isPresented: Binding(
             get: { saveError != nil },
@@ -239,33 +237,101 @@ struct FrontmatterEditorView: View {
     }
 
     private var hiddenPropertyCount: Int {
-        let legacyKeys = Set(schema.fields.flatMap { TriptychProperty.legacyAliases[$0.key] ?? [] })
-        return note.frontmatter.keys.count {
-            ResearcherPropertyPolicy.isHidden($0) || legacyKeys.contains($0)
-        }
+        editorModel.hiddenPropertyCount
     }
 
-    private func category(for key: String) -> String {
-        switch key {
-        case "title", "authors", "year", "type", "aliases", "note_type", "project_role", "claim_type", "project", "target", "primary_level", "main_topic", "related_topics", "tags":
-            "About"
-        case "access", "text_reliability", "locators", "doi", "audit":
-            "Source"
-        case "analysis_mode", "status", "reviewed", "settlement_dimensions", "settlement_degree", "review_status", "confidence":
-            "Progress"
-        case "relevance", "dissertation_role", "dissertation_claim_links", "revision_relation", "cui_kb_integration", "follow_up", "venue", "deadline", "prose_permission", "reopen_condition", "privacy":
-            "Use"
-        case "created", "updated", "dissertation_updated_at", "last_reviewed":
-            "History"
-        default:
-            "Other"
+    private var researchUnitLimitations: [String] {
+        researchUnitLimitationsText
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var researchUnitHasChanges: Bool {
+        researchUnitEnabled != originalResearchUnitEnabled
+            || researchUnitScope != originalResearchUnitScope
+            || researchUnitLimitationsText != originalResearchUnitLimitationsText
+    }
+
+    @ViewBuilder
+    private var researchStatusEditor: some View {
+        GroupBox("Research Status") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Declare the scope within which this note's claims apply. Limitations are optional and should describe material boundaries.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if researchUnitWasInvalid {
+                    Label(
+                        "The existing Research Status is not valid. Source mode preserves its exact YAML; enabling this editor will replace it with a valid declaration.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Toggle("Declare Research Status", isOn: $researchUnitEnabled)
+                    .toggleStyle(.switch)
+
+                if researchUnitEnabled {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Scope")
+                            .font(.callout.weight(.medium))
+                        TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Research Status Scope")
+                        if let error = fieldErrors["research_unit.scope"] {
+                            Label(error, systemImage: "exclamationmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Limitations")
+                            .font(.callout.weight(.medium))
+                        Text("One material boundary per line.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $researchUnitLimitationsText)
+                            .font(.body)
+                            .frame(minHeight: 70)
+                            .scrollContentBackground(.hidden)
+                            .padding(4)
+                            .background(
+                                Color(nsColor: .textBackgroundColor),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                            )
+                            .accessibilityLabel("Research Status Limitations")
+                    }
+                } else if originalResearchUnitEnabled {
+                    Label(
+                        "Turning this off will remove the Research Status mapping from the note.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text("Scope not declared. Enable this section to add a Research Status mapping.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
         }
     }
 
     // MARK: - Field Editors
 
     @ViewBuilder
-    private func fieldEditor(for field: FrontmatterSchema.FieldDefinition) -> some View {
+    private func fieldEditor(for field: PropertyEditorField) -> some View {
         let hasError = fieldErrors[field.key] != nil
 
         VStack(alignment: .leading, spacing: 6) {
@@ -274,14 +340,14 @@ struct FrontmatterEditorView: View {
                 Text(field.label)
                     .font(.callout)
                     .fontWeight(.medium)
-                if field.required {
+                if field.isRequiredForCreation {
                     Text("*")
                         .foregroundStyle(.red)
                         .font(.callout)
                         .fontWeight(.bold)
                 }
-                if field.autoFilled {
-                    Text(isPreservedReadOnly(field) ? "Read only" : "Managed")
+                if field.isReadOnly {
+                    Text("Read only")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
@@ -291,7 +357,7 @@ struct FrontmatterEditorView: View {
             }
 
             // Description
-            if let desc = field.description {
+            if let desc = field.help {
                 Text(desc)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -323,17 +389,17 @@ struct FrontmatterEditorView: View {
 
     @ViewBuilder
     private func editorContent(
-        for field: FrontmatterSchema.FieldDefinition,
+        for field: PropertyEditorField,
         binding: Binding<String>,
         hasError: Bool
     ) -> some View {
-        switch field.type {
-        case .string, .doi:
+        switch field.controlStyle {
+        case .textField:
             TextField(field.label, text: binding)
                 .textFieldStyle(.roundedBorder)
-                .disabled(field.autoFilled)
+                .disabled(field.isReadOnly)
 
-        case .text:
+        case .multilineText:
             TextEditor(text: binding)
                 .font(ScholiumTypography.swiftUIMonospaceFont(
                     size: ScholiumTypography.sourceBodySize,
@@ -350,15 +416,15 @@ struct FrontmatterEditorView: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .stroke(hasError ? Color.red : Color.secondary.opacity(0.2), lineWidth: 1)
                 )
-                .disabled(field.autoFilled)
+                .disabled(field.isReadOnly)
 
-        case .number:
+        case .numberField:
             TextField(field.label, text: binding)
                 .textFieldStyle(.roundedBorder)
-                .disabled(field.autoFilled)
+                .disabled(field.isReadOnly)
 
-        case .date:
-            if field.autoFilled {
+        case .dateField:
+            if field.isReadOnly {
                 Text(fieldValues[field.key] ?? "—")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -379,7 +445,7 @@ struct FrontmatterEditorView: View {
                 }
             }
 
-        case .boolean:
+        case .toggle:
             Toggle(isOn: Binding(
                 get: { fieldValues[field.key]?.lowercased() == "true" },
                 set: { fieldValues[field.key] = $0 ? "true" : "false" }
@@ -387,16 +453,16 @@ struct FrontmatterEditorView: View {
                 Text(field.label)
                     .font(.callout)
             }
-            .disabled(field.autoFilled)
+            .disabled(field.isReadOnly)
 
-        case .tags:
+        case .tagEditor:
             tagEditor(for: field)
 
-        case .array:
+        case .textListEditor:
             arrayEditor(for: field)
 
-        case .enum:
-            if let allowed = field.allowedValues {
+        case .choicePicker:
+            if let allowed = field.contract?.allowedValues {
                 Picker(field.label, selection: binding) {
                     Text("—").tag("")
                     ForEach(allowed, id: \.self) { value in
@@ -404,43 +470,19 @@ struct FrontmatterEditorView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .disabled(field.autoFilled)
+                .disabled(field.isReadOnly)
                 .frame(maxWidth: 240)
             }
 
-        case .zoteroKey:
-            VStack(alignment: .leading, spacing: 6) {
-                TextField("Zotero item key", text: binding)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(field.autoFilled)
-
-                if let citation = resolvedCitation {
-                    HStack(spacing: 5) {
-                        Image(systemName: "books.vertical")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(citation)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                if !binding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button {
-                        Task { await appState.zoteroBridge.openInZotero(zoteroKey: binding.wrappedValue) }
-                    } label: {
-                        Label("Open in Zotero", systemImage: "arrow.up.forward.app")
-                    }
-                    .buttonStyle(.link)
-                }
-            }
+        case .researchStatus:
+            EmptyView()
         }
     }
 
     // MARK: - Tag Editor
 
     @ViewBuilder
-    private func tagEditor(for field: FrontmatterSchema.FieldDefinition) -> some View {
+    private func tagEditor(for field: PropertyEditorField) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             // Current tags
             let tags = parseArray(fieldValues[field.key])
@@ -492,13 +534,13 @@ struct FrontmatterEditorView: View {
                 .disabled(tagInput.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .disabled(field.autoFilled)
+        .disabled(field.isReadOnly)
     }
 
     // MARK: - Array Editor
 
     @ViewBuilder
-    private func arrayEditor(for field: FrontmatterSchema.FieldDefinition) -> some View {
+    private func arrayEditor(for field: PropertyEditorField) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             let items = parseArray(fieldValues[field.key])
 
@@ -536,12 +578,12 @@ struct FrontmatterEditorView: View {
             }
             .buttonStyle(.borderless)
         }
-        .disabled(field.autoFilled)
+        .disabled(field.isReadOnly)
     }
 
     // MARK: - Tag Add Helper
 
-    private func addTag(field: FrontmatterSchema.FieldDefinition) {
+    private func addTag(field: PropertyEditorField) {
         let trimmed = tagInput.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         var tags = parseArray(fieldValues[field.key])
@@ -556,69 +598,64 @@ struct FrontmatterEditorView: View {
 
     private func saveChanges() {
         let changedFields = allFields.filter { field in
-            !field.autoFilled && fieldValues[field.key] != originalFieldValues[field.key]
+            !field.isReadOnly && fieldValues[field.key] != originalFieldValues[field.key]
         }
+        let hasResearchUnitChanges = researchUnitHasChanges
 
-        guard !changedFields.isEmpty else {
+        guard !changedFields.isEmpty || hasResearchUnitChanges else {
             dismiss()
             return
         }
 
-        // Validate
-        fieldErrors = [:]
+        var proposedFrontmatter = note.frontmatter
         for field in changedFields {
-            let value = fieldValues[field.key]?.trimmingCharacters(in: .whitespaces) ?? ""
-            if field.required && value.isEmpty {
-                fieldErrors[field.key] = "\(field.label) is required"
-            }
-            if field.type == .enum, let allowed = field.allowedValues, !value.isEmpty {
-                if !allowed.contains(value) {
-                    fieldErrors[field.key] = "Must be one of: \(allowed.joined(separator: ", "))"
-                }
-            }
-            if field.key == "relevance", !value.isEmpty {
-                guard let rating = Int(value), (1...10).contains(rating) else {
-                    fieldErrors[field.key] = "Must be a whole number from 1 to 10"
-                    continue
-                }
-            }
+            guard let text = fieldValues[field.key] else { continue }
+            proposedFrontmatter = editorModel.updating(
+                proposedFrontmatter,
+                field: field,
+                text: text
+            )
         }
 
-        guard fieldErrors.isEmpty else { return }
+        let researchUnitEdit: ResearchUnitEdit?
+        if hasResearchUnitChanges {
+            if researchUnitEnabled {
+                researchUnitEdit = .set(
+                    scope: researchUnitScope.trimmingCharacters(in: .whitespacesAndNewlines),
+                    limitations: researchUnitLimitations
+                )
+            } else {
+                researchUnitEdit = .remove
+            }
+        } else {
+            researchUnitEdit = nil
+        }
 
-        // Build updated frontmatter
+        fieldErrors = [:]
+        saveError = nil
+        let issues = editorModel.validationIssues(
+            proposedFrontmatter: proposedFrontmatter,
+            researchUnitEdit: researchUnitEdit,
+            changedKeys: Set(changedFields.map(\.key))
+        )
+        for issue in issues {
+            if let key = issue.propertyKey {
+                fieldErrors[key == "research_unit" ? "research_unit.scope" : key] = issue.message
+            } else {
+                saveError = issue.message
+            }
+        }
+        guard fieldErrors.isEmpty, saveError == nil else { return }
+
+        guard let revision = expectedRevision else {
+            saveError = "The editing revision is unavailable. Close and reopen the editor."
+            return
+        }
+
         isSaving = true
-        var updatedNote = note
-        let noteSchema = FrontmatterSchema.schema(for: note)
-
         Task {
-            for field in changedFields {
-                guard let stringValue = fieldValues[field.key] else { continue }
-                let frontmatterValue = stringToFrontmatter(stringValue, type: field.type)
-                if let value = frontmatterValue {
-                    do {
-                        updatedNote.frontmatter = try await appState.frontmatterService.updateField(
-                            field.key, value: value, in: updatedNote.frontmatter, schema: noteSchema
-                        )
-                        for legacyKey in TriptychProperty.legacyAliases[field.key] ?? [] {
-                            updatedNote.frontmatter.removeValue(forKey: legacyKey)
-                        }
-                    } catch {
-                        fieldErrors[field.key] = error.localizedDescription
-                        isSaving = false
-                        return
-                    }
-                }
-            }
-
-            guard let revision = expectedRevision else {
-                saveError = "The editing revision is unavailable. Close and reopen the editor."
-                isSaving = false
-                return
-            }
             do {
-                _ = try await appState.saveNote(updatedNote, expectedRevision: revision)
-                appState.showToast("Frontmatter saved")
+                try await save(proposedFrontmatter, researchUnitEdit, revision)
                 isSaving = false
                 dismiss()
             } catch {
@@ -630,68 +667,16 @@ struct FrontmatterEditorView: View {
 
     // MARK: - Helpers
 
-    private func frontmatterToString(_ value: FrontmatterValue) -> String {
+    private func frontmatterToString(_ value: YAMLValue) -> String {
         switch value {
         case .string(let s): return s
-        case .int(let i): return "\(i)"
+        case .integer(let i): return "\(i)"
         case .double(let d): return "\(d)"
-        case .bool(let b): return b ? "true" : "false"
-        case .date(let d): return formatDate(d)
-        case .array(let arr): return arr.joined(separator: "; ")
-        case .dictionary(let dict): return dict.map { "\($0.key): \($0.value)" }.joined(separator: "; ")
-        }
-    }
-
-    private func inferredField(
-        key: String,
-        value: FrontmatterValue
-    ) -> FrontmatterSchema.FieldDefinition {
-        let type: FrontmatterSchema.FieldDefinition.FieldType
-        let readOnly: Bool
-        switch value {
-        case .string: type = .string; readOnly = false
-        case .int, .double: type = .number; readOnly = false
-        case .bool: type = .boolean; readOnly = false
-        case .date: type = .date; readOnly = false
-        case .array: type = key == "tags" ? .tags : .array; readOnly = false
-        case .dictionary: type = .text; readOnly = true
-        }
-        return FrontmatterSchema.FieldDefinition(
-            key: key,
-            label: key.replacingOccurrences(of: "_", with: " ").capitalized,
-            type: type,
-            required: false,
-            autoFilled: readOnly,
-            description: readOnly ? "Nested YAML is displayed read-only so its exact structure is preserved." : "Custom vault property.",
-            allowedValues: nil
-        )
-    }
-
-    private func isPreservedReadOnly(_ field: FrontmatterSchema.FieldDefinition) -> Bool {
-        guard let value = note.frontmatter[field.key] else { return false }
-        if case .dictionary = value { return true }
-        return false
-    }
-
-    private func stringToFrontmatter(_ string: String, type: FrontmatterSchema.FieldDefinition.FieldType) -> FrontmatterValue? {
-        let trimmed = string.trimmingCharacters(in: .whitespaces)
-        switch type {
-        case .string, .text, .doi, .zoteroKey:
-            return .string(trimmed)
-        case .number:
-            if let intVal = Int(trimmed) { return .int(intVal) }
-            if let doubleVal = Double(trimmed) { return .double(doubleVal) }
-            return .string(trimmed)
-        case .boolean:
-            return .bool(trimmed.lowercased() == "true")
-        case .date:
-            if let date = parseDate(trimmed) { return .date(date) }
-            return .string(trimmed)
-        case .tags, .array:
-            let items = trimmed.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            return .array(items)
-        case .enum:
-            return .string(trimmed)
+        case .boolean(let b): return b ? "true" : "false"
+        case .null: return ""
+        case .array(let values): return values.map(\.displayScalar).joined(separator: "; ")
+        case .object(let values):
+            return values.map { "\($0.key): \($0.value.displayScalar)" }.joined(separator: "; ")
         }
     }
 
@@ -769,17 +754,16 @@ struct FlowLayout: Layout {
 // MARK: - Preview
 
 #Preview {
-    FrontmatterEditorView(note: Note(
+    FrontmatterEditorView(note: .unclassified(NoteDocument(
         relativePath: "papers/smith2023.md",
-        frontmatter: [
-            "title": .string("Attention Is All You Need"),
-            "authors": .array(["Smith", "Jones"]),
-            "year": .int(2023),
-            "tags": .array(["attention", "nlp"]),
-            "status": .string("analyzed"),
-        ],
-        body: "",
-        rawContent: ""
-    ))
-    .environmentObject(AppState())
+        rawContent: """
+        ---
+        title: Attention Is All You Need
+        authors: [Smith, Jones]
+        year: 2023
+        tags: [attention, nlp]
+        status: analyzed
+        ---
+        """
+    ))) { _, _, _ in }
 }

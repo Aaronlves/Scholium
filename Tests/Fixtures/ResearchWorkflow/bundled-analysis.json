@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "mode": "analyze",
+  "task_object": "Analyze one declared source unit",
+  "purpose": "Apply the three-pass source-analysis workflow without exceeding the declared unit.",
+  "original_read_set": [
+    {
+      "kind": "source-file",
+      "identifier": "fixture-paper.pdf"
+    }
+  ],
+  "original_write_set": [],
+  "research_unit": {
+    "current_scope": "The complete fixture paper",
+    "current_limitations": [],
+    "proposed_scope": null,
+    "proposed_limitations": []
+  },
+  "research_unit_authorization": "scope-declared",
+  "response_contract_source": "none",
+  "phases": [
+    {
+      "phase": 1,
+      "mode": "analyze",
+      "purpose": "Orient, analyze, and review the declared source unit.",
+      "required_skills": [
+        "scholium-source-analysis"
+      ],
+      "selected_practices": [
+        {
+          "package_id": "scholium-philosophical-practices",
+          "practice_id": "historical-interpreter",
+          "application": "supplement"
+        }
+      ],
+      "read_set": [
+        {
+          "kind": "source-file",
+          "identifier": "fixture-paper.pdf"
+        }
+      ],
+      "write_set": [],
+      "permission": "read-only",
+      "permission_basis": "",
+      "output": "Return a source-faithful analysis report.",
+      "stop_condition": "Stop if the declared source unit is unavailable or incomplete.",
+      "durability": "ephemeral",
+      "handoff": {
+        "summary": "The analysis remains provisional until independently checked.",
+        "evidence_status": "Source-bounded reconstruction",
+        "basis": [],
+        "reconstruction_status": null,
+        "unresolved_questions": [],
+        "candidate_targets": [],
+        "checks_required": [
+          "source fidelity"
+        ]
+      },
+      "audit_state": "audit-needed"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Trust Boundary"
+  short_description: "Audit Scholium vault, presentation, and approval safety"
+  default_prompt: "Use $scholium-trust-boundary-audit to audit this Scholium trust-sensitive change."

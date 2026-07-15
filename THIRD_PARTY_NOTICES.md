@@ -19,6 +19,7 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
 ## Agent skill sources
 
 - Twostraws SwiftUI Agent Skill, Swift Concurrency Agent Skill, and Swift Testing Agent Skill: MIT License. Scholium uses selected review patterns as secondary material, adapted to its macOS architecture, source-fidelity boundary, and current toolchain; the upstream packages are not vendored wholesale.
+- Emil Kowalski's published design-engineering material: Scholium retains a short, explicitly attributed craft lens and web-only heuristic reference. It does not vendor course material or treat those heuristics as Apple or Scholium authority.
 
 ## Bundled fonts
 

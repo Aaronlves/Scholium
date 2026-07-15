@@ -1,17 +1,23 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
+struct CritiqueRequestContext {
+    let triptychID: UUID?
+    let existingCritiquePath: () async -> String?
+    let copyInstructions: (CritiqueRequestScope, String, String) async throws -> Void
+    let didCopyInstructions: () -> Void
+}
+
 struct CritiqueRequestView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openSettings) private var openSettings
 
-    let note: Note
+    let note: WindowDocumentLocation
+    let context: CritiqueRequestContext
 
     @State private var scope: CritiqueRequestScope = .overall
     @State private var lens = ""
     @State private var selectedRanges = ""
-    @State private var additionalInstructions = ""
     @State private var existingCritiquePath: String?
     @State private var isCopying = false
     @State private var errorMessage: String?
@@ -19,24 +25,25 @@ struct CritiqueRequestView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "sparkles")
+                Image(systemName: "doc.text.magnifyingglass")
                     .font(.title2)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Request Critique")
                         .font(.title2.weight(.semibold))
-                    Text(note.title ?? note.displayName)
+                    Text("Attributed agent assessment of \(note.title ?? note.displayName)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 Spacer()
             }
             .padding(18)
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+            Form {
+                Section("Request") {
                     Picker("Critique Scope", selection: $scope) {
                         ForEach(CritiqueRequestScope.allCases, id: \.self) { scope in
                             Text(scope.rawValue).tag(scope)
@@ -44,40 +51,51 @@ struct CritiqueRequestView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    Form {
-                        TextField("Disciplinary lens (optional)", text: $lens)
-                        TextField("Passage, lines, section, or focus (optional)", text: $selectedRanges, axis: .vertical)
-                            .lineLimit(1...3)
-                        TextField("Additional instructions (optional)", text: $additionalInstructions, axis: .vertical)
-                            .lineLimit(2...5)
+                    LabeledContent("Target Work") {
+                        Text(note.title ?? note.displayName)
+                            .lineLimit(1)
+                            .help(note.relativePath)
                     }
-                    .formStyle(.grouped)
 
-                    LabeledContent("Template") {
-                        HStack {
-                            Text("Triptych Critique template")
-                                .foregroundStyle(.secondary)
-                            Button("Edit Critique Template…") {
-                                UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
-                                UserDefaults.standard.set("prompt-templates", forKey: "scholium.settings.researchGuidanceCollection")
-                                UserDefaults.standard.set(ResearchPromptKind.critique.rawValue, forKey: "scholium.settings.researchGuidanceKind")
-                                if let triptychID = appState.workspaceAssignment?.id {
-                                    UserDefaults.standard.set(triptychID.uuidString, forKey: "scholium.settings.triptychID")
-                                }
-                                openSettings()
-                            }
+                    if let existingCritiquePath {
+                        LabeledContent("Current Critique") {
+                            Text(existingCritiquePath)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(existingCritiquePath)
                         }
                     }
+                }
 
+                Section("Scholarly Focus") {
+                    TextField("Disciplinary lens (optional)", text: $lens)
+                    TextField(
+                        "Passage, lines, section, or focus (optional)",
+                        text: $selectedRanges,
+                        axis: .vertical
+                    )
+                    .lineLimit(1...3)
+                }
+
+                Section("Research Guidance") {
+                    Text("Critiques use the template configured for this Triptych.")
+                        .foregroundStyle(.secondary)
+
+                    Button("Edit Critique Template…") {
+                        openCritiqueTemplateSettings()
+                    }
+                }
+
+                Section {
                     Label(
-                        "A Critique remains separate from the Work and is read-only in Scholium. Copying creates Before Agent Work.",
-                        systemImage: "doc.text.magnifyingglass"
+                        "An external agent authors the Critique. It remains separate from the Work and read-only in Scholium. Copying creates Before Agent Work.",
+                        systemImage: "person.crop.circle.badge.checkmark"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
-                .padding(18)
             }
+            .formStyle(.grouped)
 
             Divider()
             HStack {
@@ -89,15 +107,19 @@ struct CritiqueRequestView: View {
                 } label: {
                     Label("Copy Instructions for Agent", systemImage: "doc.on.doc")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(isCopying)
+                .accessibilityIdentifier("scholium.critique.copyInstructions")
             }
             .padding(16)
         }
-        .frame(minWidth: 700, idealWidth: 760, minHeight: 640, idealHeight: 760)
+        // Scholia owns the sheet-size contract. The destination must be able
+        // to compress inside that height so its persistent footer never falls
+        // below the sheet's interactive region on shorter displays.
+        .frame(minWidth: 0, idealWidth: 760, minHeight: 0, idealHeight: 680)
         .task {
-            existingCritiquePath = await appState.critiqueAssociation(for: note.relativePath)?.critiqueRelativePath
+            existingCritiquePath = await context.existingCritiquePath()
         }
         .alert("Could Not Prepare Critique", isPresented: Binding(
             get: { errorMessage != nil },
@@ -114,18 +136,28 @@ struct CritiqueRequestView: View {
             isCopying = true
             defer { isCopying = false }
             do {
-                _ = try await appState.copyCritiqueInstructions(
-                    for: note.relativePath,
-                    scope: scope,
-                    lens: lens,
-                    selectedRanges: selectedRanges,
-                    additionalInstructions: additionalInstructions
-                )
-                appState.showToast("Critique instructions copied. Before Agent Work checkpoint created.")
+                try await context.copyInstructions(scope, lens, selectedRanges)
+                context.didCopyInstructions()
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func openCritiqueTemplateSettings() {
+        UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
+        UserDefaults.standard.set(
+            "prompt-templates",
+            forKey: "scholium.settings.researchGuidanceCollection"
+        )
+        UserDefaults.standard.set(
+            ResearchPromptKind.critique.rawValue,
+            forKey: "scholium.settings.researchGuidanceKind"
+        )
+        if let triptychID = context.triptychID {
+            UserDefaults.standard.set(triptychID.uuidString, forKey: "scholium.settings.triptychID")
+        }
+        openSettings()
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("External window-session persistence")
@@ -14,7 +15,6 @@ struct WindowSessionStateTests {
         let triptychID = UUID()
         let vaultID = UUID()
         let topicVaultID = UUID()
-        let canvasID = UUID()
         let snapshot = WindowSessionSnapshot(
             id: id,
             triptychID: triptychID,
@@ -27,8 +27,7 @@ struct WindowSessionStateTests {
             scrollPositions: ["A.md": 0.25],
             inspectorMode: "outgoing",
             inspectorVisible: true,
-            selectedCanvasID: canvasID,
-            showsCanvas: true,
+            contentDestination: .document,
             searchState: SearchWorkspaceState(query: "reasons", scope: .allWorkspace),
             documentTextScale: 2.0,
             qualifiedNavigationHistory: [
@@ -58,7 +57,9 @@ struct WindowSessionStateTests {
         )
 
         try await store.save(snapshot)
-        #expect(try await store.load(id: id) == snapshot)
+        let restored = try #require(try await store.load(id: id))
+        #expect(restored == snapshot)
+        #expect(restored.contentDestination == .document)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("A.md").path))
     }
 
@@ -95,6 +96,28 @@ struct WindowSessionStateTests {
         #expect(restored.qualifiedNavigationHistory == nil)
         #expect(restored.recentNotes == nil)
         #expect(restored.vaultPresentations == nil)
+    }
+
+    @Test("Retired Home, Search, and Canvas destinations restore to the document")
+    func retiredContentDestinationCompatibility() throws {
+        let decoder = JSONDecoder()
+
+        let home = try decoder.decode(
+            WindowContentDestination.self,
+            from: Data(#""home""#.utf8)
+        )
+        let search = try decoder.decode(
+            WindowContentDestination.self,
+            from: Data(#""search""#.utf8)
+        )
+        let canvas = try decoder.decode(
+            WindowContentDestination.self,
+            from: Data(#""canvas""#.utf8)
+        )
+
+        #expect(home == .document)
+        #expect(search == .document)
+        #expect(canvas == .document)
     }
 
     @Test("Recent Notes is a bounded unique most-recent-first history")

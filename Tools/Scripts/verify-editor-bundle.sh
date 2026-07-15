@@ -7,7 +7,7 @@ committed="$repo_root/Scholium/Resources/Editor/editor.bundle.js"
 callout_styles="$repo_root/Scholium/Resources/Editor/callouts.css"
 editor_styles="$repo_root/Scholium/Resources/Editor/editor.css"
 read_styles="$repo_root/Scholium/Views/Note/SafeMarkdownReadWebView.swift"
-renderer="$repo_root/ScholiumCore/SafeMarkdownRenderer.swift"
+renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
 temporary="$(mktemp -t scholium-editor.XXXXXX.js)"
 trap 'rm -f "$temporary"' EXIT
 

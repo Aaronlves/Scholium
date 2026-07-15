@@ -1,4 +1,4 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
 /// Persistent, nonmodal indication that a multi-file move or classification
@@ -35,8 +35,14 @@ struct TransactionRecoveryNotice: View {
 }
 
 struct TransactionRecoveryView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+
+    let records: [TriptychMutationRecoveryRecord]
+    let error: String?
+    let vaultNames: [UUID: String]
+    let refresh: @MainActor () async -> Void
+    let markResolved: @MainActor (UUID) async throws -> Void
+    let revealRecords: @MainActor () -> Void
 
     @State private var selectedRecord: TriptychMutationRecoveryRecord?
     @State private var resolutionError: String?
@@ -45,14 +51,14 @@ struct TransactionRecoveryView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if let error = appState.transactionRecoveryError {
+            if let error {
                 ContentUnavailableView(
                     "Recovery Records Unavailable",
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if appState.transactionRecoveryRecords.isEmpty {
+            } else if records.isEmpty {
                 ContentUnavailableView(
                     "No Pending Recovery",
                     systemImage: "checkmark.circle",
@@ -61,7 +67,7 @@ struct TransactionRecoveryView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(appState.transactionRecoveryRecords) { record in
+                    ForEach(records) { record in
                         recoverySection(record)
                     }
                 }
@@ -70,8 +76,8 @@ struct TransactionRecoveryView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 720, idealWidth: 820, minHeight: 520, idealHeight: 640)
-        .task { await appState.refreshTransactionRecoveryRecords() }
+        .frame(minWidth: 0, idealWidth: 820, minHeight: 520, idealHeight: 640)
+        .task { await refresh() }
         .alert("Mark Recovery Complete?", isPresented: Binding(
             get: { selectedRecord != nil },
             set: { if !$0 { selectedRecord = nil } }
@@ -82,7 +88,7 @@ struct TransactionRecoveryView: View {
                 selectedRecord = nil
                 Task {
                     do {
-                        try await appState.markTransactionRecoveryResolved(record.id)
+                        try await markResolved(record.id)
                     } catch {
                         resolutionError = error.localizedDescription
                     }
@@ -141,11 +147,11 @@ struct TransactionRecoveryView: View {
             }
             HStack {
                 Button("Reveal Recovery Records in Finder") {
-                    appState.revealTransactionRecoveryRecordsInFinder()
+                    revealRecords()
                 }
-                if appState.transactionRecoveryError != nil {
+                if error != nil {
                     Button("Retry") {
-                        Task { await appState.refreshTransactionRecoveryRecords() }
+                        Task { await refresh() }
                     }
                 }
                 Spacer()
@@ -158,7 +164,7 @@ struct TransactionRecoveryView: View {
 
     private func vaultName(_ vaultID: UUID?) -> String {
         guard let vaultID else { return "Unclassified" }
-        return appState.registeredVaults.first(where: { $0.id == vaultID })?.name ?? "Vault \(vaultID.uuidString)"
+        return vaultNames[vaultID] ?? "Vault \(vaultID.uuidString)"
     }
 
     private func operationName(_ operation: TriptychMutationOperation) -> String {

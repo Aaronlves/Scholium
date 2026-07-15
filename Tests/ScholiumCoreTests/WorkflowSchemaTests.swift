@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Workflow schema profiles")
@@ -19,7 +20,7 @@ struct WorkflowSchemaTests {
             vaultRole: .sourceCorpus,
             frontmatter: [:],
             relativePath: "Level 3 - Metaethics/fit.md"
-        ) == .paperAnalysisV1)
+        ) == .analysis)
         #expect(WorkflowProfileResolver.resolve(
             vaultRole: .topicKnowledge,
             frontmatter: ["note_type": .string("argument_dossier")],
@@ -86,15 +87,34 @@ struct WorkflowSchemaTests {
         #expect(TriptychProperty.value(for: "status", in: mixed) == .string("reviewed"))
     }
 
-    @Test("Save timestamps use shared keys without rewriting legacy timestamps")
-    func triptychTimestamps() {
-        #expect(SchemaProfileID.paperAnalysisV1.automaticSaveTimestampKey(in: [:]) == "updated")
+    @Test("Save profiles do not inject frontmatter timestamps")
+    func triptychTimestampsAreAppOwned() {
+        #expect(SchemaProfileID.analysis.automaticSaveTimestampKey(in: [:]) == nil)
+        #expect(SchemaProfileID.paperAnalysisV1.automaticSaveTimestampKey(in: [:]) == nil)
         #expect(SchemaProfileID.paperAnalysisV1.automaticSaveTimestampKey(
             in: ["analysis_updated_at": .string("2025-01-01")]
-        ) == "analysis_updated_at")
+        ) == nil)
         #expect(SchemaProfileID.draftProject.automaticSaveTimestampKey(
             in: ["modified": .string("2025-01-01")]
-        ) == "modified")
+        ) == nil)
+    }
+
+    @Test("Default Properties exclude agent-owned time and contextual relevance")
+    func defaultPropertyVocabulary() throws {
+        let analyses = try #require(TriptychSettings.defaultProperties[.paperAnalysis])
+        let topics = try #require(TriptychSettings.defaultProperties[.topicKnowledge])
+        let works = try #require(TriptychSettings.defaultProperties[.output])
+
+        for configuration in [analyses, topics, works] {
+            #expect(!configuration.visibleFields.contains("last_modified_by"))
+            #expect(!configuration.visibleFields.contains("last_modified_at"))
+            #expect(!configuration.editableFields.contains("last_modified_by"))
+            #expect(!configuration.editableFields.contains("last_modified_at"))
+        }
+        #expect(!analyses.visibleFields.contains("relevance"))
+        #expect(!analyses.editableFields.contains("relevance"))
+        #expect(analyses.visibleFields.contains("debate_importance"))
+        #expect(analyses.visibleFields.contains("debate_importance_scope"))
     }
 
     @Test("Legacy CLI role spellings decode into precise roles")

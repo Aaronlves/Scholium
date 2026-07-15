@@ -10,7 +10,21 @@ UI_TEST_DERIVED="/tmp/Scholium-UITests"
 REGISTERED_QA="${HOME}/Applications/Scholium-Codex-QA-Do-Not-Use.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 QA_RUN_LOCK="/tmp/com.kbmanager.qa.ui-tests.lock"
-DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
+
+ensure_ui_host_is_unlocked() {
+  # XCUITest's macOS AutomationMode cannot be enabled while the console is
+  # locked. Check the session before building the disposable app so a locked
+  # host fails fast without spending CPU on a run that cannot start.
+  local locked_state=""
+  locked_state="$(ioreg -n Root -d 1 -a 2>/dev/null \
+    | plutil -extract 'IOConsoleUsers.0.CGSSessionScreenIsLocked' raw -o - - 2>/dev/null \
+    || true)"
+  if [[ "${locked_state}" == "true" ]]; then
+    print -u2 "Scholium UI tests require an unlocked macOS console. Unlock the Mac, then rerun this command."
+    exit 78
+  fi
+}
 
 acquire_qa_run_lock() {
   if mkdir "${QA_RUN_LOCK}" 2>/dev/null; then
@@ -40,6 +54,13 @@ terminate_qa_instances() {
 }
 
 cleanup() {
+  local result_staging="/tmp/Scholium-XCResults-$$"
+  local result_bundles=("${UI_TEST_DERIVED}/Logs/Test/"*.xcresult(N))
+  if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]] && (( ${#result_bundles[@]} > 0 )); then
+    mkdir -p "${result_staging}"
+    cp -R "${result_bundles[@]}" "${result_staging}/"
+  fi
+
   terminate_qa_instances
   "${LSREGISTER}" -u "${REGISTERED_QA}" 2>/dev/null || true
   rm -rf "${REGISTERED_QA}"
@@ -51,6 +72,11 @@ cleanup() {
       "${QA_BUILD_DERIVED}" \
       "${UI_TEST_DERIVED}"
   fi
+  if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" && -d "${result_staging}" ]]; then
+    mkdir -p "${UI_TEST_DERIVED}/Logs/Test"
+    cp -R "${result_staging}/"*.xcresult "${UI_TEST_DERIVED}/Logs/Test/"
+    rm -rf "${result_staging}"
+  fi
   if [[ "$(<"${QA_RUN_LOCK}/pid" 2>/dev/null || true)" == "$$" ]]; then
     rm -rf "${QA_RUN_LOCK}"
   fi
@@ -58,6 +84,8 @@ cleanup() {
 
 acquire_qa_run_lock
 trap cleanup EXIT
+
+ensure_ui_host_is_unlocked
 
 DEVELOPER_DIR="${DEVELOPER_DIR}" "${ROOT}/Tools/Scripts/build-qa-app.sh"
 [[ -d "${QA_APP}" && -d "${FIXTURES}" ]] || {

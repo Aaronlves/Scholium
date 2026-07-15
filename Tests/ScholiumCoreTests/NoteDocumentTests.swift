@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Lossless note documents")
@@ -27,6 +28,26 @@ struct NoteDocumentTests {
         )
 
         #expect(result.contains("# comment\ntitle: \"New: title\"\ncustom:\n  nested: true\ntags:\n  - a\n  - b\n"))
+        #expect(result.hasSuffix("---\nBody\n"))
+    }
+
+    @Test("Nested mapping edits serialize as bounded YAML without rewriting the body")
+    func nestedMappingEdit() throws {
+        let source = "---\n# keep this comment\ntitle: Old\nresearch_unit:\n  scope: Old scope\n  limitations:\n    - Old boundary\ncustom:\n  nested: true\n---\nBody\n"
+        let document = NoteDocument(relativePath: "papers/a.md", rawContent: source)
+        let result = try document.applying(
+            .frontmatter([
+                "research_unit": .mapping([
+                    "scope": .string("Introduction and Chapters 1–4"),
+                    "limitations": .array(["Chapters 5–8 remain outside the note."])
+                ])
+            ]),
+            timestampKey: nil
+        )
+
+        #expect(result.contains("# keep this comment\ntitle: Old\n"))
+        #expect(result.contains("research_unit:\n  scope: Introduction and Chapters 1–4\n  limitations:\n    - Chapters 5–8 remain outside the note.\n"))
+        #expect(result.contains("custom:\n  nested: true\n"))
         #expect(result.hasSuffix("---\nBody\n"))
     }
 

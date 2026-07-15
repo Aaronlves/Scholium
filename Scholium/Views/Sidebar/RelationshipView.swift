@@ -1,15 +1,39 @@
+import ScholiumContracts
 import SwiftUI
-import ScholiumCore
 
 // MARK: - Relationship Inspector
+
+/// Immutable workspace context and app-only Zotero effects required by the
+/// Relationships inspector. Navigation remains a typed Research intent.
+struct RelationshipViewContext {
+    let currentVault: RegisteredVault?
+    let analysesVaultID: UUID?
+    let catalog: WorkspaceCatalogSnapshot?
+    let attentionDismissalDays: Int
+    let resolveZoteroSource: (ZoteroSourceIdentity) async throws -> ZoteroMatchResult
+    let openZoteroItem: (String) async -> Void
+    let confirmZoteroItem: (String, VaultNoteReference) async throws -> Void
+    let didConfirmZoteroSource: (String) -> Void
+}
 
 /// Document-local research context: Attention, Zotero source identity, and
 /// source-anchored Connections. Authoritative note content remains primary.
 struct RelationshipView: View {
-    @EnvironmentObject var appState: AppState
-    let note: Note
+    @ObservedObject private var controller: ResearchController
+    let note: WindowDocumentLocation
+    let context: RelationshipViewContext
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
+
+    init(
+        note: WindowDocumentLocation,
+        controller: ResearchController,
+        context: RelationshipViewContext
+    ) {
+        self.note = note
+        self.controller = controller
+        self.context = context
+    }
 
     private enum WorkspaceConnectionKind: Int, CaseIterable {
         case supports
@@ -63,7 +87,16 @@ struct RelationshipView: View {
 
                 VStack(alignment: .leading, spacing: 16) {
                     documentAttentionSection
-                    ZoteroSourceSection(note: note)
+                    ZoteroSourceSection(
+                        note: note,
+                        currentVault: context.currentVault,
+                        analysesVaultID: context.analysesVaultID,
+                        catalog: context.catalog,
+                        resolveSource: context.resolveZoteroSource,
+                        openItem: context.openZoteroItem,
+                        confirmItem: context.confirmZoteroItem,
+                        didConfirmSource: context.didConfirmZoteroSource
+                    )
                     workspaceConnectionsSection
                 }
                 .padding(12)
@@ -76,8 +109,8 @@ struct RelationshipView: View {
     // MARK: - Document Attention
 
     private var documentAttentionItems: [AttentionQueueItem] {
-        guard let vaultID = appState.currentRegisteredVault?.id,
-              let items = appState.workspaceCatalog?.attention else { return [] }
+        guard let vaultID = context.currentVault?.id,
+              let items = context.catalog?.attention else { return [] }
         let matching = items.filter {
             $0.note.vaultID == vaultID && $0.note.relativePath == note.relativePath
         }
@@ -105,9 +138,7 @@ struct RelationshipView: View {
                             .accessibilityHidden(true)
 
                         Button {
-                            Task {
-                                await appState.openWorkspaceReference(item.note, line: item.locator?.line)
-                            }
+                            controller.requestOpen(item.note, sourceLine: item.locator?.line)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.kind.displayName)
@@ -147,7 +178,7 @@ struct RelationshipView: View {
     }
 
     private var attentionDismissalDurationText: String {
-        let days = AttentionPreferences.normalizedDays(appState.triptychSettings.attentionDismissalDays)
+        let days = AttentionPreferences.normalizedDays(context.attentionDismissalDays)
         return days == 1 ? "1 day" : "\(days) days"
     }
 
@@ -156,7 +187,7 @@ struct RelationshipView: View {
         ledger.removeExpired()
         ledger.dismiss(
             item,
-            forDays: AttentionPreferences.normalizedDays(appState.triptychSettings.attentionDismissalDays)
+            forDays: AttentionPreferences.normalizedDays(context.attentionDismissalDays)
         )
         attentionDismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
     }
@@ -191,7 +222,7 @@ struct RelationshipView: View {
 
     private var workspaceConnectionsSection: some View {
         Group {
-            if appState.workspaceCatalog == nil {
+            if context.catalog == nil {
                 loadingState
             } else if workspaceConnectionRows.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
@@ -215,8 +246,8 @@ struct RelationshipView: View {
     }
 
     private var workspaceConnectionRows: [WorkspaceConnectionRow] {
-        guard let vaultID = appState.currentRegisteredVault?.id,
-              let catalog = appState.workspaceCatalog,
+        guard let vaultID = context.currentVault?.id,
+              let catalog = context.catalog,
               let graph = catalog.graph else { return [] }
         let current = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
         let catalogByID = Dictionary(uniqueKeysWithValues: catalog.notes.map {
@@ -284,7 +315,7 @@ struct RelationshipView: View {
             VStack(spacing: 0) {
                 ForEach(rows) { row in
                     Button {
-                        Task { await appState.openWorkspaceReference(row.note.reference) }
+                        controller.requestOpen(row.note.reference)
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 7) {
                             Image(systemName: roleSymbol(row.note.reference.vaultRole))
@@ -295,10 +326,15 @@ struct RelationshipView: View {
                                     .font(.callout)
                                     .lineLimit(2)
                                     .foregroundStyle(.primary)
-                                Text("\(roleName(row.note.reference.vaultRole)) · \(row.note.reference.relativePath)")
+                                Text(roleName(row.note.reference.vaultRole))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
+                                Text(row.note.reference.relativePath)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
                             Spacer(minLength: 0)
                             Image(systemName: "arrow.up.right")
@@ -350,8 +386,14 @@ struct RelationshipView: View {
 }
 
 private struct ZoteroSourceSection: View {
-    @EnvironmentObject private var appState: AppState
-    let note: Note
+    let note: WindowDocumentLocation
+    let currentVault: RegisteredVault?
+    let analysesVaultID: UUID?
+    let catalog: WorkspaceCatalogSnapshot?
+    let resolveSource: (ZoteroSourceIdentity) async throws -> ZoteroMatchResult
+    let openItem: (String) async -> Void
+    let confirmItem: (String, VaultNoteReference) async throws -> Void
+    let didConfirmSource: (String) -> Void
 
     private struct SourceRequest: Identifiable, Hashable {
         let reference: VaultNoteReference
@@ -378,10 +420,10 @@ private struct ZoteroSourceSection: View {
     @State private var pendingSelection: PendingSelection?
 
     private var requests: [SourceRequest] {
-        guard let vault = appState.currentRegisteredVault else { return [] }
+        guard let vault = currentVault else { return [] }
 
         if vault.role == .sourceCorpus {
-            guard vault.id == appState.workspaceAssignment?.workspace.paperAnalysisVaultID else {
+            guard vault.id == analysesVaultID else {
                 return []
             }
             let source = note.zoteroSourceIdentity
@@ -400,8 +442,8 @@ private struct ZoteroSourceSection: View {
         }
 
         guard [.topicKnowledge, .dissertationControl, .draftProject].contains(vault.role),
-              let analysesVaultID = appState.workspaceAssignment?.workspace.paperAnalysisVaultID,
-              let catalog = appState.workspaceCatalog else { return [] }
+              let analysesVaultID,
+              let catalog else { return [] }
         let reference = VaultNoteReference(
             vaultID: vault.id,
             vaultName: vault.name,
@@ -431,7 +473,7 @@ private struct ZoteroSourceSection: View {
     }
 
     private var linkedSourcesLabel: String {
-        switch appState.currentRegisteredVault?.role {
+        switch currentVault?.role {
         case .topicKnowledge:
             "Analyses cited by this Topic (\(requests.count))"
         case .dissertationControl, .draftProject:
@@ -445,7 +487,7 @@ private struct ZoteroSourceSection: View {
         if !requests.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Label(
-                    requests.count == 1 && appState.currentRegisteredVault?.role == .sourceCorpus
+                    requests.count == 1 && currentVault?.role == .sourceCorpus
                         ? "Zotero Source"
                         : "Zotero Sources from Linked Analyses",
                     systemImage: "books.vertical"
@@ -455,7 +497,7 @@ private struct ZoteroSourceSection: View {
                 if isLoading {
                     ProgressView("Checking Zotero…")
                         .controlSize(.small)
-                } else if appState.currentRegisteredVault?.role == .sourceCorpus {
+                } else if currentVault?.role == .sourceCorpus {
                     sourceRow(requests[0])
                 } else {
                     DisclosureGroup(isExpanded: $showLinkedSources) {
@@ -575,7 +617,7 @@ private struct ZoteroSourceSection: View {
                 citation.year.map(String.init),
             ].compactMap { $0 }.filter { !$0.isEmpty }
             if !identity.isEmpty {
-                Text(identity.joined(separator: " · "))
+                Text(identity.joined(separator: ", "))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -588,7 +630,7 @@ private struct ZoteroSourceSection: View {
                 citation.pages.map { "pp. \($0)" },
             ].compactMap { $0 }.filter { !$0.isEmpty }
             if !publication.isEmpty {
-                Text(publication.joined(separator: " · "))
+                Text(publication.joined(separator: ", "))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
@@ -630,7 +672,7 @@ private struct ZoteroSourceSection: View {
             }
 
             Button("Open in Zotero") {
-                Task { await appState.zoteroBridge.openInZotero(zoteroKey: citation.key) }
+                Task { await openItem(citation.key) }
             }
             .controlSize(.small)
         }
@@ -673,7 +715,7 @@ private struct ZoteroSourceSection: View {
         do {
             for request in currentRequests {
                 guard !Task.isCancelled, loadToken == token else { return }
-                resolved[request.id] = try await appState.zoteroBridge.resolve(source: request.source)
+                resolved[request.id] = try await resolveSource(request.source)
             }
             guard !Task.isCancelled, loadToken == token else { return }
             outcomes = resolved
@@ -688,15 +730,15 @@ private struct ZoteroSourceSection: View {
         pendingSelection = nil
         Task {
             do {
-                try await appState.confirmZoteroItemKey(
+                try await confirmItem(
                     selection.candidate.key,
-                    for: selection.request.reference
+                    selection.request.reference
                 )
                 outcomes[selection.request.id] = .matched(
                     selection.candidate,
                     basis: .itemKey
                 )
-                appState.showToast("Zotero source confirmed for \(selection.request.fallbackTitle).")
+                didConfirmSource(selection.request.fallbackTitle)
             } catch {
                 stateText = error.localizedDescription
             }
@@ -707,11 +749,21 @@ private struct ZoteroSourceSection: View {
 // MARK: - Preview
 
 #Preview {
-    RelationshipView(note: Note(
-        relativePath: "topics/consciousness.md",
-        frontmatter: ["title": .string("Consciousness"), "status": .string("developing")],
-        body: "",
-        rawContent: ""
-    ))
-    .environmentObject(AppState())
+    RelationshipView(
+        note: .unclassified(NoteDocument(
+            relativePath: "topics/consciousness.md",
+            rawContent: "---\ntitle: Consciousness\nstatus: developing\n---\n"
+        )),
+        controller: ResearchController(),
+        context: RelationshipViewContext(
+            currentVault: nil,
+            analysesVaultID: nil,
+            catalog: nil,
+            attentionDismissalDays: 7,
+            resolveZoteroSource: { _ in .insufficientMetadata },
+            openZoteroItem: { _ in },
+            confirmZoteroItem: { _, _ in },
+            didConfirmZoteroSource: { _ in }
+        )
+    )
 }

@@ -1,12 +1,19 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
 /// Fingerprint-bound Human Review for Analyses and Topics.
+struct QualityReviewContext {
+    let revision: DocumentFingerprint?
+    let record: HumanReviewRecord?
+    let saveDraft: (DocumentFingerprint, NoteQualification?, String) async throws -> Void
+    let completeReview: (DocumentFingerprint, NoteQualification?, String) async throws -> Void
+}
+
 struct QualityReviewView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    let note: Note
+    let note: WindowDocumentLocation
+    let context: QualityReviewContext
 
     @State private var qualification: NoteQualification?
     @State private var reviewNote = ""
@@ -15,8 +22,8 @@ struct QualityReviewView: View {
     @State private var isSaving = false
 
     private var existingReviewIsStale: Bool {
-        guard let record = appState.humanReviewRecord(for: note.relativePath),
-              let current = appState.documentRevisions[note.relativePath] else { return false }
+        guard let record = context.record,
+              let current = context.revision else { return false }
         return record.latestReview != nil && record.review(for: current) == nil
     }
 
@@ -44,7 +51,7 @@ struct QualityReviewView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 620, idealWidth: 660, minHeight: 540, idealHeight: 680)
+        .frame(minWidth: 0, idealWidth: 660, minHeight: 540, idealHeight: 680)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("scholium.humanReviewSheet")
         .onAppear(perform: loadReview)
@@ -161,8 +168,8 @@ struct QualityReviewView: View {
     }
 
     private func loadReview() {
-        reviewRevision = appState.documentRevisions[note.relativePath]
-        guard let record = appState.humanReviewRecord(for: note.relativePath) else { return }
+        reviewRevision = context.revision
+        guard let record = context.record else { return }
         if let draft = record.draft, draft.fingerprint == reviewRevision {
             qualification = draft.qualification
             reviewNote = draft.reviewNote
@@ -182,19 +189,9 @@ struct QualityReviewView: View {
             defer { isSaving = false }
             do {
                 if asDraft {
-                    try await appState.saveHumanReviewDraft(
-                        for: note.relativePath,
-                        fingerprint: revision,
-                        qualification: qualification,
-                        reviewNote: reviewNote
-                    )
+                    try await context.saveDraft(revision, qualification, reviewNote)
                 } else {
-                    try await appState.completeHumanReview(
-                        for: note.relativePath,
-                        fingerprint: revision,
-                        qualification: qualification,
-                        reviewNote: reviewNote
-                    )
+                    try await context.completeReview(revision, qualification, reviewNote)
                 }
                 dismiss()
             } catch {

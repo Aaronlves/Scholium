@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Development"
+  short_description: "Build and verify the Scholium research workbench"
+  default_prompt: "Use $scholium-development to implement and verify this Scholium workspace change."

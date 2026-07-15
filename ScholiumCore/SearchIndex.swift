@@ -1,164 +1,6 @@
+import ScholiumContracts
 import Foundation
 import SQLite3
-
-public struct SearchQuery: Codable, Hashable, Sendable {
-    public let rawValue: String
-
-    public init(_ rawValue: String) {
-        self.rawValue = rawValue
-    }
-}
-
-public enum SearchScope: Codable, Hashable, Sendable {
-    case currentNote(VaultQualifiedNoteID)
-    case currentVault(UUID)
-    case workspace
-    case roles(Set<VaultRole>)
-}
-
-public struct SearchFilter: Codable, Hashable, Sendable {
-    public var vault: String?
-    public var role: VaultRole?
-    public var status: String?
-    public var review: String?
-    public var callout: String?
-    public var hasBrokenLink: Bool?
-
-    public init(
-        vault: String? = nil,
-        role: VaultRole? = nil,
-        status: String? = nil,
-        review: String? = nil,
-        callout: String? = nil,
-        hasBrokenLink: Bool? = nil
-    ) {
-        self.vault = vault
-        self.role = role
-        self.status = status
-        self.review = review
-        self.callout = callout
-        self.hasBrokenLink = hasBrokenLink
-    }
-}
-
-public enum SearchMatchedField: String, Codable, Hashable, Sendable {
-    case title, author, year, tag, status, body, callout, footnote, metadata, path
-}
-
-public enum SearchResultClassification: String, Codable, Hashable, Sendable {
-    case retrievalLead = "retrieval_lead"
-}
-
-public struct SearchHighlight: Codable, Hashable, Sendable {
-    public let utf16LowerBound: Int
-    public let utf16UpperBound: Int
-}
-
-public struct SearchHit: Codable, Hashable, Sendable {
-    public let vaultID: UUID
-    public let vaultName: String
-    public let vaultRole: VaultRole
-    public let relativePath: String
-    public let stableNoteID: String?
-    public let title: String
-    public let matchedField: SearchMatchedField
-    public let context: String?
-    public let sourceLine: Int
-    public let snippet: String
-    public let highlights: [SearchHighlight]
-    public let score: Double
-    public let fingerprint: DocumentFingerprint
-    public let indexGeneration: Int
-    public let evidentialLayer: EvidentialLayer
-    public let classification: SearchResultClassification
-}
-
-public struct IndexGeneration: Codable, Hashable, Sendable {
-    public static let contractVersion = 1
-    public let vaultID: UUID
-    public let sequence: Int
-    public let contractVersion: Int
-    public let fingerprints: [String: DocumentFingerprint]
-}
-
-public struct SearchIndexDocument: Sendable {
-    public let vaultID: UUID
-    public let vaultName: String
-    public let vaultRole: VaultRole
-    public let relativePath: String
-    public let stableNoteID: String?
-    public let title: String
-    public let authors: [String]
-    public let year: String?
-    public let tags: [String]
-    public let status: String?
-    public let review: String?
-    public let document: NoteDocument
-    public let semantic: MarkdownSemanticDocument
-    public let evidentialLayer: EvidentialLayer
-    public let hasBrokenLink: Bool
-
-    public init(
-        vaultID: UUID,
-        vaultName: String,
-        vaultRole: VaultRole,
-        document: NoteDocument,
-        semantic: MarkdownSemanticDocument? = nil,
-        review: String? = nil,
-        hasBrokenLink: Bool = false
-    ) {
-        self.vaultID = vaultID
-        self.vaultName = vaultName
-        self.vaultRole = vaultRole
-        self.document = document
-        self.semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
-        relativePath = document.relativePath
-        stableNoteID = ["note_id", "paper_id", "topic_id", "output_id"]
-            .compactMap { document.parsedFrontmatter[$0]?.searchStrings.first }
-            .first
-        title = document.parsedFrontmatter["title"]?.searchStrings.first
-            ?? (document.relativePath as NSString).lastPathComponent.replacingOccurrences(of: ".md", with: "")
-        authors = document.parsedFrontmatter["authors"]?.searchStrings
-            ?? document.parsedFrontmatter["author"]?.searchStrings
-            ?? []
-        year = document.parsedFrontmatter["year"]?.displayScalar
-        tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
-        status = document.parsedFrontmatter["status"]?.displayScalar
-            ?? document.parsedFrontmatter["analysis_status"]?.displayScalar
-            ?? document.parsedFrontmatter["lifecycle_status"]?.displayScalar
-        self.review = review
-        self.hasBrokenLink = hasBrokenLink
-        evidentialLayer = switch vaultRole {
-        case .sourceCorpus: .paperAnalysis
-        case .topicKnowledge: .topicNote
-        case .dissertationControl: .dissertationRecord
-        case .draftProject: .draftProse
-        case .other: .topicNote
-        }
-    }
-}
-
-public enum SearchIndexMutation: Sendable {
-    case upsert(SearchIndexDocument)
-    case delete(relativePath: String)
-}
-
-public enum SearchIndexSyncDisposition: String, Codable, Hashable, Sendable {
-    case unchanged
-    case incrementallyUpdated
-    case rebuilt
-    case recoveredAndRebuilt
-}
-
-public struct SearchIndexSyncResult: Codable, Hashable, Sendable {
-    public let generation: IndexGeneration
-    public let disposition: SearchIndexSyncDisposition
-
-    public init(generation: IndexGeneration, disposition: SearchIndexSyncDisposition) {
-        self.generation = generation
-        self.disposition = disposition
-    }
-}
 
 public struct SearchIndexOpenResult: Sendable {
     public let index: SQLiteSearchIndex
@@ -170,24 +12,8 @@ public struct SearchIndexOpenResult: Sendable {
     }
 }
 
-public enum SearchIndexError: LocalizedError, Sendable {
-    case sqlite(String)
-    case corruptDatabase
-    case incompatibleSchema
-    case invalidQuery(String)
-    case invalidDocuments(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .sqlite(let message): "The search index failed: \(message)"
-        case .corruptDatabase: "The generated search index is corrupt and must be rebuilt."
-        case .incompatibleSchema: "The generated search index uses an incompatible schema and must be rebuilt."
-        case .invalidQuery(let message): "The search query is invalid: \(message)"
-        case .invalidDocuments(let message): "The search index input is invalid: \(message)"
-        }
-    }
-
-    fileprivate var permitsGeneratedDatabaseRecovery: Bool {
+private extension SearchIndexError {
+    var permitsGeneratedDatabaseRecovery: Bool {
         switch self {
         case .corruptDatabase, .incompatibleSchema: true
         default: false
@@ -195,22 +21,8 @@ public enum SearchIndexError: LocalizedError, Sendable {
     }
 }
 
-private extension YAMLValue {
-    var searchStrings: [String] {
-        switch self {
-        case .string(let value): [value]
-        case .integer(let value): [String(value)]
-        case .double(let value): [String(value)]
-        case .boolean(let value): [value ? "true" : "false"]
-        case .array(let values): values.flatMap(\.searchStrings)
-        case .object(let values): values.keys.sorted().flatMap { values[$0]?.searchStrings ?? [] }
-        case .null: []
-        }
-    }
-}
-
 public actor SQLiteSearchIndex {
-    private static let schemaVersion = 1
+    private static let schemaVersion = IndexGeneration.contractVersion
     private let vaultID: UUID
     private let database: SQLiteDatabase
 
@@ -432,10 +244,13 @@ public actor SQLiteSearchIndex {
         guard !parsed.matchExpression.isEmpty, limit > 0 else { return [] }
         let generation = try generation().sequence
         var sql = """
+        -- Field weights keep high-signal document identity ahead of ordinary prose:
+        -- title > alias > heading/bibliographic fields > body.
         SELECT vault_id, vault_name, role, relative_path, stable_note_id, title,
-               author, year, tags, status, review, body, callouts, footnotes,
-               metadata, fingerprint, layer, broken_link, source,
-               bm25(search_index, 0.0, 0.0, 0.0, 3.0, 0.0, 8.0, 6.0, 4.0, 5.0, 4.0, 3.0, 1.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0) AS rank
+               aliases, headings, author, year, tags, status, review, body,
+               callouts, footnotes, metadata, fingerprint, layer, broken_link,
+               source,
+               bm25(search_index, 0.0, 0.0, 0.0, 3.0, 0.0, 8.0, 7.0, 6.0, 6.0, 4.0, 5.0, 4.0, 3.0, 1.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0) AS rank
         FROM search_index WHERE search_index MATCH ?
         """
         var bindings: [SQLiteBinding] = [.text(parsed.matchExpression)]
@@ -455,39 +270,42 @@ public actor SQLiteSearchIndex {
                   let role = VaultRole(rawValue: roleText),
                   let relativePath = statement.text(at: 3),
                   let title = statement.text(at: 5),
-                  let fingerprint = statement.text(at: 15),
-                  let layerText = statement.text(at: 16),
+                  let fingerprint = statement.text(at: 17),
+                  let layerText = statement.text(at: 18),
                   let layer = EvidentialLayer(rawValue: layerText),
-                  let source = statement.text(at: 18) else { return }
+                  let source = statement.text(at: 20) else { return }
 
             let fields: [(SearchMatchedField, String)] = [
-                (.title, title), (.author, statement.text(at: 6) ?? ""),
-                (.year, statement.text(at: 7) ?? ""), (.tag, statement.text(at: 8) ?? ""),
-                (.status, statement.text(at: 9) ?? ""), (.callout, statement.text(at: 12) ?? ""),
-                (.footnote, statement.text(at: 13) ?? ""), (.metadata, statement.text(at: 14) ?? ""),
-                (.body, statement.text(at: 11) ?? ""), (.path, relativePath)
+                (.title, title), (.alias, statement.text(at: 6) ?? ""),
+                (.heading, statement.text(at: 7) ?? ""), (.author, statement.text(at: 8) ?? ""),
+                (.tag, statement.text(at: 10) ?? ""), (.year, statement.text(at: 9) ?? ""),
+                (.status, statement.text(at: 11) ?? ""), (.metadata, statement.text(at: 16) ?? ""),
+                (.callout, statement.text(at: 14) ?? ""), (.footnote, statement.text(at: 15) ?? ""),
+                (.body, statement.text(at: 13) ?? ""), (.path, relativePath)
             ]
             let best = parsed.bestMatch(in: fields)
-            let sourceMatch = parsed.firstSourceMatch(in: source)
-            let snippetResult = Self.snippet(source: source, match: sourceMatch)
-            let context: String? = switch best.0 {
-            case .callout: "Callout"
-            case .footnote: "Footnote"
-            default: nil
-            }
+            let document = NoteDocument(relativePath: relativePath, rawContent: source)
+            let displayTitle = document.parsedFrontmatter["title"]?.searchStrings.first
+                ?? (relativePath as NSString).lastPathComponent.replacingOccurrences(of: ".md", with: "")
+            let presentation = Self.presentation(
+                for: best.0,
+                parsed: parsed,
+                document: document,
+                relativePath: relativePath
+            )
             hits.append(SearchHit(
                 vaultID: resultVaultID,
                 vaultName: vaultName,
                 vaultRole: role,
                 relativePath: relativePath,
                 stableNoteID: statement.text(at: 4),
-                title: title,
+                title: displayTitle,
                 matchedField: best.0,
-                context: context,
-                sourceLine: Self.lineNumber(in: source, before: sourceMatch?.lowerBound),
-                snippet: snippetResult.text,
-                highlights: snippetResult.highlights,
-                score: -statement.double(at: 19),
+                context: Self.contextLabel(for: best.0),
+                sourceLine: presentation.sourceLine,
+                snippet: presentation.snippet.text,
+                highlights: presentation.snippet.highlights,
+                score: -statement.double(at: 21),
                 fingerprint: DocumentFingerprint(sha256: fingerprint, byteCount: source.utf8.count),
                 indexGeneration: generation,
                 evidentialLayer: layer,
@@ -501,8 +319,8 @@ public actor SQLiteSearchIndex {
         try database.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
             vault_id UNINDEXED, vault_name UNINDEXED, role UNINDEXED, relative_path,
-            stable_note_id UNINDEXED, title, author, year, tags, status, review,
-            body, callouts, footnotes, metadata, fingerprint UNINDEXED,
+            stable_note_id UNINDEXED, title, aliases, headings, author, year, tags,
+            status, review, body, callouts, footnotes, metadata, fingerprint UNINDEXED,
             layer UNINDEXED, broken_link UNINDEXED, source UNINDEXED,
             tokenize = 'unicode61 remove_diacritics 2'
         );
@@ -544,6 +362,7 @@ public actor SQLiteSearchIndex {
     }
 
     private static func insert(_ item: SearchIndexDocument, into database: SQLiteDatabase) throws {
+        let headings = item.semantic.headings.map(\.text).joined(separator: "\n")
         let callouts = item.semantic.callouts.map {
             "\($0.kind) \($0.rawKind) \($0.role.displayLabel) \($0.title ?? "") \($0.bodySource)"
         }.joined(separator: "\n")
@@ -554,14 +373,15 @@ public actor SQLiteSearchIndex {
         try database.execute(
             """
             INSERT INTO search_index(
-                vault_id, vault_name, role, relative_path, stable_note_id, title,
-                author, year, tags, status, review, body, callouts, footnotes,
+                vault_id, vault_name, role, relative_path, stable_note_id, title, aliases,
+                headings, author, year, tags, status, review, body, callouts, footnotes,
                 metadata, fingerprint, layer, broken_link, source
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(item.vaultID.uuidString), .text(item.vaultName), .text(item.vaultRole.rawValue),
                 .text(item.relativePath), .optionalText(item.stableNoteID), .text(Self.indexable(item.title)),
+                .text(Self.indexable(item.aliases.joined(separator: " "))), .text(Self.indexable(headings)),
                 .text(Self.indexable(item.authors.joined(separator: " "))), .optionalText(item.year.map(Self.indexable)),
                 .text(Self.indexable(item.tags.joined(separator: " "))), .optionalText(item.status.map(Self.indexable)),
                 .optionalText(item.review.map(Self.indexable)), .text(Self.indexable(item.document.body)),
@@ -612,6 +432,122 @@ public actor SQLiteSearchIndex {
     private static func lineNumber(in source: String, before index: String.Index?) -> Int {
         guard let index else { return 1 }
         return source[..<index].reduce(into: 1) { if $1 == "\n" { $0 += 1 } }
+    }
+
+    private static func presentation(
+        for field: SearchMatchedField,
+        parsed: ParsedSearchQuery,
+        document: NoteDocument,
+        relativePath: String
+    ) -> (snippet: (text: String, highlights: [SearchHighlight]), sourceLine: Int) {
+        let bodyMatch = parsed.firstSourceMatch(in: document.body)
+        if [.body, .callout, .footnote].contains(field) {
+            let visibleBody = MarkdownVisibleText.render(document.body)
+            let visibleMatch = parsed.firstSourceMatch(in: visibleBody)
+            let matchedSourceIndex: String.Index?
+            if let bodyMatch {
+                matchedSourceIndex = sourceIndex(
+                    for: bodyMatch.lowerBound,
+                    inBodyOf: document
+                )
+            } else {
+                matchedSourceIndex = nil
+            }
+            return (
+                snippet(source: visibleBody, match: visibleMatch),
+                lineNumber(in: document.rawContent, before: matchedSourceIndex)
+            )
+        }
+
+        let preview = fieldPreview(
+            for: field,
+            parsed: parsed,
+            document: document,
+            relativePath: relativePath
+        )
+        let previewMatch = parsed.firstSourceMatch(in: preview)
+        let sourceMatch = parsed.firstSourceMatch(in: document.rawContent)
+        return (
+            snippet(source: preview, match: previewMatch),
+            lineNumber(in: document.rawContent, before: sourceMatch?.lowerBound)
+        )
+    }
+
+    private static func fieldPreview(
+        for field: SearchMatchedField,
+        parsed: ParsedSearchQuery,
+        document: NoteDocument,
+        relativePath: String
+    ) -> String {
+        let values: [String]
+        switch field {
+        case .title:
+            values = document.parsedFrontmatter["title"]?.searchStrings ?? []
+        case .alias:
+            values = document.parsedFrontmatter["aliases"]?.searchStrings
+                ?? document.parsedFrontmatter["alias"]?.searchStrings
+                ?? []
+        case .heading:
+            values = MarkdownSemanticDocument(parsing: document).headings.map(\.text)
+        case .author:
+            values = document.parsedFrontmatter["authors"]?.searchStrings
+                ?? document.parsedFrontmatter["author"]?.searchStrings
+                ?? []
+        case .year:
+            values = document.parsedFrontmatter["year"]?.searchStrings ?? []
+        case .tag:
+            values = document.parsedFrontmatter["tags"]?.searchStrings ?? []
+        case .status:
+            values = ["status", "analysis_status", "lifecycle_status"]
+                .flatMap { document.parsedFrontmatter[$0]?.searchStrings ?? [] }
+        case .metadata:
+            for key in document.parsedFrontmatter.keys.sorted() {
+                let candidates = document.parsedFrontmatter[key]?.searchStrings ?? []
+                if let value = parsed.firstMatchingValue(in: candidates) {
+                    return "\(key): \(value)"
+                }
+            }
+            values = []
+        case .path:
+            values = [relativePath]
+        case .body, .callout, .footnote:
+            values = []
+        }
+        return parsed.firstMatchingValue(in: values)
+            ?? values.first
+            ?? String(document.body.prefix(220)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func sourceIndex(
+        for bodyIndex: String.Index,
+        inBodyOf document: NoteDocument
+    ) -> String.Index? {
+        guard let bodyUTF8Index = bodyIndex.samePosition(in: document.body.utf8) else { return nil }
+        let bodyOffset = document.body.utf8.distance(from: document.body.utf8.startIndex, to: bodyUTF8Index)
+        let sourceOffset = document.bodyByteRange.lowerBound + bodyOffset
+        guard let sourceUTF8Index = document.rawContent.utf8.index(
+            document.rawContent.utf8.startIndex,
+            offsetBy: sourceOffset,
+            limitedBy: document.rawContent.utf8.endIndex
+        ) else { return nil }
+        return sourceUTF8Index.samePosition(in: document.rawContent)
+    }
+
+    private static func contextLabel(for field: SearchMatchedField) -> String {
+        switch field {
+        case .title: "Title"
+        case .alias: "Alias"
+        case .heading: "Heading"
+        case .author: "Author"
+        case .year: "Year"
+        case .tag: "Tag"
+        case .status: "Status"
+        case .body: "Body"
+        case .callout: "Callout"
+        case .footnote: "Footnote"
+        case .metadata: "Metadata"
+        case .path: "Path"
+        }
     }
 
     private static func snippet(source: String, match: Range<String.Index>?) -> (text: String, highlights: [SearchHighlight]) {
@@ -687,28 +623,36 @@ private struct ParsedSearchQuery {
                 case "review": queryFilter.review = fieldValue
                 case "callout": queryFilter.callout = fieldValue
                 case "has" where fieldValue == "broken-link": queryFilter.hasBrokenLink = true
-                case "title", "author", "year", "tag", "path", "metadata":
-                    let column = field == "tag" ? "tags" : field
+                case "title", "alias", "heading", "author", "year", "tag", "path", "metadata":
+                    let column = switch field {
+                    case "alias": "aliases"
+                    case "heading": "headings"
+                    case "tag": "tags"
+                    default: field
+                    }
                     let expression = Self.expression(fieldValue, column: column)
                     if excluded { negativeExpressions.append(expression) } else { positiveExpressions.append(expression) }
-                    if !excluded { positives.append(Self.plain(fieldValue)) }
+                    if !excluded { positives.append(Self.matchTerm(fieldValue)) }
                 default:
                     throw SearchIndexError.invalidQuery("unknown filter \(field)")
                 }
             } else {
                 let expression = Self.expression(value, column: nil)
                 if excluded { negativeExpressions.append(expression) } else { positiveExpressions.append(expression) }
-                if !excluded { positives.append(Self.plain(value)) }
+                if !excluded { positives.append(Self.matchTerm(value)) }
             }
         }
         if let vault = queryFilter.vault { sql.append(SQLPredicate(column: "vault_name", value: vault)) }
         if let role = queryFilter.role { sql.append(SQLPredicate(column: "role", value: role.rawValue)) }
+        if let relativePath = queryFilter.relativePath {
+            sql.append(SQLPredicate(column: "relative_path", value: relativePath))
+        }
         if let status = queryFilter.status { sql.append(SQLPredicate(column: "status", value: status)) }
         if let review = queryFilter.review { sql.append(SQLPredicate(column: "review", value: review)) }
         if let broken = queryFilter.hasBrokenLink { sql.append(SQLPredicate(column: "broken_link", value: broken ? "1" : "0")) }
         if let callout = queryFilter.callout {
             positiveExpressions.append(Self.expression(callout, column: "callouts"))
-            positives.append(Self.plain(callout))
+            positives.append(Self.matchTerm(callout))
         }
         guard !positiveExpressions.isEmpty else {
             throw SearchIndexError.invalidQuery("at least one positive search term is required")
@@ -733,6 +677,14 @@ private struct ParsedSearchQuery {
             if let range = source.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) { return range }
         }
         return nil
+    }
+
+    func firstMatchingValue(in values: [String]) -> String? {
+        values.first { value in
+            positiveTerms.contains {
+                value.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+        }
     }
 
     private static func tokens(_ raw: String) throws -> [String] {
@@ -772,6 +724,11 @@ private struct ParsedSearchQuery {
             value.removeFirst(); value.removeLast()
         }
         return value.precomposedStringWithCanonicalMapping
+    }
+
+    private static func matchTerm(_ raw: String) -> String {
+        let value = plain(raw)
+        return value.hasSuffix("*") ? String(value.dropLast()) : value
     }
 }
 
@@ -897,10 +854,3 @@ private struct SQLiteStatement {
 }
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
-private extension DocumentFingerprint {
-    init(sha256: String, byteCount: Int) {
-        self.sha256 = sha256
-        self.byteCount = byteCount
-    }
-}

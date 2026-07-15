@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Portable Triptych control directory")
@@ -286,6 +287,49 @@ struct TriptychControlTests {
         #expect(duplicate.duplicatedFrom == original.id)
         #expect(try await store.externalRenameCandidate(vaultID: vaultID, fingerprint: fingerprint) == nil)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).count == 1)
+    }
+
+    @Test("Lifecycle identity moves recover a record lost between the file and control writes")
+    func lifecycleMoveRecoversMissingIdentityRecord() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: UUID(),
+            .topicKnowledge: UUID(),
+            .output: vaultID,
+        ])
+        let fingerprint = DocumentFingerprint(content: "# Work\n")
+        let original = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "Work.md",
+            fingerprint: fingerprint
+        ))
+        _ = try await store.purgeIdentity(
+            id: original.id,
+            vaultID: vaultID,
+            relativePath: "Work.md"
+        )
+
+        let recovered = try await store.moveIdentity(
+            id: original.id,
+            vaultID: vaultID,
+            from: "Work.md",
+            to: "Trash/Work.md",
+            fingerprint: fingerprint
+        )
+
+        #expect(recovered.id == original.id)
+        #expect(recovered.relativePath == "Trash/Work.md")
+        let stored = try await store.identityRecord(
+            vaultID: vaultID,
+            relativePath: "Trash/Work.md"
+        )
+        #expect(stored?.id == recovered.id)
+        #expect(stored?.vaultID == recovered.vaultID)
+        #expect(stored?.relativePath == recovered.relativePath)
+        #expect(stored?.fingerprint == recovered.fingerprint)
     }
 
     @Test("Permanent deletion purges portable identity and pending rebinding state")

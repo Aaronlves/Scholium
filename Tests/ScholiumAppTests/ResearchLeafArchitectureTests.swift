@@ -1,0 +1,151 @@
+import ScholiumContracts
+import Foundation
+import Testing
+@testable import ScholiumApp
+
+@Suite("Research leaf architecture")
+struct ResearchLeafArchitectureTests {
+    @Test("Research leaves receive controllers, immutable values, and closures")
+    func researchLeavesDoNotBorrowWindowModel() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let relativePaths = [
+            "Scholium/Views/Backlinks/BacklinksPanelView.swift",
+            "Scholium/Views/CheckpointView.swift",
+            "Scholium/Views/Note/CritiqueProvenanceView.swift",
+            "Scholium/Views/Sidebar/RelationshipView.swift",
+        ]
+        let sources = try Dictionary(uniqueKeysWithValues: relativePaths.map { path in
+            (
+                path,
+                try String(
+                    contentsOf: repositoryRoot.appendingPathComponent(path),
+                    encoding: .utf8
+                )
+            )
+        })
+
+        for path in relativePaths {
+            let source = try #require(sources[path])
+            #expect(
+                !source.contains("WindowModel"),
+                Comment(rawValue: "\(path) still borrows the complete window model")
+            )
+            #expect(
+                !source.contains("@EnvironmentObject"),
+                Comment(rawValue: "\(path) still depends on an ambient environment owner")
+            )
+        }
+
+        let relationships = try #require(sources[relativePaths[0]])
+        #expect(relationships.contains("struct RelationshipInspectorContext"))
+        #expect(relationships.contains("let graph: GraphSnapshot?"))
+        #expect(relationships.contains("let catalog: WorkspaceCatalogSnapshot?"))
+        #expect(relationships.contains("let openReference: (VaultNoteReference, Int?) -> Void"))
+
+        let checkpoints = try #require(sources[relativePaths[1]])
+        #expect(checkpoints.contains("@ObservedObject private var controller: ResearchController"))
+        #expect(checkpoints.contains("let createCheckpoint: (String) async throws -> Void"))
+        #expect(checkpoints.contains("let restoreCheckpoint:"))
+        #expect(checkpoints.contains("let revealCheckpoints: () -> Void"))
+
+        let critique = try #require(sources[relativePaths[2]])
+        #expect(critique.contains("struct CritiqueProvenanceContext"))
+        #expect(critique.contains("let availableNotes: [WindowDocumentLocation]"))
+        #expect(critique.contains("let documentRevisions: [String: DocumentFingerprint]"))
+        #expect(critique.contains("let loadAssociation:"))
+        #expect(critique.contains("let openTarget:"))
+        #expect(critique.contains("let openFinding:"))
+        #expect(!critique.contains("ResearchController"))
+        #expect(!critique.contains("@ObservedObject"))
+        #expect(!critique.contains("let controller:"))
+
+        let relationship = try #require(sources[relativePaths[3]])
+        #expect(relationship.contains("struct RelationshipViewContext"))
+        #expect(relationship.contains("@ObservedObject private var controller: ResearchController"))
+        #expect(relationship.contains("let catalog: WorkspaceCatalogSnapshot?"))
+        #expect(relationship.contains("let resolveZoteroSource:"))
+        #expect(relationship.contains("let openZoteroItem:"))
+        #expect(relationship.contains("let confirmZoteroItem:"))
+        #expect(relationship.contains("controller.requestOpen(item.note, sourceLine:"))
+        #expect(relationship.contains("controller.requestOpen(row.note.reference)"))
+        #expect(relationship.contains("private struct ZoteroSourceSection: View"))
+        #expect(relationship.contains("let resolveSource:"))
+        #expect(relationship.contains("let openItem:"))
+        #expect(relationship.contains("let confirmItem:"))
+        #expect(!relationship.contains("let context: RelationshipViewContext\n\n    private struct SourceRequest"))
+    }
+
+    @Test("Relationships navigation emits a typed document route with its source locator")
+    @MainActor
+    func relationshipNavigationUsesResearchIntent() {
+        let reference = VaultNoteReference(
+            vaultID: UUID(),
+            vaultName: "Fixture Topics",
+            vaultRole: .topicKnowledge,
+            relativePath: "Topics/Agency.md",
+            stableNoteID: UUID().uuidString.lowercased()
+        )
+        var intents: [WindowIntent] = []
+        let controller = ResearchController { intents.append($0) }
+
+        controller.requestOpen(reference, sourceLine: 37)
+
+        #expect(intents == [
+            .openDocument(WindowDocumentRoute(
+                reference: reference,
+                sourceLocator: SourceLocator(
+                    file: reference.relativePath,
+                    line: 37,
+                    column: 1
+                )
+            )),
+        ])
+    }
+
+    @Test("Research roots route navigation and checkpoint side effects explicitly")
+    func researchRootWiringIsExplicit() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let noteContent = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let content = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let controller = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/ResearchController.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(noteContent.contains("BacklinksPanelView(context: relationshipContext)"))
+        #expect(noteContent.contains("CritiqueProvenanceView("))
+        #expect(noteContent.contains("context: critiqueProvenanceContext"))
+        #expect(noteContent.contains("RelationshipView("))
+        #expect(noteContent.contains("context: relationshipViewContext"))
+        #expect(content.contains("controller: appState.researchController"))
+        #expect(content.contains("graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph"))
+        #expect(content.contains("private var relationshipViewContext: RelationshipViewContext"))
+        #expect(content.contains("private var critiqueProvenanceContext: CritiqueProvenanceContext"))
+        #expect(content.contains("loadAssociation: { path in"))
+        #expect(content.contains("openFinding: { finding, fallbackTargetPath in"))
+        #expect(content.contains("resolveZoteroSource: { source in"))
+        #expect(content.contains("confirmZoteroItem: { itemKey, reference in"))
+        #expect(content.contains("restoreCheckpoint: { checkpointID, selection in"))
+        #expect(content.contains("revealCheckpoints: {"))
+        #expect(controller.contains("func requestOpen("))
+        #expect(controller.contains("intentHandler(.openDocument(WindowDocumentRoute("))
+    }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Rust Index Engine"
+  short_description: "Gate and design a safe Rust search alternative"
+  default_prompt: "Use $scholium-rust-index-engine to compare Scholium's active Swift SQLite FTS5 baseline with a measured Rust alternative and prototype only if the adoption gate passes."

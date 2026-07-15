@@ -1,5 +1,5 @@
+import ScholiumContracts
 import AppKit
-import ScholiumCore
 import SwiftUI
 import WebKit
 
@@ -11,9 +11,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let userCSS: String
     let researcherComments: [ResearcherComment]
     let onLinkClick: (String) -> Void
+    let onOpenExternalURL: (URL) -> Void
     let onCommentSelection: ((MarkdownReviewSelection) -> Void)?
     let onCommentActivation: ((UUID) -> Void)?
     let onRenderingFailure: ((String) -> Void)?
+    var onRenderingReady: (() -> Void)? = nil
     var initialScrollFraction: Double = 0
     var onScrollFractionChange: ((Double) -> Void)? = nil
     var targetSourceLine: Int? = nil
@@ -24,9 +26,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: documentID,
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
+            onOpenExternalURL: onOpenExternalURL,
             onCommentSelection: onCommentSelection,
             onCommentActivation: onCommentActivation,
             onRenderingFailure: onRenderingFailure,
+            onRenderingReady: onRenderingReady,
             initialScrollFraction: initialScrollFraction,
             onScrollFractionChange: onScrollFractionChange,
             targetSourceLine: targetSourceLine,
@@ -49,6 +53,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         webView.setValue(false, forKey: "drawsBackground")
         webView.setAccessibilityElement(true)
         webView.setAccessibilityLabel("Rendered Markdown")
+        webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
         context.coordinator.loadIfNeeded(
             htmlBody,
             source: source,
@@ -64,9 +69,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: documentID,
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
+            onOpenExternalURL: onOpenExternalURL,
             onCommentSelection: onCommentSelection,
             onCommentActivation: onCommentActivation,
             onRenderingFailure: onRenderingFailure,
+            onRenderingReady: onRenderingReady,
             initialScrollFraction: initialScrollFraction,
             onScrollFractionChange: onScrollFractionChange,
             targetSourceLine: targetSourceLine,
@@ -103,9 +110,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var documentID: String
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
+        private var onOpenExternalURL: (URL) -> Void
         private var onCommentSelection: ((MarkdownReviewSelection) -> Void)?
         private var onCommentActivation: ((UUID) -> Void)?
         private var onRenderingFailure: ((String) -> Void)?
+        private var onRenderingReady: (() -> Void)?
         private var initialScrollFraction: Double
         private var onScrollFractionChange: ((Double) -> Void)?
         private var targetSourceLine: Int?
@@ -119,9 +128,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: String,
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
+            onOpenExternalURL: @escaping (URL) -> Void,
             onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
             onCommentActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
+            onRenderingReady: (() -> Void)?,
             initialScrollFraction: Double,
             onScrollFractionChange: ((Double) -> Void)?,
             targetSourceLine: Int?,
@@ -130,9 +141,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.documentID = documentID
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
+            self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
             self.onCommentActivation = onCommentActivation
             self.onRenderingFailure = onRenderingFailure
+            self.onRenderingReady = onRenderingReady
             self.initialScrollFraction = min(1, max(0, initialScrollFraction))
             self.onScrollFractionChange = onScrollFractionChange
             self.targetSourceLine = targetSourceLine
@@ -143,9 +156,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: String,
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
+            onOpenExternalURL: @escaping (URL) -> Void,
             onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
             onCommentActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
+            onRenderingReady: (() -> Void)?,
             initialScrollFraction: Double,
             onScrollFractionChange: ((Double) -> Void)?,
             targetSourceLine: Int?,
@@ -156,14 +171,17 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadedSignature = nil
                 lastReachedSourceLine = nil
                 pageIsReady = false
+                webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
             }
             activeWebView = webView
             self.documentID = documentID
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
+            self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
             self.onCommentActivation = onCommentActivation
             self.onRenderingFailure = onRenderingFailure
+            self.onRenderingReady = onRenderingReady
             self.initialScrollFraction = min(1, max(0, initialScrollFraction))
             self.onScrollFractionChange = onScrollFractionChange
             self.targetSourceLine = targetSourceLine
@@ -252,6 +270,39 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             pageIsReady = true
             restoreScrollPosition(in: webView)
             scrollToSourceLineIfNeeded(in: webView)
+            let expectedDocumentID = documentID
+            let expectedFingerprint = fingerprint
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView else { return }
+                do {
+                    let result = try await webView.callAsyncJavaScript(
+                        """
+                        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                        return true;
+                        """,
+                        arguments: [:],
+                        in: nil,
+                        contentWorld: .page
+                    )
+                    guard result as? Bool == true,
+                          self.activeWebView === webView,
+                          self.documentID == expectedDocumentID,
+                          self.fingerprint == expectedFingerprint else { return }
+                    webView.setAccessibilityIdentifier(
+                        "scholium.renderedDocument.\(expectedDocumentID)"
+                    )
+                    self.onRenderingReady?()
+                } catch {
+                    return
+                }
+            }
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            pageIsReady = false
+            loadedSignature = nil
+            webView.setAccessibilityIdentifier("scholium.renderedDocument.failed")
+            onRenderingFailure?("The Read renderer stopped unexpectedly.")
         }
 
         private func restoreScrollPosition(in webView: WKWebView) {
@@ -315,7 +366,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             if navigationAction.navigationType == .linkActivated,
                let scheme = url.scheme?.lowercased(),
                ["http", "https", "mailto", "zotero"].contains(scheme) {
-                NSWorkspace.shared.open(url)
+                onOpenExternalURL(url)
             }
             decisionHandler(.cancel)
         }
@@ -726,22 +777,24 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         }
 
         private static let baseCSS = """
-        :root { color-scheme: light dark; }
-        html, body { margin: 0; min-height: 100%; background: Canvas; color: CanvasText; }
-        body { font-family: Alegreya, Georgia, serif; font-size: 12pt; line-height: 1.65; }
-        .scholium-document { box-sizing: border-box; max-width: 920px; margin: 0 auto; padding: 44px 54px 45vh; }
+        :root { color-scheme: light dark; \(ScholiumWebDesignTokens.rootCSSDeclarations) }
+        html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
+        body { font-family: Alegreya, Georgia, serif; font-size: 12pt; line-height: 1.58; }
+        .scholium-document { box-sizing: border-box; min-width: 0; max-width: 920px; margin: 0 auto; padding: 44px 54px 45vh; overflow-wrap: anywhere; }
         h1, h2, h3, h4, h5, h6 { line-height: 1.18; margin: 1.45em 0 .55em; text-wrap: balance; }
         h1 { font-size: 150%; } h2 { font-size: 130%; } h3 { font-size: 115%; } h4, h5, h6 { font-size: 100%; }
         p { margin: .7em 0; } a { color: LinkText; text-underline-offset: .12em; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
-        .scholium-document .scholium-vector-neutral { color: LinkText; }
-        .scholium-document .scholium-vector-supports-target, .scholium-document .scholium-vector-supported-by-target { color: #006d6b; }
-        .scholium-document .scholium-vector-incompatible { color: #7136a8; }
+        .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
+        .scholium-document .scholium-vector-supports-target, .scholium-document .scholium-vector-supported-by-target { color: var(--scholium-color-connection-support); }
+        .scholium-document .scholium-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
         .scholium-vector-icon { display: inline-block; width: .92em; height: .92em; margin-right: .24em; vertical-align: -.08em; background-color: currentColor; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
         .scholium-highlight { color: CanvasText; background: Mark; border-radius: 3px; padding-inline: .06em; }
         code, pre { font-family: "Victor Mono", ui-monospace, monospace; }
         code { font-size: .82em; padding: .08em .25em; border-radius: 4px; background: color-mix(in srgb, CanvasText 8%, transparent); }
-        pre { padding: 16px; overflow: auto; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
+        pre { box-sizing: border-box; max-width: 100%; padding: 16px; overflow: auto; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
+        img, video, svg { max-width: 100%; height: auto; }
+        table { display: block; max-width: 100%; overflow-x: auto; }
         blockquote { margin: 1em 0; padding-left: 18px; border-left: 3px solid color-mix(in srgb, AccentColor 50%, transparent); color: color-mix(in srgb, CanvasText 78%, transparent); }
         (ScholiumCalloutStyles.css)
         .footnote-reference { appearance: none; border: 0; padding: 0 .1em; background: none; color: LinkText; font: 700 .65em system-ui; cursor: pointer; }
@@ -755,8 +808,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         .researcher-comment-annotation.resolved { background: color-mix(in srgb, GrayText 9%, transparent); border-bottom-color: GrayText; }
         .researcher-comment-annotation:focus { outline: 2px solid AccentColor; outline-offset: 2px; }
         .raw-html, .raw-html-inline { color: GrayText; }
-        @media (prefers-color-scheme: dark) { .scholium-document .scholium-vector-supports-target, .scholium-document .scholium-vector-supported-by-target { color: #63d4cf; } .scholium-document .scholium-vector-incompatible { color: #c79aff; } }
-        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
+        @media (prefers-color-scheme: dark) { :root { \(ScholiumWebDesignTokens.darkAppearanceCSSDeclarations) } }
+        @media (prefers-contrast: more) { :root { \(ScholiumWebDesignTokens.increasedContrastCSSDeclarations) } .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
+        @media (prefers-color-scheme: dark) and (prefers-contrast: more) { :root { \(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations) } }
         @media (max-width: 700px) { .scholium-document { padding: 28px 24px 45vh; } }
         @media (prefers-reduced-transparency: reduce) { #footnote-popover, #comment-selection { background: Canvas; backdrop-filter: none; } }
         """

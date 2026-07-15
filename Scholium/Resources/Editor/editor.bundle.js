@@ -29851,6 +29851,7 @@
   var livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
     decorations: (value) => value.decorations
   });
+  var livePreviewMode = [livePreview, EditorView.lineWrapping];
   var dirty = false;
   var idleTimer = null;
   var stateReporter = EditorView.updateListener.of((update) => {
@@ -29966,7 +29967,7 @@
         researcherCommentField,
         researcherCommentActivation,
         lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
-        modeCompartment.of(livePreview),
+        modeCompartment.of(livePreviewMode),
         EditorView.contentAttributes.of({
           "aria-label": "Markdown source editor",
           role: "textbox",
@@ -30020,7 +30021,7 @@
     /** @param {string} mode */
     setMode(mode) {
       editor.dispatch({
-        effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreview : [])
+        effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : [])
       });
       editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
       editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");

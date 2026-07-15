@@ -1,5 +1,7 @@
 import Foundation
+import SQLite3
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Persistent shared lexical search")
@@ -67,6 +69,158 @@ struct SearchIndexTests {
         await #expect(throws: SearchIndexError.self) {
             _ = try await index.search(SearchQuery("title: searchable"))
         }
+    }
+
+    @Test("Search results present clean field context without exposing YAML syntax")
+    func cleanSearchPresentation() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(databaseURL: fixture.databaseURL, vaultID: fixture.vault.id)
+        _ = try await index.rebuild([
+            fixture.item("Papers/Reasons.md", """
+            ---
+            title: Normative Reasons
+            authors: [T. Scanlon]
+            tags: [reasons, normativity]
+            ---
+            # Deliberative Control
+            A reason can guide **deliberation**.
+            """),
+            fixture.item("Papers/CJK.md", """
+            ---
+            title: 价值理论
+            ---
+            中文正文保持清晰。
+            """),
+        ])
+
+        let title = try #require(await index.search(SearchQuery("title:\"Normative Reasons\"")).first)
+        #expect(title.title == "Normative Reasons")
+        #expect(title.matchedField == .title)
+        #expect(title.context == "Title")
+        #expect(title.snippet == "Normative Reasons")
+        #expect(!title.snippet.contains("---"))
+        #expect(!title.snippet.contains("title:"))
+        #expect(!title.highlights.isEmpty)
+
+        let author = try #require(await index.search(SearchQuery("author:Scanlon")).first)
+        #expect(author.snippet == "T. Scanlon")
+        #expect(author.context == "Author")
+
+        let body = try #require(await index.search(SearchQuery("deliberation")).first)
+        #expect(body.context == "Body")
+        #expect(body.sourceLine == 7)
+        #expect(body.snippet.contains("guide deliberation"))
+        #expect(!body.snippet.contains("authors:"))
+        #expect(!body.snippet.contains("#"))
+        #expect(!body.snippet.contains("**"))
+
+        let cjk = try #require(await index.search(SearchQuery("title:价值理论")).first)
+        #expect(cjk.title == "价值理论")
+        #expect(cjk.snippet == "价值理论")
+        #expect(cjk.highlights.allSatisfy {
+            $0.utf16LowerBound >= 0 && $0.utf16UpperBound <= cjk.snippet.utf16.count
+        })
+    }
+
+    @Test("A note-scoped query cannot be displaced by higher-ranked vault results")
+    func exactNoteScope() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(databaseURL: fixture.databaseURL, vaultID: fixture.vault.id)
+        _ = try await index.rebuild([
+            fixture.item("A.md", "target concept appears once"),
+            fixture.item("B.md", "target target target concept"),
+        ])
+
+        let hits = try await index.search(
+            SearchQuery("target"),
+            filter: SearchFilter(relativePath: "A.md"),
+            limit: 1
+        )
+        #expect(hits.map(\.relativePath) == ["A.md"])
+    }
+
+    @Test("A 512-note mixed-discipline fixture ranks title, alias, heading, then body")
+    func explainableScholarlyRanking() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(databaseURL: fixture.databaseURL, vaultID: fixture.vault.id)
+        let profiles: [(slug: String, title: String, alias: String, heading: String, body: String)] = [
+            ("ethics", "Normative Ethics", "Moral Reasons", "Practical Deliberation", "normative reasons"),
+            ("aesthetics", "Aesthetic Judgment", "Artistic Value", "Interpretive Experience", "artistic value"),
+            ("mind", "Philosophy of Mind", "Conscious Experience", "First-Person Access", "conscious experience"),
+            ("politics", "Political Theory", "Civic Authority", "Collective Agency", "civic authority"),
+            ("history", "History of Ideas", "Conceptual Change", "Historical Context", "conceptual change"),
+            ("language", "Philosophy of Language", "Meaning and Use", "Semantic Practice", "meaning and use"),
+            ("science", "Philosophy of Science", "Explanatory Models", "Scientific Practice", "explanatory models"),
+            ("law", "Philosophy of Law", "Legal Reasons", "Institutional Norms", "legal reasons"),
+        ]
+        var documents = (0..<508).map { number in
+            let profile = profiles[number % profiles.count]
+            return fixture.item(
+                "Background/\(profile.slug)/Note-\(number).md",
+                "---\ntitle: \(profile.title) Note \(number)\naliases: [\(profile.alias) \(number)]\n---\n# \(profile.heading)\nA bounded synthetic note about \(profile.body) and evidence."
+            )
+        }
+        documents.append(contentsOf: [
+            fixture.item("Title.md", "---\ntitle: Deliberative Autonomy\n---\nA concise account."),
+            fixture.item("Alias.md", "---\ntitle: Agency Structure\naliases: [Deliberative Autonomy]\n---\nA concise account."),
+            fixture.item("Heading.md", "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account."),
+            fixture.item("Body.md", "---\ntitle: Practical Reason\n---\nThis account develops deliberative autonomy in ordinary prose."),
+        ])
+        _ = try await index.rebuild(documents)
+
+        let hits = try await index.search(SearchQuery("\"deliberative autonomy\""), limit: 10)
+        #expect(hits.map(\.relativePath) == ["Title.md", "Alias.md", "Heading.md", "Body.md"])
+        #expect(hits.map(\.matchedField) == [.title, .alias, .heading, .body])
+        #expect(hits.map(\.context) == ["Title", "Alias", "Heading", "Body"])
+        #expect(hits[1].snippet == "Deliberative Autonomy")
+        #expect(hits[2].snippet == "Deliberative Autonomy")
+        #expect(hits[2].sourceLine == 4)
+
+        let aliasHits = try await index.search(SearchQuery("alias:\"Deliberative Autonomy\""))
+        #expect(aliasHits.map(\.relativePath) == ["Alias.md"])
+        let headingHits = try await index.search(SearchQuery("heading:\"Deliberative Autonomy\""))
+        #expect(headingHits.map(\.relativePath) == ["Heading.md"])
+    }
+
+    @Test("A larger collision fixture preserves field precedence and deterministic paths")
+    func largerExplainableRankingCollisionFixture() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(databaseURL: fixture.databaseURL, vaultID: fixture.vault.id)
+        let collisions = [
+            fixture.item("00-title.md", "---\ntitle: Practical Identity\n---\nA short record."),
+            fixture.item("01-title.md", "---\ntitle: Practical Identity\n---\nA short record."),
+            fixture.item("10-alias.md", "---\ntitle: Concept Alpha\naliases: [Practical Identity]\n---\nA short record."),
+            fixture.item("11-alias.md", "---\ntitle: Concept Beta\naliases: [Practical Identity]\n---\nA short record."),
+            fixture.item("20-heading.md", "---\ntitle: Concept Heading\n---\n# Practical Identity\nA short record."),
+            fixture.item("21-heading.md", "---\ntitle: Concept Heading\n---\n# Practical Identity\nA short record."),
+            fixture.item("30-body.md", "---\ntitle: Body Alpha\n---\nThis body discusses practical identity."),
+            fixture.item("31-body.md", "---\ntitle: Body Beta\n---\nThis body discusses practical identity."),
+        ]
+        let background = (0..<2_048).map { number in
+            fixture.item(
+                "Background/\(String(format: "%04d", number)).md",
+                "---\ntitle: Background \(number)\n---\nA bounded note about practical identity in ordinary evidence."
+            )
+        }
+        _ = try await index.rebuild(collisions + background)
+
+        let hits = try await index.search(SearchQuery("\"practical identity\""), limit: 20)
+        #expect(hits.count == 20)
+        #expect(hits.prefix(6).map(\.matchedField) == [
+            .title, .title, .alias, .alias, .heading, .heading,
+        ])
+        #expect(hits.prefix(6).map(\.relativePath) == [
+            "00-title.md", "01-title.md", "10-alias.md", "11-alias.md",
+            "20-heading.md", "21-heading.md",
+        ])
+        #expect(hits.dropFirst(6).allSatisfy { $0.matchedField == .body })
+
+        let aliasHits = try await index.search(SearchQuery("alias:\"Practical Identity\""))
+        #expect(aliasHits.map(\.relativePath) == ["10-alias.md", "11-alias.md"])
+        let headingHits = try await index.search(SearchQuery("heading:\"Practical Identity\""))
+        #expect(headingHits.map(\.relativePath) == ["20-heading.md", "21-heading.md"])
+        let repeated = try await index.search(SearchQuery("\"practical identity\""), limit: 20)
+        #expect(repeated.map(\.relativePath) == hits.map(\.relativePath))
     }
 
     @Test("Incremental add, edit, rename, and delete converge with a clean rebuild")
@@ -199,6 +353,36 @@ struct SearchIndexTests {
         #expect(try await opened.index.search(SearchQuery("recoverable")).map(\.relativePath) == ["Recovered.md"])
     }
 
+    @Test("An older generated search contract is replaced without touching source documents")
+    func incompatibleContractRecoveryIsVisibleAndComplete() async throws {
+        let fixture = try Fixture()
+        var oldIndex: SQLiteSearchIndex? = try SQLiteSearchIndex(
+            databaseURL: fixture.databaseURL,
+            vaultID: fixture.vault.id
+        )
+        let source = fixture.item("Preserved.md", "---\ntitle: Preserved\n---\nexact source remains external")
+        _ = try await oldIndex?.rebuild([source])
+        oldIndex = nil
+        try setContractVersion(1, in: fixture.databaseURL)
+
+        let opened = try SQLiteSearchIndex.openRecovering(
+            databaseURL: fixture.databaseURL,
+            vaultID: fixture.vault.id
+        )
+        #expect(opened.recoveredCorruption)
+        let result = try await opened.index.synchronize(
+            [source],
+            vaultName: fixture.vault.name,
+            vaultRole: fixture.vault.role,
+            recoveredCorruption: opened.recoveredCorruption
+        )
+
+        #expect(result.disposition == .recoveredAndRebuilt)
+        #expect(result.generation.contractVersion == IndexGeneration.contractVersion)
+        #expect(try await opened.index.search(SearchQuery("external")).map(\.relativePath) == ["Preserved.md"])
+        #expect(source.document.rawContent == "---\ntitle: Preserved\n---\nexact source remains external")
+    }
+
     @Test("Identical paths in different Triptychs remain isolated by vault identity")
     func vaultIdentityIsolation() async throws {
         let fixture = try Fixture()
@@ -273,5 +457,22 @@ struct SearchIndexTests {
                 document: NoteDocument(relativePath: path, rawContent: source)
             )
         }
+    }
+
+    private func setContractVersion(_ version: Int, in databaseURL: URL) throws {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
+            throw SearchIndexTestError.couldNotOpenDatabase
+        }
+        defer { sqlite3_close(database) }
+        let sql = "UPDATE index_state SET value = \(version) WHERE key = 'contract_version';"
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
+            throw SearchIndexTestError.couldNotSetContractVersion
+        }
+    }
+
+    private enum SearchIndexTestError: Error {
+        case couldNotOpenDatabase
+        case couldNotSetContractVersion
     }
 }

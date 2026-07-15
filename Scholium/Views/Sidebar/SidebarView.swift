@@ -1,31 +1,126 @@
+import ScholiumContracts
 import SwiftUI
-import ScholiumCore
 
 // MARK: - Sidebar View
 
+/// Immutable Library projection and explicit window actions supplied by the
+/// `ContentView` composition root. Mutable filter, sort, folder, and lifecycle
+/// presentation state remains owned by `DiscoveryController`.
+struct SidebarContext {
+    let triptychName: String
+    let attentionItems: [AttentionQueueItem]?
+    let filteredNotes: [WindowDocumentLocation]
+    let allNotes: [WindowDocumentLocation]
+    let currentVaultID: UUID?
+    let activeTab: String?
+    let hasCurrentNote: Bool
+    let hasVaultConfiguration: Bool
+    let currentVaultRole: VaultRole
+    let currentWorkspaceSlot: WorkspaceVaultSlot?
+    let noteLifecycleRequest: NoteLifecycleRequest?
+    let lifecycleMutationGeneration: UInt64
+    let catalogIsAvailable: Bool
+    let graphIsAvailable: Bool
+    let hasUnqualifiedReview: Bool
+    let changedSinceReviewCount: Int
+    let tags: [String]
+    let statuses: [String]
+    let authors: [String]
+    let years: [Int]
+    let propertyKeys: [String]
+    let propertyValues: [String: [String]]
+    let resolvedIdentityPaths: Set<String>
+    let reviewDisplayState: (String) -> HumanReviewDisplayState
+    let notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
+    let presentAttention: () -> Void
+    let revealCurrentVault: () -> Void
+    let collapseNote: () -> Void
+    let selectLocationScope: (NoteLocationScope) -> Void
+    let openNote: (String, Bool) -> Void
+    let openLifecycleNote: (String, NoteLocationScope) -> Void
+    let selectWorkspaceVault: (WorkspaceVaultSlot) -> Void
+    let presentScholia: (String) -> Void
+    let lifecycleItems: (NoteLocationScope) async throws -> [LifecycleLocationItem]
+    let prepareLifecycle: (LifecycleLocationItem) -> Void
+    let clearPreparedLifecycle: (String) -> Void
+    let revealNote: (String) -> Void
+    let setAside: (String) async throws -> Void
+    let moveToTrash: (String) async throws -> Void
+    let deletePermanently: (String) async throws -> Void
+    let classify: (String, WorkspaceVaultSlot, String) async throws -> Void
+    let selectSortOrder: (NoteSortOrder) -> Void
+    let showError: (String) -> Void
+}
+
 struct SidebarView: View {
-    @EnvironmentObject var appState: AppState
+    @ObservedObject private var controller: DiscoveryController
     @Environment(\.openSettings) private var openSettings
-    @State private var expandedFolders: Set<String> = []
-    @State private var lifecycleOverlayScope: AppState.NoteLocationScope?
-    @State private var workspaceFolderSnapshot: [TreeNode] = []
-    @State private var showUnclassified = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let context: SidebarContext
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
 
+    init(controller: DiscoveryController, context: SidebarContext) {
+        self.controller = controller
+        self.context = context
+    }
+
+    private var lifecycleOverlayScope: NoteLocationScope? {
+        controller.library.lifecycleScope
+    }
+
+    private var lifecycleOverlayItems: [LifecycleLocationItem] {
+        controller.library.lifecycleItems
+    }
+
+    private var lifecycleOverlayIsLoading: Bool {
+        controller.library.lifecycleIsLoading
+    }
+
+    private var lifecycleOverlayError: String? {
+        controller.library.lifecycleError
+    }
+
+    private var preparedLifecyclePath: String? {
+        get { controller.library.preparedLifecyclePath }
+        nonmutating set { controller.prepareLifecycle(path: newValue) }
+    }
+
+    private var capturedWorkspaceNotes: [WindowDocumentLocation] {
+        controller.library.capturedWorkspaceNotes
+    }
+
+    private var expandedFolders: Binding<Set<String>> {
+        Binding(
+            get: { controller.library.expandedFolders },
+            set: { controller.setExpandedFolders($0) }
+        )
+    }
+
+    private var showUnclassified: Binding<Bool> {
+        Binding(
+            get: { controller.library.showsUnclassified },
+            set: { controller.showUnclassified($0) }
+        )
+    }
+
     private var visibleAttentionCount: Int? {
-        guard let items = appState.workspaceCatalog?.attention else { return nil }
+        guard let items = context.attentionItems else { return nil }
         return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(items).count
     }
 
+    private var hasVisibleAttention: Bool {
+        (visibleAttentionCount ?? 0) > 0
+    }
+
     /// Notes filtered within the selected Triptych vault and location scope.
-    private var filteredNotes: [Note] {
-        appState.filteredNotes
+    private var filteredNotes: [WindowDocumentLocation] {
+        context.filteredNotes
     }
 
     /// Build folder tree from filtered notes
     private var folderTree: [TreeNode] {
-        buildTree(from: filteredNotes, notesAreOrdered: appState.notesAreOrdered)
+        buildTree(from: filteredNotes, notesAreOrdered: context.notesAreOrdered)
     }
 
     var body: some View {
@@ -40,18 +135,18 @@ struct SidebarView: View {
                 .padding(.bottom, 10)
 
             Button {
-                appState.showAttentionQueues = true
+                context.presentAttention()
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "tray.full")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(hasVisibleAttention ? Color.orange : Color.secondary)
                     Text("Attention")
-                        .font(.callout.weight(.medium))
+                        .font(ScholiumInterfaceTypography.compactEmphasis)
                     Spacer()
                     if let count = visibleAttentionCount {
                         Text(count.formatted())
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(count > 0 ? Color.orange : Color.secondary)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -59,13 +154,12 @@ struct SidebarView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .glassEffect(
-                .regular.tint(.yellow.opacity(0.14)).interactive(),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
             .padding(.horizontal, 12)
             .padding(.bottom, 9)
             .help("Review derived warnings and recoverable research issues")
+            .accessibilityValue(
+                visibleAttentionCount.map { "\($0) items" } ?? "Loading"
+            )
 
             Divider().opacity(0.15)
 
@@ -80,9 +174,10 @@ struct SidebarView: View {
                             ForEach(displayedFolderTree) { node in
                                 TreeNodeView(
                                     node: node,
-                                    expandedFolders: $expandedFolders,
-                                    activeTab: appState.activeTab,
-                                    onSelect: { appState.requestOpenNote($0) }
+                                    expandedFolders: expandedFolders,
+                                    activeTab: context.activeTab,
+                                    context: treeContext,
+                                    onSelect: { context.openNote($0, false) }
                                 )
                             }
                         }
@@ -90,6 +185,7 @@ struct SidebarView: View {
                         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     .scrollContentBackground(.hidden)
+                    .accessibilityIdentifier("scholium.noteList")
                 }
                 .opacity(lifecycleOverlayScope == nil ? 1 : 0.48)
                 .allowsHitTesting(lifecycleOverlayScope == nil)
@@ -97,12 +193,26 @@ struct SidebarView: View {
                 if let scope = lifecycleOverlayScope {
                     SidebarLifecycleCard(
                         scope: scope,
-                        notes: appState.noteLocationScope == scope ? appState.notes : [],
-                        isLoading: appState.noteLocationScope != scope,
+                        items: lifecycleOverlayItems,
+                        isLoading: lifecycleOverlayIsLoading,
+                        errorMessage: lifecycleOverlayError,
+                        onReload: { await reloadLifecycleOverlay(scope) },
+                        onOpen: { item in
+                            context.openLifecycleNote(item.note.relativePath, scope)
+                        },
+                        onPutBack: preparePutBack,
+                        onReveal: context.revealNote,
+                        onMoveToTrash: moveLifecycleItemToTrash,
+                        onDeletePermanently: deleteLifecycleItemPermanently,
                         onClose: closeLifecycleOverlay
                     )
                     .padding(.horizontal, 8)
                     .padding(.bottom, 8)
+                    .transition(
+                        reduceMotion
+                            ? .identity
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
                 }
             }
 
@@ -118,14 +228,44 @@ struct SidebarView: View {
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.2),
+            value: lifecycleOverlayScope
+        )
         .accessibilityIdentifier("scholium.sidebar")
+        .background {
+            if context.catalogIsAvailable, !context.allNotes.isEmpty {
+                PerformanceReadyBoundary(
+                    generation: "\(context.currentVaultID?.uuidString ?? "none"):\(context.allNotes.count)"
+                ) {
+                    PerformanceProbe.shared.markLibraryReady(noteCount: context.allNotes.count)
+                }
+                .frame(width: 0, height: 0)
+            }
+        }
         .onAppear { captureWorkspaceSnapshotIfNeeded() }
-        .onChange(of: appState.notes.map(\.relativePath)) { _, _ in
+        .onChange(of: context.allNotes.map(\.relativePath)) { _, _ in
             captureWorkspaceSnapshotIfNeeded()
         }
-        .sheet(isPresented: $showUnclassified, onDismiss: restoreWorkspaceAfterTransientScope) {
-            UnclassifiedClassificationSheet()
-                .environmentObject(appState)
+        .task(id: lifecycleOverlayReloadID) {
+            guard let scope = lifecycleOverlayScope else { return }
+            await reloadLifecycleOverlay(scope)
+        }
+        .onChange(of: context.noteLifecycleRequest) { _, request in
+            guard request == nil, let path = preparedLifecyclePath else { return }
+            context.clearPreparedLifecycle(path)
+            preparedLifecyclePath = nil
+            if let scope = lifecycleOverlayScope {
+                Task { await reloadLifecycleOverlay(scope) }
+            }
+        }
+        .sheet(isPresented: showUnclassified, onDismiss: restoreWorkspaceAfterTransientScope) {
+            UnclassifiedClassificationSheet(
+                locationScope: controller.library.locationScope,
+                notes: context.allNotes,
+                classify: context.classify,
+                showError: context.showError
+            )
         }
     }
 
@@ -135,54 +275,94 @@ struct SidebarView: View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Scholium")
-                    .font(.title3.weight(.semibold))
-                Text("Triptych — \(appState.workspaceAssignment?.triptych.name ?? "Not Selected")")
+                    .font(ScholiumInterfaceTypography.identity)
+                Text("Triptych — \(context.triptychName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer()
-            Menu {
-                Button {
-                    openSettings()
+            HStack(spacing: 0) {
+                Menu {
+                    Button {
+                        openSettings()
+                    } label: {
+                        Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
+                    }
+                    Button {
+                        context.revealCurrentVault()
+                    } label: {
+                        Label("Reveal Current Vault in Finder", systemImage: "folder")
+                    }
+                    .disabled(!context.hasVaultConfiguration)
                 } label: {
-                    Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
+                    Image(systemName: "ellipsis")
+                        .frame(
+                            width: ScholiumMetrics.Triptych.headerControlSize,
+                            height: ScholiumMetrics.Triptych.headerControlSize
+                        )
+                        .contentShape(Rectangle())
                 }
-                Button {
-                    appState.revealVaultInFinder()
-                } label: {
-                    Label("Reveal Current Vault in Finder", systemImage: "folder")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(
+                    width: ScholiumMetrics.Triptych.headerControlSize,
+                    height: ScholiumMetrics.Triptych.headerControlSize
+                )
+                .accessibilityLabel("Triptych management")
+                .accessibilityIdentifier("scholium.triptychManagement")
+
+                if context.hasCurrentNote {
+                    Divider()
+                        .frame(height: 16)
+
+                    Button {
+                        context.collapseNote()
+                    } label: {
+                        Image(systemName: "chevron.left.2")
+                            .frame(
+                                width: ScholiumMetrics.Triptych.headerControlSize,
+                                height: ScholiumMetrics.Triptych.headerControlSize
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Collapse Note")
+                    .accessibilityLabel("Collapse Note")
+                    .accessibilityHint("Retracts the document into the Triptych Interface")
+                    .accessibilityIdentifier("scholium.collapseNote")
                 }
-                .disabled(appState.vaultConfig == nil)
-            } label: {
-                Image(systemName: "ellipsis.circle")
             }
-            .menuStyle(.button)
-            .buttonStyle(.glass)
-            .controlSize(.small)
-            .accessibilityLabel("Triptych options")
+            .padding(2)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.20),
+                value: context.hasCurrentNote
+            )
         }
     }
 
     private var libraryHeader: some View {
         HStack(spacing: 8) {
             Button {
-                appState.requestNoteLocationScope(.workspace)
+                context.selectLocationScope(.workspace)
             } label: {
                 Label("Library", systemImage: "books.vertical")
-                    .font(.callout.weight(.semibold))
+                    .font(ScholiumInterfaceTypography.compactEmphasis)
             }
             .buttonStyle(.plain)
-            .accessibilityAddTraits(appState.noteLocationScope == .workspace ? .isSelected : [])
+            .accessibilityAddTraits(
+                controller.library.locationScope == .workspace ? .isSelected : []
+            )
 
             Spacer()
 
-            Text("\(appState.filteredNotes.count)")
+            Text("\(filteredNotes.count)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
 
             Button {
-                appState.noteLifecycleRequest = .create
+                controller.requestLifecycle(.create)
             } label: {
                 Label("New Note", systemImage: "plus")
                     .labelStyle(.iconOnly)
@@ -198,8 +378,8 @@ struct SidebarView: View {
     private var unclassifiedNavigation: some View {
         Button {
             captureWorkspaceSnapshotIfNeeded()
-            showUnclassified = true
-            appState.requestNoteLocationScope(.unclassified)
+            controller.showUnclassified(true)
+            context.selectLocationScope(.unclassified)
         } label: {
             Label("Unclassified", systemImage: "tray.and.arrow.down")
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -223,7 +403,7 @@ struct SidebarView: View {
         .padding(.vertical, 7)
     }
 
-    private func locationButton(_ scope: AppState.NoteLocationScope, symbol: String) -> some View {
+    private func locationButton(_ scope: NoteLocationScope, symbol: String) -> some View {
         Button {
             openLifecycleOverlay(scope)
         } label: {
@@ -245,35 +425,61 @@ struct SidebarView: View {
     }
 
     private var displayedFolderTree: [TreeNode] {
-        if lifecycleOverlayScope != nil, !workspaceFolderSnapshot.isEmpty {
-            return workspaceFolderSnapshot
+        if lifecycleOverlayScope != nil, !capturedWorkspaceNotes.isEmpty {
+            return buildTree(
+                from: capturedWorkspaceNotes,
+                notesAreOrdered: context.notesAreOrdered
+            )
         }
         return folderTree
     }
 
-    private func captureWorkspaceSnapshotIfNeeded() {
-        guard appState.noteLocationScope == .workspace else { return }
-        workspaceFolderSnapshot = folderTree
+    private var lifecycleOverlayReloadID: String {
+        "\(lifecycleOverlayScope?.rawValue ?? "closed"):\(context.lifecycleMutationGeneration)"
     }
 
-    private func openLifecycleOverlay(_ scope: AppState.NoteLocationScope) {
+    private func captureWorkspaceSnapshotIfNeeded() {
+        guard controller.library.locationScope == .workspace else { return }
+        controller.captureWorkspaceNotes(filteredNotes)
+    }
+
+    private func openLifecycleOverlay(_ scope: NoteLocationScope) {
         guard scope == .setAside || scope == .trash else { return }
         if lifecycleOverlayScope == scope {
             closeLifecycleOverlay()
             return
         }
         captureWorkspaceSnapshotIfNeeded()
-        lifecycleOverlayScope = scope
-        appState.requestNoteLocationScope(scope)
+        controller.presentLifecycleListing(scope)
     }
 
     private func closeLifecycleOverlay() {
-        lifecycleOverlayScope = nil
-        restoreWorkspaceAfterTransientScope()
+        controller.dismissLifecycleListing()
+        if controller.library.locationScope != .workspace {
+            restoreWorkspaceAfterTransientScope()
+        }
+    }
+
+    private func reloadLifecycleOverlay(_ scope: NoteLocationScope) async {
+        let request = controller.beginLifecycleListing(scope)
+        do {
+            let items = try await context.lifecycleItems(scope)
+            guard lifecycleOverlayScope == scope, !Task.isCancelled else { return }
+            controller.receiveLifecycleItems(items, for: request)
+        } catch {
+            guard lifecycleOverlayScope == scope, !Task.isCancelled else { return }
+            controller.failLifecycleListing(error.localizedDescription, for: request)
+        }
+    }
+
+    private func preparePutBack(_ item: LifecycleLocationItem) {
+        context.prepareLifecycle(item)
+        preparedLifecyclePath = item.note.relativePath
+        controller.requestLifecycle(.putBack(item.note.relativePath))
     }
 
     private func restoreWorkspaceAfterTransientScope() {
-        appState.requestNoteLocationScope(.workspace)
+        context.selectLocationScope(.workspace)
     }
 
     // MARK: - Knowledge Base Picker
@@ -295,19 +501,17 @@ struct SidebarView: View {
             get: { currentWorkspaceSlot ?? .paperAnalysis },
             set: { slot in
                 guard !isCurrent(slot) else { return }
-                appState.requestWorkspaceVault(slot)
+                context.selectWorkspaceVault(slot)
             }
         )
     }
 
     private func isCurrent(_ slot: WorkspaceVaultSlot) -> Bool {
-        guard let assigned = appState.workspaceAssignment?.vault(for: slot),
-              let current = appState.currentRegisteredVault else { return false }
-        return current.id == assigned.id || current.canonicalPath == assigned.canonicalPath
+        context.currentWorkspaceSlot == slot
     }
 
     private var currentWorkspaceSlot: WorkspaceVaultSlot? {
-        WorkspaceVaultSlot.allCases.first(where: isCurrent)
+        context.currentWorkspaceSlot
     }
 
     // MARK: - Filters Section
@@ -315,8 +519,8 @@ struct SidebarView: View {
     private var filtersSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if appState.currentVaultRole.allowsHumanReview {
-                    Toggle(isOn: $appState.isReviewedFilter) {
+                if context.currentVaultRole.allowsHumanReview {
+                    Toggle(isOn: filterBinding(\.isReviewed)) {
                         Text("Unreviewed")
                             .font(.caption)
                     }
@@ -325,67 +529,76 @@ struct SidebarView: View {
 
                 Spacer()
 
-                Text("\(appState.filteredNotes.count) notes")
+                Text("\(filteredNotes.count) notes")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
-            if appState.currentVaultRole.allowsHumanReview,
-               appState.humanReviewRecords.values.contains(where: {
-                   $0.latestReview?.qualification == .unqualified
-               }) {
-                Toggle(isOn: $appState.isUnqualifiedFilter) {
+            if context.currentVaultRole.allowsHumanReview,
+               context.hasUnqualifiedReview {
+                Toggle(isOn: filterBinding(\.isUnqualified)) {
                     Label("Unqualified", systemImage: "xmark.seal")
                         .font(.caption)
-                        .foregroundStyle(appState.isUnqualifiedFilter ? .red : .primary)
+                        .foregroundStyle(
+                            controller.library.filters.isUnqualified ? .red : .primary
+                        )
                 }
                 .toggleStyle(.checkbox)
             }
 
-            HStack(spacing: 12) {
-                Menu {
+            Menu {
+                Menu("Research State") {
+                    Toggle("Changed since review", isOn: filterBinding(\.isChangedSinceReview))
+                        .accessibilityIdentifier("scholium.researchFilter.changedSinceReview")
+                    Toggle("Needs attention", isOn: filterBinding(\.needsAttention))
+                        .disabled(!context.catalogIsAvailable)
+                        .accessibilityIdentifier("scholium.researchFilter.needsAttention")
+                    Toggle("Explicit connections", isOn: filterBinding(\.hasExplicitConnections))
+                        .disabled(!context.graphIsAvailable)
+                        .accessibilityIdentifier("scholium.researchFilter.explicitConnections")
+                    Toggle("Malformed metadata", isOn: filterBinding(\.hasMalformedMetadata))
+                        .disabled(!context.catalogIsAvailable)
+                        .accessibilityIdentifier("scholium.researchFilter.malformedMetadata")
+
+                    if activeResearchFilterCount > 0 {
+                        Divider()
+                        Button("Clear Research Filters", action: clearResearchFilters)
+                    }
+                }
+
+                Menu("Tag") {
                     Button {
-                        appState.selectedTag = nil
+                        updateFilters { $0.tag = nil }
                     } label: {
-                        if appState.selectedTag == nil {
+                        if controller.library.filters.tag == nil {
                             Label("All Tags", systemImage: "checkmark")
                         } else {
                             Text("All Tags")
                         }
                     }
                     Divider()
-                    ForEach(appState.allTags, id: \.self) { tag in
+                    ForEach(context.tags, id: \.self) { tag in
                         Button {
-                            appState.selectedTag = tag
+                            updateFilters { $0.tag = tag }
                         } label: {
-                            if appState.selectedTag == tag {
+                            if controller.library.filters.tag == tag {
                                 Label(tag, systemImage: "checkmark")
                             } else {
                                 Text(tag)
                             }
                         }
                     }
-                } label: {
-                    Image(systemName: appState.selectedTag == nil ? "tag" : "tag.fill")
-                        .frame(width: 20, height: 20)
                 }
-                .menuStyle(.button)
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .disabled(appState.allTags.isEmpty)
-                .help(appState.selectedTag.map { "Tag: \($0)" } ?? "Filter by tag")
-                .accessibilityLabel("Tag filter")
-                .accessibilityValue(appState.selectedTag ?? "All tags")
+                .disabled(context.tags.isEmpty)
 
-            Menu {
                 Menu("Status") {
-                    Button("Any Status") { appState.selectedStatus = nil }
+                    Button("Any Status") { updateFilters { $0.status = nil } }
                     Divider()
-                    ForEach(appState.availableStatuses, id: \.self) { status in
+                    ForEach(context.statuses, id: \.self) { status in
                         Button {
-                            appState.selectedStatus = status
+                            updateFilters { $0.status = status }
                         } label: {
-                            if appState.selectedStatus == status {
+                            if controller.library.filters.status == status {
                                 Label(status.capitalized, systemImage: "checkmark")
                             } else {
                                 Text(status.capitalized)
@@ -394,15 +607,15 @@ struct SidebarView: View {
                     }
                 }
 
-                if !appState.availableAuthors.isEmpty {
+                if !context.authors.isEmpty {
                     Menu("Author") {
-                        Button("Any Author") { appState.selectedAuthor = nil }
+                        Button("Any Author") { updateFilters { $0.author = nil } }
                         Divider()
-                        ForEach(appState.availableAuthors, id: \.self) { author in
+                        ForEach(context.authors, id: \.self) { author in
                             Button {
-                                appState.selectedAuthor = author
+                                updateFilters { $0.author = author }
                             } label: {
-                                if appState.selectedAuthor == author {
+                                if controller.library.filters.author == author {
                                     Label(author, systemImage: "checkmark")
                                 } else {
                                     Text(author)
@@ -412,15 +625,15 @@ struct SidebarView: View {
                     }
                 }
 
-                if !appState.availableYears.isEmpty {
+                if !context.years.isEmpty {
                     Menu("Year") {
-                        Button("Any Year") { appState.selectedYear = nil }
+                        Button("Any Year") { updateFilters { $0.year = nil } }
                         Divider()
-                        ForEach(appState.availableYears, id: \.self) { year in
+                        ForEach(context.years, id: \.self) { year in
                             Button {
-                                appState.selectedYear = year
+                                updateFilters { $0.year = year }
                             } label: {
-                                if appState.selectedYear == year {
+                                if controller.library.filters.year == year {
                                     Label(year.formatted(.number.grouping(.never)), systemImage: "checkmark")
                                 } else {
                                     Text(year.formatted(.number.grouping(.never)))
@@ -430,26 +643,34 @@ struct SidebarView: View {
                     }
                 }
 
-                if !appState.availablePropertyKeys.isEmpty {
-                    Menu("Property") {
-                        Button("Any Property") {
-                            appState.selectedPropertyKey = nil
-                            appState.selectedPropertyValue = nil
+                if !context.propertyKeys.isEmpty {
+                    Button("Any Property") {
+                        updateFilters {
+                            $0.propertyKey = nil
+                            $0.propertyValue = nil
                         }
-                        Divider()
-                        ForEach(appState.availablePropertyKeys, id: \.self) { key in
-                            Menu(propertyLabel(key)) {
-                                ForEach(appState.availablePropertyValues(for: key), id: \.self) { value in
-                                    Button {
-                                        appState.selectedPropertyKey = key
-                                        appState.selectedPropertyValue = value
-                                    } label: {
-                                        if appState.selectedPropertyKey == key,
-                                           appState.selectedPropertyValue == value {
-                                            Label(value, systemImage: "checkmark")
-                                        } else {
-                                            Text(value)
-                                        }
+                        if controller.library.sortOrder == .debateImportanceDescending {
+                            context.selectSortOrder(.modifiedNewest)
+                        }
+                    }
+                    ForEach(context.propertyKeys, id: \.self) { key in
+                        Menu(propertyLabel(key)) {
+                            ForEach(context.propertyValues[key] ?? [], id: \.self) { value in
+                                Button {
+                                    updateFilters {
+                                        $0.propertyKey = key
+                                        $0.propertyValue = value
+                                    }
+                                    if key != "debate_importance_scope",
+                                       controller.library.sortOrder == .debateImportanceDescending {
+                                        context.selectSortOrder(.modifiedNewest)
+                                    }
+                                } label: {
+                                    if controller.library.filters.propertyKey == key,
+                                       controller.library.filters.propertyValue == value {
+                                        Label(value, systemImage: "checkmark")
+                                    } else {
+                                        Text(value)
                                     }
                                 }
                             }
@@ -457,59 +678,196 @@ struct SidebarView: View {
                     }
                 }
 
-                if appState.activeMetadataFilterCount > 0 {
+                if activeMetadataFilterCount > 0 {
                     Divider()
-                    Button("Clear Metadata Filters") { appState.clearMetadataFilters() }
+                    Button("Clear Metadata Filters", action: clearMetadataFilters)
                 }
-            } label: {
-                Image(systemName: appState.activeMetadataFilterCount == 0
-                    ? "line.3.horizontal.decrease.circle"
-                    : "line.3.horizontal.decrease.circle.fill")
-                    .frame(width: 20, height: 20)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.glass)
-            .controlSize(.small)
-            .help(appState.activeMetadataFilterCount == 0
-                ? "Filter by metadata"
-                : "\(appState.activeMetadataFilterCount) metadata filters active")
-            .accessibilityLabel("Metadata filters")
-            .accessibilityValue("\(appState.activeMetadataFilterCount) active")
 
-            Menu {
-                ForEach(AppState.NoteSortOrder.allCases) { order in
-                    Button {
-                        appState.noteSortOrder = order
-                    } label: {
-                        if appState.noteSortOrder == order {
-                            Label(order.title, systemImage: "checkmark")
-                        } else {
-                            Text(order.title)
+                Menu("Sort") {
+                    ForEach(NoteSortOrder.allCases) { order in
+                        Button {
+                            context.selectSortOrder(order)
+                        } label: {
+                            if controller.library.sortOrder == order {
+                                Label(order.title, systemImage: "checkmark")
+                            } else {
+                                Text(order.title)
+                            }
                         }
+                        .disabled(
+                            order == .debateImportanceDescending
+                                && !hasScopedDebateImportanceFilter
+                        )
+                    }
+                    if !hasScopedDebateImportanceFilter {
+                        Divider()
+                        Text("Select one Debate Scope before comparing importance")
+                    }
+                }
+
+                if activeLibraryMenuFilterCount > 0 {
+                    Divider()
+                    Button("Clear Library Filters") {
+                        clearResearchFilters()
+                        updateFilters { $0.tag = nil }
+                        clearMetadataFilters()
                     }
                 }
             } label: {
-                Image(systemName: appState.noteSortOrder.symbol)
-                    .frame(width: 20, height: 20)
+                Label(
+                    "Filter",
+                    systemImage: activeLibraryMenuFilterCount == 0
+                        ? "line.3.horizontal.decrease"
+                        : "line.3.horizontal.decrease.circle.fill"
+                )
             }
             .menuStyle(.button)
             .buttonStyle(.glass)
             .controlSize(.small)
-            .help("Sort: \(appState.noteSortOrder.title)")
-            .accessibilityLabel("Sort notes")
-            .accessibilityValue(appState.noteSortOrder.title)
+            .help(libraryFilterHelp)
+            .accessibilityLabel("Library filters")
+            .accessibilityValue(libraryFilterAccessibilityValue)
+            .accessibilityIdentifier("scholium.libraryFilters")
 
-                Spacer(minLength: 0)
-            }
-
-            if !appState.changedSinceReviewPaths.isEmpty {
-                Label("\(appState.changedSinceReviewPaths.count) changed since review", systemImage: "arrow.triangle.2.circlepath")
+            if context.changedSinceReviewCount > 0 {
+                Label("\(context.changedSinceReviewCount) changed since review", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var activeLibraryMenuFilterCount: Int {
+        activeResearchFilterCount
+            + activeMetadataFilterCount
+            + (controller.library.filters.tag == nil ? 0 : 1)
+    }
+
+    private var activeResearchFilterCount: Int {
+        let filters = controller.library.filters
+        return [
+            filters.isChangedSinceReview,
+            filters.needsAttention,
+            filters.hasExplicitConnections,
+            filters.hasMalformedMetadata,
+        ].count(where: { $0 })
+    }
+
+    private var activeMetadataFilterCount: Int {
+        let filters = controller.library.filters
+        return [
+            filters.status != nil,
+            filters.author != nil,
+            filters.year != nil,
+            filters.propertyKey != nil && filters.propertyValue != nil,
+        ].count(where: { $0 })
+    }
+
+    private var hasScopedDebateImportanceFilter: Bool {
+        controller.library.filters.propertyKey == "debate_importance_scope"
+            && controller.library.filters.propertyValue?
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func filterBinding<Value>(
+        _ keyPath: WritableKeyPath<DiscoveryFilterState, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { controller.library.filters[keyPath: keyPath] },
+            set: { value in
+                updateFilters { $0[keyPath: keyPath] = value }
+            }
+        )
+    }
+
+    private func updateFilters(_ update: (inout DiscoveryFilterState) -> Void) {
+        var filters = controller.library.filters
+        update(&filters)
+        controller.replaceFilters(filters)
+    }
+
+    private func clearResearchFilters() {
+        updateFilters {
+            $0.isChangedSinceReview = false
+            $0.needsAttention = false
+            $0.hasExplicitConnections = false
+            $0.hasMalformedMetadata = false
+        }
+    }
+
+    private func clearMetadataFilters() {
+        updateFilters {
+            $0.status = nil
+            $0.author = nil
+            $0.year = nil
+            $0.propertyKey = nil
+            $0.propertyValue = nil
+        }
+        if controller.library.sortOrder == .debateImportanceDescending {
+            context.selectSortOrder(.modifiedNewest)
+        }
+    }
+
+    private var treeContext: SidebarTreeContext {
+        SidebarTreeContext(
+            currentVaultRole: context.currentVaultRole,
+            locationScope: controller.library.locationScope,
+            resolvedIdentityPaths: context.resolvedIdentityPaths,
+            reviewDisplayState: context.reviewDisplayState,
+            openNote: context.openNote,
+            presentScholia: context.presentScholia,
+            requestLifecycle: { controller.requestLifecycle($0) },
+            revealNote: context.revealNote,
+            setAside: context.setAside,
+            moveToTrash: context.moveToTrash,
+            deletePermanently: context.deletePermanently,
+            showError: context.showError
+        )
+    }
+
+    private func moveLifecycleItemToTrash(_ item: LifecycleLocationItem) {
+        Task {
+            do {
+                context.prepareLifecycle(item)
+                defer { context.clearPreparedLifecycle(item.note.relativePath) }
+                try await context.moveToTrash(item.note.relativePath)
+                await reloadLifecycleOverlay(.setAside)
+            } catch {
+                context.showError(
+                    "Could not move this note to Trash. \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    private func deleteLifecycleItemPermanently(_ item: LifecycleLocationItem) {
+        Task {
+            do {
+                context.prepareLifecycle(item)
+                defer { context.clearPreparedLifecycle(item.note.relativePath) }
+                try await context.deletePermanently(item.note.relativePath)
+                await reloadLifecycleOverlay(.trash)
+            } catch {
+                context.showError(
+                    "Could not permanently delete this note. \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    private var libraryFilterHelp: String {
+        activeLibraryMenuFilterCount == 0
+            ? "Filter and sort Library notes"
+            : "\(activeLibraryMenuFilterCount) Library filters active"
+    }
+
+    private var libraryFilterAccessibilityValue: String {
+        let filters = activeLibraryMenuFilterCount == 0
+            ? "No filters active"
+            : "\(activeLibraryMenuFilterCount) filters active"
+        return "\(filters), sorted by \(controller.library.sortOrder.title)"
     }
 
     private func propertyLabel(_ key: String) -> String {
@@ -521,14 +879,21 @@ struct SidebarView: View {
 }
 
 private struct SidebarLifecycleCard: View {
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    let scope: AppState.NoteLocationScope
-    let notes: [Note]
+    let scope: NoteLocationScope
+    let items: [LifecycleLocationItem]
     let isLoading: Bool
+    let errorMessage: String?
+    let onReload: () async -> Void
+    let onOpen: (LifecycleLocationItem) -> Void
+    let onPutBack: (LifecycleLocationItem) -> Void
+    let onReveal: (String) -> Void
+    let onMoveToTrash: (LifecycleLocationItem) -> Void
+    let onDeletePermanently: (LifecycleLocationItem) -> Void
     let onClose: () -> Void
 
-    @State private var pendingPermanentDeletion: Note?
+    @State private var pendingPermanentDeletion: LifecycleLocationItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -546,10 +911,10 @@ private struct SidebarLifecycleCard: View {
 
             HStack {
                 Text(scope.rawValue)
-                    .font(.callout.weight(.semibold))
+                    .font(ScholiumInterfaceTypography.compactEmphasis)
                 Spacer()
                 if !isLoading {
-                    Text(notes.count.formatted())
+                    Text(items.count.formatted())
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -559,72 +924,97 @@ private struct SidebarLifecycleCard: View {
 
             Divider()
 
-            if isLoading {
-                ProgressView("Opening \(scope.rawValue)…")
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, minHeight: 120)
-            } else if notes.isEmpty {
-                ContentUnavailableView(
-                    scope.rawValue,
-                    systemImage: scope == .trash ? "trash" : "archivebox",
-                    description: Text("No notes are currently in \(scope.rawValue).")
-                )
-                .frame(minHeight: 150)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(notes) { note in
-                            Button {
-                                appState.requestOpenNote(note.relativePath)
-                            } label: {
-                                Text(note.title ?? note.displayName)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
+            Group {
+                if isLoading {
+                    ProgressView("Opening \(scope.rawValue)…")
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                } else if let errorMessage {
+                    ContentUnavailableView {
+                        Label("Could Not Open \(scope.rawValue)", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(errorMessage)
+                    } actions: {
+                        Button("Retry") { Task { await onReload() } }
+                    }
+                    .frame(minHeight: 150)
+                } else if items.isEmpty {
+                    ContentUnavailableView(
+                        scope.rawValue,
+                        systemImage: scope == .trash ? "trash" : "archivebox",
+                        description: Text("No notes are currently in \(scope.rawValue).")
+                    )
+                    .frame(minHeight: 150)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(items) { item in
+                                let note = item.note
                                 Button {
-                                    appState.noteLifecycleRequest = .restore(note.relativePath)
+                                    onOpen(item)
                                 } label: {
-                                    Label("Restore…", systemImage: "arrow.uturn.backward")
+                                    Text(note.title ?? note.displayName)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                        .contentShape(Rectangle())
                                 }
-                                if scope == .setAside {
+                                .buttonStyle(.plain)
+                                .contextMenu {
                                     Button {
-                                        moveToTrash(note)
+                                        onPutBack(item)
                                     } label: {
-                                        Label("Move to Trash…", systemImage: "trash")
+                                        Label("Put Back…", systemImage: "arrow.uturn.backward")
                                     }
-                                } else {
-                                    Button(role: .destructive) {
-                                        pendingPermanentDeletion = note
+                                    if scope == .setAside {
+                                        Button {
+                                            moveToTrash(item)
+                                        } label: {
+                                            Label("Move to Trash…", systemImage: "trash")
+                                        }
+                                    } else {
+                                        Button(role: .destructive) {
+                                            pendingPermanentDeletion = item
+                                        } label: {
+                                            Label("Delete Permanently…", systemImage: "trash.slash")
+                                        }
+                                    }
+                                    Divider()
+                                    Button {
+                                        onReveal(note.relativePath)
                                     } label: {
-                                        Label("Delete Permanently…", systemImage: "trash.slash")
+                                        Label("Reveal in Finder", systemImage: "folder")
                                     }
                                 }
-                                Divider()
-                                Button {
-                                    appState.showInFinder(note.relativePath)
-                                } label: {
-                                    Label("Reveal in Finder", systemImage: "folder")
-                                }
-                            }
-                            .accessibilityLabel(note.title ?? note.displayName)
-                            .accessibilityHint("Open note in \(scope.rawValue)")
+                                .accessibilityLabel(note.title ?? note.displayName)
+                                .accessibilityHint("Open note in \(scope.rawValue)")
 
-                            if note.id != notes.last?.id {
-                                Divider().padding(.leading, 12)
+                                if item.id != items.last?.id {
+                                    Divider().padding(.leading, 12)
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        .background {
+            if reduceTransparency {
+                Rectangle()
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            } else {
+                ZStack {
+                    Rectangle().fill(.regularMaterial)
+                    Rectangle()
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.84))
+                }
+            }
+        }
         .frame(minHeight: 170, idealHeight: 280, maxHeight: 360)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
@@ -638,9 +1028,9 @@ private struct SidebarLifecycleCard: View {
             ),
             titleVisibility: .visible
         ) {
-            if let note = pendingPermanentDeletion {
+            if let item = pendingPermanentDeletion {
                 Button("Delete Permanently", role: .destructive) {
-                    deletePermanently(note)
+                    deletePermanently(item)
                 }
             }
             Button("Cancel", role: .cancel) { pendingPermanentDeletion = nil }
@@ -649,31 +1039,23 @@ private struct SidebarLifecycleCard: View {
         }
     }
 
-    private func moveToTrash(_ note: Note) {
-        Task {
-            do {
-                try await appState.moveNoteToTrash(note.relativePath)
-            } catch {
-                appState.showToast("Could not move this note to Trash. \(error.localizedDescription)", kind: .error)
-            }
-        }
+    private func moveToTrash(_ item: LifecycleLocationItem) {
+        onMoveToTrash(item)
     }
 
-    private func deletePermanently(_ note: Note) {
+    private func deletePermanently(_ item: LifecycleLocationItem) {
         pendingPermanentDeletion = nil
-        Task {
-            do {
-                try await appState.deleteNotePermanently(note.relativePath)
-            } catch {
-                appState.showToast("Could not permanently delete this note. \(error.localizedDescription)", kind: .error)
-            }
-        }
+        onDeletePermanently(item)
     }
 }
 
 private struct UnclassifiedClassificationSheet: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+
+    let locationScope: NoteLocationScope
+    let notes: [WindowDocumentLocation]
+    let classify: (String, WorkspaceVaultSlot, String) async throws -> Void
+    let showError: (String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -693,10 +1075,10 @@ private struct UnclassifiedClassificationSheet: View {
 
             Divider()
 
-            if appState.noteLocationScope != .unclassified {
+            if locationScope != .unclassified {
                 ProgressView("Opening Unclassified…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if appState.notes.isEmpty {
+            } else if notes.isEmpty {
                 ContentUnavailableView(
                     "No Unclassified Notes",
                     systemImage: "tray.and.arrow.down",
@@ -705,9 +1087,13 @@ private struct UnclassifiedClassificationSheet: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(appState.notes) { note in
-                            UnclassifiedClassificationRow(note: note)
-                            if note.id != appState.notes.last?.id {
+                        ForEach(notes) { note in
+                            UnclassifiedClassificationRow(
+                                note: note,
+                                classify: classify,
+                                showError: showError
+                            )
+                            if note.id != notes.last?.id {
                                 Divider().padding(.leading, 16)
                             }
                         }
@@ -716,62 +1102,83 @@ private struct UnclassifiedClassificationSheet: View {
                 }
             }
         }
-        .frame(minWidth: 520, idealWidth: 600, minHeight: 300, idealHeight: 460)
+        .frame(minWidth: 0, idealWidth: 600, minHeight: 300, idealHeight: 460)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("scholium.unclassifiedPanel")
     }
 }
 
 private struct UnclassifiedClassificationRow: View {
-    @EnvironmentObject private var appState: AppState
-
-    let note: Note
+    let note: WindowDocumentLocation
+    let classify: (String, WorkspaceVaultSlot, String) async throws -> Void
+    let showError: (String) -> Void
 
     @State private var destinationSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var isClassifying = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(note.title ?? note.displayName)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                Text(note.relativePath)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                noteSummary
+                destinationPicker
+                classifyButton
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Picker("Destination", selection: $destinationSlot) {
-                ForEach(WorkspaceVaultSlot.allCases) { slot in
-                    Text(slot.displayName).tag(slot)
+            VStack(alignment: .leading, spacing: 8) {
+                noteSummary
+                HStack(spacing: 10) {
+                    destinationPicker
+                    classifyButton
                 }
             }
-            .labelsHidden()
-            .frame(width: 130)
-
-            Button("Classify") { classify() }
-                .buttonStyle(.glass)
-                .disabled(isClassifying)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
     }
 
-    private func classify() {
+    private var noteSummary: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(note.title ?? note.displayName)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+            Text(note.relativePath)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var destinationPicker: some View {
+        Picker("Destination", selection: $destinationSlot) {
+            ForEach(WorkspaceVaultSlot.allCases) { slot in
+                Text(slot.displayName).tag(slot)
+            }
+        }
+        .labelsHidden()
+        .frame(width: 130)
+    }
+
+    private var classifyButton: some View {
+        Button("Classify") { performClassification() }
+            .buttonStyle(.glass)
+            .disabled(isClassifying)
+    }
+
+    private func performClassification() {
         isClassifying = true
         Task {
             do {
-                try await appState.classifyUnclassified(
+                try await classify(
                     note.relativePath,
-                    into: destinationSlot,
-                    destination: note.relativePath
+                    destinationSlot,
+                    note.relativePath
                 )
             } catch {
                 isClassifying = false
-                appState.showToast("Could not classify this note. \(error.localizedDescription)", kind: .error)
+                showError("Could not classify this note. \(error.localizedDescription)")
             }
         }
     }
@@ -835,18 +1242,18 @@ struct TreeNode: Identifiable {
     let id: String       // full path
     let name: String     // display name
     let isFolder: Bool
-    let note: Note?      // nil for folders
+    let note: WindowDocumentLocation?      // nil for folders
     let children: [TreeNode]
     let depth: Int
 }
 
 /// Build a folder tree from flat note list
 func buildTree(
-    from notes: [Note],
-    notesAreOrdered: (Note, Note) -> Bool
+    from notes: [WindowDocumentLocation],
+    notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
 ) -> [TreeNode] {
     var roots: [TreeNode] = []
-    var folderMap: [String: [Note]] = [:]
+    var folderMap: [String: [WindowDocumentLocation]] = [:]
 
     for note in notes {
         // Strip KB root prefix (e.g., "papers/", "topics/", "output/")
@@ -916,11 +1323,27 @@ func stripKBRoot(_ path: String) -> String {
 
 // MARK: - Tree Node View
 
-struct TreeNodeView: View {
-    @EnvironmentObject var appState: AppState
+private struct SidebarTreeContext {
+    let currentVaultRole: VaultRole
+    let locationScope: NoteLocationScope
+    let resolvedIdentityPaths: Set<String>
+    let reviewDisplayState: (String) -> HumanReviewDisplayState
+    let openNote: (String, Bool) -> Void
+    let presentScholia: (String) -> Void
+    let requestLifecycle: (NoteLifecycleRequest) -> Void
+    let revealNote: (String) -> Void
+    let setAside: (String) async throws -> Void
+    let moveToTrash: (String) async throws -> Void
+    let deletePermanently: (String) async throws -> Void
+    let showError: (String) -> Void
+}
+
+private struct TreeNodeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let node: TreeNode
     @Binding var expandedFolders: Set<String>
     let activeTab: String?
+    let context: SidebarTreeContext
     let onSelect: (String) -> Void
 
     @State private var pendingDestructiveAction: DestructiveAction?
@@ -938,14 +1361,12 @@ struct TreeNodeView: View {
         if node.isFolder {
             // Folder row
             VStack(spacing: 0) {
-                Button {
-                    if isExpanded { expandedFolders.remove(node.id) }
-                    else { expandedFolders.insert(node.id) }
-                } label: {
+                Button(action: toggleFolder) {
                     HStack(spacing: 6) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        Image(systemName: "chevron.right")
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .frame(width: 12)
                         Image(systemName: isExpanded ? "folder.fill" : "folder")
                             .font(.system(size: 11))
@@ -963,11 +1384,23 @@ struct TreeNodeView: View {
                 }
                 .buttonStyle(.plain)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("scholium.folderRow.\(node.id)")
 
                 // Children
                 if isExpanded {
                     ForEach(node.children) { child in
-                        TreeNodeView(node: child, expandedFolders: $expandedFolders, activeTab: activeTab, onSelect: onSelect)
+                        TreeNodeView(
+                            node: child,
+                            expandedFolders: $expandedFolders,
+                            activeTab: activeTab,
+                            context: context,
+                            onSelect: onSelect
+                        )
+                            .transition(
+                                reduceMotion
+                                    ? .identity
+                                    : .opacity.combined(with: .move(edge: .top))
+                            )
                     }
                 }
             }
@@ -976,7 +1409,12 @@ struct TreeNodeView: View {
             Button {
                 onSelect(note.relativePath)
             } label: {
-                NoteCardRow(note: note, isActive: activeTab == note.relativePath)
+                NoteCardRow(
+                    note: note,
+                    isActive: activeTab == note.relativePath,
+                    vaultRole: context.currentVaultRole,
+                    reviewDisplayState: context.reviewDisplayState(note.relativePath)
+                )
                     .contentShape(Rectangle())
             }
                 .buttonStyle(.plain)
@@ -986,36 +1424,36 @@ struct TreeNodeView: View {
                 .accessibilityValue(
                     CritiquePlacement.isManagedCritiquePath(note.relativePath)
                         ? "Agent-authored Critique"
-                        : appState.currentVaultRole.allowsCritique
+                        : context.currentVaultRole.allowsCritique
                         ? "Work"
-                        : appState.reviewDisplayState(for: note.relativePath).badgeLabel
+                        : context.reviewDisplayState(note.relativePath).badgeLabel
                 )
                 .contextMenu {
                     Button {
-                        appState.requestOpenNote(note.relativePath, inNewTab: true)
+                        context.openNote(note.relativePath, true)
                     } label: {
                         Label("Open in New Tab", systemImage: "plus.square")
                     }
-                    if appState.noteLocationScope == .workspace,
+                    if context.locationScope == .workspace,
                        hasResolvedIdentity(note) {
                         Button {
-                            appState.requestOpenScholia(for: note.relativePath)
+                            context.presentScholia(note.relativePath)
                         } label: {
                             Label("Open Scholia…", systemImage: "text.bubble")
                         }
                     }
                     Divider()
-                    if appState.noteLocationScope == .workspace {
+                    if context.locationScope == .workspace {
                         if !CritiquePlacement.isManagedCritiquePath(note.relativePath) {
                             Button {
-                                appState.noteLifecycleRequest = .duplicate(note.relativePath)
+                                context.requestLifecycle(.duplicate(note.relativePath))
                             } label: {
                                 Label("Duplicate…", systemImage: "plus.square.on.square")
                             }
                             .disabled(!hasResolvedIdentity(note))
                         }
                         Button {
-                            appState.noteLifecycleRequest = .move(note.relativePath)
+                            context.requestLifecycle(.move(note.relativePath))
                         } label: {
                             Label("Move or Rename…", systemImage: "folder")
                         }
@@ -1033,20 +1471,20 @@ struct TreeNodeView: View {
                             Label("Move to Trash…", systemImage: "trash")
                         }
                         .disabled(!hasResolvedIdentity(note))
-                    } else if appState.noteLocationScope == .unclassified {
+                    } else if context.locationScope == .unclassified {
                         Button {
-                            appState.noteLifecycleRequest = .classify(note.relativePath)
+                            context.requestLifecycle(.classify(note.relativePath))
                         } label: {
                             Label("Classify…", systemImage: "tray.and.arrow.down")
                         }
                     } else {
                         Button {
-                            appState.noteLifecycleRequest = .restore(note.relativePath)
+                            context.requestLifecycle(.putBack(note.relativePath))
                         } label: {
-                            Label("Restore…", systemImage: "arrow.uturn.backward")
+                            Label("Put Back…", systemImage: "arrow.uturn.backward")
                         }
                         .disabled(!hasResolvedIdentity(note))
-                        if appState.noteLocationScope == .setAside {
+                        if context.locationScope == .setAside {
                             Button {
                                 pendingDestructiveAction = .trash
                             } label: {
@@ -1064,7 +1502,7 @@ struct TreeNodeView: View {
                     }
                     Divider()
                     Button {
-                        appState.showInFinder(note.relativePath)
+                        context.revealNote(note.relativePath)
                     } label: {
                         Label("Reveal in Finder", systemImage: "folder")
                     }
@@ -1092,7 +1530,22 @@ struct TreeNodeView: View {
         }
     }
 
-    private func destructiveMessage(for action: DestructiveAction?, note: Note) -> String {
+    private func toggleFolder() {
+        let update = {
+            if isExpanded {
+                expandedFolders.remove(node.id)
+            } else {
+                expandedFolders.insert(node.id)
+            }
+        }
+        if reduceMotion {
+            update()
+        } else {
+            withAnimation(.easeInOut(duration: 0.16), update)
+        }
+    }
+
+    private func destructiveMessage(for action: DestructiveAction?, note: WindowDocumentLocation) -> String {
         switch action {
         case .setAside: "Move ‘\(note.title ?? note.displayName)’ out of the active Workspace?"
         case .trash: "Move ‘\(note.title ?? note.displayName)’ to Trash?"
@@ -1101,22 +1554,24 @@ struct TreeNodeView: View {
         }
     }
 
-    private func hasResolvedIdentity(_ note: Note) -> Bool {
-        appState.noteLocationScope == .unclassified
-            || appState.noteIdentityByPath[note.relativePath] != nil
+    private func hasResolvedIdentity(_ note: WindowDocumentLocation) -> Bool {
+        context.locationScope == .unclassified
+            || context.resolvedIdentityPaths.contains(note.relativePath)
     }
 
-    private func perform(_ action: DestructiveAction, note: Note) {
+    private func perform(_ action: DestructiveAction, note: WindowDocumentLocation) {
         pendingDestructiveAction = nil
         Task {
             do {
                 switch action {
-                case .setAside: try await appState.setAsideNote(note.relativePath)
-                case .trash: try await appState.moveNoteToTrash(note.relativePath)
-                case .delete: try await appState.deleteNotePermanently(note.relativePath)
+                case .setAside: try await context.setAside(note.relativePath)
+                case .trash: try await context.moveToTrash(note.relativePath)
+                case .delete: try await context.deletePermanently(note.relativePath)
                 }
             } catch {
-                appState.showToast("Could not \(action.rawValue.lowercased()): \(error.localizedDescription)", kind: .error)
+                context.showError(
+                    "Could not \(action.rawValue.lowercased()): \(error.localizedDescription)"
+                )
             }
         }
     }
@@ -1125,9 +1580,10 @@ struct TreeNodeView: View {
 // MARK: - Note Card Row
 
 struct NoteCardRow: View {
-    @EnvironmentObject private var appState: AppState
-    let note: Note
+    let note: WindowDocumentLocation
     let isActive: Bool
+    let vaultRole: VaultRole
+    let reviewDisplayState: HumanReviewDisplayState
 
     private var modifiedString: String {
         let formatter = RelativeDateTimeFormatter()
@@ -1143,7 +1599,7 @@ struct NoteCardRow: View {
                         .font(.system(size: 13, weight: isActive ? .semibold : .regular))
                         .lineLimit(1)
                         .foregroundStyle(.primary)
-                    if appState.currentVaultRole.allowsHumanReview {
+                    if vaultRole.allowsHumanReview {
                         Image(systemName: reviewBadgeSymbol)
                             .font(.system(size: 10))
                             .foregroundStyle(reviewBadgeColor)
@@ -1151,7 +1607,7 @@ struct NoteCardRow: View {
                             .accessibilityLabel(reviewBadgeLabel)
                     }
                 }
-                Text(modifiedString)
+                Text(secondaryMetadata)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1160,11 +1616,7 @@ struct NoteCardRow: View {
             if let status = note.status {
                 Text(status.capitalized)
                     .font(.caption2)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Color.accentColor.opacity(0.12))
                     .foregroundStyle(.secondary)
-                    .clipShape(Capsule())
                     .fixedSize()
             }
         }
@@ -1186,9 +1638,29 @@ struct NoteCardRow: View {
         reviewDisplayState.badgeLabel
     }
 
-    private var reviewDisplayState: HumanReviewDisplayState {
-        appState.reviewDisplayState(for: note.relativePath)
+    private var secondaryMetadata: String {
+        switch vaultRole {
+        case .sourceCorpus:
+            let author = note.authors.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let year = note.year.map { $0.formatted(.number.grouping(.never)) }
+            let sourceMetadata = [author, year].compactMap { $0 }.filter { !$0.isEmpty }
+            return sourceMetadata.isEmpty ? modifiedString : sourceMetadata.joined(separator: ", ")
+        case .topicKnowledge:
+            return modifiedString
+        case .dissertationControl, .draftProject:
+            let kind = ["kind", "note_type", "document_type"].compactMap {
+                note.property(at: $0)?.scalarString?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.first { !$0.isEmpty }
+            let lifecycle = note.status.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+            }
+            let workMetadata = [kind, lifecycle].compactMap { $0 }.filter { !$0.isEmpty }
+            return workMetadata.isEmpty ? modifiedString : workMetadata.joined(separator: ", ")
+        case .other:
+            return modifiedString
+        }
     }
+
 }
 
 private extension HumanReviewDisplayState {

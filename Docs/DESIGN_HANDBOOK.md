@@ -4,17 +4,21 @@
 
 **Applies to:** Scholium for macOS 26 and later
 
-**Last reviewed:** 2026-07-14
+**Last reviewed:** 2026-07-16
 
-Scholium is a local-first macOS research workbench for sustained humanities research. This handbook defines how Scholium should feel, organize information, communicate authority, and support human–agent work. It guides design, implementation, review, and visual QA. It does not replace target product behavior in `PRODUCT_GUIDE.md`, release-oriented requirements synthesis in `PRD.md`, current implementation status in `IMPLEMENTATION_STATUS.md`, setup information in `README.md`, or Apple documentation.
+Scholium is a local-first macOS research workbench for sustained humanities
+research. This handbook owns stable interface structure, visual language,
+interaction, accessibility, and design review. Product behavior belongs to
+`PRODUCT_GUIDE.md`; release synthesis to `PRD.md`; current evidence to
+`IMPLEMENTATION_STATUS.md`; current reachability to `README.md`, source, and
+tests; Apple platform guidance remains external authority.
 
 **Rule status:** These rules are binding for Scholium’s user-facing interface, interaction behavior, accessibility, visual presentation, and design review. Future work must comply with them unless the researcher explicitly approves a documented exception. A stable rule changes only through an intentional edit to this handbook and, when applicable, the decision record. Current code that diverges from a rule is implementation debt, not an alternative design authority.
 
 **Scope boundary:** This handbook may name existing application state only to
-specify how the interface presents it. It does not define repository,
-persistence, filesystem coordination, indexing, schema, CLI or API, or agent
-execution contracts. A layout or interaction decision recorded here does not
-create new backend behavior.
+specify its presentation. It does not define repository, persistence,
+filesystem, indexing, schema, CLI/API, or agent-execution contracts; a layout
+decision does not create backend behavior.
 
 ## 1. Authority and terminology
 
@@ -34,7 +38,6 @@ Authority is divided deliberately:
 3. `PRD.md` synthesizes the Product Guide and this handbook into release-oriented requirements, gates, risks, and traceability; it does not override either authority.
 4. `IMPLEMENTATION_STATUS.md` maps current behavior to the target and design authorities; it does not redefine them.
 5. The project `README.md`, live construction call sites, executable tests, and scripts establish current implementation status.
-6. The repository `HANDBOOK.md` is only a concise entry point and authority map.
 
 `apple-hig` is the authoritative local reference for Apple Human Interface Guidelines. It owns HIG rules, measurements, patterns, components, and platform distinctions; this handbook applies that guidance to Scholium without duplicating it. The selected Xcode installation's Developer Documentation, SDK, and compiler remain authoritative for implementation-facing API behavior and availability. Apple guidance does not define Scholium's research model.
 
@@ -78,7 +81,7 @@ The target researcher:
 - works primarily with long-form Markdown and may migrate from or interoperate with Obsidian, Zotero, PDFs, and agent tools; none of these integrations is required for the core academic workflow;
 - needs to distinguish sources, interpretation, personal analysis, provisional synthesis, and finished prose;
 - works across independently located vaults and may organize many bodies of writing with ordinary Works folders;
-- may be writing a dissertation now but will continue producing papers, books, teaching material, or other humanities research;
+- may be developing one long-form project now while also producing papers, books, teaching material, or other humanities research;
 - expects precise keyboard and pointer behavior, resizable windows, selectable text, and durable state;
 - may work in English, Chinese, mixed scripts, or another language;
 - values source fidelity and recoverability more than visual novelty.
@@ -164,7 +167,7 @@ an agent to do, and remain responsible for the scope of that instruction.
 - Recommend sibling folders for portability, but do not require relocation into one parent.
 - Keep each vault’s identity, access bookmark, review state, versions, and derived indexes distinct.
 - Show human-readable vault names and roles; reveal filesystem paths only where location is actionable.
-- Do not present the dissertation as the universal model. Use general research language in shared app chrome.
+- Do not present any one long-form project as the universal model. Use general research language in shared app chrome.
 - Let the researcher register several complete Triptychs for substantially different domains. Keep one Triptych per window; open another Triptych in another window rather than adding an in-document Triptych selector.
 
 ### 4.2 Main window
@@ -183,7 +186,7 @@ The ordinary hierarchy is:
 - At narrow widths, hide the inspector before shrinking the document below a usable reading width.
 - Do not add blank strips or fixed spacers merely to align unrelated chrome.
 - Windows receive independent view state, a persisted selected Triptych identity, and focused-window commands. Repositories, identity and workspace registries, indexes, and watchers are shared by vault identity rather than recreated by each window.
-- Keep tabs, navigation history, selection, document mode, search, inspector mode, scroll position, Dialogue/History presentation, and Canvas selection in a per-window session model. Route commands to the focused window or document.
+- Keep tabs, navigation history, selection, document mode, search, inspector mode, scroll position, and Dialogue/History presentation in a per-window session model. Route commands to the focused window or document.
 - At ordinary widths, prefer the prototype's triptych composition: a bounded
   leading navigation sidebar, a dominant centered document, and one optional
   trailing contextual region. A separate note-list column remains appropriate
@@ -200,8 +203,30 @@ The sidebar contains broad peer-level scopes and genuine hierarchy, not a stack 
 
 - Use disclosure only for real folder or research hierarchy.
 - Keep search scope and active filters explicit.
+- Consolidate the Library's research-state, tag, metadata, and sort choices in
+  one compact native **Filter** menu. Keep the Unreviewed and Unqualified
+  judgment toggles visible because they describe the current review task, not
+  merely a hidden query option.
+- Treat Debate Importance as a scoped comparison: expose its numeric ordering only after one Debate Scope filter is active, keep unrated matching Analyses visible after rated ones, and never imply that ratings from different debates form one scale.
 - Search results show ranked snippets and source context; they do not become ordinary alphabetized file rows.
-- Keep global/workspace search, Quick Open, and in-note Find conceptually and visually distinct.
+- Keep shared Search and Quick Open conceptually distinct: Search exposes
+  **This Note**, **This Vault**, and **Triptych**, while Quick Open remains a
+  separate navigation command and Command-F activates **This Note** in the
+  shared Search surface. There is no separate in-note Find interface.
+- Present shared Search as a centered, two-stage Spotlight-style overlay. Its
+  empty state is one broad Liquid Glass search bar over a softly obscured
+  window. A committed query expands that same surface downward, then reveals
+  the three-scope segmented control and native result list. Do not show a large
+  empty results sheet before the user enters text, and do not reproduce
+  Spotlight's app-category chips or Finder actions.
+- Keep lexical results and scholarly expansion visibly distinct. FTS5 results
+  show why and where they matched. A separate **Related** section may show only
+  direct, resolved Connections from one exact Topic title or alias; it never
+  changes Search ranking or implies support through proximity or multi-hop
+  paths.
+- Beta Search does not use vectors, embeddings, AI query interpretation,
+  AI ranking, or a chat-style question box. Scholium's existing Vector-Link
+  terminology names explicit Markdown relations, not a retrieval technology.
 - Preserve selection when focus moves to the editor or inspector.
 - Provide loading, zero-result, malformed, conflict, and inaccessible-vault states without blanking the whole library.
 - Prefer the prototype's leading hierarchy: Scholium and Triptych identity;
@@ -257,17 +282,38 @@ permanent toolbar buttons; menu and keyboard access may be the calmer home.
 
 The document header is a restrained recognition surface above the body. Show only meaningful available values, such as title, author, year, research type, lifecycle or review state, cluster/folder context, and malformed/conflict status.
 
-- Put properties below document commands and above the body.
+- Float Properties and its two frequent document controls above the scrolling
+  body. Reserve enough initial body inset for legibility, but allow scrolled
+  prose to remain visible through the regular glass so the surface reads as a
+  lightweight document control rather than an opaque second toolbar.
 - Use one collapsible property region; do not show empty fields to prove a schema exists.
-- Group researcher-facing properties as **About**, **Source**, **Progress**, **Use**, and **History** when applicable.
+- Group researcher-facing properties as **Research Status**, **About**, **Source**, **Progress**, and **Use** when applicable.
+- Present the YAML `research_unit` mapping as **Research Status**, not as a raw metadata object. Show **Scope** first and show **Limitations** only when non-empty. A role-specific top-level Status may appear in the same visual group but remains semantically separate.
+- Keep Research Status inside the existing collapsible Properties region. It does not receive a new document type, card, panel, inspector mode, toolbar item, or permanent status badge.
+- Creation and modification times belong to app-owned Note History. Do not present them as researcher- or agent-maintained frontmatter fields. Preserve existing timestamp YAML in Source without making it part of the structured default profile.
+- Use the note's role and identity for type and source identity, and use Connections for linked targets and reverse navigation. Do not duplicate backlinks, relation counts, or derived coverage percentages inside Research Status.
 - Reuse the canonical Triptych keys for recurring concepts across Analyses, Topics, and Works; interpret controlled values through the assigned vault role.
 - Keep machine IDs, schema markers, and citation/Zotero keys preserved in source but out of the ordinary summary.
 - Distinguish absent, empty, invalid, derived, and not-applicable values.
 - Use Source mode for exact YAML and structured controls only for targeted changes.
-- Prefer a compact context row whose mode and heading-outline controls sit
-  immediately before the property summary. The complete row, expanded
-  property details, and prose column align to one centered readable measure;
-  properties do not span the full window merely because space is available.
+- Prefer a compact context row whose mode and heading-outline controls share
+  one restrained control group immediately before the role-aware property
+  summary. The complete summary strip is the disclosure target; do not limit
+  expansion to its trailing label or chevron. Show only a few available facts
+  in the strip and progressively omit secondary facts before allowing them to
+  crowd the document.
+- Give the compact controls and Properties strip one height and one vertical
+  centerline. Their combined width, including the inter-column gap, equals the
+  document's centered readable measure. The expanded details panel uses that
+  same complete measure; neither state extends beyond the prose column merely
+  because the editor region is wider. The compact controls and summary use
+  restrained
+  regular Liquid Glass with subtle depth. The expanded panel uses one matching
+  regular material surface with generous whitespace, clear text hierarchy,
+  a soft shadow cast directly onto the scrolling document, and an opaque
+  semantic fallback under Reduce Transparency; it does not nest
+  translucent field cards or span the full window merely because space is
+  available.
 
 ### 4.7 Research inspector
 
@@ -361,9 +407,10 @@ Conflict comparison uses **Return to Editing** and **Reload from Disk** and keep
 - In **Skills**, distinguish **Bundled** from **Triptych** in text. Show only
   bundled skills and user packages discovered at
   `.scholium/skills/<skill-id>/SKILL.md`. Let the researcher edit Triptych-local
-  `SKILL.md` source directly, duplicate a bundled skill, rename or delete a
-  Triptych-local skill, reset a customized bundled skill, and use **Reveal
-  Skills Folder** to open the supported location. Keep invalid packages visible
+  `SKILL.md` source directly, duplicate a permitted official package into a
+  new independent Triptych package, rename or delete a Triptych-local skill,
+  and use **Reveal Skills Folder** to open the supported location. System
+  Skills expose no duplicate action. Keep invalid packages visible
   with an inline structural error and never imply that validation certifies
   philosophical accuracy or methodological quality.
 - Skill management does not add a skill picker, skill source, or one-run skill
@@ -372,7 +419,16 @@ Conflict comparison uses **Return to Editing** and **Reload from Disk** and keep
 - Use **New Triptych…**, **Open Triptych**, **New Window**, and **Manage Triptychs…** consistently. Settings lists complete Triptychs and edits the selected Triptych’s three roots; it never presents Works folders as projects.
 - Keep task-specific settings near their task, except prompt-template mechanics,
   which remain centralized in **Research Guidance** under decision D-028.
-- First launch explains local-first behavior, vault access, generated-state location, and the agent boundary, then gets the researcher to usable folders quickly. After Works is chosen, use a standard Open panel for the one-time authorization of its containing folder so the sibling `.scholium/` directory remains reachable in the sandbox; explain that this is not a fourth vault.
+- First launch is a narrow, no-scroll, multi-step window. Present only one
+  decision at a time: Analyses, Topics, Works, then the bounded authorization
+  beside Works. Use short labels, standard Open panels, enabled/disabled
+  progression, and visible step progress to teach by doing. Longer storage and
+  agent-boundary explanations belong in Help or Settings; show a concise
+  permission explanation only when its Open panel is requested.
+- Use the same preferred width and height as the Triptych Interface. Place both
+  states in the screen's leading-middle region: one half-interface-width from
+  the leading screen edge and vertically centered. Finishing first-run setup
+  transitions once into the Interface and must not re-present the guide.
 - Use standard Open panels for vault and import selection. The 0.1 target has
   no export workflow requiring a Save panel; document, HTML, PDF, and DOCX
   export are deferred future capabilities rather than permanent boundaries.
@@ -393,6 +449,7 @@ intentional primary home:
 | **Toolbar** | A small number of frequent actions for the focused window or document, including the bounded open-note strip, Search, **Open Scholia…**, and paired History/Inspector controls when applicable. |
 | **Document context row** | Document mode, heading outline, compact role-aware Properties, and persistent document-local lifecycle or conflict state. |
 | **Sidebar or content list** | Triptych scope, folders, queues, locations, notes, and result navigation. |
+| **Triptych Interface** | When no note is open, the main window contracts to a narrow left-middle Library anchor. Its top-right control is Triptych management only. Selecting a note reveals the document from behind its trailing edge; management and **Collapse Note** then form one compact group. No Home or dashboard intervenes. |
 | **Inspector or Note History** | Persistent context for the selected note, including Connections, Research information, diagnostics, provenance, and chronological records. |
 | **Popover or pull-down** | Compact transient selection, search, filtering, or a short command choice that does not require a multi-step decision. |
 | **Sheet or centered panel** | Bounded, consequential, or multi-step work such as Attention triage, classification, Scholia, conflict comparison, and checkpoint recovery. |
@@ -414,6 +471,9 @@ Preferred ordinary-width composition:
 - the context row combines the single-icon document-mode pull-down, heading
   outline, and restrained Properties on the same readable measure as the
   document;
+- reader and editor text-size commands remain in the **View** menu with their
+  keyboard shortcuts and per-window persistence rather than occupying the
+  permanent context row;
 - the document remains an opaque, calm, centered prose surface;
 - Inspector and Note History occupy one mutually exclusive trailing region;
 - Scholia appears as one centered, role-aware panel; at wide widths Dialogue
@@ -432,9 +492,11 @@ toolbars, split views, inspectors, lists/outlines, segmented controls, search
 fields, menus, pull-downs, popovers, and sheets so the system supplies correct
 Liquid Glass behavior. Do not port the prototype's CSS, traffic lights, blur,
 shadows, radii, colors, or simulated glass literally. Liquid Glass belongs to
-the navigation and control layer; prose, dense lists, expanded Properties,
-diagnostics, diffs, and exact source remain calm and legible on opaque content
-surfaces with Reduce Transparency and Increase Contrast adaptations.
+the navigation and control layer. Prose, dense lists, diagnostics, diffs, and
+exact source remain calm and legible on opaque content surfaces. The one
+expanded Properties surface may use restrained regular material as a bounded
+continuation of its disclosure control, but its fields remain content-first
+and become opaque under Reduce Transparency.
 
 ## 5. Visual language
 
@@ -453,10 +515,40 @@ surfaces with Reduce Transparency and Increase Contrast adaptations.
 
 ### 5.2 Color and appearance
 
-- Use semantic dynamic colors and respect the system accent color.
+- Feature views use semantic design tokens, never literal hex values or raw
+  palette names. The reviewed light and dark palettes are mapped through
+  `ScholiumColorRole`; WebKit uses the identical role vocabulary.
+- Light appearance uses **Ivory Leaf** `#FFFCF5` for the document,
+  **Parchment** `#EFE9DF` for navigation, **Vellum Surface** `#F7F1E7` for
+  opaque panels, and **Raised Stone** `#DED3C5` for hover, selection, or raised
+  emphasis. Use **Carbon Ink** `#17191C` for primary text, **Sepia Ink**
+  `#514D48` for secondary text, **Muted Ink** `#706B65` for metadata or icons,
+  and **Binding Rule** `#C8BCAE` for borders and separators.
+- **Vermilion Copper** `#A94C22` is the light-appearance accent for primary
+  actions, links, active emphasis, and progress; **Deep Copper** `#7A2917` is
+  its hover, pressed, and increased-contrast companion. Native controls still
+  own their platform focus, selection, disabled, and interaction rendering.
+- In light appearance, notification/highlight uses **Ochre** `#B47617`,
+  Attention uses `#976015`, Confirmed uses `#2C7048`, Destructive uses
+  `#A13235`, and Information uses **Lapis** `#315F88`. Information identifies
+  an informational or source-location cue; it never establishes evidential
+  support or source authority.
+- Dark appearance is an **evening library**, not an inversion of light mode.
+  It uses **Walnut Document** `#302A26`, **Cordovan Navigation** `#3A2B2B`,
+  **Leather Surface** `#3A322D`, and **Raised Walnut** `#423831`. Primary,
+  secondary, and muted text use **Parchment** `#F4E8D5`, `#D4C2AD`, and
+  `#B6A38F`; the separator is `#807064`.
+- Dark accent and notification use **Luminous Copper** `#EF8D5B`, its hover
+  companion `#F5AA7B`, and **Ochre** `#E1B64F`. Dark Attention uses
+  `#E0AB61`, Confirmed uses `#7FC39A`, Destructive uses `#EA817C`, and
+  Information uses **Lapis** `#84B0D4`. Increase Contrast uses the reviewed
+  stronger variants in the shared token implementation rather than replacing
+  either appearance with generic black, white, or system accent colors.
 - Support System, Light, and Dark appearance without hard-coded inversion.
 - Pair every status color with text, a symbol, shape, or accessible value.
 - Reserve red for errors, blockers, destructive effects, or unqualified status; orange for warnings, stale state, or needed attention; green for confirmed positive state. Do not infer philosophical value from these colors.
+- Keep philosophical support teal and incompatibility purple. They are
+  relationship meanings, not green success or red failure.
 - Keep agent authorship explicit in words; a purple tint or sparkle symbol is only a redundant cue.
 - Test Increase Contrast and accent-color changes. Selection, syntax, links, warnings, and focus must remain distinguishable.
 - Target at least 4.5:1 contrast for ordinary small text and 3:1 for large or bold text. Audit every important custom target below 28 by 28 points; do not make it smaller than 20 by 20 points.
@@ -465,7 +557,10 @@ surfaces with Reduce Transparency and Increase Contrast adaptations.
 
 - Use standard control sizes, paddings, list rows, section spacing, and split-view dividers before inventing custom measurements.
 - Use dividers to express real structural boundaries, not as repeated decoration.
-- Keep the document, diffs, diagnostics, and dense properties opaque and legible.
+- Keep the document, diffs, diagnostics, and exact source opaque and legible.
+- A single bounded expanded Properties panel may use regular material when it
+  preserves field contrast and has an opaque Reduce Transparency fallback; do
+  not use clear glass, nested translucent cards, or material for each field.
 - Let native toolbars, sidebars, inspectors, sheets, and popovers receive system materials or Liquid Glass where the active SDK provides it.
 - Under Reduce Transparency, replace material hierarchy with opaque semantic backgrounds and clear separators.
 - Use one restrained accent hierarchy. Avoid nested translucent cards, gradients behind text, and feature-specific miniature design systems.
@@ -532,6 +627,7 @@ Every toolbar action also belongs in a menu. A context menu is never the only pa
 | Authoritative content vs derived diagnostics | Name diagnostics as derived, include scope/freshness/source anchors, and never write them into the note implicitly. |
 | Human Review vs Critique | Human Review qualifies an Analysis or Topic; Critique is an attributed assessment of a Work and never becomes qualification. |
 | Dialogue vs agent edit | Dialogue records concise researcher Comments, agent Responses, and follow-up exchanges; transient transport instructions are not the scholarly record, and authoritative file changes remain detectable through fingerprints and checkpoints. |
+| Declared Research Unit vs derived research coverage | Research Status shows the note's declared scope and material limitations. Connections and any future aggregate coverage view remain derived and must not be written back as proof that a source, debate, or Work has been completely analyzed. |
 | Extracted source vs user note vs agent inference | Separate with headings, labels, and reading order. Do not blend them into one prose block. |
 | Editor undo vs version restore | `Command-Z` reverses editing operations; **Restore This Version** performs a repository transaction. |
 | Navigation history vs tabs vs modes | Back/Forward visits locations; tabs keep bounded documents open; Read/Live Preview/Source changes one document’s presentation. |
@@ -558,7 +654,7 @@ Accessibility is an end-to-end task outcome, not the presence of modifiers.
 - SwiftUI controls retain correct labels, values, selected state, focus, enabled state, and restoration.
 - CodeMirror and WKWebView must expose a truthful editable/read-only role, source value, selection, headings, links, lists, code, tables, callouts, and footnotes.
 - Automatic render or save refresh must not reset focus or VoiceOver to the start of a long note.
-- Graph and canvas views always have a source-anchored list or table equivalent.
+- Graph views always have a source-anchored list or table equivalent.
 - Mixed Chinese/Latin text, marked-text composition, paragraph direction, punctuation, selection, and source ranges require explicit testing.
 
 ### 8.3 Nonvisual state
@@ -575,7 +671,7 @@ current 0.1 Experimental build already satisfies it:
   gesture, or color alone.
 - The tested workflow includes setup, opening and editing notes, Human Review,
   comments, Dialogue presentation, Search, Connections, checkpoint restore,
-  conflict recovery, and Trash/restore.
+  conflict recovery, and Trash/Put Back.
 - Light and Dark appearance, Increase Contrast, Reduce Transparency, Reduce
   Motion, and 100%, 150%, and 200% document scaling preserve usable layout
   without clipping or overlap.
@@ -618,6 +714,11 @@ current 0.1 Experimental build already satisfies it:
 
 - Use persistent labels and controls appropriate to the value type.
 - Group coherent fields; do not nest decorative cards.
+- Make the entire compact Properties summary one standard disclosure target.
+  Keep the expanded panel visually continuous with that trigger while
+  preserving content legibility and one calm material layer.
+- Render Research Unit as the **Research Status** group with an accessible Scope value and, when present, a Limitations list. Preserve an undeclared Research Unit as an honest absent state rather than fabricating scope.
+- Keep app-owned creation and modification time in History rather than editable Properties.
 - Show validation beside the field and preserve the typed value.
 - Keep exact YAML available in Source mode.
 
@@ -694,6 +795,7 @@ Autosave after a short idle delay and safe lifecycle transitions. Do not require
 | External conflict with comparison | **Compare Changes**, **Reload from Disk**, **Keep Editing** | Comparison preserves the buffer and returns to the same decision. |
 | Conflict comparison | **Return to Editing**, **Reload from Disk** | Keep exact current and disk revision identities visible. |
 | Derived refresh failure after commit | **Retry Refresh** | Scope the action to the failed consumer; do not imply that source bytes are unsafe. |
+| Set Aside or Trash recovery | **Put Back** | Return the note to its exact original vault-relative path. Do not expose a destination field, silently rename it, or choose another folder. Report a conflict if that path is occupied. |
 
 Native multi-level editor Undo remains distinct from durable recovery. `Command-Z` reverses editing operations. Triptych checkpoint restoration uses **Restore from Checkpoint…** and the same conflict-aware repository path as an ordinary save.
 
@@ -790,41 +892,45 @@ A design review reports the researcher task, affected object, current problem, r
 | D-002 | Research files remain local by default; app state stays outside vaults. | Scholium trust model; Apple privacy guidance | Stable |
 | D-003 | One exact Markdown source underlies Read, Live Preview, and Source. | Source-fidelity architecture | Stable and implemented |
 | D-004 | Interface chrome uses system typography; Alegreya serves prose, Victor Mono serves exact/source text, the document body is 12pt, headings use 150/130/115/100% scales, and Callout body text inherits Body unless a role-specific exception is approved. | Apple typography guidance plus Scholium reading decision | Stable and implemented |
-| D-005 | Dense document, diff, and diagnostic surfaces are opaque; materials belong mainly to navigation and controls. | Legibility, Reduce Transparency, current macOS appearance | Stable |
-| D-006 | Provenance, relations, coverage, and diagnostics live in a trailing inspector. | Contextual-information model; native inspector convention | Stable and implemented |
+| D-005 | Dense document, diff, diagnostic, and exact-source surfaces are opaque; materials belong mainly to navigation and controls. One bounded expanded Properties panel may use regular material with an opaque Reduce Transparency fallback and no nested translucent fields. | Legibility, Reduce Transparency, current macOS appearance | Stable |
+| D-006 | Provenance, relations, derived aggregate coverage, and diagnostics live in a trailing inspector. A note's declared Research Unit is presented as Research Status in Properties. | Contextual-information model; native inspector convention | Stable and implemented; manual visual/accessibility acceptance pending |
 | D-007 | Read/Live Preview/Source are document modes, not tabs. | Scholium mental model | Stable and implemented |
 | D-008 | Navigation history, in-window tabs, native window tabs, and document modes remain distinct. | Apple navigation/window patterns plus Scholium model | Stable and implemented; sustained interactive multiwindow acceptance pending |
-| D-009 | In-window tabs are bounded and use recognizable document identity; author/year is supplementary. | Canonical interface contract and ambiguity prevention | Stable; current implementation requires alignment |
+| D-009 | In-window tabs are bounded and use recognizable document identity; author/year is supplementary. | Canonical interface contract and ambiguity prevention | Stable and implemented; manual visual and assistive-technology acceptance pending |
 | D-010 | Human Review applies to Analyses and Topics; Works use optional attributed Critique. Dialogue is a concise scholarly Comment-and-Response history; transient copyable instructions are transport, not the permanent record. These meanings remain separate even when presented together. | Product Guide authority model | Stable target; full interactive accessibility acceptance pending |
 | D-011 | Researchers may choose whether to use agents. Dialogue exposes selected-note context, Comments, and Responses, while checkpoints and conflicts provide recovery for direct external edits. | Product Guide authority model | Stable target; full interactive acceptance pending |
 | D-012 | **Saved** describes authoritative source commit; derived refresh has separate state. | Canonical interface contract | Stable and implemented |
 | D-013 | CSS snippets affect documented document selectors only and cannot restyle protected research signals or app chrome. | Source/provenance legibility and security | Stable and implemented |
-| D-014 | Every graph or canvas has a keyboard-accessible, source-anchored list equivalent. | Apple accessibility guidance plus provenance requirements | Stable; source-anchored list implemented, final accessibility audit incomplete |
-| D-015 | Scholium supports research beyond a dissertation. Researchers may organize additional bodies of writing with ordinary Works folders; Scholium does not register or manage projects. | Long-term product mission and Product Guide | Stable and implemented; project-management UI removed |
+| D-015 | Scholium supports multiple kinds of long-form research. Researchers may organize bodies of writing with ordinary Works folders; Scholium does not register or manage projects. | Long-term product mission and Product Guide | Stable and implemented; project-management UI removed |
 | D-016 | Scholium targets macOS 26 or later and uses Liquid Glass as the primary native material for navigation and controls. APIs newer than the selected compiler and SDK remain gated until the toolchain advances. | Personal-app modern platform baseline | Stable |
 | D-017 | Callouts use seven protected semantic roles; all roles except Orientation retain visible text labels. Orientation is presented as an unlabelled guide while its semantic role, source identity, and accessibility metadata remain protected. Visual emphasis never establishes endorsement, evidence, or workflow state. | Knowledge-base semantic specification; Scholium provenance model | Stable and implemented |
 | D-018 | Vector links render as a protected SF Symbol plus note name, retain exact punctuation in Source, and communicate neutral connection, support direction, or symmetric incompatibility through text as well as icon and color. | Scholium relationship model; accessibility requirements | Stable and implemented |
 | D-019 | The default workspace uses Analyses, Topics, and Works as concise researcher-facing labels. Their role-scoped profiles share canonical YAML keys for recurring concepts, retain legacy aliases as read compatibility, and never perform automatic bulk migration. | Research workflow evidence; source-fidelity architecture | Stable and implemented |
 | D-020 | Scholium may register several complete Triptychs; one window belongs to one Triptych, and different Triptychs open in separate windows. Shared services belong to one `WorkspaceStore`; presentation state belongs to each window session. | Product Guide §3.2; window/session isolation | Stable and implemented; sustained interactive acceptance pending |
 | D-021 | Scholium's core academic workflow is completable without Obsidian; Obsidian import and interoperability are optional and must not become a core workflow dependency. | Product Guide §2.1; standalone academic workflow requirement | Stable target; clean-environment acceptance pending |
-| D-022 | Reader and editor text size are controlled and persisted per window without changing source. | Apple accessibility guidance plus per-window presentation model | Stable and implemented; 200% manual acceptance pending |
+| D-022 | Reader and editor text size are controlled and persisted per window without changing source. The complete commands and shortcuts live in the View menu rather than permanent document chrome. | Apple accessibility guidance plus per-window presentation model | Stable and implemented; 200% manual acceptance pending |
 | D-023 | Scholium does not require technical prompt logs, hidden instructions, model parameters, token counts, paragraph-level AI provenance, or a separate AI audit dashboard. Agent responses foreground concise academic change. | Scholarly Dialogue boundary | Stable target; response presentation acceptance pending |
 | D-024 | External agents, Zotero, and research skills are optional extensions; the manual academic workflow remains complete without them. | Product Guide and standalone workflow requirement | Stable target; clean-environment acceptance pending |
 | D-025 | Document, HTML, PDF, and DOCX export are deferred after 0.1, not permanent product prohibitions. | Product Guide release boundary | Stable target; export not in 0.1 |
-| D-026 | **Open Scholia…** is the shared document-local doorway for Comments, role-appropriate Human Review or Critique, and Dialogue. Its role-aware segmented panel combines navigation only; it does not merge records, provenance, completion, or backend behavior. | Scholium interface composition decision | Stable layout target; native Liquid Glass implementation pending |
-| D-027 | `triptych-document-layout.html` is the preferred, non-binding baseline for main-window composition and page logic. It may evolve when a real frontend capability needs a better UI home, provided the document remains primary, semantic distinctions remain visible, and no layout decision is treated as a backend contract. | Researcher-reviewed prototype; native macOS adaptation | Stable design method; native Liquid Glass implementation pending |
+| D-026 | **Open Scholia…** is the shared document-local doorway for Comments, role-appropriate Human Review or Critique, and Dialogue. Its role-aware segmented panel combines navigation only; it does not merge records, provenance, completion, or backend behavior. | Scholium interface composition decision | Stable and implemented; manual accessibility acceptance pending |
+| D-027 | `triptych-document-layout.html` is the preferred, non-binding baseline for main-window composition and page logic. It may evolve when a real frontend capability needs a better UI home, provided the document remains primary, semantic distinctions remain visible, and no layout decision is treated as a backend contract. | Researcher-reviewed prototype; native macOS adaptation | Stable and implemented; manual visual and assistive-technology acceptance pending |
 | D-028 | Prompt templates and assembled technical instructions are configuration, not scholarly workflow content. They are visible and editable only in **Settings → Research Guidance**; Dialogue, Critique, and future research workflows expose scholarly inputs and a direct Settings link but no template picker, preview, or one-run prompt editor. | Researcher-approved prompt-mechanics boundary; Settings and text-entry guidance | Stable target; current Critique interface requires alignment |
-| D-029 | **Research Guidance** manages both **Prompt Templates** and **Skills** while preserving them as distinct item types. User skills are editable file-backed packages discovered only at `.scholium/skills/<skill-id>/SKILL.md`; the workflow UI gains no skill picker or one-run override. | Researcher-approved skill-management boundary; local-first storage and Settings guidance | Stable target; implementation required |
+| D-029 | **Research Guidance** manages both **Prompt Templates** and **Skills** while preserving them as distinct item types. User skills are editable file-backed packages discovered only at `.scholium/skills/<skill-id>/SKILL.md`; the workflow UI gains no skill picker or one-run override. Permitted official packages duplicate under a new independent identifier; protected packages expose no reset or replacement path. | Researcher-approved skill-management boundary; local-first storage and Settings guidance | Stable and implemented; final Beta accessibility acceptance pending |
 | D-030 | **Recent Notes** is a per-window, vault-qualified, bounded MRU list exposed through the Navigate menu. It remains independent of chronological Back/Forward history and derived Search state, persists with the window session, and adds no permanent chrome. | Researcher return-to-work task; Apple macOS menu and recents conventions | Stable and implemented |
+| D-031 | Beta Search uses deterministic local FTS5 retrieval. Exact Topic title or alias resolution may expose direct resolved graph connections in a separate Related section; graph relations never alter lexical ranking. Vector search, embeddings, AI ranking, and chat-style query interpretation are excluded from Beta. | Researcher-approved scholarly retrieval boundary | Stable and implemented; bounded Title/Alias/Heading/Body ranking acceptance passes, while broader evaluation remains pending |
+| D-032 | Scholium has no Triptych Home. With no selected note, the narrow left-middle Library is the **Triptych Interface**. Its navigation material extends through a visually titleless native window frame while preserving the standard traffic-light controls and accessible window identity. Its fixed-size top-trailing ellipsis has no redundant disclosure indicator. Selecting a note keeps that Interface fixed and reveals the document toward its trailing side; **Collapse Note** retracts it without discarding the open-tab session. The Interface is visually above the document like a document box or drawer. The resize is calm, spatially coherent, interruptible, and immediate under Reduce Motion. | Researcher-approved simplification; document-first principle; Apple window and motion guidance | Stable and implemented; clean-account plus retract/reveal focused automation pass, while manual motion and assistive-technology acceptance remain pending |
+| D-033 | Research Unit is a minimal YAML scope declaration presented as **Research Status** inside Properties. It stores only Scope and optional Limitations, creates no new note type or panel, and never stores app-owned timestamps or graph-derived coverage. | Researcher-approved epistemic-scope model; Apple hierarchy, progressive-disclosure, and concise-label guidance | Stable and implemented; new Analysis creation enforces Scope, while dedicated long-source progress and manual visual/accessibility acceptance remain pending |
+| D-034 | The floating document context surface contains one restrained mode/outline control group and one role-aware Properties disclosure. Both compact surfaces share one height and centerline; their complete combined width equals the document measure, and the expanded single-layer panel uses that same width. Scrolled prose remains perceptible through the glass beneath a soft shadow. Secondary facts disappear before crowding, and text-size commands remain in View. | Researcher-approved prototype refinement; Apple disclosure, toolbar-frequency, materials, motion, and accessibility guidance | Stable and implemented; focused geometry and disclosure automation plus disposable-fixture visual inspection pass, while Reduce Transparency, Increase Contrast, VoiceOver, and Full Keyboard Access acceptance remain pending |
+| D-035 | Scholium uses one semantic color-token vocabulary across native and WebKit surfaces. The approved light appearance combines Ivory Leaf, Parchment, Carbon Ink, Vermilion Copper, and a plural semantic chorus; the approved dark appearance is an evening-library composition of Walnut, Cordovan, Parchment, and Luminous Copper rather than a mechanical inversion. Attention, Confirmed, Destructive, Information, teal Support, plum Incompatible, and explicit violet Agent Authorship remain distinct and never establish philosophical value by color alone. | Researcher-approved layered-humanist palette; Apple semantic-color, appearance, contrast, and non-color-cue guidance | Stable and implemented; automated light/dark token-value, vocabulary, relationship-variant, and foreground-contrast checks pass, while full manual inactive-window and accessibility appearance acceptance remains pending |
 
 ## 12. Future and unresolved design questions
 
 Do not present these as completed behavior:
 
 - sustained interactive acceptance of restored multiwindow sessions and native window grouping;
-- in-note Find, heading outline, saved-search management, and Recent Notes are implemented;
+- final usability evaluation for heading outline, saved-search management, and Recent Notes;
 - sustained manual VoiceOver, Full Keyboard Access, Voice Control, contrast, scaling, and localization verification across the CodeMirror/WebKit boundary;
-- final keyboard and assistive-technology acceptance for the implemented view-only Canvas and source-anchored list presentation;
+- keyboard and assistive-technology acceptance must be re-established before
 - whether Quick Open should remain a sheet or become a lightweight keyboard-first panel after focus-restoration testing;
 - the most compact usable presentation for multi-note Dialogue entries in Note History;
 - the final preservation modes for verbose or trivial Comments and richer
