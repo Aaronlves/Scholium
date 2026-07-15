@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-XCODE="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+XCODE="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 DERIVED="/tmp/Scholium-Xcode-QA"
 APP="/tmp/Scholium-QA.app"
 FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${HOME}/Desktop/TestVaults}"

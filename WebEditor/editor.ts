@@ -771,6 +771,7 @@ class LivePreviewPlugin {
 const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
   decorations: (value: LivePreviewPlugin) => value.decorations,
 });
+const livePreviewMode = [livePreview, EditorView.lineWrapping];
 
 let dirty = false;
 /** @type {number | null} */
@@ -912,7 +913,7 @@ const editor = new EditorView({
       researcherCommentField,
       researcherCommentActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
-      modeCompartment.of(livePreview),
+      modeCompartment.of(livePreviewMode),
       EditorView.contentAttributes.of({
         "aria-label": "Markdown source editor",
         role: "textbox",
@@ -973,7 +974,7 @@ webkitWindow.scholiumEditor = {
   /** @param {string} mode */
   setMode(mode: string) {
     editor.dispatch({
-      effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreview : []),
+      effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : []),
     });
     editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
     editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");

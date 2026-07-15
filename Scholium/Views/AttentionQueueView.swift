@@ -1,15 +1,31 @@
+import ScholiumContracts
 import SwiftUI
-import ScholiumCore
+
+/// Window-owned Attention projection. Derived items and refresh status are
+/// supplied by the root; opening a result remains a typed Discovery intent.
+struct AttentionQueueContext {
+    let items: [AttentionQueueItem]
+    let errorMessage: String?
+    let isRefreshing: Bool
+    let dismissalDays: Int
+    let refresh: () async -> Void
+}
 
 struct AttentionQueueView: View {
-    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var controller: DiscoveryController
     @Environment(\.dismiss) private var dismiss
+    let context: AttentionQueueContext
     @State private var filter = AttentionQueueFilter()
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var dismissalLedgerData = Data()
 
+    init(controller: DiscoveryController, context: AttentionQueueContext) {
+        self.controller = controller
+        self.context = context
+    }
+
     private var allItems: [AttentionQueueItem] {
-        appState.workspaceCatalog?.attention ?? []
+        context.items
     }
 
     private var visibleItems: [AttentionQueueItem] {
@@ -40,42 +56,33 @@ struct AttentionQueueView: View {
 
             Divider()
 
-            HStack(spacing: 12) {
-                Picker("Kind", selection: kindBinding) {
-                    Text("All Attention").tag(AttentionQueueKind?.none)
-                    ForEach(AttentionQueueKind.allCases, id: \.self) { kind in
-                        Text(kind.displayName).tag(Optional(kind))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    kindPicker
+                    Spacer()
+                    refreshControls
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    kindPicker
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 12) {
+                        refreshControls
                     }
                 }
-                .frame(maxWidth: 280)
-
-                Spacer()
-
-                if dismissedCount > 0 {
-                    Text("\(dismissedCount) dismissed")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .help("Dismissed items return after \(dismissalDurationText).")
-                }
-                if appState.isRefreshingWorkspaceCatalog {
-                    ProgressView("Refreshing Attention")
-                        .controlSize(.small)
-                }
-                Button("Refresh") { Task { await appState.refreshWorkspaceCatalog() } }
-                    .disabled(appState.isRefreshingWorkspaceCatalog)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
 
             Divider()
 
-            if let error = appState.workspaceCatalogError {
+            if let error = context.errorMessage {
                 ContentUnavailableView(
                     "Could Not Refresh Attention",
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
-            } else if visibleItems.isEmpty, !appState.isRefreshingWorkspaceCatalog {
+            } else if visibleItems.isEmpty, !context.isRefreshing {
                 ContentUnavailableView(
                     filter.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         ? "No Items in This View"
@@ -121,10 +128,10 @@ struct AttentionQueueView: View {
             }
         }
         .searchable(text: queryBinding, placement: .toolbar, prompt: "Search Attention")
-        .frame(minWidth: 720, idealWidth: 820, minHeight: 520, idealHeight: 620)
+        .frame(minWidth: 0, idealWidth: 820, minHeight: 520, idealHeight: 620)
         .task {
             pruneExpiredDismissals()
-            await appState.refreshWorkspaceCatalog()
+            await context.refresh()
         }
     }
 
@@ -132,12 +139,38 @@ struct AttentionQueueView: View {
         Binding(get: { filter.kind }, set: { filter.kind = $0 })
     }
 
+    private var kindPicker: some View {
+        Picker("Kind", selection: kindBinding) {
+            Text("All Attention").tag(AttentionQueueKind?.none)
+            ForEach(AttentionQueueKind.allCases, id: \.self) { kind in
+                Text(kind.displayName).tag(Optional(kind))
+            }
+        }
+        .frame(maxWidth: 280)
+    }
+
+    @ViewBuilder
+    private var refreshControls: some View {
+        if dismissedCount > 0 {
+            Text("\(dismissedCount) dismissed")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .help("Dismissed items return after \(dismissalDurationText).")
+        }
+        if context.isRefreshing {
+            ProgressView("Refreshing Attention")
+                .controlSize(.small)
+        }
+        Button("Refresh") { Task { await context.refresh() } }
+            .disabled(context.isRefreshing)
+    }
+
     private var queryBinding: Binding<String> {
         Binding(get: { filter.query }, set: { filter.query = $0 })
     }
 
     private var normalizedDismissalDays: Int {
-        AttentionPreferences.normalizedDays(appState.triptychSettings.attentionDismissalDays)
+        AttentionPreferences.normalizedDays(context.dismissalDays)
     }
 
     private var dismissalDurationText: String {
@@ -149,15 +182,13 @@ struct AttentionQueueView: View {
     }
 
     private func sourceDescription(_ item: AttentionQueueItem) -> String {
-        "\(item.note.vaultName) · \(item.note.relativePath)"
-            + (item.locator.map { " · line \($0.line)" } ?? "")
+        "\(item.note.vaultName) — \(item.note.relativePath)"
+            + (item.locator.map { " — line \($0.line)" } ?? "")
     }
 
     private func open(_ item: AttentionQueueItem) {
-        Task {
-            await appState.openWorkspaceReference(item.note, line: item.locator?.line)
-            dismiss()
-        }
+        controller.requestOpen(item.note, sourceLocator: item.locator)
+        dismiss()
     }
 
     private func dismissAttention(_ item: AttentionQueueItem) {

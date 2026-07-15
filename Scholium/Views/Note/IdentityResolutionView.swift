@@ -1,5 +1,5 @@
+import ScholiumContracts
 import SwiftUI
-import ScholiumCore
 
 /// Researcher confirmation for an external rename that cannot be rebound
 /// without choosing among several stable identities.

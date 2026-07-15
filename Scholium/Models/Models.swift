@@ -1,5 +1,5 @@
+import ScholiumContracts
 import Foundation
-import ScholiumCore
 
 struct MarkdownReviewSelection: Equatable, Sendable {
   let startLine: Int
@@ -83,16 +83,16 @@ enum NoteProfile: String, Codable, Hashable {
 
   static func infer(
     vaultRole: VaultRole,
-    frontmatter: [String: FrontmatterValue],
+    frontmatter: [String: YAMLValue],
     relativePath: String
   ) -> Self {
     let resolved = WorkflowProfileResolver.resolve(
       vaultRole: vaultRole,
-      frontmatter: frontmatter.mapValues(\.workflowYAMLValue),
+      frontmatter: frontmatter,
       relativePath: relativePath
     )
     switch resolved {
-    case .paperAnalysisV1: return .paperAnalysis
+    case .analysis, .paperAnalysisV1: return .paperAnalysis
     case .topicMarkdown: return .topicKnowledge
     case .dissertationControlV3, .dissertationControlV4: return .dissertationControl
     case .draftProject: return .draftProject
@@ -154,64 +154,137 @@ enum ResearcherPropertyPolicy {
   }
 }
 
-// MARK: - Note Model
+// MARK: - Window Document Location
 
-struct Note: Codable, Identifiable, Hashable {
-  var id: String { relativePath }
+/// A validated structured edit for the optional Research Status mapping.
+/// Removing the mapping is explicit; an empty or malformed mapping is never
+/// emitted by the Properties editor.
+enum ResearchUnitEdit: Hashable, Sendable {
+  case set(scope: String, limitations: [String])
+  case remove
 
-  let relativePath: String     // e.g. "papers/smith2023-attention.md"
-  let fileName: String         // e.g. "smith2023-attention.md"
-  let displayName: String      // e.g. "smith2023-attention"
-  let kb: KnowledgeBase
-  let profile: NoteProfile
-
-  // Content
-  var frontmatter: [String: FrontmatterValue]
-  var body: String
-  var rawContent: String       // original file content (for diff)
-
-  // Frontmatter convenience accessors
-  var title: String? { frontmatter["title"]?.stringValue }
-  var aliases: [String] {
-    let values = frontmatter["aliases"]?.arrayValue
-      ?? frontmatter["alias"]?.arrayValue
-      ?? []
-    return values
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
-  }
-  var tags: [String] { frontmatter["tags"]?.arrayValue ?? [] }
-  var status: String? {
-    frontmatter["status"]?.stringValue
-      ?? frontmatter["analysis_status"]?.stringValue
-      ?? frontmatter["lifecycle_status"]?.stringValue
-  }
-  var governanceReviewStatus: String? { frontmatter["review_status"]?.stringValue }
-  var prosePermission: String? { frontmatter["prose_permission"]?.stringValue }
-  var year: Int? {
-    frontmatter["year"]?.intValue
-      ?? frontmatter["year"]?.stringValue.flatMap {
-        Int($0.trimmingCharacters(in: .whitespacesAndNewlines))
+  var coreValue: FrontmatterEditValue {
+    switch self {
+    case .set(let scope, let limitations):
+      var values: [String: FrontmatterEditValue] = ["scope": .string(scope)]
+      if !limitations.isEmpty {
+        values["limitations"] = .array(limitations)
       }
+      return .mapping(values)
+    case .remove:
+      return .remove
+    }
   }
-  var authors: [String] { frontmatter["authors"]?.arrayValue ?? [] }
+}
+
+/// One window-visible document location. Workspace documents retain the shared
+/// immutable Application snapshot; Unclassified documents retain the exact Core
+/// document without inventing a vault or portable identity.
+enum WindowDocumentLocation: Identifiable, Hashable, Sendable {
+  enum ID: Hashable, Sendable {
+    case workspace(VaultQualifiedNoteID)
+    case unclassified(String)
+  }
+
+  case workspace(WorkspaceNoteSnapshot)
+  case unclassified(NoteDocument)
+
+  var id: ID {
+    switch self {
+    case .workspace(let snapshot): .workspace(snapshot.id)
+    case .unclassified(let document): .unclassified(document.relativePath)
+    }
+  }
+
+  var workspaceSnapshot: WorkspaceNoteSnapshot? {
+    guard case .workspace(let snapshot) = self else { return nil }
+    return snapshot
+  }
+
+  var document: NoteDocument {
+    switch self {
+    case .workspace(let snapshot): snapshot.document
+    case .unclassified(let document): document
+    }
+  }
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    switch (lhs, rhs) {
+    case (.workspace(let lhs), .workspace(let rhs)):
+      lhs == rhs
+    case (.unclassified(let lhs), .unclassified(let rhs)):
+      lhs.relativePath == rhs.relativePath && lhs.fingerprint == rhs.fingerprint
+    default:
+      false
+    }
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(id)
+    hasher.combine(document.fingerprint)
+    if case .workspace(let snapshot) = self {
+      hasher.combine(snapshot)
+    }
+  }
+}
+
+extension WindowDocumentLocation {
+  var relativePath: String { document.relativePath }
+  var fileName: String { (relativePath as NSString).lastPathComponent }
+  var displayName: String {
+    ((relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
+  }
+  var vaultRole: VaultRole { workspaceSnapshot?.vaultRole ?? .other }
+  var profile: NoteProfile {
+    NoteProfile.infer(
+      vaultRole: vaultRole,
+      frontmatter: frontmatter,
+      relativePath: relativePath
+    )
+  }
+  var kb: KnowledgeBase { profile.knowledgeBase }
+
+  /// Malformed frontmatter remains readable as exact source. Structured
+  /// properties use only Core's parsed projection and never reconstruct bytes.
+  var frontmatter: [String: YAMLValue] { document.parsedFrontmatter }
+  var body: String {
+    document.validationWarnings.isEmpty ? document.body : document.rawContent
+  }
+  var rawContent: String { document.rawContent }
+
+  var title: String? { frontmatter["title"]?.scalarString }
+  var aliases: [String] {
+    (frontmatter["aliases"] ?? frontmatter["alias"])?.appArrayValue ?? []
+  }
+  var tags: [String] { frontmatter["tags"]?.appArrayValue ?? [] }
+  var status: String? { property(at: "status")?.scalarString }
+  var governanceReviewStatus: String? { frontmatter["review_status"]?.scalarString }
+  var prosePermission: String? { frontmatter["prose_permission"]?.scalarString }
+  var year: Int? { frontmatter["year"]?.appIntValue }
+  var authors: [String] { frontmatter["authors"]?.appArrayValue ?? [] }
+  var debateImportance: Int? {
+    guard let rating = property(at: "debate_importance")?.appIntValue,
+          let contract = propertyContract(for: "debate_importance"),
+          contract.containsInteger(rating) else { return nil }
+    return rating
+  }
   var doi: String? {
-    frontmatter["doi"]?.stringValue ?? frontmatter["DOI"]?.stringValue
+    frontmatter["doi"]?.scalarString ?? frontmatter["DOI"]?.scalarString
   }
   var isbn: String? {
-    frontmatter["isbn"]?.stringValue ?? frontmatter["ISBN"]?.stringValue
+    frontmatter["isbn"]?.scalarString ?? frontmatter["ISBN"]?.scalarString
   }
   var zoteroCitationKey: String? {
-    frontmatter["zotero_citation_key"]?.stringValue
-      ?? frontmatter["citation_key"]?.stringValue
-      ?? frontmatter["citationKey"]?.stringValue
-      ?? frontmatter["citationkey"]?.stringValue
-      ?? frontmatter["citekey"]?.stringValue
+    frontmatter["zotero_citation_key"]?.scalarString
+      ?? frontmatter["citation_key"]?.scalarString
+      ?? frontmatter["citationKey"]?.scalarString
+      ?? frontmatter["citationkey"]?.scalarString
+      ?? frontmatter["citekey"]?.scalarString
   }
   var zoteroKey: String? {
-    frontmatter["zotero_item_key"]?.stringValue
-      ?? frontmatter["zoteroKey"]?.stringValue
-      ?? frontmatter["zotero-key"]?.stringValue
+    frontmatter["zotero_item_key"]?.scalarString
+      ?? frontmatter["zoteroKey"]?.scalarString
+      ?? frontmatter["zotero-key"]?.scalarString
   }
   var zoteroSourceIdentity: ZoteroSourceIdentity {
     ZoteroSourceIdentity(
@@ -224,288 +297,167 @@ struct Note: Codable, Identifiable, Hashable {
       year: year
     )
   }
-  var created: Date? { property(at: "created")?.dateValue }
-  var modified: Date? { property(at: "updated")?.dateValue }
+  var researchUnit: ResearchUnitDeclaration {
+    ResearchUnitDeclaration(frontmatter: document.parsedFrontmatter)
+  }
+  var created: Date? { property(at: "created")?.appDateValue }
+  var modified: Date? { property(at: "updated")?.appDateValue }
 
-  // App-managed fields (not in file frontmatter, stored in app index)
-  var isReviewed: Bool
-  var reviewedAt: Date?
-  var wordCount: Int
-  var linkCount: Int
-  var backlinkCount: Int
-  var fileModifiedAt: Date     // filesystem mtime
-
-  init(
-    relativePath: String,
-    frontmatter: [String: FrontmatterValue],
-    body: String,
-    rawContent: String,
-    vaultRole: VaultRole = .other,
-    isReviewed: Bool = false,
-    reviewedAt: Date? = nil,
-    fileModifiedAt: Date = Date()
-  ) {
-    self.relativePath = relativePath
-    self.fileName = (relativePath as NSString).lastPathComponent
-    self.displayName = ((relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
-    self.profile = NoteProfile.infer(
-      vaultRole: vaultRole,
-      frontmatter: frontmatter,
-      relativePath: relativePath
-    )
-    self.kb = profile.knowledgeBase
-    self.frontmatter = frontmatter
-    self.body = body
-    self.rawContent = rawContent
-    self.isReviewed = isReviewed
-    self.reviewedAt = reviewedAt
-    self.wordCount = body.split(separator: " ").count
-    self.linkCount = 0
-    self.backlinkCount = 0
-    self.fileModifiedAt = fileModifiedAt
+  var isReviewed: Bool {
+    guard let snapshot = workspaceSnapshot,
+          let reviewed = snapshot.review?.reviewedFingerprint else { return false }
+    return reviewed == snapshot.fingerprint
+  }
+  var reviewedAt: Date? { nil }
+  var wordCount: Int { body.split(whereSeparator: \.isWhitespace).count }
+  var linkCount: Int { workspaceSnapshot?.graphCounts.outgoing ?? 0 }
+  var backlinkCount: Int { workspaceSnapshot?.graphCounts.incoming ?? 0 }
+  var fileModifiedAt: Date {
+    workspaceSnapshot?.fileMetadata.modificationDate ?? .distantPast
   }
 
-  func property(at keyPath: String) -> FrontmatterValue? {
+  var schemaProfile: SchemaProfileID {
+    workspaceSnapshot?.schemaProfile
+      ?? WorkflowProfileResolver.resolve(
+        vaultRole: vaultRole,
+        frontmatter: frontmatter,
+        relativePath: relativePath
+      )
+  }
+
+  func property(at keyPath: String) -> YAMLValue? {
     let parts = keyPath.split(separator: ".", maxSplits: 1).map(String.init)
-    let root = frontmatter[parts[0]] ?? (TriptychProperty.legacyAliases[parts[0]] ?? [])
-      .compactMap { frontmatter[$0] }
-      .first
+    guard let rootKey = parts.first else { return nil }
+    let contract = propertyContract(for: rootKey)
+    let canonicalKey = contract?.canonicalKey ?? rootKey
+    let root = frontmatter[canonicalKey]
+      ?? contract?.legacyAliases.lazy.compactMap { frontmatter[$0] }.first
     guard let root else { return nil }
     guard parts.count == 2 else { return root }
-    guard case .dictionary(let values) = root, let value = values[parts[1]] else { return nil }
-    return .string(value)
+    guard case .object(let values) = root else { return nil }
+    return values[parts[1]]
+  }
+
+  /// Prefer the note's resolved profile, then consult the complete Core
+  /// catalog for compatibility projections whose semantic home is another
+  /// profile. This preserves legacy readability without restating aliases or
+  /// constraints in the app target.
+  private func propertyContract(for key: String) -> PropertyContract? {
+    if let contract = PropertyContractCatalog.contract(for: key, profile: schemaProfile) {
+      return contract
+    }
+    for profile in SchemaProfileID.allCases {
+      if let contract = PropertyContractCatalog.contract(for: key, profile: profile) {
+        return contract
+      }
+    }
+    return nil
   }
 
   var filterableProperties: [String: [String]] {
     var result: [String: [String]] = [:]
     for (key, value) in frontmatter {
-      if case .dictionary(let nested) = value {
-        for (nestedKey, nestedValue) in nested {
-          result["\(key).\(nestedKey)"] = [nestedValue]
+      if case .object(let nested) = value {
+        for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
+          result["\(key).\(path)"] = [nestedValue]
         }
       } else {
-        result[key] = value.filterValues
+        result[key] = value.appFilterValues
       }
     }
-    for canonicalKey in TriptychProperty.legacyAliases.keys where result[canonicalKey] == nil {
+    let canonicalKeys = Set(SchemaProfileID.allCases.flatMap { profile in
+      PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
+    })
+    for canonicalKey in canonicalKeys where result[canonicalKey] == nil {
       if let value = property(at: canonicalKey) {
-        result[canonicalKey] = value.filterValues
+        result[canonicalKey] = value.appFilterValues
       }
     }
     return result
   }
 }
 
-// MARK: - Frontmatter Value
-
-enum FrontmatterValue: Codable, Hashable {
-  case string(String)
-  case int(Int)
-  case double(Double)
-  case bool(Bool)
-  case date(Date)
-  case array([String])
-  case dictionary([String: String])
-
-  var stringValue: String? {
-    if case .string(let v) = self { return v }; return nil
-  }
-  var intValue: Int? {
-    if case .int(let v) = self { return v }; return nil
-  }
-  var boolValue: Bool? {
-    if case .bool(let v) = self { return v }; return nil
-  }
-  var dateValue: Date? {
-    if case .date(let v) = self { return v }
-    if case .string(let v) = self {
-      let formatter = ISO8601DateFormatter()
-      formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-      return formatter.date(from: v)
+private extension PropertyContract {
+  func containsInteger(_ value: Int) -> Bool {
+    for constraint in constraints {
+      if case .integerRange(let minimum, let maximum) = constraint {
+        return (minimum...maximum).contains(value)
+      }
     }
-    return nil
-  }
-  var arrayValue: [String] {
-    if case .array(let v) = self { return v }
-    if case .string(let v) = self { return [v] }
-    return []
-  }
-  var dictValue: [String: String]? {
-    if case .dictionary(let v) = self { return v }; return nil
-  }
-
-  var workflowYAMLValue: YAMLValue {
-    switch self {
-    case .string(let value): .string(value)
-    case .int(let value): .integer(value)
-    case .double(let value): .double(value)
-    case .bool(let value): .boolean(value)
-    case .date(let value): .string(value.formatted(.iso8601))
-    case .array(let values): .array(values.map(YAMLValue.string))
-    case .dictionary(let values): .object(values.mapValues(YAMLValue.string))
-    }
-  }
-
-  /// Stable, human-readable values suitable for equality filters. Nested
-  /// dictionaries are intentionally excluded because flattening them would
-  /// erase provenance and structure.
-  var filterValues: [String] {
-    switch self {
-    case .string(let value): [value]
-    case .int(let value): [String(value)]
-    case .double(let value): [String(value)]
-    case .bool(let value): [value ? "true" : "false"]
-    case .date(let value): [value.formatted(.iso8601.year().month().day())]
-    case .array(let values): values
-    case .dictionary: []
-    }
+    return false
   }
 }
 
-// MARK: - Frontmatter Schema (Per-KB Field Definitions)
-
-struct FrontmatterSchema: Codable, Hashable {
-  let kb: KnowledgeBase
-  let fields: [FieldDefinition]
-
-  struct FieldDefinition: Codable, Hashable, Identifiable {
-    var id: String { key }
-    let key: String
-    let label: String
-    let type: FieldType
-    let required: Bool
-    let autoFilled: Bool
-    let description: String?
-    let allowedValues: [String]?  // for enum/status fields
-
-    enum FieldType: String, Codable, Hashable {
-      case string
-      case text          // multiline string
-      case number
-      case date
-      case boolean
-      case tags          // array of strings, tag-style UI
-      case array         // array of strings
-      case `enum`        // pick from allowedValues
-      case zoteroKey     // special: Zotero item key
-      case doi           // special: DOI with link
+extension YAMLValue {
+  var appArrayValue: [String] {
+    switch self {
+    case .array(let values):
+      values.map(\.displayScalar)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    case .string(let value):
+      value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [value]
+    default:
+      scalarString.map { [$0] } ?? []
     }
   }
 
-  static let papers = FrontmatterSchema(kb: .papers, fields: [
-    FieldDefinition(key: "title", label: "Title", type: .string, required: true, autoFilled: false, description: "Title of the analyzed source.", allowedValues: nil),
-    FieldDefinition(key: "authors", label: "Authors", type: .array, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "year", label: "Year", type: .number, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "type", label: "Type", type: .enum, required: false, autoFilled: false, description: "Publication form, not philosophical role.", allowedValues: ["journal_article", "book", "book_chapter", "handbook_chapter", "encyclopedia_entry", "thesis", "manuscript", "other"]),
-    FieldDefinition(key: "tags", label: "Tags", type: .tags, required: false, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "access", label: "Access", type: .enum, required: false, autoFilled: false, description: "Extent of source material available for the analysis.", allowedValues: ["full_text", "partial_text", "metadata_only", "unavailable"]),
-    FieldDefinition(key: "text_reliability", label: "Text Reliability", type: .enum, required: false, autoFilled: false, description: "Reliability of the text actually consulted.", allowedValues: ["verified", "usable_with_caution", "unreliable"]),
-    FieldDefinition(key: "locators", label: "Locators", type: .enum, required: false, autoFilled: false, description: "Whether citations can be checked at stable locations.", allowedValues: ["reliable", "partial", "unverified", "unavailable"]),
-    FieldDefinition(key: "status", label: "Status", type: .enum, required: false, autoFilled: false, description: "State of the analysis, not a judgment about the source.", allowedValues: ["draft", "complete", "reviewed"]),
-    FieldDefinition(key: "relevance", label: "Relevance", type: .number, required: false, autoFilled: false, description: "Integer from 1 to 10 for local research relevance; not source quality.", allowedValues: nil),
-    FieldDefinition(key: "created", label: "Created", type: .date, required: false, autoFilled: true, description: "Analysis creation date when the vault records it.", allowedValues: nil),
-    FieldDefinition(key: "updated", label: "Updated", type: .date, required: false, autoFilled: true, description: "Updated on a successful save.", allowedValues: nil),
-  ])
-
-  static let topics = FrontmatterSchema(kb: .topics, fields: [
-    FieldDefinition(key: "title", label: "Title", type: .string, required: false, autoFilled: false, description: "Optional Obsidian property; filename and headings remain valid structure.", allowedValues: nil),
-    FieldDefinition(key: "aliases", label: "Aliases", type: .array, required: false, autoFilled: false, description: "Alternative names used for finding and linking the topic.", allowedValues: nil),
-    FieldDefinition(key: "tags", label: "Tags", type: .tags, required: false, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "status", label: "Status", type: .enum, required: false, autoFilled: false, description: "Development of the note, not settlement of the topic.", allowedValues: ["seed", "developing", "maintained"]),
-    FieldDefinition(key: "created", label: "Created", type: .date, required: false, autoFilled: false, description: "Preserved only when the note already uses it.", allowedValues: nil),
-    FieldDefinition(key: "updated", label: "Updated", type: .date, required: false, autoFilled: false, description: "Preserved only when the note already uses it; topic saves do not inject YAML.", allowedValues: nil),
-  ])
-
-  static let output = FrontmatterSchema(kb: .output, fields: [
-    FieldDefinition(key: "title", label: "Title", type: .string, required: true, autoFilled: false, description: "Title of the work.", allowedValues: nil),
-    FieldDefinition(key: "authors", label: "Authors", type: .array, required: false, autoFilled: false, description: "Use for co-authored work; omit for an ordinary single-author vault.", allowedValues: nil),
-    FieldDefinition(key: "kind", label: "Kind", type: .enum, required: false, autoFilled: false, description: "Optional form of the authored work.", allowedValues: ["paper", "chapter", "book", "talk", "review", "teaching", "other"]),
-    FieldDefinition(key: "tags", label: "Tags", type: .tags, required: false, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "status", label: "Status", type: .enum, required: false, autoFilled: false, description: "Production state, not philosophical quality or acceptance probability.", allowedValues: ["planning", "drafting", "revising", "review", "ready", "submitted", "published", "archived"]),
-    FieldDefinition(key: "venue", label: "Venue", type: .string, required: false, autoFilled: false, description: "Journal, publisher, course, event, or other destination.", allowedValues: nil),
-    FieldDefinition(key: "deadline", label: "Deadline", type: .date, required: false, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "created", label: "Created", type: .date, required: false, autoFilled: true, description: "Creation date when the vault records it.", allowedValues: nil),
-    FieldDefinition(key: "updated", label: "Updated", type: .date, required: false, autoFilled: true, description: "Updated on a successful save when already used by the note.", allowedValues: nil),
-  ])
-
-  static let dissertationControl = FrontmatterSchema(kb: .output, fields: [
-    FieldDefinition(key: "note_type", label: "Note Type", type: .string, required: true, autoFilled: false, description: "Dossier, registry, spine, import packet, control note, or other governance class.", allowedValues: nil),
-    FieldDefinition(key: "project_role", label: "Project Role", type: .string, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "claim_type", label: "Claim Type", type: .string, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "status", label: "Working Status", type: .string, required: true, autoFilled: false, description: "Workflow state, not publication status.", allowedValues: nil),
-    FieldDefinition(key: "settlement_dimensions", label: "Settlement Dimensions", type: .array, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "settlement_degree", label: "Settlement Degree", type: .string, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "review_status", label: "Governance Review", type: .string, required: true, autoFilled: false, description: "Philosophical/research approval state; separate from Scholium's exact-bytes review.", allowedValues: nil),
-    FieldDefinition(key: "confidence", label: "Working Confidence", type: .enum, required: true, autoFilled: false, description: nil, allowedValues: ["low", "medium", "high"]),
-    FieldDefinition(key: "prose_permission", label: "Prose Permission", type: .string, required: true, autoFilled: false, description: "Whether and how chapter prose may use this record.", allowedValues: nil),
-    FieldDefinition(key: "last_reviewed", label: "Last Substantive Review", type: .date, required: true, autoFilled: false, description: "Changed only by an explicit substantive-review action.", allowedValues: nil),
-    FieldDefinition(key: "reopen_condition", label: "Reopen Condition", type: .text, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "privacy", label: "Privacy", type: .string, required: true, autoFilled: false, description: nil, allowedValues: nil),
-    FieldDefinition(key: "version", label: "Specification Version", type: .string, required: false, autoFilled: true, description: "Control-note-only field; displayed without normalization.", allowedValues: nil),
-    FieldDefinition(key: "design_decisions", label: "Design Decisions", type: .array, required: false, autoFilled: true, description: "Control-note-only field; displayed read-only.", allowedValues: nil),
-  ])
-
-  static let dissertationControlV4 = FrontmatterSchema(kb: .output, fields: [
-    FieldDefinition(key: "title", label: "Title", type: .string, required: true, autoFilled: false, description: "Should match the first H1.", allowedValues: nil),
-    FieldDefinition(key: "note_type", label: "Note Type", type: .enum, required: true, autoFilled: false, description: "Atomic or control-record identity; temporary argument roles belong in relations.", allowedValues: DissertationControlV4.noteTypes.sorted()),
-    FieldDefinition(key: "project_role", label: "Project Role", type: .enum, required: true, autoFilled: false, description: "Structural role, not premise, conclusion, target, objection, or reply.", allowedValues: DissertationControlV4.projectRoles.sorted()),
-    FieldDefinition(key: "origin", label: "Origin", type: .enum, required: true, autoFilled: false, description: "Whose content or reconstruction the record represents.", allowedValues: DissertationControlV4.origins.sorted()),
-    FieldDefinition(key: "evidential_layer", label: "Evidential Layer", type: .enum, required: true, autoFilled: false, description: "The represented content's evidential space.", allowedValues: DissertationControlV4.evidentialLayers.sorted()),
-    FieldDefinition(key: "status", label: "Working Status", type: .enum, required: true, autoFilled: false, description: "Workflow state, not truth or publication status.", allowedValues: DissertationControlV4.statuses.sorted()),
-    FieldDefinition(key: "settlement_dimensions", label: "Settlement Dimensions", type: .array, required: true, autoFilled: false, description: "Dimensions actually assessed.", allowedValues: DissertationControlV4.settlementDimensions.sorted()),
-    FieldDefinition(key: "settlement_degree", label: "Settlement Degree", type: .enum, required: true, autoFilled: false, description: "Current degree of settlement.", allowedValues: DissertationControlV4.settlementDegrees.sorted()),
-    FieldDefinition(key: "review_status", label: "Governance Review", type: .enum, required: true, autoFilled: false, description: "Human/agent review condition, separate from Scholium file review.", allowedValues: DissertationControlV4.reviewStatuses.sorted()),
-    FieldDefinition(key: "confidence", label: "Working Confidence", type: .enum, required: true, autoFilled: false, description: "Qualitative only.", allowedValues: DissertationControlV4.confidences.sorted()),
-    FieldDefinition(key: "evidence_state", label: "Evidence State", type: .enum, required: true, autoFilled: false, description: "Source-check condition; not a truth verdict.", allowedValues: DissertationControlV4.evidenceStates.sorted()),
-    FieldDefinition(key: "prose_permission", label: "Prose Permission", type: .enum, required: true, autoFilled: false, description: "Whether and how draft prose may use this record.", allowedValues: DissertationControlV4.prosePermissions.sorted()),
-    FieldDefinition(key: "privacy", label: "Privacy", type: .string, required: true, autoFilled: false, description: "Access scope; dissertation-original material remains local-only.", allowedValues: nil),
-    FieldDefinition(key: "reopen_condition", label: "Reopen Condition", type: .text, required: true, autoFilled: false, description: "Condition requiring reconsideration.", allowedValues: nil),
-    FieldDefinition(key: "provenance", label: "Provenance", type: .array, required: true, autoFilled: false, description: "Origins and authorizations; does not confer authority automatically.", allowedValues: nil),
-    FieldDefinition(key: "created_at", label: "Created", type: .date, required: true, autoFilled: false, description: "Mechanical creation date.", allowedValues: nil),
-    FieldDefinition(key: "updated_at", label: "Updated", type: .date, required: true, autoFilled: false, description: "Mechanical edit date; carries no review meaning.", allowedValues: nil),
-    FieldDefinition(key: "last_reviewed", label: "Last Substantive Review", type: .date, required: true, autoFilled: false, description: "Changed only by explicit substantive review.", allowedValues: nil),
-    FieldDefinition(key: "migration_state", label: "Migration State", type: .enum, required: false, autoFilled: false, description: "Only for migration and redirect records.", allowedValues: DissertationControlV4.migrationStates.sorted()),
-    FieldDefinition(key: "question_kind", label: "Question Kind", type: .enum, required: false, autoFilled: false, description: "Required for question records.", allowedValues: DissertationControlV4.controlledFieldValues["question_kind"]?.sorted()),
-    FieldDefinition(key: "claim_kind", label: "Claim Kind", type: .enum, required: false, autoFilled: false, description: "Required for claim records; premise and conclusion remain relations.", allowedValues: DissertationControlV4.controlledFieldValues["claim_kind"]?.sorted()),
-    FieldDefinition(key: "inference_type", label: "Inference Type", type: .enum, required: false, autoFilled: false, description: "Required for inference records.", allowedValues: DissertationControlV4.controlledFieldValues["inference_type"]?.sorted()),
-    FieldDefinition(key: "inference_force", label: "Inference Force", type: .enum, required: false, autoFilled: false, description: "Required for inference records; never a numerical weight.", allowedValues: DissertationControlV4.controlledFieldValues["inference_force"]?.sorted()),
-    FieldDefinition(key: "position_kind", label: "Position Kind", type: .enum, required: false, autoFilled: false, description: "Required for position records.", allowedValues: DissertationControlV4.controlledFieldValues["position_kind"]?.sorted()),
-    FieldDefinition(key: "concept_kind", label: "Concept Kind", type: .enum, required: false, autoFilled: false, description: "Required for concept records.", allowedValues: DissertationControlV4.controlledFieldValues["concept_kind"]?.sorted()),
-    FieldDefinition(key: "case_kind", label: "Case Kind", type: .enum, required: false, autoFilled: false, description: "Counterexample force belongs in a relation.", allowedValues: DissertationControlV4.controlledFieldValues["case_kind"]?.sorted()),
-    FieldDefinition(key: "evidence_kind", label: "Evidence Kind", type: .enum, required: false, autoFilled: false, description: "Required for evidence anchors.", allowedValues: DissertationControlV4.controlledFieldValues["evidence_kind"]?.sorted()),
-    FieldDefinition(key: "verification_state", label: "Verification State", type: .enum, required: false, autoFilled: false, description: "Verification of the exact evidence anchor.", allowedValues: DissertationControlV4.controlledFieldValues["verification_state"]?.sorted()),
-    FieldDefinition(key: "source_locator", label: "Source Locator", type: .string, required: false, autoFilled: false, description: "Exact source locator for an evidence anchor.", allowedValues: nil),
-    FieldDefinition(key: "predicate", label: "Predicate", type: .enum, required: false, autoFilled: false, description: "Canonical represented predicate for a relation record.", allowedValues: DissertationControlV4.predicates.map(\.rawValue).sorted()),
-    FieldDefinition(key: "semantic_direction", label: "Semantic Direction", type: .enum, required: false, autoFilled: false, description: "V4 relation records always run subject to object.", allowedValues: ["subject_to_object"]),
-    FieldDefinition(key: "assembly_kind", label: "Assembly Kind", type: .enum, required: false, autoFilled: false, description: "Required for assembly maps.", allowedValues: DissertationControlV4.controlledFieldValues["assembly_kind"]?.sorted()),
-    FieldDefinition(key: "chapter_id", label: "Chapter ID", type: .string, required: false, autoFilled: false, description: "Stable chapter code such as C01.", allowedValues: nil),
-    FieldDefinition(key: "workflow_stage", label: "Workflow Stage", type: .enum, required: false, autoFilled: false, description: "Chapter-local workflow stage.", allowedValues: DissertationControlV4.controlledFieldValues["workflow_stage"]?.sorted()),
-    FieldDefinition(key: "draft_target", label: "Draft Target", type: .string, required: false, autoFilled: false, description: "Existing draft path represented by a Draft Project bridge when external.", allowedValues: nil),
-    FieldDefinition(key: "registry_kind", label: "Registry Kind", type: .enum, required: false, autoFilled: false, description: "Registries are derived views and never status authority.", allowedValues: DissertationControlV4.controlledFieldValues["registry_kind"]?.sorted()),
-    FieldDefinition(key: "indexed_note_types", label: "Indexed Note Types", type: .array, required: false, autoFilled: false, description: "Controlled v4 note types mirrored by this registry.", allowedValues: DissertationControlV4.noteTypes.sorted()),
-    FieldDefinition(key: "control_kind", label: "Control Kind", type: .enum, required: false, autoFilled: false, description: "Required for project-control records.", allowedValues: DissertationControlV4.controlledFieldValues["control_kind"]?.sorted()),
-  ])
-
-  static let generic = FrontmatterSchema(kb: .output, fields: [])
-
-  static func schema(for kb: KnowledgeBase) -> FrontmatterSchema {
-    switch kb {
-    case .papers: return .papers
-    case .topics: return .topics
-    case .output: return .output
+  var appIntValue: Int? {
+    switch self {
+    case .integer(let value): value
+    case .double(let value) where value.rounded() == value: Int(value)
+    case .string(let value): Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+    default: nil
     }
   }
 
-  static func schema(for note: Note) -> FrontmatterSchema {
-    switch note.profile {
-    case .paperAnalysis: return .papers
-    case .topicKnowledge: return .topics
-    case .dissertationControl:
-      return note.frontmatter["schema_version"]?.stringValue == DissertationControlV4.schemaVersion
-        ? .dissertationControlV4
-        : .dissertationControl
-    case .draftProject: return .output
-    case .generic: return .generic
+  var appBoolValue: Bool? {
+    switch self {
+    case .boolean(let value): value
+    case .string(let value):
+      switch value.lowercased() {
+      case "true": true
+      case "false": false
+      default: nil
+      }
+    default: nil
+    }
+  }
+
+  var appDateValue: Date? {
+    guard let value = scalarString else { return nil }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+    return formatter.date(from: value)
+  }
+
+  var appFilterValues: [String] {
+    switch self {
+    case .string(let value): [value]
+    case .integer(let value): [String(value)]
+    case .double(let value): [String(value)]
+    case .boolean(let value): [value ? "true" : "false"]
+    case .null: []
+    case .array(let values): values.map(\.displayScalar)
+    case .object: []
+    }
+  }
+}
+extension Array where Element == WindowDocumentLocation {
+  /// Stable tag projection derived from the exact Core document.
+  var orderedTags: [String] {
+    var counts: [String: Int] = [:]
+    for note in self {
+      for tag in note.tags {
+        let normalized = tag.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !normalized.isEmpty else { continue }
+        counts[normalized, default: 0] += 1
+      }
+    }
+    return counts.keys.sorted { left, right in
+      let leftCount = counts[left, default: 0]
+      let rightCount = counts[right, default: 0]
+      return leftCount == rightCount ? left < right : leftCount > rightCount
     }
   }
 }

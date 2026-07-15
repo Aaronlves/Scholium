@@ -8,9 +8,9 @@ Use this hierarchy; do not merge target product rules, interface rules, and curr
 
 1. `Docs/PRODUCT_GUIDE.md` owns Scholium's target product role, Triptych model, workflows, terminology, and feature boundaries.
 2. `Docs/DESIGN_HANDBOOK.md` owns stable interface structure, visual language, interaction principles, accessibility, exact target UI state meanings, and action labels.
-3. `Docs/IMPLEMENTATION_STATUS.md` records current-to-target evidence and migration status; it is not product authority.
-4. `README.md`, live construction call sites, tests, and scripts establish what is implemented and reachable now.
-5. The repository `HANDBOOK.md` is only a concise entry point and authority map.
+3. `Docs/PRD.md` synthesizes those two authorities into release-oriented requirements, gates, risks, and traceability; it does not override either one.
+4. `Docs/IMPLEMENTATION_STATUS.md` records current-to-target evidence and migration status; it is not product authority.
+5. `README.md`, live construction call sites, tests, and scripts establish what is implemented and reachable now.
 
 When target and current behavior differ, preserve the current safe behavior while implementing an explicit migration toward the Product Guide. Never describe target behavior as already implemented merely because it is canonical.
 
@@ -31,13 +31,34 @@ For every user-facing interface, interaction, accessibility, or visual change:
 ## Change discipline
 
 - Preserve the research document as the primary interface object.
-- Keep authoritative source, derived state, researcher writing, and agent-generated content visibly distinct.
+- Treat exact Markdown bytes as authoritative. Rendered HTML, parsed YAML, caches, indexes, and diagnostics are projections and must never reconstruct writable source.
+- Outside explicitly changed ranges, preserve BOM, newline style, comments, unknown YAML, ordering, quoting, multiline values, and final newlines.
+- Treat Scholium, Obsidian, external agents, sync tools, Finder, and other editors as concurrent filesystem participants. Never silently replace a dirty buffer after an external change.
+- Keep authoritative source, researcher writing, agent-generated content, review records, and derived diagnostics visibly distinct.
+- Treat neutral links and transitive paths as Connections, never as philosophical evidence.
+- Store generated state outside research vaults except for the small portable `.scholium/` structure explicitly defined by the Product Guide.
 - Follow the Product Guide's direct-agent-edit model. Existing-note CLI mutations require the current fingerprint; Scholium autosaves, detects conflicts, creates Before Agent Work checkpoints for Dialogue and Critique, and provides selective or complete checkpoint restore. Do not reintroduce Proposal as an authorization layer.
 - Preserve menu, toolbar, keyboard, pointer, focus, accessibility, cancellation, and recovery paths.
 - Do not rely on hover, drag, color, motion, secondary click, or gesture as the only route to a core task.
 - Do not invent an unimplemented feature to satisfy a design request.
-- Do not change a stable design decision incidentally. Record an approved change in the handbook decision record.
+- Do not change a stable design decision incidentally. Record an approved change in the `Docs/DESIGN_HANDBOOK.md` decision record.
 - For design-only work, do not modify application source unless the user also requests implementation or explicitly authorizes resolving a documented contradiction.
+- Test only with disposable nonprivate fixture vaults, never real research vaults.
+
+## Agent skill source
+
+Treat the tracked `.agents/skills/` tree as the canonical source for Scholium
+development skills. Do not edit the personal plugin directory or installed
+cache as an independent source. After changing canonical skills, run:
+
+```bash
+./Tools/Scripts/sync-scholium-toolkit.sh --sync
+./Tools/Scripts/sync-scholium-toolkit.sh --check
+```
+
+Then bump the personal plugin cachebuster and reinstall `scholium-toolkit` so
+the active installed snapshot matches the repository. Never describe a skill
+update as complete while these copies differ.
 
 ## Verification
 

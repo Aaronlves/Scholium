@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Transactional vault repository")
@@ -383,8 +384,8 @@ struct VaultRepositoryTests {
         #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("escape.md").path))
     }
 
-    @Test("Paper profile saves use the shared updated key independent of folder convention")
-    func canonicalPaperTimestamp() async throws {
+    @Test("Paper profile saves keep time in app history instead of injecting YAML")
+    func paperTimestampIsAppOwned() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let root = base.appendingPathComponent("vault", isDirectory: true)
@@ -413,11 +414,11 @@ struct VaultRepositoryTests {
         let content = try String(contentsOf: note, encoding: .utf8)
 
         #expect(content.contains("modified: 2025-01-01"))
-        #expect(content.contains("updated: "))
+        #expect(content.contains("updated: ") == false)
         #expect(content.contains("analysis_updated_at:") == false)
     }
 
-    @Test("Paper profile continues targeting an existing legacy timestamp")
+    @Test("Paper profile preserves an existing legacy timestamp without refreshing it")
     func legacyPaperTimestampCompatibility() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -446,7 +447,7 @@ struct VaultRepositoryTests {
         )
         let content = try String(contentsOf: note, encoding: .utf8)
 
-        #expect(content.contains("analysis_updated_at: "))
+        #expect(content.contains("analysis_updated_at: 2025-01-01"))
         #expect(content.contains("\nupdated:") == false)
     }
 

@@ -1,10 +1,11 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("800-note performance acceptance")
-struct PerformanceAcceptanceTests {
-    @Test("A 5,000-word cold semantic Read projection completes under one second")
+@Suite("Performance regression microbenchmarks")
+struct PerformanceRegressionMicrobenchmarkTests {
+    @Test("A generated long-note semantic projection remains under one second")
     func coldReadProjection() {
         let paragraph = "A philosophical argument distinguishes evidence, inference, objection, reply, source, authority, and conclusion with explicit uncertainty. "
         let body = (0..<500).map { index in
@@ -17,7 +18,7 @@ struct PerformanceAcceptanceTests {
         #expect(elapsed < 1.0, "Cold Read projection took \(elapsed) seconds")
     }
 
-    @Test("Indexed 800-note search remains under 100 milliseconds at p95")
+    @Test("Internal SQLite search over 800 generated notes remains under 100 milliseconds at p95")
     func indexedSearchP95() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let vaultID = UUID()
@@ -54,7 +55,7 @@ struct PerformanceAcceptanceTests {
         }
         samples.sort()
         let p95 = samples[min(samples.count - 1, Int(Double(samples.count) * 0.95))]
-        #expect(p95 < 0.100, "800-note indexed search p95 was \(p95) seconds")
+        #expect(p95 < 0.100, "Internal 800-note SQLite search p95 was \(p95) seconds")
     }
 
     private func measured(_ operation: () -> Void) -> Double {

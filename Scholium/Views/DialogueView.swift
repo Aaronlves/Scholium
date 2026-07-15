@@ -1,10 +1,28 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
+struct DialogueContext {
+    let triptychID: UUID?
+    let fallbackInitialNote: VaultQualifiedNoteID?
+    let initialNotes: Set<VaultQualifiedNoteID>
+    let responseProfile: () async throws -> DialogueResponseProfile
+    let candidates: () async throws -> [DialogueNoteReference]
+    let comments: (UUID) async -> [ResearcherComment]
+    let createDialogue: (
+        String,
+        [DialogueNoteReference],
+        Set<UUID>,
+        String,
+        DialogueResponseProfile
+    ) async throws -> DialogueEntry
+    let didCreateDialogue: () -> Void
+}
+
 struct DialogueView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openSettings) private var openSettings
+
+    let context: DialogueContext
 
     @State private var instruction = ""
     @State private var requestedDestination = ""
@@ -12,6 +30,9 @@ struct DialogueView: View {
     @State private var selectedNoteIDs: Set<UUID> = []
     @State private var commentsByNote: [UUID: [ResearcherComment]] = [:]
     @State private var includedCommentIDs: Set<UUID> = []
+    @State private var responseProfile = DialogueResponseProfile()
+    @State private var selectedResponseModuleIDs: Set<String> = []
+    @State private var commentPreservation = DialogueCommentPreservation.keepAcademicIntentions.rawValue
     @State private var isLoading = true
     @State private var isCopying = false
     @State private var errorMessage: String?
@@ -28,6 +49,19 @@ struct DialogueView: View {
         }
     }
 
+    private var selectedResponseModules: [DialogueResponseModule] {
+        DialogueResponseModule.allCases.filter {
+            selectedResponseModuleIDs.contains($0.rawValue)
+        }
+    }
+
+    private var responseProfileForRequest: DialogueResponseProfile {
+        responseProfile.updated(
+            modules: selectedResponseModules.map(\.rawValue),
+            commentPreservation: commentPreservation
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -37,17 +71,34 @@ struct DialogueView: View {
                 ProgressView("Loading Triptych notes…")
                 Spacer()
             } else {
-                HSplitView {
-                    selectionColumn
-                        .frame(minWidth: 300, idealWidth: 340)
-                    instructionColumn
-                        .frame(minWidth: 430, maxWidth: .infinity)
+                GeometryReader { geometry in
+                    if geometry.size.width < 760 {
+                        VStack(spacing: 0) {
+                            selectionColumn
+                                .frame(
+                                    maxWidth: .infinity,
+                                    minHeight: 170,
+                                    idealHeight: 220,
+                                    maxHeight: 260
+                                )
+                            Divider()
+                            instructionColumn
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        HSplitView {
+                            selectionColumn
+                                .frame(minWidth: 300, idealWidth: 340)
+                            instructionColumn
+                                .frame(minWidth: 430, maxWidth: .infinity)
+                        }
+                    }
                 }
             }
             Divider()
             footer
         }
-        .frame(minWidth: 820, idealWidth: 940, minHeight: 600, idealHeight: 700)
+        .frame(minWidth: 0, idealWidth: 940, minHeight: 600, idealHeight: 700)
         .task { await loadCandidates() }
         .alert("Could Not Create Dialogue", isPresented: Binding(
             get: { errorMessage != nil },
@@ -66,7 +117,7 @@ struct DialogueView: View {
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Create Dialogue")
+                Text("Dialogue")
                     .font(.title2.weight(.semibold))
                 Text("Choose focal notes and package your comments into instructions for an external agent.")
                     .font(.callout)
@@ -144,9 +195,14 @@ struct DialogueView: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(note.title)
                                                 .font(.subheadline.weight(.semibold))
-                                            Text("\(note.vaultName) · \(note.relativePath)")
+                                            Text(note.vaultName)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                            Text(note.relativePath)
+                                                .font(.caption)
+                                                .foregroundStyle(.tertiary)
                                                 .lineLimit(1)
                                                 .truncationMode(.middle)
                                             Text("Note ID: \(note.noteID.uuidString)")
@@ -185,6 +241,8 @@ struct DialogueView: View {
                     }
                 }
 
+                responseContractSection
+
                 LabeledContent("Template") {
                     HStack {
                         Text("Triptych Dialogue template")
@@ -193,7 +251,7 @@ struct DialogueView: View {
                             UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
                             UserDefaults.standard.set("prompt-templates", forKey: "scholium.settings.researchGuidanceCollection")
                             UserDefaults.standard.set(ResearchPromptKind.dialogue.rawValue, forKey: "scholium.settings.researchGuidanceKind")
-                            if let triptychID = appState.workspaceAssignment?.id {
+                            if let triptychID = context.triptychID {
                                 UserDefaults.standard.set(triptychID.uuidString, forKey: "scholium.settings.triptychID")
                             }
                             openSettings()
@@ -210,6 +268,55 @@ struct DialogueView: View {
             }
             .padding(18)
         }
+        .accessibilityIdentifier("scholium.dialogue.instructionScroll")
+    }
+
+    private var responseContractSection: some View {
+        GroupBox("Response Contract") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("The agent always gives one Academic Outcome. Choose optional perspectives for this request.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Label("Academic Outcome", systemImage: "checkmark.circle")
+                    .font(.subheadline.weight(.semibold))
+
+                ForEach(DialogueResponseModule.allCases, id: \.rawValue) { module in
+                    Toggle(isOn: responseModuleSelection(module)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(module.displayName)
+                            Text(module.promptQuestion)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .accessibilityIdentifier(
+                        "scholium.dialogue.responseModule.\(module.rawValue)"
+                    )
+                }
+
+                Picker("Comment preservation", selection: $commentPreservation) {
+                    ForEach(DialogueCommentPreservation.allCases, id: \.rawValue) { mode in
+                        Text(mode.displayName).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("scholium.dialogue.commentPreservation")
+
+                if !responseProfile.unknownModuleIDs.isEmpty {
+                    Label(
+                        "Unavailable modules are retained in the profile but are not selected for this request.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("scholium.dialogue.responseContract")
     }
 
     private var footer: some View {
@@ -255,19 +362,29 @@ struct DialogueView: View {
         )
     }
 
+    private func responseModuleSelection(_ module: DialogueResponseModule) -> Binding<Bool> {
+        Binding(
+            get: { selectedResponseModuleIDs.contains(module.rawValue) },
+            set: { selected in
+                if selected {
+                    selectedResponseModuleIDs.insert(module.rawValue)
+                } else {
+                    selectedResponseModuleIDs.remove(module.rawValue)
+                }
+            }
+        )
+    }
+
     private func loadCandidates() async {
         do {
-            candidates = try await appState.dialogueCandidates()
-            let fallbackInitial: Set<VaultQualifiedNoteID>
-            if let vaultID = appState.currentRegisteredVault?.id,
-               let path = appState.currentNote?.relativePath {
-                fallbackInitial = [VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)]
-            } else {
-                fallbackInitial = []
-            }
-            let initial = appState.dialogueInitialNotes.isEmpty
-                ? fallbackInitial
-                : appState.dialogueInitialNotes
+            responseProfile = try await context.responseProfile()
+            selectedResponseModuleIDs = Set(responseProfile.modules)
+            commentPreservation = responseProfile.commentPreservation
+            candidates = try await context.candidates()
+            let fallbackInitial = context.fallbackInitialNote.map { [$0] } ?? []
+            let initial = context.initialNotes.isEmpty
+                ? Set(fallbackInitial)
+                : context.initialNotes
             selectedNoteIDs = Set(candidates.filter {
                 initial.contains(VaultQualifiedNoteID(
                     vaultID: $0.vaultID,
@@ -284,7 +401,7 @@ struct DialogueView: View {
 
     private func loadComments(for note: DialogueNoteReference) async {
         guard commentsByNote[note.noteID] == nil else { return }
-        let comments = await appState.comments(for: note.noteID)
+        let comments = await context.comments(note.noteID)
         commentsByNote[note.noteID] = comments
         includedCommentIDs.formUnion(comments.filter { $0.resolvedAt == nil }.map(\.id))
     }
@@ -294,16 +411,15 @@ struct DialogueView: View {
             isCopying = true
             defer { isCopying = false }
             do {
-                let entry = try await appState.createDialogue(
-                    instruction: instruction,
-                    selectedNotes: selectedNotes,
-                    includedCommentIDs: includedCommentIDs,
-                    requestedDestination: requestedDestination
+                _ = try await context.createDialogue(
+                    instruction,
+                    selectedNotes,
+                    includedCommentIDs,
+                    requestedDestination,
+                    responseProfileForRequest
                 )
-                appState.showToast("Instructions copied. Before Agent Work checkpoint created.")
-                appState.dialogueInitialNotes = []
+                context.didCreateDialogue()
                 dismiss()
-                _ = entry
             } catch {
                 errorMessage = error.localizedDescription
             }

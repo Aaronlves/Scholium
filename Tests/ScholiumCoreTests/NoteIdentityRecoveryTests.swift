@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Stable note identity recovery")
@@ -63,26 +64,6 @@ struct NoteIdentityRecoveryTests {
             documentModes: ["Old.md": "read"],
             scrollPositions: ["Old.md": 42]
         ))
-        let canvas = NamedCanvas(
-            name: "Argument",
-            nodes: [CanvasNode(relativePath: "Old.md", position: .init(x: 1, y: 2))]
-        )
-        let legacyCanvasDirectory = fixture.support
-            .appendingPathComponent("Works Vault", isDirectory: true)
-            .appendingPathComponent("canvases", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: legacyCanvasDirectory,
-            withIntermediateDirectories: true
-        )
-        let canvasEncoder = JSONEncoder()
-        canvasEncoder.dateEncodingStrategy = .iso8601
-        try canvasEncoder.encode(canvas).write(
-            to: legacyCanvasDirectory.appendingPathComponent(
-                canvas.id.uuidString.lowercased() + ".json"
-            ),
-            options: .atomic
-        )
-
         try FileManager.default.createDirectory(
             at: fixture.works.appendingPathComponent("Folder", isDirectory: true),
             withIntermediateDirectories: true
@@ -103,7 +84,6 @@ struct NoteIdentityRecoveryTests {
             vaultID: fixture.worksID,
             documents: [("Folder/New.md", moved.fingerprint)],
             repository: repository,
-            canvas: stores.canvas,
             migrateCritiquePaths: true
         )
 
@@ -117,7 +97,6 @@ struct NoteIdentityRecoveryTests {
         #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
         #expect(session.activeTab == "Folder/New.md")
-        #expect(try await stores.canvas.list().first?.nodes.first?.relativePath == "Folder/New.md")
         #expect((await repository.versions(relativePath: "Old.md")).isEmpty)
         #expect((await repository.versions(relativePath: "Folder/New.md")).count == 1)
     }
@@ -197,7 +176,6 @@ struct NoteIdentityRecoveryTests {
             vaultID: fixture.analysesID,
             documents: [("Moved.md", moved.fingerprint)],
             repository: analysesRepository,
-            canvas: nil,
             migrateCritiquePaths: false
         )
 
@@ -255,7 +233,6 @@ struct NoteIdentityRecoveryTests {
             vaultID: fixture.worksID,
             documents: [("New.md", moved.fingerprint)],
             repository: repository,
-            canvas: stores.canvas,
             migrateCritiquePaths: true
         )
 
@@ -271,7 +248,6 @@ struct NoteIdentityRecoveryTests {
         let dialogue: DialogueStore
         let critiques: CritiqueRegistry
         let sessions: WindowSessionSnapshotStore
-        let canvas: NamedCanvasStore
         let sessionID: UUID
     }
 
@@ -312,7 +288,6 @@ struct NoteIdentityRecoveryTests {
                 dialogue: DialogueStore(storageURL: triptychState.appendingPathComponent("dialogue")),
                 critiques: CritiqueRegistry(controlURL: triptychState),
                 sessions: WindowSessionSnapshotStore(applicationSupportURL: support),
-                canvas: NamedCanvasStore(vaultStorageURL: support.appendingPathComponent("Works Vault")),
                 sessionID: sessionID
             )
         }

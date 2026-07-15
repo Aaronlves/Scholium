@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Legacy read compatibility fixtures")
@@ -32,9 +33,7 @@ struct LegacyCompatibilityTests {
         #expect(snapshot.scrollPositions.isEmpty)
         #expect(snapshot.inspectorMode == "incoming")
         #expect(snapshot.searchState == SearchWorkspaceState())
-        #expect(snapshot.selectedCanvasID?.uuidString == "33333333-3333-3333-3333-333333333333")
-        #expect(snapshot.showsCanvas == true)
-        #expect(snapshot.contentDestination == .canvas)
+        #expect(snapshot.contentDestination == .document)
         #expect(try Data(contentsOf: target) == source)
     }
 
@@ -96,16 +95,16 @@ struct LegacyCompatibilityTests {
 
         #expect(state.query == "legacy")
         #expect(state.scope == .currentVault)
-        #expect(state.scope.canonical == .triptych)
+        #expect(state.scope.canonical == .currentVault)
         #expect(state.selectedRoles.isEmpty)
         #expect(state.selectedResultID == nil)
     }
 
-    @Test("Every retired search scope remains readable and canonicalizes to one current scope")
+    @Test("Every retired search scope remains readable and canonicalizes to a current scope")
     func retiredSearchScopes() throws {
         let expectations: [SearchPresentationScope: SearchPresentationScope] = [
             .currentNote: .thisNote,
-            .currentVault: .triptych,
+            .currentVault: .currentVault,
             .allWorkspace: .triptych,
             .selectedRoles: .triptych,
         ]
@@ -118,7 +117,7 @@ struct LegacyCompatibilityTests {
             #expect(state.scope == legacy)
             #expect(state.scope.canonical == canonical)
         }
-        #expect(SearchPresentationScope.visibleModes == [.triptych, .thisNote])
+        #expect(SearchPresentationScope.visibleModes == [.thisNote, .currentVault, .triptych])
     }
 
     @Test("An unknown persisted vault role fails closed")
@@ -176,34 +175,6 @@ struct LegacyCompatibilityTests {
                 #expect(TriptychProperty.value(for: canonical, in: mixed) == canonicalValue)
             }
         }
-    }
-
-    @Test("Legacy Canvas state is readable without mutation and remains path-migratable")
-    func legacyCanvas() async throws {
-        let root = temporaryDirectory(named: "legacy-canvas")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let directory = root.appendingPathComponent("canvases", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let source = try fixtureData("named-canvas-v1", extension: "json")
-        let id = try #require(UUID(uuidString: "44444444-4444-4444-4444-444444444444"))
-        let target = directory.appendingPathComponent("\(id.uuidString.lowercased()).json")
-        try source.write(to: target)
-        let store = NamedCanvasStore(vaultStorageURL: root)
-
-        let listed = try await store.list()
-        #expect(listed.count == 1)
-        #expect(listed[0].formatVersion == 1)
-        #expect(listed[0].nodes.first?.relativePath == "Claims/A.md")
-        #expect(try Data(contentsOf: target) == source)
-
-        let migrated = try await store.moveNotePath(
-            from: "Claims/A.md",
-            to: "Claims/Renamed A.md"
-        )
-        #expect(migrated.count == 1)
-        let reopened = try #require(try await store.list().first)
-        #expect(reopened.nodes.first?.relativePath == "Claims/Renamed A.md")
-        #expect(reopened.edges.first?.subjectNodeID.uuidString == "55555555-5555-5555-5555-555555555555")
     }
 
     private func fixtureData(_ name: String, extension fileExtension: String) throws -> Data {

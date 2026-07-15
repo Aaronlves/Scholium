@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Read-only Zotero metadata matching")
@@ -199,6 +200,91 @@ struct ZoteroMetadataTests {
         ) == nil)
     }
 
+    @Test("The external Zotero MCP descriptor remains separate from the built-in read-only UI")
+    func externalMCPDescriptorIsExplicit() throws {
+        let descriptor = ZoteroMCPTransportDescriptor.supportedLocal
+        #expect(descriptor.clientConfiguration.command == "scholium")
+        #expect(descriptor.clientConfiguration.arguments == ["zotero", "mcp", "serve"])
+        #expect(descriptor.capabilities.contains(.status))
+        #expect(descriptor.capabilities.contains(.selectedTarget))
+        #expect(descriptor.supportsGuardedImports)
+        #expect(descriptor.localReadOnlyByDefault)
+        #expect(!descriptor.importsRequireWebAPICredentials)
+        #expect(descriptor.importsUseLocalConnector)
+        #expect(descriptor.importsRequireDryRunAndConfirmation)
+        #expect(descriptor.importsRequireReadBackVerification)
+        #expect(descriptor.sourceURL.contains("Scholium"))
+    }
+
+    @Test("Transport location reports installation without claiming a handshake")
+    func transportLocationDoesNotClaimConnection() throws {
+        let report = ZoteroMCPTransportLocator.report(
+            descriptor: .supportedLocal,
+            environment: ["PATH": "/definitely/not-a-real-zotero-bin"]
+        )
+        #expect(report.state == .notConfigured)
+        #expect(!report.liveHandshakePerformed)
+        #expect(report.commandPath == nil)
+    }
+
+    @Test("An explicit probe completes the stdio initialize lifecycle without reading Zotero")
+    func explicitMCPProbeCompletesInitialize() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let command = root.appendingPathComponent("mock-zotero")
+        try Self.writeExecutable(
+            """
+            #!/bin/zsh
+            IFS= read -r request || exit 1
+            for i in {1..10000}; do print -n 'diagnostic ' >&2; done
+            print >&2
+            print -r -- '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"resources":{}},"serverInfo":{"name":"mock-zotero","version":"1.0"}}}'
+            IFS= read -r notification || true
+            """,
+            to: command
+        )
+
+        let report = await ZoteroMCPTransportLocator.probe(
+            descriptor: Self.testDescriptor(command: "mock-zotero"),
+            environment: ["PATH": root.path],
+            timeout: 2
+        )
+
+        #expect(report.state == .handshakeSucceeded)
+        #expect(report.liveHandshakePerformed)
+        #expect(report.serverProtocolVersion == "2025-11-25")
+        #expect(report.serverName == "mock-zotero")
+        #expect(report.serverVersion == "1.0")
+        #expect(report.capabilities == ["resources", "tools"])
+        #expect(report.note.contains("No Zotero data was read or written"))
+    }
+
+    @Test("A failed explicit probe is visible and does not claim a connection")
+    func failedMCPProbeIsExplicit() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let command = root.appendingPathComponent("mock-zotero-failure")
+        try Self.writeExecutable(
+            """
+            #!/bin/zsh
+            IFS= read -r request || exit 1
+            print -r -- '{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"not ready"}}'
+            """,
+            to: command
+        )
+
+        let report = await ZoteroMCPTransportLocator.probe(
+            descriptor: Self.testDescriptor(command: "mock-zotero-failure"),
+            environment: ["PATH": root.path],
+            timeout: 2
+        )
+
+        #expect(report.state == .handshakeFailed)
+        #expect(report.liveHandshakePerformed)
+        #expect(report.serverName == nil)
+        #expect(report.note.contains("initialize"))
+    }
+
     private func assertUnique(
         _ source: ZoteroSourceIdentity,
         _ candidates: [ZoteroItemMetadata],
@@ -232,6 +318,37 @@ struct ZoteroMetadataTests {
             doi: doi,
             isbn: isbn,
             citationKey: citationKey
+        )
+    }
+
+    private func temporaryDirectory() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScholiumZoteroMCP-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    private static func testDescriptor(command: String) -> ZoteroMCPTransportDescriptor {
+        ZoteroMCPTransportDescriptor(
+            identifier: "test-zotero-mcp",
+            displayName: "Test Zotero MCP",
+            command: command,
+            installationCommand: "test",
+            setupCommand: "test",
+            clientConfiguration: ZoteroMCPClientConfiguration(command: command),
+            capabilities: [.status],
+            localReadOnlyByDefault: true,
+            importsRequireWebAPICredentials: true,
+            importsRequireDryRunAndConfirmation: true,
+            sourceURL: "https://example.invalid/zotero-mcp"
+        )
+    }
+
+    private static func writeExecutable(_ source: String, to url: URL) throws {
+        try Data(source.utf8).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: url.path
         )
     }
 }

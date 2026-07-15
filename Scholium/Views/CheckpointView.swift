@@ -1,9 +1,9 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
 struct CreateCheckpointView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    let createCheckpoint: (String) async throws -> Void
     @State private var name = ""
     @State private var isCreating = false
     @State private var errorMessage: String?
@@ -40,8 +40,7 @@ struct CreateCheckpointView: View {
             isCreating = true
             defer { isCreating = false }
             do {
-                _ = try await appState.createCheckpoint(name: name, kind: .manual)
-                appState.showToast("Checkpoint created.")
+                try await createCheckpoint(name)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -51,8 +50,14 @@ struct CreateCheckpointView: View {
 }
 
 struct RestoreCheckpointView: View {
-    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var controller: ResearchController
     @Environment(\.dismiss) private var dismiss
+
+    let restoreCheckpoint: (
+        UUID,
+        TriptychCheckpointRestoreSelection
+    ) async throws -> Void
+    let revealCheckpoints: () -> Void
 
     @State private var checkpoints: [TriptychCheckpoint] = []
     @State private var selectedCheckpointID: UUID?
@@ -62,6 +67,20 @@ struct RestoreCheckpointView: View {
     @State private var isRestoring = false
     @State private var confirmCompleteRestore = false
     @State private var errorMessage: String?
+    @State private var listingError: String?
+
+    init(
+        controller: ResearchController,
+        restoreCheckpoint: @escaping (
+            UUID,
+            TriptychCheckpointRestoreSelection
+        ) async throws -> Void,
+        revealCheckpoints: @escaping () -> Void
+    ) {
+        _controller = ObservedObject(wrappedValue: controller)
+        self.restoreCheckpoint = restoreCheckpoint
+        self.revealCheckpoints = revealCheckpoints
+    }
 
     private var selectedCheckpoint: TriptychCheckpoint? {
         checkpoints.first { $0.id == selectedCheckpointID }
@@ -89,7 +108,7 @@ struct RestoreCheckpointView: View {
                 Spacer()
                 ProgressView("Loading checkpoints…")
                 Spacer()
-            } else if checkpoints.isEmpty, let listingError = appState.checkpointListingError {
+            } else if checkpoints.isEmpty, let listingError {
                 ContentUnavailableView(
                     "Checkpoints Unavailable",
                     systemImage: "exclamationmark.triangle",
@@ -103,7 +122,7 @@ struct RestoreCheckpointView: View {
                 )
             } else {
                 VStack(spacing: 0) {
-                    if let listingError = appState.checkpointListingError {
+                    if let listingError {
                         Label(listingError, systemImage: "exclamationmark.triangle")
                             .font(.callout)
                             .foregroundStyle(.orange)
@@ -112,20 +131,24 @@ struct RestoreCheckpointView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Divider()
                     }
-                    HSplitView {
-                        List(checkpoints, selection: $selectedCheckpointID) { checkpoint in
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(checkpoint.name).fontWeight(.medium)
-                                Text("\(checkpoint.kind == .automatic ? "Automatic" : "Manual") · \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    GeometryReader { geometry in
+                        if geometry.size.width < 780 {
+                            VStack(spacing: 0) {
+                                checkpointList
+                                    .frame(minHeight: 160, maxHeight: .infinity)
+                                Divider()
+                                changeList
+                                    .frame(minHeight: 220, maxHeight: .infinity)
                             }
-                            .tag(checkpoint.id)
-                        }
-                        .frame(minWidth: 240, idealWidth: 280)
+                        } else {
+                            HSplitView {
+                                checkpointList
+                                    .frame(minWidth: 240, idealWidth: 280)
 
-                        changeList
-                            .frame(minWidth: 500, maxWidth: .infinity)
+                                changeList
+                                    .frame(minWidth: 500, maxWidth: .infinity)
+                            }
+                        }
                     }
                 }
             }
@@ -133,7 +156,7 @@ struct RestoreCheckpointView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 820, idealWidth: 980, minHeight: 560, idealHeight: 700)
+        .frame(minWidth: 0, idealWidth: 980, minHeight: 560, idealHeight: 700)
         .task { await load() }
         .onChange(of: selectedCheckpointID) { _, id in
             guard let id else { return }
@@ -202,7 +225,7 @@ struct RestoreCheckpointView: View {
                                         if change.kind == .moved,
                                            let old = change.checkpointPath,
                                            let current = change.currentPath {
-                                            Text("Checkpoint: \(old) · Current: \(current)")
+                                            Text("Checkpoint: \(old) — Current: \(current)")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         } else {
@@ -229,9 +252,21 @@ struct RestoreCheckpointView: View {
         }
     }
 
+    private var checkpointList: some View {
+        List(checkpoints, selection: $selectedCheckpointID) { checkpoint in
+            VStack(alignment: .leading, spacing: 3) {
+                Text(checkpoint.name).fontWeight(.medium)
+                Text("\(checkpoint.kind == .automatic ? "Automatic" : "Manual") — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .tag(checkpoint.id)
+        }
+    }
+
     private var footer: some View {
         HStack(spacing: 10) {
-            Button("Reveal Checkpoints in Finder") { appState.revealCheckpointsInFinder() }
+            Button("Reveal Checkpoints in Finder", action: revealCheckpoints)
             Spacer()
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -256,7 +291,17 @@ struct RestoreCheckpointView: View {
     }
 
     private func load() async {
-        checkpoints = await appState.checkpoints()
+        do {
+            let listing = try await controller.checkpoints()
+            checkpoints = listing.checkpoints
+            listingError = listing.unreadableEntries.isEmpty
+                ? nil
+                : "Some checkpoint folders could not be read and remain unchanged.\n\n"
+                    + listing.unreadableEntries.joined(separator: "\n")
+        } catch {
+            checkpoints = []
+            listingError = error.localizedDescription
+        }
         selectedCheckpointID = checkpoints.first?.id
         isLoading = false
         if let selectedCheckpointID { await loadComparison(selectedCheckpointID) }
@@ -264,7 +309,7 @@ struct RestoreCheckpointView: View {
 
     private func loadComparison(_ id: UUID) async {
         do {
-            changes = try await appState.checkpointComparison(id)
+            changes = try await controller.checkpointComparison(id)
             selectedFiles = Set(changes.compactMap(restorableKey))
         } catch {
             errorMessage = error.localizedDescription
@@ -277,8 +322,7 @@ struct RestoreCheckpointView: View {
             isRestoring = true
             defer { isRestoring = false }
             do {
-                _ = try await appState.restoreCheckpoint(selectedCheckpointID, selection: selection)
-                appState.showToast("Checkpoint restored. Before Restore checkpoint created.")
+                try await restoreCheckpoint(selectedCheckpointID, selection)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

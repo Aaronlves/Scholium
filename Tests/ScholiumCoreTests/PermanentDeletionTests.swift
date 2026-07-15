@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Coordinated permanent deletion")

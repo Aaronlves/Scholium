@@ -1,19 +1,36 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
+
+/// Immutable document projections and explicit research/navigation effects
+/// needed by the Critique provenance strip.
+struct CritiqueProvenanceContext {
+    let availableNotes: [WindowDocumentLocation]
+    let documentRevisions: [String: DocumentFingerprint]
+    let loadAssociation: @MainActor (String) async throws -> CritiqueAssociation?
+    let openTarget: @MainActor (String) -> Void
+    let openFinding: @MainActor (CritiqueFinding, String?) -> Void
+}
 
 /// A compact, document-local authority surface for agent-authored Critiques.
 /// The prose remains the primary surface; this strip only exposes provenance,
 /// revision binding, and explicit finding destinations before the body.
 struct CritiqueProvenanceView: View {
-    @EnvironmentObject private var appState: AppState
-
-    let note: Note
+    let note: WindowDocumentLocation
+    let context: CritiqueProvenanceContext
 
     @State private var association: CritiqueAssociation?
     @State private var findingsAreExpanded = false
 
+    init(
+        note: WindowDocumentLocation,
+        context: CritiqueProvenanceContext
+    ) {
+        self.note = note
+        self.context = context
+    }
+
     private var document: NoteDocument {
-        NoteDocument(relativePath: note.relativePath, rawContent: note.rawContent)
+        note.document
     }
 
     private var metadata: CritiqueDocumentMetadata {
@@ -28,9 +45,9 @@ struct CritiqueProvenanceView: View {
         association?.workRelativePath ?? metadata.targetRelativePath
     }
 
-    private var targetNote: Note? {
+    private var targetNote: WindowDocumentLocation? {
         guard let targetPath else { return nil }
-        return appState.notes.first { $0.relativePath == targetPath }
+        return context.availableNotes.first { $0.relativePath == targetPath }
     }
 
     private var capturedSHA256: String? {
@@ -49,7 +66,7 @@ struct CritiqueProvenanceView: View {
     private var isStale: Bool {
         guard let capturedSHA256,
               let targetPath,
-              let current = appState.documentRevisions[targetPath] else { return false }
+              let current = context.documentRevisions[targetPath] else { return false }
         return current.sha256 != capturedSHA256
     }
 
@@ -62,6 +79,11 @@ struct CritiqueProvenanceView: View {
                 )
                 .font(.headline)
                 .foregroundStyle(metadata.isAgentAttributed ? Color.primary : Color.orange)
+                .accessibilityLabel(
+                    metadata.isAgentAttributed
+                        ? "Agent-authored Critique"
+                        : "Agent attribution missing"
+                )
 
                 Spacer(minLength: 12)
 
@@ -77,7 +99,7 @@ struct CritiqueProvenanceView: View {
                     .foregroundStyle(.secondary)
                 if let targetPath {
                     Button {
-                        appState.requestOpenNote(targetPath)
+                        context.openTarget(targetPath)
                     } label: {
                         Text(targetNote?.title ?? targetNote?.displayName ?? targetPath)
                     }
@@ -173,7 +195,7 @@ struct CritiqueProvenanceView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
         .task(id: note.relativePath + document.fingerprint.sha256) {
-            association = await appState.critiqueAssociation(forCritiquePath: note.relativePath)
+            association = try? await context.loadAssociation(note.relativePath)
         }
         .onChange(of: note.relativePath) { _, _ in
             findingsAreExpanded = false
@@ -185,19 +207,18 @@ struct CritiqueProvenanceView: View {
     @ViewBuilder
     private func findingButton(_ finding: CritiqueFinding) -> some View {
         let path = finding.targetRelativePath ?? targetPath
-        let target = path.flatMap { candidate in appState.notes.first { $0.relativePath == candidate } }
+        let target = path.flatMap { candidate in
+            context.availableNotes.first { $0.relativePath == candidate }
+        }
         let resolvedLine = target.flatMap {
-            finding.resolvedTargetLine(in: NoteDocument(
-                relativePath: $0.relativePath,
-                rawContent: $0.rawContent
-            ))
+            finding.resolvedTargetLine(in: $0.document)
         }
         let stale = finding.targetFingerprintSHA256.map { sha in
-            path.flatMap { appState.documentRevisions[$0]?.sha256 } != sha
+            path.flatMap { context.documentRevisions[$0]?.sha256 } != sha
         } ?? isStale
 
         Button {
-            appState.openCritiqueFinding(finding, fallbackTargetPath: targetPath)
+            context.openFinding(finding, targetPath)
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: stale ? "clock.badge.exclamationmark" : "arrow.right.circle")
@@ -253,6 +274,6 @@ struct CritiqueProvenanceView: View {
         parts.append("Critique line \(finding.critiqueSourceLine)")
         if stale { parts.append("earlier target version") }
         if !anchorResolved { parts.append("anchor unresolved") }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " — ")
     }
 }

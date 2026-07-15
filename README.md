@@ -11,25 +11,46 @@ Use one authority for each question:
 3. [Product Requirements Document](Docs/PRD.md): a release-oriented synthesis of the Product Guide and Design Handbook into numbered requirements, gates, risks, and traceability. It does not override either authority above it.
 4. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md): what the current build demonstrates, where it differs from the target, and migration evidence.
 5. This README, live construction call sites, executable tests, and scripts: setup plus current reachability evidence.
-6. The repository [HANDBOOK](HANDBOOK.md): a concise entry point and authority map.
 
-`AGENTS.md` enforces this hierarchy and provides repository rules; it does not redefine the product or interface contract. Private development-agent skills are intentionally maintained outside this repository.
+`AGENTS.md` enforces this hierarchy and provides repository rules; it does not
+redefine the product or interface contract. Repository-specific development
+skills are maintained in the tracked `.agents/skills/` tree; bundled product
+skills remain separately governed under `Skills/`.
 
 Target rules are not implementation claims. Live construction call sites, executable tests, and scripts remain the final evidence for current reachability.
 
-Additional reference documents include [Property Profiles](Docs/PROPERTY_PROFILES.md) and [CSS Snippets](Docs/CSS_SNIPPETS.md).
+Additional reference documents include [Property Profiles](Docs/PROPERTY_PROFILES.md),
+[CSS Snippets](Docs/CSS_SNIPPETS.md), and the bundled [Product Skill Packages](Skills/README.md).
+The [Beta Performance Benchmark](Docs/PERFORMANCE_BENCHMARK.md) separates
+internal regression microbenchmarks and scenario-only runs from the unexecuted
+packaged-app G7 gate, and defines RDF-1 plus its fail-closed runner.
 
 ## Current implementation
 
-The current build has a trust-first Markdown core plus reachable multi-Triptych registration and window routing, Triptych control, safe note lifecycle, Human Review, Dialogue, Critique, Note History, whole-Triptych checkpoints, direct revision-checked CLI writes, vault-wide Properties, Unclassified import, unified search, protected CSS snippets, and localhost-only Zotero reading. Canvas is temporarily absent from the stable UI while the document workflow is stabilized. Works folders remain ordinary researcher-managed folders; Scholium does not register or manage projects. See [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for precise evidence and remaining gaps.
+The current build is a compiler-enforced modular monolith: immutable values and
+use-case protocols live in `ScholiumContracts`, internal I/O lives in
+`ScholiumCore`, and one headless `ScholiumApplication` layer is shared by the
+macOS app and CLI. Core is not a public product and neither delivery target can
+import it. Reachable behavior includes multi-Triptych registration
+and window routing, Triptych control, safe note lifecycle, Human Review,
+Dialogue, Critique, Note History, whole-Triptych checkpoints, direct
+revision-checked CLI writes, vault-wide Properties, Unclassified import,
+unified search, protected CSS snippets, localhost-only Zotero reading, and a
+first-party optional Zotero MCP service for external agents. The Canvas feature
+has been removed from the product. Works folders remain ordinary
+researcher-managed folders; Scholium does not register or manage projects. See
+[Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for precise evidence
+and remaining gaps.
 
 ## Requirements
 
 Running a packaged build requires macOS 26 or later. Testers do not need Xcode.
 
-Building Scholium requires the authorized beta Xcode installation at
-`/Applications/Xcode.app` and Swift 6. Node.js is needed only when rebuilding
-the TypeScript editor bundle.
+Building Scholium requires a complete Xcode installation with the compiler and
+SDK required by `Package.swift`. The repository resolver honors an explicit
+valid `DEVELOPER_DIR`, a complete `xcode-select` selection, or a conventional
+beta or release Xcode bundle. Node.js is needed only when rebuilding the
+TypeScript editor bundle.
 
 ## Build and test
 
@@ -38,17 +59,22 @@ Run development commands from the repository root.
 Run the complete repository verification:
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  ./Tools/Scripts/verify.sh
+developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
+DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
 ```
 
 Useful development commands:
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift run ScholiumApp
+developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
+DEVELOPER_DIR="$developer_dir" swift build
+DEVELOPER_DIR="$developer_dir" swift test
+DEVELOPER_DIR="$developer_dir" swift run ScholiumApp
 ```
+
+The optional external-agent Zotero transport is provided by the separately
+built `scholium` CLI. See [Zotero MCP](Docs/ZOTERO_MCP.md) for its supported
+source installation path, agent configuration, and guarded import contract.
 
 When `WebEditor/` changes:
 
@@ -123,13 +149,13 @@ SCHOLIUM_HOME=/tmp/scholium-cli-check swift run scholium --help
 
 ## Storage and safety
 
-Authoritative research remains in the selected Markdown vaults. Machine-local reviews, Dialogue, checkpoints, indexes, Canvas state, saved searches, and other device state remain under:
+Authoritative research remains in the selected Markdown vaults. Machine-local reviews, Dialogue, checkpoints, indexes, saved searches, and other device state remain under:
 
 ```text
 ~/Library/Application Support/Scholium/
 ```
 
-A small portable `.scholium/` directory beside Works stores only the Triptych manifest, Triptych-local settings, Properties configuration, Critique configuration and associations, identity mappings, Unclassified Markdown, and researcher-managed Skills under `.scholium/skills/<skill-id>/SKILL.md`. It contains no project registry, bookmarks, absolute paths, passwords, indexes, window sessions, or private review history.
+A small portable `.scholium/` directory beside Works stores only the Triptych manifest, Triptych-local settings, Properties configuration, Critique configuration and associations, identity mappings, Unclassified Markdown, and researcher-managed direct Skill packages under `.scholium/skills/<skill-id>/`. Each package has `SKILL.md` and may have bounded one-level `references/` or `templates/` resources. It contains no project registry, bookmarks, absolute paths, passwords, indexes, window sessions, or private review history.
 
 Every authoritative app write must validate containment and the expected revision, preserve the previous bytes, validate frontmatter, write atomically, and report conflicts without discarding the editor buffer. Derived search, graph, render, and diagnostic state is disposable and must never reconstruct writable source.
 
@@ -147,18 +173,29 @@ licenses; see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
 ## Repository map
 
 ```text
-ScholiumCore/              Documents, repositories, identities, semantics, search
+ScholiumContracts/         Immutable values, protocols, source semantics, errors
+ScholiumCore/              Internal repositories, stores, indexes, watchers, I/O
+ScholiumApplication/       Headless runtimes and capability implementations
 Scholium/                  macOS app and human-facing interaction
-ScholiumCLI/               Current CLI and migration surface
+ScholiumCLI/               CLI parsing, formatting, and Contracts handlers
 WebEditor/                 TypeScript and CodeMirror sources
+Tests/ScholiumContractsTests/
+                           Boundary fidelity and compatibility tests
 Tests/ScholiumCoreTests/   Core unit and integration tests
+Tests/ScholiumApplicationTests/
+                           Runtime, operation, event, and delivery-parity tests
+Tests/ScholiumAppTests/    Window composition and interface architecture tests
 UITests/                   Isolated macOS UI tests
 Docs/PRODUCT_GUIDE.md      Target product authority
 Docs/DESIGN_HANDBOOK.md    Interface and exact UI-contract authority
 Docs/PRD.md                Requirements synthesis and release traceability
 Docs/IMPLEMENTATION_STATUS.md
                            Current evidence and migration ledger
+Skills/README.md           Bundled product-skill architecture and evidence boundary
 Docs/BETA_RELEASE.md       Source-first beta policy and release gates
-HANDBOOK.md                Concise repository authority map
+AGENTS.md                  Repository design/build rules and authority routing
+.agents/skills/            Repository-specific development-agent skills
 Tools/Scripts/             Build, verification, QA, and release scripts
+Docs/PERFORMANCE_BENCHMARK.md
+                           RDF-1 fixture and packaged-app G7 protocol
 ```

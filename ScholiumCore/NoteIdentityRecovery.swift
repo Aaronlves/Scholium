@@ -1,63 +1,6 @@
+import ScholiumContracts
 import Foundation
 
-public struct NoteIdentityMigrationFailure: Hashable, Identifiable, Sendable {
-    public var id: String { rebinding.id }
-    public let rebinding: NoteIdentityPendingRebinding
-    public let message: String
-
-    public init(rebinding: NoteIdentityPendingRebinding, message: String) {
-        self.rebinding = rebinding
-        self.message = message
-    }
-}
-
-public struct NoteIdentityRecoveryState: Sendable {
-    /// Only identities whose app-owned path references have converged.
-    public let identities: [String: NoteIdentityRecord]
-    public let ambiguities: [NoteIdentityAmbiguity]
-    public let pendingRebindings: [NoteIdentityPendingRebinding]
-    public let failures: [NoteIdentityMigrationFailure]
-    public let completedRebindings: [NoteIdentityRebinding]
-
-    public init(
-        identities: [String: NoteIdentityRecord],
-        ambiguities: [NoteIdentityAmbiguity],
-        pendingRebindings: [NoteIdentityPendingRebinding],
-        failures: [NoteIdentityMigrationFailure],
-        completedRebindings: [NoteIdentityRebinding] = []
-    ) {
-        self.identities = identities
-        self.ambiguities = ambiguities
-        self.pendingRebindings = pendingRebindings
-        self.failures = failures
-        self.completedRebindings = completedRebindings
-    }
-}
-
-public enum NoteIdentityRecoveryError: LocalizedError, Sendable {
-    case vaultMismatch(expected: UUID, current: UUID)
-    case staleResolution(expected: DocumentFingerprint, current: DocumentFingerprint)
-    case identityUnresolved(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .vaultMismatch(let expected, let current):
-            return "Identity recovery belongs to vault \(expected.uuidString), not \(current.uuidString)."
-        case .staleResolution:
-            return "The note changed after the identity choices were shown. Review the refreshed choices before confirming its identity."
-        case .identityUnresolved(let path):
-            return "Confirm the note identity before changing, reviewing, commenting on, or restoring \(path)."
-        }
-    }
-}
-
-/// Reconciles note paths with stable identity and migrates every app-owned
-/// reference before making identity-dependent actions available again.
-///
-/// Store migrations are deliberately idempotent. `TriptychControlStore` keeps
-/// the rebinding pending until the last step, so an interruption or a failed
-/// store write leaves the destination readable but blocked and retryable rather
-/// than falsely reporting a complete identity migration.
 public actor NoteIdentityRecoveryCoordinator {
     private let control: TriptychControlStore
     private let humanReviews: HumanReviewStore
@@ -83,7 +26,6 @@ public actor NoteIdentityRecoveryCoordinator {
         vaultID: UUID,
         documents: [(relativePath: String, fingerprint: DocumentFingerprint)],
         repository: VaultRepository,
-        canvas: NamedCanvasStore?,
         migrateCritiquePaths: Bool
     ) async throws -> NoteIdentityRecoveryState {
         try await validate(repository: repository, vaultID: vaultID)
@@ -94,7 +36,6 @@ public actor NoteIdentityRecoveryCoordinator {
         let failures = await resumePendingRebindings(
             vaultID: vaultID,
             repository: repository,
-            canvas: canvas,
             migrateCritiquePaths: migrateCritiquePaths
         )
         return try await state(
@@ -112,7 +53,6 @@ public actor NoteIdentityRecoveryCoordinator {
         _ ambiguity: NoteIdentityAmbiguity,
         candidateID: UUID?,
         repository: VaultRepository,
-        canvas: NamedCanvasStore?,
         migrateCritiquePaths: Bool
     ) async throws -> NoteIdentityRecord {
         try await validate(repository: repository, vaultID: ambiguity.vaultID)
@@ -133,7 +73,6 @@ public actor NoteIdentityRecoveryCoordinator {
         let failures = await resumePendingRebindings(
             vaultID: ambiguity.vaultID,
             repository: repository,
-            canvas: canvas,
             migrateCritiquePaths: migrateCritiquePaths
         )
         if let failure = failures.first(where: { $0.rebinding.noteID == record.id }) {
@@ -148,7 +87,6 @@ public actor NoteIdentityRecoveryCoordinator {
     public func resumePendingRebindings(
         vaultID: UUID,
         repository: VaultRepository,
-        canvas: NamedCanvasStore?,
         migrateCritiquePaths: Bool
     ) async -> [NoteIdentityMigrationFailure] {
         let pending: [NoteIdentityPendingRebinding]
@@ -164,7 +102,6 @@ public actor NoteIdentityRecoveryCoordinator {
                 try await migrate(
                     rebinding,
                     repository: repository,
-                    canvas: canvas,
                     migrateCritiquePaths: migrateCritiquePaths
                 )
             } catch {
@@ -180,7 +117,6 @@ public actor NoteIdentityRecoveryCoordinator {
     private func migrate(
         _ rebinding: NoteIdentityPendingRebinding,
         repository: VaultRepository,
-        canvas: NamedCanvasStore?,
         migrateCritiquePaths: Bool
     ) async throws {
         try await validate(repository: repository, vaultID: rebinding.vaultID)
@@ -216,12 +152,6 @@ public actor NoteIdentityRecoveryCoordinator {
             from: rebinding.previousRelativePath,
             to: rebinding.relativePath
         )
-        if let canvas {
-            _ = try await canvas.moveNotePath(
-                from: rebinding.previousRelativePath,
-                to: rebinding.relativePath
-            )
-        }
         try await control.completeIdentityRebinding(rebinding)
     }
 
@@ -258,17 +188,6 @@ public actor NoteIdentityRecoveryCoordinator {
                 expected: vaultID,
                 current: repositoryVaultID
             )
-        }
-    }
-}
-
-public enum NoteIdentityMigrationError: LocalizedError, Sendable {
-    case incomplete(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .incomplete(let message):
-            return "The note identity was confirmed, but its app-owned records have not finished moving. Identity-dependent actions remain unavailable. \(message)"
         }
     }
 }

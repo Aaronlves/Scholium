@@ -1,48 +1,10 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Workbench completion models")
 struct WorkbenchModelsTests {
-    @Test("Legacy named Canvas state remains readable for path migration only")
-    func legacyNamedCanvasPathMigration() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let first = CanvasNode(relativePath: "Claims/A.md", position: .init(x: 10, y: 20))
-        let second = CanvasNode(relativePath: "Claims/B.md", position: .init(x: 30, y: 40))
-        let edge = CanvasEdge(
-            subjectNodeID: first.id,
-            objectNodeID: second.id,
-            predicate: "pressures"
-        )
-        let canvas = NamedCanvas(name: "Argument Map", nodes: [first, second], edges: [edge])
-        let store = NamedCanvasStore(vaultStorageURL: base)
-        let directory = base.appendingPathComponent("canvases", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(canvas).write(
-            to: directory.appendingPathComponent(canvas.id.uuidString.lowercased() + ".json"),
-            options: .atomic
-        )
-
-        let loaded = try await store.list()
-
-        #expect(loaded.count == 1)
-        #expect(loaded[0].name == "Argument Map")
-        #expect(loaded[0].edges[0].origin == .canvasAnnotation)
-        #expect(FileManager.default.fileExists(
-            atPath: directory.appendingPathComponent("\(canvas.id.uuidString.lowercased()).json").path
-        ))
-
-        let migrated = try await store.moveNotePath(from: "Claims/A.md", to: "Claims/Renamed A.md")
-        #expect(migrated.count == 1)
-        let reopened = try await store.list()[0]
-        #expect(reopened.nodes.contains { $0.id == first.id && $0.relativePath == "Claims/Renamed A.md" })
-        #expect(reopened.edges[0].subjectNodeID == first.id)
-    }
-
     @Test("Search workspace state round trips")
     func stateRoundTrip() throws {
         let saved = SavedSearch(

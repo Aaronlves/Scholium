@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ScholiumContracts
 @testable import ScholiumCore
 
 @Suite("Human Review, comments, Dialogue, and Critique records")
@@ -46,6 +47,86 @@ struct ResearchRecordsTests {
         #expect(completed.review(for: fingerprint)?.qualification == .qualified)
         #expect(!completed.hasChangedSinceReview(current: fingerprint))
         #expect(completed.hasChangedSinceReview(current: DocumentFingerprint(content: "Changed")))
+    }
+
+    @Test("Live Human Review values match their persisted delivery projection")
+    func liveReviewMatchesPersistedProjection() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let noteID = UUID()
+        let vaultID = UUID()
+        let store = HumanReviewStore(storageURL: fixture.support)
+
+        let returned = try await store.completeReview(
+            noteID: noteID,
+            vaultID: vaultID,
+            relativePath: "Note.md",
+            fingerprint: DocumentFingerprint(content: "# Note\n"),
+            qualification: .qualified,
+            reviewNote: "The live and reopened delivery surfaces must agree."
+        )
+        let live = try #require(await store.record(noteID: noteID))
+        let reopened = HumanReviewStore(storageURL: fixture.support)
+        let persisted = try #require(await reopened.record(noteID: noteID))
+
+        #expect(returned == live)
+        #expect(live == persisted)
+    }
+
+    @Test("Live Dialogue and Critique values match persisted delivery projections")
+    func liveDialogueAndCritiqueMatchPersistedProjection() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let noteID = UUID()
+        let vaultID = UUID()
+        let reference = DialogueNoteReference(
+            noteID: noteID,
+            vaultID: vaultID,
+            vaultName: "Works",
+            title: "A Work",
+            relativePath: "A Work.md",
+            fingerprint: DocumentFingerprint(content: "# A Work\n")
+        )
+
+        let dialogueDirectory = fixture.support.appendingPathComponent(
+            "dialogue",
+            isDirectory: true
+        )
+        let dialogueStore = DialogueStore(storageURL: dialogueDirectory)
+        let dialogue = DialogueEntry(
+            triptychID: UUID(),
+            instruction: "Inspect the argument.",
+            selectedNotes: [reference],
+            includedComments: [],
+            generatedPrompt: "Prompt",
+            checkpointID: UUID()
+        )
+        let returnedDialogue = try await dialogueStore.save(dialogue)
+        let liveDialogue = try await dialogueStore.entry(id: dialogue.id)
+        let reopenedDialogueStore = DialogueStore(storageURL: dialogueDirectory)
+        let persistedDialogue = try await reopenedDialogueStore.entry(id: dialogue.id)
+        #expect(returnedDialogue == liveDialogue)
+        #expect(liveDialogue == persistedDialogue)
+
+        let controlURL = fixture.support.appendingPathComponent(
+            "control",
+            isDirectory: true
+        )
+        let critiqueStore = CritiqueRegistry(controlURL: controlURL)
+        let association = CritiqueAssociation(
+            workNoteID: noteID,
+            workRelativePath: reference.relativePath,
+            targetFingerprint: reference.fingerprint,
+            critiqueRelativePath: "Critiques/A Work Critique.md"
+        )
+        let returnedCritique = try await critiqueStore.save(association)
+        let liveCritique = try #require(await critiqueStore.association(workNoteID: noteID))
+        let reopenedCritiqueStore = CritiqueRegistry(controlURL: controlURL)
+        let persistedCritique = try #require(
+            await reopenedCritiqueStore.association(workNoteID: noteID)
+        )
+        #expect(returnedCritique == liveCritique)
+        #expect(liveCritique == persistedCritique)
     }
 
     @Test("A completed Review requires a verdict and a concise nonempty note")
@@ -523,13 +604,15 @@ struct ResearchRecordsTests {
         let followUp = DialogueFollowUpComment(
             text: "Preserve this follow-up.",
             noteID: noteID,
-            commentID: included.comment.id
+            commentID: included.comment.id,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_200)
         )
         let response = DialogueReply(
             agentName: "Codex",
             text: "Preserve this response.",
             noteID: noteID,
-            commentID: included.comment.id
+            commentID: included.comment.id,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_201)
         )
         let entry = DialogueEntry(
             triptychID: UUID(),

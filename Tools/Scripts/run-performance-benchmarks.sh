@@ -1,0 +1,247 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="${0:A:h:h:h}"
+DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
+MODE=scenario_only
+APP=""
+FIXTURE=""
+OUTPUT=""
+WARMUPS=0
+SAMPLES=1
+RELAUNCH_COOLDOWN_MS=0
+METRIC_COOLDOWN_SECONDS=0
+usage() {
+  cat <<'EOF'
+Usage:
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR [--scenario]
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate
+
+Scenario mode defaults to 0 warm-ups and 1 retained sample per metric and is
+bounded to at most 3 + 10. Gate mode is fixed at 5 + 30, batches warm Search
+and Read inside one process, cools between cold relaunches and metrics, and
+additionally requires a clean exact-tag checkout, matching packaged provenance,
+and SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1.
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --app) APP="$2"; shift 2 ;;
+    --fixture) FIXTURE="$2"; shift 2 ;;
+    --output) OUTPUT="$2"; shift 2 ;;
+    --scenario) MODE=scenario_only; shift ;;
+    --gate)
+      MODE=product_gate
+      WARMUPS=5
+      SAMPLES=30
+      RELAUNCH_COOLDOWN_MS=1500
+      METRIC_COOLDOWN_SECONDS=15
+      shift
+      ;;
+    --warmups) WARMUPS="$2"; shift 2 ;;
+    --samples) SAMPLES="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) print -u2 "Unknown argument: $1"; usage >&2; exit 64 ;;
+  esac
+done
+
+[[ -n "${APP}" && -n "${FIXTURE}" && -n "${OUTPUT}" ]] || {
+  usage >&2
+  exit 64
+}
+[[ "${WARMUPS}" == <-> && "${SAMPLES}" == <-> && "${SAMPLES}" -gt 0 ]] || {
+  print -u2 "Warm-ups must be nonnegative and samples must be positive integers."
+  exit 64
+}
+if [[ "${MODE}" == scenario_only && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10 ) ]]; then
+  print -u2 "A scenario run is limited to 3 warm-ups and 10 retained samples."
+  exit 64
+fi
+if [[ "${MODE}" == product_gate && ( "${WARMUPS}" != 5 || "${SAMPLES}" != 30 ) ]]; then
+  print -u2 "A product gate is fixed at 5 warm-ups and 30 retained samples."
+  exit 64
+fi
+
+APP="${APP:P}"
+FIXTURE="${FIXTURE:P}"
+OUTPUT="${OUTPUT:A}"
+[[ -d "${APP}" && -x "${APP}/Contents/MacOS/Scholium" ]] || {
+  print -u2 "Invalid Scholium app bundle: ${APP}"
+  exit 66
+}
+[[ -f "${FIXTURE}/manifest.json" ]] || {
+  print -u2 "Missing RDF-1 manifest: ${FIXTURE}/manifest.json"
+  exit 66
+}
+case "${OUTPUT}" in
+  "${ROOT}"|"${ROOT}"/*|"${FIXTURE}"|"${FIXTURE}"/*)
+    print -u2 "Performance evidence must be outside the source checkout and RDF-1."
+    exit 65
+    ;;
+esac
+if [[ -e "${OUTPUT}" && -n "$(find "${OUTPUT}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+  print -u2 "Refusing to overwrite a nonempty output directory: ${OUTPUT}"
+  exit 65
+fi
+
+export DEVELOPER_DIR
+[[ -x "${DEVELOPER_DIR}/usr/bin/xcodebuild" ]] || {
+  print -u2 "Xcode toolchain is unavailable at ${DEVELOPER_DIR}."
+  exit 69
+}
+python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIXTURE}" --verify
+codesign --verify --deep --strict "${APP}"
+BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "${APP}/Contents/Info.plist")"
+if pgrep -f '/Contents/MacOS/Scholium( |$)' >/dev/null 2>&1; then
+  print -u2 "Refusing to run while another Scholium process is active."
+  exit 65
+fi
+ARTIFACT_KIND=debug_qa
+if [[ "${BUNDLE_ID}" == com.kbmanager.app ]]; then
+  ARTIFACT_KIND=packaged_release
+fi
+
+if [[ "${MODE}" == product_gate ]]; then
+  [[ "${SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS:-0}" == 1 ]] || {
+    print -u2 "Release-owner threshold approval is missing."
+    exit 77
+  }
+  [[ "${ARTIFACT_KIND}" == packaged_release ]] || {
+    print -u2 "A product gate requires the packaged Release app."
+    exit 65
+  }
+  [[ -z "$(git -C "${ROOT}" status --porcelain)" ]] || {
+    print -u2 "A product gate requires a clean worktree."
+    exit 65
+  }
+  EXACT_TAG="$(git -C "${ROOT}" describe --tags --exact-match 2>/dev/null || true)"
+  [[ -n "${EXACT_TAG}" ]] || {
+    print -u2 "A product gate requires an exact tagged commit."
+    exit 65
+  }
+  PROVENANCE="${APP}/Contents/Resources/ScholiumBuildProvenance.plist"
+  [[ -f "${PROVENANCE}" ]] || {
+    print -u2 "The packaged app has no build provenance record."
+    exit 65
+  }
+  [[ "$(plutil -extract schema raw "${PROVENANCE}")" == scholium-build-provenance-v1 ]]
+  [[ "$(plutil -extract source_clean raw "${PROVENANCE}")" == true ]]
+  [[ "$(plutil -extract git_commit raw "${PROVENANCE}")" == "$(git -C "${ROOT}" rev-parse HEAD)" ]]
+  [[ "$(plutil -extract git_exact_tag raw "${PROVENANCE}")" == "${EXACT_TAG}" ]]
+fi
+
+RUN_ID="rdf1_$(date -u +%Y%m%dT%H%M%SZ)_$$"
+SCRATCH="/tmp/scholium-performance-${RUN_ID}"
+APP_CONTAINER_TMP="${HOME}/Library/Containers/${BUNDLE_ID}/Data/tmp"
+APP_SCRATCH="${APP_CONTAINER_TMP}/scholium-performance-${RUN_ID}"
+FIXTURE_COPY="${APP_SCRATCH}/rdf1"
+RAW="${APP_SCRATCH}/raw"
+DERIVED="${SCRATCH}/derived"
+
+cleanup() {
+  local exit_code=$?
+  local pid
+  for pid in $(pgrep -f "^${APP}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
+    kill "${pid}" 2>/dev/null || true
+  done
+  if [[ -d "${APP_SCRATCH}" ]]; then
+    if (( exit_code != 0 )); then
+      ditto --norsrc --noextattr --noqtn --noacl \
+        "${APP_SCRATCH}" "${SCRATCH}/app-container-scratch" 2>/dev/null || true
+    fi
+    rm -rf "${APP_SCRATCH}"
+  fi
+  if (( exit_code == 0 )); then
+    rm -rf "${SCRATCH}"
+  else
+    print -u2 "Incomplete performance artifacts retained at ${SCRATCH}"
+  fi
+}
+trap cleanup EXIT
+
+mkdir -p "${SCRATCH}" "${RAW}" "${OUTPUT}"
+ditto --norsrc --noextattr --noqtn --noacl "${FIXTURE}" "${FIXTURE_COPY}"
+python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
+  --output "${FIXTURE_COPY}" \
+  --verify \
+  --allow-outside-tmp
+
+"${DEVELOPER_DIR}/usr/bin/xcodebuild" \
+  -project "${ROOT}/ScholiumUITests.xcodeproj" \
+  -scheme ScholiumUITests \
+  -destination "platform=macOS,arch=$(uname -m)" \
+  -derivedDataPath "${DERIVED}" \
+  build-for-testing \
+  >"${SCRATCH}/build-ui-driver.log"
+BASE_XCTESTRUN="$(find "${DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+[[ -f "${BASE_XCTESTRUN}" ]] || {
+  print -u2 "Xcode did not produce an .xctestrun file."
+  exit 70
+}
+
+python3 "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
+  --output "${RAW}/environment.json" \
+  --app "${APP}" \
+  --bundle-id "${BUNDLE_ID}" \
+  --artifact-kind "${ARTIFACT_KIND}" \
+  --fixture-manifest "${FIXTURE_COPY}/manifest.json"
+
+set_test_environment() {
+  local plist="$1"
+  local key="$2"
+  local value="$3"
+  /usr/libexec/PlistBuddy \
+    -c "Add :ScholiumUITests:EnvironmentVariables:${key} string ${value}" \
+    "${plist}"
+}
+
+for metric in \
+  warm_library_launch \
+  indexed_search \
+  warm_read_activation \
+  cold_read_activation; do
+  results="${RAW}/${metric}.jsonl"
+  home="${APP_SCRATCH}/home-${metric}"
+  run_file="${DERIVED}/Build/Products/ScholiumPerformance-${metric}.xctestrun"
+  mkdir -p "${home}"
+  cp "${BASE_XCTESTRUN}" "${run_file}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${APP}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_METRIC "${metric}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${FIXTURE_COPY}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${home}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RESULTS_PATH "${results}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${RUN_ID}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_WARMUPS "${WARMUPS}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_SAMPLES "${SAMPLES}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RELAUNCH_COOLDOWN_MS "${RELAUNCH_COOLDOWN_MS}"
+  "${DEVELOPER_DIR}/usr/bin/xcodebuild" \
+    -xctestrun "${run_file}" \
+    -destination "platform=macOS,arch=$(uname -m)" \
+    -parallel-testing-enabled NO \
+    -maximum-parallel-testing-workers 1 \
+    test-without-building \
+    -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1PerformanceSamples \
+    >"${SCRATCH}/${metric}.log"
+  if [[ "${MODE}" == product_gate && "${metric}" != cold_read_activation ]]; then
+    sleep "${METRIC_COOLDOWN_SECONDS}"
+  fi
+done
+
+python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
+  --output "${FIXTURE_COPY}" \
+  --verify \
+  --allow-outside-tmp
+cp "${RAW}/"*.jsonl "${OUTPUT}/"
+cp "${RAW}/environment.json" "${OUTPUT}/environment.json"
+python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
+  --input-dir "${RAW}" \
+  --output "${OUTPUT}/report.json" \
+  --environment "${OUTPUT}/environment.json" \
+  --run-id "${RUN_ID}" \
+  --warmups "${WARMUPS}" \
+  --samples "${SAMPLES}" \
+  --evidence-class "${MODE}"
+
+print "Evidence class: ${MODE}"
+print "Report: ${OUTPUT}/report.json"

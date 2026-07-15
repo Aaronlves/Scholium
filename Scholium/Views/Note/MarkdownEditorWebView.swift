@@ -1,6 +1,6 @@
+import ScholiumContracts
 import SwiftUI
 import WebKit
-import ScholiumCore
 
 private final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
@@ -674,9 +674,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
     private static var editorResourceDirectory: URL? {
         if let resourceURL = Bundle.main.resourceURL {
-            let packagedDirectory = resourceURL
+            let packagedBundleURL = resourceURL
                 .appendingPathComponent("Scholium_ScholiumApp.bundle", isDirectory: true)
-            if FileManager.default.fileExists(atPath: packagedDirectory.path) { return packagedDirectory }
+            if let packagedResources = Bundle(url: packagedBundleURL)?.resourceURL,
+               FileManager.default.fileExists(
+                   atPath: packagedResources.appendingPathComponent("editor.bundle.js").path
+               ) {
+                return packagedResources
+            }
         }
         return Bundle.module.url(forResource: "index", withExtension: "html")?
             .deletingLastPathComponent()

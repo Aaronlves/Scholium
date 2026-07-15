@@ -1,3 +1,4 @@
+import ScholiumContracts
 import Foundation
 
 enum ScholiumWebFonts {

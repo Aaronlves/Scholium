@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Derived Index Integrity"
+  short_description: "Verify federated FTS, links, and generations"
+  default_prompt: "Use $scholium-derived-index-integrity to implement or audit this Scholium derived-index change."

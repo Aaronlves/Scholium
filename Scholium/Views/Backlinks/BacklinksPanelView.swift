@@ -1,4 +1,4 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
 // MARK: - Relationship projection
@@ -162,22 +162,26 @@ private struct InspectorRelationshipProjection {
     }
 }
 
+/// Immutable relationship inputs for one selected document. The feature root
+/// supplies the cross-feature navigation closure; inspector leaves never
+/// borrow the complete window model.
+struct RelationshipInspectorContext {
+    let graph: GraphSnapshot?
+    let catalog: WorkspaceCatalogSnapshot?
+    let current: VaultQualifiedNoteID?
+    let openReference: (VaultNoteReference, Int?) -> Void
+}
+
 // MARK: - Incoming relationships
 
 struct BacklinksPanelView: View {
-    @EnvironmentObject var appState: AppState
-
-    private var currentID: VaultQualifiedNoteID? {
-        guard let vaultID = appState.currentRegisteredVault?.id,
-              let path = appState.currentNote?.relativePath else { return nil }
-        return VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
-    }
+    let context: RelationshipInspectorContext
 
     private var projection: InspectorRelationshipProjection {
         InspectorRelationshipProjection.make(
-            graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
-            catalog: appState.workspaceCatalog,
-            current: currentID,
+            graph: context.graph,
+            catalog: context.catalog,
+            current: context.current,
             mode: .incoming
         )
     }
@@ -188,7 +192,10 @@ struct BacklinksPanelView: View {
             symbol: "arrow.turn.down.left",
             emptyTitle: "No Incoming Links",
             emptyDescription: "Supporting, incompatible, and related notes will appear here with their authoritative source line.",
-            projection: projection
+            projection: projection,
+            isRefreshing: context.graph == nil,
+            current: context.current,
+            openReference: context.openReference
         )
     }
 }
@@ -196,19 +203,13 @@ struct BacklinksPanelView: View {
 // MARK: - Outgoing relationships
 
 struct OutgoingLinksPanelView: View {
-    @EnvironmentObject var appState: AppState
-    let note: Note
-
-    private var currentID: VaultQualifiedNoteID? {
-        guard let vaultID = appState.currentRegisteredVault?.id else { return nil }
-        return VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
-    }
+    let context: RelationshipInspectorContext
 
     private var projection: InspectorRelationshipProjection {
         InspectorRelationshipProjection.make(
-            graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
-            catalog: appState.workspaceCatalog,
-            current: currentID,
+            graph: context.graph,
+            catalog: context.catalog,
+            current: context.current,
             mode: .outgoing
         )
     }
@@ -219,21 +220,25 @@ struct OutgoingLinksPanelView: View {
             symbol: "arrow.turn.up.right",
             emptyTitle: "No Outgoing Links",
             emptyDescription: "Supported, incompatible, and related notes will appear here with their authoritative source line.",
-            projection: projection
+            projection: projection,
+            isRefreshing: context.graph == nil,
+            current: context.current,
+            openReference: context.openReference
         )
     }
 }
 
 // MARK: - Shared panel
-// MARK: - Shared panel
 
 private struct RelationshipPanel: View {
-    @EnvironmentObject private var appState: AppState
     let title: String
     let symbol: String
     let emptyTitle: String
     let emptyDescription: String
     let projection: InspectorRelationshipProjection
+    let isRefreshing: Bool
+    let current: VaultQualifiedNoteID?
+    let openReference: (VaultNoteReference, Int?) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -250,7 +255,7 @@ private struct RelationshipPanel: View {
 
             Divider()
 
-            if appState.workspaceCatalog?.graph == nil && appState.relationshipGraph == nil {
+            if isRefreshing {
                 VStack(spacing: 10) {
                     ProgressView()
                         .controlSize(.small)
@@ -271,7 +276,11 @@ private struct RelationshipPanel: View {
                     ForEach(projection.sections, id: \.0) { section, items in
                         Section {
                             ForEach(items) { item in
-                                InspectorRelationshipRow(item: item)
+                                InspectorRelationshipRow(
+                                    item: item,
+                                    current: current,
+                                    openReference: openReference
+                                )
                             }
                         } header: {
                             VectorSectionHeader(section: section, count: items.count)
@@ -310,8 +319,9 @@ private struct VectorSectionHeader: View {
 }
 
 private struct InspectorRelationshipRow: View {
-    @EnvironmentObject private var appState: AppState
     let item: InspectorRelationshipItem
+    let current: VaultQualifiedNoteID?
+    let openReference: (VaultNoteReference, Int?) -> Void
 
     private var peerTitle: String {
         item.peer?.title
@@ -325,8 +335,8 @@ private struct InspectorRelationshipRow: View {
         guard let source = item.source else {
             return "Authored in \(item.edge.source.relativePath)"
         }
-        if source.reference.vaultID == appState.currentRegisteredVault?.id,
-           source.reference.relativePath == appState.currentNote?.relativePath {
+        if source.reference.vaultID == current?.vaultID,
+           source.reference.relativePath == current?.relativePath {
             return "Authored here"
         }
         return "Authored in \(source.title)"
@@ -335,7 +345,7 @@ private struct InspectorRelationshipRow: View {
     private var resolutionText: String? {
         switch item.edge.occurrence.resolution {
         case .resolved: nil
-        case .ambiguous(let candidates): "Ambiguous · \(candidates.count) matches"
+        case .ambiguous(let candidates): "Ambiguous — \(candidates.count) matches"
         case .broken: "Broken link"
         case .unresolved: "Unresolved"
         }
@@ -349,7 +359,7 @@ private struct InspectorRelationshipRow: View {
         VStack(alignment: .leading, spacing: 4) {
             if let peer = item.peer {
                 Button {
-                    Task { await appState.openWorkspaceReference(peer.reference) }
+                    openReference(peer.reference, nil)
                 } label: {
                     relationLabel
                 }
@@ -363,19 +373,14 @@ private struct InspectorRelationshipRow: View {
                 Text(sourceTitle)
                     .lineLimit(1)
                 if let resolutionText {
-                    Text("·")
+                    Text("—")
                     Text(resolutionText)
                         .foregroundStyle(.orange)
                 }
                 Spacer(minLength: 4)
                 Button {
                     guard let source = item.source else { return }
-                    Task {
-                        await appState.openWorkspaceReference(
-                            source.reference,
-                            line: sourceLine
-                        )
-                    }
+                    openReference(source.reference, sourceLine)
                 } label: {
                     Label("Line \(sourceLine)", systemImage: "text.alignleft")
                         .labelStyle(.titleAndIcon)
@@ -410,7 +415,11 @@ private struct InspectorRelationshipRow: View {
 }
 
 #Preview {
-    BacklinksPanelView()
-        .environmentObject(AppState())
+    BacklinksPanelView(context: RelationshipInspectorContext(
+        graph: nil,
+        catalog: nil,
+        current: nil,
+        openReference: { _, _ in }
+    ))
         .frame(width: 320, height: 600)
 }

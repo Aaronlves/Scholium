@@ -1,6 +1,6 @@
+import ScholiumContracts
 import AppKit
 import SwiftUI
-import ScholiumCore
 
 private final class CommentableMarkdownTextView: NSTextView {
     var onRequestComment: ((NSRange) -> Void)?
@@ -66,6 +66,7 @@ private final class CommentableMarkdownTextView: NSTextView {
 struct NativeMarkdownReadView: NSViewRepresentable {
     let source: String
     let textScale: Double
+    let topContentInset: CGFloat
     let onLinkClick: (String) -> Void
     let onRequestComment: ((MarkdownReviewSelection) -> Void)?
 
@@ -74,6 +75,7 @@ struct NativeMarkdownReadView: NSViewRepresentable {
             text: .constant(source),
             isEditable: false,
             textScale: textScale,
+            topContentInset: topContentInset,
             onLinkClick: onLinkClick,
             onRequestComment: onRequestComment
         )
@@ -86,6 +88,7 @@ struct NativeMarkdownReadView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.updateTextIfNeeded(source)
         context.coordinator.updateTextScale(textScale, in: scrollView)
+        context.coordinator.updateTopContentInset(topContentInset)
     }
 }
 
@@ -100,6 +103,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
     @Binding private var text: String
     private let isEditable: Bool
     private var textScale: Double
+    private var topContentInset: CGFloat
     private let onLinkClick: ((String) -> Void)?
     private let onRequestComment: ((MarkdownReviewSelection) -> Void)?
     private var isApplyingStyles = false
@@ -115,12 +119,14 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         text: Binding<String>,
         isEditable: Bool,
         textScale: Double = 1.0,
+        topContentInset: CGFloat = 26,
         onLinkClick: ((String) -> Void)?,
         onRequestComment: ((MarkdownReviewSelection) -> Void)?
     ) {
         _text = text
         self.isEditable = isEditable
         self.textScale = min(2.0, max(1.0, textScale))
+        self.topContentInset = max(0, topContentInset)
         self.onLinkClick = onLinkClick
         self.onRequestComment = onRequestComment
     }
@@ -129,10 +135,10 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
-        scrollView.allowsMagnification = true
-        scrollView.minMagnification = 1.0
-        scrollView.maxMagnification = 2.0
-        scrollView.magnification = textScale
+        // Document scaling must reflow ordinary prose. Magnifying the scroll
+        // view doubles its layout width and can silently clip the trailing
+        // half of a paragraph at 200%, even with no horizontal scroller.
+        scrollView.allowsMagnification = false
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
@@ -151,7 +157,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         textView.isContinuousSpellCheckingEnabled = isEditable
         textView.drawsBackground = true
         textView.backgroundColor = .textBackgroundColor
-        textView.textContainerInset = NSSize(width: 32, height: 26)
+        textView.textContainerInset = NSSize(width: 32, height: topContentInset)
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.isHorizontallyResizable = false
@@ -177,14 +183,17 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
 
     func updateTextScale(_ requestedScale: Double, in scrollView: NSScrollView) {
         let scale = min(2.0, max(1.0, requestedScale))
-        guard abs(textScale - scale) > 0.001 || abs(scrollView.magnification - scale) > 0.001 else {
-            return
-        }
+        guard abs(textScale - scale) > 0.001 else { return }
+        pendingViewportAnchor = textView.flatMap { captureViewportAnchor(in: $0) }
         textScale = scale
-        scrollView.setMagnification(scale, centeredAt: NSPoint(
-            x: scrollView.contentView.bounds.midX,
-            y: scrollView.contentView.bounds.midY
-        ))
+        applyStyles()
+    }
+
+    func updateTopContentInset(_ requestedInset: CGFloat) {
+        let inset = max(0, requestedInset)
+        guard abs(topContentInset - inset) > 0.5, let textView else { return }
+        topContentInset = inset
+        textView.textContainerInset = NSSize(width: textView.textContainerInset.width, height: inset)
     }
 
     func updateTextIfNeeded(_ newText: String) {
@@ -304,10 +313,10 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         styledSelectionRanges = selections.map(\.rangeValue)
         let source = storage.string as NSString
         let fullRange = NSRange(location: 0, length: source.length)
-        let baseFont = ScholiumTypography.readingFont(size: ScholiumTypography.readingBodySize)
+        let baseFont = readingFont(size: ScholiumTypography.readingBodySize)
         let baseParagraph = NSMutableParagraphStyle()
-        baseParagraph.lineSpacing = 4
-        baseParagraph.paragraphSpacing = 5
+        baseParagraph.lineSpacing = scaled(4)
+        baseParagraph.paragraphSpacing = scaled(5)
 
         storage.beginEditing()
         storage.setAttributes([
@@ -427,8 +436,8 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             let encoded = footnote.content.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? footnote.content
             guard let footnoteURL = URL(string: "scholium-footnote:\(encoded)") else { continue }
             storage.addAttributes([
-                .font: ScholiumTypography.readingFont(size: 12, bold: true),
-                .baselineOffset: 7,
+                .font: readingFont(size: 12, bold: true),
+                .baselineOffset: scaled(7),
                 .foregroundColor: NSColor.linkColor,
                 .link: footnoteURL,
                 .toolTip: footnote.content,
@@ -451,18 +460,18 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             where NSIntersectionRange(callout.blockRange, range).length == callout.blockRange.length {
             let accent = calloutAccent(for: callout.kind)
             let paragraph = NSMutableParagraphStyle()
-            paragraph.headIndent = 18
-            paragraph.firstLineHeadIndent = 18
-            paragraph.tailIndent = -12
-            paragraph.lineSpacing = 4
-            paragraph.paragraphSpacing = 5
-            paragraph.paragraphSpacingBefore = 7
+            paragraph.headIndent = scaled(18)
+            paragraph.firstLineHeadIndent = scaled(18)
+            paragraph.tailIndent = -scaled(12)
+            paragraph.lineSpacing = scaled(4)
+            paragraph.paragraphSpacing = scaled(5)
+            paragraph.paragraphSpacingBefore = scaled(7)
             storage.addAttributes([
                 .backgroundColor: accent.withAlphaComponent(0.09),
                 .paragraphStyle: paragraph,
             ], range: callout.blockRange)
             storage.addAttributes([
-                .font: ScholiumTypography.readingFont(size: 15, bold: true),
+                .font: readingFont(size: 15, bold: true),
                 .foregroundColor: accent,
             ], range: callout.kindRange)
 
@@ -504,7 +513,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         footnotePopover?.close()
 
         let label = NSTextField(wrappingLabelWithString: content)
-        label.font = ScholiumTypography.readingFont(size: 15)
+        label.font = readingFont(size: 15)
         label.textColor = .labelColor
         label.maximumNumberOfLines = 8
         label.preferredMaxLayoutWidth = 320
@@ -566,7 +575,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             let content = match.range(at: 1)
             storage.addAttribute(
                 .font,
-                value: ScholiumTypography.readingFont(
+                value: readingFont(
                     size: ScholiumTypography.readingBodySize,
                     bold: true
                 ),
@@ -576,7 +585,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             hide(NSRange(location: NSMaxRange(content), length: NSMaxRange(match.range) - NSMaxRange(content)), in: storage, revealWithin: match.range)
         }
 
-        let italicFont = ScholiumTypography.readingFont(
+        let italicFont = readingFont(
             size: ScholiumTypography.readingBodySize,
             italic: true
         )
@@ -590,7 +599,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         forEachMatch(#"`([^`\n]+)`"#, in: source, range: range) { match in
             let content = match.range(at: 1)
             storage.addAttributes([
-                .font: ScholiumTypography.monospaceFont(size: 14),
+                .font: monospaceFont(size: 14),
                 .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.16),
             ], range: content)
             hide(NSRange(location: match.range.location, length: 1), in: storage, revealWithin: match.range)
@@ -622,7 +631,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         storage: NSTextStorage,
         baseFont: NSFont
     ) {
-        let quoteFont = ScholiumTypography.readingFont(
+        let quoteFont = readingFont(
             size: ScholiumTypography.readingBodySize,
             italic: true
         )
@@ -631,10 +640,10 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             let content = match.range(at: 2)
             hide(marker, in: storage, revealWithin: match.range)
             let paragraph = NSMutableParagraphStyle()
-            paragraph.headIndent = 16
-            paragraph.firstLineHeadIndent = 16
-            paragraph.lineSpacing = 4
-            paragraph.paragraphSpacing = 5
+            paragraph.headIndent = scaled(16)
+            paragraph.firstLineHeadIndent = scaled(16)
+            paragraph.lineSpacing = scaled(4)
+            paragraph.paragraphSpacing = scaled(5)
             storage.addAttributes([
                 .font: quoteFont,
                 .foregroundColor: NSColor.secondaryLabelColor,
@@ -649,11 +658,11 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             let sizes: [CGFloat] = [32, 27, 23, 20, 18.5, 17]
             let content = match.range(at: 3)
             let paragraph = NSMutableParagraphStyle()
-            paragraph.lineSpacing = 2
-            paragraph.paragraphSpacingBefore = level <= 2 ? 18 : 12
-            paragraph.paragraphSpacing = level <= 2 ? 10 : 7
+            paragraph.lineSpacing = scaled(2)
+            paragraph.paragraphSpacingBefore = scaled(level <= 2 ? 18 : 12)
+            paragraph.paragraphSpacing = scaled(level <= 2 ? 10 : 7)
             storage.addAttributes([
-                .font: ScholiumTypography.readingFont(
+                .font: readingFont(
                     size: sizes[level - 1],
                     bold: true
                 ),
@@ -755,12 +764,45 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         guard let image = NSImage(
             systemSymbolName: symbol,
             accessibilityDescription: vectorLabel(for: kind)
-        )?.withSymbolConfiguration(.init(pointSize: 16, weight: .medium)) else { return nil }
+        )?.withSymbolConfiguration(.init(pointSize: scaled(16), weight: .medium)) else { return nil }
         image.isTemplate = true
         let attachment = NSTextAttachment()
         attachment.image = image
-        attachment.bounds = NSRect(x: 0, y: -2, width: 16, height: 16)
+        attachment.bounds = NSRect(
+            x: 0,
+            y: -scaled(2),
+            width: scaled(16),
+            height: scaled(16)
+        )
         return attachment
+    }
+
+    private func scaled(_ value: CGFloat) -> CGFloat {
+        value * CGFloat(textScale)
+    }
+
+    private func readingFont(
+        size: CGFloat,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> NSFont {
+        ScholiumTypography.readingFont(
+            size: scaled(size),
+            bold: bold,
+            italic: italic
+        )
+    }
+
+    private func monospaceFont(
+        size: CGFloat,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> NSFont {
+        ScholiumTypography.monospaceFont(
+            size: scaled(size),
+            bold: bold,
+            italic: italic
+        )
     }
 
     private func vectorColor(for kind: VectorLinkKind) -> NSColor {

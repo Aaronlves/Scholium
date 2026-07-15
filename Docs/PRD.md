@@ -3,7 +3,7 @@
 **Status:** Draft consolidated requirements baseline
 **Product:** Scholium for macOS and its agent-facing CLI
 **Platform baseline:** macOS 26 or later
-**Document date:** 2026-07-14
+**Document date:** 2026-07-15
 **Product owner:** Imna
 **Release owner:** Imna
 **Current release:** 0.1 Experimental
@@ -11,11 +11,9 @@
 
 ## 0. Document purpose and authority
 
-This document consolidates the product requirements already distributed across
-the Product Guide, Design Handbook, implementation ledger, README, and
-repository rules. It adds the release-oriented structure those documents do
-not provide on their own: product problem, users, goals, outcomes, numbered
-requirements, acceptance criteria, risks, open decisions, and traceability.
+This document consolidates the product requirements distributed across the
+Product Guide and Design Handbook. It adds release-oriented requirements,
+acceptance criteria, gates, risks, open decisions, and traceability.
 
 This is a requirements synthesis, not permission to change the product model.
 The documentation hierarchy is:
@@ -33,12 +31,9 @@ The documentation hierarchy is:
    It does not redefine the target product.
 5. [README](../README.md), live construction call sites, executable tests, and
    scripts establish what the current build actually demonstrates.
-6. The repository [HANDBOOK](../HANDBOOK.md) is an entry point and authority
-   map, not a competing product specification.
 
-When this PRD conflicts with one of those authorities, the conflict must be
-resolved explicitly. It must not be resolved by silently treating a target
-requirement as current behavior.
+When this PRD conflicts with an authority, resolve the conflict explicitly; do
+not treat a target requirement as current behavior.
 
 ### 0.1 Requirement language
 
@@ -185,7 +180,11 @@ Zotero is an optional external bibliographic and PDF-reading system. Scholium
 may read bounded local metadata through Zotero's localhost API when the
 researcher uses it, but Zotero is not required for the core workflow. Scholium
 is not a Zotero replacement and does not manage Zotero attachments or the
-Zotero database.
+Zotero database. For Beta, an external agent MAY use a separately bounded,
+local Zotero MCP integration under a protected Scholium System Skill. This
+does not change the built-in app's read-only boundary. Agent-side imports, when
+explicitly requested, remain guarded MCP operations rather than app metadata
+editing or direct database access.
 
 ## 4. Product goals and non-goals
 
@@ -215,19 +214,31 @@ The following boundaries apply to the target product:
 - a generic task manager or plugin marketplace;
 - a Zotero replacement or embedded PDF reader;
 - automatic untraced-premise verdicts;
-- Canvas authoring or conversion of Canvas edges into Markdown;
 - a proprietary backup-export format;
 - complete arbitrary Obsidian-theme compatibility; or
 - bundled general instructions that purport to teach researchers how to
-  conduct philosophy; researcher-authored skills remain the researcher's
-  responsibility.
+  conduct philosophy. Official Workflow Skills are philosophy-facing,
+  truth-pursuing, fidelity-caring, and knowledge-base-constructing methods for
+  agents. Their technical operations remain subordinate to scholarly outcomes,
+  and they do not replace the researcher's methodological judgment, certify
+  truth, or make Scholium an authority over philosophical quality.
 
-The following capabilities are intentionally deferred beyond 0.1 rather than
-permanently rejected:
+The following core agent capabilities are intentionally deferred beyond 0.1
+and are required for Beta:
+
+- protected System Skills and complete official Workflow Skill packages;
+- bounded catalog and package retrieval with selective mode-aware assembly and
+  Mixed-mode isolation;
+- immutable Dialogue `responseContract` snapshots and agent-facing exposure;
+  and
+- the protected Zotero MCP adapter with a supported local transport.
+
+The following additional capabilities are intentionally deferred beyond 0.1
+rather than permanently rejected:
 
 - document, project, HTML, PDF, or DOCX export;
-- additional bundled discipline-specific skills and skill-driven workflows;
-  and
+- additional discipline-specific or researcher-contributed workflows beyond
+  the Beta baseline; and
 - richer Dialogue compression and reflection modes.
 
 ### 4.3 Standalone academic workflow
@@ -270,8 +281,7 @@ The baseline includes:
 5. researcher-centred Dialogue records with optional transient agent-instruction
    generation and attributed replies;
 6. optional Work Critique with source-located findings;
-7. canonical Connections, Search, and Attention, with Canvas explicitly
-   deferred until the core document workflow is stable;
+7. canonical Connections, Search, and Attention;
 8. self-contained checkpoints, comparison, selective restore, and full restore;
 9. optional bounded, read-only local Zotero integration;
 10. direct CLI operations with revision checks; and
@@ -325,9 +335,12 @@ Release stages are capability-based:
 
 The release owner is Imna. A release declaration MUST identify the version,
 stage, applicable gates, evidence, deferred capabilities, and any explicit
-waivers. Richer bundled skill content and skill-driven workflows are not a 0.1
-dependency; the bounded file-backed management requirement below does not make
-skills necessary for the manual academic workflow.
+waivers. Mode-aware System and Workflow packages, selective assembly, the
+Dialogue response contract, and the protected Zotero MCP adapter are not 0.1
+dependencies, but they are required Beta capabilities because agent-assisted
+research is central to the mature product. The bounded file-backed management
+requirement below does not make skills necessary for the manual academic
+workflow.
 
 ## 6. Product model and authoritative data
 
@@ -371,9 +384,10 @@ Scholium MUST NOT upload .scholium or research content automatically.
 
 ## 7. Functional requirements
 
-Each requirement below has a target behavior, acceptance criteria, source
-authority, and current status. The current status is a planning signal, not a
-substitute for current tests.
+Each requirement below has target behavior, acceptance criteria, and source
+authority. Current reachability and verification are maintained once in
+[Implementation Status](IMPLEMENTATION_STATUS.md), not repeated in every
+requirement.
 
 ### 7.1 Triptych setup, registration, and navigation
 
@@ -394,15 +408,13 @@ Triptychs to share one portable control directory beside Works.
   recoverable explanation.
 
 **Authority:** Product Guide sections 1 and 3; Design Handbook section 4.1.
-**Status:** Target; multiple Triptych behavior is reported reachable, with
-remaining interactive acceptance noted in Implementation Status.
 
 #### PRD-TRI-002 — Triptych windows
 
 **Requirement:** One window MUST belong to one complete Triptych. Multiple
 Triptychs MAY be open simultaneously in separate windows. Each window MUST own
 its selection, tabs, document modes, History, inspector, scroll locations,
-search state, and Canvas state while shared services remain coherent.
+search state while shared services remain coherent.
 
 **Acceptance criteria:**
 
@@ -415,9 +427,6 @@ search state, and Canvas state while shared services remain coherent.
 
 **Authority:** Product Guide section 3.2; Design Handbook sections 4.1–4.2 and
 decision D-020.
-**Status:** Reachable; registry, per-window sessions, and shared
-`WorkspaceStore` ownership are implemented. Sustained interactive multiwindow
-acceptance remains open.
 
 #### PRD-TRI-003 — Works organization without project management
 
@@ -427,7 +436,7 @@ register, select, validate, assign, or manage projects.
 
 **Acceptance criteria:**
 
-- A Works folder can represent a paper, chapter, book, dissertation, or any
+- A Works folder can represent a paper, chapter, book, or any
   other researcher-chosen grouping.
 - No project selector appears below Triptych navigation.
 - No project completeness, readiness, or membership warning is generated.
@@ -435,26 +444,27 @@ register, select, validate, assign, or manage projects.
   is imposed.
 
 **Authority:** Product Guide sections 3.2 and 4; Design Handbook decision D-015.
-**Status:** Reachable; project-management UI is removed and Works organization
-remains ordinary folder structure.
 
 #### PRD-TRI-004 — Onboarding and management
 
-**Requirement:** First launch MUST ask the researcher to select Analyses,
-Topics, and Works locations and explain local-first storage, generated state,
-and the agent boundary. Later management MUST support complete registered
-Triptychs and three-root editing without requiring a project setup.
+**Requirement:** First launch MUST use a narrow, multi-step, no-scroll flow to
+select Analyses, Topics, and Works locations, then request the bounded
+authorization beside Works at the point of use. Each step MUST present one
+decision with concise copy. Longer storage and optional-agent explanations MUST
+remain available outside the primary setup flow. Later management MUST support
+complete registered Triptychs and three-root editing without requiring a
+project setup.
 
 **Acceptance criteria:**
 
 - First-run setup reaches usable folders without requiring a feature tour.
+- First-run setup has no scrolling page and never presents all folder choices
+  at once.
 - Manage Triptychs… lists complete registered Triptychs.
 - Standard Open panels are used for vault and import selection.
 - Errors identify the affected operation and offer recovery actions.
 
 **Authority:** Product Guide section 16; Design Handbook section 4.9.
-**Status:** Target; implementation evidence exists, but full onboarding and
-settings acceptance remain part of the completion work.
 
 #### PRD-TRI-005 — Unclassified import
 
@@ -472,8 +482,6 @@ Properties behavior until classification.
 - Failed classification does not leave an unverified partial migration.
 
 **Authority:** Product Guide section 3.5.
-**Status:** Reachable according to Implementation Status; rollback and recovery
-behavior must remain covered by tests.
 
 ### 7.2 Documents, source fidelity, and identity
 
@@ -496,8 +504,6 @@ values, and final newlines.
 
 **Authority:** Product Guide sections 5.1 and 5.2; Design Handbook sections
 3.3, 4.4, 9, and 10.
-**Status:** Reachable in current implementation evidence; continued fidelity
-regression testing is a release gate.
 
 #### PRD-DOC-002 — Document modes
 
@@ -517,8 +523,6 @@ not separate files or ordinary tabs.
 
 **Authority:** Product Guide section 5.1; Design Handbook sections 4.4, 5,
 8.2, and 10.
-**Status:** Reachable with fallback and editor bundle evidence; full
-accessibility and large-document acceptance remains required.
 
 #### PRD-DOC-003 — Common note capabilities
 
@@ -528,20 +532,13 @@ History, and safe file lifecycle operations.
 
 **Acceptance criteria:**
 
-- Create, duplicate, import, rename, move, Set Aside, Trash, restore, Reveal
+- Create, duplicate, import, rename, move, Set Aside, Trash, Put Back, Reveal
   in Finder, and permanent deletion are available where applicable.
 - Autosave does not require an ordinary Save button.
 - App writes are atomic and conflict-aware.
 - External edits are reconciled without silently replacing dirty buffers.
 
 **Authority:** Product Guide sections 5 and 6.
-**Status:** Reachable in implementation evidence. The current coordinator
-purges the selected source note and a Work's separate current Critique Markdown,
-repository versions, Human Review/comments, every Dialogue containing either
-stable identity, Critique associations, portable identity state, and every
-checkpoint containing either identity. Durable pre-commit rollback and
-post-commit cleanup recovery are covered with fresh-runtime tests; broader
-lifecycle UI acceptance remains open.
 
 #### PRD-DOC-004 — Stable identity and path changes
 
@@ -560,18 +557,26 @@ moves and renames preserve associated app-owned records.
 
 **Authority:** Product Guide section 5.3; Implementation Status sections 1 and
 2.
-**Status:** Reachable; confirmed app moves and externally reconciled renames
-migrate stable identity, Note History references, Human Review/comments, Dialogue
-references, Critique associations, window snapshots, and Canvas references.
-Ambiguous external identity changes require confirmation.
 
-#### PRD-DOC-005 — Properties
+#### PRD-DOC-005 — Properties and Research Status
 
 **Requirement:** Each of Analyses, Topics, and Works MUST support a fixed
 starting profile that the researcher can configure by vault. Configuration MUST
 control visible fields, order, disclosure, and human-editable allowlist
 without allowing protected identity and automatic fields to be edited through
-structured Properties.
+structured Properties. Scholium MUST support a minimal nested `research_unit`
+mapping, presented as **Research Status**, for declaring the epistemic scope
+within which a note's claims apply.
+
+The default mapping MUST contain only a required non-empty `scope` and an
+optional non-empty `limitations` list. It MUST NOT duplicate note role, source
+identity, links, backlinks, relation counts, coverage percentages, confidence,
+reading-pass state, or timestamps.
+
+Creation and modification time MUST be app-owned History data. Researchers and
+agents MUST NOT be required or instructed to create, infer, or maintain
+frontmatter timestamps. Existing timestamp YAML remains exact preserved source
+for compatibility but is not part of the target default profiles.
 
 **Acceptance criteria:**
 
@@ -579,12 +584,36 @@ structured Properties.
 - Protected fields remain available in Source mode for exact YAML editing.
 - Absent, empty, invalid, derived, and not-applicable values are distinct.
 - Legacy YAML remains readable and is not bulk-rewritten automatically.
+- A new durable Analysis requires `research_unit.scope`; an existing Analysis
+  without it remains valid and presents undeclared rather than malformed scope.
+- Topics and Works may declare Research Units without making YAML mandatory;
+  ordinary reading, editing, or saving never injects Topic YAML solely for this
+  purpose.
+- Research Status remains inside the existing Properties region and creates no
+  new document type, panel, workflow state, or project object.
+- Dialogue expresses its Research Unit through app-owned selected-note,
+  selection, Comment, and scope records rather than Markdown frontmatter.
+- Links and Connections provide related targets and reverse navigation; the
+  Research Unit does not store derived relation or coverage data.
+- Project Relevance, when requested, remains contextual report content rather
+  than a universal Analysis property.
+- An optional `debate_importance` whole-number rating from 0–10 is valid only
+  together with `debate_importance_scope`. It has no pass grade, remains
+  explicitly scoped, and is never inferred from project relevance, quality,
+  truth, prestige, citation count, or the source's self-positioning.
+- Debate Importance sorting is numeric, high to low, and available only when
+  the Library is filtered to one exact `debate_importance_scope`. Unrated
+  matching Analyses sort after rated ones; Scholium provides no cross-debate
+  ranking. A bounded Research Synthesis may recalibrate a same-scope corpus.
+- App-owned History supplies creation and modification time even when no
+  corresponding YAML timestamp exists.
+- For a long source, the default durable workflow updates one source-level
+  Analysis and its cumulative Research Unit after each bounded three-pass
+  session. It creates a separate segment Analysis only by explicit researcher
+  choice or for an independently durable scholarly purpose.
 
-**Authority:** Product Guide section 5.2; Design Handbook sections 4.6 and 9.
-**Status:** Reachable. Legacy role, property-alias, sparse window/Search,
-Triptych-identity, and Canvas compatibility paths are covered by immutable
-fixtures. Reads preserve fixture bytes; malformed present fields and unknown
-roles fail closed.
+**Authority:** Product Guide section 5.2; Property Profiles; Design Handbook
+sections 4.6 and 9 and decision D-033.
 
 #### PRD-DOC-006 — Set Aside, Trash, and deletion
 
@@ -596,6 +625,9 @@ research workflows according to the Product Guide.
 **Acceptance criteria:**
 
 - The actions are Set Aside, Move to Trash, and Cancel.
+- Put Back returns a Set Aside or Trash note to its exact original
+  vault-relative path. It MUST NOT expose a destination field, silently rename
+  the note, or choose another folder; an occupied original path is a conflict.
 - Set-aside notes remain readable and recoverable but are excluded from
   ordinary search, synthesis, Critique, and agent context unless included.
 - Trashed notes are excluded from ordinary search, Connections, agent context,
@@ -611,12 +643,6 @@ research workflows according to the Product Guide.
   deleted in full.
 
 **Authority:** Product Guide section 6; Design Handbook sections 4.8 and 10.
-**Status:** Reachable in implementation evidence and covered by disposable
-filesystem tests. Work/current-Critique deletion is one recoverable transaction:
-pre-commit failures and interruption restore exact files and records, while an
-interruption after the commit decision resumes privacy cleanup. A concurrent
-replacement at a deleted path is preserved rather than overwritten. Broader
-lifecycle and recovery UI acceptance remains open.
 
 #### PRD-DOC-007 — External changes and conflicts
 
@@ -635,8 +661,6 @@ preserved and presented as a conflict when the disk revision diverges.
 
 **Authority:** Product Guide sections 2.2, 8.4, and 14; Design Handbook
 sections 3.3, 9, and 10.
-**Status:** Reachable in current implementation evidence; sustained
-multiwindow and conflict-recovery UI acceptance remains open.
 
 ### 7.3 Human Review, comments, and qualification
 
@@ -658,8 +682,6 @@ qualification.
 - Qualification can change only through Review.
 
 **Authority:** Product Guide section 7; Design Handbook sections 4.8 and 10.
-**Status:** Reachable in current implementation evidence; full clean-account
-  and accessibility acceptance remains open.
 
 #### PRD-REV-002 — App-owned comments
 
@@ -678,10 +700,6 @@ context where applicable. Comments MUST not insert hidden Markdown.
 
 **Authority:** Product Guide section 7.2; Design Handbook sections 3.4, 8,
   and 10.
-**Status:** Partial; Trash retention remains separate and permanent deletion
-removes the selected Work and associated Critique Human Review/comment records.
-Cross-store failure and fresh-runtime rollback coverage is implemented; full
-comments UI acceptance remains open.
 
 #### PRD-REV-003 — Unqualified Analysis Attention
 
@@ -698,7 +716,6 @@ a neutral link alone MUST NOT be treated as reliance.
 - The warning clears when qualification or usage changes.
 
 **Authority:** Product Guide section 7.3; Design Handbook sections 4.7 and 9.
-**Status:** Reachable according to Implementation Status.
 
 ### 7.4 Dialogue and external agent work
 
@@ -735,8 +752,6 @@ The generated prompt SHOULD include, as applicable:
 
 **Authority:** Product Guide section 8.1; Design Handbook sections 3.5, 4.8,
   and 10.
-**Status:** Reachable according to Implementation Status; full Dialogue
-presentation and clean-account acceptance remain open.
 
 #### PRD-DIA-002 — Dialogue History and CLI replies
 
@@ -758,7 +773,6 @@ request and comment identities before writing attributed records.
   access.
 
 **Authority:** Product Guide section 8.2; Design Handbook section 10.
-**Status:** Reachable according to Implementation Status.
 
 #### PRD-DIA-003 — Concise scholarly interaction and academic change summary
 
@@ -786,18 +800,38 @@ silently become authoritative note content.
   metadata.
 - The agent's closing response foregrounds academic change, unresolved
   questions, or review needs rather than a detailed operation log.
-- Richer comment-preservation and reflection modes remain deferred until their
-  interaction design is approved.
+- Comment-preservation modes and response modules beyond the bounded Beta set
+  in PRD-DIA-004 remain deferred until separately approved.
 
 **Authority:** Product Guide sections 1 and 8; Design Handbook sections 3.5,
 4.8, 7, and 10.
-**Status:** Implemented in the reachable app. Dialogue stores and presents the
-initial researcher Comment, chronological follow-up Comments, and attributed
-agent Responses; legacy records decode without synthetic turns and path
-migration retains existing exchanges. The default bundled response contract
-requires a concise academic-change summary and unresolved question or required
-researcher review when applicable. Focused isolated UI acceptance covers
-append, chronology, close/reopen persistence, and the canonical journey.
+
+#### PRD-DIA-004 — Request-scoped scholarly response contract
+
+**Requirement:** For Beta, the Dialogue request UI MUST provide one required
+Academic Outcome and a bounded multi-selection of optional scholarly response
+modules. The effective request-time choice MUST be stored as an immutable
+`responseContract` on the Dialogue entry and exposed to a local responding
+agent through the supported CLI. A response choice controls presentation only;
+it MUST NOT expand retrieval, select a workflow, authorize a note mutation, or
+weaken fidelity and uncertainty requirements.
+
+**Acceptance criteria:**
+
+- The initial optional modules are Critical Reflection, Remaining Questions,
+  Philosophical Significance, Debate Context, and Research Directions.
+- The agent receives the request-scoped snapshot rather than a later revision
+  of the Triptych default profile.
+- A selected module may be marked unavailable when the bounded evidence is
+  insufficient; the agent does not retrieve outside scope or fabricate content
+  to fill it.
+- Legacy Dialogue entries without a snapshot use an explicitly labelled
+  fallback and never claim request-time exactness.
+- The resulting response remains one concise attributed Dialogue reply and
+  does not become settled note content automatically.
+
+**Authority:** Product Guide sections 8.1–8.2; [Skills README](../Skills/README.md)
+runtime assembly and [catalog](../Skills/catalog.yaml).
 
 #### PRD-RGD-001 — Settings-only prompt-template configuration
 
@@ -829,10 +863,6 @@ prompt editors.
 
 **Authority:** Product Guide section 8.3; Design Handbook sections 4.8, 4.9,
 and 10.
-**Status:** Implemented in the reachable app. The Settings-only Prompt
-Templates collection, active Triptych-local Dialogue and Critique templates,
-structural validation, preview, workflow deep links, and technical-source
-exclusion from new scholarly Dialogue records have focused automated evidence.
 
 #### PRD-RGD-002 — File-backed skill management
 
@@ -843,15 +873,21 @@ skill only from `.scholium/skills/<skill-id>/SKILL.md` and MUST NOT scan researc
 notes, arbitrary filesystem locations, `~/.codex/skills`, or another agent's
 global configuration.
 
+This requirement records the current direct-package management baseline.
+PRD-RGD-003 refines bundled ownership for Beta: protected System Skills are not
+duplicable or resettable as local replacements, while Workflow Skills may be
+duplicated into independent Researcher Skills.
+
 **Acceptance criteria:**
 
 - Research Guidance identifies **Bundled** and **Triptych** skills in text and
   uses the same native list-and-detail editing architecture as Prompt
   Templates without merging their semantics.
 - The researcher can inspect and edit Triptych-local `SKILL.md` source,
-  duplicate a bundled skill into the Triptych, rename or delete a
-  Triptych-local skill, reset a customized bundled skill, and use **Reveal
-  Skills Folder** to open the supported location.
+  duplicate a permitted official package into a new independently identified
+  Triptych package, rename or delete a Triptych-local skill, and use **Reveal
+  Skills Folder** to open the supported location. Protected System Skills do
+  not expose a duplicate action.
 - A user package is manageable only when it is located under the supported
   skills root and contains `SKILL.md`. Structural validation identifies missing
   or malformed required metadata without judging philosophical accuracy,
@@ -865,10 +901,86 @@ global configuration.
 
 **Authority:** Product Guide sections 2.2, 3.3, and 8.3; Design Handbook
 sections 4.9 and decision D-029.
-**Status:** Implemented in the reachable app. Discovery is bounded to direct
-packages under the portable Skills root; bundled and Triptych-local management,
-inline structural recovery, revision checks, safe instruction assembly, and a
-focused isolated Settings journey have automated evidence.
+
+#### PRD-RGD-003 — Beta mode-aware skill package architecture
+
+**Requirement:** Beta MUST ship protected Scholium System Skills, complete
+official Scholium Workflow Skills, and editable Triptych-local Researcher
+Skills through one bounded package catalog. Official packages MAY contain
+release-pinned one-level references and templates. Scholium MUST own package
+discovery, structural validation, origin and update policy, dependency closure,
+current task facts and permissions, and agent-facing catalog and package
+retrieval. The external CLI-capable agent MUST classify the researcher's
+request, select one mode or an explicit Mixed sequence, and retrieve only the
+required packages. Scholium MUST NOT add an embedded natural-language mode
+classifier, workflow-local skill picker, or global skill-directory scan.
+
+**Acceptance criteria:**
+
+- System Skills are release-managed, protected, non-editable, and cannot be
+  shadowed by a Triptych-local package.
+- Workflow Skills are release-managed and read-only; duplicating one creates
+  an independent Researcher Skill that releases never overwrite.
+- Researcher Skills and researcher-owned Philosophical Practices remain
+  editable and use the direct runtime shape
+  `.scholium/skills/<skill-id>/SKILL.md`; nested ownership folders are not
+  required.
+- The bundled APA 7 citation-verification starter is classed as a
+  copy-on-adoption Researcher Skill, not a protected universal citation
+  method; other styles and venue rules remain researcher-selected.
+- The bundled Prose Control starter is classed as a copy-on-adoption
+  Researcher Skill, not part of the official Philosophical Writing method or a
+  universal prose standard. It activates only when explicitly selected and
+  preserves its declared semantic ledger; an adopted copy is editable and
+  never overwritten by releases.
+- The catalog exposes stable routing metadata without loading full methodology;
+  selected-package retrieval exposes only validated, declared resources.
+- `supported_modes` declares package compatibility while `automatic_modes`
+  independently controls default System-package activation. Core loads for
+  every ordinary mode; Dialogue loads automatically only for Dialogue; other
+  adapters remain task-selected.
+- Selective assembly loads the Core Protocol, one primary Workflow Skill,
+  required System adapters, and only explicitly selected Researcher Skills or
+  Practices. Mixed mode resets context, permission, assumptions, and write
+  subsets between phases.
+- A project-neutral family of thorough, concise, and provisional Source
+  Analysis report templates is bundled. Existing target schemas and custom
+  fields remain authoritative, but no researcher- or project-specific
+  compatibility schema is bundled and template availability never triggers
+  migration.
+- Source Analysis distinguishes the current session analysis unit from the
+  durable Research Unit, applies Orientation, Analytical, and Review passes to
+  the session unit, and never converts partial long-source progress into an
+  unqualified whole-source claim.
+- Every official Workflow Skill remains complete without Philosophical
+  Practices and declares compatible Practices only as routing hints. Only
+  explicitly selected researcher-owned Practices are loaded, with stable IDs,
+  revisions, and composition rules preserved; they cannot grant permission or
+  silently replace official workflow requirements.
+- Philosophical Writing owns planning, drafting, substantive revision,
+  write-mode permission, and durability. A selected researcher-owned Prose
+  Control package may compose with it for meaning-preserving revision, but
+  remains a separate method and cannot silently change thesis, claims,
+  concepts, inferential or dialectical relations, source roles, scope,
+  modality, qualification, or status.
+- One project-neutral Manuscript Workflow coordinates ordinary workflows
+  through isolated phases, duplicates none of their full methods, keeps
+  evidence state separate from gate judgment, and can conclude only **ready
+  for researcher submission decision**.
+- A clipboard-only fallback remains bounded and does not claim execution of
+  packages the agent could not retrieve.
+- On an explicit workspace-setup request, Scholium may supply a protected
+  one-shot bootstrap, but only the external agent constructs the optional
+  researcher-owned `AGENTS.md` at an exact verified target. It never overwrites
+  applicable instructions and deletes only a task-created temporary bootstrap
+  after successful read-back validation.
+- `Package.swift` resource inclusion, complete-package duplication, the package
+  loader, typed catalog, dependency and collision rules, selective assembly,
+  local and bundled CLI package retrieval, and package-revision behavior
+  receive focused implementation and migration tests before Beta.
+
+**Authority:** Product Guide sections 2.2, 3.4, and 8.3; [Skills README](../Skills/README.md),
+`catalog.yaml`, and the package evals.
 
 ### 7.5 Works and Critique
 
@@ -892,12 +1004,6 @@ manual academic workflow.
 - External edits to the ordinary Critique file are detected safely.
 
 **Authority:** Product Guide section 11; Implementation Status section 1.
-**Status:** Reachable; association migration follows confirmed moves and
-externally reconciled renames. A disposable accessibility-driven journey now
-verifies agent attribution, deterministic Specific Findings disclosure, and
-exact Source navigation. The equivalent focused XCUITest is implemented but
-its current execution is blocked before app launch by the local macOS
-automation-mode timeout, so full Critique UI acceptance remains open.
 
 #### PRD-CRI-002 — Critique request and form
 
@@ -934,10 +1040,8 @@ materials consulted and limitations.
 
 **Authority:** Product Guide section 11.3–11.4 and Appendix A; Design Handbook
 sections 4.8, 9, and 10.
-**Status:** Reachable in current implementation evidence; overlaying findings
-directly on Work prose remains deferred.
 
-### 7.6 Connections, Canvas, Search, and Attention
+### 7.6 Connections, Search, and Attention
 
 #### PRD-CON-001 — Canonical Connections
 
@@ -961,13 +1065,12 @@ untouched and receive diagnostics only.
 - Source punctuation and unrelated bytes remain unchanged.
 
 **Authority:** Product Guide section 12; Design Handbook decision D-018.
-**Status:** Reachable according to Implementation Status.
 
 #### PRD-CON-002 — No inferred philosophical evidence
 
 **Requirement:** Scholium MUST NOT infer philosophical support, truth,
 settlement, sufficiency, or integration from keywords, proximity, folder
-membership, Canvas placement, graph paths, neutral links, or transitivity.
+membership, graph paths, neutral links, or transitivity.
 
 **Acceptance criteria:**
 
@@ -978,50 +1081,41 @@ membership, Canvas placement, graph paths, neutral links, or transitivity.
 
 **Authority:** Product Guide sections 2, 10, 12, 13, and 18; Design Handbook
 sections 3.4 and 7.
-**Status:** Target; current implementation evidence reports the canonical
-graph and Attention contract.
-
-#### PRD-CAN-001 — View-only Canvas
-
-**Requirement:** Canvas MAY provide an optional spatial view of notes and
-Connections. It MUST remain view-only and MUST provide an accessible,
-source-anchored list equivalent.
-
-**Acceptance criteria:**
-
-- Canvas cannot author a relation.
-- Canvas edges cannot be converted into Markdown.
-- Every spatial relation has a keyboard-accessible list or table equivalent.
-- Source location can be opened from the list.
-
-**Authority:** Product Guide section 12; Design Handbook sections 4.7, 8.2,
-and 9.
-**Status:** Deferred from the stable UI while the core document workflow is
-stabilized. Legacy Canvas records remain read/migration compatibility only;
-view-only and accessible-list acceptance must be re-established before return.
 
 #### PRD-SEA-001 — Search scopes
 
-**Requirement:** Sidebar filtering, Quick Open, in-note Find, full ranked
-Triptych search, and Research inspector retrieval MUST remain distinct tasks
-while sharing a clear query and filter contract.
+**Requirement:** Sidebar filtering, Quick Open, unified ranked Search, and
+Research inspector retrieval MUST remain distinct tasks while sharing a clear
+query and filter contract. Command-F MUST activate **This Note** in the shared
+Search surface; Scholium MUST NOT present a separate in-note Find interface.
+
+Beta Search MUST use deterministic local SQLite FTS5 retrieval. It MAY resolve
+one exact Topic title or alias and show only its direct resolved graph
+connections in a separate **Related** section. Related items MUST NOT alter
+lexical ranking, include transitive inference, or imply evidential support.
+Vector search, embeddings, AI query interpretation, AI ranking, and chat-style
+search are excluded from Beta.
 
 **Acceptance criteria:**
 
+- Empty Search is a centered, wide Liquid Glass bar over a softly obscured
+  window; it does not expose a blank full-height result panel.
+- Committing a non-empty query expands the same surface and then exposes the
+  **This Note / This Vault / Triptych** segmented control and result list.
 - Search results show title, snippet, field/context, and destination.
 - Quick Open supports Triptych-wide title, path, and alias navigation with
   vault-qualified destinations.
 - Recent Notes returns to a bounded, per-window, vault-qualified MRU list
   without depending on derived Search or graph readiness.
-- In-note Find operates within the current note.
+- **This Note** operates within the exact vault-qualified current note.
+- Every lexical result identifies its match context and source destination.
+- Related items identify the direct graph relation and remain visually and
+  semantically separate from lexical results.
 - Loading, zero-result, malformed, conflict, and inaccessible states remain
   scoped and recoverable.
 - Search does not rewrite source or claim evidential support.
 
 **Authority:** Product Guide section 13; Design Handbook sections 4.3 and 9.
-**Status:** Reachable according to Implementation Status. In-note Find,
-heading outline, saved-search management, and per-window Recent Notes are
-implemented.
 
 #### PRD-ATT-001 — Derived Attention
 
@@ -1048,7 +1142,6 @@ Attention MAY report:
   appear in the Research inspector.
 
 **Authority:** Product Guide section 13; Design Handbook sections 4.7 and 9.
-**Status:** Reachable according to Implementation Status.
 
 ### 7.7 Checkpoints, versions, and recovery
 
@@ -1068,7 +1161,6 @@ named, fingerprint-bound checkpoint of the entire Triptych.
 - Manual checkpoints remain available.
 
 **Authority:** Product Guide sections 8.1 and 14; Design Handbook section 10.
-**Status:** Reachable according to Implementation Status.
 
 #### PRD-CHK-002 — Self-contained restore
 
@@ -1090,11 +1182,6 @@ selective note restore, complete Triptych restore, and Finder reveal.
   that cannot be scrubbed safely.
 
 **Authority:** Product Guide section 14; Design Handbook sections 9 and 10.
-**Status:** Partial target; restore behavior is reported reachable, and
-permanent deletion invalidates every checkpoint containing the selected Work or
-associated Critique stable identity as part of the recoverable deletion
-transaction. Complete recovery and accessibility UI journeys remain release
-gates.
 
 #### PRD-CHK-003 — Undo versus durable recovery
 
@@ -1109,18 +1196,17 @@ conflict-aware repository and MUST NOT silently rewrite history.
 - A restored version remains attributable to the restore operation.
 
 **Authority:** Product Guide section 14; Design Handbook section 10.
-**Status:** Target; current implementation evidence reports separate Note
-History and checkpoint behavior.
 
 ### 7.8 Zotero integration
 
-#### PRD-ZOT-001 — Local, read-only Zotero boundary
+#### PRD-ZOT-001 — Built-in local, read-only Zotero boundary
 
-**Requirement:** Scholium MAY read Zotero through the localhost API only when
-the researcher chooses to use Zotero. Zotero MUST NOT be required for the core
-workflow. When enabled, Scholium MUST NOT require a server, password, online
-Web API, attachment enumeration, attachment download, SQLite access, or
-Zotero metadata writes.
+**Requirement:** Scholium's built-in Zotero integration MAY read through the
+localhost API only when the researcher chooses to use Zotero. Zotero MUST NOT
+be required for the core workflow. The built-in integration MUST NOT require a
+server, password, online Web API, attachment enumeration, attachment download,
+SQLite access, or Zotero metadata writes. The separately bounded external-agent
+MCP target is governed by PRD-ZOT-004 and does not broaden the built-in UI.
 
 **Acceptance criteria:**
 
@@ -1134,7 +1220,6 @@ Zotero metadata writes.
 
 **Authority:** Product Guide section 15; Implementation Status sections 2 and
   3.
-**Status:** Reachable according to current evidence.
 
 #### PRD-ZOT-002 — Stable matching
 
@@ -1150,7 +1235,6 @@ remain visible and require researcher selection.
 - Technical keys remain out of ordinary UI labels.
 
 **Authority:** Product Guide section 15.2.
-**Status:** Reachable according to Implementation Status.
 
 #### PRD-ZOT-003 — Bounded source presentation
 
@@ -1169,7 +1253,40 @@ wider library MUST be excluded.
 - The Research inspector does not present unrelated library items.
 
 **Authority:** Product Guide section 15.2; Implementation Status section 1.
-**Status:** Reachable according to current evidence.
+
+#### PRD-ZOT-004 — Protected external-agent Zotero MCP adapter
+
+**Requirement:** Beta MUST provide the protected
+`scholium-zotero-integration` System Skill and pair it with a supported local
+Zotero MCP service or supported installation path. The Skill MUST define safe
+use of readiness, search, item inspection, bounded attachment pointers,
+selected-target inspection, and guarded BibTeX or RIS import capabilities. The
+MCP integration MUST remain optional and MUST NOT change Scholium's built-in
+read-only Zotero UI boundary.
+
+**Acceptance criteria:**
+
+- The skill and MCP transport are identified as separate components; a skill
+  file alone is never presented as a working Zotero connection.
+- Retrieval is the default, starts with readiness checking, preserves ambiguous
+  matches, and distinguishes Zotero item keys from citation keys.
+- Zotero metadata establishes record identity only and is never treated as
+  evidence for a quotation, locator, claim, concept, argument, or
+  interpretation.
+- Attachments or full text are requested only when needed by the current read
+  set, with version, extraction, and locator reliability recorded.
+- A real import requires an explicit current-task request for the exact record,
+  a verified destination, a successful dry run, the MCP tool's explicit
+  confirmation gate, and read-back verification.
+- The integration never scans an external agent's global configuration, never
+  reads or writes the live Zotero SQLite database directly, and never bypasses
+  an unavailable MCP route through raw database access.
+- Citation style and bibliographic-format authority remain researcher-selected
+  specialist concerns rather than responsibilities of this System Skill.
+
+**Authority:** Product Guide section 15.3; [Skills README](../Skills/README.md)
+Zotero contract; [Zotero MCP](ZOTERO_MCP.md); and
+`Skills/Scholium System Skills/scholium-zotero-integration`.
 
 ### 7.9 Agent-facing CLI
 
@@ -1193,7 +1310,6 @@ vault-relative paths.
 
 **Authority:** Product Guide sections 2.2, 8.2, and 17; Scholium development
 guidance; Implementation Status sections 1 and 3.
-**Status:** Reachable according to current evidence.
 
 ### 7.10 Standalone academic workflow
 
@@ -1223,8 +1339,6 @@ runtime, storage, appearance, plugin, or workflow dependency.
 
 **Authority:** Product Guide section 2.1 and this PRD section 4.3; Design
 Handbook section 2.
-**Status:** Target; standalone clean-environment acceptance is not yet
-separately recorded.
 
 ## 8. User experience and interface requirements
 
@@ -1252,6 +1366,15 @@ The main hierarchy MUST distinguish:
 4. a trailing research inspector for contextual Connections, Zotero identity,
    Attention, and source-located diagnostics.
 
+The product MUST NOT provide a Triptych Home or dashboard. When no note is
+selected, the window MUST contract to the narrow left-middle **Triptych
+Interface**. Selecting a note MUST keep that Interface as the leading workflow
+anchor while revealing the document toward its trailing side. **Collapse
+Note** and closing the last note MUST return to the Interface. First-run setup
+MUST use the same narrow measure and position, complete without scrolling, and
+MUST NOT re-present after configuration. The transitions MUST honor Reduce
+Motion.
+
 The product MUST use native windows, split views, inspectors, toolbars, menus,
 sheets, alerts, controls, focus, and file panels where they provide the
 required behavior.
@@ -1264,8 +1387,8 @@ The following meanings and labels MUST remain stable:
   Stale, Refresh Failed, and Fully Up to Date;
 - Keep Editing, Retry Save, Compare Changes, Reload from Disk, Return to
   Editing, and Retry Refresh;
-- Create Dialogue…, Copy Instructions for Agent, Edit Dialogue Template…, and
-  Cancel;
+- Open Scholia…, Dialogue, Copy Instructions for Agent, Edit Dialogue
+  Template…, and Cancel;
 - Review, Continue Review, Qualified, Unqualified, Complete Review, Save as
   Draft, and Cancel;
 - Request Critique, Overall Critique, Specific Comments, Both, and Edit Critique
@@ -1299,7 +1422,7 @@ The product MUST support and test:
 - Voice Control with speakable control names;
 - mixed Chinese/Latin text, marked-text composition, punctuation, selection,
   and source ranges; and
-- accessible list equivalents for graph and Canvas surfaces.
+- accessible list equivalents for graph surfaces.
 
 Important state MUST be communicated through at least two suitable channels.
 Color or spatial position alone is insufficient.
@@ -1308,7 +1431,7 @@ The Beta and 1.0 accessibility pass threshold is explicit: 100% of the core
 academic workflow MUST be operable through Full Keyboard Access and VoiceOver,
 with no mouse-only or color-only required action. This includes setup, opening
 and editing notes, Human Review, comments, Dialogue presentation, Search,
-Connections, checkpoint restore, conflict recovery, and Trash/restore. Light
+Connections, checkpoint restore, conflict recovery, and Trash/Put Back. Light
 and Dark appearance, Increase Contrast, Reduce Transparency, Reduce Motion,
 and 100%, 150%, and 200% document scaling MUST preserve usable layout. Mixed
 English, Simplified Chinese, Traditional Chinese, Greek, Latin, and Unicode
@@ -1374,7 +1497,7 @@ note.
 
 ### 9.3 Local privacy
 
-Core reading, editing, review, search, Connections, Canvas, checkpoints, and
+Core reading, editing, review, search, Connections, checkpoints, and
 recovery workflows MUST work without transmitting research content. Any
 external access MUST be contextual, bounded, visible, and explained.
 
@@ -1401,7 +1524,7 @@ The initial named reference machine is Reference Machine R1: the researcher's
 MacBook, recorded by exact model, Apple chip, memory, storage/free-space
 condition, macOS version, and release-build state at benchmark freeze. R1 is
 run without a debugger or heavy competing workload. The primary fixture is the
-frozen Reference Dissertation Fixture RDF-1, containing approximately 500
+frozen Reference Data Fixture RDF-1, containing approximately 500
 Analyses, 250 Topics, 100 Works, 3,000 Dialogue entries, 10,000 Comments,
 50,000 semantic links, 100 checkpoints, and mixed English, Simplified Chinese,
 and Traditional Chinese text. Exact latency and resource thresholds remain
@@ -1432,7 +1555,7 @@ recovery states are covered.
 | --- | --- | --- |
 | J-001 | Create or open a Triptych | Researcher selects three roots, sees peer vaults, and opens a usable document-first window. |
 | J-002 | Read and edit a note | Researcher reads, switches modes, edits exact source, and receives authoritative Saved or recoverable failure state. |
-| J-003 | Configure Properties | Researcher configures vault-wide visible fields without corrupting unrelated YAML or protected identity. |
+| J-003 | Configure Properties and inspect Research Status | Researcher configures vault-wide visible fields, sees declared Scope and material Limitations without raw-YAML clutter, receives app-owned creation/modification History, and does not corrupt unrelated YAML or protected identity. |
 | J-004 | Review an Analysis or Topic | Researcher adds comments, completes or drafts Human Review, and sees fingerprint-bound state. |
 | J-005 | Use an Unqualified Analysis | Researcher can continue work while explicit reliance produces a non-blocking source-anchored Attention. |
 | J-006 | Prepare optional agent work | When the researcher chooses an agent, she selects notes, verifies scholarly and consequential context without seeing prompt mechanics, and receives a Before Agent Work checkpoint before copying. |
@@ -1443,7 +1566,9 @@ recovery states are covered.
 | J-011 | Use optional Zotero context | When Zotero is available and selected, the researcher sees only bounded relevant metadata and can open the identified item in Zotero; its absence does not block the workflow. |
 | J-012 | Complete the workflow accessibly | Researcher completes primary journeys with keyboard and assistive technology paths under supported adaptations. |
 | J-013 | Complete the manual workflow without optional integrations | Researcher completes the core academic workflow in a clean environment where Obsidian, Zotero, and external agents are absent; Dialogue and Critique remain optional extensions. |
-| J-014 | Manage research guidance | Researcher edits prompt templates and correctly placed Triptych-local skills in one Settings pane without exposing either source in the scholarly workflow. |
+| J-014 | Manage research guidance | Researcher edits prompt templates and Researcher Skills, inspects protected System and official Workflow packages, and duplicates a Workflow Skill without exposing technical sources in the scholarly workflow. |
+| J-015 | Run a mode-aware agent workflow | A local agent obtains the bounded catalog, selects one mode or an isolated Mixed sequence, loads only the dependency closure, respects phase-local permission, and answers using the request-scoped Dialogue contract. |
+| J-016 | Use optional agent Zotero MCP | A local agent retrieves an exact Zotero record without treating metadata as source evidence and performs an import only through explicit request, dry run, confirmation, and read-back verification. |
 
 ## 11. Success measures and product outcomes
 
@@ -1458,14 +1583,17 @@ are proposed measures, not current telemetry or user-study findings.
 | M-004 | Derived-status honesty | 100% of user-visible diagnostics identify their derived scope and source anchor or explicitly state that no anchor exists. | Attention, Connections, Critique, and UI review. |
 | M-005 | Accessibility path coverage | Every primary journey has a tested keyboard path; all required assistive-technology gaps are explicitly dispositioned before release. | UI automation, manual accessibility audit, and retained artifacts. |
 | M-006 | Recovery correctness | Selective and complete restore preserve source integrity and expose conflicts rather than silently replacing newer work. | Checkpoint fixtures and QA journey J-009. |
-| M-007 | Zotero boundary | Zero attachment enumeration, download, online API, database access, or Zotero write requests from supported Zotero workflows. | Boundary tests and network/access audit. |
+| M-007 | Zotero boundary | The built-in app makes zero attachment-enumeration, download, database-access, or Zotero-write requests. The optional agent MCP makes zero direct database accesses and zero imports without exact current-task authorization, dry run, explicit confirmation, and read-back verification. | Built-in and MCP boundary tests, tool-call audit, and J-011/J-016 evidence. |
 | M-008 | Researcher task success | Target and baseline for setup, review, agent preparation, conflict recovery, and restore. | TBD usability protocol and researcher tasks. |
-| M-009 | Performance | Measured launch, note switching, reading, search, indexing, and restore thresholds on Reference Machine R1 and RDF-1. | Benchmark protocol and retained R1/RDF-1 artifacts; exact thresholds TBD until baseline approval. |
+| M-009 | Performance | Measure warm launch, indexed Search, warm Read activation, and application-cold 5,000-word Read activation on Reference Machine R1 and frozen RDF-1. Proposed strict p95 limits are respectively `< 1,000 ms`, `< 100 ms`, `< 300 ms`, and `< 1,000 ms`; release-owner approval remains required. Complete-boundary instrumentation and the thermally bounded fail-closed runner are implemented, but no packaged Release 30-sample gate run exists. | `PERFORMANCE_BENCHMARK.md`, Release-app timing harness, raw 30-sample artifacts, and RDF-1 correctness results. |
 | M-010 | Obsidian independence | 100% of core academic journey acceptance in a clean environment without Obsidian installed. | Isolated Scholium app run and J-013 workflow checklist. |
+| M-011 | Skill routing integrity | 100% of routing fixtures load only the required dependency closure; zero protected-ID shadows, undeclared resources, global-directory scans, or Mixed-mode permission leaks. | Catalog, loader, CLI, selective-assembly, collision, and forward-routing tests plus J-015. |
+| M-012 | Dialogue response fidelity | 100% of new agent requests expose the immutable request-time `responseContract`; legacy fallbacks are labelled and no response module expands task scope. | Dialogue migration, snapshot, CLI, and response-module tests plus J-015. |
 
-M-008 and M-009 require explicit targets before a release decision. The PRD
-does not invent a usability or performance threshold that the repository has
-not yet approved.
+M-008 still requires an explicit usability target before a release decision.
+M-009 now records proposed numeric targets and the deterministic RDF-1 fixture,
+but the release owner has not yet approved the limits and the packaged-app
+timing harness has not yet produced gate evidence.
 
 ## 12. Acceptance and verification model
 
@@ -1488,9 +1616,11 @@ Before release acceptance, the team MUST:
 
 - run the repository verification script from the Scholium package root;
 - run focused tests for every changed behavior;
-- use disposable copies of the canonical TestVaults or generated temporary
-  vaults, never real research vaults;
-- exercise primary journeys J-001 through J-013 as applicable;
+- use disposable nonprivate UI fixtures or generated temporary vaults, never
+  real research vaults; performance measurements follow the canonical
+  [RDF-1 protocol](PERFORMANCE_BENCHMARK.md);
+- exercise primary journeys J-001 through J-016 as applicable to the declared
+  release stage;
 - cover empty, loading, malformed, unavailable, conflict, and recovery states;
 - test light/dark appearance, Increase Contrast, Reduce Transparency, Reduce
   Motion, large text, keyboard access, VoiceOver, mixed-script input, and
@@ -1500,25 +1630,12 @@ Before release acceptance, the team MUST:
 - record all unresolved behavior rather than converting it into a passing
   assumption.
 
-### 12.3 Current evidence snapshot
+### 12.3 Current evidence pointer
 
-The current Implementation Status reports:
-
-- full repository verification passing on 2026-07-14, including 277 Swift
-  tests across 30 suites, deterministic editor-bundle verification, the
-  indexed-search and cold-render performance gates, and Debug and Release
-  builds;
-- the canonical isolated one-process XCUITest journey passing against
-  disposable TestVaults;
-- the focused wide/medium/compact responsive journey passing at 1380, 1080,
-  and 900 points, while lifecycle, accessibility, and interruption-recovery
-  acceptance remains incomplete; and
-- the source-first GitHub beta policy approved, while no package, checksum,
-  external-install smoke test, Developer ID signature, or notarization result
-  has yet been recorded.
-
-These are current evidence entries, not a claim that every PRD journey or
-release gate is complete.
+Current reachability and verification evidence are maintained in
+[Implementation Status](IMPLEMENTATION_STATUS.md). The PRD keeps release
+requirements, gates, risks, and top-level traceability here; it does not
+repeat run-by-run evidence.
 
 ## 13. Migration and delivery plan
 
@@ -1530,19 +1647,23 @@ while adding an exit gate to each phase.
 | P0 | Approve this PRD, set release boundary, assign owners, and resolve authority conflicts. | Approved product baseline, requirement dispositions, and named owners. |
 | P1 | Remove obsolete Proposal/Revision/Research Session assumptions from product and UI documents without deleting legacy data. | No reachable retired authorization or governance UI; legacy files remain untouched. |
 | P2 | Complete stable identity, exact-source autosave, external-edit conflicts, repository safety, and shared multiwindow ownership. | Fidelity, conflict, identity, and multiwindow tests pass with no dirty-buffer overwrite. |
-| P3 | Complete lifecycle, import, Unclassified classification, Properties, Human Review, comments, and Note History. | Create/move/rename/delete/recovery and Review journeys pass in isolated fixtures. |
+| P3 | Complete lifecycle, import, Unclassified classification, Properties, Research Status, app-owned creation/modification History, Human Review, comments, and Note History. | Create/move/rename/delete/recovery, Research Unit compatibility, and Review journeys pass in isolated fixtures. |
 | P4 | Complete researcher-centred Dialogue, Settings-only prompt-template and file-backed skill management, optional pre-agent checkpoints, CLI replies, Critique association, prompt transport, and source-located findings. | Dialogue, Research Guidance, optional agent reply, Critique, provenance, skill-discovery, and fingerprint journeys pass. |
 | P5 | Complete self-contained checkpoints, comparison, selective/full restore, Finder access, and permanent-deletion scrubbing of app-owned records and checkpoint copies. | Recovery and purge journeys pass with newer external changes and conflict paths. |
-| P6 | Complete Search, Attention, canonical Connections, and bounded Zotero integration. Keep Canvas deferred until the core document workflow is stable. | Search, relationship, Attention, and Zotero boundary gates pass; no Canvas surface is required. |
-| P7 | Complete visual, accessibility, CJK, performance, multiwindow, conflict, recovery, and release acceptance. | All release gates pass or have explicit documented waivers. |
+| P6 | Complete Search, Attention, canonical Connections, and bounded Zotero integration. | Search, relationship, Attention, and Zotero boundary gates pass. |
+| P7 | Implement the Beta mode-aware skill architecture: bundled package resources, typed catalog, CLI package retrieval, selective assembly, Dialogue response contract, one-shot bootstrap, complete Workflow packages, Mixed-mode isolation, and the protected Zotero MCP adapter and transport. | J-014–J-016, M-007, M-011, and M-012 pass with migration, security, collision, scope, and failure fixtures. |
+| P8 | Complete visual, accessibility, CJK, performance, multiwindow, conflict, recovery, and release acceptance. | All release gates pass or have explicit documented waivers. |
 
 The current status identifies the following concrete remaining work:
 
-1. complete deterministic isolated UI execution for lifecycle, conflicts,
-   multiwindow sharing, settings, Critique navigation, and recovery; the
-   Critique journey is implemented and has supplementary disposable-workspace
-   evidence, but its XCUITest runner has not initialized successfully;
-2. complete manual accessibility and adaptation acceptance.
+1. complete manual accessibility and adaptation acceptance, including the
+   standalone academic workflow on a clean environment without optional
+   integrations;
+2. approve and retain the Beta performance thresholds on R1/RDF-1 and extend
+   the 512-note explainable lexical-ranking acceptance to larger alias/heading
+   collision sets and a broader ranking-usability review; and
+3. satisfy the distribution-integrity gate from a clean tagged commit before
+   publishing an external Beta artifact.
 
 ## 14. Release quality gates
 
@@ -1560,13 +1681,15 @@ future capability may be deferred without becoming a hidden dependency.
 | G7 — Performance | Approved measurements on Reference Machine R1 and frozen RDF-1 meet the thresholds declared for the stage, with retained artifacts. |
 | G8 — Documentation consistency | PRD, Product Guide, Design Handbook, README, and Implementation Status do not silently contradict one another; target requirements are not presented as current evidence. |
 | G9 — Distribution integrity | Every external binary is built from a clean tagged commit, is paired with exact corresponding GPL source and applicable third-party licenses, contains no private state or research content, states its signing/notarization and architecture accurately, and has a published SHA-256 checksum plus an exact-artifact clean-account smoke test. |
+| G10 — Agent skill architecture | For Beta, protected and researcher-owned package boundaries, selective dependency-closed assembly, Mixed-mode isolation, request-scoped Dialogue responses, one-shot bootstrap safety, and guarded Zotero MCP behavior pass J-014–J-016 and M-007/M-011/M-012 without global skill scanning or hidden authorization. |
 
 For 0.1 Experimental, G1, G2, G3, G4, G5, G8, and—whenever an external
 artifact is distributed—G9 are applicable release
 conditions. G6 and G7 require a documented baseline and known gaps, but 0.1
 MUST NOT be presented as having passed the Beta/1.0 accessibility or
-performance thresholds. Beta requires all applicable gates, and 1.0 requires
-all gates plus the complete daily-workflow definition in Section 5.3.
+performance thresholds. G10 is not an Experimental 0.1 gate. Beta requires all
+applicable gates, including G10, and 1.0 requires all gates plus the complete
+daily-workflow definition in Section 5.3.
 
 ## 15. Risks, open decisions, and assumptions
 
@@ -1576,53 +1699,51 @@ all gates plus the complete daily-workflow definition in Section 5.3.
 | --- | --- | --- | --- |
 | R-001 | No formal user research or quantitative usability baseline is recorded in the source set. | Risk | Create a bounded researcher-task protocol before setting M-008. |
 | R-002 | The release boundary and ownership needed explicit confirmation. | Decision | Resolved for the current baseline: 0.1 Experimental; release owner Imna; scope and gates are defined in Sections 5.3 and 14. |
-| R-003 | Exact launch and performance thresholds are not yet measured. | Measurement | Use Reference Machine R1 and frozen RDF-1; set numeric thresholds only after the baseline protocol is run. |
+| R-003 | Proposed launch, Search, and Read thresholds and the complete-boundary runner are implemented, but packaged Release R1 measurements and release-owner approval remain absent. | Measurement | Freeze and package an exact clean tag, retain the thermally bounded 30-sample RDF-1 artifacts, and approve or revise the proposed strict p95 limits before Beta. |
 | R-004 | The external distribution model needed a feasible no-fee path. | Decision | Use the source-first `v0.1.0-beta.1` policy in `BETA_RELEASE.md`: exact GPL-tagged source plus an optional ad-hoc-signed app-only ZIP and checksum. State the Gatekeeper limitation explicitly. Developer ID signing and notarization remain optional future improvements. |
 
 ### 15.2 Implementation and acceptance risks
 
 | ID | Item | Type | Current disposition |
 | --- | --- | --- | --- |
-| R-005 | Shared multiwindow ownership is implemented, but sustained interactive multiwindow acceptance is incomplete. | Acceptance risk | Exercise independent sessions, shared commits, dirty conflicts, restoration, and focused-window routing in the canonical QA environment. |
-| R-006 | External rename migration is implemented, including ambiguity confirmation, but its complete interactive matrix is not yet accepted. | Acceptance risk | Cover clean, dirty, moved, ambiguous, and multiwindow rename journeys in disposable fixtures. |
-| R-007 | Permanent deletion must remove app-owned history, associated Critique content, and every recoverable checkpoint copy of the deleted note. | Acceptance risk | Coordinated Work/current-Critique deletion, cross-store rollback, restart recovery, and checkpoint invalidation are implemented on disposable fixtures. Complete the lifecycle and recovery UI acceptance journey before release acceptance. |
-| R-008 | Manual accessibility, clean-account, and several interaction journeys remain incomplete; automated compact-width behavior now passes. | Acceptance risk | Extend the remaining isolated journeys, complete manual adaptation and assistive-technology acceptance, and record retained artifacts. |
-| R-009 | Legacy role and schema decoders remain for compatibility. | Resolved migration evidence | Immutable fixtures cover every retained role spelling, property alias, sparse window/Search state, v0 Triptych identity, and Canvas migration record. Keep these bounded read paths while compatible persisted data remains supported. |
+| R-005 | Shared multiwindow ownership, sustained same-process interaction, simultaneous restored sessions, and explicit native AppKit grouping and separation are accepted on disposable fixtures. | Resolved acceptance evidence | Keep the independent-session, shared-commit, dirty-conflict, focused-routing, rename-convergence, restored-multiwindow, and native-grouping matrix in the release regression set. |
+| R-006 | External rename migration and its clean, dirty, ambiguous, and multiwindow interactive matrix are accepted on disposable fixtures. | Resolved acceptance evidence | Keep the combined rename matrix in the release regression set and preserve researcher confirmation for ambiguous identity. |
+| R-007 | Permanent deletion must remove app-owned history, associated Critique content, and every recoverable checkpoint copy of the deleted note. | Resolved implementation evidence | Coordinated Work/current-Critique deletion, cross-store rollback, restart recovery, checkpoint invalidation, destructive confirmation, and durable recovery inspection pass disposable core and isolated UI journeys. Keep them in the release regression set. |
+| R-008 | Manual accessibility and standalone clean-environment acceptance remain incomplete; automated clean-account setup, Critique navigation, and cold compact-width behavior now pass. | Acceptance risk | Complete manual adaptation and assistive-technology acceptance, accept the standalone workflow without optional integrations, and record retained artifacts. |
+| R-009 | Legacy role and schema decoders remain for compatibility. | Resolved migration evidence | Immutable fixtures cover every retained role spelling, property alias, sparse window/Search state, and v0 Triptych identity. Keep these bounded read paths while compatible persisted data remains supported. |
+| R-010 | The Beta mode-aware skill architecture and first-party Zotero MCP transport are structurally implemented. Automated contracts, bounded real-service reads, and one isolated synthetic import/read-back pass, but the ten philosophical field trials, Dialogue response-module UI journey, and manual accessibility acceptance remain open. | Beta acceptance risk | Keep the protected catalog, bounded resources, dependency-closed assembly, Mixed isolation, Dialogue response contract, bootstrap safety, stdio framing, and target-bound import/read-back contract under regression; complete the retained evidence plan in `SKILL_ARCHITECTURE_BETA_EVIDENCE.md` before claiming G10 or J-014–J-016. |
 
 ### 15.3 Unresolved interface questions
 
 The Design Handbook identifies these as future or unresolved and they MUST NOT
 be presented as completed behavior:
 
-- sustained interactive acceptance of restored multiwindow sessions and
-  native window grouping;
 - sustained VoiceOver, Full Keyboard Access, Voice Control, contrast, scaling,
   and localization verification across CodeMirror/WKWebView;
-- whether and how to reintroduce an accessible Canvas after the core document
-  workflow is stable;
 - final Quick Open presentation; and
 - compact multi-note Dialogue presentation in Note History.
 
 ## 16. Requirement traceability
 
 The following matrix provides the top-level mapping. Requirement-specific
-authority and status appear in Section 7.
+authority remains beside each requirement; current status is centralized in
+Implementation Status.
 
 | Requirement area | Product Guide | Design Handbook | Implementation Status | Primary journeys |
 | --- | --- | --- | --- | --- |
 | Triptych and vaults | §§1, 3–4 | §§1, 4.1–4.2 | Reachable multi-Triptych and shared-store evidence; sustained UI acceptance open | J-001 |
-| Exact Markdown and YAML | §5.1–5.2 | §§3.3, 4.4, 9–10 | Reachable fidelity and repository evidence | J-002, J-003 |
+| Exact Markdown, YAML, and Research Unit | §5.1–5.2 | §§3.3, 4.4, 4.6, 9–10; D-033 | Exact-source fidelity, Research Status presentation/editor, new Analysis scope enforcement, and app-owned timestamp boundary are reachable; dedicated long-source progress and manual acceptance remain open | J-002, J-003 |
 | Identity and lifecycle | §§5.3, 6 | §§3.3, 4.6, 9–10 | Reachable lifecycle and rename migration; UI acceptance open | J-003, J-007, J-009 |
 | Human Review and comments | §7 | §§4.8, 8, 10 | Reachable; full accessibility/clean-account coverage open | J-004, J-005 |
-| Dialogue and CLI | §8 | §§3.5, 4.8, 10 | Reachable concise chronological record with focused persistence UI evidence; broader accessibility acceptance open | J-006, J-007 |
-| Research Guidance, prompt templates, and skills | §8.3 | §§4.8–4.9, 10; D-029 | Reachable; Settings-only templates, bounded file-backed Skills, workflow concealment, and focused UI evidence implemented | J-006, J-008, J-014 |
-| Critique | §11 | §§4.8, 9–10 | Reachable with source-located findings; deterministic XCUITest execution pending | J-008 |
-| Connections | §12 | §§4.7, 8–9 | Canonical graph reachable; Canvas is explicitly deferred and absent from the stable UI | J-010, J-012 |
+| Dialogue and CLI | §8 | §§3.5, 4.8, 10 | Concise chronological record and immutable request-scoped `responseContract` snapshot are reachable; full J-015 acceptance remains open | J-006, J-007, J-015 |
+| Research Guidance, prompt templates, and skills | §8.3 | §§4.8–4.9, 10; D-029 | Settings-only templates, protected packages/resources, typed catalog, CLI retrieval, dependency-closed selective assembly, Mixed isolation, and one-shot bootstrap are reachable; full J-014/J-015 acceptance remains open | J-006, J-008, J-014, J-015 |
+| Critique | §11 | §§4.8, 9–10 | Reachable with source-located findings; deterministic disposable-workspace XCUITest passes | J-008 |
+| Connections | §12 | §§4.7, 8–9 | Canonical graph reachable and absent from document authoring | J-010, J-012 |
 | Search and Attention | §13 | §§4.3, 4.5, 4.7, 9; D-030 | Unified contract, Find, outline, saved-search management, and per-window Recent Notes reachable | J-005, J-010 |
 | Checkpoints and recovery | §14 | §§3.3, 4.8, 9–10 | Reachable; full journey acceptance open | J-006, J-007, J-009 |
-| Zotero | §15 | §§4.7, 4.9 | Bounded localhost integration reachable | J-011 |
+| Zotero | §15 | §§4.7, 4.9 | Bounded built-in localhost integration, protected external-agent adapter, and first-party stdio transport are reachable; mocked boundaries, bounded real-service reads, and an isolated synthetic import/read-back pass, while the complete J-016 field and manual acceptance record remains open | J-011, J-016 |
 | Standalone academic workflow | §2.1 | §2 | Not separately accepted; add clean-environment coverage | J-013 |
-| Accessibility and visual language | — | §§3, 5–10, 13 | Manual acceptance incomplete; Beta/1.0 pass threshold defined in PRD-UX-005 | J-002, J-004, J-006–J-014 |
+| Accessibility and visual language | — | §§3, 5–10, 13 | Manual acceptance incomplete; Beta/1.0 pass threshold defined in PRD-UX-005 | J-002, J-004, J-006–J-016 |
 
 ## 17. Change-control protocol
 
@@ -1645,32 +1766,20 @@ decisions belong in Design Handbook and this PRD. Changes to current evidence
 belong in Implementation Status. Existing legacy files and vault bytes MUST
 not be migrated merely because a document changed.
 
-## Appendix A. Glossary
+## Appendix A. Terminology routing
 
-| Term | Definition |
-| --- | --- |
-| Analysis | A reusable source analysis stored in Analyses. |
-| Attention | A derived, dismissible warning or recoverable research issue. |
-| Canvas | An optional view-only spatial presentation of notes and Connections. |
-| Checkpoint | A self-contained, fingerprint-bound snapshot of the complete Triptych. |
-| Critique | An attributed agent assessment of one Work, kept separate from the Work. |
-| Dialogue | A concise scholarly record of researcher Comments and agent Responses, with optional transient copyable instructions for an external agent. |
-| Human Review | Fingerprint-bound researcher review of an Analysis or Topic, including qualification. |
-| Prompt template | Triptych-local technical configuration for an existing workflow, visible and editable only in Research Guidance and absent from the permanent scholarly Dialogue record. |
-| Properties | The human-facing presentation of role-aware frontmatter. |
-| Research Guidance | The Settings pane containing distinct Prompt Templates and Skills collections for inspecting, editing, validating, and managing supported research guidance. |
-| Skill | Reusable editable agent guidance. A Triptych-local user skill is manageable only as `.scholium/skills/<skill-id>/SKILL.md`; Scholium does not thereby certify or execute it. |
-| Topic | Reusable topic-centred knowledge stored in Topics. |
-| Triptych | One configured research workspace containing Analyses, Topics, and Works. |
-| Unclassified | Temporary staging for imported Markdown before role assignment. |
-| Work | Researcher-governed writing or related material stored in Works. |
+Product terms are owned by the [Product Guide](PRODUCT_GUIDE.md), exact
+interface terms by the [Design Handbook](DESIGN_HANDBOOK.md) Section 10, and
+current-status terms by [Implementation Status](IMPLEMENTATION_STATUS.md).
+Requirement language is defined in Section 0.1. This PRD keeps no second
+product glossary.
 
 ## Appendix B. Current source set
 
 - Product Guide, canonicalized 2026-07-14.
 - Design Handbook, last reviewed 2026-07-14.
-- Implementation Status, audited 2026-07-12 with verification entries dated
-  2026-07-13.
+- Implementation Status, audited 2026-07-15 with a compact representative
+  evidence ledger.
 - Scholium README and repository AGENTS.md.
 - Swift package manifest, which sets macOS 26 as the package platform baseline.
 

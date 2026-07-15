@@ -1,8 +1,28 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  --scholium-vector-support: #006d6b;
-  --scholium-vector-incompatible: #7136a8;
+  --scholium-color-document-background: #fffcf5;
+  --scholium-color-navigation-background: #efe9df;
+  --scholium-color-surface-background: #f7f1e7;
+  --scholium-color-raised-surface-background: #ded3c5;
+  --scholium-color-primary-text: #17191c;
+  --scholium-color-secondary-text: #514d48;
+  --scholium-color-muted-text: #706b65;
+  --scholium-color-separator: #c8bcae;
+  --scholium-color-accent: #a94c22;
+  --scholium-color-accent-hover: #7a2917;
+  --scholium-color-notification-highlight: #b47617;
+  --scholium-color-information: #315f88;
+  --scholium-color-attention: #976015;
+  --scholium-color-attention-foreground: #976015;
+  --scholium-color-destructive: #a13235;
+  --scholium-color-destructive-foreground: #a13235;
+  --scholium-color-confirmed: #2c7048;
+  --scholium-color-confirmed-foreground: #2c7048;
+  --scholium-color-agent-authorship: #5d568f;
+  --scholium-color-connection-neutral: #a94c22;
+  --scholium-color-connection-support: #276f68;
+  --scholium-color-connection-incompatible: #6f4d83;
   --scholium-symbol-link: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAGKADAAQAAAABAAAAGAAAAADiNXWtAAACV0lEQVRIDe3US0hVQRjA8atpD3uIFYVWBIYkRIsWbQqyMFq4KF1EhVAQEe1EEkRbSItA3FRQFBHUwkKCHkJQ5EYMQty46GVU0KYWtehhLwur/z/uwFw9V68Grfzg55lz5pyZ+b6Zayo1E5NUIG+S/qTuOTzcgVqU4QVuoRej+KdYwded+IrfGE5ff3E9CyefVuTzVQV68AnnsRHlMJu7+I4zKMSUwjI6+D18RCsWIo4l3NzBT1TFHbm0V/NSGLyF9oIsH5mJZTudpT/xcQlPL8CVN2M55qMAY2MND9yb7rjD2k4Uu+jcjnO4hg7cQB3mIo6l3LjJb+KHSRPM4oVlsK7V8IRchh+/hftxEbsRTs0i2ocxgpvIGk5YiXbUwNMxiFKE2EZjCM9gWdyTNljGSwiT0swMT0sZuvASrvAK/CFtgJmFOEbDY7kX+/EBt2HmGRF/VELPQeyBA5vqPGyBkz+Gg1oyN9nBH6bbZt6A10gMB9iJAZyCv1jDqxm5wpOogiWoxRc0Yj1WwTHGRThuxfRsgpvl6sNJcEXH4fHbmr660fVw0gcwM7NKjDBBEb2L8Rlulj+YEE9pHIWbb581dzFX8QhZB6cvZe2MHzBla+6/gfCc5t94z99X2IcDuA9LaWY5xWzeOoQnaILHMkzidSVOwNK5J2uRWHOeZ0Q4Rf4fdzUO5Gab9gg84+U4AuvehzY8R1xGbpMjXoUrrYAZbE6//o2r+zOM6+iEWeQ0OO+NS9MJ3UwnWAczeId+uPqxB4BHE0ecQfxmITceXffG0k15YL75P/EHCCx3R5I0KkcAAAAASUVORK5CYII=");
   --scholium-symbol-supports: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACTUlEQVQ4EdXUPUhVYRzH8Zu9v1lmZVb0wkVILMReKInIorbApWjJhlpaCsHBQMSpralyU2lpCGppDrqGi1T2oqgpSmARBb1aiSXl93v13O4591Q4NPiDD97znHOe1/8xkZhtmfOPCedzvxTbUIg36Ec3vmPGWcMb59GJH/iVZYLfD3AODhyb6Izn8tRhNGAn3iGFxxiFs7bdZwrQgXo8gQPGxkEq8AwfcBXlyEM022logYP1YA/+mI3cuYa3qIUz+lvmc7MRX9CO5ciJW3Aaz3EJRYhmGQ3rYIdB5vGjFR6ke56TTbS4tEG4HdG9pylxHM7sKLI7L+P6FR5hMUKp5soDuo2103dcxQLYiTbjFrpxCAthnMQNWD27kU5wMEmunLUjf4WdWr9VODLNWr4Dl+/B7oLPWYpdsN130vHCuH/OwE5/YhUuwk6ddRD3cgl8/gxc5RjewxRP/Zkaxd/f4Evukav4hDbch9tgHNBKOQU7d/Yu3wQfinUfigfTg5tYHbrz+8KXL6MPJxCs1ok4iQlUIpStXFkVdm6xu3fRHKMhhZMIOuVnYgeG8RArEIr7eBb+g2nCBnja2bG27STYGu+5NVfwGX5UsUnS2owBWOx2HjdzmtODOtAFfEQKfjyZZL/ogfnQQVinrsIqGYez99lFWIkSWBV1sET9tJ8ik+hyfXkvalAFD6QXrzEGy8ySqoAVcRfX0QWrJpNox96wLYkD2I99WA9XYEm+gPV7D+14CT+SUOI6Dh6wI/fZL2wLlmIUQ7DjEeR0SNv/zSRjEXIpUvpbJgAAAABJRU5ErkJggg==");
   --scholium-symbol-supported-by: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACVUlEQVQ4EdXUuWtUURSA8WhcIhpNkLgjyiAobhgNCYi4FuksrUwRmzSGSBALESv/AZdOQRIsLGy1CVlAkBCNKxKVyIDZFNw1oonL903mPsY7L4iFhQd+zJvz3rv33HvPTEnJ/xYz/lDwQu5vwHosxksM4CG+4a+jijeOohcT+Flgkus+NMGJUyOuuJSn9uEkqvEa3biLj7Bq8z5TiZs4gXtwwtRwkm14gLc4h62YiTg2kbgIJ3uEGkwbq7hzHq/QAisKEa/M/Gycwif0oBxF4RY04AnOYClCzOFiJRwojlkkLsGDdM+LYjUZl/YMbkeo0Bcb4V66XAuIYyOJYdzBvPjmQRIe0DUsyd8s4/MQsjgLV2H1Vu5n2HuLuAK7ZwdyEW5m+GbVzvwZVlYP9zCLW3Al+3Eg/+k7vm8r9sPV2fO58IuxAHPhoD9QgcPwZSu1YicLYZVXcQxf8AbG8qmPqVm8HocH4B5ZhW10A+7fGK7DSQvDrQu/vvBDse9zESrO8m0EzujgDtIG99nW+4p2fEAcFmK/f8fj+OZaEnZFaPawbA/qODqxBSHPZRKbuXqO21iUZPMXnvIR+AdzGvZtaDmr9uDKEUclCffflbiy1MiQvYCnaIKDp1VIOjeph9qMd+jGMiRR+OJ7sj60G3vhKtxr99fqfdbqK7AOjWiFLWpb3kcSYbkh4cu1sNX2YBIeyChsK9vSA3Zr/EF04DL6YZsmEQ/sDXMZ7MJO1GEFXIHtlYWt1oUeDMEfyW+RNnB4wIHc5+1Yg/mwvwfhwC9QNCC5fxu/AGL/diOPbj0lAAAAAElFTkSuQmCC");
@@ -16,17 +36,17 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: Canvas;
+  background: var(--scholium-color-document-background);
 }
 
 .cm-editor {
-  color: CanvasText;
-  background: Canvas;
+  color: var(--scholium-color-primary-text);
+  background: var(--scholium-color-document-background);
   font-size: 15px;
 }
 
 .cm-scroller {
-  line-height: 1.65;
+  line-height: 1.58;
 }
 
 .scholium-live-mode .cm-scroller {
@@ -37,19 +57,27 @@ body,
 .scholium-source-mode .cm-scroller {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 15px;
+  line-height: 1.5;
 }
 
 .cm-content {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
   max-width: 920px;
   margin: 0 auto;
   padding: 28px 42px 45vh;
-  caret-color: AccentColor;
+  caret-color: var(--scholium-color-accent);
+}
+
+.scholium-live-mode .cm-content {
+  overflow-wrap: anywhere;
 }
 
 .cm-gutters {
-  color: GrayText;
-  background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
-  border-right: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  color: var(--scholium-color-muted-text);
+  background: color-mix(in srgb, var(--scholium-color-navigation-background) 96%, var(--scholium-color-primary-text) 4%);
+  border-right: 1px solid var(--scholium-color-separator);
 }
 
 /* Live Preview is a body projection, not an exact-source surface. Keep YAML
@@ -61,26 +89,26 @@ body,
 
 .cm-activeLine,
 .cm-activeLineGutter {
-  background: color-mix(in srgb, AccentColor 8%, transparent);
+  background: color-mix(in srgb, var(--scholium-color-raised-surface-background) 58%, transparent);
 }
 
 .cm-selectionBackground,
 .cm-content ::selection {
-  background: color-mix(in srgb, AccentColor 24%, transparent) !important;
+  background: color-mix(in srgb, var(--scholium-color-accent) 24%, transparent) !important;
 }
 
 .cm-researcher-comment {
   color: inherit;
-  background: color-mix(in srgb, AccentColor 14%, transparent);
+  background: color-mix(in srgb, var(--scholium-color-accent) 14%, transparent);
   border-radius: 3px;
-  box-shadow: inset 0 -2px AccentColor;
+  box-shadow: inset 0 -2px var(--scholium-color-accent);
   cursor: pointer;
 }
 
 .cm-researcher-comment-resolved {
-  background: color-mix(in srgb, GrayText 8%, transparent);
-  box-shadow: inset 0 -1px GrayText;
-  text-decoration: underline dashed GrayText;
+  background: color-mix(in srgb, var(--scholium-color-muted-text) 8%, transparent);
+  box-shadow: inset 0 -1px var(--scholium-color-muted-text);
+  text-decoration: underline dashed var(--scholium-color-muted-text);
   text-underline-offset: 0.14em;
 }
 
@@ -104,25 +132,25 @@ body,
 .cm-live-strong { font-weight: 700; }
 .cm-live-emphasis { font-style: italic; }
 .cm-live-highlight {
-  color: CanvasText;
-  background: color-mix(in srgb, Mark 72%, transparent);
+  color: var(--scholium-color-primary-text);
+  background: color-mix(in srgb, var(--scholium-color-notification-highlight) 32%, transparent);
   border-radius: 3px;
   padding-inline: 0.06em;
 }
-.cm-live-strike { text-decoration: line-through; color: GrayText; }
+.cm-live-strike { text-decoration: line-through; color: var(--scholium-color-muted-text); }
 
 .cm-live-code {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   padding: 0.08em 0.28em;
   border-radius: 4px;
-  background: color-mix(in srgb, CanvasText 8%, transparent);
+  background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
 }
 
 .cm-live-wikilink,
 .cm-live-link {
-  color: LinkText;
+  color: var(--scholium-color-accent);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, LinkText 42%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
   text-underline-offset: 0.15em;
 }
 
@@ -131,10 +159,10 @@ body,
   text-decoration-color: color-mix(in srgb, currentColor 46%, transparent);
   text-underline-offset: 0.15em;
 }
-.cm-live-vector-neutral { color: LinkText; }
+.cm-live-vector-neutral { color: var(--scholium-color-connection-neutral); }
 .cm-live-vector-supports-target,
-.cm-live-vector-supported-by-target { color: var(--scholium-vector-support); }
-.cm-live-vector-incompatible { color: var(--scholium-vector-incompatible); }
+.cm-live-vector-supported-by-target { color: var(--scholium-color-connection-support); }
+.cm-live-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
 
 .cm-live-vector-icon {
   --scholium-vector-symbol: var(--scholium-symbol-link);
@@ -147,25 +175,25 @@ body,
   -webkit-mask: var(--scholium-vector-symbol) center / contain no-repeat;
   mask: var(--scholium-vector-symbol) center / contain no-repeat;
 }
-.cm-live-vector-icon-neutral { color: LinkText; }
+.cm-live-vector-icon-neutral { color: var(--scholium-color-connection-neutral); }
 .cm-live-vector-icon-supports-target {
   --scholium-vector-symbol: var(--scholium-symbol-supports);
-  color: var(--scholium-vector-support);
+  color: var(--scholium-color-connection-support);
 }
 .cm-live-vector-icon-supported-by-target {
   --scholium-vector-symbol: var(--scholium-symbol-supported-by);
-  color: var(--scholium-vector-support);
+  color: var(--scholium-color-connection-support);
 }
 .cm-live-vector-icon-incompatible {
   --scholium-vector-symbol: var(--scholium-symbol-incompatible);
-  color: var(--scholium-vector-incompatible);
+  color: var(--scholium-color-connection-incompatible);
 }
 
 .cm-live-embed {
-  color: LinkText;
+  color: var(--scholium-color-accent);
   font-weight: 650;
   padding: 0.08em 0.3em;
-  border: 1px solid color-mix(in srgb, LinkText 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
   border-radius: 5px;
 }
 
@@ -173,56 +201,56 @@ body,
 .cm-live-list-marker {
   display: inline-block;
   min-width: 1.35em;
-  color: color-mix(in srgb, AccentColor 78%, CanvasText);
+  color: color-mix(in srgb, var(--scholium-color-accent) 78%, var(--scholium-color-primary-text));
   font-family: system-ui, sans-serif;
   font-weight: 650;
 }
 
 .cm-live-codeblock {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  background: color-mix(in srgb, CanvasText 6%, transparent);
+  background: color-mix(in srgb, var(--scholium-color-primary-text) 6%, transparent);
   padding-inline: 0.8em;
 }
 
 .cm-live-table {
   font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 -1px color-mix(in srgb, CanvasText 15%, transparent);
+  box-shadow: inset 0 -1px var(--scholium-color-separator);
 }
-.cm-live-table-separator { color: color-mix(in srgb, CanvasText 38%, transparent); }
+.cm-live-table-separator { color: var(--scholium-color-muted-text); }
 
 .cm-live-footnote-reference {
-  color: LinkText;
+  color: var(--scholium-color-accent);
   font-family: system-ui, sans-serif;
   font-size: 0.72em;
   font-weight: 700;
   vertical-align: super;
 }
-.cm-live-footnote-definition { color: color-mix(in srgb, CanvasText 78%, transparent); }
+.cm-live-footnote-definition { color: var(--scholium-color-secondary-text); }
 
 .cm-live-relation {
-  background: color-mix(in srgb, AccentColor 5%, transparent);
+  background: color-mix(in srgb, var(--scholium-color-accent) 5%, transparent);
   padding-inline: 0.35em;
 }
-.cm-live-relation-predicate { color: color-mix(in srgb, AccentColor 80%, CanvasText); font-weight: 700; }
-.cm-live-relation-arrow { color: color-mix(in srgb, CanvasText 45%, transparent); }
+.cm-live-relation-predicate { color: color-mix(in srgb, var(--scholium-color-accent) 80%, var(--scholium-color-primary-text)); font-weight: 700; }
+.cm-live-relation-arrow { color: var(--scholium-color-muted-text); }
 
 .cm-live-quote {
-  box-shadow: inset 3px 0 color-mix(in srgb, AccentColor 55%, transparent);
-  color: color-mix(in srgb, CanvasText 72%, transparent);
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--scholium-color-accent) 55%, transparent);
+  color: var(--scholium-color-secondary-text);
   padding-left: 12px;
 }
 
 /* Protected Callout presentation is injected from callouts.css by the app. */
 
 .cm-live-rule {
-  border-top: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+  border-top: 1px solid var(--scholium-color-separator);
   height: 0;
   margin: 0.9em 0;
 }
 
 .cm-live-frontmatter {
-  color: color-mix(in srgb, CanvasText 68%, transparent);
-  background: color-mix(in srgb, AccentColor 5%, transparent);
+  color: var(--scholium-color-secondary-text);
+  background: color-mix(in srgb, var(--scholium-color-accent) 5%, transparent);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -231,23 +259,90 @@ body,
   .cm-activeLineGutter,
   .cm-live-frontmatter,
   .cm-live-code {
-    background: Canvas;
+    background: var(--scholium-color-document-background);
   }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --scholium-vector-support: #63d4cf;
-    --scholium-vector-incompatible: #c79aff;
+    --scholium-color-document-background: #302a26;
+    --scholium-color-navigation-background: #3a2b2b;
+    --scholium-color-surface-background: #3a322d;
+    --scholium-color-raised-surface-background: #423831;
+    --scholium-color-primary-text: #f4e8d5;
+    --scholium-color-secondary-text: #d4c2ad;
+    --scholium-color-muted-text: #b6a38f;
+    --scholium-color-separator: #807064;
+    --scholium-color-accent: #ef8d5b;
+    --scholium-color-accent-hover: #f5aa7b;
+    --scholium-color-notification-highlight: #e1b64f;
+    --scholium-color-information: #84b0d4;
+    --scholium-color-attention: #e0ab61;
+    --scholium-color-attention-foreground: #e0ab61;
+    --scholium-color-destructive: #ea817c;
+    --scholium-color-destructive-foreground: #ea817c;
+    --scholium-color-confirmed: #7fc39a;
+    --scholium-color-confirmed-foreground: #7fc39a;
+    --scholium-color-agent-authorship: #b5a6dc;
+    --scholium-color-connection-neutral: #ef8d5b;
+    --scholium-color-connection-support: #79b9ab;
+    --scholium-color-connection-incompatible: #c29ccf;
   }
 }
 
 @media (prefers-contrast: more) {
+  :root {
+    --scholium-color-raised-surface-background: #c8bcae;
+    --scholium-color-secondary-text: #17191c;
+    --scholium-color-muted-text: #514d48;
+    --scholium-color-separator: #706b65;
+    --scholium-color-accent: #7a2917;
+    --scholium-color-notification-highlight: #976015;
+    --scholium-color-information: #214d68;
+    --scholium-color-attention: #70420b;
+    --scholium-color-attention-foreground: #70420b;
+    --scholium-color-destructive: #7f2528;
+    --scholium-color-destructive-foreground: #7f2528;
+    --scholium-color-confirmed: #1f5838;
+    --scholium-color-confirmed-foreground: #1f5838;
+    --scholium-color-agent-authorship: #493d72;
+    --scholium-color-connection-neutral: #7a2917;
+    --scholium-color-connection-support: #195a54;
+    --scholium-color-connection-incompatible: #50365f;
+  }
+
   .cm-live-vector-link {
     text-decoration-thickness: 2px;
   }
 
   .cm-researcher-comment {
-    box-shadow: inset 0 -3px AccentColor;
+    box-shadow: inset 0 -3px var(--scholium-color-accent-hover);
+  }
+}
+
+@media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+  :root {
+    --scholium-color-document-background: #302a26;
+    --scholium-color-navigation-background: #3a2b2b;
+    --scholium-color-surface-background: #3a322d;
+    --scholium-color-raised-surface-background: #423831;
+    --scholium-color-primary-text: #f4e8d5;
+    --scholium-color-secondary-text: #f4e8d5;
+    --scholium-color-muted-text: #d4c2ad;
+    --scholium-color-separator: #b6a38f;
+    --scholium-color-accent: #f5aa7b;
+    --scholium-color-accent-hover: #f5aa7b;
+    --scholium-color-notification-highlight: #f1c96d;
+    --scholium-color-information: #a7cce6;
+    --scholium-color-attention: #f0c07a;
+    --scholium-color-attention-foreground: #f0c07a;
+    --scholium-color-destructive: #f3a09c;
+    --scholium-color-destructive-foreground: #f3a09c;
+    --scholium-color-confirmed: #9cd7af;
+    --scholium-color-confirmed-foreground: #9cd7af;
+    --scholium-color-agent-authorship: #d0c3ea;
+    --scholium-color-connection-neutral: #f5aa7b;
+    --scholium-color-connection-support: #9cd5ca;
+    --scholium-color-connection-incompatible: #ddbce5;
   }
 }

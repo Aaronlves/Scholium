@@ -1,0 +1,4 @@
+interface:
+  display_name: "Swift Testing"
+  short_description: "Write and migrate modern Swift tests"
+  default_prompt: "Use $swift-testing to write or migrate these Swift tests."

@@ -1,22 +1,149 @@
+import ScholiumContracts
 import SwiftUI
-import ScholiumCore
+
+enum DocumentNotificationKind {
+    case success
+    case information
+    case error
+}
+
+struct DocumentFeatureState {
+    let notes: [WindowDocumentLocation]
+    let activeTab: String?
+    let openTabs: [String]
+    let currentVaultID: UUID?
+    let vaultRole: VaultRole
+    let locationScope: NoteLocationScope
+    let noteIdentityByPath: [String: UUID]
+    let documentRevisions: [String: DocumentFingerprint]
+    let workspaceCatalog: WorkspaceCatalogSnapshot?
+    let propertiesConfiguration: VaultPropertiesConfiguration?
+    let reviewRecord: HumanReviewRecord?
+    let reviewDisplayState: HumanReviewDisplayState
+    let changedSinceReview: Bool
+    let canComment: Bool
+    let canEdit: Bool
+    let documentTextScale: Double
+    let readCSS: String
+    let livePreviewCSS: String
+    let initialScrollFraction: Double
+    let requestedPresentationMode: NotePresentationMode?
+    let pendingSourceLine: Int?
+    let storedPresentationMode: NotePresentationMode
+    let isCompactLayout: Bool
+    let noteHistoryVisible: Bool
+    let researchInspectorVisible: Bool
+    let identityAmbiguity: NoteIdentityAmbiguity?
+    let pendingIdentityRebinding: NoteIdentityPendingRebinding?
+    let identityMigrationFailureMessage: String?
+    let isResolvingIdentity: Bool
+}
+
+struct DocumentFeatureActions {
+    let requestIdentityResolution: @MainActor () -> Void
+    let retryIdentityRecovery: @MainActor () async -> Void
+    let beginSearch: @MainActor (SearchPresentationScope) -> Void
+    let clearRequestedPresentationMode: @MainActor () -> Void
+    let registerEditorFlush: @MainActor (
+        String,
+        UUID,
+        @escaping @MainActor () async throws -> Void
+    ) -> Void
+    let unregisterEditorFlush: @MainActor (UUID) -> Void
+    let clearPendingSourceLine: @MainActor () -> Void
+    let requestComments: @MainActor (MarkdownReviewSelection?, UUID?) -> Void
+    let rememberScrollPosition: @MainActor (Double) -> Void
+    let openInternalLink: @MainActor (String) -> Void
+    let openExternalURL: @MainActor (URL) -> Void
+    let enterCSSSafeMode: @MainActor (String) -> Void
+    let rememberPresentationMode: @MainActor (NotePresentationMode) -> Void
+    let setPendingSourceLine: @MainActor (Int?) -> Void
+    let editProperties: @MainActor () -> Void
+    let openScholia: @MainActor () -> Void
+    let setNoteHistoryVisible: @MainActor (Bool) -> Void
+    let setResearchInspectorVisible: @MainActor (Bool) -> Void
+    let selectTab: @MainActor (String) -> Void
+    let closeTab: @MainActor (String) -> Void
+    let notify: @MainActor (String, DocumentNotificationKind) -> Void
+}
 
 // MARK: - Note Content Container
 
 struct NoteTabView: View {
-    @EnvironmentObject var appState: AppState
+    @ObservedObject private var controller: DocumentController
+    let state: DocumentFeatureState
+    let actions: DocumentFeatureActions
+    let critiqueProvenanceContext: CritiqueProvenanceContext
+
+    init(
+        controller: DocumentController,
+        state: DocumentFeatureState,
+        actions: DocumentFeatureActions,
+        critiqueProvenanceContext: CritiqueProvenanceContext
+    ) {
+        self.controller = controller
+        self.state = state
+        self.actions = actions
+        self.critiqueProvenanceContext = critiqueProvenanceContext
+    }
 
     var body: some View {
-        if let activeTab = appState.activeTab,
-           let note = appState.notes.first(where: { $0.relativePath == activeTab }) {
-            NoteContentView(note: note)
-                .id(activeTab)
+        if let activeTab = state.activeTab,
+           let note = state.notes.first(where: { $0.relativePath == activeTab }) {
+            if let vaultID = state.currentVaultID,
+               let noteID = state.noteIdentityByPath[note.relativePath] {
+                let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
+                NoteContentView(
+                    controller: controller,
+                    target: .workspace(key),
+                    note: note,
+                    documentSession: controller.session(for: key),
+                    state: state,
+                    actions: actions,
+                    critiqueProvenanceContext: critiqueProvenanceContext
+                )
+                .id(key)
+            } else {
+                DocumentSessionFallback(
+                    note: note,
+                    controller: controller,
+                    target: state.locationScope == .unclassified
+                        ? .unclassified(relativePath: note.relativePath)
+                        : .unavailable(relativePath: note.relativePath),
+                    state: state,
+                    actions: actions,
+                    critiqueProvenanceContext: critiqueProvenanceContext
+                )
+                    .id(activeTab)
+            }
         }
     }
 }
 
+private struct DocumentSessionFallback: View {
+    let note: WindowDocumentLocation
+    let controller: DocumentController
+    let target: DocumentEditingTarget
+    let state: DocumentFeatureState
+    let actions: DocumentFeatureActions
+    let critiqueProvenanceContext: CritiqueProvenanceContext
+    @StateObject private var session = DocumentSessionModel(key: nil)
+
+    var body: some View {
+        NoteContentView(
+            controller: controller,
+            target: target,
+            note: note,
+            documentSession: session,
+            state: state,
+            actions: actions,
+            critiqueProvenanceContext: critiqueProvenanceContext
+        )
+    }
+}
+
 struct ResearchInspectorView: View {
-    @EnvironmentObject var appState: AppState
+    @ObservedObject private var controller: ResearchController
 
     enum Mode: String, CaseIterable, Identifiable {
         case incoming = "Incoming"
@@ -25,7 +152,27 @@ struct ResearchInspectorView: View {
         var id: String { rawValue }
     }
 
-    let note: Note
+    let note: WindowDocumentLocation
+    let graph: GraphSnapshot?
+    let catalog: WorkspaceCatalogSnapshot?
+    let currentVaultID: UUID?
+    let relationshipViewContext: RelationshipViewContext
+
+    init(
+        note: WindowDocumentLocation,
+        controller: ResearchController,
+        graph: GraphSnapshot?,
+        catalog: WorkspaceCatalogSnapshot?,
+        currentVaultID: UUID?,
+        relationshipViewContext: RelationshipViewContext
+    ) {
+        self.note = note
+        self.controller = controller
+        self.graph = graph
+        self.catalog = catalog
+        self.currentVaultID = currentVaultID
+        self.relationshipViewContext = relationshipViewContext
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,9 +193,14 @@ struct ResearchInspectorView: View {
 
             Group {
                 switch inspectorMode.wrappedValue {
-                case .incoming: BacklinksPanelView()
-                case .outgoing: OutgoingLinksPanelView(note: note)
-                case .relationships: RelationshipView(note: note)
+                case .incoming: BacklinksPanelView(context: relationshipContext)
+                case .outgoing: OutgoingLinksPanelView(context: relationshipContext)
+                case .relationships:
+                    RelationshipView(
+                        note: note,
+                        controller: controller,
+                        context: relationshipViewContext
+                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -60,94 +212,145 @@ struct ResearchInspectorView: View {
 
     private var inspectorMode: Binding<Mode> {
         Binding(
-            get: { Mode(rawValue: appState.inspectorModeRaw.capitalized) ?? .incoming },
-            set: { appState.inspectorModeRaw = $0.rawValue.lowercased() }
+            get: { Mode(rawValue: controller.inspector.modeRawValue.capitalized) ?? .incoming },
+            set: { controller.selectInspectorMode($0.rawValue.lowercased()) }
+        )
+    }
+
+    private var relationshipContext: RelationshipInspectorContext {
+        RelationshipInspectorContext(
+            graph: graph,
+            catalog: catalog,
+            current: currentVaultID.map {
+                VaultQualifiedNoteID(vaultID: $0, relativePath: note.relativePath)
+            },
+            openReference: { reference, line in
+                controller.requestOpen(reference, sourceLine: line)
+            }
         )
     }
 }
 // MARK: - Note Content View
 
 struct NoteContentView: View {
-    @EnvironmentObject var appState: AppState
-    let note: Note
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @ObservedObject private var controller: DocumentController
+    let target: DocumentEditingTarget
+    let note: WindowDocumentLocation
+    let documentSession: DocumentSessionModel
+    let state: DocumentFeatureState
+    let actions: DocumentFeatureActions
+    let critiqueProvenanceContext: CritiqueProvenanceContext
 
-    @State var isEditing = false
-    @State var editingSource = ""
-    @State private var originalEditingSource = ""
-    @State var editingRevision: DocumentFingerprint?
-    @State var editError: String?
-    @State var isSavingEdit = false
-    @State private var presentationMode: NotePresentationMode = .read
-    @State private var autosaveTask: Task<Void, Never>?
-    @State private var returnToReadAfterSave = false
-    @State private var suppressAutosave = false
-    @State private var renderedReadHTML = ""
-    @State private var renderedReadFingerprint = ""
-    @State private var conflict: DocumentConflictSnapshot?
-    @State private var canRetrySave = false
-    @State private var showConflictComparison = false
-    @State private var activeSaveTask: Task<EditorSaveOutcome, Error>?
-    @State private var activeSaveToken: UUID?
-    @State private var editorFlushToken = UUID()
-    @StateObject private var editorSession = MarkdownEditorSession()
+    init(
+        controller: DocumentController,
+        target: DocumentEditingTarget,
+        note: WindowDocumentLocation,
+        documentSession: DocumentSessionModel,
+        state: DocumentFeatureState,
+        actions: DocumentFeatureActions,
+        critiqueProvenanceContext: CritiqueProvenanceContext
+    ) {
+        self.controller = controller
+        self.target = target
+        self.note = note
+        self.documentSession = documentSession
+        self.state = state
+        self.actions = actions
+        self.critiqueProvenanceContext = critiqueProvenanceContext
+    }
+
+    private var isEditing: Bool {
+        documentSession.isEditing
+    }
+    private var editingSource: String {
+        documentSession.editingSource
+    }
+    private var editError: String? {
+        get { documentSession.editError }
+        nonmutating set { documentSession.editError = newValue }
+    }
+    private var isSavingEdit: Bool {
+        documentSession.isSavingEdit
+    }
+    private var presentationMode: NotePresentationMode {
+        get { documentSession.presentationMode }
+        nonmutating set { documentSession.presentationMode = newValue }
+    }
+    private var returnToReadAfterSave: Bool {
+        get { documentSession.returnToReadAfterSave }
+        nonmutating set { documentSession.returnToReadAfterSave = newValue }
+    }
+    private var renderedReadHTML: String {
+        get { documentSession.renderedReadHTML }
+        nonmutating set { documentSession.renderedReadHTML = newValue }
+    }
+    private var renderedReadFingerprint: String {
+        get { documentSession.renderedReadFingerprint }
+        nonmutating set { documentSession.renderedReadFingerprint = newValue }
+    }
+    private var failedReadFingerprint: String? {
+        get { documentSession.failedReadFingerprint }
+        nonmutating set { documentSession.failedReadFingerprint = newValue }
+    }
+    private var conflict: DocumentConflictSnapshot? {
+        documentSession.conflict
+    }
+    private var canRetrySave: Bool {
+        documentSession.canRetrySave
+    }
+    private var showConflictComparison: Bool {
+        get { documentSession.showConflictComparison }
+        nonmutating set { documentSession.showConflictComparison = newValue }
+    }
+    private var editorFlushToken: UUID { documentSession.editorFlushToken }
+    private var editorSession: MarkdownEditorSession { documentSession.editorSession }
 
     var body: some View {
         VStack(spacing: 0) {
-            documentContextRow
-
-            if let ambiguity = appState.identityAmbiguity(for: note.relativePath) {
+            if let ambiguity = state.identityAmbiguity {
                 IdentityAmbiguityNotice(ambiguity: ambiguity) {
-                    appState.requestIdentityResolution(for: note.relativePath)
+                    actions.requestIdentityResolution()
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-            } else if let pending = appState.pendingIdentityRebinding(for: note.relativePath) {
+            } else if let pending = state.pendingIdentityRebinding {
                 IdentityMigrationNotice(
                     rebinding: pending,
-                    message: appState.identityMigrationFailure(for: note.relativePath)?.message,
-                    isRetrying: appState.isResolvingIdentity
+                    message: state.identityMigrationFailureMessage,
+                    isRetrying: state.isResolvingIdentity
                 ) {
-                    await appState.retryIdentityRecovery()
+                    await actions.retryIdentityRecovery()
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
             }
 
             if isCritiqueDocument {
-                CritiqueProvenanceView(note: note)
+                CritiqueProvenanceView(
+                    note: note,
+                    context: critiqueProvenanceContext
+                )
             }
 
-            if isEditing {
-                bodyEditor
-            } else {
-                if ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_NATIVE_READ"] != "1",
-                   renderedReadFingerprint == noteFingerprint.sha256,
-                   !renderedReadHTML.isEmpty {
-                    readDocumentSurface
-                } else {
-                    NativeMarkdownReadView(
-                        source: note.rawContent,
-                        textScale: appState.documentTextScale,
-                        onLinkClick: {
-                            appState.openInternalLink($0, from: note.relativePath)
-                        },
-                        onRequestComment: commentingIsAvailable ? { selection in
-                            appState.requestResearcherComments(
-                                at: note.relativePath,
-                                selection: selection
-                            )
-                        } : nil
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .layoutPriority(1)
-                }
+            ZStack(alignment: .top) {
+                documentBodySurface
+
+                documentContextRow
+                    .zIndex(2)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
+        .toolbar(removing: .sidebarToggle)
         .toolbar { noteToolbar }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { mode in
-            appState.beginSearch(mode: mode)
+            actions.beginSearch(mode)
         })
-        .sheet(isPresented: $showConflictComparison) {
+        .sheet(isPresented: Binding(
+            get: { showConflictComparison },
+            set: { showConflictComparison = $0 }
+        )) {
             if let conflict {
                 ConflictComparisonSheet(
                     conflict: conflict,
@@ -174,41 +377,51 @@ struct NoteContentView: View {
                 .keyboardShortcut(.defaultAction)
                 Button("Reload from Disk", role: .destructive) { reloadFromDisk() }
             } else if canRetrySave {
-                Button("Retry Save") { retrySave() }
+                Button("Retry Save") {
+                    controller.retrySave(session: documentSession, target: target)
+                }
             }
             Button("Keep Editing", role: .cancel) { editError = nil }
         } message: {
             Text(editError ?? "")
         }
-        .onChange(of: editingSource) { _, _ in
-            scheduleAutosave()
-        }
-        .onChange(of: appState.requestPresentationMode) { _, requested in
+        .onChange(of: state.requestedPresentationMode) { _, requested in
             guard let requested else { return }
             selectPresentationMode(requested)
-            appState.requestPresentationMode = nil
+            actions.clearRequestedPresentationMode()
         }
         .onAppear {
-            let restoredMode = appState.presentationMode(for: note.relativePath)
-            if restoredMode != .read { selectPresentationMode(restoredMode) }
+            controller.observe(documentSession)
+            restorePresentationModeIfAvailable()
             consumePendingPresentationRequest()
-            appState.registerEditorFlush(
-                for: note.relativePath,
-                token: editorFlushToken
-            ) {
-                try await flushForAgentWork()
+            actions.registerEditorFlush(note.relativePath, editorFlushToken) {
+                try await controller.flushForExternalOperation(
+                    session: documentSession,
+                    target: target
+                )
             }
         }
+        .onChange(of: editingIsAvailable) { _, available in
+            // Window restoration publishes the selected note before stable
+            // identity recovery necessarily finishes. Keep the edit gate
+            // intact, then apply the committed mode as soon as editing becomes
+            // available instead of leaving the document in the default Read
+            // mode for the rest of the session.
+            if available { restorePresentationModeIfAvailable() }
+        }
         .onDisappear {
-            autosaveTask?.cancel()
-            appState.unregisterEditorFlush(token: editorFlushToken)
+            // The document session, not this reconstructed view, owns the
+            // pending autosave. Inspector and window-layout changes can
+            // temporarily detach this view while the session remains active.
+            actions.unregisterEditorFlush(editorFlushToken)
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
-            guard loaded, let line = appState.pendingSourceLine else { return }
+            guard loaded, let line = state.pendingSourceLine else { return }
             editorSession.goToLine(line)
-            appState.pendingSourceLine = nil
+            actions.clearPendingSourceLine()
         }
         .task(id: noteFingerprint.sha256) {
+            failedReadFingerprint = nil
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint.sha256
@@ -224,8 +437,8 @@ struct NoteContentView: View {
     }
 
     private var reviewButtonTitle: String {
-        if appState.humanReviewRecord(for: note.relativePath)?.draft != nil { return "Continue Review" }
-        switch appState.reviewDisplayState(for: note.relativePath) {
+        if state.reviewRecord?.draft != nil { return "Continue Review" }
+        switch state.reviewDisplayState {
         case .qualified: return "Qualified"
         case .unqualified: return "Unqualified"
         case .notReviewed, .reviewed: return "Review"
@@ -233,8 +446,8 @@ struct NoteContentView: View {
     }
 
     private var reviewButtonSymbol: String {
-        if appState.changedSinceReviewPaths.contains(note.relativePath) { return "arrow.triangle.2.circlepath" }
-        switch appState.reviewDisplayState(for: note.relativePath) {
+        if state.changedSinceReview { return "arrow.triangle.2.circlepath" }
+        switch state.reviewDisplayState {
         case .qualified: return "checkmark.seal.fill"
         case .unqualified: return "xmark.seal.fill"
         case .notReviewed, .reviewed: return "checkmark.circle"
@@ -242,8 +455,8 @@ struct NoteContentView: View {
     }
 
     private var reviewButtonTint: Color {
-        if appState.changedSinceReviewPaths.contains(note.relativePath) { return .orange }
-        switch appState.reviewDisplayState(for: note.relativePath) {
+        if state.changedSinceReview { return .orange }
+        switch state.reviewDisplayState {
         case .qualified: return .green
         case .unqualified: return .red
         case .notReviewed, .reviewed: return .accentColor
@@ -251,33 +464,33 @@ struct NoteContentView: View {
     }
 
     private var reviewButtonHelp: String {
-        if appState.changedSinceReviewPaths.contains(note.relativePath) {
+        if state.changedSinceReview {
             return "Review the changed file bytes"
         }
-        return appState.humanReviewRecord(for: note.relativePath)?.draft != nil
+        return state.reviewRecord?.draft != nil
             ? "Continue the saved Human Review draft"
             : "Review and qualify this note"
     }
 
     private var humanReviewIsAvailable: Bool {
-        appState.noteLocationScope == .workspace && appState.currentVaultRole.allowsHumanReview
+        state.locationScope == .workspace && state.vaultRole.allowsHumanReview
     }
 
     private var commentingIsAvailable: Bool {
-        appState.currentNote?.relativePath == note.relativePath && appState.canCommentCurrentNote
+        state.activeTab == note.relativePath && state.canComment
     }
 
     private var editingIsAvailable: Bool {
-        appState.canEditCurrentNote && !isCritiqueDocument
+        state.canEdit && !isCritiqueDocument
     }
 
     private var isCritiqueDocument: Bool {
-        appState.currentVaultRole.allowsCritique
+        state.vaultRole.allowsCritique
             && (note.relativePath == "Critiques" || note.relativePath.hasPrefix("Critiques/"))
     }
 
     private var noteFingerprint: DocumentFingerprint {
-        appState.documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
+        state.documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
     }
 
     private var bodyEditor: some View {
@@ -289,24 +502,55 @@ struct NoteContentView: View {
             userCSS: scaledEditorCSS,
             linkCompletions: editorLinkCompletions,
             researcherComments: currentResearcherComments,
-            initialScrollFraction: appState.scrollPosition(for: note.relativePath),
+            initialScrollFraction: state.initialScrollFraction,
             onDocumentChange: { updatedSource in
-                guard isEditing, editingSource != updatedSource else { return }
-                editingSource = updatedSource
+                controller.updateEditingSource(
+                    updatedSource,
+                    session: documentSession,
+                    target: target
+                )
             },
             onRequestSave: {
-                Task { await persistEditingSource() }
+                Task {
+                    await controller.persistEditingSource(
+                        session: documentSession,
+                        target: target
+                    )
+                }
             },
             onCommentActivation: commentingIsAvailable ? { commentID in
-                appState.requestResearcherComments(
-                    at: note.relativePath,
-                    focusedCommentID: commentID
-                )
+                actions.requestComments(nil, commentID)
             } : nil,
-            onScrollFractionChange: { appState.rememberScrollPosition($0, for: note.relativePath) }
+            onScrollFractionChange: { actions.rememberScrollPosition($0) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)
+    }
+
+    @ViewBuilder
+    private var documentBodySurface: some View {
+        if isEditing {
+            bodyEditor
+        } else if ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_NATIVE_READ"] != "1",
+                  renderedReadFingerprint == noteFingerprint.sha256,
+                  !renderedReadHTML.isEmpty,
+                  failedReadFingerprint != noteFingerprint.sha256 {
+            readDocumentSurface
+        } else {
+            NativeMarkdownReadView(
+                source: note.rawContent,
+                textScale: state.documentTextScale,
+                topContentInset: 92,
+                onLinkClick: {
+                    actions.openInternalLink($0)
+                },
+                onRequestComment: commentingIsAvailable ? { selection in
+                    actions.requestComments(selection, nil)
+                } : nil
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
+        }
     }
 
     private var readDocumentSurface: some View {
@@ -318,61 +562,60 @@ struct NoteContentView: View {
             userCSS: scaledReadCSS,
             researcherComments: currentResearcherComments,
             onLinkClick: {
-                appState.openInternalLink($0, from: note.relativePath)
+                actions.openInternalLink($0)
             },
+            onOpenExternalURL: actions.openExternalURL,
             onCommentSelection: commentingIsAvailable ? { selection in
-                appState.requestResearcherComments(
-                    at: note.relativePath,
-                    selection: selection
-                )
+                actions.requestComments(selection, nil)
             } : nil,
             onCommentActivation: commentingIsAvailable ? { commentID in
-                appState.requestResearcherComments(
-                    at: note.relativePath,
-                    focusedCommentID: commentID
-                )
+                actions.requestComments(nil, commentID)
             } : nil,
             onRenderingFailure: { reason in
-                appState.cssSnippetStore.enterSafeMode(after: reason)
+                actions.enterCSSSafeMode(reason)
+                failedReadFingerprint = noteFingerprint.sha256
             },
-            initialScrollFraction: appState.scrollPosition(for: note.relativePath),
+            onRenderingReady: {
+                PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+            },
+            initialScrollFraction: state.initialScrollFraction,
             onScrollFractionChange: {
-                appState.rememberScrollPosition($0, for: note.relativePath)
+                actions.rememberScrollPosition($0)
             },
-            targetSourceLine: appState.pendingSourceLine,
-            onSourceLineReached: { appState.pendingSourceLine = nil }
+            targetSourceLine: state.pendingSourceLine,
+            onSourceLineReached: { actions.clearPendingSourceLine() }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)
     }
 
     private var currentResearcherComments: [ResearcherComment] {
-        appState.humanReviewRecord(for: note.relativePath)?.comments ?? []
+        state.reviewRecord?.comments ?? []
     }
 
     private var scaledReadCSS: String {
-        appState.cssSnippetStore.readCSS
-            + "\n.scholium-document { font-size: \(appState.documentTextScale)em; }"
+        state.readCSS
+            + "\n.scholium-document { font-size: \(state.documentTextScale)em; padding-top: 92px; }"
     }
 
     private var scaledEditorCSS: String {
-        appState.cssSnippetStore.livePreviewCSS
-            + "\n.cm-content { font-size: \(appState.documentTextScale)em; }"
+        state.livePreviewCSS
+            + "\n.cm-content { font-size: \(state.documentTextScale)em; padding-top: 92px; }"
     }
 
     private var editorLinkCompletions: [EditorLinkCompletion] {
-        guard let currentVaultID = appState.currentRegisteredVault?.id,
-              let catalogNotes = appState.workspaceCatalog?.notes,
+        guard let currentVaultID = state.currentVaultID,
+              let catalogNotes = state.workspaceCatalog?.notes,
               !catalogNotes.isEmpty else {
-            let stemCounts = Dictionary(grouping: appState.notes, by: \.displayName).mapValues(\.count)
-            return appState.notes.map { candidate in
+            let stemCounts = Dictionary(grouping: state.notes, by: \.displayName).mapValues(\.count)
+            return state.notes.map { candidate in
                 let needsPath = (stemCounts[candidate.displayName] ?? 0) > 1
                 return EditorLinkCompletion(
                     label: candidate.title ?? candidate.displayName,
                     insertion: needsPath
                         ? (candidate.relativePath as NSString).deletingPathExtension
                         : candidate.displayName,
-                    detail: "Current Vault · \(candidate.relativePath)",
+                        detail: "Current Vault — \(candidate.relativePath)",
                     path: candidate.relativePath,
                     isAmbiguous: false
                 )
@@ -444,12 +687,12 @@ struct NoteContentView: View {
             }
 
             let ambiguity = isAmbiguous
-                ? " · Ambiguous: no unique Obsidian-compatible target"
+                ? " — Ambiguous: no unique Obsidian-compatible target"
                 : ""
             return EditorLinkCompletion(
                 label: candidate.title,
                 insertion: insertion,
-                detail: "\(candidate.reference.vaultName) · \(candidate.reference.vaultRole.displayName) · \(candidate.reference.relativePath)\(ambiguity)",
+                detail: "\(candidate.reference.vaultName) — \(candidate.reference.vaultRole.displayName) — \(candidate.reference.relativePath)\(ambiguity)",
                 path: "\(candidate.reference.vaultName)/\(candidate.reference.relativePath)",
                 isAmbiguous: isAmbiguous
             )
@@ -467,35 +710,35 @@ struct NoteContentView: View {
     }
 
     private var hasUnsavedChanges: Bool {
-        editingSource != originalEditingSource || (isEditing && editorSession.isDirty)
+        documentSession.hasUnsavedChanges
     }
 
     private func selectPresentationMode(_ mode: NotePresentationMode) {
         if mode == .read {
             guard isEditing else {
                 presentationMode = .read
-                appState.rememberPresentationMode(.read, for: note.relativePath)
+                actions.rememberPresentationMode(.read)
                 return
             }
             returnToReadAfterSave = true
-            autosaveTask?.cancel()
             Task {
                 do {
-                    try await flushCurrentEditor()
+                    try await controller.flushForExternalOperation(
+                        session: documentSession,
+                        target: target
+                    )
                     guard returnToReadAfterSave else { return }
                     finishEditing()
-                } catch {
-                    await presentSaveFailure(error)
-                }
+                } catch { /* Controller published the recoverable error state. */ }
             }
             return
         }
 
         guard editingIsAvailable else {
-            appState.showToast("This note is read-only in Scholium.", kind: .information)
+            actions.notify("This note is read-only in Scholium.", .information)
             return
         }
-        appState.rememberPresentationMode(mode, for: note.relativePath)
+        actions.rememberPresentationMode(mode)
 
         if isEditing {
             presentationMode = mode
@@ -504,258 +747,76 @@ struct NoteContentView: View {
         }
     }
 
+    private func restorePresentationModeIfAvailable() {
+        guard presentationMode == .read else { return }
+        let restoredMode = state.storedPresentationMode
+        guard restoredMode != .read, editingIsAvailable else { return }
+        selectPresentationMode(restoredMode)
+    }
+
     private func consumePendingPresentationRequest() {
-        guard let requested = appState.requestPresentationMode else { return }
+        guard let requested = state.requestedPresentationMode else { return }
         selectPresentationMode(requested)
-        appState.requestPresentationMode = nil
-        if let line = appState.pendingSourceLine {
+        actions.clearRequestedPresentationMode()
+        if let line = state.pendingSourceLine {
             editorSession.goToLine(line)
         }
     }
 
     private func beginEditing(mode: NotePresentationMode = .livePreview) {
-        guard isEditing == false, mode != .read else { return }
-        suppressAutosave = true
-        originalEditingSource = note.rawContent
-        editingSource = note.rawContent
-        editingRevision = appState.documentRevisions[note.relativePath]
-        appState.editingBodyPath = nil
-        presentationMode = mode
-        isEditing = true
-        Task { @MainActor in
-            await Task.yield()
-            suppressAutosave = false
-        }
+        controller.beginEditing(
+            session: documentSession,
+            target: target,
+            source: note.rawContent,
+            revision: state.documentRevisions[note.relativePath],
+            mode: mode
+        )
     }
 
     private func finishEditing() {
-        autosaveTask?.cancel()
-        autosaveTask = nil
-        isEditing = false
-        editingSource = ""
-        originalEditingSource = ""
-        editingRevision = nil
-        appState.editingBodyPath = nil
-        presentationMode = .read
-        appState.rememberPresentationMode(.read, for: note.relativePath)
-        returnToReadAfterSave = false
-        suppressAutosave = false
-    }
-
-    private func scheduleAutosave() {
-        guard isEditing, !suppressAutosave, hasUnsavedChanges else { return }
-        appState.editingBodyPath = note.relativePath
-        autosaveTask?.cancel()
-        autosaveTask = Task {
-            try? await Task.sleep(for: .milliseconds(autosaveDelayMilliseconds))
-            guard !Task.isCancelled else { return }
-            await persistEditingSource()
-        }
-    }
-
-    private var autosaveDelayMilliseconds: Int {
-#if DEBUG
-        if let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"],
-           let value = Int(raw), value >= 0 {
-            return value
-        }
-#endif
-        return 850
-    }
-
-    @MainActor
-    private func persistEditingSource() async {
-        do {
-            let outcome = try await saveEditingSource()
-            editError = nil
-            conflict = nil
-            if outcome == .changedDuringSave {
-                scheduleAutosave()
-            }
-        } catch {
-            await presentSaveFailure(error)
-        }
-    }
-
-    @MainActor
-    private func saveEditingSource() async throws -> EditorSaveOutcome {
-        if let activeSaveTask {
-            return try await activeSaveTask.value
-        }
-
-        let token = UUID()
-        let task = Task { @MainActor in
-            try await performEditingSave()
-        }
-        activeSaveToken = token
-        activeSaveTask = task
-        isSavingEdit = true
-
-        do {
-            let outcome = try await task.value
-            if activeSaveToken == token {
-                activeSaveTask = nil
-                activeSaveToken = nil
-                isSavingEdit = false
-            }
-            return outcome
-        } catch {
-            if activeSaveToken == token {
-                activeSaveTask = nil
-                activeSaveToken = nil
-                isSavingEdit = false
-            }
-            throw error
-        }
-    }
-
-    @MainActor
-    private func performEditingSave() async throws -> EditorSaveOutcome {
-        guard isEditing else { return .clean }
-        if !editorSession.isReady || !editorSession.isLoaded {
-            guard editingSource == originalEditingSource, !editorSession.isDirty else {
-                throw EditorFlushError.editorUnavailable
-            }
-            return .clean
-        }
-        guard let revision = editingRevision else {
-            throw EditorFlushError.saveFailed(
-                "The editing revision is unavailable. Return to Read mode and reopen the editor."
-            )
-        }
-
-        let sourceBeingSaved = try await editorSession.currentText(for: note.relativePath)
-        let mirroredSource = editingSource
-        guard DocumentFingerprint(content: sourceBeingSaved) == DocumentFingerprint(content: mirroredSource) else {
-            // Do not write a buffer after a bridge delta was lost or rejected.
-            // Preserve the complete CodeMirror text, reconcile the local mirror,
-            // and require a fresh save attempt through the same revision gate.
-            suppressAutosave = true
-            editingSource = sourceBeingSaved
-            suppressAutosave = false
-            appState.editingBodyPath = note.relativePath
-            throw EditorFlushError.deltaMirrorMismatch
-        }
-        suppressAutosave = true
-        editingSource = sourceBeingSaved
-        defer { suppressAutosave = false }
-
-        guard sourceBeingSaved != originalEditingSource || editorSession.isDirty else {
-            appState.editingBodyPath = nil
-            return .clean
-        }
-
-        let saved = try await appState.saveSource(
-            sourceBeingSaved,
-            for: note.relativePath,
-            expectedRevision: revision
-        )
-        let savedSource = saved.rawContent
-        let savedRevision = DocumentFingerprint(content: savedSource)
-        editingRevision = savedRevision
-        originalEditingSource = savedSource
-
-        let synchronized = try await editorSession.synchronizeCommittedText(
-            expectedText: sourceBeingSaved,
-            committedText: savedSource,
-            fingerprint: savedRevision,
-            documentID: note.relativePath
-        )
-        if synchronized {
-            editingSource = savedSource
-            appState.editingBodyPath = nil
-            return .clean
-        }
-
-        let latestSource = try await editorSession.currentText(for: note.relativePath)
-        editingSource = latestSource
-        appState.editingBodyPath = note.relativePath
-        return .changedDuringSave
-    }
-
-    @MainActor
-    private func flushCurrentEditor() async throws {
-        autosaveTask?.cancel()
-        for _ in 0..<4 {
-            let outcome = try await saveEditingSource()
-            if outcome == .clean { return }
-        }
-        throw EditorFlushError.changedDuringSave
-    }
-
-    @MainActor
-    private func flushForAgentWork() async throws {
-        do {
-            try await flushCurrentEditor()
-        } catch {
-            await presentSaveFailure(error)
-            throw error
-        }
-    }
-
-    @MainActor
-    private func presentSaveFailure(_ error: Error) async {
-        editError = error.localizedDescription
-        appState.lastSaveError = error.localizedDescription
-        if case VaultRepositoryError.conflict = error,
-           let diskDocument = try? await appState.diskDocument(for: note.relativePath),
-           let baseRevision = editingRevision {
-            conflict = DocumentConflictSnapshot(
-                relativePath: note.relativePath,
-                editorSource: editingSource,
-                diskSource: diskDocument.rawContent,
-                baseRevision: baseRevision
-            )
-            canRetrySave = false
-        } else {
-            conflict = nil
-            // Repository validation, identity, and containment failures require
-            // a source or setup correction. I/O and editor-bridge failures can
-            // plausibly succeed when retried without discarding the buffer.
-            canRetrySave = !(error is VaultRepositoryError)
-        }
-    }
-
-    private func retrySave() {
-        editError = nil
-        canRetrySave = false
-        Task {
-            do {
-                try await flushCurrentEditor()
-            } catch {
-                await presentSaveFailure(error)
-            }
-        }
+        controller.finishEditing(session: documentSession, target: target)
+        actions.rememberPresentationMode(.read)
     }
 
     private func reloadFromDisk() {
-        guard let conflict else { return }
         Task {
             do {
-                _ = try await appState.reloadDocumentFromDisk(
-                    for: note.relativePath,
-                    expectedDiskRevision: conflict.diskRevision
+                try await controller.reloadFromDisk(
+                    session: documentSession,
+                    target: target
                 )
-                showConflictComparison = false
-                self.conflict = nil
-                canRetrySave = false
-                editError = nil
-                finishEditing()
-            } catch {
-                showConflictComparison = false
-                await presentSaveFailure(error)
-            }
+                actions.rememberPresentationMode(.read)
+            } catch { /* Controller published the recoverable error state. */ }
         }
     }
 
     // MARK: - Toolbar
 
     private var documentContextRow: some View {
-        HStack(alignment: .top, spacing: 4) {
+        DocumentMeasureAlignedLayout {
+            MetadataCardView(
+                note: note,
+                propertiesConfiguration: state.propertiesConfiguration,
+                canEdit: state.canEdit,
+                changedSinceReview: state.changedSinceReview,
+                editProperties: actions.editProperties
+            ) {
+                documentContextControls
+            }
+        }
+        // The controls, Properties strip, expanded panel, and document all
+        // share one centered 920-point measure. This view floats above the
+        // scrolling document rather than reserving an opaque toolbar band.
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var documentContextControls: some View {
+        HStack(spacing: 0) {
             Menu {
                 ForEach(NotePresentationMode.allCases) { mode in
                     Button {
-                        appState.requestDocumentMode(mode)
+                        selectPresentationMode(mode)
                     } label: {
                         if mode == presentationMode {
                             Label(mode.title, systemImage: "checkmark")
@@ -765,15 +826,21 @@ struct NoteContentView: View {
                     }
                 }
             } label: {
-                Label(presentationMode.title, systemImage: presentationMode.symbol)
+                Image(systemName: presentationMode.symbol)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
+            .menuStyle(.borderlessButton)
             .fixedSize()
             .disabled(!editingIsAvailable)
-            .buttonStyle(.glass)
             .help("Document mode: \(presentationMode.title)")
             .accessibilityLabel("Document mode")
             .accessibilityValue(presentationMode.title)
             .accessibilityIdentifier("scholium.documentModeMenu")
+
+            Divider()
+                .frame(height: 18)
+                .padding(.horizontal, 2)
 
             Menu {
                 if documentHeadings.isEmpty {
@@ -781,7 +848,7 @@ struct NoteContentView: View {
                 } else {
                     ForEach(Array(documentHeadings.enumerated()), id: \.offset) { _, heading in
                         Button {
-                            appState.pendingSourceLine = heading.span.start.line
+                            actions.setPendingSourceLine(heading.span.start.line)
                             if isEditing { editorSession.goToLine(heading.span.start.line) }
                         } label: {
                             Text(String(repeating: "  ", count: max(0, heading.level - 1)) + heading.text)
@@ -789,54 +856,90 @@ struct NoteContentView: View {
                     }
                 }
             } label: {
-                Label("Outline", systemImage: "list.bullet.indent")
+                Image(systemName: "list.bullet.indent")
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             .help("Heading Outline")
+            .accessibilityLabel("Heading Outline")
             .accessibilityIdentifier("scholium.headingOutline")
-
-            MetadataCardView(note: note)
-                .frame(maxWidth: .infinity)
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 20)
-        .padding(.vertical, 4)
-        .background(Color(nsColor: .textBackgroundColor))
-        .overlay(alignment: .bottom) { Divider() }
+        .frame(
+            width: ScholiumMetrics.ContextSurface.leadingControlsWidth,
+            height: ScholiumMetrics.ContextSurface.controlHeight
+        )
+        .background(
+            reduceTransparency ? Color(nsColor: .controlBackgroundColor) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    Color(nsColor: .separatorColor).opacity(reduceTransparency ? 0.72 : 0.28),
+                    lineWidth: 0.75
+                )
+                .allowsHitTesting(false)
+        }
+        .shadow(
+            color: Color(nsColor: .shadowColor).opacity(reduceTransparency ? 0.05 : 0.10),
+            radius: 10,
+            y: 4
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.documentContextControls")
     }
 
     @ToolbarContentBuilder
     var noteToolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            if appState.openTabs.count > 1 {
-                DocumentTabBar()
+            // Keep the active document's identity in the central toolbar band
+            // even when it is the only open document. The prototype reserves
+            // this position for the document strip, and a single bounded tab
+            // is still useful for close/state/accessibility semantics.
+            if !state.openTabs.isEmpty {
+                DocumentTabBar(
+                    openTabs: state.openTabs,
+                    activeTab: state.activeTab,
+                    notes: state.notes,
+                    activeStatus: documentTabStatus,
+                    selectTab: actions.selectTab,
+                    closeTab: actions.closeTab
+                )
                     .frame(minWidth: 180, idealWidth: 420, maxWidth: 600)
             }
         }
 
         ToolbarItem(placement: .primaryAction) {
             Button {
-                appState.beginSearch(mode: .triptych)
+                actions.beginSearch(.triptych)
             } label: {
-                Label("Search", systemImage: "magnifyingglass")
+                if state.isCompactLayout {
+                    Image(systemName: "magnifyingglass")
+                } else {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
             }
             .help("Search the Triptych")
+            .accessibilityLabel("Search")
             .accessibilityIdentifier("scholium.searchToolbarButton")
-            .popover(isPresented: $appState.showSearchSurface, arrowEdge: .top) {
-                SearchWorkspaceView()
-                    .environmentObject(appState)
-                    .frame(width: 680, height: 520)
-            }
         }
 
         ToolbarItem(placement: .primaryAction) {
-            if commentingIsAvailable || humanReviewIsAvailable || appState.currentVaultRole.allowsCritique {
+            if commentingIsAvailable || humanReviewIsAvailable || state.vaultRole.allowsCritique {
                 Button {
-                    appState.openScholia()
+                    actions.openScholia()
                 } label: {
-                    Label("Open Scholia…", systemImage: "text.bubble")
+                    if state.isCompactLayout {
+                        Image(systemName: "text.bubble")
+                    } else {
+                        Label("Open Scholia…", systemImage: "text.bubble")
+                    }
                 }
                 .help("Open comments, review, critique, and Dialogue for this note")
+                .accessibilityLabel("Open Scholia")
                 .accessibilityIdentifier("scholium.openScholiaButton")
             }
         }
@@ -844,35 +947,41 @@ struct NoteContentView: View {
         ToolbarItem(placement: .primaryAction) {
             ControlGroup {
                 Button {
-                    appState.setNoteHistoryVisible(!appState.noteHistoryVisible, animated: false)
+                    actions.setNoteHistoryVisible(!state.noteHistoryVisible)
                 } label: {
                     Label(
-                        appState.noteHistoryVisible ? "Hide Note History" : "Show Note History",
+                        state.noteHistoryVisible ? "Hide Note History" : "Show Note History",
                         systemImage: "clock.arrow.circlepath"
                     )
                 }
-                .disabled(isEditing || appState.noteIdentityByPath[note.relativePath] == nil)
-                .help(appState.noteHistoryVisible ? "Hide Note History" : "Show Note History")
+                .disabled(isEditing || state.noteIdentityByPath[note.relativePath] == nil)
+                .help(state.noteHistoryVisible ? "Hide Note History" : "Show Note History")
                 .accessibilityIdentifier("scholium.noteHistoryButton")
 
                 Button {
-                    appState.setResearchInspectorVisible(!appState.backlinksVisible, animated: false)
+                    actions.setResearchInspectorVisible(!state.researchInspectorVisible)
                 } label: {
                     Label(
-                        appState.backlinksVisible ? "Hide Research Inspector" : "Show Research Inspector",
+                        state.researchInspectorVisible ? "Hide Research Inspector" : "Show Research Inspector",
                         systemImage: "sidebar.trailing"
                     )
                 }
-                .help(appState.backlinksVisible ? "Hide Research Inspector" : "Show Research Inspector")
+                .help(state.researchInspectorVisible ? "Hide Research Inspector" : "Show Research Inspector")
                 .accessibilityIdentifier("scholium.researchInspectorButton")
             }
         }
     }
 
+    private var documentTabStatus: DocumentTabStatus {
+        if conflict != nil { return .conflict }
+        if hasUnsavedChanges { return .edited }
+        return .clean
+    }
+
     private func requestResearcherCommentsFromDocument() {
         guard commentingIsAvailable else { return }
         guard isEditing else {
-            appState.requestResearcherComments(at: note.relativePath)
+            actions.requestComments(nil, nil)
             return
         }
         Task { @MainActor in
@@ -882,15 +991,15 @@ struct NoteContentView: View {
                     for: note.relativePath,
                     in: currentSource
                 )
-                try await flushCurrentEditor()
-                appState.requestResearcherComments(
-                    at: note.relativePath,
-                    selection: selection
+                try await controller.flushForExternalOperation(
+                    session: documentSession,
+                    target: target
                 )
+                actions.requestComments(selection, nil)
             } catch {
-                appState.showToast(
+                actions.notify(
                     "Scholium could not capture the current editor selection. Keep editing and try again. \(error.localizedDescription)",
-                    kind: .error
+                    .error
                 )
             }
         }
@@ -903,34 +1012,31 @@ struct NoteContentView: View {
     }
 
     func noteDisplayName(_ path: String) -> String {
-        guard let note = appState.notes.first(where: { $0.relativePath == path }) else {
+        guard let note = state.notes.first(where: { $0.relativePath == path }) else {
             return (path as NSString).lastPathComponent
         }
         return note.title ?? note.displayName
     }
 }
 
-private enum EditorSaveOutcome: Equatable {
+private enum DocumentTabStatus: Equatable {
     case clean
-    case changedDuringSave
-}
+    case edited
+    case conflict
 
-private enum EditorFlushError: LocalizedError {
-    case saveFailed(String)
-    case editorUnavailable
-    case changedDuringSave
-    case deltaMirrorMismatch
-
-    var errorDescription: String? {
+    var label: String? {
         switch self {
-        case .saveFailed(let message):
-            "Scholium kept the current editor open because it could not safely save this note. \(message)"
-        case .editorUnavailable:
-            "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer."
-        case .changedDuringSave:
-            "Scholium kept the current editor open because the note continued changing while it was being saved."
-        case .deltaMirrorMismatch:
-            "Scholium kept the current editor open because an editor update did not reach the autosave mirror. The complete editor buffer was recovered; retry the save."
+        case .clean: nil
+        case .edited: "Edited"
+        case .conflict: "Conflict"
+        }
+    }
+
+    var symbol: String? {
+        switch self {
+        case .clean: nil
+        case .edited: "circle.fill"
+        case .conflict: "exclamationmark.triangle.fill"
         }
     }
 }
@@ -938,15 +1044,31 @@ private enum EditorFlushError: LocalizedError {
 // MARK: - Document Tabs
 
 private struct DocumentTabBar: View {
-    @EnvironmentObject var appState: AppState
+    let openTabs: [String]
+    let activeTab: String?
+    let notes: [WindowDocumentLocation]
+    let activeStatus: DocumentTabStatus
+    let selectTab: (String) -> Void
+    let closeTab: (String) -> Void
 
     var body: some View {
         HStack(spacing: 4) {
             ScrollView(.horizontal) {
                 GlassEffectContainer(spacing: 4) {
                     HStack(spacing: 4) {
-                        ForEach(appState.openTabs, id: \.self) { path in
-                            DocumentTab(path: path)
+                        ForEach(openTabs, id: \.self) { path in
+                            let note = notes.first { $0.relativePath == path }
+                            DocumentTab(
+                                path: path,
+                                title: note?.title ?? note?.displayName
+                                    ?? (path as NSString).lastPathComponent,
+                                authors: note?.authors ?? [],
+                                year: note?.year,
+                                isSelected: activeTab == path,
+                                status: status(for: path),
+                                select: { selectTab(path) },
+                                close: { closeTab(path) }
+                            )
                         }
                     }
                 }
@@ -955,25 +1077,27 @@ private struct DocumentTabBar: View {
             }
             .scrollIndicators(.hidden)
 
-            Menu {
-                ForEach(appState.openTabs, id: \.self) { path in
-                    Button {
-                        appState.requestSelectTab(path)
-                    } label: {
-                        if appState.activeTab == path {
-                            Label(noteDisplayName(path), systemImage: "checkmark")
-                        } else {
-                            Text(noteDisplayName(path))
+            if openTabs.count > 1 {
+                Menu {
+                    ForEach(openTabs, id: \.self) { path in
+                        Button {
+                            selectTab(path)
+                        } label: {
+                            if activeTab == path {
+                                Label(overflowLabel(for: path), systemImage: "checkmark")
+                            } else {
+                                Text(overflowLabel(for: path))
+                            }
                         }
                     }
+                } label: {
+                    Label("Open Tabs", systemImage: "chevron.down")
+                        .labelStyle(.iconOnly)
                 }
-            } label: {
-                Label("Open Tabs", systemImage: "chevron.down")
-                    .labelStyle(.iconOnly)
+                .menuStyle(.borderlessButton)
+                .help("Open document tabs")
+                .accessibilityLabel("Open document tabs")
             }
-            .menuStyle(.borderlessButton)
-            .help("Open document tabs")
-            .accessibilityLabel("Open document tabs")
         }
         .frame(height: 32)
         .fixedSize(horizontal: false, vertical: true)
@@ -982,44 +1106,61 @@ private struct DocumentTabBar: View {
     }
 
     private func noteDisplayName(_ path: String) -> String {
-        guard let note = appState.notes.first(where: { $0.relativePath == path }) else {
+        guard let note = notes.first(where: { $0.relativePath == path }) else {
             return (path as NSString).lastPathComponent
         }
         return note.title ?? note.displayName
+    }
+
+    private func status(for path: String) -> DocumentTabStatus {
+        activeTab == path ? activeStatus : .clean
+    }
+
+    private func overflowLabel(for path: String) -> String {
+        guard let label = status(for: path).label else { return noteDisplayName(path) }
+        return "\(noteDisplayName(path)) — \(label)"
     }
 }
 
 private struct DocumentTab: View {
-    @EnvironmentObject var appState: AppState
     let path: String
+    let title: String
+    let authors: [String]
+    let year: Int?
+    let isSelected: Bool
+    let status: DocumentTabStatus
+    let select: () -> Void
+    let close: () -> Void
 
     @State private var isHovering = false
-
-    private var isSelected: Bool { appState.activeTab == path }
-
-    private var title: String {
-        guard let note = appState.notes.first(where: { $0.relativePath == path }) else {
-            return (path as NSString).lastPathComponent
-        }
-        return note.title ?? note.displayName
-    }
 
     private var tabLabel: String {
         title
     }
 
     private var supplementaryLabel: String? {
-        guard let note = appState.notes.first(where: { $0.relativePath == path }) else { return nil }
-        let author = note.authors.first?.split(separator: " ").last.map(String.init)
-        let year = note.year.map { $0.formatted(.number.grouping(.never)) }
-        let label = [author, year].compactMap { $0 }.joined(separator: " ")
+        let author = authors.first?.split(separator: " ").last.map(String.init)
+        let formattedYear = year.map { $0.formatted(.number.grouping(.never)) }
+        let label = [author, formattedYear].compactMap { $0 }.joined(separator: " ")
         return label.isEmpty ? nil : label
+    }
+
+    private var accessibleTitle: String {
+        let identity = supplementaryLabel.map { "\(title), \($0)" } ?? title
+        guard let statusLabel = status.label else { return identity }
+        return "\(identity), \(statusLabel)"
+    }
+
+    private var accessibilityValue: String {
+        [isSelected ? "Selected" : nil, status.label]
+            .compactMap { $0 }
+            .joined(separator: ", ")
     }
 
     var body: some View {
         HStack(spacing: 6) {
             Button {
-                appState.requestSelectTab(path)
+                select()
             } label: {
                 Text(tabLabel)
                     .font(.callout.weight(isSelected ? .medium : .regular))
@@ -1029,11 +1170,21 @@ private struct DocumentTab: View {
             }
             .buttonStyle(.plain)
             .help(supplementaryLabel.map { "\(title) — \($0)" } ?? title)
-            .accessibilityLabel(supplementaryLabel.map { "\(title), \($0)" } ?? title)
+            .accessibilityLabel(accessibleTitle)
+            .accessibilityValue(accessibilityValue)
+            .accessibilityIdentifier("scholium.documentTab.\(path)")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
 
+            if let symbol = status.symbol, let statusLabel = status.label {
+                Image(systemName: symbol)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(status == .conflict ? Color.orange : Color.secondary)
+                    .help(statusLabel)
+                    .accessibilityHidden(true)
+            }
+
             Button {
-                appState.requestCloseTab(path)
+                close()
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.semibold))
@@ -1134,7 +1285,7 @@ private struct ConflictComparisonSheet: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 760, idealWidth: 900, minHeight: 520, idealHeight: 680)
+        .frame(minWidth: 0, idealWidth: 900, minHeight: 520, idealHeight: 680)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("scholium.conflictComparison")
     }
@@ -1199,6 +1350,24 @@ enum NoteHistoryPresentation {
     case trailing
 }
 
+struct NoteHistoryContext {
+    let controller: ResearchController
+    let vaultRole: VaultRole
+    let documentRevisions: [String: DocumentFingerprint]
+    let currentReview: @MainActor (String) -> HumanReviewRecord?
+    let loadDialogue: @MainActor (String) async -> [DialogueEntry]
+    let loadCritique: @MainActor (String) async -> CritiqueAssociation?
+    let loadCheckpoints: @MainActor (String) async throws -> [TriptychCheckpoint]
+    let checkpointContent: @MainActor (UUID, String) async throws -> String
+    let createCheckpoint: @MainActor (String) async throws -> Void
+    let restoreNote: @MainActor (String, UUID) async throws -> Void
+    let revealCheckpoints: @MainActor () -> Void
+    let copyText: @MainActor (String) throws -> Void
+    let openNote: @MainActor (String) -> Void
+    let closeTrailing: @MainActor () -> Void
+    let notify: @MainActor (String) -> Void
+}
+
 private enum DialogueHistorySheetRoute: Identifiable {
     case followUp(DialogueEntry)
     case response(DialogueEntry)
@@ -1212,10 +1381,10 @@ private enum DialogueHistorySheetRoute: Identifiable {
 }
 
 struct NoteHistorySheet: View {
-    @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
-    let note: Note
+    let note: WindowDocumentLocation
     let presentation: NoteHistoryPresentation
+    let context: NoteHistoryContext
 
     @State private var review: HumanReviewRecord?
     @State private var dialogue: [DialogueEntry] = []
@@ -1228,11 +1397,17 @@ struct NoteHistorySheet: View {
     @State private var expandedDialogueEntryIDs: Set<UUID> = []
     @State private var isLoading = true
     @State private var isRestoring = false
+    @State private var showCreateCheckpoint = false
     @State private var errorMessage: String?
 
-    init(note: Note, presentation: NoteHistoryPresentation = .sheet) {
+    init(
+        note: WindowDocumentLocation,
+        presentation: NoteHistoryPresentation = .sheet,
+        context: NoteHistoryContext
+    ) {
         self.note = note
         self.presentation = presentation
+        self.context = context
     }
 
     var body: some View {
@@ -1246,12 +1421,28 @@ struct NoteHistorySheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Menu {
+                    Button("Create Checkpoint…") {
+                        showCreateCheckpoint = true
+                    }
+                    Divider()
+                    Button("Reveal Checkpoints in Finder") {
+                        context.revealCheckpoints()
+                    }
+                } label: {
+                    Label("Checkpoint Actions", systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                }
+                .menuStyle(.borderlessButton)
+                .help("Checkpoint Actions")
+                .accessibilityLabel("Checkpoint Actions")
+                .accessibilityIdentifier("scholium.noteHistory.checkpointActions")
                 if presentation == .sheet {
                     Button("Done") { dismiss() }
                         .keyboardShortcut(.cancelAction)
                 } else {
                     Button {
-                        appState.setNoteHistoryVisible(false, animated: false)
+                        context.closeTrailing()
                     } label: {
                         Label("Hide Note History", systemImage: "xmark")
                             .labelStyle(.iconOnly)
@@ -1271,10 +1462,10 @@ struct NoteHistorySheet: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        if appState.currentVaultRole.allowsHumanReview { reviewSection }
+                        if context.vaultRole.allowsHumanReview { reviewSection }
                         commentSection
                         dialogueSection
-                        if appState.currentVaultRole.allowsCritique { critiqueSection }
+                        if context.vaultRole.allowsCritique { critiqueSection }
                         checkpointSection
                     }
                     .padding(20)
@@ -1282,24 +1473,21 @@ struct NoteHistorySheet: View {
                 }
             }
 
-            Divider()
+            if let selectedCheckpoint {
+                Divider()
 
-            HStack {
-                Button("Reveal Checkpoints in Finder") {
-                    appState.revealCheckpointsInFinder()
-                }
-                Spacer()
-                if let selectedCheckpoint {
+                HStack {
+                    Spacer()
                     Button("Restore This Version", role: .destructive) {
                         restore(selectedCheckpoint)
                     }
                     .disabled(isRestoring)
                 }
+                .padding(16)
             }
-            .padding(16)
         }
         .frame(
-            minWidth: presentation == .sheet ? 760 : 280,
+            minWidth: presentation == .sheet ? 0 : 280,
             idealWidth: presentation == .sheet ? 880 : 340,
             maxWidth: presentation == .trailing ? .infinity : nil,
             minHeight: presentation == .sheet ? 560 : 0,
@@ -1316,13 +1504,19 @@ struct NoteHistorySheet: View {
             }
             Task {
                 do {
-                    checkpointSource = try await appState.noteCheckpointContent(
+                    checkpointSource = try await context.checkpointContent(
                         checkpoint.id,
-                        path: note.relativePath
+                        note.relativePath
                     )
                 } catch {
                     errorMessage = error.localizedDescription
                 }
+            }
+        }
+        .sheet(isPresented: $showCreateCheckpoint) {
+            CreateCheckpointView { name in
+                try await context.createCheckpoint(name)
+                context.notify("Checkpoint created.")
             }
         }
         .alert("Note History Unavailable", isPresented: Binding(
@@ -1336,21 +1530,25 @@ struct NoteHistorySheet: View {
         .sheet(item: $pendingDialogueSheet) { route in
             switch route {
             case .followUp(let entry):
-                ManualDialogueFollowUpView(entry: entry) { updated in
+                ManualDialogueFollowUpView(
+                    controller: context.controller,
+                    entry: entry
+                ) { updated in
                     if let index = dialogue.firstIndex(where: { $0.id == updated.id }) {
                         dialogue[index] = updated
                     }
                     pendingDialogueSheet = nil
                 }
-                .environmentObject(appState)
             case .response(let entry):
-                ManualDialogueReplyView(entry: entry) { updated in
+                ManualDialogueReplyView(
+                    controller: context.controller,
+                    entry: entry
+                ) { updated in
                     if let index = dialogue.firstIndex(where: { $0.id == updated.id }) {
                         dialogue[index] = updated
                     }
                     pendingDialogueSheet = nil
                 }
-                .environmentObject(appState)
             }
         }
     }
@@ -1396,7 +1594,7 @@ struct NoteHistorySheet: View {
                         HStack {
                             Text(comment.anchor.map {
                                 $0.state == .needsReattachment
-                                    ? "Needs Reattachment · originally line \($0.line)"
+                                    ? "Needs Reattachment — originally line \($0.line)"
                                     : ($0.line == $0.endLine ? "Line \($0.line)" : "Lines \($0.line)–\($0.endLine)")
                             } ?? "Whole note")
                             .font(.caption.weight(.semibold))
@@ -1470,7 +1668,7 @@ struct NoteHistorySheet: View {
                             createdAt: entry.createdAt,
                             systemImage: "person"
                         )
-                        Text("Checkpoint: Before Agent Work · \(entry.checkpointID.uuidString.prefix(8))")
+                        Text("Checkpoint: Before Agent Work — \(entry.checkpointID.uuidString.prefix(8))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -1487,7 +1685,7 @@ struct NoteHistorySheet: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(selectedNote.title)
                                             .font(.subheadline.weight(.medium))
-                                        Text("\(selectedNote.vaultName) · \(selectedNote.relativePath)")
+                                        Text("\(selectedNote.vaultName) — \(selectedNote.relativePath)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .textSelection(.enabled)
@@ -1518,7 +1716,7 @@ struct NoteHistorySheet: View {
                                     if let sourceNote = includedComment.note {
                                         Text(sourceNote.title)
                                             .font(.subheadline.weight(.medium))
-                                        Text("\(sourceNote.vaultName) · \(sourceNote.relativePath)")
+                                        Text("\(sourceNote.vaultName) — \(sourceNote.relativePath)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .textSelection(.enabled)
@@ -1597,8 +1795,8 @@ struct NoteHistorySheet: View {
                                     .textSelection(.enabled)
                                 Button {
                                     do {
-                                        try appState.copyTextToClipboard(entry.generatedPrompt)
-                                        appState.showToast("Instructions copied")
+                                        try context.copyText(entry.generatedPrompt)
+                                        context.notify("Instructions copied")
                                     } catch {
                                         errorMessage = error.localizedDescription
                                     }
@@ -1658,7 +1856,7 @@ struct NoteHistorySheet: View {
             if let critique {
                 if note.relativePath != critique.critiqueRelativePath {
                     Button {
-                        appState.requestOpenNote(critique.critiqueRelativePath)
+                        context.openNote(critique.critiqueRelativePath)
                     } label: {
                         Label("Open Critique", systemImage: "doc.text.magnifyingglass")
                     }
@@ -1666,13 +1864,13 @@ struct NoteHistorySheet: View {
                 }
 
                 Button {
-                    appState.requestOpenNote(critique.workRelativePath)
+                    context.openNote(critique.workRelativePath)
                 } label: {
                     Label("Open Target Work", systemImage: "arrow.right.circle")
                 }
                 .buttonStyle(.link)
 
-                let currentTargetSHA = appState.documentRevisions[critique.workRelativePath]?.sha256
+                let currentTargetSHA = context.documentRevisions[critique.workRelativePath]?.sha256
                 let isStale = currentTargetSHA.map { $0 != critique.targetFingerprint.sha256 } ?? true
                 Label(
                     isStale ? "Targets an earlier Work version" : "Targets the current Work version",
@@ -1691,12 +1889,12 @@ struct NoteHistorySheet: View {
                         VStack(alignment: .leading, spacing: 7) {
                             ForEach(critique.rounds.reversed()) { round in
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(round.scope.rawValue) · \(round.requestedAt.formatted(date: .abbreviated, time: .shortened))")
+                                    Text("\(round.scope.rawValue) — \(round.requestedAt.formatted(date: .abbreviated, time: .shortened))")
                                         .font(.subheadline)
                                     HStack(spacing: 5) {
                                         Text("SHA-256 \(round.targetFingerprint.sha256.prefix(12))…")
                                         if let checkpointID = round.checkpointID {
-                                            Text("· Before Agent Work \(checkpointID.uuidString.prefix(8))")
+                                            Text("— Before Agent Work \(checkpointID.uuidString.prefix(8))")
                                         }
                                     }
                                     .font(.caption.monospaced())
@@ -1783,11 +1981,11 @@ struct NoteHistorySheet: View {
     @MainActor
     private func reload() async {
         isLoading = true
-        review = appState.humanReviewRecord(for: note.relativePath)
+        review = context.currentReview(note.relativePath)
         do {
-            async let loadedDialogue = appState.dialogueHistory(for: note.relativePath)
-            async let loadedCritique = appState.critiqueAssociationRelated(to: note.relativePath)
-            async let loadedCheckpoints = appState.noteCheckpoints(for: note.relativePath)
+            async let loadedDialogue = context.loadDialogue(note.relativePath)
+            async let loadedCritique = context.loadCritique(note.relativePath)
+            async let loadedCheckpoints = context.loadCheckpoints(note.relativePath)
             dialogue = await loadedDialogue
             critique = await loadedCritique
             checkpoints = try await loadedCheckpoints
@@ -1801,8 +1999,8 @@ struct NoteHistorySheet: View {
         isRestoring = true
         Task {
             do {
-                try await appState.restoreNote(note.relativePath, from: checkpoint.id)
-                appState.showToast("Restored \(note.displayName) from \(checkpoint.name)")
+                try await context.restoreNote(note.relativePath, checkpoint.id)
+                context.notify("Restored \(note.displayName) from \(checkpoint.name)")
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -1915,9 +2113,9 @@ private enum ManualDialogueTarget: Hashable, Identifiable {
 }
 
 private struct ManualDialogueFollowUpView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
+    let controller: ResearchController
     let entry: DialogueEntry
     let onSaved: (DialogueEntry) -> Void
 
@@ -1992,7 +2190,7 @@ private struct ManualDialogueFollowUpView: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 430, idealHeight: 500)
+        .frame(minWidth: 0, idealWidth: 640, minHeight: 430, idealHeight: 500)
         .alert("Could Not Add Follow-up Comment", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -2009,11 +2207,13 @@ private struct ManualDialogueFollowUpView: View {
         isSaving = true
         Task {
             do {
-                let updated = try await appState.recordDialogueFollowUpComment(
-                    entryID: entry.id,
-                    text: text,
-                    noteID: targetIDs.noteID,
-                    commentID: targetIDs.commentID
+                let updated = try await controller.appendDialogueFollowUpComment(
+                    DialogueFollowUpComment(
+                        text: text,
+                        noteID: targetIDs.noteID,
+                        commentID: targetIDs.commentID
+                    ),
+                    to: entry.id
                 )
                 onSaved(updated)
                 dismiss()
@@ -2026,9 +2226,9 @@ private struct ManualDialogueFollowUpView: View {
 }
 
 private struct ManualDialogueReplyView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
+    let controller: ResearchController
     let entry: DialogueEntry
     let onSaved: (DialogueEntry) -> Void
 
@@ -2108,7 +2308,7 @@ private struct ManualDialogueReplyView: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 430, idealHeight: 500)
+        .frame(minWidth: 0, idealWidth: 640, minHeight: 430, idealHeight: 500)
         .alert("Could Not Record Agent Response", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -2126,12 +2326,14 @@ private struct ManualDialogueReplyView: View {
         isSaving = true
         Task {
             do {
-                let updated = try await appState.recordDialogueReply(
-                    entryID: entry.id,
-                    agentName: agentName,
-                    text: text,
-                    noteID: targetIDs.noteID,
-                    commentID: targetIDs.commentID
+                let updated = try await controller.appendDialogueReply(
+                    DialogueReply(
+                        agentName: agentName,
+                        text: text,
+                        noteID: targetIDs.noteID,
+                        commentID: targetIDs.commentID
+                    ),
+                    to: entry.id
                 )
                 onSaved(updated)
                 dismiss()
@@ -2183,16 +2385,81 @@ private func dialogueTargetIDs(
 // MARK: - Preview
 
 #Preview {
-    let note = Note(
+    let controller = DocumentController()
+    let note = WindowDocumentLocation.unclassified(NoteDocument(
         relativePath: "topics/consciousness.md",
-        frontmatter: ["title": .string("Consciousness")],
-        body: "# Consciousness\n\nThis is a test note.",
-        rawContent: "---\ntitle: Consciousness\n---\n\n# Consciousness\n\nThis is a test note.",
-        isReviewed: true,
-        reviewedAt: Date()
+        rawContent: "---\ntitle: Consciousness\n---\n\n# Consciousness\n\nThis is a test note."
+    ))
+    let state = DocumentFeatureState(
+        notes: [note],
+        activeTab: note.relativePath,
+        openTabs: [note.relativePath],
+        currentVaultID: nil,
+        vaultRole: .other,
+        locationScope: .unclassified,
+        noteIdentityByPath: [:],
+        documentRevisions: [note.relativePath: note.document.fingerprint],
+        workspaceCatalog: nil,
+        propertiesConfiguration: nil,
+        reviewRecord: nil,
+        reviewDisplayState: .notReviewed,
+        changedSinceReview: false,
+        canComment: false,
+        canEdit: false,
+        documentTextScale: 1,
+        readCSS: "",
+        livePreviewCSS: "",
+        initialScrollFraction: 0,
+        requestedPresentationMode: nil,
+        pendingSourceLine: nil,
+        storedPresentationMode: .read,
+        isCompactLayout: false,
+        noteHistoryVisible: false,
+        researchInspectorVisible: false,
+        identityAmbiguity: nil,
+        pendingIdentityRebinding: nil,
+        identityMigrationFailureMessage: nil,
+        isResolvingIdentity: false
     )
-    NoteContentView(note: note)
-        .environmentObject(AppState())
+    let actions = DocumentFeatureActions(
+        requestIdentityResolution: {},
+        retryIdentityRecovery: {},
+        beginSearch: { _ in },
+        clearRequestedPresentationMode: {},
+        registerEditorFlush: { _, _, _ in },
+        unregisterEditorFlush: { _ in },
+        clearPendingSourceLine: {},
+        requestComments: { _, _ in },
+        rememberScrollPosition: { _ in },
+        openInternalLink: { _ in },
+        openExternalURL: { _ in },
+        enterCSSSafeMode: { _ in },
+        rememberPresentationMode: { _ in },
+        setPendingSourceLine: { _ in },
+        editProperties: {},
+        openScholia: {},
+        setNoteHistoryVisible: { _ in },
+        setResearchInspectorVisible: { _ in },
+        selectTab: { _ in },
+        closeTab: { _ in },
+        notify: { _, _ in }
+    )
+    let critiqueProvenanceContext = CritiqueProvenanceContext(
+        availableNotes: [note],
+        documentRevisions: [note.relativePath: note.document.fingerprint],
+        loadAssociation: { _ in nil },
+        openTarget: { _ in },
+        openFinding: { _, _ in }
+    )
+    NoteContentView(
+        controller: controller,
+        target: .unavailable(relativePath: note.relativePath),
+        note: note,
+        documentSession: DocumentSessionModel(key: nil),
+        state: state,
+        actions: actions,
+        critiqueProvenanceContext: critiqueProvenanceContext
+    )
 }
 
 // MARK: - RoundedCorner Shape (for NSTabView-style folder tabs)

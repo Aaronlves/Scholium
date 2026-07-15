@@ -1,71 +1,6 @@
 import CryptoKit
 import Foundation
-
-public enum VaultRepositoryError: LocalizedError, Sendable {
-    case invalidRelativePath(String)
-    case outsideVault(String)
-    case fileDoesNotExist(String)
-    case fileAlreadyExists(String)
-    case notRegularFile(String)
-    case markdownRequired(String)
-    case conflict(expected: DocumentFingerprint, current: DocumentFingerprint)
-    case readbackMismatch(expected: DocumentFingerprint, current: DocumentFingerprint)
-    case invalidFrontmatter(String)
-    case versionNotFound(UUID)
-    case versionHistoryPathConflict(String)
-    case versionHistoryUnavailable(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidRelativePath(let path): return "Invalid vault-relative path: \(path)"
-        case .outsideVault(let path): return "The path escapes the selected vault: \(path)"
-        case .fileDoesNotExist(let path): return "The note no longer exists: \(path)"
-        case .fileAlreadyExists(let path): return "A note already exists at: \(path)"
-        case .notRegularFile(let path): return "The path is not a regular file: \(path)"
-        case .markdownRequired(let path): return "Scholium note operations require a Markdown file: \(path)"
-        case .conflict: return "This note changed on disk after editing began. Compare changes or reload before saving."
-        case .readbackMismatch:
-            return "Scholium could not verify the saved bytes. The previous version remains available for recovery."
-        case .invalidFrontmatter(let message): return "Invalid YAML frontmatter: \(message)"
-        case .versionNotFound(let id): return "Version not found: \(id.uuidString)"
-        case .versionHistoryPathConflict(let path):
-            return "Note History already belongs to another note at: \(path)"
-        case .versionHistoryUnavailable(let reason):
-            return "Note History is unavailable, so Scholium did not modify the note. The existing history files remain unchanged. \(reason)"
-        }
-    }
-}
-
-public struct VaultVersion: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let relativePath: String
-    public let sequence: Int
-    public let createdAt: Date
-    public let fingerprint: DocumentFingerprint
-}
-
-public struct SaveResult: Sendable {
-    public let document: NoteDocument
-    public let snapshot: VaultVersion
-}
-
-public struct NoteMoveResult: Sendable {
-    public let document: NoteDocument
-    public let previousRelativePath: String
-    public let relativePath: String
-    public let snapshot: VaultVersion
-}
-
-public struct NoteDeletionResult: Sendable {
-    public let relativePath: String
-    public let fingerprint: DocumentFingerprint
-}
-
-struct PreparedPermanentDeletion: Codable, Hashable, Sendable {
-    let relativePath: String
-    let fingerprint: DocumentFingerprint
-    let recoveryVersion: VaultVersion
-}
+import ScholiumContracts
 
 public actor VaultRepository {
     private struct VersionIndex: Codable {
@@ -203,8 +138,7 @@ public actor VaultRepository {
         }
 
         let current = NoteDocument(relativePath: relativePath, rawContent: currentContent)
-        let timestampKey = Self.timestampKey(for: relativePath, role: vaultRole, current: current)
-        let updatedContent = try current.applying(changeSet, timestampKey: changeSet.isRestore ? nil : timestampKey)
+        let updatedContent = try current.applying(changeSet, timestampKey: nil)
         let updated = NoteDocument(relativePath: relativePath, rawContent: updatedContent)
         if !updated.validationWarnings.isEmpty, updated.rawFrontmatter != nil {
             throw VaultRepositoryError.invalidFrontmatter(updated.validationWarnings.joined(separator: "\n"))
@@ -904,26 +838,5 @@ public actor VaultRepository {
             return relativePath
         }
         return folder + "/" + relativePath
-    }
-
-    private static func timestampKey(
-        for relativePath: String,
-        role: VaultRole,
-        current: NoteDocument
-    ) -> String? {
-        let profile = WorkflowProfileResolver.resolve(
-            vaultRole: role,
-            frontmatter: current.parsedFrontmatter,
-            relativePath: relativePath
-        )
-        guard current.rawFrontmatter != nil else { return nil }
-        return profile.automaticSaveTimestampKey(in: current.parsedFrontmatter)
-    }
-}
-
-private extension NoteChangeSet {
-    var isRestore: Bool {
-        if case .exactContent = self { return true }
-        return false
     }
 }

@@ -63,8 +63,8 @@ Before creating the tag or uploading assets:
 3. Run the repository verification using disposable fixtures only:
 
    ```bash
-   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-     ./Tools/Scripts/verify.sh
+   developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
+   DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
    ```
 4. Package outside the checkout with `SCHOLIUM_REQUIRE_CLEAN=1` and inspect the
    app metadata, resources, entitlements, architecture, ad-hoc signature, ZIP,
@@ -76,6 +76,10 @@ Before creating the tag or uploading assets:
 6. Complete the applicable PRD quality gates and record every waiver or known
    limitation. An ad-hoc signature must never be reported as Developer ID
    signing, notarization, or Gatekeeper acceptance.
+7. Run the approved packaged-app G7 protocol in
+   `PERFORMANCE_BENCHMARK.md` against frozen RDF-1 on Reference Machine R1 and
+   retain its raw 30-sample artifacts. Internal Swift microbenchmarks are not
+   a substitute for this release gate.
 
 No real vault file may be opened or modified during release verification.
 

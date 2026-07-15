@@ -1,44 +1,66 @@
+import ScholiumContracts
 import AppKit
 import SwiftUI
-import ScholiumCore
 import UniformTypeIdentifiers
 
 struct ScholiumSettingsView: View {
-    @EnvironmentObject private var appState: AppState
-    @AppStorage("scholium.settings.selectedPane") private var selectedPane = "vaults"
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @AppStorage("scholium.settings.selectedPane") private var persistedPane = "vaults"
 
     var body: some View {
-        TabView(selection: $selectedPane) {
+        TabView(selection: selectedPane) {
             WorkspaceSettingsView()
                 .tabItem { Label("Vaults", systemImage: "externaldrive") }
-                .tag("vaults")
+                .tag(WorkspaceSettingsPane.vaults)
 
-            CSSSnippetSettingsView(store: appState.cssSnippetStore)
+            Group {
+                if let store = settingsModel.cssSnippetStore {
+                    CSSSnippetSettingsView(
+                        store: store,
+                        onOpenExternalURL: settingsModel.openExternal
+                    )
+                } else {
+                    ContentUnavailableView("Document Styles Unavailable", systemImage: "paintbrush")
+                }
+            }
                 .tabItem { Label("Document Styles", systemImage: "paintbrush") }
-                .tag("document-styles")
+                .tag(WorkspaceSettingsPane.documentStyles)
 
             PropertiesSettingsView()
                 .tabItem { Label("Properties", systemImage: "slider.horizontal.3") }
-                .tag("properties")
+                .tag(WorkspaceSettingsPane.properties)
 
             ResearchGuidanceSettingsView()
                 .tabItem { Label("Research Guidance", systemImage: "text.bubble") }
-                .tag("research-guidance")
+                .tag(WorkspaceSettingsPane.researchGuidance)
 
             AttentionSettingsView()
                 .tabItem { Label("Attention", systemImage: "exclamationmark.triangle") }
-                .tag("attention")
+                .tag(WorkspaceSettingsPane.attention)
 
             ZoteroSettingsView()
                 .tabItem { Label("Zotero", systemImage: "books.vertical") }
-                .tag("zotero")
+                .tag(WorkspaceSettingsPane.zotero)
         }
         .padding(8)
+        .onAppear {
+            settingsModel.selectPane(WorkspaceSettingsPane(rawValue: persistedPane) ?? .vaults)
+        }
+        .onChange(of: settingsModel.selectedPane) { _, pane in
+            persistedPane = pane.rawValue
+        }
+    }
+
+    private var selectedPane: Binding<WorkspaceSettingsPane> {
+        Binding(
+            get: { settingsModel.selectedPane },
+            set: { settingsModel.selectPane($0) }
+        )
     }
 }
 
 private struct AttentionSettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var dismissalDays = TriptychSettings().attentionDismissalDays
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -59,7 +81,7 @@ private struct AttentionSettingsView: View {
 
                 Button("Save Attention Settings") { save() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isSaving || dismissalDays == appState.triptychSettings.attentionDismissalDays)
+                    .disabled(isSaving || dismissalDays == settingsModel.triptychSettings.attentionDismissalDays)
 
                 Button("Restore All Dismissed Items") {
                     var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
@@ -84,7 +106,7 @@ private struct AttentionSettingsView: View {
         .formStyle(.grouped)
         .padding(12)
         .task {
-            let stored = appState.triptychSettings.attentionDismissalDays
+            let stored = settingsModel.triptychSettings.attentionDismissalDays
             dismissalDays = durations.contains(stored)
                 ? stored
                 : TriptychSettings().attentionDismissalDays
@@ -103,11 +125,11 @@ private struct AttentionSettingsView: View {
         isSaving = true
         Task {
             do {
-                var settings = appState.triptychSettings
+                var settings = settingsModel.triptychSettings
                 settings.attentionDismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
-                try await appState.saveTriptychSettings(settings)
+                try await settingsModel.saveTriptychSettings(settings)
                 dismissalDays = settings.attentionDismissalDays
-                appState.showToast("Attention settings saved")
+                settingsModel.showToast("Attention settings saved")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -117,7 +139,7 @@ private struct AttentionSettingsView: View {
 }
 
 private struct PropertiesSettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var selectedSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var configurations = TriptychSettings.defaultProperties
     @State private var customField = ""
@@ -126,18 +148,17 @@ private struct PropertiesSettingsView: View {
     @State private var errorMessage: String?
 
     private var recommendedKeys: [String] {
-        switch selectedSlot {
-        case .paperAnalysis: FrontmatterSchema.papers.fields.map(\.key)
-        case .topicKnowledge: FrontmatterSchema.topics.fields.map(\.key)
-        case .output: FrontmatterSchema.output.fields.map(\.key)
+        let profile: SchemaProfileID = switch selectedSlot {
+        case .paperAnalysis: .analysis
+        case .topicKnowledge: .topicMarkdown
+        case .output: .draftProject
         }
+        return PropertyPresentationCatalog.presentations(for: profile).map(\.key)
     }
 
     private var availableKeys: [String] {
         let configuration = selectedConfiguration
-        let present = appState.currentWorkspaceSlot == selectedSlot
-            ? appState.notes.flatMap { $0.frontmatter.keys }
-            : []
+        let present = settingsModel.propertyKeys(for: selectedSlot)
         return Array(Set(
             configuration.visibleFields
                 + configuration.editableFields
@@ -212,9 +233,9 @@ private struct PropertiesSettingsView: View {
             }
         }
         .padding(18)
-        .task { configurations = appState.triptychSettings.properties.isEmpty
+        .task { configurations = settingsModel.triptychSettings.properties.isEmpty
             ? TriptychSettings.defaultProperties
-            : appState.triptychSettings.properties }
+            : settingsModel.triptychSettings.properties }
         .onChange(of: selectedSlot) { _, _ in
             customField = ""
             customFieldMessage = nil
@@ -396,15 +417,15 @@ private struct PropertiesSettingsView: View {
         isSaving = true
         Task {
             do {
-                var settings = appState.triptychSettings
+                var settings = settingsModel.triptychSettings
                 settings.properties = configurations.mapValues { configuration in
                     var result = configuration
                     result.visibleFields.removeAll { ResearcherPropertyPolicy.isHidden($0) }
                     result.editableFields.removeAll { !ResearcherPropertyPolicy.isHumanEditable($0) }
                     return result
                 }
-                try await appState.saveTriptychSettings(settings)
-                appState.showToast("Properties configuration saved")
+                try await settingsModel.saveTriptychSettings(settings)
+                settingsModel.showToast("Properties configuration saved")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -421,6 +442,7 @@ private struct ResearchGuidanceSettingsView: View {
             Picker("Research Guidance Collection", selection: $collection) {
                 Text("Prompt Templates").tag("prompt-templates")
                 Text("Skills").tag("skills")
+                Text("Dialogue Response").tag("dialogue-response")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -429,7 +451,16 @@ private struct ResearchGuidanceSettingsView: View {
             .accessibilityIdentifier("scholium.researchGuidance.collection")
             Divider()
             if collection == "skills" {
-                ResearchSkillsSettingsView()
+                // A SKILL.md can be thousands of lines long. Keep its editor
+                // inside the finite Settings viewport instead of allowing the
+                // text view's intrinsic document height to expand and clip the
+                // collection picker and package list.
+                GeometryReader { proxy in
+                    ResearchSkillsSettingsView()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+            } else if collection == "dialogue-response" {
+                DialogueResponseSettingsView()
             } else {
                 PromptTemplateSettingsView()
             }
@@ -437,8 +468,128 @@ private struct ResearchGuidanceSettingsView: View {
     }
 }
 
+private struct DialogueResponseSettingsView: View {
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @State private var selectedModules: Set<DialogueResponseModule> = []
+    @State private var commentPreservation = DialogueCommentPreservation.keepAcademicIntentions
+    @State private var unknownModuleIDs: [String] = []
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Form {
+            Section("New Dialogue Requests") {
+                LabeledContent("Required base") {
+                    Text("Academic Outcome")
+                        .foregroundStyle(.secondary)
+                }
+                Text("Choose the optional scholarly modules included in newly prepared Dialogue requests. This setting does not change existing Dialogue records.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Optional Response Modules") {
+                ForEach(DialogueResponseModule.allCases, id: \.self) { module in
+                    Toggle(isOn: moduleBinding(module)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(module.displayName)
+                            Text(module.promptQuestion)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityIdentifier("scholium.settings.responseModule.\(module.rawValue)")
+                }
+            }
+
+            Section("Comment Preservation") {
+                Picker("Preserve", selection: $commentPreservation) {
+                    ForEach(DialogueCommentPreservation.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .accessibilityIdentifier("scholium.settings.commentPreservation")
+                Text("Preservation changes how the external agent presents the selected Comment. It never grants note-edit permission.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !unknownModuleIDs.isEmpty {
+                Section {
+                    Label(
+                        "This profile contains unsupported response modules: \(unknownModuleIDs.joined(separator: ", ")). Update Scholium before saving it.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+
+            Section {
+                Button("Save Dialogue Response Defaults") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSaving || !unknownModuleIDs.isEmpty)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(12)
+        .task { await load() }
+        .alert("Could Not Save Dialogue Response Defaults", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Dismiss", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func moduleBinding(_ module: DialogueResponseModule) -> Binding<Bool> {
+        Binding(
+            get: { selectedModules.contains(module) },
+            set: { isSelected in
+                if isSelected {
+                    selectedModules.insert(module)
+                } else {
+                    selectedModules.remove(module)
+                }
+            }
+        )
+    }
+
+    private func load() async {
+        do {
+            let profile = try await settingsModel.dialogueResponseProfile()
+            selectedModules = Set(profile.knownModules)
+            unknownModuleIDs = profile.unknownModuleIDs
+            if let mode = DialogueCommentPreservation(rawValue: profile.commentPreservation) {
+                commentPreservation = mode
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func save() {
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                let modules = DialogueResponseModule.allCases.filter { selectedModules.contains($0) }
+                let profile = DialogueResponseProfile(
+                    modules: modules,
+                    commentPreservation: commentPreservation
+                )
+                try await settingsModel.saveDialogueResponseProfile(profile)
+                settingsModel.showToast("Dialogue response defaults saved")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
 private struct PromptTemplateSettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @AppStorage("scholium.settings.researchGuidanceKind") private var preferredKind = ResearchPromptKind.dialogue.rawValue
     @State private var selectedTemplateID: UUID?
     @State private var name = ""
@@ -448,7 +599,7 @@ private struct PromptTemplateSettingsView: View {
     @State private var errorMessage: String?
 
     private var templates: [ResearchPromptTemplate] {
-        appState.triptychSettings.promptTemplates.sorted {
+        settingsModel.triptychSettings.promptTemplates.sorted {
             if $0.kind != $1.kind { return $0.kind.rawValue < $1.kind.rawValue }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
@@ -474,7 +625,7 @@ private struct PromptTemplateSettingsView: View {
                             Label {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(template.name)
-                                    if appState.triptychSettings.activePromptTemplateIDs[kind] == template.id {
+                                    if settingsModel.triptychSettings.activePromptTemplateIDs[kind] == template.id {
                                         Text("Active")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
@@ -521,13 +672,13 @@ private struct PromptTemplateSettingsView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(template.kind.displayName)
                             .font(.title2.weight(.semibold))
-                        if appState.triptychSettings.activePromptTemplateIDs[template.kind] == template.id {
+                        if settingsModel.triptychSettings.activePromptTemplateIDs[template.kind] == template.id {
                             Text("Active")
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Button("Use for \(template.kind.displayName)") { assign() }
-                            .disabled(appState.triptychSettings.activePromptTemplateIDs[template.kind] == template.id)
+                            .disabled(settingsModel.triptychSettings.activePromptTemplateIDs[template.kind] == template.id)
                     }
                     TextField("Template Name", text: $name)
                         .disabled(template.origin == .scholium)
@@ -568,7 +719,7 @@ private struct PromptTemplateSettingsView: View {
                 ContentUnavailableView("Select a Prompt Template", systemImage: "text.bubble")
             }
         }
-        .task(id: appState.workspaceAssignment?.id) { selectPreferredTemplate() }
+        .task(id: settingsModel.workspaceAssignment?.id) { selectPreferredTemplate() }
         .onChange(of: selectedTemplateID) { _, _ in loadDraft() }
         .alert("Could Not Save Research Guidance", isPresented: Binding(
             get: { errorMessage != nil },
@@ -585,7 +736,7 @@ private struct PromptTemplateSettingsView: View {
         isSaving = true
         Task {
             do {
-                var settings = appState.triptychSettings
+                var settings = settingsModel.triptychSettings
                 if template.origin == .scholium {
                     template = ResearchPromptTemplate(
                         kind: template.kind,
@@ -594,9 +745,9 @@ private struct PromptTemplateSettingsView: View {
                     )
                 }
                 settings.savePromptTemplate(template)
-                try await appState.saveTriptychSettings(settings)
+                try await settingsModel.saveTriptychSettings(settings)
                 selectedTemplateID = template.id
-                appState.showToast("Research Guidance saved")
+                settingsModel.showToast("Research Guidance saved")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -606,7 +757,7 @@ private struct PromptTemplateSettingsView: View {
 
     private func selectPreferredTemplate() {
         let kind = ResearchPromptKind(rawValue: preferredKind) ?? .dialogue
-        selectedTemplateID = appState.triptychSettings.activePromptTemplateIDs[kind]
+        selectedTemplateID = settingsModel.triptychSettings.activePromptTemplateIDs[kind]
         loadDraft()
     }
 
@@ -618,7 +769,7 @@ private struct PromptTemplateSettingsView: View {
 
     private func create(_ kind: ResearchPromptKind) {
         let template = ResearchPromptTemplate(kind: kind, name: "New \(kind.displayName) Template", source: kind == .dialogue ? TriptychSettings.defaultDialoguePromptTemplate : TriptychSettings.defaultCritiquePromptTemplate)
-        var settings = appState.triptychSettings
+        var settings = settingsModel.triptychSettings
         settings.savePromptTemplate(template)
         persist(settings, selecting: template.id)
     }
@@ -626,14 +777,14 @@ private struct PromptTemplateSettingsView: View {
     private func duplicate() {
         guard let selectedTemplate else { return }
         let copy = ResearchPromptTemplate(kind: selectedTemplate.kind, name: "\(selectedTemplate.name) Copy", source: selectedTemplate.source)
-        var settings = appState.triptychSettings
+        var settings = settingsModel.triptychSettings
         settings.savePromptTemplate(copy)
         persist(settings, selecting: copy.id)
     }
 
     private func delete() {
         guard let id = selectedTemplateID else { return }
-        var settings = appState.triptychSettings
+        var settings = settingsModel.triptychSettings
         let kind = selectedTemplate?.kind ?? .dialogue
         settings.deletePromptTemplate(id: id)
         persist(settings, selecting: settings.activePromptTemplateIDs[kind])
@@ -641,13 +792,13 @@ private struct PromptTemplateSettingsView: View {
 
     private func assign() {
         guard let selectedTemplate else { return }
-        var settings = appState.triptychSettings
+        var settings = settingsModel.triptychSettings
         settings.activePromptTemplateIDs[selectedTemplate.kind] = selectedTemplate.id
         persist(settings, selecting: selectedTemplate.id)
     }
 
     private func reset(_ kind: ResearchPromptKind) {
-        var settings = appState.triptychSettings
+        var settings = settingsModel.triptychSettings
         settings.resetPromptTemplate(for: kind)
         persist(settings, selecting: settings.activePromptTemplateIDs[kind])
     }
@@ -655,7 +806,7 @@ private struct PromptTemplateSettingsView: View {
     private func persist(_ settings: TriptychSettings, selecting id: UUID?) {
         Task {
             do {
-                try await appState.saveTriptychSettings(settings)
+                try await settingsModel.saveTriptychSettings(settings)
                 selectedTemplateID = id
                 loadDraft()
             } catch { errorMessage = error.localizedDescription }
@@ -679,26 +830,47 @@ private struct PromptTemplateSettingsView: View {
 }
 
 private struct ResearchSkillsSettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var skills: [ResearchSkillPackage] = []
     @State private var selectedSkillID: String?
     @State private var identifier = ""
     @State private var source = ""
+    @State private var showsRoutingMetadata = true
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var pendingDeletion: ResearchSkillPackage?
 
     private var selectedSkill: ResearchSkillPackage? {
-        skills.first { $0.id == selectedSkillID }
+        skills.first { $0.selectionID == selectedSkillID }
     }
 
     private var inspectedDraft: ResearchSkillPackage? {
         guard let selectedSkill else { return nil }
-        return ResearchSkillStore.inspect(
+        return ResearchSkillInspector.inspect(
             id: identifier,
             source: source,
             origin: selectedSkill.origin
         )
+    }
+
+    private var displayedRoutingPackage: ResearchSkillPackage? {
+        guard let selectedSkill else { return nil }
+        return selectedSkill.origin == .bundled ? selectedSkill : inspectedDraft
+    }
+
+    private var targetConflictsWithBundledPackage: Bool {
+        guard selectedSkill?.isTriptychLocal == true else { return false }
+        return skills.contains { $0.origin == .bundled && $0.id == identifier }
+    }
+
+    private var displayedValidationIssues: [String] {
+        var issues = inspectedDraft?.validationIssues ?? []
+        if targetConflictsWithBundledPackage {
+            issues.append(
+                "This identifier belongs to a protected Scholium package. Rename this Triptych-local package or delete it."
+            )
+        }
+        return Array(Set(issues)).sorted()
     }
 
     var body: some View {
@@ -734,56 +906,109 @@ private struct ResearchSkillsSettingsView: View {
             }
         } detail: {
             if let skill = selectedSkill {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(skill.name)
-                            .font(.title2.weight(.semibold))
-                        Text(skill.origin.displayName)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    Text(skill.description.isEmpty ? "No valid description is available." : skill.description)
-                        .foregroundStyle(.secondary)
-                    TextField("Skill Identifier", text: $identifier)
-                        .disabled(skill.origin == .bundled)
-                        .accessibilityHint("Use lowercase letters, numbers, and hyphens.")
-                    TextEditor(text: $source)
-                        .font(ScholiumTypography.swiftUIMonospaceFont(size: 13, relativeTo: .body))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .scrollContentBackground(.visible)
-                        .disabled(skill.origin == .bundled || skill.revision == nil)
-                        .accessibilityLabel("SKILL.md source")
-                    if let draft = inspectedDraft, !draft.validationIssues.isEmpty {
-                        Label(draft.validationIssues.joined(separator: " "), systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .accessibilityIdentifier("scholium.researchGuidance.skillValidation")
-                    } else {
-                        Text("Valid packages supply name and description frontmatter plus nonempty instruction content. Scholium validates structure, not philosophical quality.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        if skill.origin == .bundled {
-                            Button("Duplicate into Triptych", action: duplicateBundled)
-                        } else if skill.origin == .customizedBundled {
-                            Button("Reset to Scholium Default", action: resetBundled)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(skill.name)
+                                .font(.title2.weight(.semibold))
+                            Text(ownershipLabel(for: skill))
+                                .foregroundStyle(.secondary)
+                            Spacer()
                         }
-                        Spacer()
-                        if skill.isTriptychLocal {
-                            Button("Save Skill", action: saveSkill)
-                                .buttonStyle(.borderedProminent)
-                                .disabled(inspectedDraft?.validationIssues.isEmpty != true || isWorking || skill.revision == nil)
+                        Text(skill.description.isEmpty ? "No valid description is available." : skill.description)
+                            .foregroundStyle(.secondary)
+                        TextField("Skill Identifier", text: $identifier)
+                            .disabled(skill.origin == .bundled)
+                            .accessibilityHint("Use lowercase letters, numbers, and hyphens.")
+                        if let routing = displayedRoutingPackage {
+                            DisclosureGroup(
+                                "Routing Metadata",
+                                isExpanded: $showsRoutingMetadata
+                            ) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    routingRow("Role", routing.role)
+                                    routingRow(
+                                        "Supported modes",
+                                        routing.supportedModes.map(\.displayName).joined(separator: ", ")
+                                    )
+                                    routingRow(
+                                        "Automatic modes",
+                                        routing.automaticModes.isEmpty
+                                            ? "None"
+                                            : routing.automaticModes.map(\.displayName).joined(separator: ", ")
+                                    )
+                                    routingRow(
+                                        "Required packages",
+                                        routing.requiredSkillIDs.isEmpty
+                                            ? "None"
+                                            : routing.requiredSkillIDs.joined(separator: ", ")
+                                    )
+                                    routingRow(
+                                        "Compatible Practices",
+                                        routing.compatiblePracticeIDs.isEmpty
+                                            ? "None"
+                                            : routing.compatiblePracticeIDs.joined(separator: ", ")
+                                    )
+                                    routingRow(
+                                        "Practice resources",
+                                        routing.practiceResources.isEmpty
+                                            ? "None"
+                                            : routing.practiceResources.sorted(by: { $0.key < $1.key })
+                                                .map { "\($0.key): \($0.value)" }
+                                                .joined(separator: ", ")
+                                    )
+                                    routingRow("Version", routing.version)
+                                    routingRow("Update policy", routing.updatePolicy)
+                                    Text("Package class and update policy come from origin. Triptych-local frontmatter cannot override them, and compatibility never activates a Practice automatically.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.top, 6)
+                            }
+                            .accessibilityIdentifier("scholium.researchGuidance.skillRouting")
+                        }
+                        TextEditor(text: $source)
+                            .font(ScholiumTypography.swiftUIMonospaceFont(size: 13, relativeTo: .body))
+                            .frame(maxWidth: .infinity, minHeight: 220, idealHeight: 300, maxHeight: 360)
+                            .scrollContentBackground(.visible)
+                            .disabled(skill.origin == .bundled || skill.revision == nil)
+                            .accessibilityLabel("SKILL.md source")
+                        if !displayedValidationIssues.isEmpty {
+                            Label(displayedValidationIssues.joined(separator: " "), systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .accessibilityIdentifier("scholium.researchGuidance.skillValidation")
+                        } else {
+                            Text("Valid packages supply name and description frontmatter plus nonempty instruction content. Scholium validates structure, not philosophical quality.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            if skill.canDuplicate {
+                                Button("Duplicate into Triptych", action: duplicateBundled)
+                            }
+                            Spacer()
+                            if skill.isTriptychLocal {
+                                Button("Save Skill", action: saveSkill)
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(
+                                        inspectedDraft?.validationIssues.isEmpty != true
+                                            || targetConflictsWithBundledPackage
+                                            || isWorking
+                                            || skill.revision == nil
+                                    )
+                            }
                         }
                     }
+                    .padding(18)
                 }
-                .padding(18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("scholium.researchGuidance.skillEditor")
             } else {
                 ContentUnavailableView("Select a Skill", systemImage: "text.book.closed")
             }
         }
-        .task(id: appState.activeTriptychServicesID) { await reload() }
+        .task(id: settingsModel.activeTriptychServicesID) { await reload() }
         .onChange(of: selectedSkillID) { _, _ in loadDraft() }
         .confirmationDialog(
             "Delete Triptych Skill?",
@@ -815,10 +1040,13 @@ private struct ResearchSkillsSettingsView: View {
                 Text("No \(title.lowercased()) skills")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(skills) { skill in
+                ForEach(skills, id: \.selectionID) { skill in
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(skill.name)
+                            Text(ownershipLabel(for: skill))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             if !skill.isValid {
                                 Text("Needs Attention")
                                     .font(.caption)
@@ -828,8 +1056,11 @@ private struct ResearchSkillsSettingsView: View {
                     } icon: {
                         Image(systemName: skill.isValid ? "text.book.closed" : "exclamationmark.triangle")
                     }
-                    .accessibilityIdentifier("scholium.researchGuidance.skill.\(skill.id)")
-                    .tag(skill.id)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(
+                        "scholium.researchGuidance.skill.\(skill.origin.rawValue).\(skill.id)"
+                    )
+                    .tag(skill.selectionID)
                 }
             }
         }
@@ -841,17 +1072,41 @@ private struct ResearchSkillsSettingsView: View {
         source = selectedSkill.source
     }
 
-    private func reload(selecting id: String? = nil) async {
-        guard let store = appState.researchSkillStore else {
-            skills = []
-            selectedSkillID = nil
-            return
+    private func ownershipLabel(for skill: ResearchSkillPackage) -> String {
+        if skill.origin == .bundled, skill.skillClass == .researcher {
+            return "Researcher Template · Bundled"
         }
+        let classLabel = switch skill.skillClass {
+        case .system: "System"
+        case .workflow: "Workflow"
+        case .researcher: "Researcher"
+        }
+        return "\(classLabel) · \(skill.origin.displayName)"
+    }
+
+    @ViewBuilder
+    private func routingRow(_ label: String, _ value: String) -> some View {
+        LabeledContent(label) {
+            Text(value)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        }
+        .font(.caption)
+    }
+
+    private func reload(selecting id: String? = nil) async {
         do {
-            skills = try await store.skills()
-            selectedSkillID = id ?? selectedSkillID ?? skills.first?.id
-            if !skills.contains(where: { $0.id == selectedSkillID }) {
-                selectedSkillID = skills.first?.id
+            skills = try await settingsModel.researchSkills()
+            if let id {
+                selectedSkillID = skills.first {
+                    $0.id == id && $0.origin == .triptych
+                }?.selectionID ?? skills.first { $0.id == id }?.selectionID
+            } else if selectedSkillID == nil {
+                selectedSkillID = skills.first?.selectionID
+            }
+            if !skills.contains(where: { $0.selectionID == selectedSkillID }) {
+                selectedSkillID = skills.first?.selectionID
             }
             loadDraft()
         } catch {
@@ -860,7 +1115,6 @@ private struct ResearchSkillsSettingsView: View {
     }
 
     private func createSkill() {
-        guard let store = appState.researchSkillStore else { return }
         let existing = Set(skills.map(\.id))
         var id = "new-skill"
         var suffix = 2
@@ -872,74 +1126,88 @@ private struct ResearchSkillsSettingsView: View {
         ---
         name: New Research Skill
         description: Describe when this Triptych-local guidance should be used.
+        scholium:
+          role: specialist
+          supported_modes: [all]
         ---
         Add precise, reusable research instructions here.
         """
         perform {
-            _ = try await store.create(id: id, source: source)
+            _ = try await settingsModel.createResearchSkill(id: id, source: source)
             await reload(selecting: id)
         }
     }
 
     private func duplicateBundled() {
-        guard let store = appState.researchSkillStore,
-              let skill = selectedSkill, skill.origin == .bundled else { return }
+        guard let skill = selectedSkill, skill.canDuplicate else { return }
+        let existing = Set(skills.map(\.id))
+        let officialStem = skill.id.hasPrefix("scholium-")
+            ? String(skill.id.dropFirst("scholium-".count))
+            : skill.id
+        var newID = "\(officialStem)-copy"
+        var suffix = 2
+        while existing.contains(newID) {
+            newID = "\(officialStem)-copy-\(suffix)"
+            suffix += 1
+        }
+        let duplicateID = newID
         perform {
-            _ = try await store.duplicateBundled(id: skill.id, as: skill.id)
-            await reload(selecting: skill.id)
+            _ = try await settingsModel.duplicateBundledResearchSkill(
+                id: skill.id,
+                as: duplicateID
+            )
+            await reload(selecting: duplicateID)
         }
     }
 
     private func saveSkill() {
-        guard let store = appState.researchSkillStore,
-              var skill = selectedSkill,
+        guard var skill = selectedSkill,
               let revision = skill.revision else { return }
         let targetID = identifier
         let editedSource = source
         perform {
             if targetID != skill.id {
-                skill = try await store.rename(id: skill.id, to: targetID, expectedRevision: revision)
+                skill = try await settingsModel.renameResearchSkill(
+                    id: skill.id,
+                    to: targetID,
+                    expectedRevision: revision
+                )
             }
             if editedSource != skill.source {
                 guard let currentRevision = skill.revision else {
                     throw ResearchSkillError.stalePackage(skill.id)
                 }
-                skill = try await store.save(id: skill.id, source: editedSource, expectedRevision: currentRevision)
+                skill = try await settingsModel.saveResearchSkill(
+                    id: skill.id,
+                    source: editedSource,
+                    expectedRevision: currentRevision
+                )
             }
             await reload(selecting: skill.id)
-            appState.showToast("Skill saved")
-        }
-    }
-
-    private func resetBundled() {
-        guard let store = appState.researchSkillStore,
-              let skill = selectedSkill,
-              let revision = skill.revision else { return }
-        perform {
-            try await store.resetBundledCustomization(id: skill.id, expectedRevision: revision)
-            await reload(selecting: skill.id)
+            settingsModel.showToast("Skill saved")
         }
     }
 
     private func deleteSkill() {
-        guard let store = appState.researchSkillStore,
-              let skill = pendingDeletion,
+        guard let skill = pendingDeletion,
               let revision = skill.revision else {
             pendingDeletion = nil
             return
         }
         pendingDeletion = nil
         perform {
-            try await store.delete(id: skill.id, expectedRevision: revision)
+            try await settingsModel.deleteResearchSkill(
+                id: skill.id,
+                expectedRevision: revision
+            )
             await reload()
         }
     }
 
     private func revealSkillsFolder() {
-        guard let store = appState.researchSkillStore else { return }
         perform {
-            let url = try await store.prepareSkillsFolder()
-            NSWorkspace.shared.open(url)
+            let url = try await settingsModel.researchSkillsURL()
+            settingsModel.openExternal(url)
         }
     }
 
@@ -954,7 +1222,7 @@ private struct ResearchSkillsSettingsView: View {
 }
 
 private struct ZoteroSettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var info = ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
     @State private var isTesting = false
     @State private var errorMessage: String?
@@ -972,7 +1240,7 @@ private struct ZoteroSettingsView: View {
                 }
                 HStack {
                     Button("Open Zotero") {
-                        Task { await appState.zoteroBridge.openZotero() }
+                        Task { await settingsModel.openZotero() }
                     }
                     Button("Test Connection") { testConnection() }
                         .disabled(isTesting)
@@ -980,8 +1248,8 @@ private struct ZoteroSettingsView: View {
                         .disabled(isTesting)
                     Button("Forget Cached Zotero Data", role: .destructive) {
                         Task {
-                            try? await appState.zoteroBridge.forgetCache()
-                            info = await appState.zoteroBridge.connectionInfo()
+                            try? await settingsModel.forgetZoteroCache()
+                            info = await settingsModel.zoteroConnectionInfo()
                         }
                     }
                 }
@@ -1000,7 +1268,7 @@ private struct ZoteroSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(12)
-        .task { info = await appState.zoteroBridge.connectionInfo() }
+        .task { info = await settingsModel.zoteroConnectionInfo() }
     }
 
     private var statusTitle: String {
@@ -1026,10 +1294,10 @@ private struct ZoteroSettingsView: View {
         isTesting = true
         Task {
             do {
-                info = try await appState.zoteroBridge.refreshLibraryInfo()
+                info = try await settingsModel.refreshZoteroLibraryInfo()
                 errorMessage = nil
             } catch {
-                info = await appState.zoteroBridge.connectionInfo()
+                info = await settingsModel.zoteroConnectionInfo()
                 errorMessage = error.localizedDescription
             }
             isTesting = false
@@ -1037,27 +1305,8 @@ private struct ZoteroSettingsView: View {
     }
 }
 
-struct WorkspaceSetupView: View {
-    @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        WorkspacePathEditor(
-            title: appState.isCreatingNewTriptych ? "Create a Triptych" : "Choose Your Triptych",
-            explanation: "Choose one Analyses vault, one Topics vault, and one Works vault. They can live anywhere, but they must not overlap.",
-            completionTitle: appState.isCreatingNewTriptych ? "Create Triptych" : "Use This Triptych",
-            targetTriptychID: appState.workspaceAssignment?.id,
-            showsOnboardingContext: appState.registeredTriptychs.isEmpty && !appState.isCreatingNewTriptych,
-            showsCancel: false,
-            onCompletion: { dismiss() }
-        )
-        .frame(minWidth: 640, idealWidth: 700, minHeight: 560)
-        .interactiveDismissDisabled()
-    }
-}
-
 struct WorkspaceSettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTriptychID: UUID?
     @State private var newTriptychID = UUID()
@@ -1067,12 +1316,12 @@ struct WorkspaceSettingsView: View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 Picker("Triptych", selection: selectedTriptychBinding) {
-                    ForEach(appState.registeredTriptychs) { assignment in
+                    ForEach(settingsModel.registeredTriptychs) { assignment in
                         Text(triptychLabel(assignment)).tag(Optional(assignment.id))
                     }
                 }
                 .frame(maxWidth: 360)
-                .disabled(appState.registeredTriptychs.isEmpty)
+                .disabled(settingsModel.registeredTriptychs.isEmpty)
 
                 Button("Open in New Window") {
                     guard let selectedTriptychID else { return }
@@ -1111,10 +1360,10 @@ struct WorkspaceSettingsView: View {
         }
         .padding(8)
         .task {
-            await appState.refreshRegisteredVaults()
+            await settingsModel.refreshRegisteredVaults()
             if selectedTriptychID == nil {
-                selectedTriptychID = appState.workspaceAssignment?.id
-                    ?? appState.registeredTriptychs.first?.id
+                selectedTriptychID = settingsModel.workspaceAssignment?.id
+                    ?? settingsModel.registeredTriptychs.first?.id
             }
         }
         .sheet(isPresented: $showsNewTriptych) {
@@ -1125,7 +1374,7 @@ struct WorkspaceSettingsView: View {
                 targetTriptychID: newTriptychID,
                 showsCancel: true,
                 onCompletion: {
-                    let createdID = appState.workspaceAssignment?.id ?? newTriptychID
+                    let createdID = settingsModel.workspaceAssignment?.id ?? newTriptychID
                     selectedTriptychID = createdID
                     showsNewTriptych = false
                     openWindow(
@@ -1135,7 +1384,7 @@ struct WorkspaceSettingsView: View {
                 },
                 onCancel: { showsNewTriptych = false }
             )
-            .environmentObject(appState)
+            .environmentObject(settingsModel)
             .frame(minWidth: 640, idealWidth: 700, minHeight: 500)
         }
     }
@@ -1146,13 +1395,13 @@ struct WorkspaceSettingsView: View {
             set: { value in
                 selectedTriptychID = value
                 guard let value else { return }
-                Task { await appState.activateRegisteredTriptych(id: value) }
+                Task { await settingsModel.activateRegisteredTriptych(id: value) }
             }
         )
     }
 
     private func triptychLabel(_ assignment: TriptychAssignment) -> String {
-        let duplicates = appState.registeredTriptychs.filter {
+        let duplicates = settingsModel.registeredTriptychs.filter {
             $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
         }
         guard duplicates.count > 1,
@@ -1167,6 +1416,7 @@ struct WorkspaceSettingsView: View {
 
 private struct CSSSnippetSettingsView: View {
     @ObservedObject var store: CSSSnippetStore
+    let onOpenExternalURL: (URL) -> Void
     @State private var selectedSnippetID: UUID?
     @State private var importError: String?
 
@@ -1263,6 +1513,7 @@ private struct CSSSnippetSettingsView: View {
                         userCSS: store.readCSS,
                         researcherComments: [],
                         onLinkClick: { _ in },
+                        onOpenExternalURL: onOpenExternalURL,
                         onCommentSelection: nil,
                         onCommentActivation: nil,
                         onRenderingFailure: { reason in store.enterSafeMode(after: reason) }
@@ -1313,14 +1564,16 @@ private struct CSSSnippetSettingsView: View {
             panel.allowedContentTypes = [cssType]
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let secured = url.startAccessingSecurityScopedResource()
-        defer { if secured { url.stopAccessingSecurityScopedResource() } }
-        do {
-            try store.importSnippet(from: url)
-            selectedSnippetID = store.snippets.last?.id
-            importError = nil
-        } catch {
-            importError = error.localizedDescription
+        Task {
+            let secured = url.startAccessingSecurityScopedResource()
+            defer { if secured { url.stopAccessingSecurityScopedResource() } }
+            do {
+                try await store.importSnippet(from: url)
+                selectedSnippetID = store.snippets.last?.id
+                importError = nil
+            } catch {
+                importError = error.localizedDescription
+            }
         }
     }
 }
@@ -1397,13 +1650,12 @@ private struct CSSSnippetRow: View {
 }
 
 private struct WorkspacePathEditor: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
 
     let title: String
     let explanation: String
     let completionTitle: String
     var targetTriptychID: UUID? = nil
-    var showsOnboardingContext = false
     var showsCancel = true
     let onCompletion: (() -> Void)?
     var onCancel: (() -> Void)? = nil
@@ -1433,30 +1685,6 @@ private struct WorkspacePathEditor: View {
             Divider()
 
             Form {
-                if showsOnboardingContext {
-                    Section("Before You Choose") {
-                        FirstLaunchDisclosureRow(
-                            title: "Your Research Stays in Your Folders",
-                            detail: "Scholium requests macOS access to open and edit the three folders you choose.",
-                            symbol: "folder.badge.gearshape",
-                            accessibilityIdentifier: "scholium.onboarding.localFiles"
-                        )
-                        FirstLaunchDisclosureRow(
-                            title: "App State Has a Defined Home",
-                            detail: "Portable Triptych settings live in .scholium beside Works. App-owned indexes, reviews, comments, and checkpoints stay in Scholium’s Application Support folder.",
-                            symbol: "internaldrive",
-                            accessibilityIdentifier: "scholium.onboarding.generatedState"
-                        )
-                        FirstLaunchDisclosureRow(
-                            title: "Agents Are Optional",
-                            detail: "Scholium does not run an agent or transmit research automatically. Dialogue can prepare instructions for an external tool you choose.",
-                            symbol: "person.badge.shield.checkmark",
-                            accessibilityIdentifier: "scholium.onboarding.agentBoundary"
-                        )
-                    }
-                    .accessibilityIdentifier("scholium.onboarding.disclosures")
-                }
-
                 Section("Triptych") {
                     TextField("Name", text: $triptychName)
                         .accessibilityIdentifier("scholium.triptychName")
@@ -1515,7 +1743,7 @@ private struct WorkspacePathEditor: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 8)
                     .accessibilityLabel("Workspace error: \(errorMessage)")
-            } else if let recoveryMessage = appState.workspaceRecoveryMessage {
+            } else if let recoveryMessage = settingsModel.workspaceRecoveryMessage {
                 Label(recoveryMessage, systemImage: "folder.badge.questionmark")
                     .font(.callout)
                     .foregroundStyle(.orange)
@@ -1542,11 +1770,11 @@ private struct WorkspacePathEditor: View {
         }
         .accessibilityIdentifier("scholium.triptychSetup")
         .task {
-            await appState.refreshWorkspaceAssignment()
+            await settingsModel.refreshWorkspaceAssignment()
             loadCurrentValuesIfNeeded()
             await loadPortableContainerIfAvailable()
         }
-        .onChange(of: appState.workspaceAssignment) { _, _ in
+        .onChange(of: settingsModel.workspaceAssignment) { _, _ in
             loadCurrentValuesIfNeeded(force: true)
             Task { await loadPortableContainerIfAvailable() }
         }
@@ -1593,16 +1821,16 @@ private struct WorkspacePathEditor: View {
             portableContainerURL = nil
             return
         }
-        if let registered = await appState.portableContainerURL(for: outputURL) {
+        if let registered = await settingsModel.portableContainerURL(for: outputURL) {
             portableContainerURL = registered
         }
     }
 
     private var targetAssignment: TriptychAssignment? {
         if let targetTriptychID {
-            return appState.registeredTriptychs.first(where: { $0.id == targetTriptychID })
+            return settingsModel.registeredTriptychs.first(where: { $0.id == targetTriptychID })
         }
-        return appState.workspaceAssignment
+        return settingsModel.workspaceAssignment
     }
 
     private func assignedURL(for slot: WorkspaceVaultSlot) -> URL? {
@@ -1621,7 +1849,7 @@ private struct WorkspacePathEditor: View {
         errorMessage = nil
         Task {
             do {
-                try await appState.configureThreeVaultWorkspace(
+                try await settingsModel.configureThreeVaultWorkspace(
                     paperAnalysisURL: paperAnalysisURL,
                     topicKnowledgeURL: topicKnowledgeURL,
                     outputURL: outputURL,
@@ -1629,7 +1857,7 @@ private struct WorkspacePathEditor: View {
                     triptychID: targetTriptychID,
                     triptychName: triptychName
                 )
-                appState.workspaceRecoveryMessage = nil
+                settingsModel.workspaceRecoveryMessage = nil
                 isSaving = false
                 onCompletion?()
             } catch {
@@ -1640,7 +1868,7 @@ private struct WorkspacePathEditor: View {
     }
 }
 
-private struct PortableControlFolderRow: View {
+struct PortableControlFolderRow: View {
     let worksURL: URL?
     @Binding var containerURL: URL?
 
@@ -1697,35 +1925,7 @@ private struct PortableControlFolderRow: View {
     }
 }
 
-private struct FirstLaunchDisclosureRow: View {
-    let title: String
-    let detail: String
-    let symbol: String
-    let accessibilityIdentifier: String
-
-    var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-            }
-        } icon: {
-            Image(systemName: symbol)
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-        }
-        .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(accessibilityIdentifier)
-    }
-}
-
-private struct WorkspaceFolderRow: View {
+struct WorkspaceFolderRow: View {
     let title: String
     let subtitle: String
     let symbol: String

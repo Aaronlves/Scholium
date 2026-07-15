@@ -1,25 +1,35 @@
-import ScholiumCore
+import ScholiumContracts
 import SwiftUI
 
 /// One app-owned comment surface shared by Analyses, Topics, and ordinary
 /// Works. Comments never require or imply a Human Review verdict.
+struct ResearcherCommentsContext {
+    let initialComments: [ResearcherComment]
+    let pendingSelection: MarkdownReviewSelection?
+    let focusedCommentID: UUID?
+    let clearPendingSelection: () -> Void
+    let add: (String, ResearcherCommentAnchor?) async throws -> [ResearcherComment]
+    let update: (UUID, String) async throws -> [ResearcherComment]
+    let setResolved: (UUID, Bool) async throws -> [ResearcherComment]
+    let delete: (UUID) async throws -> [ResearcherComment]
+    let reattach: (UUID, ResearcherCommentAnchor) async throws -> [ResearcherComment]
+    let tryAutomaticReattachment: () async throws -> [ResearcherComment]
+}
+
 struct ResearcherCommentsView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    let note: Note
+    let note: WindowDocumentLocation
+    let context: ResearcherCommentsContext
 
     @State private var comments: [ResearcherComment] = []
+    @State private var pendingSelection: MarkdownReviewSelection?
     @State private var newComment = ""
     @State private var editingCommentID: UUID?
     @State private var editingText = ""
     @State private var pendingDeletion: ResearcherComment?
     @State private var isWorking = false
     @State private var errorMessage: String?
-
-    private var pendingSelection: MarkdownReviewSelection? {
-        appState.pendingCommentSelection
-    }
 
     private var pendingAnchor: ResearcherCommentAnchor? {
         guard let selection = pendingSelection else { return nil }
@@ -59,8 +69,9 @@ struct ResearcherCommentsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .onAppear {
-                    loadComments()
-                    if let id = appState.focusedResearcherCommentID {
+                    comments = context.initialComments
+                    pendingSelection = context.pendingSelection
+                    if let id = context.focusedCommentID {
                         DispatchQueue.main.async { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
@@ -80,7 +91,7 @@ struct ResearcherCommentsView: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 620, idealWidth: 700, minHeight: 520, idealHeight: 700)
+        .frame(minWidth: 0, idealWidth: 700, minHeight: 520, idealHeight: 700)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("scholium.researcherCommentsSheet")
         .confirmationDialog(
@@ -165,7 +176,8 @@ struct ResearcherCommentsView: View {
                 HStack {
                     if pendingSelection != nil, pendingAnchor == nil {
                         Button("Use as Whole-Note Comment") {
-                            appState.pendingCommentSelection = nil
+                            pendingSelection = nil
+                            context.clearPendingSelection()
                         }
                     }
                     Spacer()
@@ -274,17 +286,14 @@ struct ResearcherCommentsView: View {
         .accessibilityLabel("Researcher comment, \(locationText(comment))")
     }
 
-    private func loadComments() {
-        comments = appState.humanReviewRecord(for: note.relativePath)?.comments ?? []
-    }
-
-    private func run(_ operation: @escaping @MainActor () async throws -> Void) {
+    private func run(
+        _ operation: @escaping @MainActor () async throws -> [ResearcherComment]
+    ) {
         Task { @MainActor in
             isWorking = true
             defer { isWorking = false }
             do {
-                try await operation()
-                loadComments()
+                comments = try await operation()
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -296,67 +305,51 @@ struct ResearcherCommentsView: View {
         guard !text.isEmpty else { return }
         let anchor = pendingSelection == nil ? nil : pendingAnchor
         run {
-            _ = try await appState.addResearcherComment(
-                to: note.relativePath,
-                text: text,
-                anchor: anchor
-            )
+            let updated = try await context.add(text, anchor)
             newComment = ""
-            appState.pendingCommentSelection = nil
+            pendingSelection = nil
+            context.clearPendingSelection()
+            return updated
         }
     }
 
     private func saveEdit(_ comment: ResearcherComment) {
         let text = editingText
         run {
-            try await appState.updateResearcherComment(
-                at: note.relativePath,
-                commentID: comment.id,
-                text: text
-            )
+            let updated = try await context.update(comment.id, text)
             editingCommentID = nil
             editingText = ""
+            return updated
         }
     }
 
     private func setResolved(_ comment: ResearcherComment, resolved: Bool) {
         run {
-            try await appState.setResearcherCommentResolved(
-                at: note.relativePath,
-                commentID: comment.id,
-                resolved: resolved
-            )
+            try await context.setResolved(comment.id, resolved)
         }
     }
 
     private func delete(_ comment: ResearcherComment) {
         pendingDeletion = nil
         run {
-            try await appState.deleteResearcherComment(
-                at: note.relativePath,
-                commentID: comment.id
-            )
+            try await context.delete(comment.id)
         }
     }
 
     private func reattach(_ comment: ResearcherComment, to anchor: ResearcherCommentAnchor) {
         run {
-            try await appState.reattachResearcherComment(
-                at: note.relativePath,
-                commentID: comment.id,
-                anchor: anchor
-            )
+            try await context.reattach(comment.id, anchor)
         }
     }
 
     private func tryAutomaticReattachment() {
-        run { _ = try await appState.tryReattachingResearcherComments(at: note.relativePath) }
+        run { try await context.tryAutomaticReattachment() }
     }
 
     private func locationText(_ comment: ResearcherComment) -> String {
         guard let anchor = comment.anchor else { return "Whole note" }
         if anchor.state == .needsReattachment {
-            return "Needs Reattachment · originally line \(anchor.line)"
+            return "Needs Reattachment — originally line \(anchor.line)"
         }
         return anchor.line == anchor.endLine
             ? "Line \(anchor.line)"

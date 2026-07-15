@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium UI Automation"
+  short_description: "Build reliable Scholium macOS UI tests"
+  default_prompt: "Use $scholium-ui-automation to add or diagnose this Scholium UI automation workflow."

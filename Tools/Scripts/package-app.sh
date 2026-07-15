@@ -13,6 +13,13 @@ DEPLOYMENT_TARGET="26.0"
 SDK_VERSION="${SCHOLIUM_SDK_VERSION:-$(xcrun --sdk macosx --show-sdk-version)}"
 RELEASE_LABEL="${SCHOLIUM_RELEASE_LABEL:-0.1.0-beta.1}"
 LICENSE_SOURCE="${ROOT}/Tools/Packaging/Licenses"
+GIT_COMMIT="$(git -C "${ROOT}" rev-parse HEAD)"
+GIT_EXACT_TAG="$(git -C "${ROOT}" describe --tags --exact-match 2>/dev/null || true)"
+if [[ -z "$(git -C "${ROOT}" status --porcelain)" ]]; then
+  SOURCE_CLEAN=true
+else
+  SOURCE_CLEAN=false
+fi
 
 [[ "${RELEASE_LABEL}" =~ '^[A-Za-z0-9][A-Za-z0-9._-]*$' ]] || {
   print -u2 "Invalid SCHOLIUM_RELEASE_LABEL: ${RELEASE_LABEL}"
@@ -22,12 +29,17 @@ LICENSE_SOURCE="${ROOT}/Tools/Packaging/Licenses"
   print -u2 "Missing packaged third-party licenses: ${LICENSE_SOURCE}"
   exit 66
 }
-if [[ "${SCHOLIUM_REQUIRE_CLEAN:-0}" == "1" ]] && [[ -n "$(git -C "${ROOT}" status --porcelain)" ]]; then
+if [[ "${SCHOLIUM_REQUIRE_CLEAN:-0}" == "1" ]] && [[ "${SOURCE_CLEAN}" != true ]]; then
   print -u2 "Refusing to package a release from a dirty worktree."
   exit 65
 fi
 
-rm -rf "${APP}" "${OUTPUT}/KB Manager.app" "${OUTPUT}/scholium" "${SCRATCH}"
+rm -rf \
+  "${APP}" \
+  "${OUTPUT}/KB Manager.app" \
+  "${OUTPUT}/scholium" \
+  "${OUTPUT}/Scholium_ScholiumCore.bundle" \
+  "${SCRATCH}"
 mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Resources" "${OUTPUT}"
 
 swift build --package-path "${ROOT}" -c release --scratch-path "${SCRATCH}"
@@ -35,18 +47,55 @@ cp "${SCRATCH}/release/ScholiumApp" "${STAGING_APP}/Contents/MacOS/Scholium"
 if [[ -d "${SCRATCH}/release/Scholium_ScholiumApp.bundle" ]]; then
   cp -R "${SCRATCH}/release/Scholium_ScholiumApp.bundle" "${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
+CORE_RESOURCE_BUNDLE="${SCRATCH}/release/Scholium_ScholiumCore.bundle"
+[[ -d "${CORE_RESOURCE_BUNDLE}" ]] || {
+  print -u2 "Missing packaged ScholiumCore resource bundle."
+  exit 66
+}
+cp -R \
+  "${CORE_RESOURCE_BUNDLE}" \
+  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle"
+EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/Contents/Resources"
+if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
+  EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
+fi
+for editor_resource in index.html editor.bundle.js editor.css; do
+  [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
+    print -u2 "Missing packaged editor resource: ${editor_resource}"
+    exit 66
+  }
+done
 cp "${SCRATCH}/release/scholium" "${OUTPUT}/scholium"
 chmod +x "${OUTPUT}/scholium"
+cp -R "${CORE_RESOURCE_BUNDLE}" "${OUTPUT}/Scholium_ScholiumCore.bundle"
+for core_catalog in \
+  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml" \
+  "${OUTPUT}/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml"; do
+  [[ -s "${core_catalog}" ]] || {
+    print -u2 "Missing packaged protected Skill catalog: ${core_catalog}"
+    exit 66
+  }
+done
 cp "${ROOT}/Tools/Packaging/Info.plist" "${STAGING_APP}/Contents/Info.plist"
 cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${STAGING_APP}/Contents/Resources/ScholiumIcon.icns"
 mkdir -p "${STAGING_APP}/Contents/Resources/Licenses"
 cp "${ROOT}/LICENSE" "${STAGING_APP}/Contents/Resources/Licenses/GPL-3.0-or-later.txt"
 cp "${ROOT}/THIRD_PARTY_NOTICES.md" "${STAGING_APP}/Contents/Resources/Licenses/THIRD_PARTY_NOTICES.md"
 cp -R "${LICENSE_SOURCE}/." "${STAGING_APP}/Contents/Resources/Licenses/"
+PROVENANCE="${STAGING_APP}/Contents/Resources/ScholiumBuildProvenance.plist"
+plutil -create xml1 "${PROVENANCE}"
+plutil -insert schema -string scholium-build-provenance-v1 "${PROVENANCE}"
+plutil -insert git_commit -string "${GIT_COMMIT}" "${PROVENANCE}"
+plutil -insert git_exact_tag -string "${GIT_EXACT_TAG}" "${PROVENANCE}"
+plutil -insert source_clean -bool "${SOURCE_CLEAN}" "${PROVENANCE}"
+plutil -insert release_label -string "${RELEASE_LABEL}" "${PROVENANCE}"
+plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
 
 [[ "$(plutil -extract CFBundleShortVersionString raw "${STAGING_APP}/Contents/Info.plist")" == "0.1.0" ]]
 [[ "$(plutil -extract CFBundleVersion raw "${STAGING_APP}/Contents/Info.plist")" == "1" ]]
 [[ "$(plutil -extract LSMinimumSystemVersion raw "${STAGING_APP}/Contents/Info.plist")" == "26.0" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' \
+  "${ROOT}/Tools/Packaging/Scholium.entitlements")" == "true" ]]
 
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
 # in LC_BUILD_VERSION. Preserve the product's macOS 26 minimum while recording
@@ -70,6 +119,7 @@ if LC_ALL=C grep -aEq '/Users/[^/]+/' \
   exit 65
 fi
 xattr -cr "${STAGING_APP}"
+xattr -cr "${OUTPUT}/Scholium_ScholiumCore.bundle"
 
 codesign --force --deep --options runtime \
   --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
@@ -90,6 +140,13 @@ done < <(find "${APP}" -type d -print0)
 codesign --verify --deep --strict --verbose=2 "${APP}"
 codesign --force --options runtime --sign "${IDENTITY}" "${OUTPUT}/scholium"
 codesign --verify --strict --verbose=2 "${OUTPUT}/scholium"
+PACKAGED_CATALOG_SMOKE="${SCRATCH}/packaged-skill-catalog.json"
+SCHOLIUM_HOME="${SCRATCH}/cli-smoke-home" \
+  "${OUTPUT}/scholium" skills catalog --format json > "${PACKAGED_CATALOG_SMOKE}"
+[[ -s "${PACKAGED_CATALOG_SMOKE}" ]] || {
+  print -u2 "Packaged CLI could not load the protected Skill catalog."
+  exit 66
+}
 
 ARCHITECTURES="$(lipo -archs "${APP}/Contents/MacOS/Scholium")"
 if [[ "${ARCHITECTURES}" == "arm64 x86_64" || "${ARCHITECTURES}" == "x86_64 arm64" ]]; then

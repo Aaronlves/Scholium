@@ -1,3 +1,4 @@
+import ScholiumContracts
 import AppKit
 import CoreText
 import SwiftUI
@@ -109,4 +110,13 @@ enum ScholiumTypography {
         }
         return .custom(name, size: size, relativeTo: textStyle)
     }
+}
+
+/// A restrained system-font hierarchy for persistent app chrome. Document
+/// prose and exact-source text continue to use the typefaces above.
+enum ScholiumInterfaceTypography {
+    static let identity = Font.title3.weight(.medium)
+    static let sectionTitle = Font.headline.weight(.medium)
+    static let compactEmphasis = Font.callout.weight(.medium)
+    static let overline = Font.caption.weight(.medium)
 }

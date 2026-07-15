@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Markdown and YAML"
+  short_description: "Preserve exact Markdown and YAML source semantics"
+  default_prompt: "Use $scholium-markdown-yaml-fidelity to implement or audit this Scholium document-format change."
