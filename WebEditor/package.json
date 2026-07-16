@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "build": "esbuild editor.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/editor.bundle.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.3",
@@ -16,7 +17,10 @@
     "@codemirror/view": "6.43.6"
   },
   "devDependencies": {
+    "@types/node": "22.15.0",
     "esbuild": "0.28.1",
-    "typescript": "7.0.2"
+    "linkedom": "0.18.13",
+    "typescript": "7.0.2",
+    "vitest": "3.2.7"
   }
 }

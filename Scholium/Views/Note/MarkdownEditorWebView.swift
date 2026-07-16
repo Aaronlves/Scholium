@@ -4,6 +4,8 @@ import WebKit
 
 private final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
+    weak var editorSession: MarkdownEditorSession?
+    var onRequestComment: (() -> Void)?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -11,9 +13,84 @@ private final class WindowAttachedWebView: WKWebView {
         onFirstWindowAttachment = nil
         action()
     }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        for item in menu.items where item.identifier?.rawValue.hasPrefix("scholium.editor.") == true {
+            menu.removeItem(item)
+        }
+        guard let editorSession else { return menu }
+        let available = Set(editorSession.context?.availableCommands ?? [])
+        var addedAction = false
+        for (title, command) in [
+            ("Bold", MarkdownEditorCommand.bold),
+            ("Emphasis", .emphasis),
+            ("Link", .standardLink),
+            ("Toggle Task", .toggleTask),
+        ] where available.contains(command) {
+            if !addedAction { menu.addItem(.separator()) }
+            menu.addItem(editorMenuItem(title, command: command))
+            addedAction = true
+        }
+
+        let tableCommands: [(String, MarkdownEditorCommand)] = [
+            ("Insert Row Before", .tableInsertRowBefore),
+            ("Insert Row After", .tableInsertRowAfter),
+            ("Delete Row", .tableDeleteRow),
+            ("Insert Column Before", .tableInsertColumnBefore),
+            ("Insert Column After", .tableInsertColumnAfter),
+            ("Delete Column", .tableDeleteColumn),
+            ("Align Left", .tableAlignLeft),
+            ("Align Center", .tableAlignCenter),
+            ("Align Right", .tableAlignRight),
+        ].filter { available.contains($0.1) }
+        if !tableCommands.isEmpty {
+            if !addedAction { menu.addItem(.separator()) }
+            let submenu = NSMenu(title: "Table")
+            tableCommands.forEach { submenu.addItem(editorMenuItem($0.0, command: $0.1)) }
+            let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+            item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.table")
+            item.submenu = submenu
+            menu.addItem(item)
+            addedAction = true
+        }
+        if onRequestComment != nil {
+            if !addedAction { menu.addItem(.separator()) }
+            let item = NSMenuItem(title: "Add Comment…", action: #selector(requestComment(_:)), keyEquivalent: "")
+            item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.comment")
+            item.target = self
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    private func editorMenuItem(_ title: String, command: MarkdownEditorCommand) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(performEditorCommand(_:)), keyEquivalent: "")
+        item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.\(command.rawValue)")
+        item.representedObject = command.rawValue
+        item.target = self
+        return item
+    }
+
+    @objc private func performEditorCommand(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let command = MarkdownEditorCommand(rawValue: rawValue),
+              let editorSession else { return }
+        Task { @MainActor in
+            do {
+                try await editorSession.perform(command)
+            } catch {
+                editorSession.reportError(error.localizedDescription)
+            }
+        }
+    }
+
+    @objc private func requestComment(_ sender: NSMenuItem) {
+        onRequestComment?()
+    }
 }
 
-enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Sendable {
+enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     case read
     case livePreview
     case source
@@ -37,7 +114,7 @@ enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
-struct EditorLinkCompletion: Encodable, Hashable {
+struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let label: String
     let insertion: String
     let detail: String
@@ -45,7 +122,7 @@ struct EditorLinkCompletion: Encodable, Hashable {
     let isAmbiguous: Bool
 }
 
-private struct EditorResearcherCommentAnnotation: Encodable, Hashable {
+struct MarkdownEditorCommentAnnotation: Codable, Hashable, Sendable {
     let id: UUID
     let from: Int
     let to: Int
@@ -61,11 +138,13 @@ private struct EditorBridgeChange: Codable {
 
 private struct EditorBridgeMessage: Codable {
     let type: String
-    let bridgeVersion: Int?
+    let protocolVersion: Int?
     let sessionID: String?
     let documentID: String?
     let startingFingerprint: String?
     let documentVersion: Int?
+    let baseGeneration: Int?
+    let resultingGeneration: Int?
     let changes: [EditorBridgeChange]?
     let dirty: Bool?
     let line: Int?
@@ -75,6 +154,8 @@ private struct EditorBridgeMessage: Codable {
     let editorReady: Bool?
     let scrollFraction: Double?
     let commentID: String?
+    let target: String?
+    let context: MarkdownEditorContext?
 }
 
 @MainActor
@@ -83,12 +164,14 @@ final class MarkdownEditorSession: ObservableObject {
         case unavailable
         case invalidResult
         case selectionTooLong
+        case bridgeRejected(String)
 
         var errorDescription: String? {
             switch self {
             case .unavailable: "The Markdown editor is not ready."
             case .invalidResult: "The Markdown editor returned an invalid document."
             case .selectionTooLong: "Select at most 2,000 characters for one source-anchored comment."
+            case .bridgeRejected(let message): message
             }
         }
     }
@@ -100,20 +183,41 @@ final class MarkdownEditorSession: ObservableObject {
     @Published private(set) var column = 1
     @Published private(set) var lineCount = 1
     @Published private(set) var errorMessage: String?
+    @Published private(set) var context: MarkdownEditorContext?
     private(set) var sessionID = UUID()
     private(set) var documentID = ""
+    private(set) var startingFingerprint = ""
+    private(set) var generation = 0
 
-    private weak var webView: WKWebView?
+    private var webView: WKWebView?
     private var pendingSource: String?
     private var pendingDocumentID = ""
     private var pendingMode: NotePresentationMode = .livePreview
     private var pendingUserCSS = ""
     private var pendingLine: Int?
     private var pendingLinkCompletions: [EditorLinkCompletion] = []
-    private var pendingResearcherComments: [EditorResearcherCommentAnnotation] = []
+    private var pendingResearcherComments: [MarkdownEditorCommentAnnotation] = []
     private var pendingScrollFraction: Double = 0
     private var startupTask: Task<Void, Never>?
+    private var recoveryCaptureTask: Task<Void, Never>?
+    private var requestBarrier: Task<Void, Never>?
     private var committedTextSynchronizer: ((String, String) -> Void)?
+    private var sourceChangeHandler: ((String) -> Void)?
+    private var checkedSource = ""
+    private var recoverySnapshot: MarkdownEditorRecoverySnapshot?
+    var hasAttachedWebView: Bool { webView != nil }
+
+    #if DEBUG
+    @discardableResult
+    func testingSimulateWebContentProcessTermination() -> Bool {
+        guard let webView,
+              let coordinator = webView.navigationDelegate as? MarkdownEditorWebView.Coordinator else {
+            return false
+        }
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        return true
+    }
+    #endif
 
     fileprivate func attach(_ webView: WKWebView) {
         self.webView = webView
@@ -121,12 +225,23 @@ final class MarkdownEditorSession: ObservableObject {
         isReady = false
         isLoaded = false
         errorMessage = nil
+        recoverySnapshot = nil
+        requestBarrier = nil
         startupTask?.cancel()
         startupTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, !self.isReady else { return }
             self.reportError("Live Preview did not finish starting.")
         }
+    }
+
+    fileprivate func detach(_ webView: WKWebView) {
+        guard self.webView === webView else { return }
+        startupTask?.cancel()
+        recoveryCaptureTask?.cancel()
+        self.webView = nil
+        isReady = false
+        isLoaded = false
     }
 
     fileprivate func editorBecameReady() {
@@ -142,16 +257,29 @@ final class MarkdownEditorSession: ObservableObject {
         if let lineCount { self.lineCount = lineCount }
     }
 
+    fileprivate func updateContext(_ context: MarkdownEditorContext) {
+        self.context = context
+    }
+
     fileprivate func reportError(_ message: String) {
         startupTask?.cancel()
         errorMessage = message
         isLoaded = false
     }
 
-    func loadDocument(_ source: String, documentID: String, mode: NotePresentationMode) {
+    func loadDocument(
+        _ source: String,
+        documentID: String,
+        mode: NotePresentationMode,
+        preservingRecovery: Bool = false
+    ) {
+        if !preservingRecovery { recoverySnapshot = nil }
         pendingSource = source
         pendingDocumentID = documentID
         self.documentID = documentID
+        startingFingerprint = DocumentFingerprint(content: source).sha256
+        checkedSource = source
+        generation = 0
         pendingMode = mode
         isLoaded = false
         isDirty = false
@@ -164,10 +292,7 @@ final class MarkdownEditorSession: ObservableObject {
         pendingMode = mode
         guard isReady, isLoaded, let webView else { return }
         Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.setMode(\(Self.javascriptLiteral(mode.rawValue)))",
-                in: webView
-            )
+            _ = try? await send(.setMode(mode), in: webView)
         }
     }
 
@@ -175,10 +300,7 @@ final class MarkdownEditorSession: ObservableObject {
         pendingUserCSS = css
         guard isReady, let webView else { return }
         Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.setUserCSS(\(Self.javascriptLiteral(css)))",
-                in: webView
-            )
+            _ = try? await send(.setUserCSS(css), in: webView)
         }
     }
 
@@ -191,23 +313,15 @@ final class MarkdownEditorSession: ObservableObject {
         pendingScrollFraction = min(1, max(0, fraction))
         guard isReady, isLoaded, let webView else { return }
         Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.setScrollFraction(\(pendingScrollFraction))",
-                in: webView
-            )
+            _ = try? await send(.setScrollFraction(pendingScrollFraction), in: webView)
         }
     }
 
     func setLinkCompletions(_ candidates: [EditorLinkCompletion]) {
         pendingLinkCompletions = candidates
-        guard isReady, let webView,
-              let data = try? JSONEncoder().encode(candidates),
-              let json = String(data: data, encoding: .utf8) else { return }
+        guard isReady, let webView else { return }
         Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.setLinkCompletions(\(json))",
-                in: webView
-            )
+            _ = try? await send(.setLinkCompletions(candidates), in: webView)
         }
     }
 
@@ -226,7 +340,7 @@ final class MarkdownEditorSession: ObservableObject {
                     in: source
                   ),
                   to > from else { return nil }
-            return EditorResearcherCommentAnnotation(
+            return MarkdownEditorCommentAnnotation(
                 id: comment.id,
                 from: from,
                 to: to,
@@ -235,19 +349,18 @@ final class MarkdownEditorSession: ObservableObject {
             )
         }
         guard isReady, isLoaded, let webView else { return }
-        let payload = Self.jsonLiteral(pendingResearcherComments)
         Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.setResearcherComments(\(payload))",
-                in: webView
-            )
+            _ = try? await send(.setResearcherComments(pendingResearcherComments), in: webView)
         }
     }
 
     func currentText(for expectedDocumentID: String? = nil) async throws -> String {
         guard expectedDocumentID == nil || expectedDocumentID == documentID,
               isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        return try await Self.evaluateStringJavaScript("window.scholiumEditor.getText()", in: webView)
+        let result = try await send(.queryText, in: webView)
+        guard let text = result.text else { throw SessionError.invalidResult }
+        try reconcileMirror(with: text, publish: true)
+        return checkedSource
     }
 
     func currentSelection(
@@ -256,25 +369,35 @@ final class MarkdownEditorSession: ObservableObject {
     ) async throws -> MarkdownReviewSelection? {
         guard expectedDocumentID == nil || expectedDocumentID == documentID,
               isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        guard let selection = try await Self.evaluateSelectionJavaScript(
-            "window.scholiumEditor.getSelection()",
-            in: webView
-        ) else { return nil }
-        guard let source, source.contains("\r\n"),
-              let lower = selection.utf16LowerBound.flatMap({
-                  Self.sourceUTF16Offset(forEditorUTF16Offset: $0, in: source)
-              }),
-              let upper = selection.utf16UpperBound.flatMap({
-                  Self.sourceUTF16Offset(forEditorUTF16Offset: $0, in: source)
-              }) else { return selection }
+        let result = try await send(.querySelection, in: webView)
+        guard let range = result.selection?.ranges.first else { return nil }
+        let editorLower = min(range.anchor, range.head)
+        let editorUpper = max(range.anchor, range.head)
+        guard editorUpper > editorLower else { return nil }
+        let exactSource = source ?? checkedSource
+        guard let lower = Self.sourceUTF16Offset(forEditorUTF16Offset: editorLower, in: exactSource),
+              let upper = Self.sourceUTF16Offset(forEditorUTF16Offset: editorUpper, in: exactSource),
+              upper > lower,
+              upper - lower <= 2_000 else { throw SessionError.selectionTooLong }
+        let units = exactSource.utf16
+        guard let lowerUTF16 = units.index(units.startIndex, offsetBy: lower, limitedBy: units.endIndex),
+              let upperUTF16 = units.index(units.startIndex, offsetBy: upper, limitedBy: units.endIndex),
+              let lowerIndex = String.Index(lowerUTF16, within: exactSource),
+              let upperIndex = String.Index(upperUTF16, within: exactSource) else {
+            throw SessionError.invalidResult
+        }
+        let prefix = exactSource[..<lowerIndex]
+        let excerpt = String(exactSource[lowerIndex..<upperIndex])
+        let startLine = prefix.reduce(into: 1) { if $1 == "\n" { $0 += 1 } }
+        let endLine = startLine + excerpt.reduce(into: 0) { if $1 == "\n" { $0 += 1 } }
         return MarkdownReviewSelection(
-            startLine: selection.startLine,
-            endLine: selection.endLine,
-            excerpt: selection.excerpt,
+            startLine: startLine,
+            endLine: endLine,
+            excerpt: excerpt,
             utf16LowerBound: lower,
             utf16UpperBound: upper,
-            contextBefore: selection.contextBefore,
-            contextAfter: selection.contextAfter
+            contextBefore: String(prefix.suffix(48)),
+            contextAfter: String(exactSource[upperIndex...].prefix(48))
         )
     }
 
@@ -286,15 +409,17 @@ final class MarkdownEditorSession: ObservableObject {
     ) async throws -> Bool {
         guard expectedDocumentID == documentID,
               isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        let script = """
-        window.scholiumEditor.synchronizeCommittedText(
-            \(Self.javascriptLiteral(expectedText)),
-            \(Self.javascriptLiteral(committedText)),
-            \(Self.javascriptLiteral(fingerprint.sha256))
+        _ = try await send(
+            .synchronizeCommittedText(
+                expected: expectedText,
+                committed: committedText,
+                fingerprint: fingerprint.sha256
+            ),
+            in: webView
         )
-        """
-        let synchronized = try await Self.evaluateBoolJavaScript(script, in: webView)
-        guard synchronized, expectedDocumentID == documentID else { return false }
+        guard expectedDocumentID == documentID else { return false }
+        try reconcileMirror(with: committedText, publish: false)
+        startingFingerprint = fingerprint.sha256
         isDirty = false
         committedTextSynchronizer?(committedText, fingerprint.sha256)
         return true
@@ -310,44 +435,111 @@ final class MarkdownEditorSession: ObservableObject {
         committedTextSynchronizer = nil
     }
 
+    fileprivate func installSourceChangeHandler(_ handler: @escaping (String) -> Void) {
+        sourceChangeHandler = handler
+    }
+
+    fileprivate func removeSourceChangeHandler() {
+        sourceChangeHandler = nil
+    }
+
     func markClean() {
         isDirty = false
         guard isReady, let webView else { return }
         Task {
-            try? await Self.evaluateJavaScript("window.scholiumEditor.markClean()", in: webView)
+            _ = try? await send(.markClean, in: webView)
         }
     }
 
     func focus() {
         guard isReady, let webView else { return }
         Task {
-            try? await Self.evaluateJavaScript("window.scholiumEditor.focus()", in: webView)
+            _ = try? await send(.focus, in: webView)
         }
     }
 
-    func openFind() {
-        performFindCommand("openFind")
+    func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        _ = try await send(.command(command, argument: argument), in: webView)
     }
 
-    func findNext() {
-        performFindCommand("findNext")
+    fileprivate func acceptEditorChanges(
+        _ rawChanges: [EditorBridgeChange],
+        baseGeneration: Int,
+        resultingGeneration: Int
+    ) -> String? {
+        guard !rawChanges.isEmpty,
+              rawChanges.count <= 512,
+              baseGeneration == generation,
+              resultingGeneration == baseGeneration + 1 else { return nil }
+        let sourceBeforeChanges = checkedSource
+        let usesCRLF = sourceBeforeChanges.contains("\r\n")
+        var changes: [MarkdownEditorDelta] = []
+        var insertedUTF16Count = 0
+        for raw in rawChanges {
+            guard raw.from >= 0, raw.to >= raw.from else { return nil }
+            insertedUTF16Count += raw.insert.utf16.count
+            guard insertedUTF16Count <= 2_000_000,
+                  let from = Self.sourceUTF16Offset(
+                    forEditorUTF16Offset: raw.from,
+                    in: sourceBeforeChanges
+                  ),
+                  let to = Self.sourceUTF16Offset(
+                    forEditorUTF16Offset: raw.to,
+                    in: sourceBeforeChanges
+                  ) else { return nil }
+            changes.append(MarkdownEditorDelta(
+                fromUTF16: from,
+                toUTF16: to,
+                insertion: usesCRLF
+                    ? raw.insert.replacingOccurrences(of: "\n", with: "\r\n")
+                    : raw.insert
+            ))
+        }
+        guard let nextSource = try? MarkdownEditorDeltaApplier.apply(changes, to: checkedSource) else {
+            return nil
+        }
+        checkedSource = nextSource
+        generation = resultingGeneration
+        isDirty = true
+        sourceChangeHandler?(nextSource)
+        scheduleRecoveryCapture()
+        return nextSource
     }
 
-    func findPrevious() {
-        performFindCommand("findPrevious")
-    }
-
-    func closeFind() {
-        performFindCommand("closeFind")
-    }
-
-    private func performFindCommand(_ command: String) {
-        guard isReady, isLoaded, let webView else { return }
-        Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.\(command)()",
-                in: webView
+    fileprivate func webContentProcessTerminated() {
+        recoveryCaptureTask?.cancel()
+        if recoverySnapshot?.generation != generation || recoverySnapshot?.source != checkedSource {
+            recoverySnapshot = MarkdownEditorRecoverySnapshot(
+                documentID: documentID,
+                fingerprint: startingFingerprint,
+                generation: generation,
+                ranges: [],
+                source: checkedSource,
+                stateJSON: nil,
+                undoHistoryPreserved: false,
+                dirty: isDirty
             )
+        }
+        pendingSource = checkedSource
+        pendingDocumentID = documentID
+        isReady = false
+        isLoaded = false
+    }
+
+    private func scheduleRecoveryCapture() {
+        recoveryCaptureTask?.cancel()
+        recoveryCaptureTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self, self.isReady, self.isLoaded,
+                  let webView = self.webView else { return }
+            guard let result = try? await self.send(.captureRecovery, in: webView),
+                  let snapshot = result.recovery,
+                  snapshot.documentID == self.documentID,
+                  snapshot.fingerprint == self.startingFingerprint,
+                  snapshot.generation == self.generation,
+                  snapshot.source == self.checkedSource else { return }
+            self.recoverySnapshot = snapshot
         }
     }
 
@@ -356,29 +548,36 @@ final class MarkdownEditorSession: ObservableObject {
         pendingSource = nil
         let mode = pendingMode
         let documentID = pendingDocumentID
-        let sessionID = sessionID.uuidString
         Task {
             do {
-                let script = """
-                window.scholiumEditor.setDocument(
-                    \(Self.javascriptLiteral(source)),
-                    \(Self.javascriptLiteral(sessionID)),
-                    \(Self.javascriptLiteral(documentID)),
-                    \(Self.javascriptLiteral(DocumentFingerprint(content: source).sha256))
-                );
-                window.scholiumEditor.setMode(\(Self.javascriptLiteral(mode.rawValue)));
-                window.scholiumEditor.setUserCSS(\(Self.javascriptLiteral(pendingUserCSS)));
-                window.scholiumEditor.setLinkCompletions(\(Self.jsonLiteral(pendingLinkCompletions)));
-                window.scholiumEditor.setResearcherComments(\(Self.jsonLiteral(pendingResearcherComments)));
-                window.scholiumEditor.setScrollFraction(\(pendingScrollFraction));
-                true
-                """
-                try await Self.evaluateJavaScript(
-                    script,
+                let matchingRecovery = recoverySnapshot.flatMap { snapshot in
+                    snapshot.documentID == documentID && snapshot.source == source ? snapshot : nil
+                }
+                startingFingerprint = matchingRecovery?.fingerprint
+                    ?? DocumentFingerprint(content: source).sha256
+                checkedSource = source
+                generation = 0
+                _ = try await send(
+                    .initialize(text: source, mode: mode, dialect: .current),
                     in: webView
                 )
+                _ = try await send(.setUserCSS(pendingUserCSS), in: webView)
+                _ = try await send(.setLinkCompletions(pendingLinkCompletions), in: webView)
+                _ = try await send(.setResearcherComments(pendingResearcherComments), in: webView)
+                _ = try await send(.setScrollFraction(pendingScrollFraction), in: webView)
+                if let snapshot = matchingRecovery,
+                   snapshot.fingerprint == startingFingerprint,
+                   snapshot.source == checkedSource {
+                    let recovered = try await send(.restoreRecovery(snapshot), in: webView)
+                    generation = recovered.resultingGeneration
+                    isDirty = snapshot.dirty
+                    if recovered.recovery?.undoHistoryPreserved == false {
+                        errorMessage = "The exact editor buffer was recovered, but its pre-crash undo history was unavailable."
+                    }
+                } else {
+                    isDirty = false
+                }
                 isLoaded = true
-                isDirty = false
                 flushPendingLine()
                 focus()
             } catch {
@@ -392,107 +591,86 @@ final class MarkdownEditorSession: ObservableObject {
         guard isReady, isLoaded, let line = pendingLine, let webView else { return }
         pendingLine = nil
         Task {
-            try? await Self.evaluateJavaScript(
-                "window.scholiumEditor.goToLine(\(line))",
-                in: webView
-            )
+            _ = try? await send(.goToLine(line), in: webView)
         }
     }
 
-    private static func javascriptLiteral(_ value: String) -> String {
-        guard let data = try? JSONEncoder().encode(value),
-              let literal = String(data: data, encoding: .utf8) else { return "\"\"" }
-        return literal
-    }
-
-    private static func jsonLiteral<T: Encodable>(_ value: T) -> String {
-        guard let data = try? JSONEncoder().encode(value),
-              let literal = String(data: data, encoding: .utf8) else { return "[]" }
-        return literal
-    }
-
-    private static func evaluateJavaScript(_ script: String, in webView: WKWebView) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            webView.evaluateJavaScript(script) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
-    }
-
-    private static func evaluateStringJavaScript(_ script: String, in webView: WKWebView) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.evaluateJavaScript(script) { result, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let text = result as? String {
-                    continuation.resume(returning: text)
-                } else {
-                    continuation.resume(throwing: SessionError.invalidResult)
-                }
-            }
-        }
-    }
-
-    private static func evaluateBoolJavaScript(_ script: String, in webView: WKWebView) async throws -> Bool {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.evaluateJavaScript(script) { result, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let value = result as? Bool {
-                    continuation.resume(returning: value)
-                } else {
-                    continuation.resume(throwing: SessionError.invalidResult)
-                }
-            }
-        }
-    }
-
-    private static func evaluateSelectionJavaScript(
-        _ script: String,
+    private func send(
+        _ operation: MarkdownEditorOperation,
         in webView: WKWebView
-    ) async throws -> MarkdownReviewSelection? {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.evaluateJavaScript(script) { result, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                if result == nil || result is NSNull {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                guard let value = result as? [String: Any],
-                      let startLine = (value["startLine"] as? NSNumber)?.intValue,
-                      let endLine = (value["endLine"] as? NSNumber)?.intValue,
-                      let excerpt = value["excerpt"] as? String,
-                      let utf16LowerBound = (value["utf16LowerBound"] as? NSNumber)?.intValue,
-                      let utf16UpperBound = (value["utf16UpperBound"] as? NSNumber)?.intValue,
-                      let contextBefore = value["contextBefore"] as? String,
-                      let contextAfter = value["contextAfter"] as? String else {
-                    continuation.resume(throwing: SessionError.invalidResult)
-                    return
-                }
-                guard utf16LowerBound >= 0,
-                      utf16UpperBound > utf16LowerBound,
-                      utf16UpperBound - utf16LowerBound <= 2_000 else {
-                    continuation.resume(throwing: SessionError.selectionTooLong)
-                    return
-                }
-                continuation.resume(returning: MarkdownReviewSelection(
-                    startLine: startLine,
-                    endLine: endLine,
-                    excerpt: excerpt,
-                    utf16LowerBound: utf16LowerBound,
-                    utf16UpperBound: utf16UpperBound,
-                    contextBefore: contextBefore,
-                    contextAfter: contextAfter
-                ))
+    ) async throws -> MarkdownEditorCommandResult {
+        let previous = requestBarrier
+        let intendedSessionID = sessionID
+        let intendedDocumentID = documentID
+        let intendedFingerprint = startingFingerprint
+        let task = Task { @MainActor in
+            await previous?.value
+            guard intendedSessionID == sessionID,
+                  intendedDocumentID == documentID,
+                  intendedFingerprint == startingFingerprint else {
+                throw SessionError.bridgeRejected("The editor identity changed while a request was queued.")
             }
+            let request = MarkdownEditorRequest(
+                sessionID: intendedSessionID,
+                documentID: intendedDocumentID,
+                startingFingerprint: intendedFingerprint,
+                expectedGeneration: generation,
+                operation: operation
+            )
+            let encoder = JSONEncoder()
+            let requestData = try encoder.encode(request)
+            guard requestData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
+                  let requestObject = try JSONSerialization.jsonObject(with: requestData) as? [String: Any] else {
+                throw SessionError.invalidResult
+            }
+            let rawResult = try await webView.callAsyncJavaScript(
+                "return await window.scholiumEditor.dispatch(request)",
+                arguments: ["request": requestObject],
+                in: nil,
+                contentWorld: .page
+            )
+            guard JSONSerialization.isValidJSONObject(rawResult as Any),
+                  let resultData = try? JSONSerialization.data(withJSONObject: rawResult as Any),
+                  resultData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
+                  let result = try? JSONDecoder().decode(MarkdownEditorCommandResult.self, from: resultData),
+                  result.requestID == request.requestID else {
+                throw SessionError.invalidResult
+            }
+            guard result.accepted else {
+                throw SessionError.bridgeRejected(result.error ?? "The Markdown editor rejected the request.")
+            }
+            let maximumAcceptedGeneration: Int
+            if case let .restoreRecovery(snapshot) = operation {
+                maximumAcceptedGeneration = snapshot.generation
+            } else {
+                maximumAcceptedGeneration = request.expectedGeneration + (result.sourceChanged ? 1 : 0)
+            }
+            guard result.resultingGeneration >= request.expectedGeneration,
+                  result.resultingGeneration <= maximumAcceptedGeneration else {
+                throw SessionError.invalidResult
+            }
+            if result.sourceChanged, let text = result.text {
+                try reconcileMirror(with: text, publish: true)
+            }
+            if let context = result.context { self.context = context }
+            generation = result.resultingGeneration
+            return result
         }
+        requestBarrier = Task { @MainActor in _ = try? await task.value }
+        return try await task.value
+    }
+
+    private func reconcileMirror(with text: String, publish: Bool) throws {
+        let exactText = checkedSource.contains("\r\n") && !text.contains("\r\n")
+            ? text.replacingOccurrences(of: "\n", with: "\r\n")
+            : text
+        let replacement = MarkdownEditorDelta(
+            fromUTF16: 0,
+            toUTF16: checkedSource.utf16.count,
+            insertion: exactText
+        )
+        checkedSource = try MarkdownEditorDeltaApplier.apply([replacement], to: checkedSource)
+        if publish { sourceChangeHandler?(checkedSource) }
     }
 
     private static func sourceUTF16Offset(
@@ -551,6 +729,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let initialScrollFraction: Double
     let onDocumentChange: (String) -> Void
     let onRequestSave: () -> Void
+    let onRequestSearch: () -> Void
+    let onRequestComment: () -> Void
+    let onLinkActivation: (String) -> Void
     let onCommentActivation: ((UUID) -> Void)?
     let onScrollFractionChange: (Double) -> Void
 
@@ -559,6 +740,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session: session,
             onDocumentChange: onDocumentChange,
             onRequestSave: onRequestSave,
+            onRequestSearch: onRequestSearch,
+            onLinkActivation: onLinkActivation,
             onCommentActivation: onCommentActivation,
             onScrollFractionChange: onScrollFractionChange
         )
@@ -603,6 +786,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
 
         let webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
+        webView.editorSession = session
+        webView.onRequestComment = onRequestComment
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.documentID = documentID
@@ -628,8 +813,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        if let webView = webView as? WindowAttachedWebView {
+            webView.editorSession = session
+            webView.onRequestComment = onRequestComment
+        }
         context.coordinator.onDocumentChange = onDocumentChange
         context.coordinator.onRequestSave = onRequestSave
+        context.coordinator.onRequestSearch = onRequestSearch
+        context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onCommentActivation = onCommentActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
         context.coordinator.initialScrollFraction = initialScrollFraction
@@ -667,9 +858,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        if let webView = webView as? WindowAttachedWebView {
+            webView.editorSession = nil
+            webView.onRequestComment = nil
+        }
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
         webView.navigationDelegate = nil
         coordinator.session.removeCommittedTextSynchronizer()
+        coordinator.session.removeSourceChangeHandler()
+        coordinator.session.detach(webView)
     }
 
     private static var editorResourceDirectory: URL? {
@@ -722,6 +919,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         let session: MarkdownEditorSession
         var onDocumentChange: (String) -> Void
         var onRequestSave: () -> Void
+        var onRequestSearch: () -> Void
+        var onLinkActivation: (String) -> Void
         var onCommentActivation: ((UUID) -> Void)?
         var onScrollFractionChange: (Double) -> Void
         var documentID = ""
@@ -731,6 +930,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var linkCompletions: [EditorLinkCompletion] = []
         var researcherComments: [ResearcherComment] = []
         var awaitingEditorLoad = false
+        var recoveringAfterTermination = false
         var startingFingerprint = ""
         var lastDocumentVersion = 0
         var initialScrollFraction: Double = 0
@@ -740,12 +940,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session: MarkdownEditorSession,
             onDocumentChange: @escaping (String) -> Void,
             onRequestSave: @escaping () -> Void,
+            onRequestSearch: @escaping () -> Void,
+            onLinkActivation: @escaping (String) -> Void,
             onCommentActivation: ((UUID) -> Void)?,
             onScrollFractionChange: @escaping (Double) -> Void
         ) {
             self.session = session
             self.onDocumentChange = onDocumentChange
             self.onRequestSave = onRequestSave
+            self.onRequestSearch = onRequestSearch
+            self.onLinkActivation = onLinkActivation
             self.onCommentActivation = onCommentActivation
             self.onScrollFractionChange = onScrollFractionChange
             super.init()
@@ -753,7 +957,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 guard let self else { return }
                 self.source = source
                 self.startingFingerprint = fingerprint
-                self.lastDocumentVersion = 0
+            }
+            session.installSourceChangeHandler { [weak self] source in
+                guard let self else { return }
+                self.source = source
+                self.onDocumentChange(source)
             }
         }
 
@@ -764,7 +972,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             guard message.name == "scholium",
                   JSONSerialization.isValidJSONObject(message.body),
                   let data = try? JSONSerialization.data(withJSONObject: message.body),
-                  data.count <= 2_500_000,
+                  data.count <= markdownEditorMaximumInboundBytes,
                   let payload = try? JSONDecoder().decode(EditorBridgeMessage.self, from: data) else { return }
 
             switch payload.type {
@@ -786,12 +994,21 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     column: payload.column,
                     lineCount: payload.lineCount
                 )
+            case "contextChanged":
+                guard validEnvelope(payload), let context = payload.context else { return }
+                session.updateContext(context)
             case "documentChanged":
                 guard validEnvelope(payload) else { return }
                 applyEditorChanges(from: payload)
             case "requestSave":
                 guard validEnvelope(payload) else { return }
                 onRequestSave()
+            case "requestSearch":
+                guard validEnvelope(payload) else { return }
+                onRequestSearch()
+            case "linkActivated":
+                guard validEnvelope(payload), let target = payload.target, !target.isEmpty else { return }
+                onLinkActivation(target)
             case "commentActivated":
                 guard validEnvelope(payload),
                       let rawID = payload.commentID,
@@ -825,6 +1042,18 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.reportError(error.localizedDescription)
         }
 
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            session.webContentProcessTerminated()
+            recoveringAfterTermination = true
+            hasSignaledReady = false
+            awaitingEditorLoad = true
+            guard let editorHTML = MarkdownEditorWebView.editorHTML else {
+                session.reportError("The Markdown editor resources could not be reloaded.")
+                return
+            }
+            webView.loadHTMLString(editorHTML, baseURL: nil)
+        }
+
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
@@ -850,7 +1079,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private func signalReady() {
             guard !hasSignaledReady else { return }
             hasSignaledReady = true
-            session.loadDocument(source, documentID: documentID, mode: mode)
+            session.loadDocument(
+                source,
+                documentID: documentID,
+                mode: mode,
+                preservingRecovery: recoveringAfterTermination
+            )
+            recoveringAfterTermination = false
             session.editorBecameReady()
             session.setUserCSS(userCSS)
             session.setLinkCompletions(linkCompletions)
@@ -859,71 +1094,26 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         private func validEnvelope(_ payload: EditorBridgeMessage) -> Bool {
-            guard payload.bridgeVersion == 1,
+            guard payload.protocolVersion == markdownEditorProtocolVersion,
                   payload.sessionID == session.sessionID.uuidString,
                   payload.documentID == documentID,
                   payload.startingFingerprint == startingFingerprint,
                   let version = payload.documentVersion,
-                  version >= lastDocumentVersion else { return false }
+                  version >= session.generation else { return false }
             return true
         }
 
         private func applyEditorChanges(from payload: EditorBridgeMessage) {
             guard let rawChanges = payload.changes,
-                  !rawChanges.isEmpty,
-                  rawChanges.count <= 512,
-                  let version = payload.documentVersion,
-                  version == lastDocumentVersion + 1 else { return }
-
-            let sourceBeforeChanges = source
-            let usesCRLF = sourceBeforeChanges.contains("\r\n")
-            var changes: [MarkdownEditorDelta] = []
-            var insertedUTF16Count = 0
-            for raw in rawChanges {
-                guard raw.from >= 0, raw.to >= raw.from else { return }
-                insertedUTF16Count += raw.insert.utf16.count
-                guard insertedUTF16Count <= 2_000_000 else { return }
-                guard let rawFrom = Self.sourceUTF16Offset(
-                    forEditorUTF16Offset: raw.from,
-                    in: sourceBeforeChanges
-                ), let rawTo = Self.sourceUTF16Offset(
-                    forEditorUTF16Offset: raw.to,
-                    in: sourceBeforeChanges
-                ) else { return }
-                changes.append(MarkdownEditorDelta(
-                    fromUTF16: rawFrom,
-                    toUTF16: rawTo,
-                    insertion: usesCRLF
-                        ? raw.insert.replacingOccurrences(of: "\n", with: "\r\n")
-                        : raw.insert
-                ))
-            }
-            guard let nextSource = try? MarkdownEditorDeltaApplier.apply(changes, to: source) else { return }
+                  let baseGeneration = payload.baseGeneration,
+                  let resultingGeneration = payload.resultingGeneration,
+                  let nextSource = session.acceptEditorChanges(
+                    rawChanges,
+                    baseGeneration: baseGeneration,
+                    resultingGeneration: resultingGeneration
+                  ) else { return }
             source = nextSource
-            lastDocumentVersion = version
-            onDocumentChange(nextSource)
-        }
-
-        private static func sourceUTF16Offset(
-            forEditorUTF16Offset requestedOffset: Int,
-            in source: String
-        ) -> Int? {
-            guard requestedOffset >= 0 else { return nil }
-            let units = Array(source.utf16)
-            var sourceOffset = 0
-            var editorOffset = 0
-            while sourceOffset < units.count, editorOffset < requestedOffset {
-                if units[sourceOffset] == 13,
-                   sourceOffset + 1 < units.count,
-                   units[sourceOffset + 1] == 10 {
-                    sourceOffset += 2
-                } else {
-                    sourceOffset += 1
-                }
-                editorOffset += 1
-            }
-            guard editorOffset == requestedOffset else { return nil }
-            return sourceOffset
+            lastDocumentVersion = resultingGeneration
         }
     }
 }

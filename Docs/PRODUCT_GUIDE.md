@@ -40,6 +40,8 @@ There is no formal **Revision** artifact, Proposal workflow, Research Task, or R
 
 Scholium is a local-first macOS document editor with research intelligence for sustained humanities research, especially philosophy. Its primary object is the research document—not a dashboard, task, workflow state, or agent conversation.
 
+Scholium is a research-grade writing environment where philosophers can think naturally while the system preserves the exact intellectual artifact underneath.
+
 Scholium helps a researcher read, write, comment, review, search, connect, organize, recover, and trace source-grounded work. It is not a general project manager, reference manager, permanent AI chat interface, or a general-purpose Obsidian replacement in feature breadth. This does not make Obsidian a dependency: a researcher must be able to complete Scholium's core academic workflow in Scholium itself. Obsidian is optional interoperability for researchers who already use it, not a prerequisite for setup, source analysis, Topic synthesis, Works drafting, Review, comments, Dialogue, Critique, Connections, Search, Attention, checkpoints, or recovery.
 
 ### 2.2 Researcher responsibility and optional agent access

@@ -1,6 +1,7 @@
 import {
   Annotation,
   Compartment,
+  EditorSelection,
   EditorState,
   Range,
   StateEffect,
@@ -33,12 +34,14 @@ import {
   syntaxTree,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   defaultKeymap,
   history,
+  historyField,
   historyKeymap,
-  indentWithTab,
+  redoDepth,
+  undoDepth,
 } from "@codemirror/commands";
 import {
   CompletionContext,
@@ -47,14 +50,32 @@ import {
   closeBracketsKeymap,
   completionKeymap,
 } from "@codemirror/autocomplete";
+import {highlightSelectionMatches} from "@codemirror/search";
 import {
-  closeSearchPanel,
-  findNext as moveToNextSearchMatch,
-  findPrevious as moveToPreviousSearchMatch,
-  highlightSelectionMatches,
-  openSearchPanel,
-  searchKeymap,
-} from "@codemirror/search";
+  EDITOR_PROTOCOL_VERSION,
+  MAX_INBOUND_BYTES,
+  MAX_SOURCE_UTF8_BYTES,
+  type EditorCommandResult,
+  type EditorContext,
+  type EditorRequest,
+  type MarkdownEditingDialect,
+  type RecoverySnapshot,
+  encodedByteLength,
+  isEditorRequest,
+  rejected,
+} from "./protocol";
+import {applySourceChanges, transformMarkdown} from "./transformations";
+import {continueList, indentList} from "./interaction";
+import {tableAt, tableTabAction} from "./tables";
+import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
+import {linkTargetAt} from "./projection";
+import {rangeKey, semanticProjectionRanges} from "./semantic-projection";
+import {frontmatterEndLine, normalizedDocumentText, replacementChange} from "./state";
+import {announceEditorMessage, editorAccessibilityAttributes, unsupportedFilePasteMessage} from "./accessibility";
+import {createMarkdownEditor} from "./bootstrap";
+import {recordEditorMetric, sampleEditorMemory} from "./performance";
+
+const editorStartupStartedAt = performance.now();
 
 interface ScholiumWindow extends Window {
   webkit?: { messageHandlers?: { scholium?: { postMessage(message: unknown): void } } };
@@ -72,30 +93,7 @@ interface SemanticLiteralRanges {
   codeBlocks: {from: number; to: number}[];
 }
 interface ScholiumEditorAPI {
-  setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string): void;
-  setMode(mode: string): void;
-  setUserCSS(css: string): void;
-  setLinkCompletions(candidates: LinkCandidate[]): void;
-  setResearcherComments(comments: ResearcherCommentAnnotation[]): void;
-  goToLine(requestedLine: number): void;
-  setScrollFraction(fraction: number): void;
-  getText(): string;
-  getSelection(): {
-    startLine: number;
-    endLine: number;
-    excerpt: string;
-    utf16LowerBound: number;
-    utf16UpperBound: number;
-    contextBefore: string;
-    contextAfter: string;
-  } | null;
-  synchronizeCommittedText(expectedText: string, committedText: string, startingFingerprint: string): boolean;
-  openFind(): boolean;
-  findNext(): boolean;
-  findPrevious(): boolean;
-  closeFind(): boolean;
-  markClean(): void;
-  focus(): void;
+  dispatch(request: unknown): Promise<EditorCommandResult>;
 }
 
 const webkitWindow = window as ScholiumWindow;
@@ -104,15 +102,25 @@ let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
 let documentVersion = 0;
+let sourceLineSeparator: "\n" | "\r\n" = "\n";
 let linkCandidates: LinkCandidate[] = [];
+let editingDialect: MarkdownEditingDialect | null = null;
+let currentMode: "livePreview" | "source" = "livePreview";
+let lastUndoLabel: string | undefined;
+let lastRedoLabel: string | undefined;
 const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
-  bridgeVersion: 1,
+  protocolVersion: EDITOR_PROTOCOL_VERSION,
   sessionID: bridgeSessionID,
   documentID: bridgeDocumentID,
   startingFingerprint: bridgeFingerprint,
   documentVersion,
   ...message,
 });
+
+function exactEditorSource() {
+  const source = editor.state.doc.toString();
+  return sourceLineSeparator === "\r\n" ? source.replaceAll("\n", "\r\n") : source;
+}
 
 const modeCompartment = new Compartment();
 const lineSeparatorCompartment = new Compartment();
@@ -144,36 +152,6 @@ const researcherCommentField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-function normalizedDocumentText(text: string) {
-  return text.replace(/\r\n/g, "\n");
-}
-
-function replacementChange(currentText: string, requestedText: string) {
-  const targetText = normalizedDocumentText(requestedText);
-  let prefix = 0;
-  const sharedLength = Math.min(currentText.length, targetText.length);
-  while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) {
-    prefix += 1;
-  }
-
-  let currentSuffix = currentText.length;
-  let targetSuffix = targetText.length;
-  while (
-    currentSuffix > prefix
-    && targetSuffix > prefix
-    && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)
-  ) {
-    currentSuffix -= 1;
-    targetSuffix -= 1;
-  }
-
-  return {
-    from: prefix,
-    to: currentSuffix,
-    insert: targetText.slice(prefix, targetSuffix),
-  };
-}
-
 const hiddenSyntax = Decoration.replace({});
 const liveMark = (className: string) => Decoration.mark({ class: className });
 
@@ -183,36 +161,23 @@ function overlaps(ranges: {from: number; to: number}[], from: number, to: number
 }
 
 /** @param {import("@codemirror/state").Text} doc */
-function frontmatterEndLine(doc: Text) {
-  if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return 0;
-  for (let number = 2; number <= doc.lines; number += 1) {
-    if (doc.line(number).text.trim() === "---") return number;
-  }
-  return 0;
-}
-
-const calloutRoles: Record<string, {label: string; purpose: string}> = {
-  orient: { label: "Orientation", purpose: "Introduces the note's purpose, scope, and route." },
-  cite: { label: "Source", purpose: "Records source entries that anchor the note without implying support for every claim." },
-  connect: { label: "Connections", purpose: "Routes the reader to a curated set of neighboring knowledge objects." },
-  state: { label: "Statement", purpose: "Isolates a claim-like object without endorsing it." },
-  illustrate: { label: "Illustration", purpose: "Presents a scenario, example, thought experiment, or test case." },
-  quote: { label: "Quotation", purpose: "Preserves source-specific wording with attribution." },
-  flag: { label: "Caution", purpose: "Marks a limitation, unresolved dependency, source restriction, or warning." },
-  neutral: { label: "Note", purpose: "Preserves an unsupported callout without assigning a research role." },
+const neutralCallout = {
+  identifier: "neutral",
+  aliases: [] as string[],
+  label: "Note",
+  meaning: "Preserves an unsupported callout without assigning a research role.",
 };
+
+function calloutDefinition(rawKind: string) {
+  const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
+  return editingDialect?.callouts.find((callout) =>
+    callout.identifier === kind || callout.aliases.includes(kind),
+  ) ?? neutralCallout;
+}
 
 /** @param {string} rawKind */
 function calloutRole(rawKind: string): string {
-  const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-  if (kind === "mini") return "orient";
-  if (["bibli", "bibliography", "cited"].includes(kind)) return "cite";
-  if (kind === "project") return "connect";
-  if (["definition", "principle", "theorem", "argument", "objection", "reply"].includes(kind)) return "state";
-  if (["example", "case", "dialogue"].includes(kind)) return "illustrate";
-  if (["quotation", "author", "long-quote"].includes(kind)) return "quote";
-  if (["warning", "caution", "source-warning", "torn", "question"].includes(kind)) return "flag";
-  return Object.hasOwn(calloutRoles, kind) ? kind : "neutral";
+  return calloutDefinition(rawKind).identifier;
 }
 
 /** @param {string} text */
@@ -274,12 +239,12 @@ class CalloutRoleWidget extends WidgetType {
   eq(other: CalloutRoleWidget) { return other.role === this.role; }
 
   toDOM() {
-    const semantics = calloutRoles[this.role] || calloutRoles.neutral;
+    const semantics = calloutDefinition(this.role);
     const span = document.createElement("span");
     span.className = "cm-live-callout-role";
     span.textContent = semantics.label;
-    span.title = semantics.purpose;
-    span.setAttribute("aria-label", `${semantics.label}. ${semantics.purpose}`);
+    span.title = semantics.meaning;
+    span.setAttribute("aria-label", `${semantics.label}. ${semantics.meaning}`);
     return span;
   }
 
@@ -338,13 +303,7 @@ function vectorLinkKindAt(text: string, wikiIndex: number): VectorLinkKind {
   const markerIndex = wikiIndex - 1;
   if (markerIndex < 0 || isEscapedAt(text, markerIndex)) return "neutral";
   const marker = text[markerIndex];
-  const kind: VectorLinkKind | undefined = marker === "+"
-    ? "supports_target"
-    : marker === "-"
-      ? "supported_by_target"
-      : marker === "?"
-        ? "incompatible"
-        : undefined;
+  const kind = editingDialect?.vectorLinkOperators.find((candidate) => candidate.marker === marker)?.kind;
   if (!kind) return "neutral";
   if (markerIndex === 0) return kind;
   const previous = text[markerIndex - 1];
@@ -491,11 +450,13 @@ function semanticLiteralRanges(view: EditorView): SemanticLiteralRanges {
 
 /** @param {EditorView} view */
 function buildLiveDecorations(view: EditorView) {
+  const projectionStartedAt = performance.now();
   const decorations: Range<Decoration>[] = [];
   const doc = view.state.doc;
   const selection = view.state.selection.main;
   const yamlEnd = frontmatterEndLine(doc);
   const semanticLiterals = semanticLiteralRanges(view);
+  const parsedProjection = semanticProjectionRanges(view.state, view.visibleRanges);
   const literals = [...semanticLiterals.excluded, ...literalCommentRanges(doc)];
 
   /** @param {number} from @param {number} to */
@@ -540,8 +501,9 @@ function buildLiveDecorations(view: EditorView) {
           continue;
         }
 
-        const heading = /^(#{1,6})\s+/.exec(text);
-        if (heading) {
+        const headingLevel = parsedProjection.headingLevelByLineFrom.get(line.from);
+        const heading = headingLevel ? /^(#{1,6})\s+/.exec(text) : null;
+        if (heading && heading[1].length === headingLevel) {
           decorations.push(
             Decoration.line({
               attributes: { class: `cm-live-heading cm-live-h${heading[1].length}` },
@@ -595,9 +557,8 @@ function buildLiveDecorations(view: EditorView) {
           }
         }
 
-        const adjacentTableSeparator = (number: number) => number >= 1 && number <= doc.lines
-          && /^\s*\|?\s*:?-{3,}/.test(doc.line(number).text);
-        if (text.includes("|") && (adjacentTableSeparator(line.number) || adjacentTableSeparator(line.number + 1))) {
+        const parsedTableLine = parsedProjection.tables.some((range) => range.from <= line.to && range.to >= line.from);
+        if (parsedTableLine) {
           decorations.push(Decoration.line({ attributes: { class: "cm-live-table" } }).range(line.from));
           if (!activeLine) {
             for (const match of text.matchAll(/\|/g)) addMark(line.from + match.index, line.from + match.index + 1, "cm-live-table-separator");
@@ -705,7 +666,7 @@ function buildLiveDecorations(view: EditorView) {
           for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
             const from = line.from + match.index;
             const to = from + match[0].length;
-            if (overlaps(excluded, from, to)) continue;
+            if (overlaps(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
             addHidden(from, from + 1);
             addMark(from + 1, from + 1 + match[1].length, "cm-live-link");
             addHidden(from + 1 + match[1].length, to);
@@ -714,7 +675,7 @@ function buildLiveDecorations(view: EditorView) {
           for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
             const from = line.from + match.index;
             const to = from + match[0].length;
-            if (overlaps(excluded, from, to)) continue;
+            if (overlaps(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
             addHidden(from, from + 2);
             addMark(from + 2, to - 2, "cm-live-strong");
             addHidden(to - 2, to);
@@ -723,7 +684,7 @@ function buildLiveDecorations(view: EditorView) {
           for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
             const from = line.from + match.index;
             const to = from + match[0].length;
-            if (overlaps(excluded, from, to)) continue;
+            if (overlaps(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
             addHidden(from, from + 2);
             addMark(from + 2, to - 2, "cm-live-strike");
             addHidden(to - 2, to);
@@ -741,7 +702,7 @@ function buildLiveDecorations(view: EditorView) {
           for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
             const from = line.from + match.index;
             const to = from + match[0].length;
-            if (overlaps(excluded, from, to)) continue;
+            if (overlaps(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
             addHidden(from, from + 1);
             addMark(from + 1, to - 1, "cm-live-emphasis");
             addHidden(to - 1, to);
@@ -754,7 +715,13 @@ function buildLiveDecorations(view: EditorView) {
     }
   }
 
-  return Decoration.set(decorations, true);
+  const result = Decoration.set(decorations, true);
+  recordEditorMetric("projection", projectionStartedAt, {
+    documentLength: doc.length,
+    visibleRangeCount: view.visibleRanges.length,
+    decorationCount: decorations.length,
+  });
+  return result;
 }
 
 class LivePreviewPlugin {
@@ -774,6 +741,7 @@ const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
 const livePreviewMode = [livePreview, EditorView.lineWrapping];
 
 let dirty = false;
+let pendingKeyStartedAt: number | null = null;
 /** @type {number | null} */
 let idleTimer: number | null = null;
 
@@ -786,13 +754,22 @@ const stateReporter = EditorView.updateListener.of((update) => {
   if (!update.docChanged && !update.selectionSet) return;
 
   if (update.docChanged) {
+    if (pendingKeyStartedAt !== null) {
+      const keyStartedAt = pendingKeyStartedAt;
+      pendingKeyStartedAt = null;
+      recordEditorMetric("key-to-state", keyStartedAt, {documentLength: update.state.doc.length});
+      window.requestAnimationFrame(() => recordEditorMetric("key-to-paint", keyStartedAt, {
+        documentLength: update.state.doc.length,
+      }));
+    }
+    const baseGeneration = documentVersion;
     documentVersion += 1;
     /** @type {{from: number, to: number, insert: string}[]} */
     const changes: SourceDelta[] = [];
     update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
       changes.push({ from: fromA, to: toA, insert: inserted.toString() });
     });
-    post({ type: "documentChanged", changes });
+    post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
   }
 
   const head = update.state.selection.main.head;
@@ -804,18 +781,25 @@ const stateReporter = EditorView.updateListener.of((update) => {
     column: head - line.from + 1,
     lineCount: update.state.doc.lines,
   });
+  post({type: "contextChanged", context: currentEditorContext()});
 
   if (update.docChanged) {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(() => post({ type: "idle", dirty }), 500);
   }
-  if (update.docChanged || update.selectionSet) {
-    window.requestAnimationFrame(refreshEditorAccessibilityValue);
-  }
 });
 
 const researcherCommentActivation = EditorView.domEventHandlers({
   click(event) {
+    if (event.metaKey) {
+      const position = editor.posAtCoords({x: event.clientX, y: event.clientY});
+      const target = position === null ? null : linkTargetAt(editor.state.doc.toString(), position);
+      if (target) {
+        post({type: "linkActivated", target});
+        event.preventDefault();
+        return true;
+      }
+    }
     const target = event.target instanceof Element
       ? event.target.closest<HTMLElement>("[data-comment-id]")
       : null;
@@ -836,6 +820,67 @@ const saveKeymap = keymap.of([
     run: () => {
       post({ type: "requestSave" });
       return true;
+    },
+  },
+  {
+    key: "Mod-f",
+    preventDefault: true,
+    run: () => {
+      post({ type: "requestSearch" });
+      return true;
+    },
+  },
+]);
+
+function applyInteraction(
+  transformation: ReturnType<typeof continueList>,
+  userEvent: string,
+) {
+  if (!transformation) return false;
+  editor.dispatch({
+    changes: transformation.changes,
+    selection: EditorSelection.create(
+      transformation.selections.map((range) => EditorSelection.range(range.anchor, range.head)),
+    ),
+    annotations: Transaction.userEvent.of(userEvent),
+  });
+  lastUndoLabel = transformation.undoLabel;
+  lastRedoLabel = transformation.undoLabel;
+  return true;
+}
+
+const structuralInteractionKeymap = keymap.of([
+  {
+    key: "Enter",
+    run: (view) => applyInteraction(
+      continueList(view.state.doc.toString(), editorSelections()),
+      "input.scholium.continueList",
+    ),
+  },
+  {
+    key: "Tab",
+    run: (view) => {
+      if (view.state.selection.ranges.length !== 1) {
+        return applyInteraction(indentList(view.state.doc.toString(), editorSelections(), false), "input.scholium.indentList");
+      }
+      return applyInteraction(
+        tableTabAction(view.state.doc.toString(), view.state.selection.main.head, false)
+          ?? indentList(view.state.doc.toString(), editorSelections(), false),
+        "input.scholium.structuralTab",
+      );
+    },
+  },
+  {
+    key: "Shift-Tab",
+    run: (view) => {
+      if (view.state.selection.ranges.length !== 1) {
+        return applyInteraction(indentList(view.state.doc.toString(), editorSelections(), true), "input.scholium.outdentList");
+      }
+      return applyInteraction(
+        tableTabAction(view.state.doc.toString(), view.state.selection.main.head, true)
+          ?? indentList(view.state.doc.toString(), editorSelections(), true),
+        "input.scholium.structuralBackTab",
+      );
     },
   },
 ]);
@@ -866,22 +911,19 @@ function calloutCompletionSource(context: CompletionContext) {
   const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
   if (!match) return null;
   const typed = match[2].toLocaleLowerCase();
-  const options = ["orient", "cite", "connect", "state", "illustrate", "quote", "flag"]
-    .filter((identifier) => !typed || identifier.startsWith(typed))
-    .map((identifier) => ({
-      label: identifier,
-      detail: `${calloutRoles[identifier].label} — ${calloutRoles[identifier].purpose}`,
+  const dialectCallouts = editingDialect?.callouts ?? [];
+  const options = dialectCallouts
+    .filter((callout) => !typed || callout.identifier.startsWith(typed))
+    .map((callout) => ({
+      label: callout.identifier,
+      detail: `${callout.label} — ${callout.meaning}`,
       type: "keyword",
-      apply: `${identifier}] `,
+      apply: `${callout.identifier}] `,
     }));
   return { from: context.pos - match[2].length, options, filter: false };
 }
 
-const editor = new EditorView({
-  parent: document.getElementById("editor")!,
-  state: EditorState.create({
-    doc: "",
-    extensions: [
+const editorExtensions = [
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightSpecialChars(),
@@ -898,51 +940,38 @@ const editor = new EditorView({
       rectangularSelection(),
       highlightActiveLine(),
       highlightSelectionMatches(),
-      markdown(),
+      markdown({base: markdownLanguage}),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
-        ...searchKeymap,
         ...historyKeymap,
         ...foldKeymap,
         ...completionKeymap,
-        indentWithTab,
       ]),
+      structuralInteractionKeymap,
       saveKeymap,
       stateReporter,
       researcherCommentField,
       researcherCommentActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
       modeCompartment.of(livePreviewMode),
-      EditorView.contentAttributes.of({
-        "aria-label": "Markdown source editor",
-        role: "textbox",
-        "aria-multiline": "true",
-        spellcheck: "true",
-        autocapitalize: "sentences",
-      }),
+      EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
       EditorView.theme({
         "&": { height: "100%" },
         ".cm-scroller": { overflow: "auto" },
       }),
-    ],
-  }),
-});
-
-function refreshEditorAccessibilityValue() {
-  if (editor.dom.classList.contains("scholium-live-mode")) {
-    // CodeMirror exposes the underlying document as AXValue even when live
-    // decorations hide YAML and Markdown syntax from the rendered surface.
-    // Keep assistive technology aligned with what the researcher can read.
-    const projectedText = editor.contentDOM.innerText || editor.contentDOM.textContent || "";
-    editor.contentDOM.setAttribute("aria-valuetext", projectedText);
-  } else {
-    editor.contentDOM.removeAttribute("aria-valuetext");
-  }
-}
+];
+const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
+editor.contentDOM.addEventListener("keydown", () => { pendingKeyStartedAt = performance.now(); }, {capture: true});
 
 let scrollReportTimer: number | undefined;
+let previousScrollFrameAt: number | null = null;
 editor.scrollDOM.addEventListener("scroll", () => {
+  window.requestAnimationFrame(() => {
+    const now = performance.now();
+    if (previousScrollFrameAt !== null) recordEditorMetric("scroll-frame", previousScrollFrameAt);
+    previousScrollFrameAt = now;
+  });
   window.clearTimeout(scrollReportTimer);
   scrollReportTimer = window.setTimeout(() => {
     const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
@@ -951,14 +980,299 @@ editor.scrollDOM.addEventListener("scroll", () => {
   }, 120);
 }, { passive: true });
 
-webkitWindow.scholiumEditor = {
+const allCommands = [
+  "bold", "emphasis", "strikethrough", "highlight", "inlineCode",
+  "standardLink", "wikilink", "vectorSupportsTarget", "vectorSupportedByTarget", "vectorIncompatible",
+  "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
+  "blockQuotation", "bulletList", "numberedList", "taskList", "fencedCode", "thematicBreak",
+  "calloutOrient", "calloutCite", "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
+  "insertFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
+  "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
+  "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown", "linkSelectedText",
+] as const;
+
+function editorSelections() {
+  return editor.state.selection.ranges.map((range) => ({anchor: range.anchor, head: range.head}));
+}
+
+function protectedCommandRanges() {
+  const ranges = semanticLiteralRanges(editor).excluded.concat(literalCommentRanges(editor.state.doc));
+  const yamlEnd = frontmatterEndLine(editor.state.doc);
+  if (yamlEnd > 0) ranges.push({from: 0, to: editor.state.doc.line(yamlEnd).to});
+  return ranges;
+}
+
+function currentEditorContext(): EditorContext {
+  const inline = new Set<string>();
+  const block = new Set<string>();
+  for (const selection of editor.state.selection.ranges) {
+    for (let node = syntaxTree(editor.state).resolveInner(selection.head, -1); node; node = node.parent!) {
+      if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
+      if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
+      if (!node.parent) break;
+    }
+  }
+  const protectedSelection = editor.state.selection.ranges.some((selection) =>
+    protectedCommandRanges().some((range) => selection.from < range.to && selection.to > range.from),
+  );
+  const currentTable = editor.state.selection.ranges.length === 1
+    ? tableAt(editor.state.doc.toString(), editor.state.selection.main.head)
+    : null;
+  const tableOnlyCommands = new Set([
+    "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
+    "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
+    "tableAlignLeft", "tableAlignCenter", "tableAlignRight",
+  ]);
+  const availableCommands = allCommands.filter((command) => {
+    if (tableOnlyCommands.has(command)) return currentTable !== null;
+    if (command === "toggleTask") {
+      return editor.state.selection.ranges.every((selection) => {
+        const line = editor.state.doc.lineAt(selection.head).text;
+        return /^\s*-\s+\[[ xX]\]/.test(line);
+      });
+    }
+    if (command === "linkSelectedText") return editor.state.selection.ranges.every((selection) => !selection.empty);
+    return true;
+  });
+  return {
+    selections: editorSelections(),
+    activeInlineConstructs: [...inline],
+    activeBlockConstructs: [...block],
+    tablePosition: currentTable?.position,
+    composing: editor.composing,
+    availableCommands: editor.composing || protectedSelection ? [] : availableCommands,
+    undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
+    redoLabel: redoDepth(editor.state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
+  };
+}
+
+function successfulResult(requestID: string, sourceChanged = false, undoLabel?: string): EditorCommandResult {
+  return {
+    requestID,
+    resultingGeneration: documentVersion,
+    sourceChanged,
+    selections: editorSelections(),
+    undoLabel,
+    text: sourceChanged ? exactEditorSource() : undefined,
+    context: currentEditorContext(),
+    accepted: true,
+  };
+}
+
+async function executeEditorRequest(request: EditorRequest): Promise<EditorCommandResult> {
+  const operation = request.operation;
+  if (operation.type === "initialize") {
+    const loadStartedAt = performance.now();
+    if (request.expectedGeneration !== 0
+        || new TextEncoder().encode(operation.text).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      return rejected(request.requestID, documentVersion, "invalid initialization");
+    }
+    bridgeSessionID = request.sessionID;
+    bridgeDocumentID = request.documentID;
+    bridgeFingerprint = request.startingFingerprint;
+    editingDialect = operation.dialect;
+    editorOperations.setDocument(
+      operation.text, request.sessionID, request.documentID, request.startingFingerprint,
+    );
+    editorOperations.setMode(operation.mode);
+    recordEditorMetric("document-load", loadStartedAt, {documentLength: editor.state.doc.length});
+    sampleEditorMemory(editor.state.doc.length);
+    return successfulResult(request.requestID);
+  }
+  if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID
+      || request.startingFingerprint !== bridgeFingerprint) {
+    return rejected(request.requestID, documentVersion, "stale editor identity");
+  }
+  if (request.expectedGeneration !== documentVersion) {
+    return rejected(request.requestID, documentVersion, "stale editor generation");
+  }
+
+  switch (operation.type) {
+  case "setMode": editorOperations.setMode(operation.mode); break;
+  case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
+  case "setLinkCompletions": editorOperations.setLinkCompletions(operation.value as LinkCandidate[]); break;
+  case "setResearcherComments": editorOperations.setResearcherComments(operation.value as ResearcherCommentAnnotation[]); break;
+  case "goToLine": editorOperations.goToLine(operation.line); break;
+  case "setScrollFraction": editorOperations.setScrollFraction(operation.fraction); break;
+  case "queryText": return {...successfulResult(request.requestID), text: exactEditorSource()};
+  case "querySelection": {
+    const snapshot = {documentID: bridgeDocumentID, fingerprint: bridgeFingerprint, generation: documentVersion, ranges: editorSelections()};
+    return {...successfulResult(request.requestID), selection: snapshot};
+  }
+  case "queryContext": return {...successfulResult(request.requestID), context: currentEditorContext()};
+  case "captureRecovery": {
+    let stateJSON: string | undefined;
+    try {
+      const candidate = JSON.stringify(editor.state.toJSON({history: historyField}));
+      if (new TextEncoder().encode(candidate).byteLength <= MAX_INBOUND_BYTES) stateJSON = candidate;
+    } catch { stateJSON = undefined; }
+    const recovery: RecoverySnapshot = {
+      documentID: bridgeDocumentID,
+      fingerprint: bridgeFingerprint,
+      generation: documentVersion,
+      ranges: editorSelections(),
+      source: exactEditorSource(),
+      stateJSON,
+      undoHistoryPreserved: stateJSON !== undefined,
+      dirty,
+    };
+    return {...successfulResult(request.requestID), recovery};
+  }
+  case "restoreRecovery": {
+    const snapshot = operation.snapshot;
+    if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint
+        || new TextEncoder().encode(snapshot.source).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      return rejected(request.requestID, documentVersion, "stale recovery snapshot");
+    }
+    let restoredHistory = false;
+    if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
+      try {
+        const restored = EditorState.fromJSON(
+          JSON.parse(snapshot.stateJSON),
+          {extensions: editorExtensions},
+          {history: historyField},
+        );
+        if (restored.doc.toString() === normalizedDocumentText(snapshot.source)) {
+          editor.setState(restored);
+          restoredHistory = true;
+        }
+      } catch { restoredHistory = false; }
+    }
+    if (!restoredHistory) {
+      editor.dispatch({
+        changes: replacementChange(editor.state.doc.toString(), snapshot.source),
+        selection: EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head))),
+        annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)],
+      });
+    }
+    editorOperations.setMode(currentMode);
+    dirty = snapshot.dirty;
+    documentVersion = snapshot.generation;
+    return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory}};
+  }
+  case "synchronizeCommittedText": {
+    if (new TextEncoder().encode(operation.committedText).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      return rejected(request.requestID, documentVersion, "committed source is too large");
+    }
+    const accepted = editorOperations.synchronizeCommittedText(
+      operation.expectedText, operation.committedText, operation.committedFingerprint,
+    );
+    return accepted ? successfulResult(request.requestID) : rejected(request.requestID, documentVersion, "editor source did not reconcile");
+  }
+  case "command": {
+    const argument = operation.command === "pasteMarkdown"
+      ? pasteAsMarkdown(decodeClipboardPayload(operation.argument))
+      : operation.argument;
+    const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
+      argument,
+      protectedRanges: protectedCommandRanges(),
+    });
+    if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
+    const transformedSource = applySourceChanges(editor.state.doc.toString(), transformed.changes);
+    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      return rejected(request.requestID, documentVersion, "command result is too large");
+    }
+    editor.dispatch({
+      changes: transformed.changes,
+      selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
+      annotations: Transaction.userEvent.of(`input.scholium.${operation.command}`),
+    });
+    lastUndoLabel = transformed.undoLabel;
+    lastRedoLabel = transformed.undoLabel;
+    return successfulResult(request.requestID, true, transformed.undoLabel);
+  }
+  case "markClean": editorOperations.markClean(); break;
+  case "focus": editorOperations.focus(); break;
+  }
+  return successfulResult(request.requestID);
+}
+
+type PendingCompositionRequest = {request: EditorRequest; resolve: (result: EditorCommandResult) => void};
+let pendingCompositionRequests: PendingCompositionRequest[] = [];
+async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResult> {
+  const bridgeStartedAt = performance.now();
+  const requestBytes = (() => { try { return encodedByteLength(value); } catch { return 0; } })();
+  if (!isEditorRequest(value)) {
+    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes});
+    return rejected("invalid", documentVersion, "malformed editor request");
+  }
+  if (editor.composing && (value.operation.type === "setMode" || value.operation.type === "command")) {
+    return new Promise((resolve) => pendingCompositionRequests.push({
+      request: value,
+      resolve: (result) => {
+        recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
+        resolve(result);
+      },
+    }));
+  }
+  try {
+    const result = await executeEditorRequest(value);
+    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
+    return result;
+  } catch (error) {
+    const result = rejected(
+      value.requestID,
+      documentVersion,
+      error instanceof Error ? error.message : "editor request failed",
+    );
+    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
+    return result;
+  }
+}
+editor.contentDOM.addEventListener("compositionend", () => {
+  const pending = pendingCompositionRequests;
+  pendingCompositionRequests = [];
+  for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
+  post({type: "contextChanged", context: currentEditorContext()});
+});
+editor.contentDOM.addEventListener("compositionstart", () => {
+  window.queueMicrotask(() => post({type: "contextChanged", context: currentEditorContext()}));
+});
+
+function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
+  if (Array.from(transfer.files).length > 0
+      || Array.from(transfer.items).some((item) => item.kind === "file")) {
+    post({type: "failure", message: unsupportedFilePasteMessage});
+    announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage);
+    return true;
+  }
+  const text = transfer.getData("text/plain");
+  if (!text) return false;
+  if (dropPosition !== undefined) editor.dispatch({selection: {anchor: dropPosition}});
+  const url = isSingleSafeURL(text);
+  const command = url && editor.state.selection.ranges.every((selection) => !selection.empty)
+    ? "linkSelectedText"
+    : "pastePlain";
+  const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), command, {
+    argument: url ?? text,
+    protectedRanges: protectedCommandRanges(),
+  });
+  return applyInteraction(transformed, command === "linkSelectedText" ? "input.scholium.linkPaste" : "input.scholium.plainPaste");
+}
+
+editor.contentDOM.addEventListener("paste", (event) => {
+  if (!event.clipboardData) return;
+  if (pasteTransfer(event.clipboardData)) event.preventDefault();
+}, {capture: true});
+editor.contentDOM.addEventListener("drop", (event) => {
+  if (!event.dataTransfer) return;
+  const position = editor.posAtCoords({x: event.clientX, y: event.clientY});
+  if (pasteTransfer(event.dataTransfer, position ?? undefined)) event.preventDefault();
+}, {capture: true});
+
+const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
+    for (const pending of pendingCompositionRequests) {
+      pending.resolve(rejected(pending.request.requestID, documentVersion, "editor identity changed during composition"));
+    }
+    pendingCompositionRequests = [];
     bridgeSessionID = sessionID;
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
     documentVersion = 0;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
+    sourceLineSeparator = separator;
     editor.dispatch({
       changes: replacementChange(editor.state.doc.toString(), text),
       effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -978,11 +1292,10 @@ webkitWindow.scholiumEditor = {
     });
     editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
     editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
-    editor.contentDOM.setAttribute(
-      "aria-label",
-      mode === "livePreview" ? "Markdown live preview editor" : "Markdown source editor",
-    );
-    window.requestAnimationFrame(refreshEditorAccessibilityValue);
+    editor.contentDOM.setAttribute("aria-label", editorAccessibilityAttributes(
+      mode === "livePreview" ? "livePreview" : "source",
+    )["aria-label"]);
+    currentMode = mode === "livePreview" ? "livePreview" : "source";
   },
 
   /** @param {string} css */
@@ -1036,32 +1349,12 @@ webkitWindow.scholiumEditor = {
     });
   },
 
-  getText() {
-    return editor.state.sliceDoc();
-  },
-
-  getSelection() {
-    const selection = editor.state.selection.main;
-    if (selection.empty) return null;
-    const from = Math.min(selection.from, selection.to);
-    const to = Math.max(selection.from, selection.to);
-    return {
-      startLine: editor.state.doc.lineAt(from).number,
-      endLine: editor.state.doc.lineAt(to).number,
-      excerpt: editor.state.sliceDoc(from, Math.min(to, from + 2000)),
-      utf16LowerBound: from,
-      utf16UpperBound: to,
-      contextBefore: editor.state.sliceDoc(Math.max(0, from - 48), from),
-      contextAfter: editor.state.sliceDoc(to, Math.min(editor.state.doc.length, to + 48)),
-    };
-  },
-
   synchronizeCommittedText(expectedText: string, committedText: string, startingFingerprint: string) {
-    if (editor.state.sliceDoc() !== expectedText) return false;
+    if (editor.state.doc.toString() !== normalizedDocumentText(expectedText)) return false;
 
     bridgeFingerprint = startingFingerprint;
-    documentVersion = 0;
     const separator = committedText.includes("\r\n") ? "\r\n" : "\n";
+    sourceLineSeparator = separator;
     editor.dispatch({
       changes: replacementChange(editor.state.doc.toString(), committedText),
       effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -1081,24 +1374,6 @@ webkitWindow.scholiumEditor = {
     return true;
   },
 
-  openFind() {
-    return openSearchPanel(editor);
-  },
-
-  findNext() {
-    return moveToNextSearchMatch(editor);
-  },
-
-  findPrevious() {
-    return moveToPreviousSearchMatch(editor);
-  },
-
-  closeFind() {
-    const closed = closeSearchPanel(editor);
-    editor.focus();
-    return closed;
-  },
-
   markClean() {
     dirty = false;
     post({ type: "stateChanged", dirty: false });
@@ -1109,4 +1384,7 @@ webkitWindow.scholiumEditor = {
   },
 };
 
+webkitWindow.scholiumEditor = {dispatch: dispatchEditorRequest};
+
+recordEditorMetric("startup", editorStartupStartedAt, {documentLength: editor.state.doc.length});
 post({ type: "ready" });

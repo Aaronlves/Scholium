@@ -19,8 +19,12 @@ skills remain separately governed under `Skills/`.
 
 Target rules are not implementation claims. Live construction call sites, executable tests, and scripts remain the final evidence for current reachability.
 
-Additional reference documents include [Property Profiles](Docs/PROPERTY_PROFILES.md),
-[CSS Snippets](Docs/CSS_SNIPPETS.md), and the bundled [Product Skill Packages](Skills/README.md).
+Additional reference documents include the subordinate
+[Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md),
+[Editor Architecture](Docs/EDITOR_ARCHITECTURE.md),
+[Property Profiles](Docs/PROPERTY_PROFILES.md),
+[CSS Snippets](Docs/CSS_SNIPPETS.md), and the bundled
+[Product Skill Packages](Skills/README.md).
 The [Beta Performance Benchmark](Docs/PERFORMANCE_BENCHMARK.md) separates
 internal regression microbenchmarks and scenario-only runs from the unexecuted
 packaged-app G7 gate, and defines RDF-1 plus its fail-closed runner.
@@ -39,8 +43,9 @@ unified search, protected CSS snippets, localhost-only Zotero reading, and a
 first-party optional Zotero MCP service for external agents. The Canvas feature
 has been removed from the product. Works folders remain ordinary
 researcher-managed folders; Scholium does not register or manage projects. See
-[Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for precise evidence
-and remaining gaps.
+[Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) for code
+ownership and [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for
+precise evidence and remaining gaps.
 
 ## Requirements
 

@@ -261,6 +261,44 @@ struct ArchitectureBoundaryTests {
         }
     }
 
+    @Test("Markdown editor exposes only the typed v2 dispatcher")
+    func markdownEditorBridgeBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editor = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let native = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorWebView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(editor.contains("webkitWindow.scholiumEditor = {dispatch: dispatchEditorRequest}"))
+        #expect(!editor.contains("bridgeVersion"))
+        #expect(!editor.contains("searchKeymap"))
+        #expect(!editor.contains("indentWithTab"))
+        #expect(!editor.contains("aria-valuetext"))
+        #expect(!editor.contains("calloutRoles"))
+        #expect(native.contains("callAsyncJavaScript"))
+        #expect(!native.contains("evaluateJavaScript"))
+        for module in [
+            "protocol.ts", "projection.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
+            "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
+        ] {
+            #expect(
+                FileManager.default.fileExists(
+                    atPath: repositoryRoot.appendingPathComponent("WebEditor/\(module)").path
+                ),
+                Comment(rawValue: "Missing editor module: \(module)")
+            )
+        }
+    }
+
     private func swiftFiles(beneath root: URL) throws -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,

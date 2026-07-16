@@ -117,25 +117,95 @@ public enum CalloutSemanticVocabulary {
         "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
     ]
 
+    public static let aliasesByCanonicalIdentifier: [String: [String]] = [
+        "orient": ["mini"],
+        "cite": ["bibli", "bibliography", "cited"],
+        "connect": ["project"],
+        "state": ["definition", "principle", "theorem", "argument", "objection", "reply"],
+        "illustrate": ["example", "case", "dialogue"],
+        "quote": ["quotation", "author", "long-quote"],
+        "flag": ["warning", "caution", "source-warning", "torn", "question"],
+    ]
+
     public static func canonicalIdentifier(for raw: String) -> String {
         let normalized = raw
             .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ":")))
             .lowercased()
-        return switch normalized {
-        case "mini": "orient"
-        case "bibli", "bibliography", "cited": "cite"
-        case "project": "connect"
-        case "definition", "principle", "theorem", "argument", "objection", "reply": "state"
-        case "example", "case", "dialogue": "illustrate"
-        case "quotation", "author", "long-quote": "quote"
-        case "warning", "caution", "source-warning", "torn", "question": "flag"
-        default: normalized
-        }
+        return aliasesByCanonicalIdentifier.first(where: { $0.value.contains(normalized) })?.key
+            ?? normalized
     }
 
     public static func role(for raw: String) -> CalloutSemanticRole {
         CalloutSemanticRole(rawValue: canonicalIdentifier(for: raw)) ?? .neutral
     }
+}
+
+/// The delivery-neutral Markdown vocabulary required by an editing surface.
+///
+/// This value is derived from Contracts authorities. It contains no cursor,
+/// selection, JavaScript, repository, or mutable configuration state.
+public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
+    public struct Callout: Codable, Hashable, Sendable {
+        public let identifier: String
+        public let aliases: [String]
+        public let label: String
+        public let meaning: String
+    }
+
+    public struct VectorLinkOperator: Codable, Hashable, Sendable {
+        public let marker: String
+        public let kind: VectorLinkKind
+        public let meaning: String
+    }
+
+    public let version: Int
+    public let callouts: [Callout]
+    public let vectorLinkOperators: [VectorLinkOperator]
+
+    public init(
+        version: Int,
+        callouts: [Callout],
+        vectorLinkOperators: [VectorLinkOperator]
+    ) {
+        self.version = version
+        self.callouts = callouts
+        self.vectorLinkOperators = vectorLinkOperators
+    }
+
+    public static let current = MarkdownEditingDialect(
+        version: 1,
+        callouts: CalloutSemanticRole.allCases.compactMap { role in
+            guard role != .neutral else { return nil }
+            return Callout(
+                identifier: role.rawValue,
+                aliases: CalloutSemanticVocabulary.aliasesByCanonicalIdentifier[role.rawValue] ?? [],
+                label: role.displayLabel,
+                meaning: role.purpose
+            )
+        },
+        vectorLinkOperators: [
+            VectorLinkOperator(
+                marker: "",
+                kind: .neutral,
+                meaning: "Records a neutral connection without evidential direction."
+            ),
+            VectorLinkOperator(
+                marker: "+",
+                kind: .supportsTarget,
+                meaning: "The containing note supports the target note."
+            ),
+            VectorLinkOperator(
+                marker: "-",
+                kind: .supportedByTarget,
+                meaning: "The target note supports the containing note."
+            ),
+            VectorLinkOperator(
+                marker: "?",
+                kind: .incompatible,
+                meaning: "The containing and target notes cannot both be true."
+            ),
+        ]
+    )
 }
 
 public struct CalloutBlock: Codable, Hashable, Sendable {

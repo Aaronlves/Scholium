@@ -5,7 +5,9 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "strict": true,
-    "target": "ES2023"
+    "target": "ES2023",
+    "types": []
   },
-  "include": ["editor.ts"]
+  "include": ["*.ts"],
+  "exclude": ["tests"]
 }

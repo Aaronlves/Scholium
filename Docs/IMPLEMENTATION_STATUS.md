@@ -1,6 +1,6 @@
 # Scholium Implementation Status
 
-**Audited:** 2026-07-15
+**Audited:** 2026-07-16
 **Authority:** [PRODUCT_GUIDE.md](PRODUCT_GUIDE.md) owns target behavior;
 [DESIGN_HANDBOOK.md](DESIGN_HANDBOOK.md) owns the interface contract; [PRD.md](PRD.md)
 synthesizes requirements. This ledger records current evidence only.
@@ -37,6 +37,19 @@ synthesizes requirements. This ledger records current evidence only.
 - Canonical Vector-Link v1 semantics: `[[B]]`, `+[[B]]`, `-[[B]]`, and `?[[B]]`; neutral and transitive paths never become evidence, and retired typed aliases/arrows remain source-preserving neutral links with diagnostics.
 - One workspace-scoped `GraphSnapshot` resolves deterministic links across the Triptych while preferring same-vault matches. Incoming, Outgoing, Research, Search diagnostics, and Attention consume this graph; the legacy parallel relationship parser has been removed.
 - CodeMirror Source/Live Preview, sanitized Read mode, callouts, footnotes, protected CSS snippets, and bundled Alegreya/Victor Mono document fonts.
+- The editor boundary now uses one typed, identity- and generation-checked
+  `callAsyncJavaScript` dispatcher with a checked Swift mirror, full-buffer
+  reconciliation, CRLF reconstruction, bounded recovery snapshots, and
+  deterministic content-process reload. Native focused Format, Insert,
+  Paste as Markdown, contextual table, and Add Comment routes target only the
+  active editor session. TypeScript tests cover exact commands, guarded
+  list/table behavior, inert clipboard conversion, single-step undo/redo,
+  Lezer representative projection, and shared Contracts semantic fixtures; a
+  native WKWebView test covers exact CRLF editing, recovery generation, and
+  Paste as Markdown. Isolated QA also proves Live Preview editing and
+  commit-before-Search plus native Format, Insert, and editor-context command
+  reachability. Complete manual accessibility, IME, appearance, and
+  sustained-performance acceptance remains open.
 - Shared SQLite FTS5 human/CLI search contracts, Unicode/CJK behavior, deterministic Connection diagnostics, and one canonical Attention contract. Attention is limited to possible-orphan structure, Changed Since Review, broken or ambiguous Connections, explicit source-anchored reliance on an Unqualified Analysis, malformed metadata, and unresolved identity. Every item is dismissible; the Triptych-local duration is stored in `.scholium` and defaults to seven days, while per-item dismissal deadlines remain machine-local. Retired workflow gates and governance queues are absent from the Research inspector and Attention surface.
 - Per-vault Properties fields, explicit display order, human-editable allowlists, and starting disclosure state; the role-neutral Research Status presentation/editor for the bounded research_unit mapping; sparse Triptych navigation; Settings-only Dialogue and Critique prompt templates; bundled and Triptych-local file-backed Skills; and localhost-only read-only Zotero access.
 - The Beta Skill boundary is packaged as protected, typed, bounded resources: the catalog separates supported modes from automatic System activation; bundled and Triptych-local resources reject traversal and symlink escapes; permitted official duplication copies the complete bounded package under a new local ID; package revisions cover `SKILL.md`, references, and templates; ordinary and Mixed assembly keep dependency and phase boundaries; the manuscript coordinator composes rather than duplicates ordinary workflows; and workspace bootstrap renders a candidate without writing or overwriting `AGENTS.md`.
@@ -46,24 +59,13 @@ synthesizes requirements. This ledger records current evidence only.
 - Dialogue response defaults are stored per Triptych, and each new Dialogue receives an immutable response-contract snapshot. Legacy entries remain readable with an explicit fallback label. The optional external Zotero MCP descriptor is separate from the built-in localhost reader; ordinary status only reports configuration, while an explicit `--probe` performs the read-only initialize lifecycle check.
 - An atomic v2 workspace registry stores multiple stable Triptych assignments while preserving the legacy one-workspace files unchanged. Window snapshots persist selected Triptych identity, and shared registry actors prevent per-window last-writer duplication.
 - Retained compatibility readers are fixture-audited: every supported legacy vault-role spelling re-encodes canonically; legacy property aliases remain read-only projections with canonical-key precedence; v0 Triptych, sparse window, per-vault presentation, and retired Search-scope records remain readable. Missing historical fields receive bounded defaults, while malformed present fields and unknown roles fail without rewriting their files.
-- The SwiftPM graph now enforces `ScholiumContracts` ← `ScholiumCore` ←
-  `ScholiumApplication`, with App and CLI depending only on Contracts plus
-  Application. Core is no longer a public product; App, CLI, and their boundary
-  tests contain no Core imports. Contracts owns immutable source/value/event
-  types, capability protocols, and structured errors. Package/source/I/O guards
-  plus the Application public symbol graph fail verification if Core leaks back
-  across the boundary.
-- One live `ScholiumApplication.WorkspaceRuntime` owns shared vault runtimes,
-  repositories, watchers, indexes, graph, review, Dialogue, Critique, and
-  diagnostic services. The macOS `WorkspaceStore` is the app-wide adapter: it
-  owns the runtime, the sole typed event subscriptions and GUI snapshots, the
-  cross-window editor-flush registry, and external-app presentation. CSS/App
-  Support persistence, Obsidian appearance reads, and Zotero HTTP execute in
-  Application actors. Each
-  `WindowModel` composes independent Discovery, Document, Research, and
-  presentation controllers through capability protocols rather than retaining
-  `WorkspaceHandle`; Settings uses a separate delivery-neutral model and creates
-  no document window.
+- The compiler-enforced module and runtime boundaries documented in
+  [IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md) are
+  reachable. App and CLI depend only on Contracts plus Application; Core is not
+  a public product and cannot leak through imports or Application's public
+  symbol graph. One live Application runtime serves the macOS adapter while
+  per-window controllers retain independent UI state. Package, source, I/O,
+  and symbol-graph guards enforce those ownership boundaries.
 - Confirmed app moves and externally reconciled renames migrate stable identity plus Note History references, Human Review/comments, Dialogue references, Critique associations, and window snapshots. Ambiguous external identity changes require explicit confirmation rather than guessing.
 - The Research inspector shows only the current Analysis's Zotero source or the unique keyed Zotero items of Analyses named by outgoing links in the opened Topic or Work. Analysis lookup uses item key, DOI/ISBN, citation key, then exact title + author + year; non-unique matches remain visibly ambiguous. Compact metadata includes authorship, publication, volume/issue/pages, stable identifiers, and citation key, with abstract, publisher, edition, URL, collections, and modification time under disclosure when available. Incoming backlinks, bibliography entries, transitive paths, Unclassified notes, and the wider library are excluded. The only source action is **Open in Zotero**; Scholium does not enumerate or open attachments.
 
@@ -91,26 +93,13 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
 
 ## Current interface consolidation
 
-- The modular monolith now has a public `ScholiumContracts` boundary, an
-  internal `ScholiumCore` implementation target, and one headless
-  `ScholiumApplication` target shared by `ScholiumApp` and `ScholiumCLI`. The
-  app retains Combine and uses scoped
-  Discovery, Document, and Research controllers plus one typed per-window
-  presentation router. Document editor/autosave/conflict state is retained by
-  stable vault and note identity in each window's `DocumentSessionStore`;
-  CodeMirror remains authoritative while editing. Contracts' `PropertyContract`
-  catalog is the only semantic metadata authority; app descriptors contain
-  presentation information only. Native and WebKit styling share one tested
-  semantic color-role vocabulary. The reviewed layered-humanist light palette
-  maps Ivory Leaf, Parchment, Carbon Ink, Vermilion Copper, Lapis information,
-  and distinct workflow status colors through those roles. The reviewed dark
-  palette is an evening-library composition of Walnut, Cordovan, Parchment,
-  and Luminous Copper rather than a mechanical inversion; both appearances
-  have explicit Increase Contrast variants. Teal/plum relationship meanings
-  remain distinct from green success/red failure, and violet agent authorship
-  remains a redundant provenance cue. The implementation boundary and exact
-  variable locations are recorded in
-  [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md).
+- The current app follows the scoped controller, typed presentation,
+  stable-identity document-session, metadata-authority, and semantic-token
+  boundaries recorded in
+  [IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md). Native and
+  WebKit palette parity, appearance mappings, relationship variants, and
+  contrast floors are covered by automated architecture tests. The Design
+  Handbook remains the authority for the palette values and their meanings.
 - The native shell follows the Design Handbook's preferred prototype topology: one reflowing Library sidebar, one dominant document region, and one optional trailing Research inspector. The former separate workspace-navigation and note-list columns are no longer reachable.
 - Triptych Home is no longer reachable or written. With no current note, the window renders the narrow left-middle **Triptych Interface** through a visually titleless native window frame that retains the standard traffic lights and accessible window identity. Its fixed-size top-right ellipsis exposes Triptych management without a redundant indicator; selecting a note reveals the document toward its trailing side and adds **Collapse Note** beside management without discarding the open-tab session. The redundant system **Hide Sidebar** toolbar item is suppressed, so the Interface and the matching menu command own this transition. Closing the last tab or choosing Collapse Note returns to the Interface. Historical `home`, `search`, and `canvas` window destinations decode to the document compatibility state.
 - The toolbar owns title-first open-note tabs, the shared Search action, **Open Scholia…**, and paired History/Inspector controls. Permanent Back/Forward toolbar buttons are removed; their menu and keyboard routes remain.
@@ -180,11 +169,11 @@ library value is retained in the evidence.
 
 | Evidence class | Latest recorded result | Interpretation |
 | --- | --- | --- |
-| Repository verification | The 2026-07-16 complete `verify.sh` record passed editor typecheck and reproducible bundle verification, deterministic RDF-1 at 800 notes with tree hash `5a7a320c43f19352056e59db88d55c27a340c5284d3c4872dfe43ca667a30319`, 353 Core tests across 36 suites, 4 Contracts tests, 40 `ScholiumApplicationTests` across 12 suites, 62 `ScholiumAppTests` across 9 suites, workflow CLI verification, public-Application symbol-graph isolation, and the SwiftPM Release build. The architecture guards reject delivery-target Core imports, unapproved Application imports, frontend authority construction and I/O, and public Application signatures containing Core types. | Repository/build evidence; no package was created and this is not packaged Release-app G7 evidence. |
+| Repository verification | The 2026-07-16 complete `verify.sh` record passed editor typecheck and reproducible bundle verification, deterministic RDF-1 at 800 notes with tree hash `5a7a320c43f19352056e59db88d55c27a340c5284d3c4872dfe43ca667a30319`, 353 Core tests across 36 suites, 8 Contracts tests across 2 suites, 40 `ScholiumApplicationTests` across 12 suites, 66 `ScholiumAppTests` across 11 suites, workflow CLI verification, public-Application symbol-graph isolation, and the SwiftPM Release build. The architecture guards reject delivery-target Core imports, unapproved Application imports, frontend authority construction and I/O, and public Application signatures containing Core types. | Repository/build evidence; no package was created and this is not packaged Release-app G7 evidence. |
 | Beta Skill architecture | Catalog/resource resolution, local routing and dependencies, workflow contracts, stateless audit planning, bootstrap, Dialogue transport, and Zotero boundaries pass focused suites and the complete verifier. Real local-service reads and an isolated synthetic import/read-back also passed. The privacy-safe ledger is [SKILL_ARCHITECTURE_BETA_EVIDENCE.md](SKILL_ARCHITECTURE_BETA_EVIDENCE.md). | Structural implementation evidence; ten philosophical field trials, the Dialogue response-module UI journey, and manual accessibility acceptance remain open, so G10 and J-014–J-016 are not complete. |
 | Focused Core and CLI contracts | Research Status, lossless source, protected Skills, Dialogue response snapshots, workspace bootstrap, and first-party Zotero transport suites passed in isolated scratch paths. The architecture-focused record includes 52 tests across 5 suites plus 10 Dialogue-transport/Zotero tests across 2 suites. | Contract/build evidence; philosophical adequacy and manual acceptance remain separate. |
 | Search and derived state | The focused SearchIndex suite passed against a synthetic 2,056-note collision fixture, covering deterministic Title/Alias/Heading/Body precedence, equal-rank path ordering, repeat-query stability, and safe replacement of an incompatible generated contract; an isolated UI run verified the same visible field-context order. Broader ranking-usability evaluation remains open. | Semantic and isolated UI evidence. |
-| Current UI journeys | Canonical one-process, Search/Related, Recent Notes, 200% document text, responsive 1380/1080/900-point, clean-account, Dialogue chronology, Critique navigation, multiwindow/rename, lifecycle, checkpoint, deletion, and interruption-recovery journeys passed against disposable fixtures. On 2026-07-16, the post-boundary canonical journey passed Search, Properties, inspector routing, Scholia/Review validation, cross-vault Back/Forward, the precise Zotero-unavailable state, Live Preview editing and flush-before-Search, and an independent second window in `/tmp/Scholium-UITests/Logs/Test/Test-ScholiumUITests-2026.07.16_04-49-54-+0800.xcresult`. Focused journeys then passed external-edit conflict comparison with exact dirty-buffer retention, interrupted-transaction inspection and record-only resolution, and selective checkpoint restore with exact source preservation. A two-window dirty-peer UI attempt stopped before its conflict assertion when XCUITest opened the mode menu behind the overlapping peer window; deterministic App tests still passed clean-peer convergence, dirty-peer retention, runtime replacement, watcher ownership, and shutdown. Earlier the revised clean-account journey passed through the narrow no-scroll guide, completion without duplicate presentation, note reveal, relaunch, and Triptych rename; the focused Metadata journey verified that controls plus Properties and the expanded panel each equal the 920-point document measure; and the retract/reveal journey verified the persistent Triptych Interface with **Triptych management** and **Collapse Note**. | Current reachable behavior has focused scenario evidence; manual VoiceOver, Full Keyboard Access, Increase Contrast, Reduce Transparency, Reduce Motion, localization, and broader recovery acceptance remain open. This is not the packaged RDF-1 performance gate. |
+| Current UI journeys | Canonical one-process, Search/Related, Recent Notes, 200% document text, responsive 1380/1080/900-point, clean-account, Dialogue chronology, Critique navigation, multiwindow/rename, lifecycle, checkpoint, deletion, and interruption-recovery journeys passed against disposable fixtures. On 2026-07-16, the post-editor-boundary canonical journey passed Search, Properties, inspector routing, Scholia/Review validation, cross-vault Back/Forward, the precise Zotero-unavailable state, Live Preview editing and flush-before-Search, and an independent second window. A focused editor journey then proved that Format, Insert, and the editor context menu expose their commands to the focused Live Preview session. Focused journeys also passed external-edit conflict comparison with exact dirty-buffer retention, interrupted-transaction inspection and record-only resolution, and selective checkpoint restore with exact source preservation. A two-window dirty-peer UI attempt stopped before its conflict assertion when XCUITest opened the mode menu behind the overlapping peer window; deterministic App tests still passed clean-peer convergence, dirty-peer retention, runtime replacement, watcher ownership, and shutdown. Earlier the revised clean-account journey passed through the narrow no-scroll guide, completion without duplicate presentation, note reveal, relaunch, and Triptych rename; the focused Metadata journey verified that controls plus Properties and the expanded panel each equal the 920-point document measure; and the retract/reveal journey verified the persistent Triptych Interface with **Triptych management** and **Collapse Note**. | Current reachable behavior has focused scenario evidence; manual VoiceOver, Full Keyboard Access, Increase Contrast, Reduce Transparency, Reduce Motion, localization, and broader recovery acceptance remain open. This is not the packaged RDF-1 performance gate. |
 | Superseded UI runs | Earlier Triptych Home and full-document Search-destination runs are retained only as historical evidence. Current D-032 removes Home, and historical `search`/`canvas` window destinations decode to the document compatibility state. | Historical; do not use as current reachability evidence. |
 | Performance | Complete-boundary instrumentation, the external XCUITest driver, strict validator, privacy-safe capture, and fail-closed runner are implemented. One four-metric Debug scenario run validated the plumbing. The canonical RDF-1 protocol requires the exact packaged Release app on R1 and five warm-ups plus 30 retained samples; no packaged Release gate run or threshold approval exists. | Scenario-only; G7 remains open. |
 | Distribution | A 2026-07-15 local arm64 Release preflight passed signature, metadata, checksum, license, and resource checks, but recorded `source_clean=false` and no exact tag. | Local preflight; not clean-tagged G9 evidence or a release asset. |

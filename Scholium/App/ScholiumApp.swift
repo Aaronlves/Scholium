@@ -643,6 +643,17 @@ struct ScholiumSearchActionsFocusedKey: FocusedValueKey {
     typealias Value = ScholiumSearchActions
 }
 
+struct ScholiumFocusedEditorActions {
+    let isAvailable: (MarkdownEditorCommand) -> Bool
+    let perform: (MarkdownEditorCommand) -> Void
+    let performWithArgument: (MarkdownEditorCommand, String) -> Void
+    let addComment: () -> Void
+}
+
+struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
+    typealias Value = ScholiumFocusedEditorActions
+}
+
 extension FocusedValues {
     var scholiumWindowModel: WindowModel? {
         get { self[ScholiumWindowModelFocusedKey.self] }
@@ -652,6 +663,11 @@ extension FocusedValues {
     var scholiumSearchActions: ScholiumSearchActions? {
         get { self[ScholiumSearchActionsFocusedKey.self] }
         set { self[ScholiumSearchActionsFocusedKey.self] = newValue }
+    }
+
+    var scholiumEditorActions: ScholiumFocusedEditorActions? {
+        get { self[ScholiumFocusedEditorActionsKey.self] }
+        set { self[ScholiumFocusedEditorActionsKey.self] = newValue }
     }
 }
 
@@ -740,6 +756,7 @@ private struct ScholiumCommands: Commands {
     @ObservedObject private var windowGroupingState = ScholiumWindowGroupingState.shared
     @FocusedValue(\.scholiumWindowModel) private var appState
     @FocusedValue(\.scholiumSearchActions) private var searchActions
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -799,12 +816,129 @@ private struct ScholiumCommands: Commands {
                 .disabled(appState?.activeTab == nil)
         }
         CommandGroup(after: .pasteboard) {
+            Button("Paste as Markdown") {
+                guard let payload = markdownPasteboardPayload() else { return }
+                editorActions?.performWithArgument(.pasteMarkdown, payload)
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+            .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
             Divider()
             Button("Search This Note…") {
                 searchActions?.begin(.thisNote)
             }
             .keyboardShortcut("f", modifiers: [.command])
             .disabled(searchActions == nil)
+        }
+        CommandGroup(after: .textFormatting) {
+            Divider()
+            Button("Bold") { editorActions?.perform(.bold) }
+                .keyboardShortcut("b", modifiers: [.command])
+                .disabled(editorActions?.isAvailable(.bold) != true)
+            Button("Emphasis") { editorActions?.perform(.emphasis) }
+                .keyboardShortcut("i", modifiers: [.command])
+                .disabled(editorActions?.isAvailable(.emphasis) != true)
+            Button("Strikethrough") { editorActions?.perform(.strikethrough) }
+                .disabled(editorActions?.isAvailable(.strikethrough) != true)
+            Button("Highlight") { editorActions?.perform(.highlight) }
+                .disabled(editorActions?.isAvailable(.highlight) != true)
+            Button("Inline Code") { editorActions?.perform(.inlineCode) }
+                .disabled(editorActions?.isAvailable(.inlineCode) != true)
+            Divider()
+            Menu("Heading") {
+                Button("Paragraph") { editorActions?.perform(.paragraph) }
+                    .disabled(editorActions?.isAvailable(.paragraph) != true)
+                ForEach(1...6, id: \.self) { level in
+                    Button("Heading \(level)") {
+                        let command: MarkdownEditorCommand = switch level {
+                        case 1: .heading1
+                        case 2: .heading2
+                        case 3: .heading3
+                        case 4: .heading4
+                        case 5: .heading5
+                        default: .heading6
+                        }
+                        editorActions?.perform(command)
+                    }
+                    .disabled(editorActions?.isAvailable(headingCommand(level)) != true)
+                }
+            }
+            Menu("Lists") {
+                Button("Bulleted List") { editorActions?.perform(.bulletList) }
+                    .disabled(editorActions?.isAvailable(.bulletList) != true)
+                Button("Numbered List") { editorActions?.perform(.numberedList) }
+                    .disabled(editorActions?.isAvailable(.numberedList) != true)
+                Button("Task List") { editorActions?.perform(.taskList) }
+                    .disabled(editorActions?.isAvailable(.taskList) != true)
+                Button("Toggle Task") { editorActions?.perform(.toggleTask) }
+                    .disabled(editorActions?.isAvailable(.toggleTask) != true)
+            }
+            Menu("Table") {
+                Button("Insert Row Before") { editorActions?.perform(.tableInsertRowBefore) }
+                    .disabled(editorActions?.isAvailable(.tableInsertRowBefore) != true)
+                Button("Insert Row After") { editorActions?.perform(.tableInsertRowAfter) }
+                    .disabled(editorActions?.isAvailable(.tableInsertRowAfter) != true)
+                Button("Delete Row") { editorActions?.perform(.tableDeleteRow) }
+                    .disabled(editorActions?.isAvailable(.tableDeleteRow) != true)
+                Divider()
+                Button("Insert Column Before") { editorActions?.perform(.tableInsertColumnBefore) }
+                    .disabled(editorActions?.isAvailable(.tableInsertColumnBefore) != true)
+                Button("Insert Column After") { editorActions?.perform(.tableInsertColumnAfter) }
+                    .disabled(editorActions?.isAvailable(.tableInsertColumnAfter) != true)
+                Button("Delete Column") { editorActions?.perform(.tableDeleteColumn) }
+                    .disabled(editorActions?.isAvailable(.tableDeleteColumn) != true)
+                Divider()
+                Button("Align Left") { editorActions?.perform(.tableAlignLeft) }
+                    .disabled(editorActions?.isAvailable(.tableAlignLeft) != true)
+                Button("Align Center") { editorActions?.perform(.tableAlignCenter) }
+                    .disabled(editorActions?.isAvailable(.tableAlignCenter) != true)
+                Button("Align Right") { editorActions?.perform(.tableAlignRight) }
+                    .disabled(editorActions?.isAvailable(.tableAlignRight) != true)
+            }
+            Button("Block Quotation") { editorActions?.perform(.blockQuotation) }
+                .disabled(editorActions?.isAvailable(.blockQuotation) != true)
+            Button("Fenced Code") { editorActions?.perform(.fencedCode) }
+                .disabled(editorActions?.isAvailable(.fencedCode) != true)
+        }
+        CommandMenu("Insert") {
+            Button("Link") { editorActions?.perform(.standardLink) }
+                .keyboardShortcut("k", modifiers: [.command])
+                .disabled(editorActions?.isAvailable(.standardLink) != true)
+            Button("Wikilink") { editorActions?.perform(.wikilink) }
+                .disabled(editorActions?.isAvailable(.wikilink) != true)
+            Menu("Vector Link") {
+                Button("Supports Target") { editorActions?.perform(.vectorSupportsTarget) }
+                    .disabled(editorActions?.isAvailable(.vectorSupportsTarget) != true)
+                Button("Supported by Target") { editorActions?.perform(.vectorSupportedByTarget) }
+                    .disabled(editorActions?.isAvailable(.vectorSupportedByTarget) != true)
+                Button("Incompatible") { editorActions?.perform(.vectorIncompatible) }
+                    .disabled(editorActions?.isAvailable(.vectorIncompatible) != true)
+            }
+            Divider()
+            Button("Footnote") { editorActions?.perform(.insertFootnote) }
+                .disabled(editorActions?.isAvailable(.insertFootnote) != true)
+            Button("Table") { editorActions?.perform(.insertTable) }
+                .disabled(editorActions?.isAvailable(.insertTable) != true)
+            Button("Thematic Break") { editorActions?.perform(.thematicBreak) }
+                .disabled(editorActions?.isAvailable(.thematicBreak) != true)
+            Menu("Callout") {
+                Button("Orientation") { editorActions?.perform(.calloutOrient) }
+                    .disabled(editorActions?.isAvailable(.calloutOrient) != true)
+                Button("Source") { editorActions?.perform(.calloutCite) }
+                    .disabled(editorActions?.isAvailable(.calloutCite) != true)
+                Button("Connections") { editorActions?.perform(.calloutConnect) }
+                    .disabled(editorActions?.isAvailable(.calloutConnect) != true)
+                Button("Statement") { editorActions?.perform(.calloutState) }
+                    .disabled(editorActions?.isAvailable(.calloutState) != true)
+                Button("Illustration") { editorActions?.perform(.calloutIllustrate) }
+                    .disabled(editorActions?.isAvailable(.calloutIllustrate) != true)
+                Button("Quotation") { editorActions?.perform(.calloutQuote) }
+                    .disabled(editorActions?.isAvailable(.calloutQuote) != true)
+                Button("Caution") { editorActions?.perform(.calloutFlag) }
+                    .disabled(editorActions?.isAvailable(.calloutFlag) != true)
+            }
+            Divider()
+            Button("Add Comment…") { editorActions?.addComment() }
+                .disabled(editorActions == nil)
         }
         CommandGroup(replacing: .sidebar) {
             Button("Collapse Note") {
@@ -931,8 +1065,31 @@ private struct ScholiumCommands: Commands {
         }
     }
 
+    private func markdownPasteboardPayload() -> String? {
+        let pasteboard = NSPasteboard.general
+        let plainText = pasteboard.string(forType: .string) ?? ""
+        let html = pasteboard.string(forType: .html)
+        guard !plainText.isEmpty || html?.isEmpty == false else { return nil }
+        var payload = ["plainText": plainText]
+        if let html, !html.isEmpty { payload["html"] = html }
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     private var recentNotes: [RecentNoteDestination] {
         appState?.recentNoteDestinations ?? []
+    }
+
+    private func headingCommand(_ level: Int) -> MarkdownEditorCommand {
+        switch level {
+        case 1: .heading1
+        case 2: .heading2
+        case 3: .heading3
+        case 4: .heading4
+        case 5: .heading5
+        default: .heading6
+        }
     }
 
     private func recentNoteCommandLabel(_ destination: RecentNoteDestination) -> String {

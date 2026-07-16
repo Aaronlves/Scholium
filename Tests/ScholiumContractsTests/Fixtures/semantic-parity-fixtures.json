@@ -1,0 +1,16 @@
+[
+  {
+    "name": "canonical and legacy scholarly semantics",
+    "source": "> [!mini] Scope\n\n+[[Support]] -[[Ground]] ?[[Conflict]] [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1]\n\n[^1]: Basis\n",
+    "callouts": ["orient"],
+    "links": [
+      {"target": "Support", "vectorKind": "supports_target"},
+      {"target": "Ground", "vectorKind": "supported_by_target"},
+      {"target": "Conflict", "vectorKind": "incompatible"},
+      {"target": "Neutral", "vectorKind": "neutral"},
+      {"target": "https://example.test", "vectorKind": null}
+    ],
+    "footnoteDefinitions": ["1"],
+    "footnoteReferences": ["1"]
+  }
+]

@@ -64,10 +64,12 @@ public enum MarkdownEditorDeltaError: LocalizedError, Sendable {
 }
 
 public enum MarkdownEditorDeltaApplier {
+    public static let maximumResultUTF8Bytes = 8_000_000
+
     public static func apply(
         _ deltas: [MarkdownEditorDelta],
         to source: String,
-        maximumUTF8Bytes: Int = 8_000_000
+        maximumUTF8Bytes: Int = maximumResultUTF8Bytes
     ) throws -> String {
         let sourceLength = (source as NSString).length
         let ordered = deltas.sorted {

@@ -12,6 +12,10 @@ Use this hierarchy; do not merge target product rules, interface rules, and curr
 4. `Docs/IMPLEMENTATION_STATUS.md` records current-to-target evidence and migration status; it is not product authority.
 5. `README.md`, live construction call sites, tests, and scripts establish what is implemented and reachable now.
 
+`Docs/IMPLEMENTATION_ARCHITECTURE.md` is a subordinate reference for module,
+runtime, and state ownership. It does not define product or interface behavior,
+and it does not replace the dated evidence in `Docs/IMPLEMENTATION_STATUS.md`.
+
 When target and current behavior differ, preserve the current safe behavior while implementing an explicit migration toward the Product Guide. Never describe target behavior as already implemented merely because it is canonical.
 
 ## Binding interface authority

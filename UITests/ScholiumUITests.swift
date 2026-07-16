@@ -777,6 +777,43 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testEditorCommandsAreReachableFromNativeAndContextMenus() throws {
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        mode.click()
+        let livePreview = app.menuItems
+            .matching(identifier: "text.page.badge.magnifyingglass")
+            .firstMatch
+        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
+        livePreview.click()
+
+        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        editor.click()
+
+        let format = app.menuBars.menuBarItems["Format"]
+        XCTAssertTrue(format.waitForExistence(timeout: 3))
+        format.click()
+        let bold = app.menuItems["Bold"].firstMatch
+        XCTAssertTrue(bold.waitForExistence(timeout: 3))
+        XCTAssertTrue(bold.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+
+        let insert = app.menuBars.menuBarItems["Insert"]
+        XCTAssertTrue(insert.waitForExistence(timeout: 3))
+        insert.click()
+        XCTAssertTrue(app.menuItems["Footnote"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.menuItems["Table"].firstMatch.exists)
+        XCTAssertTrue(app.menuItems["Add Comment…"].firstMatch.exists)
+        app.typeKey(.escape, modifierFlags: [])
+
+        editor.rightClick()
+        XCTAssertTrue(app.menuItems["Bold"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.menuItems["Add Comment…"].firstMatch.exists)
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    @MainActor
     func testSearchThisNoteReportsMatchesNoResultsAndCloses() throws {
         let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
         let nativeDocument = app.descendants(matching: .any)["Markdown reader"]

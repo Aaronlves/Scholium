@@ -347,6 +347,33 @@ struct NoteContentView: View {
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { mode in
             actions.beginSearch(mode)
         })
+        .focusedSceneValue(
+            \.scholiumEditorActions,
+            isEditing ? ScholiumFocusedEditorActions(
+                isAvailable: { command in
+                    editorSession.context?.availableCommands.contains(command) == true
+                },
+                perform: { command in
+                    Task { @MainActor in
+                        do {
+                            try await editorSession.perform(command)
+                        } catch {
+                            actions.notify(error.localizedDescription, .error)
+                        }
+                    }
+                },
+                performWithArgument: { command, argument in
+                    Task { @MainActor in
+                        do {
+                            try await editorSession.perform(command, argument: argument)
+                        } catch {
+                            actions.notify(error.localizedDescription, .error)
+                        }
+                    }
+                },
+                addComment: requestResearcherCommentsFromDocument
+            ) : nil
+        )
         .sheet(isPresented: Binding(
             get: { showConflictComparison },
             set: { showConflictComparison = $0 }
@@ -516,6 +543,19 @@ struct NoteContentView: View {
                         session: documentSession,
                         target: target
                     )
+                }
+            },
+            onRequestSearch: {
+                actions.beginSearch(.thisNote)
+            },
+            onRequestComment: requestResearcherCommentsFromDocument,
+            onLinkActivation: { target in
+                if let url = URL(string: target),
+                   let scheme = url.scheme?.lowercased(),
+                   ["http", "https", "mailto"].contains(scheme) {
+                    actions.openExternalURL(url)
+                } else {
+                    actions.openInternalLink(target)
                 }
             },
             onCommentActivation: commentingIsAvailable ? { commentID in

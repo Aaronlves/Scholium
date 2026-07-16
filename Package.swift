@@ -57,7 +57,8 @@ let package = Package(
         .testTarget(
             name: "ScholiumContractsTests",
             dependencies: ["ScholiumContracts"],
-            path: "Tests/ScholiumContractsTests"
+            path: "Tests/ScholiumContractsTests",
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "ScholiumCoreTests",

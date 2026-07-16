@@ -1,0 +1,15 @@
+[
+  {"name":"bom-lf-no-final-newline","source":"\uFEFF# Thesis\nExact body","selections":[]},
+  {"name":"crlf-final-newline","source":"# Thesis\r\n\r\nExact body\r\n","selections":[]},
+  {"name":"valid-frontmatter","source":"---\ntitle: 'Exact: title'\nunknown: |\n  preserve me\n---\nBody\n","selections":[]},
+  {"name":"malformed-frontmatter","source":"---\ntitle: [unfinished\nBody","selections":[]},
+  {"name":"malformed-markdown","source":"**unfinished [link]( and `code\n","selections":[]},
+  {"name":"escaped-delimiters","source":"\\*literal\\* and \\[[not-link]] and \\|\n","selections":[]},
+  {"name":"html-comments","source":"<section data-x='1'>literal</section>\n<!-- exact -->\n%% private exact %%\n","selections":[]},
+  {"name":"links-callouts","source":"> [!mini]+ Route\n> +[[Claim]] -[[Ground]] ?[[Rival]] [[Neighbor]]\n","selections":[]},
+  {"name":"footnotes","source":"Claim[^7] and ^[inline].\n\n[^7]: Existing; never renumber.\n","selections":[]},
+  {"name":"tables","source":"| A \\| literal | B |\n|:---|---:|\n| 一 | two |\n","selections":[]},
+  {"name":"unicode","source":"哲学 e\u0301 👩🏽‍💻 مرحبا עולם\n","selections":[]},
+  {"name":"multiple-selections","source":"alpha beta gamma delta\n","selections":[[0,5],[11,16]]},
+  {"name":"mixed-newline-literal","source":"first\r\nsecond\nthird","selections":[[7,13]]}
+]

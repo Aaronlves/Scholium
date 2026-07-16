@@ -1,12 +1,29 @@
-# Frontend Architecture
+# Implementation Architecture
 
-**Status:** implemented as a compiler-enforced Contracts–Core–Application modular monolith
+**Scope:** module, runtime, state-ownership, and delivery boundaries  
 **Product authority:** [PRODUCT_GUIDE.md](PRODUCT_GUIDE.md)  
-**Interface authority:** [DESIGN_HANDBOOK.md](DESIGN_HANDBOOK.md)
+**Interface authority:** [DESIGN_HANDBOOK.md](DESIGN_HANDBOOK.md)  
+**Requirements authority:** [PRD.md](PRD.md)
 
-This document describes implementation ownership. It does not redefine
-Scholium workflows, interface labels, vault formats, or research-governance
-rules.
+This subordinate implementation reference explains how the current code is
+divided and how mutable state flows through it. It does not redefine Scholium
+workflows, interface labels, visual decisions, vault formats, or
+research-governance rules. [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)
+owns dated conformance and verification evidence; the package graph, live code,
+tests, and scripts remain the final implementation evidence.
+
+## Architectural stance
+
+Scholium uses compiler-enforced frontend/backend isolation and modularization
+inside one local modular monolith. `ScholiumApp` is the macOS frontend, while
+`ScholiumApplication` and the internal `ScholiumCore` target form the headless
+backend; `ScholiumCLI` is a second delivery adapter over the same backend.
+Frontend and CLI code can reach backend authority only through Application
+capabilities and immutable `ScholiumContracts` values. This is a module,
+dependency, and state-ownership boundary within one process, not an XPC,
+network-service, or distributed-system split. Modularization continues within
+both sides: window and feature controllers divide frontend ownership, while
+runtime and capability actors divide backend ownership.
 
 ## Ownership
 
@@ -71,15 +88,11 @@ construct a document window.
 
 - `Scholium/UI/Foundation` contains semantic color roles, metrics, shapes,
   motion, and accessibility-aware surface modifiers.
-- `Scholium/UI/Components` contains stateless Scholium building blocks. It
-  deliberately has no generic card type.
+- `Scholium/UI/Components` contains stateless Scholium building blocks.
 - `Scholium/UI/PreviewCatalog` contains deterministic Debug-only component
   matrices for ready, empty, loading, error, conflict, and long-text states,
-  plus named appearance and accessibility review entry points. Xcode 27
-  exposes the system contrast, transparency, and motion values as read-only
-  environment values, so those named entries are exercised with the Canvas
-  environment controls and the isolated QA app rather than a production
-  override hook.
+  plus named appearance and accessibility review entry points. Preview code is
+  development-only and does not enter the released interface.
 - `ScholiumContracts` contains boundary values, capability protocols,
   deterministic source transformations, immutable snapshots, events, and
   delivery-safe errors. It has no filesystem, database, network, UI, watcher,
@@ -149,66 +162,31 @@ Each retained `DocumentSessionModel` owns:
 - rendered Read projection state; and
 - save error, conflict, retry, and comparison presentation state.
 
-CodeMirror remains authoritative while editing. Existing full-buffer reads,
-delta-mirror comparison, fingerprint-gated save, committed-text
-synchronization, conflict comparison, and flush-before-agent-work behavior are
-unchanged. The Swift model retains these facts across SwiftUI view
-reconstruction; it never reconstructs writable Markdown from HTML, parsed
-YAML, or another projection.
+CodeMirror remains authoritative while editing. The boundary uses full-buffer
+reads, delta-mirror comparison, fingerprint-gated save, committed-text
+synchronization, conflict comparison, and flush-before-agent-work. The Swift
+model retains these facts across SwiftUI view reconstruction; it never
+reconstructs writable Markdown from HTML, parsed YAML, or another projection.
+The typed editor protocol, source-transformation rules, and WebKit recovery
+contract are documented in the subordinate
+[EDITOR_ARCHITECTURE.md](EDITOR_ARCHITECTURE.md).
 
-## Design variables
+## Design-system implementation
 
-The native color variables are `ScholiumColorRole` in
-`Scholium/UI/Foundation/ScholiumDesignSystem.swift`. The current roles are:
+[DESIGN_HANDBOOK.md §5](DESIGN_HANDBOOK.md#5-visual-language) owns palette
+values, semantic meanings, typography, materials, motion, and accessibility
+rules. The app implements that contract through `ScholiumColorRole`,
+`ScholiumLightPalette`, `ScholiumDarkPalette`, `ScholiumMetrics`,
+`ScholiumMotion`, and `ScholiumInterfaceTypography` in
+`Scholium/UI/Foundation`.
 
-`documentBackground`, `navigationBackground`, `surfaceBackground`,
-`raisedSurfaceBackground`, `primaryText`, `secondaryText`, `mutedText`,
-`separator`, `accent`, `accentHover`, `notificationHighlight`, `attention`,
-`information`, `attentionForeground`, `destructive`, `destructiveForeground`,
-`confirmed`, `confirmedForeground`, `agentAuthorship`, `connectionNeutral`,
-`connectionSupport`, and `connectionIncompatible`. The `Foreground` status
-roles resolve to the same normal-appearance semantic color and to the reviewed
-stronger variant under Increase Contrast.
-
-`ScholiumLightPalette` and `ScholiumDarkPalette` are the reviewed primitive
-palettes beneath those roles. Feature and component code consumes semantic
-roles, never primitive swatches or literal hex values. The principal mapping
-is:
-
-| Semantic role | Light | Dark | Use |
-| --- | --- | --- | --- |
-| Document | `#FFFCF5` | `#302A26` | Ivory Leaf / Walnut opaque reading surface |
-| Navigation | `#EFE9DF` | `#3A2B2B` | Parchment / Cordovan navigation fallback |
-| Surface | `#F7F1E7` | `#3A322D` | Vellum / Leather opaque panel fallback |
-| Raised surface | `#DED3C5` | `#423831` | Selected, hovered, or raised emphasis |
-| Primary text | `#17191C` | `#F4E8D5` | Carbon Ink / Parchment prose and labels |
-| Secondary text | `#514D48` | `#D4C2AD` | Descriptions and secondary information |
-| Muted text | `#706B65` | `#B6A38F` | Metadata and quiet icons |
-| Separator | `#C8BCAE` | `#807064` | Binding rules and structural boundaries |
-| Accent | `#A94C22` | `#EF8D5B` | Vermilion/Luminous Copper actions, links, and active emphasis |
-| Accent hover | `#7A2917` | `#F5AA7B` | Hover, pressed, and stronger accent emphasis |
-| Notification | `#B47617` | `#E1B64F` | Ochre highlights and new-item emphasis; not warning |
-| Information | `#315F88` | `#84B0D4` | Lapis informational and source-location cues; not evidence |
-| Attention | `#976015` | `#E0AB61` | Stale state, caution, and needed attention |
-| Confirmed | `#2C7048` | `#7FC39A` | Confirmed positive workflow state only |
-| Destructive | `#A13235` | `#EA817C` | Failures, blockers, destructive effects, and Unqualified status |
-| Agent authorship | `#5D568F` | `#B5A6DC` | Redundant violet provenance cue; explicit text remains required |
-| Connection support | `#276F68` | `#79B9AB` | Teal philosophical support relationship |
-| Connection incompatible | `#6F4D83` | `#C29CCF` | Plum philosophical incompatibility relationship |
-
-Native code resolves every role through dynamic `NSColor` and `Color`; both
-palettes and their reviewed stronger variants respond to SwiftUI's Increase
-Contrast environment. Teal support and plum incompatibility remain specialized
-relationships so they cannot be mistaken for green success or red failure.
-Agent authorship remains explicit text with violet as a redundant cue. WebKit
-uses matching `prefers-color-scheme` and `prefers-contrast` variants and the
-same kebab-case vocabulary, for example
-`--scholium-color-primary-text`, in
-`Scholium/Resources/Editor/editor.css`. `SafeMarkdownReadWebView` consumes the
-same contract. `FrontendArchitectureTests` fail if the native and editor
-vocabularies diverge, either reviewed palette drifts, foreground contrast falls
-below the handbook threshold, or normal and increased-contrast relationship
-values drift.
+Native SwiftUI/AppKit surfaces resolve semantic roles dynamically. WebKit uses
+the same kebab-case role vocabulary in
+`Scholium/Resources/Editor/editor.css`; `SafeMarkdownReadWebView` consumes the
+same declarations. Architecture tests enforce native/WebKit role parity,
+reviewed appearance mappings, contrast floors, and specialized relationship
+variants. The code and tests implement the Handbook values rather than making
+this document a second palette authority.
 
 Stable geometry is named by meaning rather than number:
 
@@ -221,46 +199,24 @@ when Reduce Motion is active. It does not install a global animation policy.
 The existing `ScholiumInterfaceTypography` namespace remains the sole
 interface typography namespace.
 
-## Component rule
+## Component boundaries
 
-Extract a value or component only when it encodes a stable handbook rule, a
-recurring semantic role, or meaningful reuse. Local geometry stays local.
-Native controls remain direct when Scholium adds no domain semantics. Review,
-Critique, Dialogue, Comments, and evidence remain distinct surfaces rather
-than variants of a generic card.
+`Scholium/UI/Components` implements the component distinctions established by
+the Design Handbook. Components remain stateless leaves receiving immutable
+values and typed closures; feature roots retain state and action routing. This
+document records that dependency direction, while the Handbook owns the stable
+rule for when Scholium-specific components or distinct research surfaces are
+appropriate.
 
-## Tests and verification
+## Boundary enforcement
 
-`ScholiumContractsTests` covers exact BOM/CRLF bytes, YAML/source fidelity,
-Codable compatibility, stable identifiers, requests, and structured errors.
+`ScholiumContractsTests`, `ScholiumApplicationTests`, and the architecture and
+composition suites in `ScholiumAppTests` exercise their respective module,
+runtime, window, document, presentation, and design-system boundaries.
+`Tools/Scripts/verify.sh` adds package-graph, source-import, I/O, and public
+symbol-graph guards so delivery targets cannot reacquire Core-owned authority.
 
-`ScholiumApplicationTests` covers live-runtime identity reuse, snapshot mode
-without watchers, initial snapshot delivery, event ordering and generation
-gating, runtime replacement, cancellation, deterministic shutdown, capability
-operations, and GUI/CLI result parity.
-
-`ScholiumAppTests` depends on the executable target. Its architecture and
-composition suites cover:
-
-- sheet-route exclusivity, route-aware dismissal, alerts, and file import;
-- document identity retention and per-window independence;
-- retained conflict state;
-- Search stale-result rejection and Quick Open cancellation;
-- mutually exclusive Research Inspector and Note History state;
-- Scholia presentation identity, action/state transitions, and stale-dismissal
-  rejection;
-- document-session work retention across view reconstruction; and
-- two real windows sharing runtime services while retaining independent
-  document, search, presentation, focus, and cancellation state;
-- clean-peer convergence, exact dirty-buffer conflict retention, stable-identity
-  rename migration, one-window teardown, and final runtime shutdown;
-- Settings construction without a `WindowModel`;
-- Contracts Property-contract to app-presentation one-to-one resolution; and
-- rejection of direct repository, index, watcher, research-store, or Zotero
-  MCP/server-authority construction in the App and CLI targets;
-- native/WebKit semantic color parity and increased-contrast variants.
-
-Contracts remains the authority for exact-source values, conflict vocabulary,
-identity, and deterministic semantics. Core remains the internal repository,
-search-index, watcher, and persistence implementation. Package-graph, source,
-I/O, and public-symbol-graph gates prevent those boundaries from regressing.
+See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for dated pass records,
+reachable behavior, and remaining acceptance work. This document intentionally
+does not duplicate test counts or claim that a historical pass proves the
+current checkout.
