@@ -13,6 +13,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
     let onCommentSelection: ((MarkdownReviewSelection) -> Void)?
+    var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     let onCommentActivation: ((UUID) -> Void)?
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingReady: (() -> Void)? = nil
@@ -28,6 +29,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
             onCommentSelection: onCommentSelection,
+            onSelectionChange: onSelectionChange,
             onCommentActivation: onCommentActivation,
             onRenderingFailure: onRenderingFailure,
             onRenderingReady: onRenderingReady,
@@ -71,6 +73,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
             onCommentSelection: onCommentSelection,
+            onSelectionChange: onSelectionChange,
             onCommentActivation: onCommentActivation,
             onRenderingFailure: onRenderingFailure,
             onRenderingReady: onRenderingReady,
@@ -112,6 +115,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
         private var onCommentSelection: ((MarkdownReviewSelection) -> Void)?
+        private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private var onCommentActivation: ((UUID) -> Void)?
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingReady: (() -> Void)?
@@ -130,6 +134,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
             onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
+            onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             onCommentActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -143,6 +148,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
+            self.onSelectionChange = onSelectionChange
             self.onCommentActivation = onCommentActivation
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingReady = onRenderingReady
@@ -158,6 +164,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
             onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
+            onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             onCommentActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -179,6 +186,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
+            self.onSelectionChange = onSelectionChange
             self.onCommentActivation = onCommentActivation
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingReady = onRenderingReady
@@ -199,7 +207,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let contentSignature = String(body.utf8.count)
             let cssSignature = String(userCSS.hashValue)
             let commentSignature = String(researcherComments.hashValue)
-            let signature = [fingerprint, contentSignature, cssSignature, commentSignature]
+            let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
+            let signature = [
+                fingerprint,
+                contentSignature,
+                cssSignature,
+                commentSignature,
+                capabilitySignature,
+            ]
                 .joined(separator: ":")
             guard loadedSignature != signature else { return }
             loadedSignature = signature
@@ -212,6 +227,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     documentID: documentID,
                     fingerprint: fingerprint,
                     commentEnabled: onCommentSelection != nil,
+                    selectionEnabled: onSelectionChange != nil,
                     researcherComments: researcherComments,
                     userCSS: userCSS
                 ),
@@ -237,18 +253,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       target.utf8.count <= 8_192 else { return }
                 onLinkClick(target)
             case "commentSelection":
-                guard let selected = payload["text"] as? String,
-                      !selected.isEmpty,
-                      selected.utf16.count <= Self.maximumSelectionLength else { return }
-                let contextBefore = String((payload["contextBefore"] as? String ?? "").suffix(80))
-                let contextAfter = String((payload["contextAfter"] as? String ?? "").prefix(80))
-                onCommentSelection?(MarkdownReviewSelection(
-                    startLine: max(1, payload["startLine"] as? Int ?? 1),
-                    endLine: max(1, payload["endLine"] as? Int ?? 1),
-                    excerpt: selected,
-                    contextBefore: contextBefore,
-                    contextAfter: contextAfter
-                ))
+                guard let selection = reviewSelection(from: payload) else { return }
+                onCommentSelection?(selection)
+            case "selectionChanged":
+                guard payload["text"] != nil else {
+                    onSelectionChange?(nil)
+                    return
+                }
+                onSelectionChange?(reviewSelection(from: payload))
             case "commentActivated":
                 guard let rawID = payload["commentID"] as? String,
                       let id = UUID(uuidString: rawID) else { return }
@@ -261,6 +273,23 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             default:
                 return
             }
+        }
+
+        private func reviewSelection(
+            from payload: [String: Any]
+        ) -> MarkdownReviewSelection? {
+            guard let selected = payload["text"] as? String,
+                  !selected.isEmpty,
+                  selected.utf16.count <= Self.maximumSelectionLength else { return nil }
+            let contextBefore = String((payload["contextBefore"] as? String ?? "").suffix(80))
+            let contextAfter = String((payload["contextAfter"] as? String ?? "").prefix(80))
+            return MarkdownReviewSelection(
+                startLine: max(1, payload["startLine"] as? Int ?? 1),
+                endLine: max(1, payload["endLine"] as? Int ?? 1),
+                excerpt: selected,
+                contextBefore: contextBefore,
+                contextAfter: contextAfter
+            )
         }
 
         func webView(
@@ -377,12 +406,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: String,
             fingerprint: String,
             commentEnabled: Bool,
+            selectionEnabled: Bool,
             researcherComments: [ResearcherComment],
             userCSS: String
         ) -> String {
             let encodedDocumentID = jsonLiteral(documentID)
             let encodedFingerprint = jsonLiteral(fingerprint)
             let commentFlag = commentEnabled ? "true" : "false"
+            let selectionFlag = selectionEnabled ? "true" : "false"
             let noteDocument = NoteDocument(relativePath: documentID, rawContent: source)
             let renderedSpans = renderedSourceSpans(in: source, relativePath: documentID)
             let sourceLength = (source as NSString).length
@@ -451,6 +482,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const documentID = \(encodedDocumentID);
                 const fingerprint = \(encodedFingerprint);
                 const commentEnabled = \(commentFlag);
+                const selectionEnabled = \(selectionFlag);
                 const commentAnnotations = JSON.parse(new TextDecoder().decode(
                   Uint8Array.from(atob(\(jsonLiteral(annotationPayload))), character => character.charCodeAt(0))
                 ));
@@ -651,17 +683,23 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   }
                 });
 
-                if (commentEnabled) {
+                if (selectionEnabled) {
                   document.addEventListener('selectionchange', () => {
                     const selection = window.getSelection();
                     const text = selection ? selection.toString().trim() : '';
                     if (!text) {
                       reviewButton.hidden = true;
+                      post('selectionChanged');
                       return;
                     }
                     const range = selection.getRangeAt(0);
-                    const rect = range.getBoundingClientRect();
                     const main = document.getElementById('scholium-document');
+                    if (!main || !main.contains(range.startContainer) || !main.contains(range.endContainer)) {
+                      reviewButton.hidden = true;
+                      post('selectionChanged');
+                      return;
+                    }
+                    const rect = range.getBoundingClientRect();
                     const beforeRange = document.createRange();
                     beforeRange.selectNodeContents(main);
                     beforeRange.setEnd(range.startContainer, range.startOffset);
@@ -670,14 +708,28 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     afterRange.setStart(range.endContainer, range.endOffset);
                     const sourceElement = (range.startContainer.parentElement || range.startContainer)
                       .closest && (range.startContainer.parentElement || range.startContainer).closest('[data-source-line]');
-                    reviewButton.dataset.selection = text.slice(0, 2000);
-                    reviewButton.dataset.contextBefore = beforeRange.toString().slice(-80);
-                    reviewButton.dataset.contextAfter = afterRange.toString().slice(0, 80);
-                    reviewButton.dataset.sourceLine = sourceElement ? sourceElement.dataset.sourceLine : '1';
+                    const payload = {
+                      text: text.slice(0, 2000),
+                      contextBefore: beforeRange.toString().slice(-80),
+                      contextAfter: afterRange.toString().slice(0, 80),
+                      startLine: Number(sourceElement ? sourceElement.dataset.sourceLine : '1'),
+                      endLine: Number(sourceElement ? sourceElement.dataset.sourceLine : '1')
+                    };
+                    post('selectionChanged', payload);
+                    if (!commentEnabled) {
+                      reviewButton.hidden = true;
+                      return;
+                    }
+                    reviewButton.dataset.selection = payload.text;
+                    reviewButton.dataset.contextBefore = payload.contextBefore;
+                    reviewButton.dataset.contextAfter = payload.contextAfter;
+                    reviewButton.dataset.sourceLine = String(payload.startLine);
                     reviewButton.style.left = Math.max(12, Math.min(rect.right - 145, window.innerWidth - 170)) + 'px';
                     reviewButton.style.top = Math.max(8, rect.top - 38) + 'px';
                     reviewButton.hidden = false;
                   });
+                }
+                if (commentEnabled) {
                   reviewButton.addEventListener('click', () => {
                     const text = reviewButton.dataset.selection || '';
                     if (text) post('commentSelection', {

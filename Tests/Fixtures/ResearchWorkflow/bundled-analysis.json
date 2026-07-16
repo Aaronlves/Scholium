@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
-  "mode": "analyze",
-  "task_object": "Analyze one declared source unit",
-  "purpose": "Apply the three-pass source-analysis workflow without exceeding the declared unit.",
+  "mode": "develop",
+  "task_object": "Develop one declared Analysis",
+  "purpose": "Clarify and advance the philosophical burden in one Analysis without exceeding its declared research unit.",
   "original_read_set": [
     {
       "kind": "source-file",
-      "identifier": "fixture-paper.pdf"
+      "identifier": "fixture-context.md"
     }
   ],
   "original_write_set": [],
   "research_unit": {
-    "current_scope": "The complete fixture paper",
+    "current_scope": "The current Fixture Analysis",
     "current_limitations": [],
     "proposed_scope": null,
     "proposed_limitations": []
@@ -21,10 +21,10 @@
   "phases": [
     {
       "phase": 1,
-      "mode": "analyze",
-      "purpose": "Orient, analyze, and review the declared source unit.",
+      "mode": "develop",
+      "purpose": "Develop the declared Analysis without changing its Materials.",
       "required_skills": [
-        "scholium-source-analysis"
+        "scholium-development"
       ],
       "selected_practices": [
         {
@@ -36,18 +36,18 @@
       "read_set": [
         {
           "kind": "source-file",
-          "identifier": "fixture-paper.pdf"
+          "identifier": "fixture-context.md"
         }
       ],
       "write_set": [],
       "permission": "read-only",
       "permission_basis": "",
-      "output": "Return a source-faithful analysis report.",
-      "stop_condition": "Stop if the declared source unit is unavailable or incomplete.",
+      "output": "Return a bounded philosophical development result.",
+      "stop_condition": "Stop if the evidence required for the declared development is unavailable or incomplete.",
       "durability": "ephemeral",
       "handoff": {
         "summary": "The analysis remains provisional until independently checked.",
-        "evidence_status": "Source-bounded reconstruction",
+        "evidence_status": "Analysis-bounded development",
         "basis": [],
         "reconstruction_status": null,
         "unresolved_questions": [],

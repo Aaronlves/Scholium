@@ -291,13 +291,121 @@ enum WorkspaceSnapshotBuilder {
                 identityRecovery: loaded.identityRecovery
             )
         }
+        let allDialogueEntries = await services.dialogueStore.allEntries()
+        let critiqueAssociations = critiquesByID.values.sorted {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        let storedFunctionRuns = (
+            allDialogueEntries.compactMap { entry in
+                entry.functionSnapshot.map {
+                    ResearchFunctionRecordProjection(
+                        snapshot: $0,
+                        completion: entry.functionCompletion,
+                        preparedInstructions: entry.generatedPrompt
+                    )
+                }
+            }
+            + critiqueAssociations.flatMap { association in
+                association.rounds.compactMap { round in
+                    round.functionSnapshot.map {
+                        ResearchFunctionRecordProjection(
+                            snapshot: $0,
+                            completion: round.functionCompletion,
+                            preparedInstructions: round.functionInstructions
+                        )
+                    }
+                }
+            }
+        ).sorted {
+            if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
+                return $0.snapshot.preparedAt > $1.snapshot.preparedAt
+            }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        let currentByStableID: [UUID: DocumentFingerprint] = Dictionary(
+            vaultSnapshots.flatMap(\.documents).compactMap { note in
+                guard case .resolved(let stableID) = note.stableIdentity else { return nil }
+                return (stableID, note.fingerprint)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let currentByLocation: [VaultQualifiedNoteID: DocumentFingerprint] = Dictionary(
+            uniqueKeysWithValues: vaultSnapshots.flatMap(\.documents).map {
+                ($0.id, $0.fingerprint)
+            }
+        )
+        let commentsByID: [UUID: ResearcherComment] = Dictionary(
+            humanReviews.flatMap(\.comments).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let functionRuns = storedFunctionRuns.map { run in
+            guard let completion = run.completion,
+                  completion.state != .cancelled,
+                  completion.state != .stale else { return run }
+            let targetIsCurrent = currentByStableID[run.snapshot.request.target.noteID]
+                == completion.targetFingerprint
+            let materialsAreCurrent = run.snapshot.request.materials.allSatisfy { material in
+                currentByStableID[material.noteID]
+                    == completion.materialFingerprints[material.noteID]
+            }
+            let outputIsCurrent: Bool
+            if let preparedOutput = run.snapshot.preparedOutput {
+                outputIsCurrent = currentByLocation[preparedOutput.note]
+                    == completion.outputFingerprint
+            } else {
+                outputIsCurrent = completion.outputFingerprint == nil
+            }
+            let currentEvidence = try? run.snapshot.request.commentIDs.map { id -> DocumentFingerprint in
+                guard let comment = commentsByID[id] else {
+                    throw ResearchFunctionContractError.invalidCompletion(
+                        "Selected Comment evidence is no longer available."
+                    )
+                }
+                return try researchCommentEvidenceRevision(comment)
+            }.sorted { lhs, rhs in
+                if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
+                return lhs.byteCount < rhs.byteCount
+            }
+            let preparedEvidence = run.snapshot.evidenceRevisions.sorted { lhs, rhs in
+                if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
+                return lhs.byteCount < rhs.byteCount
+            }
+            guard targetIsCurrent,
+                  materialsAreCurrent,
+                  outputIsCurrent,
+                  currentEvidence == preparedEvidence else {
+                return ResearchFunctionRecordProjection(
+                    snapshot: run.snapshot,
+                    completion: ResearchFunctionCompletion(
+                        runID: completion.runID,
+                        function: completion.function,
+                        state: .stale,
+                        targetFingerprint: completion.targetFingerprint,
+                        materialFingerprints: completion.materialFingerprints,
+                        summary: completion.summary,
+                        didModifyTarget: completion.didModifyTarget,
+                        outputFingerprint: completion.outputFingerprint,
+                        fidelityOutcomes: completion.fidelityOutcomes,
+                        fidelityEvidenceKey: completion.fidelityEvidenceKey,
+                        reusedFidelityRunID: completion.reusedFidelityRunID,
+                        childRunIDs: completion.childRunIDs ?? [],
+                        completedAt: completion.completedAt,
+                        derivedRefreshWarning: completion.derivedRefreshWarning
+                    ),
+                    preparedInstructions: run.preparedInstructions
+                )
+            }
+            return run
+        }
         let research = WorkspaceResearchSnapshot(
             humanReviews: humanReviews,
-            dialogues: await services.dialogueStore.allEntries(),
-            critiques: critiquesByID.values.sorted {
-                if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
-                return $0.id.uuidString < $1.id.uuidString
+            dialogues: allDialogueEntries.filter {
+                $0.functionSnapshot == nil
+                    || $0.functionSnapshot?.request.function == .dialogue
             },
+            critiques: critiqueAssociations,
+            functionRuns: functionRuns,
             checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,
             healthIssues: Array(Set(healthIssues)).sorted()
@@ -314,4 +422,13 @@ enum WorkspaceSnapshotBuilder {
             research: research
         )
     }
+}
+
+private func researchCommentEvidenceRevision(
+    _ comment: ResearcherComment
+) throws -> DocumentFingerprint {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.sortedKeys]
+    return DocumentFingerprint(data: try encoder.encode(comment))
 }

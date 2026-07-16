@@ -137,27 +137,47 @@ struct FrontendArchitectureTests {
         #expect(!controller.inspector.showsResearchInspector)
     }
 
-    @Test("Scholia navigation is scoped and resettable")
-    func scholiaStateTransitions() {
+    @Test("Research Function presentation is target-locked and resettable")
+    func researchFunctionStateTransitions() {
         let controller = ResearchController()
+        let vaultID = UUID()
+        let target = ResearchFunctionTarget(
+            noteID: UUID(),
+            note: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Topics/Agency.md"
+            ),
+            role: .topic,
+            fingerprint: DocumentFingerprint(content: "# Agency\n"),
+            title: "Agency"
+        )
         let firstPresentation = UUID()
-        controller.beginScholiaPresentation(id: firstPresentation, section: .dialogue)
-        controller.pushScholiaDestination(.dialogue)
-        #expect(controller.scholia.section == .dialogue)
-        #expect(controller.scholia.path == [.dialogue])
-        #expect(controller.scholia.presentationID == firstPresentation)
+        controller.functions.begin(
+            target: target,
+            function: .dialogue,
+            selection: nil,
+            presentationID: firstPresentation
+        )
+        #expect(controller.functions.activeFunction == .dialogue)
+        #expect(controller.functions.target == target)
+        #expect(controller.functions.presentationID == firstPresentation)
 
         let secondPresentation = UUID()
-        controller.beginScholiaPresentation(id: secondPresentation, section: .comments)
-        #expect(controller.scholia.section == .comments)
-        #expect(controller.scholia.path.isEmpty)
-        #expect(controller.scholia.presentationID == secondPresentation)
+        controller.functions.begin(
+            target: target,
+            function: .develop,
+            selection: nil,
+            presentationID: secondPresentation
+        )
+        #expect(controller.functions.activeFunction == .develop)
+        #expect(controller.functions.presentationID == secondPresentation)
 
-        controller.dismissScholiaPresentation(id: firstPresentation)
-        #expect(controller.scholia.presentationID == secondPresentation)
+        controller.functions.dismiss(presentationID: firstPresentation)
+        #expect(controller.functions.presentationID == secondPresentation)
 
-        controller.dismissScholiaPresentation(id: secondPresentation)
-        #expect(controller.scholia == ScholiaPresentationState())
+        controller.functions.dismiss(presentationID: secondPresentation)
+        #expect(controller.functions.presentationID == nil)
+        #expect(controller.functions.target == nil)
     }
 
     @Test("Quick Open rejects a superseded completion")
@@ -432,6 +452,17 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchPresentation(reduceMotion: false) != nil)
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
+    }
+
+    @Test("Reduce Transparency selects the opaque Research Strip fallback")
+    func reducedTransparencyUsesOpaqueResearchStripSurface() {
+        let reduced = ResearchStripSurfaceStyle(reduceTransparency: true)
+        #expect(reduced.usesOpaqueBackground)
+        #expect(reduced.separatorOpacity == 0.72)
+
+        let standard = ResearchStripSurfaceStyle(reduceTransparency: false)
+        #expect(!standard.usesOpaqueBackground)
+        #expect(standard.separatorOpacity == 0.28)
     }
 
     @Test("Relationship colors provide increased-contrast variants")

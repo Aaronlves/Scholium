@@ -31,9 +31,7 @@ public protocol DiscoveryUseCases: Sendable {
     func related(query: String, scope: SearchScope, excluding: Set<VaultQualifiedNoteID>, limit: Int) async throws -> [RelatedSearchItem]
 }
 
-public protocol ResearchUseCases: Sendable {
-    var skillsURL: URL { get }
-    var recoveryRecordsURL: URL { get }
+public protocol ResearchRecordUseCases: Sendable {
     func snapshot() async throws -> WorkspaceResearchSnapshot
     func humanReview(noteID: UUID) async throws -> HumanReviewRecord?
     func comments(noteID: UUID) async throws -> [ResearcherComment]
@@ -48,6 +46,19 @@ public protocol ResearchUseCases: Sendable {
     func dialogues(noteID: UUID) async throws -> [DialogueEntry]
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
+    func dialogueResponseProfile() async throws -> DialogueResponseProfile
+    func settings() async throws -> TriptychSettings
+    func saveSettings(_ settings: TriptychSettings) async throws
+    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws
+    func dialogueEntries() async throws -> [DialogueEntry]
+    func dialogue(id: UUID) async throws -> DialogueEntry
+    func appendDialogueReply(_ reply: DialogueReply, to entryID: UUID) async throws -> DialogueEntry
+    func appendDialogueFollowUpComment(_ comment: DialogueFollowUpComment, to entryID: UUID) async throws -> DialogueEntry
+    func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
+    func resolveRecoveryRecord(_ id: UUID) async throws
+}
+
+public protocol ResearchCheckpointUseCases: Sendable {
     func createCheckpoint(name: String, kind: TriptychCheckpointKind) async throws -> TriptychCheckpoint
     func prepareCheckpointsLocation() async throws -> URL
     func checkpoints() async throws -> TriptychCheckpointListing
@@ -56,18 +67,9 @@ public protocol ResearchUseCases: Sendable {
     func checkpointComparison(_ checkpointID: UUID) async throws -> [TriptychCheckpointChange]
     func restoreNote(_ note: VaultQualifiedNoteID, from checkpointID: UUID, expectedRevision: DocumentFingerprint) async throws -> TriptychCheckpointRestoreResult
     func restoreCheckpoint(_ checkpointID: UUID, selection: TriptychCheckpointRestoreSelection) async throws -> TriptychCheckpointRestoreResult
-    func dialogueResponseProfile() async throws -> DialogueResponseProfile
-    func settings() async throws -> TriptychSettings
-    func saveSettings(_ settings: TriptychSettings) async throws
-    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws
-    func dialogueEntries() async throws -> [DialogueEntry]
-    func dialogue(id: UUID) async throws -> DialogueEntry
-    func createDialogue(instruction: String, selectedNotes: [DialogueNoteReference], includedCommentIDs: Set<UUID>, requestedDestination: String?, responseProfile: DialogueResponseProfile?) async throws -> DialoguePreparation
-    func appendDialogueReply(_ reply: DialogueReply, to entryID: UUID) async throws -> DialogueEntry
-    func appendDialogueFollowUpComment(_ comment: DialogueFollowUpComment, to entryID: UUID) async throws -> DialogueEntry
-    func requestCritique(for work: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint, scope: CritiqueRequestScope, lens: String, selectedRanges: String, additionalInstructions: String) async throws -> CritiquePreparation
-    func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
-    func resolveRecoveryRecord(_ id: UUID) async throws
+}
+
+public protocol ResearchSkillUseCases: Sendable {
     func skills() async throws -> [ResearchSkillPackage]
     func skillCatalog() async throws -> ResearchSkillCatalog
     func skillPackage(id: String) async throws -> ResearchSkillPackage
@@ -80,6 +82,93 @@ public protocol ResearchUseCases: Sendable {
     func skillResource(id: String, relativePath: String) async throws -> String
     func skillInstructionAssembly(mode: ResearchSkillMode, requestedSkillIDs: [String], mixedPhases: [ResearchSkillAssemblyPhase]) async throws -> String
     func resolveWorkflow(_ contract: ResearchWorkflowContract) async throws -> ResolvedResearchWorkflowEnvelope
+    /// Delivery-neutral draft validation. Presentation must not parse YAML or
+    /// invoke `ResearchSkillInspector` directly.
+    func inspectSkillDraft(
+        id: String,
+        source: String,
+        origin: ResearchSkillOrigin
+    ) async -> ResearchSkillPackage
+    func researchFunctionSkillBindingStatus(
+        for function: ResearchFunctionID
+    ) async throws -> ResearchFunctionSkillBindingStatus
+    func saveResearchFunctionSkillSelection(
+        _ selection: ResearchFunctionSkillSelection,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchFunctionSkillBindingStatus
+    func clearResearchFunctionSkillSelection(
+        for function: ResearchFunctionID,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchFunctionSkillBindingStatus
+    func citationMethodStatus() async throws -> ResearchCitationMethodStatus
+    func activateCitationMethod(
+        selection: ResearchCitationMethodSelection,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus
+    func clearCitationMethod(
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus
+    func adoptBundledCitationStarter(
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus
+    func prepareSkillMaintenance(
+        _ request: ResearchSkillMaintenanceRequest
+    ) async throws -> ResearchSkillMaintenancePreparation
+    func applySkillMaintenance(
+        _ preparation: ResearchSkillMaintenancePreparation,
+        confirmationToken: ResearchSkillMaintenanceConfirmationToken
+    ) async throws -> ResearchSkillMaintenanceApplyOutcome
+    func skillMaintenanceSnapshots(
+        packageID: String?
+    ) async throws -> ResearchSkillMaintenanceSnapshotListing
+    func restoreSkillMaintenance(
+        snapshotID: UUID,
+        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
+    ) async throws -> ResearchSkillMaintenanceRestoreOutcome
+}
+
+public protocol ResearchFunctionUseCases: Sendable {
+    func availableFunctions(
+        for target: ResearchFunctionTarget
+    ) async throws -> [ResearchFunctionAvailability]
+
+    func materialCandidates(
+        for target: ResearchFunctionTarget,
+        function: ResearchFunctionID
+    ) async throws -> [ResearchFunctionMaterialCandidate]
+
+    func prepareFunction(
+        _ request: ResearchFunctionRequest
+    ) async throws -> ResearchFunctionPreparation
+
+    func selectFunctionMethods(
+        _ submission: ResearchFunctionMethodSelectionSubmission
+    ) async throws -> ResearchFunctionPreparation
+
+    func completeFunction(
+        _ submission: ResearchFunctionCompletionSubmission
+    ) async throws -> ResearchFunctionCompletion
+
+    func cancelFunction(
+        runID: UUID
+    ) async throws
+
+    /// Compatibility wrappers retained while app and external integrations
+    /// migrate to the delivery-neutral function boundary.
+    func createDialogue(instruction: String, selectedNotes: [DialogueNoteReference], includedCommentIDs: Set<UUID>, requestedDestination: String?, responseProfile: DialogueResponseProfile?) async throws -> DialoguePreparation
+    func requestCritique(for work: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint, scope: CritiqueRequestScope, lens: String, selectedRanges: String, additionalInstructions: String) async throws -> CritiquePreparation
+}
+
+/// Compatibility composite used by one per-window workspace activation.
+/// Feature leaves should prefer the smallest component protocol they need.
+public protocol ResearchUseCases:
+    ResearchRecordUseCases,
+    ResearchCheckpointUseCases,
+    ResearchSkillUseCases,
+    ResearchFunctionUseCases
+{
+    var skillsURL: URL { get }
+    var recoveryRecordsURL: URL { get }
 }
 
 public protocol SettingsUseCases: Sendable {

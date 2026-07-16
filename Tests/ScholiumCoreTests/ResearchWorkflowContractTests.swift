@@ -274,7 +274,7 @@ struct ResearchWorkflowContractTests {
             originalWriteSet: [],
             phases: [phase(
                 mode: .review,
-                requiredSkills: ["scholium-philosophical-review"],
+                requiredSkills: ["scholium-critique"],
                 selectedPractices: [ResearchPracticeSelection(
                     packageID: "scholium-philosophical-practices",
                     practiceID: "reviewer"
@@ -321,7 +321,7 @@ struct ResearchWorkflowContractTests {
             originalWriteSet: [],
             phases: [phase(
                 mode: .review,
-                requiredSkills: ["scholium-philosophical-review"],
+                requiredSkills: ["scholium-critique"],
                 selectedPractices: selections,
                 readSet: [note]
             )]
@@ -338,7 +338,7 @@ struct ResearchWorkflowContractTests {
             originalWriteSet: [],
             phases: [phase(
                 mode: .review,
-                requiredSkills: ["scholium-philosophical-review"],
+                requiredSkills: ["scholium-critique"],
                 selectedPractices: [replacement("reviewer", precedence: 1),
                                     replacement("dialectical-partner", precedence: 2)],
                 readSet: [note]
@@ -495,7 +495,7 @@ struct ResearchWorkflowContractTests {
             packageID: "scholium-philosophical-practices",
             practiceID: practiceID,
             application: .replace,
-            officialSkillID: "scholium-philosophical-review",
+            officialSkillID: "scholium-critique",
             editablePoint: "review-method",
             scope: "This review phase only",
             reason: "The researcher selected this methodological replacement.",

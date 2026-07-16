@@ -63,6 +63,7 @@ cleanup() {
 
   terminate_qa_instances
   "${LSREGISTER}" -u "${REGISTERED_QA}" 2>/dev/null || true
+  defaults delete com.kbmanager.qa 2>/dev/null || true
   rm -rf "${REGISTERED_QA}"
   if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]]; then
     rm -rf \

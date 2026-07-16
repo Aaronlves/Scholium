@@ -54,7 +54,7 @@ private final class WindowAttachedWebView: WKWebView {
             menu.addItem(item)
             addedAction = true
         }
-        if onRequestComment != nil {
+        if onRequestComment != nil, editorSession.context?.composing != true {
             if !addedAction { menu.addItem(.separator()) }
             let item = NSMenuItem(title: "Add Comment…", action: #selector(requestComment(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.comment")
@@ -159,7 +159,7 @@ private struct EditorBridgeMessage: Codable {
 }
 
 @MainActor
-final class MarkdownEditorSession: ObservableObject {
+final class MarkdownEditorSession: NSObject, ObservableObject {
     enum SessionError: LocalizedError {
         case unavailable
         case invalidResult
@@ -205,9 +205,29 @@ final class MarkdownEditorSession: ObservableObject {
     private var sourceChangeHandler: ((String) -> Void)?
     private var checkedSource = ""
     private var recoverySnapshot: MarkdownEditorRecoverySnapshot?
+    private var lastKnownSelections: [MarkdownEditorSelectionRange] = []
+    #if DEBUG
+    private static let qaTerminationNotification = Notification.Name(
+        "com.kbmanager.qa.simulate-editor-process-termination"
+    )
+    private var qaTerminationObserverInstalled = false
+    #endif
     var hasAttachedWebView: Bool { webView != nil }
 
+    override init() {
+        super.init()
+    }
+
     #if DEBUG
+    struct TestingAccessibilitySnapshot: Decodable, Sendable {
+        let contentEditableCount: Int
+        let textboxCount: Int
+        let label: String
+        let multiline: String
+        let hasValueText: Bool
+        let spellcheck: String
+    }
+
     @discardableResult
     func testingSimulateWebContentProcessTermination() -> Bool {
         guard let webView,
@@ -217,6 +237,35 @@ final class MarkdownEditorSession: ObservableObject {
         coordinator.webViewWebContentProcessDidTerminate(webView)
         return true
     }
+
+    func testingAccessibilitySnapshot() async throws -> TestingAccessibilitySnapshot {
+        guard let webView else { throw SessionError.unavailable }
+        let rawResult = try await webView.callAsyncJavaScript(
+            """
+            const editable = document.querySelectorAll('[contenteditable="true"]');
+            const textboxes = document.querySelectorAll('[role="textbox"]');
+            const content = editable[0];
+            return {
+                contentEditableCount: editable.length,
+                textboxCount: textboxes.length,
+                label: content?.getAttribute('aria-label') || '',
+                multiline: content?.getAttribute('aria-multiline') || '',
+                hasValueText: content?.hasAttribute('aria-valuetext') || false,
+                spellcheck: content?.getAttribute('spellcheck') || ''
+            };
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard JSONSerialization.isValidJSONObject(rawResult as Any),
+              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
+              let snapshot = try? JSONDecoder().decode(TestingAccessibilitySnapshot.self, from: data) else {
+            throw SessionError.invalidResult
+        }
+        return snapshot
+    }
+
     #endif
 
     fileprivate func attach(_ webView: WKWebView) {
@@ -227,6 +276,7 @@ final class MarkdownEditorSession: ObservableObject {
         errorMessage = nil
         recoverySnapshot = nil
         requestBarrier = nil
+        installQATerminationObserverIfEnabled()
         startupTask?.cancel()
         startupTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
@@ -242,6 +292,7 @@ final class MarkdownEditorSession: ObservableObject {
         self.webView = nil
         isReady = false
         isLoaded = false
+        removeQATerminationObserver()
     }
 
     fileprivate func editorBecameReady() {
@@ -259,6 +310,7 @@ final class MarkdownEditorSession: ObservableObject {
 
     fileprivate func updateContext(_ context: MarkdownEditorContext) {
         self.context = context
+        lastKnownSelections = context.selections
     }
 
     fileprivate func reportError(_ message: String) {
@@ -273,7 +325,10 @@ final class MarkdownEditorSession: ObservableObject {
         mode: NotePresentationMode,
         preservingRecovery: Bool = false
     ) {
-        if !preservingRecovery { recoverySnapshot = nil }
+        if !preservingRecovery {
+            recoverySnapshot = nil
+            lastKnownSelections = []
+        }
         pendingSource = source
         pendingDocumentID = documentID
         self.documentID = documentID
@@ -291,8 +346,15 @@ final class MarkdownEditorSession: ObservableObject {
         guard mode != .read else { return }
         pendingMode = mode
         guard isReady, isLoaded, let webView else { return }
-        Task {
-            _ = try? await send(.setMode(mode), in: webView)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await send(.setMode(mode), in: webView)
+            } catch {
+                let message = "The document mode change was not applied because the editor changed during text composition."
+                errorMessage = message
+                _ = try? await send(.announceStatus(message), in: webView)
+            }
         }
     }
 
@@ -514,7 +576,7 @@ final class MarkdownEditorSession: ObservableObject {
                 documentID: documentID,
                 fingerprint: startingFingerprint,
                 generation: generation,
-                ranges: [],
+                ranges: lastKnownSelections,
                 source: checkedSource,
                 stateJSON: nil,
                 undoHistoryPreserved: false,
@@ -540,6 +602,7 @@ final class MarkdownEditorSession: ObservableObject {
                   snapshot.generation == self.generation,
                   snapshot.source == self.checkedSource else { return }
             self.recoverySnapshot = snapshot
+            self.lastKnownSelections = snapshot.ranges
         }
     }
 
@@ -573,6 +636,17 @@ final class MarkdownEditorSession: ObservableObject {
                     isDirty = snapshot.dirty
                     if recovered.recovery?.undoHistoryPreserved == false {
                         errorMessage = "The exact editor buffer was recovered, but its pre-crash undo history was unavailable."
+                        _ = try await send(
+                            .announceStatus(
+                                "The exact editor buffer was recovered. Pre-crash undo history is unavailable."
+                            ),
+                            in: webView
+                        )
+                    } else {
+                        _ = try await send(
+                            .announceStatus("The exact editor buffer was recovered."),
+                            in: webView
+                        )
                     }
                 } else {
                     isDirty = false
@@ -652,13 +726,59 @@ final class MarkdownEditorSession: ObservableObject {
             if result.sourceChanged, let text = result.text {
                 try reconcileMirror(with: text, publish: true)
             }
-            if let context = result.context { self.context = context }
+            if let context = result.context {
+                self.context = context
+                lastKnownSelections = context.selections
+            }
             generation = result.resultingGeneration
             return result
         }
         requestBarrier = Task { @MainActor in _ = try? await task.value }
         return try await task.value
     }
+
+    #if DEBUG
+    private func installQATerminationObserverIfEnabled() {
+        guard !qaTerminationObserverInstalled,
+              Bundle.main.bundleIdentifier == "com.kbmanager.qa",
+              ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults") else {
+            return
+        }
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(receiveQATerminationNotification(_:)),
+            name: Self.qaTerminationNotification,
+            object: nil
+        )
+        qaTerminationObserverInstalled = true
+    }
+
+    private func removeQATerminationObserver() {
+        guard qaTerminationObserverInstalled else { return }
+        DistributedNotificationCenter.default().removeObserver(
+            self,
+            name: Self.qaTerminationNotification,
+            object: nil
+        )
+        qaTerminationObserverInstalled = false
+    }
+
+    @objc private func receiveQATerminationNotification(_ notification: Notification) {
+        guard notification.userInfo?["documentID"] as? String == documentID else { return }
+        guard testingSimulateWebContentProcessTermination() else { return }
+        if let markerPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_UI_TEST_EDITOR_FAULT_MARKER"
+        ] {
+            try? Data(documentID.utf8).write(
+                to: URL(fileURLWithPath: markerPath),
+                options: .atomic
+            )
+        }
+    }
+    #else
+    private func installQATerminationObserverIfEnabled() {}
+    private func removeQATerminationObserver() {}
+    #endif
 
     private func reconcileMirror(with text: String, publish: Bool) throws {
         let exactText = checkedSource.contains("\r\n") && !text.contains("\r\n")

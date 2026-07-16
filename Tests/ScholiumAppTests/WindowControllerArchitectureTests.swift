@@ -15,11 +15,16 @@ struct WindowControllerArchitectureTests {
         let discovery = DiscoveryController { discoveryIntents.append($0) }
         let document = DocumentController { documentIntents.append($0) }
         let research = ResearchController { researchIntents.append($0) }
+        let presentationID = UUID()
 
         discovery.requestOpen(reference, inNewTab: true)
         document.requestLifecycle(.move(reference.relativePath))
         research.setActiveDocument(reference)
-        research.requestPresentScholia(section: .dialogue)
+        research.requestPresentFunction(
+            .dialogue,
+            target: reference,
+            presentationID: presentationID
+        )
 
         #expect(discoveryIntents == [
             .openDocument(WindowDocumentRoute(
@@ -29,7 +34,11 @@ struct WindowControllerArchitectureTests {
         ])
         #expect(documentIntents == [.presentLifecycle(.move("Topics/Agency.md"))])
         #expect(researchIntents == [
-            .presentScholia(ScholiaRoute(reference: reference, section: .dialogue)),
+            .presentResearchFunction(ResearchFunctionPanelRoute(
+                target: reference,
+                function: .dialogue,
+                presentationID: presentationID
+            )),
         ])
         #expect(document.openDocuments.isEmpty)
         #expect(discovery.library.locationScope == .workspace)
@@ -224,11 +233,16 @@ struct WindowControllerArchitectureTests {
         #expect(!controller.inspector.showsResearchInspector)
 
         let current = UUID()
-        controller.beginScholiaPresentation(id: current, section: .dialogue)
-        controller.dismissScholiaPresentation(id: UUID())
-        #expect(controller.scholia.presentationID == current)
-        controller.dismissScholiaPresentation(id: current)
-        #expect(controller.scholia == ScholiaPresentationState())
+        controller.functions.begin(
+            target: fixtureFunctionTarget(),
+            function: .dialogue,
+            selection: nil,
+            presentationID: current
+        )
+        controller.functions.dismiss(presentationID: UUID())
+        #expect(controller.functions.presentationID == current)
+        controller.functions.dismiss(presentationID: current)
+        #expect(controller.functions.presentationID == nil)
     }
 
     @Test("Research destinations receive narrow contexts instead of the window model")
@@ -238,11 +252,10 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let relativePaths = [
-            "Scholium/Views/ScholiaPanelView.swift",
+            "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift",
+            "Scholium/Views/ResearchFunctions/ResearchStripView.swift",
             "Scholium/Views/QualityReviewView.swift",
-            "Scholium/Views/CritiqueRequestView.swift",
             "Scholium/Views/ResearcherCommentsView.swift",
-            "Scholium/Views/DialogueView.swift",
         ]
 
         for relativePath in relativePaths {
@@ -253,6 +266,35 @@ struct WindowControllerArchitectureTests {
             #expect(!source.contains("WindowModel"))
             #expect(!source.contains("@EnvironmentObject"))
         }
+    }
+
+    @Test("The typed Research Function route is the only Critique and Dialogue entry panel")
+    func legacyResearchPanelsStayRetired() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let router = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowPresentationRouter.swift"
+            ),
+            encoding: .utf8
+        )
+        let app = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(router.contains("case researchFunction(ResearchFunctionPanelRoute)"))
+        #expect(!router.contains("case critique(path:"))
+        #expect(!app.contains("pendingCritiquePath"))
+        #expect(!app.contains("copyCritiqueInstructions"))
+        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
+            .appendingPathComponent("Scholium/Views/CritiqueRequestView.swift").path))
+        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
+            .appendingPathComponent("Scholium/Views/DialogueView.swift").path))
     }
 
     @Test("Only the view composition root receives the complete window model")
@@ -347,7 +389,7 @@ struct WindowControllerArchitectureTests {
         }
         #expect(windowModelSource.contains("documentController.create(DocumentCreationRequest("))
         #expect(windowModelSource.contains("discoveryController.executeSearch("))
-        #expect(windowModelSource.contains("researchController.createDialogue("))
+        #expect(windowModelSource.contains("researchController.functions"))
     }
 
     @Test("Window and document ownership boundaries cannot regress")
@@ -395,6 +437,20 @@ struct WindowControllerArchitectureTests {
             vaultRole: .topicKnowledge,
             relativePath: path,
             stableNoteID: UUID().uuidString.lowercased()
+        )
+    }
+
+    private func fixtureFunctionTarget() -> ResearchFunctionTarget {
+        let vaultID = UUID()
+        return ResearchFunctionTarget(
+            noteID: UUID(),
+            note: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Topics/Agency.md"
+            ),
+            role: .topic,
+            fingerprint: DocumentFingerprint(content: "# Agency\n"),
+            title: "Agency"
         )
     }
 }

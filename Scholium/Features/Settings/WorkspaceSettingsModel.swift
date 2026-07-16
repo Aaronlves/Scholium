@@ -54,13 +54,63 @@ struct WorkspaceSettingsCapabilities {
     let forgetZoteroCache: () async throws -> Void
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
     let researchSkills: (UUID) async throws -> [ResearchSkillPackage]
+    let inspectResearchSkillDraft: (
+        UUID, String, String, ResearchSkillOrigin
+    ) async throws -> ResearchSkillPackage
+    let researchFunctionSkillBindingStatus: (
+        UUID, ResearchFunctionID
+    ) async throws -> ResearchFunctionSkillBindingStatus
+    let saveResearchFunctionSkillSelection: (
+        UUID, ResearchFunctionSkillSelection, DocumentFingerprint?
+    ) async throws -> ResearchFunctionSkillBindingStatus
+    let citationMethodStatus: (UUID) async throws -> ResearchCitationMethodStatus
+    let activateCitationMethod: (
+        UUID, ResearchCitationMethodSelection, DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus
+    let clearCitationMethod: (
+        UUID, DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus
+    let adoptBundledCitationStarter: (
+        UUID, DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus
     let createResearchSkill: (UUID, String, String) async throws -> ResearchSkillPackage
     let duplicateBundledResearchSkill: (UUID, String, String) async throws -> ResearchSkillPackage
     let renameResearchSkill: (UUID, String, String, DocumentFingerprint) async throws -> ResearchSkillPackage
     let saveResearchSkill: (UUID, String, String, DocumentFingerprint) async throws -> ResearchSkillPackage
     let deleteResearchSkill: (UUID, String, DocumentFingerprint) async throws -> Void
+    let researchSkillResourcePaths: (UUID, String) async throws -> [String]
+    let researchSkillResource: (UUID, String, String) async throws -> String
+    let prepareResearchSkillMaintenance: (
+        UUID, ResearchSkillMaintenanceRequest
+    ) async throws -> ResearchSkillMaintenancePreparation
+    let applyResearchSkillMaintenance: (
+        UUID,
+        ResearchSkillMaintenancePreparation,
+        ResearchSkillMaintenanceConfirmationToken
+    ) async throws -> ResearchSkillMaintenanceApplyOutcome
+    let researchSkillMaintenanceSnapshots: (
+        UUID, String?
+    ) async throws -> ResearchSkillMaintenanceSnapshotListing
+    let restoreResearchSkillMaintenance: (
+        UUID, UUID, ResearchSkillMaintenanceExpectedCurrentState
+    ) async throws -> ResearchSkillMaintenanceRestoreOutcome
     let researchSkillsURL: (UUID) async throws -> URL
     let openExternal: (URL) -> Bool
+}
+
+extension ResearchSkillMaintenancePreparation {
+    /// Settings remains fail-closed until both independent checks pass for the
+    /// exact package revision represented by the opaque confirmation token.
+    var isReadyForSettingsApply: Bool {
+        guard evaluation.structuralStatus == .passed,
+              evaluation.externalStatus == .passed,
+              evaluation.proposedPackageRevision == proposedPackageRevision,
+              let confirmationToken else { return false }
+        return confirmationToken.preparationID == id
+            && confirmationToken.packageID == request.packageID
+            && confirmationToken.expectedPackageRevision == request.expectedPackageRevision
+            && confirmationToken.proposedPackageRevision == proposedPackageRevision
+    }
 }
 
 /// Application-lifetime Settings boundary. It receives delivery-neutral
@@ -257,6 +307,97 @@ final class WorkspaceSettingsModel: ObservableObject {
         return try await capabilities.researchSkills(id)
     }
 
+    func inspectResearchSkillDraft(
+        id: String,
+        source: String,
+        origin: ResearchSkillOrigin
+    ) async -> ResearchSkillPackage? {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            return nil
+        }
+        return try? await capabilities.inspectResearchSkillDraft(
+            workspaceID,
+            id,
+            source,
+            origin
+        )
+    }
+
+    func citationMethodStatus() async throws -> ResearchCitationMethodStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.citationMethodStatus(workspaceID)
+    }
+
+    func researchFunctionSkillBindingStatus(
+        for function: ResearchFunctionID
+    ) async throws -> ResearchFunctionSkillBindingStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchFunctionSkillBindingStatus(
+            workspaceID,
+            function
+        )
+    }
+
+    func saveResearchFunctionSkillSelection(
+        _ selection: ResearchFunctionSkillSelection,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchFunctionSkillBindingStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.saveResearchFunctionSkillSelection(
+            workspaceID,
+            selection,
+            expectedBindingRevision
+        )
+    }
+
+    func activateCitationMethod(
+        packageID: String,
+        citationStyle: String,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.activateCitationMethod(
+            workspaceID,
+            ResearchCitationMethodSelection(
+                packageID: packageID,
+                citationStyle: citationStyle
+            ),
+            expectedBindingRevision
+        )
+    }
+
+    func clearCitationMethod(
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.clearCitationMethod(
+            workspaceID,
+            expectedBindingRevision
+        )
+    }
+
+    func adoptBundledCitationStarter(
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.adoptBundledCitationStarter(
+            workspaceID,
+            expectedBindingRevision
+        )
+    }
+
     func createResearchSkill(id: String, source: String) async throws -> ResearchSkillPackage {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
@@ -304,6 +445,76 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         try await capabilities.deleteResearchSkill(workspaceID, id, expectedRevision)
+    }
+
+    func researchSkillResourcePaths(id: String) async throws -> [String] {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchSkillResourcePaths(workspaceID, id)
+    }
+
+    func researchSkillResource(id: String, relativePath: String) async throws -> String {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchSkillResource(
+            workspaceID,
+            id,
+            relativePath
+        )
+    }
+
+    func prepareResearchSkillMaintenance(
+        _ request: ResearchSkillMaintenanceRequest
+    ) async throws -> ResearchSkillMaintenancePreparation {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.prepareResearchSkillMaintenance(workspaceID, request)
+    }
+
+    func applyResearchSkillMaintenance(
+        _ preparation: ResearchSkillMaintenancePreparation
+    ) async throws -> ResearchSkillMaintenanceApplyOutcome {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        guard preparation.isReadyForSettingsApply,
+              let confirmationToken = preparation.confirmationToken else {
+            throw ResearchSkillMaintenanceError.evaluationFailed
+        }
+        return try await capabilities.applyResearchSkillMaintenance(
+            workspaceID,
+            preparation,
+            confirmationToken
+        )
+    }
+
+    func restoreResearchSkillMaintenance(
+        snapshotID: UUID,
+        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
+    ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.restoreResearchSkillMaintenance(
+            workspaceID,
+            snapshotID,
+            expectedCurrentState
+        )
+    }
+
+    func researchSkillMaintenanceSnapshots(
+        packageID: String? = nil
+    ) async throws -> ResearchSkillMaintenanceSnapshotListing {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchSkillMaintenanceSnapshots(
+            workspaceID,
+            packageID
+        )
     }
 
     func researchSkillsURL() async throws -> URL {

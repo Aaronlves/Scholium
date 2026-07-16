@@ -16,6 +16,7 @@ struct WorkspaceServices: Sendable {
     let indexes: [UUID: SQLiteSearchIndex]
     let controlStore: TriptychControlStore
     let researchSkillStore: ResearchSkillStore
+    let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
     let humanReviewStore: HumanReviewStore
     let dialogueStore: DialogueStore
     let critiqueRegistry: CritiqueRegistry
@@ -227,12 +228,20 @@ public actor WorkspaceHandle {
                     isDirectory: true
                 )
             )
+            let researchSkillStore = ResearchSkillStore(controlURL: controlURL)
+            let researchSkillMaintenanceStore = ResearchSkillMaintenanceStore(
+                skillStore: researchSkillStore,
+                snapshotRootURL: triptychStorage
+                    .appendingPathComponent("research-guidance", isDirectory: true)
+                    .appendingPathComponent("skill-snapshots", isDirectory: true)
+            )
             let services = WorkspaceServices(
                 manifest: manifest,
                 repositories: repositories,
                 indexes: indexes,
                 controlStore: controlStore,
-                researchSkillStore: ResearchSkillStore(controlURL: controlURL),
+                researchSkillStore: researchSkillStore,
+                researchSkillMaintenanceStore: researchSkillMaintenanceStore,
                 humanReviewStore: humanReviewStore,
                 dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
@@ -1311,7 +1320,10 @@ public actor WorkspaceHandle {
 
     func dialogues(noteID: UUID) async throws -> [DialogueEntry] {
         try requireActive()
-        return await services.dialogueStore.entries(noteID: noteID)
+        return await services.dialogueStore.entries(noteID: noteID).filter {
+            $0.functionSnapshot == nil
+                || $0.functionSnapshot?.request.function == .dialogue
+        }
     }
 
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
@@ -1352,7 +1364,10 @@ public actor WorkspaceHandle {
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
-        return await services.dialogueStore.allEntries()
+        return await services.dialogueStore.allEntries().filter {
+            $0.functionSnapshot == nil
+                || $0.functionSnapshot?.request.function == .dialogue
+        }
     }
 
     func dialogue(id: UUID) async throws -> DialogueEntry {
@@ -1360,7 +1375,12 @@ public actor WorkspaceHandle {
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
-        return try await services.dialogueStore.entry(id: id)
+        let entry = try await services.dialogueStore.entry(id: id)
+        guard entry.functionSnapshot == nil
+                || entry.functionSnapshot?.request.function == .dialogue else {
+            throw DialogueError.entryNotFound(id)
+        }
+        return entry
     }
 
     func appendDialogueReply(

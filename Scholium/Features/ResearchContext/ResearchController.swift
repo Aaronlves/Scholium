@@ -8,19 +8,6 @@ struct ResearchInspectorState: Equatable, Sendable {
     var showsNoteHistory = false
 }
 
-enum ScholiaDestination: Hashable {
-    case comments
-    case review
-    case critique
-    case dialogue
-}
-
-struct ScholiaPresentationState: Equatable {
-    var section: ScholiaSection = .comments
-    var path: [ScholiaDestination] = []
-    var presentationID: UUID?
-}
-
 /// Per-window owner for research-context presentation. Research records and
 /// checkpoints are loaded and persisted through Application operations; this
 /// controller never owns a repository or another feature controller.
@@ -30,19 +17,24 @@ final class ResearchController: ObservableObject {
 
     @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var inspector = ResearchInspectorState()
-    @Published private(set) var scholia = ScholiaPresentationState()
     @Published private(set) var records: WorkspaceResearchSnapshot?
     @Published private(set) var errorMessage: String?
 
+    let functions = ResearchFunctionController()
+
     private let intentHandler: IntentHandler
     private var operations: (any ResearchUseCases)?
+    private var cancellables: Set<AnyCancellable> = []
 
     init(intentHandler: @escaping IntentHandler = { _ in }) {
         self.intentHandler = intentHandler
+        functions.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     /// Borrows the capabilities selected by WorkspaceStore while retaining
-    /// this window's independent inspector and Scholia presentation state.
+    /// this window's independent inspector and function presentation state.
     func bind(to operations: any ResearchUseCases, snapshot: WorkspaceSnapshot? = nil) {
         self.operations = operations
         errorMessage = nil
@@ -51,6 +43,7 @@ final class ResearchController: ObservableObject {
 
     func unbind() {
         operations = nil
+        functions.unbind()
         records = nil
         errorMessage = nil
     }
@@ -273,23 +266,6 @@ final class ResearchController: ObservableObject {
     }
 
     @discardableResult
-    func createDialogue(
-        instruction: String,
-        selectedNotes: [DialogueNoteReference],
-        includedCommentIDs: Set<UUID>,
-        requestedDestination: String? = nil,
-        responseProfile: DialogueResponseProfile? = nil
-    ) async throws -> DialoguePreparation {
-        try await requireOperations().createDialogue(
-            instruction: instruction,
-            selectedNotes: selectedNotes,
-            includedCommentIDs: includedCommentIDs,
-            requestedDestination: requestedDestination,
-            responseProfile: responseProfile
-        )
-    }
-
-    @discardableResult
     func appendDialogueReply(
         _ reply: DialogueReply,
         to entryID: UUID
@@ -303,25 +279,6 @@ final class ResearchController: ObservableObject {
         to entryID: UUID
     ) async throws -> DialogueEntry {
         try await requireOperations().appendDialogueFollowUpComment(comment, to: entryID)
-    }
-
-    @discardableResult
-    func requestCritique(
-        for work: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope: CritiqueRequestScope,
-        lens: String = "",
-        selectedRanges: String = "",
-        additionalInstructions: String = ""
-    ) async throws -> CritiquePreparation {
-        try await requireOperations().requestCritique(
-            for: work,
-            expectedRevision: expectedRevision,
-            scope: scope,
-            lens: lens,
-            selectedRanges: selectedRanges,
-            additionalInstructions: additionalInstructions
-        )
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
@@ -427,7 +384,7 @@ final class ResearchController: ObservableObject {
     func setActiveDocument(_ reference: VaultNoteReference?) {
         guard activeDocument != reference else { return }
         activeDocument = reference
-        scholia = ScholiaPresentationState()
+        projectFunctionRuns()
     }
 
     func selectInspectorMode(_ rawValue: String) {
@@ -444,37 +401,16 @@ final class ResearchController: ObservableObject {
         if isVisible { inspector.showsResearchInspector = false }
     }
 
-    func requestPresentScholia(section: ScholiaSection = .comments) {
-        guard let activeDocument else { return }
-        intentHandler(.presentScholia(ScholiaRoute(
-            reference: activeDocument,
-            section: section
+    func requestPresentFunction(
+        _ function: ResearchFunctionID,
+        target: VaultNoteReference,
+        presentationID: UUID
+    ) {
+        intentHandler(.presentResearchFunction(ResearchFunctionPanelRoute(
+            target: target,
+            function: function,
+            presentationID: presentationID
         )))
-    }
-
-    func beginScholiaPresentation(id: UUID, section: ScholiaSection) {
-        scholia = ScholiaPresentationState(
-            section: section,
-            path: [],
-            presentationID: id
-        )
-    }
-
-    func dismissScholiaPresentation(id: UUID) {
-        guard scholia.presentationID == id else { return }
-        scholia = ScholiaPresentationState()
-    }
-
-    func selectScholiaSection(_ section: ScholiaSection) {
-        scholia.section = section
-    }
-
-    func replaceScholiaPath(_ path: [ScholiaDestination]) {
-        scholia.path = path
-    }
-
-    func pushScholiaDestination(_ destination: ScholiaDestination) {
-        scholia.path.append(destination)
     }
 
     func requestRevealSource(_ locator: SourceLocator) {
@@ -504,12 +440,18 @@ final class ResearchController: ObservableObject {
     func reset() {
         activeDocument = nil
         inspector = ResearchInspectorState()
-        scholia = ScholiaPresentationState()
+        functions.dismiss()
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {
         records = snapshot.research
+        projectFunctionRuns()
         errorMessage = nil
+    }
+
+    private func projectFunctionRuns() {
+        let noteID = activeDocument?.stableNoteID.flatMap(UUID.init(uuidString:))
+        functions.receive(records?.functionRuns ?? [], targetNoteID: noteID)
     }
 
     private func requireOperations() throws -> any ResearchUseCases {

@@ -6,7 +6,7 @@ enum WindowSheetRoute: Identifiable {
     case adaptiveContext
     case workspaceSetup
     case frontmatter(path: String)
-    case scholia(path: String)
+    case researchFunction(ResearchFunctionPanelRoute)
     case attention
     case qualityReview(path: String)
     case researcherComments(path: String)
@@ -14,7 +14,6 @@ enum WindowSheetRoute: Identifiable {
     case restoreCheckpoint
     case lifecycle(NoteLifecycleRequest)
     case transactionRecovery
-    case critique(path: String)
     case identityResolution(NoteIdentityAmbiguity)
 
     var id: String {
@@ -23,7 +22,8 @@ enum WindowSheetRoute: Identifiable {
         case .adaptiveContext: "adaptive-context"
         case .workspaceSetup: "workspace-setup"
         case .frontmatter(let path): "frontmatter:\(path)"
-        case .scholia(let path): "scholia:\(path)"
+        case .researchFunction(let route):
+            "research-function:\(route.presentationID.uuidString.lowercased())"
         case .attention: "attention"
         case .qualityReview(let path): "quality-review:\(path)"
         case .researcherComments(let path): "researcher-comments:\(path)"
@@ -31,7 +31,6 @@ enum WindowSheetRoute: Identifiable {
         case .restoreCheckpoint: "restore-checkpoint"
         case .lifecycle(let request): "lifecycle:\(request.id)"
         case .transactionRecovery: "transaction-recovery"
-        case .critique(let path): "critique:\(path)"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
         }
     }

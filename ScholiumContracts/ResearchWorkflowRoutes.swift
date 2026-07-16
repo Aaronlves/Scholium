@@ -38,8 +38,7 @@ public enum ResearchWorkflowRouteContracts {
                     mode: .review,
                     purpose: purpose,
                     requiredSkillIDs: [
-                        "scholium-philosophical-review",
-                        "scholium-research-integration",
+                        "scholium-critique",
                     ],
                     readSet: [work, critique],
                     writeSet: [critique],

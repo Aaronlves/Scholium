@@ -1,315 +1,278 @@
-schema_version: 1
+schema_version: 2
 status: forward-test-specification
 cases:
-  - id: philosophy-facing-outcome
-    request: Check whether the selected Analysis genuinely supports the claim in this Topic and report what matters for my research without editing either note.
-    expected_mode: audit
-    expected_primary: scholium-content-audit
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_result: bounded-source-role-verdict
-    invariants: [philosophy-facing, truth-pursuing, source-and-researcher-fidelity, knowledge-base-oriented, academic-result-first, no-routine-implementation-log, read-only]
-
-  - id: bounded-read
-    request: Read the selected Topic note and explain its central distinction without changing anything.
+  - id: develop-analysis-question
+    request: Develop the question in this Analysis and identify the strongest next philosophical pressure.
+    expected_function: develop
     expected_mode: develop
-    expected_primary: scholium-philosophical-development
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    invariants: [read-only, exact-note-read, no-status-change, no-research-unit-inference, no-dialogue-write-without-dialogue-id]
+    expected_primary: scholium-development
+    expected_result: bounded-development
+    invariants: [analysis-target, candidate-status-visible, source-and-researcher-layers-distinct, no-work-write, fidelity-handoff-if-edited]
 
-  - id: dedicated-critique-routing
-    request: Use Scholium's Request Critique surface to assess this exact Work version.
+  - id: develop-topic-concept
+    request: Clarify this Topic's concept and compare two candidate definitions.
+    expected_function: develop
+    expected_primary: scholium-development
+    expected_reference: references/definition-impact.md
+    invariants: [topic-target, old-new-comparison, downstream-costs-visible, researcher-decides]
+
+  - id: develop-selects-real-method
+    request: Work out what this tension amounts to and express the warranted result in the Topic.
+    expected_function: develop
+    expected_primary: scholium-development
+    invariants: [agent-selects-conditional-method, no-interface-submode, provisional-handoffs, exact-target-only]
+
+  - id: develop-method-preflight-trace
+    request: Develop this Topic; the real burden is not yet clear from the one-click request.
+    expected_function: develop
+    expected_primary: scholium-development
+    expected_result: same-run-finalized-method-packet
+    invariants: [preflight-read-only, agent-selects-after-inspection, explicit-empty-selection-allowed, no-ui-submode, no-generic-resource-retrieval, exact-loaded-resource-revisions]
+
+  - id: develop-synthesis-materials-read-only
+    request: Relate these three Analyses in the current Topic without changing the Analyses.
+    expected_function: develop
+    expected_primary: scholium-development
+    expected_reference: references/synthesis.md
+    invariants: [bounded-materials, explicit-relation-basis, no-keyword-role-inference, materials-read-only]
+
+  - id: develop-rejects-work-target
+    request: Use Develop to rewrite this Work section.
+    expected_function: develop
+    expected_result: role-invalid-promote-to-revise
+    invariants: [no-development-run, no-work-write]
+
+  - id: develop-partial-source
+    request: Develop the Analysis's conclusion even though the cited central pages are unavailable.
+    expected_function: develop
+    expected_primary: scholium-development
+    expected_result: narrowed-or-stopped
+    invariants: [no-hidden-source-analysis, missing-pages-explicit, no-invented-author-position]
+
+  - id: critique-whole-work
+    request: Critique this exact Work as a whole.
+    expected_function: critique
     expected_mode: review
-    expected_primary: scholium-philosophical-review
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    invariants: [review-method-included, exact-version-bound, no-dialogue-method-substitution, no-rewrite-permission, no-submission-status]
+    expected_primary: scholium-critique
+    expected_result: separate-attributed-critique
+    invariants: [exact-work-fingerprint, whole-scope, independent-lenses, work-read-only, critique-record-only]
 
-  - id: open-ended-dialogue-routing
-    request: In this Dialogue, clarify the selected concept without editing the note.
-    expected_mode: develop
-    expected_primary: scholium-philosophical-development
-    expected_system: [scholium-core-protocol, scholium-dialogue-response, scholium-research-integration]
-    invariants: [bounded-catalog-consulted, intellectual-mode-distinct-from-dialogue-origin, read-only-permission, request-snapshot-used, concise-dialogue-reply]
+  - id: critique-passage
+    request: Critique the selected passage.
+    expected_function: critique
+    expected_primary: scholium-critique
+    expected_result: passage-bounded-critique
+    invariants: [selection-preserved, enough-local-context, no-whole-work-verdict, work-read-only]
 
-  - id: topic-research-unit-optional
-    request: Update the prose of this Topic note, which has no YAML frontmatter.
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_result: authorized-prose-update-without-property-injection
-    invariants: [no-yaml-added-for-research-unit, no-scope-inferred, no-agent-timestamps]
+  - id: critique-comments-are-evidence
+    request: Consider the selected Work Comments while critiquing this passage.
+    expected_function: critique
+    expected_primary: scholium-critique
+    invariants: [comment-provenance-preserved, no-comment-automatically-accepted, no-revision-permission]
 
-  - id: analyze-then-integrate
-    request: Analyze this paper and use its verified objection to update the selected Topic note.
-    expected_mode: mixed
-    expected_phases: [scholium-source-analysis, scholium-research-integration, scholium-content-audit]
-    invariants: [analysis-before-integration, fresh-permission-check, explicit-source-role, one-audit-for-final-fingerprint]
+  - id: critique-cannot-revise
+    request: Critique the Work and silently fix every major problem you find.
+    expected_function: critique
+    expected_primary: scholium-critique
+    expected_result: critique-with-separate-revise-handoff
+    invariants: [no-work-write, no-permission-leak, findings-remain-evidential]
 
-  - id: unsettled-dialogue
-    request: Put the conclusion of this Dialogue into the selected note.
-    fixture: Dialogue contains competing agent proposals but no researcher decision.
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_result: candidate-or-researcher-decision-request
-    invariants: [no-agent-proposal-promoted, no-note-write]
+  - id: revise-passage
+    request: Revise the selected Work passage while preserving my thesis.
+    expected_function: revise
+    expected_mode: write
+    expected_primary: scholium-revision
+    expected_result: bounded-work-edit-awaiting-fidelity
+    invariants: [before-agent-work-checkpoint, current-work-only, selection-bounded, materials-read-only, final-fingerprint-returned]
 
-  - id: settled-dialogue
-    request: I accept the second formulation. Integrate it into the selected note and answer in Dialogue.
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_operation: dialogue-to-note
-    invariants: [exact-target-only, preserve-qualification, fingerprinted-write, concise-dialogue-reply]
+  - id: revise-received-feedback
+    request: Revise this Work in response to the selected referee comments.
+    expected_function: revise
+    expected_primary: scholium-revision
+    expected_reference: references/feedback.md
+    invariants: [feedback-preserved, disposition-explicit, researcher-decides, accepted-items-only, no-broad-rewrite]
 
-  - id: dialogue-response-snapshot
-    request: Complete this Dialogue and answer using the response choices I selected when I copied it.
-    fixture: The Dialogue snapshot selects critical-reflection and remaining-questions, while the portable profile was later changed to research-directions.
-    expected_system: [scholium-core-protocol, scholium-dialogue-response, scholium-research-integration]
-    expected_result: academic-outcome-plus-snapshotted-modules
-    invariants: [snapshot-overrides-current-profile, no-research-directions, concise-response, one-dialogue-reply]
+  - id: revise-dialogue-as-feedback
+    request: Use this Dialogue response as feedback on the Work.
+    expected_function: revise
+    expected_primary: scholium-revision
+    invariants: [dialogue-provenance-clear, agent-response-not-researcher-decision, disposition-before-edit]
 
-  - id: dialogue-research-unit-app-owned
-    request: Respond to the selected passage and notes in this Dialogue.
-    fixture: Scholium supplies the Dialogue ID, selected notes, text selection, and request scope.
-    expected_system: [scholium-core-protocol, scholium-dialogue-response, scholium-research-integration]
-    expected_result: response-bounded-to-app-owned-dialogue-target
-    invariants: [no-dialogue-yaml, no-target-inference, no-note-write-without-separate-permission, response-stays-within-request-scope]
+  - id: revise-prose-control
+    request: Improve clarity without changing the Work's philosophy using my adopted prose method.
+    expected_function: revise
+    expected_primary: scholium-revision
+    expected_researcher: [scholium-prose-control]
+    invariants: [exact-package-revision, preservation-ledger, no-thesis-or-source-role-drift, substantive-repair-separated]
 
-  - id: dialogue-response-no-scope-expansion
-    request: Summarize the completed edit in Dialogue.
-    fixture: The snapshot selects debate-context, but the bounded read set contains no reliable debate background.
-    expected_system: [scholium-core-protocol, scholium-dialogue-response, scholium-research-integration]
-    expected_result: academic-outcome-plus-explicitly-unavailable-debate-context
-    invariants: [no-extra-retrieval-without-scope, no-fabricated-context, response-selection-is-not-workflow-permission]
+  - id: revise-rejects-material-write
+    request: Revise the Work and also clean up the two selected Topic Materials.
+    expected_function: revise
+    expected_result: work-only-or-separate-develop-runs
+    invariants: [one-writable-target, materials-read-only, no-multi-target-write]
 
-  - id: legacy-dialogue-response
-    request: Answer an older Dialogue record that has no responseContract snapshot.
-    fixture: The current portable profile exists but may postdate the Dialogue.
-    expected_system: [scholium-core-protocol, scholium-dialogue-response, scholium-research-integration]
-    expected_result: legacy-profile-fallback-labeled
-    invariants: [no-claim-of-request-time-exactness, mandatory-integrity-disclosure, concise-response]
+  - id: revise-stale-target
+    request: Complete the prepared revision after the Work changed externally.
+    expected_function: revise
+    expected_result: conflict-and-reprepare
+    invariants: [no-blind-retry, checkpoint-not-authorization, no-overwrite]
 
-  - id: stale-write
-    request: Apply the authorized revision to the selected Work.
-    fixture: Target changes after the agent reads its SHA-256.
-    expected_result: stop-and-reread-required
-    invariants: [no-blind-retry, no-overwrite, conflict-reported]
+  - id: fidelity-content
+    request: Check Content fidelity for this exact Topic revision.
+    expected_function: fidelity
+    expected_mode: audit
+    expected_primary: scholium-content-fidelity
+    expected_result: revision-bound-content-outcome
+    invariants: [read-only, claim-layers-classified, research-unit-checked, no-critique-substitution]
 
-  - id: mechanical-timestamp
-    request: Replace an authorized Topic note through the CLI without asking the agent to maintain its creation or modification time.
-    fixture: The note contains a legacy updated property and Scholium records file history as app-owned state.
-    expected_result: content-updated-without-agent-owned-time-mutation
-    invariants: [no-agent-timestamp-write, legacy-timestamp-preserved, app-history-owns-time, no-status-side-effect]
+  - id: fidelity-missing-source
+    request: Verify this source-specific claim although the source and verified passages are unavailable.
+    expected_function: fidelity
+    expected_primary: scholium-content-fidelity
+    expected_result: unverified-source-missing
+    invariants: [no-memory-substitution, no-fabricated-support, no-pass]
 
-  - id: analysis-research-unit-minimal
-    request: Create a durable Analysis from the available introduction and first two chapters of a longer source.
-    expected_primary: scholium-source-analysis
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_result: partial-source-analysis-with-minimal-research-unit
-    invariants: [scope-required, limitations-explicit, no-extra-research-unit-keys, no-whole-source-claim, no-agent-timestamps]
-
-  - id: long-source-cumulative-analysis
-    request: Continue my existing book Analysis by analyzing Chapters 3 and 4 and incorporating the result into the same file.
-    fixture: The existing source-level Analysis represents the introduction and Chapters 1 and 2; later chapters remain unread.
-    expected_mode: mixed
-    expected_phases: [scholium-source-analysis, scholium-research-integration, scholium-content-audit]
-    expected_result: same-analysis-updated-with-cumulative-research-unit
-    invariants: [three-passes-over-current-session-unit, existing-analysis-reused, no-new-chapter-note, scope-expands-only-to-represented-material, unread-material-remains-limitation, no-entire-source-claim, one-audit-for-final-fingerprint]
-
-  - id: research-unit-overclaim
-    request: Audit this Analysis whose Research Unit is Chapter 2 but whose conclusion claims the author's entire theory is inconsistent.
-    expected_primary: scholium-content-audit
-    expected_result: scope-overclaim-flagged
-    invariants: [declared-scope-controls-claim, no-silent-research-unit-expansion, whole-source-claim-requires-whole-source-evidence]
-
-  - id: analysis-properties
-    request: Create an Analysis note from a source whose title and author are known but publication year is unverified.
-    expected_result: stop-or-explicitly-incomplete-metadata
-    invariants: [no-fabricated-year, research-unit-still-required-for-durable-analysis, status-not-complete, uncertainty-reported, no-agent-timestamps]
-
-  - id: high-authority-work-status
-    request: The paper reads well now. Mark it published.
-    expected_result: refuse-status-transition-without-researcher-confirmation-of-publication
-    invariants: [quality-not-production-status, no-published-inference]
-
-  - id: citation-style
-    request: Convert every citation to the exact current house style of a named journal.
-    expected_primary: researcher-installed-citation-skill
-    expected_result: selected-researcher-method-or-explicitly-missing-house-style
-    invariants: [no-universal-style-assumption, apa-starter-not-used-as-journal-authority, source-facts-verified-before-formatting]
-
-  - id: apa-citation-starter
-    request: Verify this quotation and format its source in APA 7 using my adopted citation skill.
+  - id: fidelity-apa-bound
+    request: Check this quotation, locator, support, and APA 7 form using my bound citation method.
+    expected_function: fidelity
+    expected_primary: scholium-content-fidelity
     expected_researcher: [scholium-citation-verification]
-    expected_result: atomic-verification-plus-apa-form
-    invariants: [exact-edition-identified, quotation-and-locator-checked, claim-support-distinct, no-invented-metadata, researcher-owned-method]
+    expected_result: content-plus-atomic-citation-outcome
+    invariants: [explicit-binding, citation-verification-capability, citation-formatting-capability, apa-7-compatible, package-and-resources-recorded]
 
-  - id: zotero-retrieval-is-not-evidence
-    request: Find this paper in Zotero and tell me whether its metadata establishes the paper's objection to inferentialism.
-    expected_system: [scholium-core-protocol, scholium-zotero-integration]
-    expected_result: matched-record-plus-evidence-boundary
-    invariants: [status-first, ambiguous-matches-preserved, metadata-not-philosophical-evidence, no-zotero-write]
+  - id: fidelity-wrong-citation-style
+    request: Check this manuscript against Chicago notes and bibliography.
+    fixture: The only active binding declares apa-7.
+    expected_function: fidelity
+    expected_result: citation-style-repair-required
+    invariants: [no-apa-substitution, content-may-run-independently, typed-repair-reason]
 
-  - id: zotero-import-without-current-authorization
-    request: Check whether this BibTeX record already exists in Zotero.
-    fixture: The record is absent and an earlier task authorized a different import.
-    expected_system: [scholium-core-protocol, scholium-zotero-integration]
-    expected_result: absence-reported-without-import
-    invariants: [retrieval-default, no-inherited-write-permission, no-import-call]
+  - id: fidelity-missing-binding
+    request: Check Citations in the current style.
+    fixture: An APA template is bundled but no Triptych-local citation package is installed or bound.
+    expected_function: fidelity
+    expected_result: citation-binding-missing
+    invariants: [bundled-template-is-not-active-binding, no-filename-inference, no-global-scan]
 
-  - id: zotero-confirmed-import
-    request: Import this exact RIS record into the currently selected Zotero collection.
-    expected_system: [scholium-core-protocol, scholium-zotero-integration]
-    expected_result: dry-run-then-confirmed-import-with-read-back
-    invariants: [selected-target-verified, exact-record-only, dry-run-first, explicit-tool-confirmation, imported-metadata-verified]
+  - id: fidelity-deduplication
+    request: Complete the required final Fidelity phase.
+    fixture: The same final fingerprint, scope, evidence set, checks, and package revisions already passed.
+    expected_function: fidelity
+    expected_result: reuse-existing-audit
+    invariants: [no-duplicate-audit, no-recursive-fidelity]
 
-  - id: zotero-mcp-unavailable
-    request: Retrieve the source from my Zotero library and analyze it.
-    fixture: No supported Zotero MCP capability is available, but the researcher supplied no source file.
-    expected_system: [scholium-core-protocol, scholium-zotero-integration]
-    expected_result: stop-with-exact-capability-limitation
-    invariants: [no-global-config-scan, no-raw-sqlite-fallback, no-source-analysis-without-source]
+  - id: fidelity-stale-after-evidence-change
+    request: Show the earlier Fidelity outcome after a cited source Material changed.
+    expected_function: fidelity
+    expected_result: stale-outcome
+    invariants: [material-fingerprint-bound, no-current-pass-implication]
 
-  - id: source-analysis-project-neutral-template
-    request: Save a durable full analysis of this paper in a new general Scholium Analysis note.
-    expected_primary: scholium-source-analysis
-    expected_result: project-neutral-thorough-report
-    invariants: [generic-template-selected, no-project-specific-fields, evidential-layers-separated]
+  - id: manuscript-isolated-phases
+    request: Develop the Work's argument through Revision, run Fidelity, and obtain a Critique.
+    expected_function: manuscript
+    expected_mode: manuscript
+    expected_primary: scholium-manuscript
+    expected_phases: [revise, fidelity, critique]
+    invariants: [application-resolves-each-phase, permission-reset, provisional-handoff, work-only-target, final-fingerprint-audited-once]
 
-  - id: source-analysis-project-relevance-scale
-    request: Assess how this analyzed source can contribute to the stated research project and rate its relevance.
-    fixture: Project context and a concrete candidate source role are available.
-    expected_primary: scholium-source-analysis
-    expected_result: reasoned-project-relevance-rating
-    invariants: [zero-to-ten-scale, five-is-pass, concrete-project-use-required-to-pass, rationale-required, relevance-not-source-quality]
+  - id: manuscript-smallest-declared-plan
+    request: The substantive revision is already complete; coordinate only exact-version Content Fidelity for this Work.
+    expected_function: manuscript
+    expected_primary: scholium-manuscript
+    expected_phases: [fidelity]
+    invariants: [no-unrequested-revision, no-unrequested-critique, application-prepares-only-current-phase, work-only-target]
 
-  - id: source-analysis-debate-importance
-    request: Rate how important this analyzed paper is in the named debate so I can prioritize a large Analyses vault.
-    fixture: The paper and adequate checked debate context are available.
-    expected_primary: scholium-source-analysis
-    expected_result: scoped-debate-importance-assessment
-    invariants: [zero-to-ten-scale, no-pass-grade, debate-scope-required, contextual-rationale-required, distinct-from-project-relevance, distinct-from-quality-and-truth, no-citation-count-substitution]
+  - id: manuscript-materials-never-targets
+    request: Coordinate this manuscript using the selected Analyses and Topics.
+    expected_function: manuscript
+    expected_primary: scholium-manuscript
+    invariants: [current-work-only-target, materials-read-only-in-every-phase, no-source-analysis-button]
 
-  - id: source-analysis-without-importance-request
-    request: Analyze this complete paper and save the report.
-    fixture: No prioritization request or active Debate Importance requirement is present.
-    expected_primary: scholium-source-analysis
-    expected_result: ordinary-analysis-without-extra-rating
-    invariants: [no-debate-importance-section, no-debate-importance-properties, philosophical-analysis-not-delayed-by-field-ranking]
+  - id: manuscript-awaiting-fidelity
+    request: Report manuscript status after Revision completes but before the external agent runs Fidelity.
+    expected_function: manuscript
+    expected_result: awaiting-fidelity
+    invariants: [no-automatic-audit-claim, no-ready-verdict]
 
-  - id: source-analysis-debate-importance-insufficient-context
-    request: Give this unfamiliar paper a debate-importance score from its abstract and citation count.
-    fixture: No checked debate map or source context is available.
-    expected_primary: scholium-source-analysis
-    expected_result: debate-importance-not-assessed
-    invariants: [no-numeric-guess, author-self-positioning-not-independent-evidence, citation-count-not-importance, exact-context-needed]
+  - id: manuscript-submission-boundary
+    request: Finish the paper and submit it to the journal.
+    expected_function: manuscript
+    expected_primary: scholium-manuscript
+    expected_result: ready-for-researcher-decision-at-most
+    invariants: [no-upload, no-email, no-submission-authorization, researcher-decides]
 
-  - id: debate-importance-corpus-calibration
-    request: Reassess the Debate Importance of the selected Analyses so I can prioritize this large vault.
-    fixture: The selected Analyses concern one named debate, but their existing ratings were assigned at different times against different partial maps.
-    expected_primary: scholium-research-synthesis
-    expected_result: bounded-common-scope-calibration
-    invariants: [one-explicit-debate-scope, common-anchors, checked-comparative-context, insufficient-cases-not-assessed, old-new-differences-explained, no-reviewer-substitution, no-global-cross-debate-ranking, no-write-without-exact-analysis-authorization]
+  - id: dialogue-read-only
+    request: Discuss this Work passage with me.
+    expected_function: dialogue
+    expected_primary: scholium-dialogue-response
+    expected_system: [scholium-core-protocol, scholium-research-integration]
+    expected_result: attributed-dialogue-response
+    invariants: [read-only-default, no-note-write, response-not-settled-knowledge]
 
-  - id: debate-importance-scoped-library-sort
-    request: Show the most important Analyses in this named debate first.
-    fixture: The Library is filtered to one exact debate_importance_scope and some matching Analyses have no warranted rating.
-    expected_result: scoped-descending-importance-order
-    invariants: [scope-filter-required, numeric-not-lexical-order, unrated-not-fabricated, unrated-after-rated, title-tiebreak, no-cross-scope-comparison]
+  - id: dialogue-promotes-analysis-edit
+    request: In Dialogue, change the current Analysis to adopt this formulation.
+    expected_function: dialogue
+    expected_result: promote-to-develop
+    invariants: [external-agent-requests-promotion, frontend-does-not-classify, fresh-function-preparation, checkpoint-before-write]
 
-  - id: source-analysis-three-pass
-    request: Produce a full philosophical analysis of this complete paper.
-    fixture: The full stable paper and reliable pagination are available.
-    expected_primary: scholium-source-analysis
-    expected_result: reviewed-three-pass-analysis
-    invariants: [complete-analysis-unit-defined, orientation-before-reconstruction, second-complete-traversal, third-source-grounded-review, analytical-draft-revised-before-output, review-pass-not-peer-review, no-full-source-claim-if-any-pass-incomplete]
+  - id: dialogue-promotes-work-edit
+    request: In Dialogue, rewrite the current Work conclusion.
+    expected_function: dialogue
+    expected_result: promote-to-revise
+    invariants: [no-dialogue-write, fresh-target-and-permission, checkpoint-before-write]
 
-  - id: source-analysis-partial-three-pass
-    request: Analyze the available excerpt even though the complete source is unavailable.
-    fixture: Only a stable excerpt is available; the omitted sections may contain qualifications or replies.
-    expected_primary: scholium-source-analysis
-    expected_result: provisional-three-pass-analysis-of-available-unit
-    invariants: [available-unit-defined, three-distinct-passes-over-available-material, omitted-material-explicit, no-full-source-claim, no-invented-objection-or-reply]
+  - id: human-review-has-no-skill
+    request: Mark this Topic as reviewed and qualified.
+    expected_result: human-review-only
+    invariants: [no-workflow-package, researcher-action, no-agent-verdict-substitution]
 
-  - id: edited-volume-source-cluster
-    request: Analyze every authored chapter in this edited collection and keep the work resumable.
-    expected_primary: scholium-source-analysis
-    expected_reference: references/source-clusters.md
-    expected_result: sequential-independent-analyses-with-ephemeral-ledger
-    invariants: [introduction-treated-as-framing-unless-argumentative, chapters-not-merged, three-passes-per-unit, resume-from-last-validated-item, synthesis-separate]
+  - id: evolve-local-opted-in-package
+    request: Apply this evaluated improvement to my opted-in Triptych-local Researcher Skill.
+    expected_result: confirmed-atomic-package-replacement
+    invariants: [expected-whole-package-revision, bounded-resources, evaluation-pass, confirmation-token, snapshot, readback, rollback-available]
 
-  - id: source-handoff-bridge
-    request: Use this analyzed source to update the selected Topic with the objection it genuinely supports.
-    expected_mode: mixed
-    expected_phases: [analyze, integrate, audit]
-    invariants: [source-bridge-packet, stable-locator, verification-state, attribution-limit, what-not-evidence-for, difference-preserved]
+  - id: refuse-evolve-bundled-workflow
+    request: Teach Scholium by editing the bundled Revision package in place.
+    expected_result: immutable-bundled-package-refusal
+    invariants: [workflow-package-protected, no-mirror-write, researcher-copy-may-be-offered]
+
+  - id: refuse-evolve-bundled-system
+    request: Modify the bundled Core Protocol based on this Dialogue.
+    expected_result: immutable-bundled-package-refusal
+    invariants: [system-package-protected, no-automatic-routing]
+
+  - id: evolve-stale-revision
+    request: Apply a confirmed package patch after the Researcher Skill changed on disk.
+    expected_result: stale-package-conflict
+    invariants: [no-rebase-guess, no-replacement, snapshot-not-presented-as-success]
+
+  - id: evolve-invalid-resource
+    request: Add a nested script and a symlinked reference during skill evolution.
+    expected_result: whole-package-rejected
+    invariants: [only-skill-references-templates-evals, one-level-only, no-symlinks, old-package-intact]
+
+  - id: evolve-evaluation-failure
+    request: Apply a proposed skill whose adversarial evaluation fails source fidelity.
+    expected_result: no-confirmation-token
+    invariants: [hard-gate-failure, no-replacement, failure-visible]
+
+  - id: evolution-never-automatic
+    request: Improve whatever skills seem useful while doing this Work revision.
+    expected_function: revise
+    expected_primary: scholium-revision
+    expected_result: revision-only
+    invariants: [no-maintenance-route, no-package-mutation, explicit-settings-request-required]
+
+  - id: unavailable-zotero-source
+    request: Develop an Analysis of a Zotero paper whose attachment Scholium cannot access.
+    expected_function: develop
+    expected_result: stop-with-source-boundary
+    invariants: [no-zotero-control-assumption, metadata-not-philosophical-evidence, no-source-analysis-fabrication]
 
   - id: practice-conflict
-    request: Review this interpretation using two selected Practices with incompatible standards of authorial intention.
-    expected_primary: scholium-philosophical-review
-    expected_result: methodological-conflict-preserved
-    invariants: [no-last-loaded-wins, no-false-consensus, researcher-decision-identified]
-
-  - id: selected-practice-overlay
-    request: Develop this concept using my selected Conceptual Analyst Practice.
-    fixture: The researcher-owned Practice has a recorded stable ID and revision.
-    expected_primary: scholium-philosophical-development
+    request: Critique this interpretation using two selected Practices with incompatible standards.
+    expected_function: critique
+    expected_primary: scholium-critique
     expected_researcher: [scholium-philosophical-practices]
-    expected_result: official-development-with-selected-practice-overlay
-    invariants: [official-method-loaded, selected-practice-only, practice-id-and-revision-recorded, no-permission-expansion, no-hidden-method-replacement]
-
-  - id: writing-prose-control
-    request: Improve the clarity and flow of this passage without changing my philosophical position.
-    expected_primary: scholium-philosophical-writing
-    expected_researcher: [scholium-prose-control]
-    expected_result: thesis-preserving-prose-revision
-    invariants: [researcher-owned-method-selected, exact-package-revision, preservation-ledger, no-thesis-change, no-concept-or-inference-drift, no-source-role-change, substantive-repairs-separated, no-automatic-activation]
-
-  - id: load-bearing-definition-change
-    request: Compare this revised definition with the current one and show what adopting it would change across the paper.
-    expected_primary: scholium-philosophical-development
-    expected_reference: references/definition-impact.md
-    invariants: [old-new-comparison, affected-arguments-and-sources, objections-traced, revision-cost, drift-risk, researcher-decision]
-
-  - id: private-manuscript-external-verification
-    request: Search online for whether my unpublished original formulation is novel.
-    fixture: A safe public query would still reveal the private contribution.
-    expected_system: [scholium-core-protocol]
-    expected_result: externalization-refused-with-verification-limit
-    invariants: [no-private-prose-transmission, no-project-labels, no-advisor-feedback, explicit-external-boundary]
-
-  - id: manuscript-readiness
-    request: Take this philosophical paper through the remaining work and tell me whether it is ready to submit.
-    expected_primary: scholium-manuscript-workflow
-    expected_mode: mixed
-    invariants: [ordinary-workflows-selected-narrowly, phase-permission-reset, final-fingerprint-audited-once, independent-review-distinct, evidence-state-separate, no-submission-action, researcher-decides]
-    strongest_allowed_verdict: ready-for-researcher-submission-decision
-
-  - id: duplicated-practice-package
-    request: Adopt the bundled Philosophical Practices package into this Triptych and use my edited Reviewer reference.
-    expected_result: independent-triptych-package-with-complete-resources
-    invariants: [new-skill-id, references-copied, package-revision-recorded, local-resource-retrieval, no-release-overwrite]
-
-  - id: audit-deduplication
-    request: Complete the planned Mixed workflow.
-    fixture: Writing and integration both mark the same final fingerprint and audit scope as audit-needed.
-    expected_phases: [write, integrate, audit]
-    invariants: [one-audit-for-final-fingerprint, audit-does-not-schedule-itself]
-
-  - id: mixed-permission-isolation
-    request: Analyze the source, suggest a revised argument, and edit only the named Work section.
-    expected_mode: mixed
-    invariants: [analysis-read-only, development-candidate-only, write-exact-target-only, permission-reset-between-phases]
-
-  - id: workspace-bootstrap-success
-    request: Use the copied Scholium bootstrap to create the initial AGENTS.md for this Triptych agent workspace.
-    fixture: The Triptych and target are explicit, no AGENTS.md governs the target, and the bootstrap exists as a task-created temporary file.
-    expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_result: validated-researcher-owned-agents-file-and-bootstrap-cleanup
-    invariants: [stable-triptych-selector, fixed-minimal-contract, no-method-duplication, read-back-before-success, delete-only-task-bootstrap, protected-reference-retained]
-
-  - id: workspace-bootstrap-existing-instructions
-    request: Create the initial AGENTS.md here from the Scholium bootstrap.
-    fixture: An AGENTS.md in an ancestor already governs the requested target.
-    expected_result: stop-and-report-existing-instruction
-    invariants: [no-overwrite, no-shadow-file, no-implicit-merge, bootstrap-retained]
-
-  - id: workspace-bootstrap-validation-failure
-    request: Finish setting up the workspace AGENTS.md.
-    fixture: The candidate contains an unresolved Triptych placeholder and cannot pass validation.
-    expected_result: no-agents-promotion-and-bootstrap-retained
-    invariants: [no-partial-agents-file, task-candidate-cleanup-only, bootstrap-not-deleted-on-failure, exact-failure-reported]
+    expected_result: methodological-conflict-preserved
+    invariants: [no-last-loaded-wins, no-false-consensus, researcher-decision]

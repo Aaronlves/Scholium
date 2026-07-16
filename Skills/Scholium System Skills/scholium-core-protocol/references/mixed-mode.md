@@ -108,7 +108,7 @@ Continue with later phases only when they remain meaningful and authorized despi
 
 ## 7. Audit scheduling
 
-Collect `audit-needed` markers by exact target fingerprint and audit scope. Schedule one terminal `scholium-content-audit` for each distinct changed version after the last substantive edit that affects it. Do not add an audit merely because another phase already audited an earlier fingerprint, and do not let an audit phase schedule itself.
+Collect pending Fidelity handoffs by exact Target fingerprint, scope, selected checks, evidence revisions, and package-resource revisions. Prepare one terminal Fidelity function for each distinct final audit key after the last substantive edit. Reuse an existing completion for the same key, mark it stale when Target or evidence changes, and never let Fidelity schedule itself.
 
 If the target changes after audit, mark the previous result stale for the new fingerprint. If a matching audit already exists for the same fingerprint, scope, and evidence, reuse it and report that decision.
 

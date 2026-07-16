@@ -451,19 +451,518 @@ private struct ResearchGuidanceSettingsView: View {
             .accessibilityIdentifier("scholium.researchGuidance.collection")
             Divider()
             if collection == "skills" {
-                // A SKILL.md can be thousands of lines long. Keep its editor
-                // inside the finite Settings viewport instead of allowing the
-                // text view's intrinsic document height to expand and clip the
-                // collection picker and package list.
-                GeometryReader { proxy in
-                    ResearchSkillsSettingsView()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
+                VStack(spacing: 0) {
+                    ResearchCitationMethodSettingsView()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                    Divider()
+                    ResearchFunctionMethodSettingsView()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                    Divider()
+                    // A SKILL.md can be thousands of lines long. Keep its editor
+                    // inside the finite Settings viewport instead of allowing the
+                    // text view's intrinsic document height to expand and clip the
+                    // collection picker and package list.
+                    GeometryReader { proxy in
+                        ResearchSkillsSettingsView()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                    }
                 }
             } else if collection == "dialogue-response" {
                 DialogueResponseSettingsView()
             } else {
                 PromptTemplateSettingsView()
             }
+        }
+    }
+}
+
+/// Settings is the only presentation surface that activates Triptych-local
+/// Researcher Skills. The editor Strip receives semantic function
+/// availability, never package identifiers or routing metadata.
+private struct ResearchFunctionMethodSettingsView: View {
+    private static let configurableFunctions: [ResearchFunctionID] = [
+        .develop,
+        .critique,
+        .revise,
+        .fidelity,
+        .manuscript,
+    ]
+
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @State private var selectedFunction: ResearchFunctionID = .develop
+    @State private var status: ResearchFunctionSkillBindingStatus?
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    private var primaryCandidates: [ResearchFunctionSkillCandidate] {
+        candidates(for: .primary)
+    }
+
+    private var supplementalCandidates: [ResearchFunctionSkillCandidate] {
+        candidates(for: .supplemental)
+    }
+
+    private var practiceCandidates: [ResearchFunctionSkillCandidate] {
+        candidates(for: .practice)
+    }
+
+    private var loadIdentity: String {
+        let workspace = settingsModel.activeTriptychServicesID?.uuidString ?? "none"
+        return "\(workspace):\(selectedFunction.rawValue)"
+    }
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    Picker("Function", selection: $selectedFunction) {
+                        ForEach(Self.configurableFunctions, id: \.self) { function in
+                            Text(function.interfaceTitle).tag(function)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 180)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier(
+                        "scholium.researchGuidance.researchMethod.function"
+                    )
+                    Spacer()
+                    if isWorking { ProgressView().controlSize(.small) }
+                }
+
+                if let status {
+                    if status.candidates.isEmpty {
+                        Text("No compatible Triptych method is installed for \(selectedFunction.interfaceTitle). The built-in workflow remains active.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        if !primaryCandidates.isEmpty {
+                            Picker("Method", selection: primarySelection) {
+                                Text("Built-in").tag(String?.none)
+                                ForEach(primaryCandidates) { candidate in
+                                    Text(candidate.name).tag(String?.some(candidate.packageID))
+                                }
+                            }
+                            .frame(maxWidth: 420)
+                            .disabled(isWorking)
+                            .accessibilityIdentifier(
+                                "scholium.researchGuidance.researchMethod.primary"
+                            )
+                        }
+
+                        if !supplementalCandidates.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Supplements")
+                                    .font(.caption.weight(.semibold))
+                                ForEach(supplementalCandidates) { candidate in
+                                    Toggle(
+                                        candidate.name,
+                                        isOn: supplementalSelection(candidate.packageID)
+                                    )
+                                    .disabled(isWorking)
+                                    .accessibilityHint(
+                                        "Use this supplement with \(selectedFunction.interfaceTitle)."
+                                    )
+                                }
+                            }
+                        }
+
+                        if !practiceCandidates.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Practices")
+                                    .font(.caption.weight(.semibold))
+                                ForEach(practiceCandidates) { candidate in
+                                    ForEach(candidate.practiceIDs, id: \.self) { practiceID in
+                                        Toggle(
+                                            "\(candidate.name) — \(friendlyTitle(practiceID))",
+                                            isOn: practiceSelection(
+                                                packageID: candidate.packageID,
+                                                practiceID: practiceID
+                                            )
+                                        )
+                                        .disabled(isWorking)
+                                        .accessibilityHint(
+                                            "Use this practice with \(selectedFunction.interfaceTitle)."
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if let active = activePrimaryCandidate(in: status),
+                           !active.description.isEmpty {
+                            Text(active.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    if let issue = status.issue {
+                        Label(
+                            issueDescription(issue.code),
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    }
+                } else {
+                    ProgressView("Loading research methods…")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Research Methods", systemImage: "slider.horizontal.3")
+                .font(.headline)
+        }
+        .task(id: loadIdentity) { await reload() }
+        .alert("Could Not Update Research Method", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Dismiss", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .accessibilityIdentifier("scholium.researchGuidance.researchMethods")
+    }
+
+    private var primarySelection: Binding<String?> {
+        Binding(
+            get: { status?.selection.primaryPackageID },
+            set: { packageID in
+                guard packageID != status?.selection.primaryPackageID else { return }
+                updatePrimaryPackage(packageID)
+            }
+        )
+    }
+
+    private func supplementalSelection(_ packageID: String) -> Binding<Bool> {
+        Binding(
+            get: { status?.selection.supplementalPackageIDs.contains(packageID) == true },
+            set: { isSelected in
+                guard let status else { return }
+                var selected = status.selection.supplementalPackageIDs
+                selected.removeAll { $0 == packageID }
+                if isSelected { selected.append(packageID) }
+                saveSelection(ResearchFunctionSkillSelection(
+                    function: selectedFunction,
+                    primaryPackageID: status.selection.primaryPackageID,
+                    supplementalPackageIDs: selected,
+                    selectedPractices: status.selection.selectedPractices
+                ))
+            }
+        )
+    }
+
+    private func practiceSelection(
+        packageID: String,
+        practiceID: String
+    ) -> Binding<Bool> {
+        let selectionID = "\(packageID):\(practiceID)"
+        return Binding(
+            get: {
+                status?.selection.selectedPractices.contains {
+                    $0.selectionID == selectionID
+                } == true
+            },
+            set: { isSelected in
+                guard let status else { return }
+                var selected = status.selection.selectedPractices
+                selected.removeAll { $0.selectionID == selectionID }
+                if isSelected {
+                    selected.append(ResearchPracticeSelection(
+                        packageID: packageID,
+                        practiceID: practiceID
+                    ))
+                }
+                saveSelection(ResearchFunctionSkillSelection(
+                    function: selectedFunction,
+                    primaryPackageID: status.selection.primaryPackageID,
+                    supplementalPackageIDs: status.selection.supplementalPackageIDs,
+                    selectedPractices: selected
+                ))
+            }
+        )
+    }
+
+    private func updatePrimaryPackage(_ packageID: String?) {
+        guard let status else { return }
+        saveSelection(ResearchFunctionSkillSelection(
+            function: selectedFunction,
+            primaryPackageID: packageID,
+            supplementalPackageIDs: status.selection.supplementalPackageIDs,
+            selectedPractices: status.selection.selectedPractices
+        ))
+    }
+
+    private func saveSelection(_ selection: ResearchFunctionSkillSelection) {
+        guard let status else { return }
+        isWorking = true
+        Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                let updated = try await settingsModel.saveResearchFunctionSkillSelection(
+                    selection,
+                    expectedBindingRevision: status.bindingRevision
+                )
+                guard selectedFunction == selection.function else { return }
+                self.status = updated
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func candidates(
+        for role: ResearchFunctionSkillBindingRole
+    ) -> [ResearchFunctionSkillCandidate] {
+        status?.candidates.filter { $0.availableRoles.contains(role) } ?? []
+    }
+
+    private func activePrimaryCandidate(
+        in status: ResearchFunctionSkillBindingStatus
+    ) -> ResearchFunctionSkillCandidate? {
+        guard let packageID = status.selection.primaryPackageID else { return nil }
+        return status.candidates.first { $0.packageID == packageID }
+    }
+
+    private func friendlyTitle(_ identifier: String) -> String {
+        identifier
+            .replacingOccurrences(of: "_", with: "-")
+            .split(separator: "-")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
+
+    private func issueDescription(_ code: ResearchFunctionSkillBindingIssueCode) -> String {
+        switch code {
+        case .functionHasNoSkill:
+            "This function does not use an executable skill."
+        case .malformedBinding:
+            "The saved method selection needs repair. Choose a valid method to replace it."
+        case .invalidPackage:
+            "The selected method is no longer available."
+        case .unsupportedFunction:
+            "The selected method does not support this function."
+        case .invalidRole:
+            "The selected guidance cannot play this role."
+        case .invalidPractice:
+            "The selected practice is no longer available."
+        }
+    }
+
+    private func reload() async {
+        let function = selectedFunction
+        status = nil
+        do {
+            let loaded = try await settingsModel.researchFunctionSkillBindingStatus(
+                for: function
+            )
+            try Task.checkCancellation()
+            guard selectedFunction == function else { return }
+            status = loaded
+            errorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+}
+
+private struct ResearchCitationMethodSettingsView: View {
+    private struct CitationMethodChoice: Hashable {
+        let packageID: String
+        let citationStyle: String
+    }
+
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @State private var status: ResearchCitationMethodStatus?
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        GroupBox {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let status {
+                        if status.candidates.isEmpty {
+                            Text("No Triptych citation method is installed.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Method", selection: activeMethodChoice) {
+                                Text("None").tag(CitationMethodChoice?.none)
+                                ForEach(status.candidates) { candidate in
+                                    ForEach(candidate.citationStyles, id: \.self) { style in
+                                        Text("\(candidate.name) — \(citationStyleTitle(style))")
+                                            .tag(CitationMethodChoice?.some(
+                                                CitationMethodChoice(
+                                                    packageID: candidate.packageID,
+                                                    citationStyle: style
+                                                )
+                                            ))
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: 420)
+                            .accessibilityIdentifier(
+                                "scholium.researchGuidance.citationMethod"
+                            )
+                        }
+
+                        if let active = activeCandidate(in: status) {
+                            Text(active.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if status.bundledTemplateAvailable {
+                            Button("Adopt APA 7 Starter") {
+                                adoptStarter()
+                            }
+                            .disabled(isWorking)
+                            .accessibilityIdentifier(
+                                "scholium.researchGuidance.adoptAPAStarter"
+                            )
+                        }
+
+                        if let issue = status.issue {
+                            Label(issueDescription(issue.code), systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    } else {
+                        ProgressView("Loading citation methods…")
+                    }
+                }
+                Spacer()
+                if isWorking { ProgressView().controlSize(.small) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Citation Method", systemImage: "text.book.closed")
+                .font(.headline)
+        }
+        .task(id: settingsModel.activeTriptychServicesID) { await reload() }
+        .alert("Could Not Update Citation Method", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Dismiss", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .accessibilityIdentifier("scholium.researchGuidance.citationMethodSection")
+    }
+
+    private var activeMethodChoice: Binding<CitationMethodChoice?> {
+        Binding(
+            get: {
+                guard let packageID = status?.activePackageID,
+                      let citationStyle = status?.activeCitationStyle else { return nil }
+                return CitationMethodChoice(
+                    packageID: packageID,
+                    citationStyle: citationStyle
+                )
+            },
+            set: { newValue in
+                let current = status.flatMap { current -> CitationMethodChoice? in
+                    guard let packageID = current.activePackageID,
+                          let citationStyle = current.activeCitationStyle else { return nil }
+                    return CitationMethodChoice(
+                        packageID: packageID,
+                        citationStyle: citationStyle
+                    )
+                }
+                guard newValue != current else { return }
+                if let newValue {
+                    activate(newValue)
+                } else {
+                    clear()
+                }
+            }
+        )
+    }
+
+    private func activeCandidate(
+        in status: ResearchCitationMethodStatus
+    ) -> ResearchCitationMethodCandidate? {
+        guard let activePackageID = status.activePackageID else { return nil }
+        return status.candidates.first { $0.packageID == activePackageID }
+    }
+
+    private func citationStyleTitle(_ style: String) -> String {
+        switch style.lowercased() {
+        case "apa-7": "APA 7"
+        case "chicago": "Chicago"
+        case "mla": "MLA"
+        case "oxford": "Oxford"
+        default: style.replacingOccurrences(of: "-", with: " ").capitalized
+        }
+    }
+
+    private func issueDescription(_ code: ResearchCitationMethodIssueCode) -> String {
+        switch code {
+        case .missing:
+            "Choose a citation method for Citations in Fidelity."
+        case .malformedBinding:
+            "The citation method selection needs repair."
+        case .invalidPackage:
+            "The selected citation method is invalid."
+        case .missingCapability:
+            "The selected skill does not provide citation verification."
+        case .citationStyleMissing:
+            "Choose the citation style that this method should apply."
+        case .citationStyleMismatch:
+            "The selected citation method has incompatible style metadata."
+        }
+    }
+
+    private func reload() async {
+        do {
+            status = try await settingsModel.citationMethodStatus()
+            errorMessage = nil
+        } catch {
+            status = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func activate(_ choice: CitationMethodChoice) {
+        perform {
+            status = try await settingsModel.activateCitationMethod(
+                packageID: choice.packageID,
+                citationStyle: choice.citationStyle,
+                expectedBindingRevision: status?.bindingRevision
+            )
+        }
+    }
+
+    private func clear() {
+        perform {
+            status = try await settingsModel.clearCitationMethod(
+                expectedBindingRevision: status?.bindingRevision
+            )
+        }
+    }
+
+    private func adoptStarter() {
+        perform {
+            status = try await settingsModel.adoptBundledCitationStarter(
+                expectedBindingRevision: status?.bindingRevision
+            )
+        }
+    }
+
+    private func perform(_ operation: @escaping @MainActor () async throws -> Void) {
+        isWorking = true
+        Task { @MainActor in
+            defer { isWorking = false }
+            do { try await operation() }
+            catch { errorMessage = error.localizedDescription }
         }
     }
 }
@@ -833,24 +1332,45 @@ private struct ResearchSkillsSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var skills: [ResearchSkillPackage] = []
     @State private var selectedSkillID: String?
-    @State private var identifier = ""
     @State private var source = ""
+    @State private var inspectedDraft: ResearchSkillPackage?
+    @State private var draftInspectionTask: Task<Void, Never>?
+    @State private var isInspectingDraft = false
     @State private var showsRoutingMetadata = true
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var pendingDeletion: ResearchSkillPackage?
+    @State private var maintenanceInstruction = ""
+    @State private var maintenanceCurrentPackage: ResearchSkillProposedPackage?
+    @State private var maintenanceProposedPackage: ResearchSkillProposedPackage?
+    @State private var maintenanceProposalSource = ""
+    @State private var maintenanceProposalError: String?
+    @State private var maintenancePackageLoadTask: Task<Void, Never>?
+    @State private var maintenancePackageLoadID: UUID?
+    @State private var isLoadingMaintenancePackage = false
+    @State private var maintenanceEvaluationEvidenceSource = ""
+    @State private var maintenancePreparation: ResearchSkillMaintenancePreparation?
+    @State private var maintenanceOutcome: ResearchSkillMaintenanceApplyOutcome?
+    @State private var maintenanceSnapshots: [ResearchSkillMaintenanceSnapshot] = []
+    @State private var maintenanceSnapshotIssues: [ResearchSkillMaintenanceSnapshotIssue] = []
+    @State private var pendingMaintenanceRestore: ResearchSkillMaintenanceSnapshot?
+    @State private var draftSkillSelectionID: String?
+
+    private static let recoverySelectionPrefix = "recovery:"
+    private static let recoveryIssuesSelection = "recovery:issues"
 
     private var selectedSkill: ResearchSkillPackage? {
         skills.first { $0.selectionID == selectedSkillID }
     }
 
-    private var inspectedDraft: ResearchSkillPackage? {
-        guard let selectedSkill else { return nil }
-        return ResearchSkillInspector.inspect(
-            id: identifier,
-            source: source,
-            origin: selectedSkill.origin
-        )
+    private var selectedRecoverySnapshot: ResearchSkillMaintenanceSnapshot? {
+        guard let selectedSkillID,
+              selectedSkillID.hasPrefix(Self.recoverySelectionPrefix),
+              selectedSkillID != Self.recoveryIssuesSelection,
+              let id = UUID(uuidString: String(
+                selectedSkillID.dropFirst(Self.recoverySelectionPrefix.count)
+              )) else { return nil }
+        return maintenanceSnapshots.first { $0.id == id }
     }
 
     private var displayedRoutingPackage: ResearchSkillPackage? {
@@ -858,19 +1378,47 @@ private struct ResearchSkillsSettingsView: View {
         return selectedSkill.origin == .bundled ? selectedSkill : inspectedDraft
     }
 
-    private var targetConflictsWithBundledPackage: Bool {
-        guard selectedSkill?.isTriptychLocal == true else { return false }
-        return skills.contains { $0.origin == .bundled && $0.id == identifier }
+    private var displayedValidationIssues: [String] {
+        Array(Set(inspectedDraft?.validationIssues ?? selectedSkill?.validationIssues ?? [])).sorted()
     }
 
-    private var displayedValidationIssues: [String] {
-        var issues = inspectedDraft?.validationIssues ?? []
-        if targetConflictsWithBundledPackage {
-            issues.append(
-                "This identifier belongs to a protected Scholium package. Rename this Triptych-local package or delete it."
-            )
+    private var maintenanceProposalSourceMatchesImport: Bool {
+        guard let proposedPackage = maintenanceProposedPackage,
+              let canonicalSource = try? ResearchSkillMaintenanceProposalDraft.encode(
+                proposedPackage
+              ) else {
+            return false
         }
-        return Array(Set(issues)).sorted()
+        return maintenanceProposalSource == canonicalSource
+    }
+
+    private var maintenancePreparationMatchesProposalDraft: Bool {
+        guard let skill = selectedSkill,
+              source == skill.source,
+              maintenanceProposalSourceMatchesImport,
+              let proposedPackage = maintenanceProposedPackage,
+              let preparation = maintenancePreparation,
+              preparation.request.expectedPackageRevision == skill.revision,
+              preparation.request.instruction == maintenanceInstruction
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              preparation.request.proposedPackage == proposedPackage else {
+            return false
+        }
+        return true
+    }
+
+    private var maintenancePreparationMatchesDraft: Bool {
+        guard maintenancePreparationMatchesProposalDraft,
+              let preparation = maintenancePreparation,
+              preparation.isReadyForSettingsApply else {
+            return false
+        }
+        do {
+            return try decodeMaintenanceEvaluationEvidence()
+                == preparation.request.evaluationEvidence
+        } catch {
+            return false
+        }
     }
 
     var body: some View {
@@ -878,6 +1426,7 @@ private struct ResearchSkillsSettingsView: View {
             List(selection: $selectedSkillID) {
                 skillSection("Bundled", skills: skills.filter { $0.origin == .bundled })
                 skillSection("Triptych", skills: skills.filter { $0.origin != .bundled })
+                recoverySection
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 270)
@@ -917,49 +1466,42 @@ private struct ResearchSkillsSettingsView: View {
                         }
                         Text(skill.description.isEmpty ? "No valid description is available." : skill.description)
                             .foregroundStyle(.secondary)
-                        TextField("Skill Identifier", text: $identifier)
-                            .disabled(skill.origin == .bundled)
-                            .accessibilityHint("Use lowercase letters, numbers, and hyphens.")
                         if let routing = displayedRoutingPackage {
                             DisclosureGroup(
                                 "Routing Metadata",
                                 isExpanded: $showsRoutingMetadata
                             ) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    routingRow("Role", routing.role)
                                     routingRow(
-                                        "Supported modes",
-                                        routing.supportedModes.map(\.displayName).joined(separator: ", ")
-                                    )
-                                    routingRow(
-                                        "Automatic modes",
-                                        routing.automaticModes.isEmpty
-                                            ? "None"
-                                            : routing.automaticModes.map(\.displayName).joined(separator: ", ")
-                                    )
-                                    routingRow(
-                                        "Required packages",
-                                        routing.requiredSkillIDs.isEmpty
-                                            ? "None"
-                                            : routing.requiredSkillIDs.joined(separator: ", ")
-                                    )
-                                    routingRow(
-                                        "Compatible Practices",
-                                        routing.compatiblePracticeIDs.isEmpty
-                                            ? "None"
-                                            : routing.compatiblePracticeIDs.joined(separator: ", ")
-                                    )
-                                    routingRow(
-                                        "Practice resources",
-                                        routing.practiceResources.isEmpty
-                                            ? "None"
-                                            : routing.practiceResources.sorted(by: { $0.key < $1.key })
-                                                .map { "\($0.key): \($0.value)" }
+                                        "Functions",
+                                        routing.supportedFunctions.isEmpty
+                                            ? "General guidance"
+                                            : routing.supportedFunctions
+                                                .map(\.interfaceTitle)
                                                 .joined(separator: ", ")
                                     )
+                                    routingRow(
+                                        "Capabilities",
+                                        routing.capabilities.isEmpty
+                                            ? "None"
+                                            : routing.capabilities
+                                                .map(capabilityTitle)
+                                                .joined(separator: ", ")
+                                    )
+                                    routingRow(
+                                        "Citation Styles",
+                                        routing.citationStyles.isEmpty
+                                            ? "None"
+                                            : routing.citationStyles
+                                                .map(citationStyleTitle)
+                                                .joined(separator: ", ")
+                                    )
+                                    routingRow(
+                                        "Guided Evolution",
+                                        routing.allowsEvolution ? "Eligible" : "Not enabled"
+                                    )
                                     routingRow("Version", routing.version)
-                                    routingRow("Update policy", routing.updatePolicy)
-                                    Text("Package class and update policy come from origin. Triptych-local frontmatter cannot override them, and compatibility never activates a Practice automatically.")
+                                    Text("Functions and capabilities are validated by Scholium. Guided evolution applies only to eligible Triptych-local Researcher Skills and always requires explicit confirmation.")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -983,6 +1525,36 @@ private struct ResearchSkillsSettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        if skill.isTriptychLocal,
+                           skill.skillClass == .researcher,
+                           skill.allowsEvolution {
+                            ResearchSkillMaintenanceView(
+                                instruction: $maintenanceInstruction,
+                                proposalSource: $maintenanceProposalSource,
+                                evaluationEvidenceSource: $maintenanceEvaluationEvidenceSource,
+                                currentPackage: maintenanceCurrentPackage,
+                                proposedPackage: maintenanceProposedPackage,
+                                proposalError: maintenanceProposalError,
+                                preparation: maintenancePreparation,
+                                appliedOutcome: maintenanceOutcome,
+                                recoverySnapshots: maintenanceSnapshots.filter {
+                                    $0.packageID == skill.id
+                                },
+                                currentPackageRevision: skill.revision,
+                                isWorking: isWorking,
+                                isLoadingCurrentPackage: isLoadingMaintenancePackage,
+                                hasUnsavedSkillDraft: source != skill.source,
+                                proposalSourceMatchesImport: maintenanceProposalSourceMatchesImport,
+                                canRequestEvaluation: maintenancePreparationMatchesProposalDraft,
+                                canApply: maintenancePreparationMatchesDraft,
+                                copyProposalRequest: copyMaintenanceProposalRequest,
+                                importProposal: importMaintenanceProposal,
+                                copyEvaluationRequest: copyMaintenanceEvaluationRequest,
+                                prepare: prepareMaintenance,
+                                apply: applyMaintenance,
+                                restore: requestMaintenanceRestore
+                            )
+                        }
                         HStack {
                             if skill.canDuplicate {
                                 Button("Duplicate into Triptych", action: duplicateBundled)
@@ -993,7 +1565,7 @@ private struct ResearchSkillsSettingsView: View {
                                     .buttonStyle(.borderedProminent)
                                     .disabled(
                                         inspectedDraft?.validationIssues.isEmpty != true
-                                            || targetConflictsWithBundledPackage
+                                            || isInspectingDraft
                                             || isWorking
                                             || skill.revision == nil
                                     )
@@ -1004,12 +1576,26 @@ private struct ResearchSkillsSettingsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("scholium.researchGuidance.skillEditor")
+            } else if let snapshot = selectedRecoverySnapshot {
+                maintenanceRecoveryDetail(snapshot)
+            } else if selectedSkillID == Self.recoveryIssuesSelection {
+                maintenanceRecoveryIssuesDetail
             } else {
                 ContentUnavailableView("Select a Skill", systemImage: "text.book.closed")
             }
         }
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
         .onChange(of: selectedSkillID) { _, _ in loadDraft() }
+        .onChange(of: source) { _, newSource in
+            scheduleDraftInspection()
+            if newSource != selectedSkill?.source {
+                maintenancePreparation = nil
+            }
+        }
+        .onDisappear {
+            draftInspectionTask?.cancel()
+            maintenancePackageLoadTask?.cancel()
+        }
         .confirmationDialog(
             "Delete Triptych Skill?",
             isPresented: Binding(
@@ -1022,6 +1608,23 @@ private struct ResearchSkillsSettingsView: View {
             Button("Cancel", role: .cancel) { pendingDeletion = nil }
         } message: {
             Text("This permanently removes the selected Triptych-local skill package. Bundled guidance is not changed.")
+        }
+        .confirmationDialog(
+            "Restore Complete Researcher Skill?",
+            isPresented: Binding(
+                get: { pendingMaintenanceRestore != nil },
+                set: { if !$0 && !isWorking { pendingMaintenanceRestore = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Restore Complete Package", role: .destructive) {
+                confirmMaintenanceRestore()
+            }
+            Button("Cancel", role: .cancel) { pendingMaintenanceRestore = nil }
+        } message: {
+            if let snapshot = pendingMaintenanceRestore {
+                Text(maintenanceRestoreConfirmationMessage(snapshot))
+            }
         }
         .alert("Could Not Manage Skills", isPresented: Binding(
             get: { errorMessage != nil },
@@ -1066,10 +1669,265 @@ private struct ResearchSkillsSettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var recoverySection: some View {
+        if !maintenanceSnapshots.isEmpty || !maintenanceSnapshotIssues.isEmpty {
+            Section("Recovery") {
+                ForEach(maintenanceSnapshots) { snapshot in
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(recoveryPackageName(snapshot.packageID))
+                            Text(snapshot.createdAt, format: .dateTime.year().month().day().hour().minute())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(
+                        "scholium.researchGuidance.recovery.\(snapshot.id.uuidString)"
+                    )
+                    .tag(Self.recoverySelectionPrefix + snapshot.id.uuidString)
+                }
+                if !maintenanceSnapshotIssues.isEmpty {
+                    Label(
+                        "Recovery Issues (\(maintenanceSnapshotIssues.count))",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .foregroundStyle(.orange)
+                    .tag(Self.recoveryIssuesSelection)
+                }
+            }
+        }
+    }
+
+    private func maintenanceRecoveryDetail(
+        _ snapshot: ResearchSkillMaintenanceSnapshot
+    ) -> some View {
+        let current = skills.first {
+            $0.isTriptychLocal && $0.id == snapshot.packageID
+        }
+        let hasUnsavedDraft = hasUnsavedDraft(forPackageID: snapshot.packageID)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("Recovery", systemImage: "clock.arrow.circlepath")
+                    .font(.title2.weight(.semibold))
+                Text(recoveryPackageName(snapshot.packageID))
+                    .font(.headline)
+                Text("This is a complete, backend-validated Researcher Skill snapshot. Restore rechecks the current package and creates a new undo snapshot before replacement.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                GroupBox("Snapshot") {
+                    VStack(alignment: .leading, spacing: 7) {
+                        LabeledContent("Created") {
+                            Text(snapshot.createdAt, format: .dateTime.year().month().day().hour().minute().second())
+                        }
+                        LabeledContent("Revision") {
+                            Text(snapshot.packageRevision.sha256)
+                                .font(ScholiumTypography.swiftUIMonospaceFont(
+                                    size: 10,
+                                    relativeTo: .caption
+                                ))
+                                .textSelection(.enabled)
+                        }
+                        LabeledContent("Current state") {
+                            if let currentRevision = current?.revision {
+                                Text(currentRevision == snapshot.packageRevision ? "This snapshot" : "Different revision")
+                            } else if current == nil {
+                                Text("Package missing")
+                            } else {
+                                Text("No safe revision")
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if hasUnsavedDraft {
+                    Label(
+                        "Save or discard the unsaved SKILL.md draft before restoring this package.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                }
+                if current?.revision == snapshot.packageRevision {
+                    Label("This snapshot is the current package.", systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                } else if current != nil, current?.revision == nil {
+                    Label(
+                        "Scholium cannot prove the current package revision, so Restore is unavailable.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                } else {
+                    Button("Restore…") { requestMaintenanceRestore(snapshot) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isWorking || hasUnsavedDraft)
+                        .accessibilityIdentifier(
+                            "scholium.researchGuidance.recoveryRestore.\(snapshot.id.uuidString)"
+                        )
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("scholium.researchGuidance.recoveryDetail")
+    }
+
+    private var maintenanceRecoveryIssuesDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Recovery Issues", systemImage: "exclamationmark.triangle")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text("Valid snapshots remain available. Scholium will not restore the unsafe or corrupt entries listed below.")
+                    .foregroundStyle(.secondary)
+                ForEach(maintenanceSnapshotIssues) { issue in
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(issue.summary)
+                            Text(issue.entryName)
+                                .font(ScholiumTypography.swiftUIMonospaceFont(
+                                    size: 10,
+                                    relativeTo: .caption
+                                ))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } label: {
+                        Text(issue.code.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
+                    }
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("scholium.researchGuidance.recoveryIssues")
+    }
+
     private func loadDraft() {
+        maintenancePackageLoadTask?.cancel()
+        maintenancePackageLoadID = nil
+        isLoadingMaintenancePackage = false
+        draftInspectionTask?.cancel()
+        isInspectingDraft = false
         guard let selectedSkill else { return }
-        identifier = selectedSkill.id
+        draftSkillSelectionID = selectedSkill.selectionID
+        maintenanceCurrentPackage = nil
+        maintenanceProposalError = nil
+        let preservesAppliedMaintenance = maintenanceOutcome?.packageID == selectedSkill.id
+            && maintenanceOutcome?.packageRevision == selectedSkill.revision
         source = selectedSkill.source
+        inspectedDraft = selectedSkill.origin == .bundled ? selectedSkill : nil
+        if !preservesAppliedMaintenance {
+            maintenanceInstruction = ""
+            maintenanceProposedPackage = nil
+            maintenanceProposalSource = ""
+            maintenanceEvaluationEvidenceSource = ""
+            maintenancePreparation = nil
+            maintenanceOutcome = nil
+        }
+        scheduleDraftInspection()
+        scheduleMaintenancePackageLoad(for: selectedSkill)
+    }
+
+    private func scheduleDraftInspection() {
+        draftInspectionTask?.cancel()
+        guard let skill = selectedSkill else {
+            inspectedDraft = nil
+            isInspectingDraft = false
+            return
+        }
+        guard skill.origin != .bundled else {
+            inspectedDraft = skill
+            isInspectingDraft = false
+            return
+        }
+        let skillSelectionID = skill.selectionID
+        let id = skill.id
+        let draftSource = source
+        let origin = skill.origin
+        isInspectingDraft = true
+        draftInspectionTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(140))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            let inspection = await settingsModel.inspectResearchSkillDraft(
+                id: id,
+                source: draftSource,
+                origin: origin
+            )
+            guard !Task.isCancelled,
+                  selectedSkillID == skillSelectionID,
+                  source == draftSource else { return }
+            inspectedDraft = inspection
+            isInspectingDraft = false
+        }
+    }
+
+    private func scheduleMaintenancePackageLoad(for skill: ResearchSkillPackage) {
+        guard skill.isTriptychLocal,
+              skill.skillClass == .researcher,
+              skill.allowsEvolution,
+              let expectedRevision = skill.revision else {
+            return
+        }
+        let selectionID = skill.selectionID
+        let loadID = UUID()
+        maintenancePackageLoadID = loadID
+        isLoadingMaintenancePackage = true
+        maintenancePackageLoadTask = Task { @MainActor in
+            defer {
+                if selectedSkillID == selectionID,
+                   maintenancePackageLoadID == loadID {
+                    isLoadingMaintenancePackage = false
+                    maintenancePackageLoadID = nil
+                }
+            }
+            do {
+                let package = try await completeMaintenancePackage(id: skill.id)
+                try Task.checkCancellation()
+                guard selectedSkillID == selectionID,
+                      maintenancePackageLoadID == loadID else { return }
+                guard package.packageRevision == expectedRevision else {
+                    throw ResearchSkillMaintenanceError.stalePackage(skill.id)
+                }
+                maintenanceCurrentPackage = package
+            } catch is CancellationError {
+                return
+            } catch {
+                guard selectedSkillID == selectionID,
+                      maintenancePackageLoadID == loadID else { return }
+                maintenanceProposalError = error.localizedDescription
+            }
+        }
+    }
+
+    private func completeMaintenancePackage(
+        id: String
+    ) async throws -> ResearchSkillProposedPackage {
+        let resourcePaths = try await settingsModel.researchSkillResourcePaths(id: id)
+        for path in resourcePaths where !ResearchSkillMaintenancePath.isAllowed(path) {
+            throw ResearchSkillMaintenanceError.invalidResourcePath(path)
+        }
+        var files: [ResearchSkillMaintenanceFile] = []
+        files.reserveCapacity(resourcePaths.count)
+        for path in resourcePaths {
+            files.append(ResearchSkillMaintenanceFile(
+                relativePath: path,
+                source: try await settingsModel.researchSkillResource(
+                    id: id,
+                    relativePath: path
+                )
+            ))
+        }
+        let package = ResearchSkillProposedPackage(files: files)
+        try package.validate()
+        return package
     }
 
     private func ownershipLabel(for skill: ResearchSkillPackage) -> String {
@@ -1095,9 +1953,35 @@ private struct ResearchSkillsSettingsView: View {
         .font(.caption)
     }
 
+    private func capabilityTitle(_ capability: ResearchSkillCapability) -> String {
+        switch capability {
+        case .citationVerification: "Citation Verification"
+        case .citationFormatting: "Citation Formatting"
+        }
+    }
+
+    private func citationStyleTitle(_ style: String) -> String {
+        switch style.lowercased() {
+        case "apa-7": "APA 7"
+        case "chicago": "Chicago"
+        case "mla": "MLA"
+        case "oxford": "Oxford"
+        default: style.replacingOccurrences(of: "-", with: " ").capitalized
+        }
+    }
+
     private func reload(selecting id: String? = nil) async {
         do {
             skills = try await settingsModel.researchSkills()
+            do {
+                let recovery = try await settingsModel.researchSkillMaintenanceSnapshots()
+                maintenanceSnapshots = recovery.snapshots
+                maintenanceSnapshotIssues = recovery.issues
+            } catch {
+                maintenanceSnapshots = []
+                maintenanceSnapshotIssues = []
+                errorMessage = "Research Skills loaded, but recovery inventory is unavailable. \(error.localizedDescription)"
+            }
             if let id {
                 selectedSkillID = skills.first {
                     $0.id == id && $0.origin == .triptych
@@ -1105,7 +1989,11 @@ private struct ResearchSkillsSettingsView: View {
             } else if selectedSkillID == nil {
                 selectedSkillID = skills.first?.selectionID
             }
-            if !skills.contains(where: { $0.selectionID == selectedSkillID }) {
+            let recoverySelectionExists = selectedRecoverySnapshot != nil
+                || (selectedSkillID == Self.recoveryIssuesSelection
+                    && !maintenanceSnapshotIssues.isEmpty)
+            if !skills.contains(where: { $0.selectionID == selectedSkillID }),
+               !recoverySelectionExists {
                 selectedSkillID = skills.first?.selectionID
             }
             loadDraft()
@@ -1162,17 +2050,9 @@ private struct ResearchSkillsSettingsView: View {
 
     private func saveSkill() {
         guard var skill = selectedSkill,
-              let revision = skill.revision else { return }
-        let targetID = identifier
+              skill.revision != nil else { return }
         let editedSource = source
         perform {
-            if targetID != skill.id {
-                skill = try await settingsModel.renameResearchSkill(
-                    id: skill.id,
-                    to: targetID,
-                    expectedRevision: revision
-                )
-            }
             if editedSource != skill.source {
                 guard let currentRevision = skill.revision else {
                     throw ResearchSkillError.stalePackage(skill.id)
@@ -1186,6 +2066,226 @@ private struct ResearchSkillsSettingsView: View {
             await reload(selecting: skill.id)
             settingsModel.showToast("Skill saved")
         }
+    }
+
+    private func prepareMaintenance() {
+        guard let skill = selectedSkill,
+              skill.isTriptychLocal,
+              skill.skillClass == .researcher,
+              skill.allowsEvolution,
+              source == skill.source,
+              maintenanceProposalSourceMatchesImport,
+              let revision = skill.revision,
+              let proposedPackage = maintenanceProposedPackage else { return }
+        let instruction = maintenanceInstruction
+        perform {
+            let request = ResearchSkillMaintenanceRequest(
+                packageID: skill.id,
+                expectedPackageRevision: revision,
+                proposedPackage: proposedPackage,
+                instruction: instruction,
+                evaluationEvidence: try decodeMaintenanceEvaluationEvidence()
+            )
+            maintenancePreparation = try await settingsModel
+                .prepareResearchSkillMaintenance(request)
+            maintenanceOutcome = nil
+        }
+    }
+
+    private func copyMaintenanceProposalRequest() {
+        guard let skill = selectedSkill,
+              maintenanceOutcome == nil,
+              source == skill.source,
+              let currentPackage = maintenanceCurrentPackage,
+              let revision = skill.revision else { return }
+        do {
+            let handoff = try ResearchSkillMaintenanceProposalDraft.proposalRequest(
+                packageID: skill.id,
+                currentPackage: currentPackage,
+                expectedPackageRevision: revision,
+                purpose: maintenanceInstruction
+            )
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(handoff, forType: .string)
+            settingsModel.showToast("Agent proposal request copied")
+        } catch {
+            maintenanceProposalError = error.localizedDescription
+        }
+    }
+
+    private func importMaintenanceProposal() {
+        guard let skill = selectedSkill,
+              maintenanceOutcome == nil,
+              source == skill.source,
+              let currentPackage = maintenanceCurrentPackage,
+              currentPackage.packageRevision == skill.revision else { return }
+        do {
+            let proposal = try ResearchSkillMaintenanceProposalDraft.decode(
+                maintenanceProposalSource
+            )
+            maintenanceProposalSource = try ResearchSkillMaintenanceProposalDraft.encode(
+                proposal
+            )
+            maintenanceProposedPackage = proposal
+            maintenanceProposalError = nil
+            maintenanceEvaluationEvidenceSource = ""
+            maintenancePreparation = nil
+            maintenanceOutcome = nil
+        } catch {
+            maintenanceProposalError = error.localizedDescription
+        }
+    }
+
+    private func decodeMaintenanceEvaluationEvidence(
+    ) throws -> ResearchSkillMaintenanceExternalEvaluation? {
+        let source = maintenanceEvaluationEvidenceSource.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !source.isEmpty else { return nil }
+        guard let data = source.data(using: .utf8) else {
+            throw ResearchSkillMaintenanceError.evaluationFailed
+        }
+        let isoDecoder = JSONDecoder()
+        isoDecoder.dateDecodingStrategy = .iso8601
+        do {
+            return try isoDecoder.decode(
+                ResearchSkillMaintenanceExternalEvaluation.self,
+                from: data
+            )
+        } catch {
+            return try JSONDecoder().decode(
+                ResearchSkillMaintenanceExternalEvaluation.self,
+                from: data
+            )
+        }
+    }
+
+    private func copyMaintenanceEvaluationRequest() {
+        guard maintenancePreparationMatchesProposalDraft,
+              let preparation = maintenancePreparation else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let packageJSON = String(
+                decoding: try encoder.encode(preparation.request.proposedPackage),
+                as: UTF8.self
+            )
+            let revision = preparation.proposedPackageRevision
+            let resultTemplate: [String: Any] = [
+                "proposedPackageRevision": [
+                    "sha256": revision.sha256,
+                    "byteCount": revision.byteCount,
+                ],
+                "evaluator": "<agent name, model, and version>",
+                "method": "<semantic, source-fidelity, and adversarial evaluation method>",
+                "status": "incomplete",
+                "cases": [[
+                    "id": "<case-id>",
+                    "status": "incomplete",
+                    "summary": "<finding and evidence>",
+                ]],
+                "evaluatedAt": ISO8601DateFormatter().string(from: Date()),
+            ]
+            let templateData = try JSONSerialization.data(
+                withJSONObject: resultTemplate,
+                options: [.prettyPrinted, .sortedKeys]
+            )
+            let templateJSON = String(decoding: templateData, as: UTF8.self)
+            let handoff = """
+            Evaluate this complete proposed Researcher Skill package for its stated philosophical workflow. Test source fidelity, conceptual and argumentative discipline, boundary behavior, and adversarial cases. Do not report passed unless every reported case passed. Bind the result to the exact proposal revision below.
+
+            Maintenance purpose:
+            \(preparation.request.instruction)
+
+            Proposed package revision:
+            \(revision.sha256) (\(revision.byteCount) bytes)
+
+            Complete proposed package (JSON):
+            \(packageJSON)
+
+            Return only JSON matching this template. Replace every placeholder and report status truthfully:
+            \(templateJSON)
+            """
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(handoff, forType: .string)
+            settingsModel.showToast("Agent evaluation handoff copied")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyMaintenance() {
+        guard let preparation = maintenancePreparation,
+              maintenancePreparationMatchesDraft else { return }
+        let selectedID = preparation.request.packageID
+        perform {
+            maintenanceOutcome = try await settingsModel
+                .applyResearchSkillMaintenance(preparation)
+            await reload(selecting: selectedID)
+        }
+    }
+
+    private func requestMaintenanceRestore(
+        _ snapshot: ResearchSkillMaintenanceSnapshot
+    ) {
+        guard !isWorking,
+              !hasUnsavedDraft(forPackageID: snapshot.packageID),
+              skills.first(where: {
+                  $0.isTriptychLocal && $0.id == snapshot.packageID
+              })?.revision != snapshot.packageRevision else { return }
+        pendingMaintenanceRestore = snapshot
+    }
+
+    private func confirmMaintenanceRestore() {
+        guard let snapshot = pendingMaintenanceRestore else { return }
+        pendingMaintenanceRestore = nil
+        let expectedState: ResearchSkillMaintenanceExpectedCurrentState
+        if let current = skills.first(where: {
+            $0.isTriptychLocal && $0.id == snapshot.packageID
+        }) {
+            guard let revision = current.revision else {
+                errorMessage = "Scholium cannot prove the current package revision."
+                return
+            }
+            expectedState = .present(revision)
+        } else {
+            expectedState = .missing
+        }
+        let selectedID = snapshot.packageID
+        perform {
+            _ = try await settingsModel.restoreResearchSkillMaintenance(
+                snapshotID: snapshot.id,
+                expectedCurrentState: expectedState
+            )
+            maintenanceOutcome = nil
+            await reload(selecting: selectedID)
+        }
+    }
+
+    private func maintenanceRestoreConfirmationMessage(
+        _ snapshot: ResearchSkillMaintenanceSnapshot
+    ) -> String {
+        let package = recoveryPackageName(snapshot.packageID)
+        if let current = skills.first(where: {
+            $0.isTriptychLocal && $0.id == snapshot.packageID
+        }), let revision = current.revision {
+            return "Replace the complete current \(package) package (\(revision.sha256.prefix(12))…) with snapshot \(snapshot.packageRevision.sha256.prefix(12))…? Scholium first creates a new undo snapshot. Files absent from the selected snapshot are removed."
+        }
+        return "Reinstall the complete missing \(package) package from snapshot \(snapshot.packageRevision.sha256.prefix(12))…? Scholium will recheck that the package is still absent before writing."
+    }
+
+    private func recoveryPackageName(_ packageID: String) -> String {
+        skills.first(where: { $0.id == packageID && $0.isTriptychLocal })?.name
+            ?? packageID
+    }
+
+    private func hasUnsavedDraft(forPackageID packageID: String) -> Bool {
+        guard let skill = skills.first(where: {
+            $0.isTriptychLocal && $0.id == packageID
+        }), draftSkillSelectionID == skill.selectionID else { return false }
+        return source != skill.source
     }
 
     private func deleteSkill() {

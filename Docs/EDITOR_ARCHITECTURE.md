@@ -90,16 +90,19 @@ CodeMirror Find panel is not part of Scholium's editor architecture.
 Pure TypeScript tests currently cover protocol validation, exact
 transformations, single-transaction undo/redo, Lezer-backed representative
 projection, Contracts parity fixtures, guarded lists and tables, and inert
-clipboard conversion. Swift Testing covers the immutable Contracts dialect,
+clipboard conversion, plus synthetic composition timing and the single-textbox
+accessibility contract. Swift Testing covers the immutable Contracts dialect,
 protocol encoding, architecture boundaries, controller convergence, and one
 real WKWebView journey through initialization, exact CRLF reconciliation,
-formatting, recovery reload, generation restoration, and Paste as Markdown.
+formatting, raw UTF-8/UTF-16 Unicode preservation, selection-preserving dirty
+mirror recovery, generation restoration, and Paste as Markdown.
 The isolated QA app passes the canonical Live Preview editing and
 commit-before-navigation journey, plus a focused journey proving that the
 native Format, Insert, and editor context menus expose commands for the
-focused session. Selection geometry, live composition, assistive
-technologies, appearance settings, and sustained large-document editing still
-require focused or manual QA before Editor 1.0 acceptance.
+focused session. A Debug-only, explicit-argument QA fault journey also proves
+dirty-buffer reload and byte-exact commit through the normal Read boundary.
+See `EDITOR_INTERACTION_ACCEPTANCE.md` for the dated split between automated
+evidence and still-open real assistive-technology and IME journeys.
 
 Performance claims follow `PERFORMANCE_BENCHMARK.md`. Measurements are evidence,
 not release gates, until the release owner explicitly approves numeric gates.

@@ -1,4 +1,5 @@
 import Foundation
+import ScholiumContracts
 import Testing
 
 @Suite("CLI Application delegation")
@@ -25,6 +26,78 @@ struct CLIApplicationDelegationTests {
         #expect(sources.zotero.contains("operations.handle(requestData: frame.body)"))
         #expect(!sources.zotero.contains("ZoteroMCPServer("))
         #expect(!sources.zotero.contains("ZoteroMCPTransportLocator."))
+    }
+
+    @Test("Function CLI is a thin Contracts-to-Application adapter")
+    func functionCommandsDelegateWithoutRoutingPolicy() throws {
+        let sources = try CLISources.load()
+
+        #expect(sources.entry.contains(#"case "function":"#))
+        #expect(sources.function.contains("handle.research.availableFunctions(for: target)"))
+        #expect(sources.function.contains("handle.research.prepareFunction(request)"))
+        #expect(sources.function.contains("handle.research.selectFunctionMethods(submission)"))
+        #expect(sources.function.contains("handle.research.completeFunction(submission)"))
+        #expect(sources.function.contains("handle.research.cancelFunction(runID: runID)"))
+        #expect(!sources.function.contains("import " + "ScholiumCore"))
+        #expect(!sources.function.contains("supportedFunctions"))
+        #expect(!sources.function.contains("supported_modes"))
+        #expect(!sources.function.contains("packageID"))
+        #expect(!sources.function.contains("createCheckpoint"))
+    }
+
+    @Test("Function CLI JSON request and completion values round-trip without loss")
+    func functionJSONRoundTrips() throws {
+        let target = ResearchFunctionTarget(
+            noteID: UUID(),
+            note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Work.md"),
+            role: .work,
+            fingerprint: DocumentFingerprint(content: "work"),
+            title: "Work"
+        )
+        let request = ResearchFunctionRequest(
+            function: .revise,
+            target: target,
+            instruction: "Strengthen only the stated inference.",
+            scope: .whole,
+            methods: [.revisionFeedback]
+        )
+        let submission = ResearchFunctionCompletionSubmission(
+            runID: UUID(),
+            confirmationToken: UUID(),
+            finalTargetFingerprint: DocumentFingerprint(content: "revised"),
+            summary: "Revised and checked.",
+            didModifyTarget: true,
+            fidelityOutcomes: [FidelityCheckOutcome(
+                check: .content,
+                state: .passed,
+                summary: "No unresolved fidelity finding."
+            )],
+            childRunIDs: [UUID()],
+            submittedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let methodSelection = ResearchFunctionMethodSelectionSubmission(
+            runID: UUID(),
+            confirmationToken: UUID(),
+            methods: [.revisionFeedback]
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        #expect(try decoder.decode(
+            ResearchFunctionRequest.self,
+            from: encoder.encode(request)
+        ) == request)
+        #expect(try decoder.decode(
+            ResearchFunctionCompletionSubmission.self,
+            from: encoder.encode(submission)
+        ) == submission)
+        #expect(try decoder.decode(
+            ResearchFunctionMethodSelectionSubmission.self,
+            from: encoder.encode(methodSelection)
+        ) == methodSelection)
     }
 
     @Test("Search, catalog, read, and lifecycle output schemas remain stable")
@@ -65,6 +138,7 @@ private struct CLISources {
     let workspace: String
     let document: String
     let zotero: String
+    let function: String
 
     static func load() throws -> Self {
         let root = URL(fileURLWithPath: #filePath)
@@ -91,6 +165,10 @@ private struct CLISources {
             ),
             zotero: String(
                 contentsOf: cli.appendingPathComponent("ZoteroCommandHandler.swift"),
+                encoding: .utf8
+            ),
+            function: String(
+                contentsOf: cli.appendingPathComponent("ResearchFunctionCommandHandler.swift"),
                 encoding: .utf8
             )
         )

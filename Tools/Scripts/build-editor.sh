@@ -2,11 +2,8 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-EDITOR_SOURCE="$ROOT/WebEditor"
+OUTPUT="$ROOT/Scholium/Resources/Editor/editor.bundle.js"
 
-cd "$EDITOR_SOURCE"
-npm ci
-npm run typecheck
-npm run build
+"$ROOT/Tools/Scripts/run-editor-toolchain.sh" --output "$OUTPUT"
 
 echo "Built Scholium/Resources/Editor/editor.bundle.js from the locked editor sources."

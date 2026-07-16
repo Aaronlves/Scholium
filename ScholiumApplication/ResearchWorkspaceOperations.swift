@@ -340,7 +340,10 @@ extension WorkspaceHandle {
         selectedNotes: [DialogueNoteReference],
         includedCommentIDs: Set<UUID>,
         requestedDestination: String?,
-        responseProfile: DialogueResponseProfile?
+        responseProfile: DialogueResponseProfile?,
+        dialogueID requestedDialogueID: UUID? = nil,
+        functionSnapshot: ResearchFunctionSnapshot? = nil,
+        skillInstructionsOverride: String? = nil
     ) async throws -> DialoguePreparation {
         try requireActive()
         if let issue = await services.dialogueStore.healthError() {
@@ -362,12 +365,21 @@ extension WorkspaceHandle {
             )
         }
         let responseContract = DialogueResponseContract(profile: effectiveProfile)
-        let dialogueID = UUID()
-        let skillInstructions = try await services.researchSkillStore.instructionAssembly()
-        let checkpoint = try await createCheckpoint(
-            name: "Before Agent Work",
-            kind: .automatic
-        )
+        let dialogueID = requestedDialogueID ?? UUID()
+        if let functionSnapshot {
+            guard functionSnapshot.runID == dialogueID,
+                  functionSnapshot.recordID == dialogueID,
+                  functionSnapshot.request.function == .dialogue else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "Dialogue function evidence does not match its record identity."
+                )
+            }
+        }
+        let skillInstructions = if let skillInstructionsOverride {
+            skillInstructionsOverride
+        } else {
+            try await services.researchSkillStore.instructionAssembly()
+        }
         try await verifyDialogueSelectionIsCurrent(selectedNotes)
 
         var includedComments: [DialogueIncludedComment] = []
@@ -390,11 +402,12 @@ extension WorkspaceHandle {
             ),
             template: template.source
         )
-        instructions += "\n\n" + DialogueResponseTransport.locator(
+        let responseLocator = DialogueResponseTransport.locator(
             dialogueID: dialogueID,
             triptychID: services.manifest.id,
             contract: responseContract
         )
+        instructions += "\n\n" + responseLocator
         if !skillInstructions.isEmpty {
             instructions += "\n\n" + skillInstructions
         }
@@ -405,8 +418,14 @@ extension WorkspaceHandle {
             instruction: instruction,
             selectedNotes: selectedNotes,
             includedComments: includedComments,
-            generatedPrompt: "",
-            checkpointID: checkpoint.id,
+            // Ordinary Dialogue keeps its historical record shape. A
+            // Research Function Dialogue persists the canonical immutable
+            // packet so a prepared run remains recoverable after dismissal.
+            generatedPrompt: functionSnapshot == nil
+                ? ""
+                : skillInstructions + "\n\n" + responseLocator,
+            checkpointID: nil,
+            functionSnapshot: functionSnapshot,
             responseContract: responseContract,
             requestedDestination: requestedDestination,
             linkedNoteSummary: linkedSummary
@@ -416,7 +435,7 @@ extension WorkspaceHandle {
         return DialoguePreparation(
             entry: saved,
             instructions: instructions,
-            checkpoint: checkpoint
+            checkpoint: nil
         )
     }
 
@@ -456,7 +475,11 @@ extension WorkspaceHandle {
         scope: CritiqueRequestScope,
         lens: String,
         selectedRanges: String,
-        additionalInstructions: String
+        additionalInstructions: String,
+        preparedCheckpoint: TriptychCheckpoint? = nil,
+        roundID: UUID = UUID(),
+        functionSnapshotBuilder: ((ResearchFunctionOutputSnapshot) -> ResearchFunctionSnapshot)? = nil,
+        skillInstructionsOverride: String? = nil
     ) async throws -> CritiquePreparation {
         let workContext = try await researchContext(
             for: workID,
@@ -490,10 +513,11 @@ extension WorkspaceHandle {
             ?? (workID.relativePath as NSString).lastPathComponent
                 .replacingOccurrences(of: ".md", with: "")
         let requestedAt = Date()
-        let checkpoint = try await createCheckpoint(
-            name: "Before Agent Work",
-            kind: .automatic
-        )
+        let checkpoint = if let preparedCheckpoint {
+            preparedCheckpoint
+        } else {
+            try await createCheckpoint(name: "Before Agent Work", kind: .automatic)
+        }
         let recheckedTarget = try await repository.load(
             relativePath: workID.relativePath
         )
@@ -615,6 +639,9 @@ extension WorkspaceHandle {
 
         let skillInstructions: String
         do {
+            if let skillInstructionsOverride {
+                skillInstructions = skillInstructionsOverride
+            } else {
             let contract = try ResearchWorkflowRouteContracts.critique(
                 work: ResearchWorkflowObjectReference(
                     kind: .note,
@@ -638,6 +665,7 @@ extension WorkspaceHandle {
                 )
             }
             skillInstructions = envelope.renderedInstructions
+            }
         } catch {
             let requestError = error
             do {
@@ -651,6 +679,27 @@ extension WorkspaceHandle {
             throw requestError
         }
 
+        let outputSnapshot = ResearchFunctionOutputSnapshot(
+            note: VaultQualifiedNoteID(
+                vaultID: workID.vaultID,
+                relativePath: critiquePath
+            ),
+            fingerprint: preparedRevision
+        )
+        let functionSnapshot = functionSnapshotBuilder?(outputSnapshot)
+        if let functionSnapshot {
+            guard functionSnapshot.runID == roundID,
+                  functionSnapshot.recordID == roundID,
+                  functionSnapshot.checkpointID == checkpoint.id,
+                  functionSnapshot.request.function == .critique,
+                  functionSnapshot.preparedOutput == outputSnapshot else {
+                try await rollbackPreparedCritique()
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "Critique function evidence does not match its prepared output."
+                )
+            }
+        }
+
         let association: CritiqueAssociation
         do {
             association = try await services.critiqueRegistry.recordRequest(
@@ -660,6 +709,12 @@ extension WorkspaceHandle {
                 critiqueRelativePath: critiquePath,
                 checkpointID: checkpoint.id,
                 scope: scope,
+                roundID: roundID,
+                functionSnapshot: functionSnapshot,
+                functionInstructions: functionSnapshot == nil
+                    ? nil
+                    : skillInstructions + "\n\n"
+                        + researchFunctionCritiqueOutputBinding(outputSnapshot),
                 requestedAt: requestedAt
             )
         } catch {

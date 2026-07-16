@@ -22,7 +22,7 @@ fi
   > "${SCRATCH}/assembly.md"
 "${BINARY}" workflow audit-plan --from "${AUDIT_FIXTURE}" --format json \
   > "${SCRATCH}/audit-plan.json"
-"${BINARY}" skills assemble --mode analyze --skill scholium-source-analysis \
+"${BINARY}" skills assemble --mode develop --skill scholium-development \
   > "${SCRATCH}/legacy-assembly.md"
 
 python3 - "${FIXTURE}" "${SCRATCH}" <<'PY'
@@ -76,7 +76,7 @@ legacy = (scratch / "legacy-assembly.md").read_text()
 assert validation["structurally_valid"] is True
 assert validation["executable"] is True
 packages = {package["id"]: package for package in validation["phases"][0]["packages"]}
-assert "scholium-source-analysis" in packages
+assert "scholium-development" in packages
 practice = packages["scholium-philosophical-practices"]
 loaded = {resource["relative_path"] for resource in practice["loaded_resources"]}
 assert "references/Historical-Interpreter.md" in loaded
@@ -86,7 +86,7 @@ assert "# Scholium Workflow Contract" in assembly["rendered_instructions"]
 assert "# Scholium Workflow Contract" in markdown
 assert len(audit["scheduled"]) == 1
 assert not audit["reused"]
-assert "scholium-source-analysis" in legacy
+assert "scholium-development" in legacy
 
 persisted = [path for path in (scratch / "home").rglob("*") if path.is_file()]
 assert not any("workflow" in path.name.lower() for path in persisted)

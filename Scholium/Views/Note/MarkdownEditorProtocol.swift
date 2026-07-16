@@ -65,6 +65,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setUserCSS(String)
     case setLinkCompletions([EditorLinkCompletion])
     case setResearcherComments([MarkdownEditorCommentAnnotation])
+    case announceStatus(String)
     case goToLine(Int)
     case setScrollFraction(Double)
     case queryText, querySelection, queryContext, captureRecovery
@@ -78,7 +79,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setUserCSS, setLinkCompletions, setResearcherComments
+        case initialize, setMode, setUserCSS, setLinkCompletions, setResearcherComments, announceStatus
         case goToLine, setScrollFraction, queryText, querySelection, queryContext
         case captureRecovery, restoreRecovery, synchronizeCommittedText, command, markClean, focus
     }
@@ -96,6 +97,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkCompletions: self = try .setLinkCompletions(container.decode([EditorLinkCompletion].self, forKey: .value))
         case .setResearcherComments: self = try .setResearcherComments(container.decode([MarkdownEditorCommentAnnotation].self, forKey: .value))
+        case .announceStatus: self = try .announceStatus(container.decode(String.self, forKey: .value))
         case .goToLine: self = try .goToLine(container.decode(Int.self, forKey: .line))
         case .setScrollFraction: self = try .setScrollFraction(container.decode(Double.self, forKey: .fraction))
         case .queryText: self = .queryText
@@ -131,6 +133,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
         case let .setLinkCompletions(value): try pair(.setLinkCompletions, value, .value, into: &container)
         case let .setResearcherComments(value): try pair(.setResearcherComments, value, .value, into: &container)
+        case let .announceStatus(value): try pair(.announceStatus, value, .value, into: &container)
         case let .goToLine(line): try pair(.goToLine, line, .line, into: &container)
         case let .setScrollFraction(fraction): try pair(.setScrollFraction, fraction, .fraction, into: &container)
         case .queryText: try container.encode(Kind.queryText, forKey: .type)

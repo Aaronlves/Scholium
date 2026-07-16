@@ -274,6 +274,7 @@ public actor ResearchOperations: ResearchUseCases {
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
     private let reference: WorkspaceHandleReference
+    private let functionCoordinator: ResearchFunctionCoordinator
 
     init(
         reference: WorkspaceHandleReference,
@@ -281,6 +282,7 @@ public actor ResearchOperations: ResearchUseCases {
         recoveryRecordsURL: URL
     ) {
         self.reference = reference
+        functionCoordinator = ResearchFunctionCoordinator(reference: reference)
         self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
     }
@@ -290,7 +292,50 @@ public actor ResearchOperations: ResearchUseCases {
         source: String,
         origin: ResearchSkillOrigin
     ) -> ResearchSkillPackage {
-        ResearchSkillInspector.inspect(id: id, source: source, origin: origin)
+        ResearchSkillStore.inspectDraft(id: id, source: source, origin: origin)
+    }
+
+    public func inspectSkillDraft(
+        id: String,
+        source: String,
+        origin: ResearchSkillOrigin
+    ) async -> ResearchSkillPackage {
+        Self.inspectSkillDraft(id: id, source: source, origin: origin)
+    }
+
+    public func availableFunctions(
+        for target: ResearchFunctionTarget
+    ) async throws -> [ResearchFunctionAvailability] {
+        try await functionCoordinator.availableFunctions(for: target)
+    }
+
+    public func materialCandidates(
+        for target: ResearchFunctionTarget,
+        function: ResearchFunctionID
+    ) async throws -> [ResearchFunctionMaterialCandidate] {
+        try await functionCoordinator.materialCandidates(for: target, function: function)
+    }
+
+    public func prepareFunction(
+        _ request: ResearchFunctionRequest
+    ) async throws -> ResearchFunctionPreparation {
+        try await functionCoordinator.prepareFunction(request)
+    }
+
+    public func selectFunctionMethods(
+        _ submission: ResearchFunctionMethodSelectionSubmission
+    ) async throws -> ResearchFunctionPreparation {
+        try await functionCoordinator.selectFunctionMethods(submission)
+    }
+
+    public func completeFunction(
+        _ submission: ResearchFunctionCompletionSubmission
+    ) async throws -> ResearchFunctionCompletion {
+        try await functionCoordinator.completeFunction(submission)
+    }
+
+    public func cancelFunction(runID: UUID) async throws {
+        try await functionCoordinator.cancelFunction(runID: runID)
     }
 
     public func snapshot() async throws -> WorkspaceResearchSnapshot {
@@ -542,8 +587,7 @@ public actor ResearchOperations: ResearchUseCases {
         requestedDestination: String? = nil,
         responseProfile: DialogueResponseProfile? = nil
     ) async throws -> DialoguePreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.createDialogue(
+        return try await functionCoordinator.createLegacyDialogue(
             instruction: instruction,
             selectedNotes: selectedNotes,
             includedCommentIDs: includedCommentIDs,
@@ -579,8 +623,7 @@ public actor ResearchOperations: ResearchUseCases {
         selectedRanges: String = "",
         additionalInstructions: String = ""
     ) async throws -> CritiquePreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.requestCritique(
+        return try await functionCoordinator.requestLegacyCritique(
             for: work,
             expectedRevision: expectedRevision,
             scope: scope,
@@ -690,6 +733,107 @@ public actor ResearchOperations: ResearchUseCases {
     ) async throws -> ResolvedResearchWorkflowEnvelope {
         let handle = try await reference.requireHandle()
         return try await handle.resolveWorkflow(contract)
+    }
+
+    public func researchFunctionSkillBindingStatus(
+        for function: ResearchFunctionID
+    ) async throws -> ResearchFunctionSkillBindingStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchFunctionSkillBindingStatus(for: function)
+    }
+
+    public func saveResearchFunctionSkillSelection(
+        _ selection: ResearchFunctionSkillSelection,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchFunctionSkillBindingStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveResearchFunctionSkillSelection(
+            selection,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func clearResearchFunctionSkillSelection(
+        for function: ResearchFunctionID,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchFunctionSkillBindingStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.clearResearchFunctionSkillSelection(
+            for: function,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func citationMethodStatus() async throws -> ResearchCitationMethodStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchCitationMethodStatus()
+    }
+
+    public func activateCitationMethod(
+        selection: ResearchCitationMethodSelection,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.activateResearchCitationMethod(
+            selection,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func clearCitationMethod(
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.clearResearchCitationMethod(
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func adoptBundledCitationStarter(
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> ResearchCitationMethodStatus {
+        let handle = try await reference.requireHandle()
+        return try await handle.adoptBundledCitationStarter(
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func prepareSkillMaintenance(
+        _ request: ResearchSkillMaintenanceRequest
+    ) async throws -> ResearchSkillMaintenancePreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.services.researchSkillMaintenanceStore.prepare(request)
+    }
+
+    public func applySkillMaintenance(
+        _ preparation: ResearchSkillMaintenancePreparation,
+        confirmationToken: ResearchSkillMaintenanceConfirmationToken
+    ) async throws -> ResearchSkillMaintenanceApplyOutcome {
+        let handle = try await reference.requireHandle()
+        return try await handle.services.researchSkillMaintenanceStore.apply(
+            preparation,
+            confirmationToken: confirmationToken
+        )
+    }
+
+    public func restoreSkillMaintenance(
+        snapshotID: UUID,
+        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
+    ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
+        let handle = try await reference.requireHandle()
+        return try await handle.services.researchSkillMaintenanceStore.restore(
+            snapshotID: snapshotID,
+            expectedCurrentState: expectedCurrentState
+        )
+    }
+
+    public func skillMaintenanceSnapshots(
+        packageID: String? = nil
+    ) async throws -> ResearchSkillMaintenanceSnapshotListing {
+        let handle = try await reference.requireHandle()
+        return try await handle.services.researchSkillMaintenanceStore.snapshots(
+            packageID: packageID
+        )
     }
 }
 

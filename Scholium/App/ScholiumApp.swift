@@ -643,7 +643,16 @@ struct ScholiumSearchActionsFocusedKey: FocusedValueKey {
     typealias Value = ScholiumSearchActions
 }
 
+struct ScholiumFocusedResearchFunctionActions {
+    let open: @MainActor (ResearchFunctionID) -> Void
+}
+
+struct ScholiumFocusedResearchFunctionActionsKey: FocusedValueKey {
+    typealias Value = ScholiumFocusedResearchFunctionActions
+}
+
 struct ScholiumFocusedEditorActions {
+    let isComposing: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
@@ -663,6 +672,11 @@ extension FocusedValues {
     var scholiumSearchActions: ScholiumSearchActions? {
         get { self[ScholiumSearchActionsFocusedKey.self] }
         set { self[ScholiumSearchActionsFocusedKey.self] = newValue }
+    }
+
+    var scholiumResearchFunctionActions: ScholiumFocusedResearchFunctionActions? {
+        get { self[ScholiumFocusedResearchFunctionActionsKey.self] }
+        set { self[ScholiumFocusedResearchFunctionActionsKey.self] = newValue }
     }
 
     var scholiumEditorActions: ScholiumFocusedEditorActions? {
@@ -756,6 +770,7 @@ private struct ScholiumCommands: Commands {
     @ObservedObject private var windowGroupingState = ScholiumWindowGroupingState.shared
     @FocusedValue(\.scholiumWindowModel) private var appState
     @FocusedValue(\.scholiumSearchActions) private var searchActions
+    @FocusedValue(\.scholiumResearchFunctionActions) private var researchFunctionActions
     @FocusedValue(\.scholiumEditorActions) private var editorActions
     @Environment(\.openWindow) private var openWindow
 
@@ -938,7 +953,7 @@ private struct ScholiumCommands: Commands {
             }
             Divider()
             Button("Add Comment…") { editorActions?.addComment() }
-                .disabled(editorActions == nil)
+                .disabled(editorActions == nil || editorActions?.isComposing == true)
         }
         CommandGroup(replacing: .sidebar) {
             Button("Collapse Note") {
@@ -959,7 +974,7 @@ private struct ScholiumCommands: Commands {
                 Button("Source") { appState?.requestDocumentMode(.source) }
                     .disabled(appState?.canEditCurrentNote != true)
             }
-            .disabled(appState?.currentNote == nil)
+            .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
             Divider()
             Menu("Document Text Size") {
                 Button("Increase Text Size") { appState?.adjustDocumentTextScale(by: 0.1) }
@@ -1036,16 +1051,34 @@ private struct ScholiumCommands: Commands {
         CommandMenu("Research") {
             Button("Attention…") { appState?.showAttentionQueues = true }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-            Button("Open Scholia…") {
-                appState?.openScholia()
+            Divider()
+            if let role = appState?.currentResearchFunctionTarget?.role {
+                if role == .analysis || role == .topic {
+                    Button("Dialogue") { researchFunctionActions?.open(.dialogue) }
+                        .keyboardShortcut("d", modifiers: [.command, .shift])
+                        .disabled(!researchFunctionIsAvailable(.dialogue))
+                    Button("Develop") { researchFunctionActions?.open(.develop) }
+                        .disabled(!researchFunctionIsAvailable(.develop))
+                    Button("Review") { researchFunctionActions?.open(.review) }
+                        .keyboardShortcut("r", modifiers: [.command])
+                        .disabled(!researchFunctionIsAvailable(.review))
+                    Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
+                        .disabled(!researchFunctionIsAvailable(.fidelity))
+                } else {
+                    Button("Critique") { researchFunctionActions?.open(.critique) }
+                        .keyboardShortcut("r", modifiers: [.command])
+                        .disabled(!researchFunctionIsAvailable(.critique))
+                    Button("Revise") { researchFunctionActions?.open(.revise) }
+                        .disabled(!researchFunctionIsAvailable(.revise))
+                    Button("Dialogue") { researchFunctionActions?.open(.dialogue) }
+                        .keyboardShortcut("d", modifiers: [.command, .shift])
+                        .disabled(!researchFunctionIsAvailable(.dialogue))
+                    Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
+                        .disabled(!researchFunctionIsAvailable(.fidelity))
+                    Button("Manuscript") { researchFunctionActions?.open(.manuscript) }
+                        .disabled(!researchFunctionIsAvailable(.manuscript))
+                }
             }
-            .keyboardShortcut("r", modifiers: [.command])
-            .disabled(appState?.currentNoteIdentityIsResolved != true)
-            Button("Open Scholia in Dialogue…") {
-                appState?.openScholia(section: .dialogue)
-            }
-            .keyboardShortcut("d", modifiers: [.command, .shift])
-            .disabled(appState?.currentNoteIdentityIsResolved != true)
             Divider()
             Button("Create Checkpoint…") { appState?.showCreateCheckpoint = true }
             Button("Restore from Checkpoint…") { appState?.showCheckpointBrowser = true }
@@ -1063,7 +1096,31 @@ private struct ScholiumCommands: Commands {
             Button("Edit Properties…") { appState?.showFrontmatterEditor = true }
                 .disabled(appState?.canEditCurrentNote != true)
         }
+        #if DEBUG
+        if qaEditorFaultsAreEnabled {
+            CommandMenu("QA") {
+                Button("Simulate Editor Process Termination") {
+                    guard let documentID = appState?.currentNote?.relativePath else { return }
+                    DistributedNotificationCenter.default().postNotificationName(
+                        Notification.Name("com.kbmanager.qa.simulate-editor-process-termination"),
+                        object: nil,
+                        userInfo: ["documentID": documentID],
+                        deliverImmediately: true
+                    )
+                }
+                .keyboardShortcut("w", modifiers: [.command, .option, .control])
+                .disabled(editorActions == nil)
+            }
+        }
+        #endif
     }
+
+    #if DEBUG
+    private var qaEditorFaultsAreEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.kbmanager.qa"
+            && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
+    }
+    #endif
 
     private func markdownPasteboardPayload() -> String? {
         let pasteboard = NSPasteboard.general
@@ -1079,6 +1136,13 @@ private struct ScholiumCommands: Commands {
 
     private var recentNotes: [RecentNoteDestination] {
         appState?.recentNoteDestinations ?? []
+    }
+
+    private func researchFunctionIsAvailable(_ function: ResearchFunctionID) -> Bool {
+        guard let appState,
+              researchFunctionActions != nil,
+              appState.currentResearchFunctionTarget != nil else { return false }
+        return appState.researchController.functions.availability[function]?.isEnabled == true
     }
 
     private func headingCommand(_ level: Int) -> MarkdownEditorCommand {
@@ -1399,11 +1463,6 @@ final class WindowModel: ObservableObject {
 
     // MARK: Window Presentation
 
-    var scholiaSection: ScholiaSection {
-        get { researchController.scholia.section }
-        set { researchController.selectScholiaSection(newValue) }
-    }
-
     var inspectorModeRaw: String {
         get { researchController.inspector.modeRawValue }
         set { researchController.selectInspectorMode(newValue) }
@@ -1563,24 +1622,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    var showScholia: Bool {
-        get {
-            guard case .scholia = presentationRouter.sheet else { return false }
-            return true
-        }
-        set {
-            if newValue, let path = currentNote?.relativePath {
-                researchController.beginScholiaPresentation(
-                    id: UUID(),
-                    section: researchController.scholia.section
-                )
-                presentationRouter.present(.scholia(path: path))
-            } else if !newValue, case .scholia = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
-    }
-
     var selectedIdentityAmbiguity: NoteIdentityAmbiguity? {
         get {
             guard case .identityResolution(let ambiguity) = presentationRouter.sheet else { return nil }
@@ -1619,20 +1660,6 @@ final class WindowModel: ObservableObject {
                 presentationRouter.present(.createCheckpoint)
             } else {
                 presentationRouter.dismissSheet(if: "create-checkpoint")
-            }
-        }
-    }
-
-    var pendingCritiquePath: String? {
-        get {
-            guard case .critique(let path) = presentationRouter.sheet else { return nil }
-            return path
-        }
-        set {
-            if let newValue {
-                presentationRouter.present(.critique(path: newValue))
-            } else if case .critique = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
             }
         }
     }
@@ -1774,6 +1801,96 @@ final class WindowModel: ObservableObject {
     var currentNote: WindowDocumentLocation? {
         guard let tab = activeTab else { return nil }
         return notes.first { $0.relativePath == tab }
+    }
+
+    var currentResearchFunctionTarget: ResearchFunctionTarget? {
+        guard noteLocationScope == .workspace,
+              let note = currentNote,
+              !CritiquePlacement.isManagedCritiquePath(note.relativePath),
+              let vault = currentRegisteredVault,
+              let noteID = noteIdentityByPath[note.relativePath],
+              let role = ResearchFunctionTargetRole(vaultRole: currentVaultRole) else {
+            return nil
+        }
+        return ResearchFunctionTarget(
+            noteID: noteID,
+            note: VaultQualifiedNoteID(
+                vaultID: vault.id,
+                relativePath: note.relativePath
+            ),
+            role: role,
+            lifecycle: note.workspaceSnapshot?.lifecycle ?? .active,
+            fingerprint: documentRevisions[note.relativePath] ?? note.document.fingerprint,
+            title: note.title ?? note.displayName
+        )
+    }
+
+    var currentResearchFunctionReference: VaultNoteReference? {
+        guard let target = currentResearchFunctionTarget,
+              let vault = currentRegisteredVault else { return nil }
+        return VaultNoteReference(
+            vaultID: vault.id,
+            vaultName: vault.name,
+            vaultRole: currentVaultRole,
+            relativePath: target.note.relativePath,
+            stableNoteID: target.noteID.uuidString.lowercased()
+        )
+    }
+
+    var researchStripPresentation: ResearchStripPresentation {
+        guard let target = currentResearchFunctionTarget else {
+            return ResearchStripPresentation(items: [], activeFunction: nil)
+        }
+        let functions: [ResearchFunctionID]
+        switch target.role {
+        case .analysis, .topic:
+            functions = [.dialogue, .develop, .review, .fidelity]
+        case .work:
+            functions = [.critique, .revise, .dialogue, .fidelity, .manuscript]
+        }
+        let items = functions.map { function in
+            let availability = researchController.functions.availability[function]
+            let disabledReason: String?
+            if availability == nil {
+                disabledReason = "Checking availability…"
+            } else if availability?.isEnabled == true {
+                disabledReason = nil
+            } else {
+                disabledReason = availability?.repairReasons.first?.interfaceDescription
+                    ?? "Unavailable for this note."
+            }
+            return ResearchStripItem(
+                id: function,
+                isEnabled: availability?.isEnabled == true,
+                disabledReason: disabledReason
+            )
+        }
+        let activeFunction = researchController.functions.target?.noteID == target.noteID
+            ? researchController.functions.activeFunction
+            : nil
+        return ResearchStripPresentation(items: items, activeFunction: activeFunction)
+    }
+
+    func refreshResearchFunctionAvailability() async {
+        let target = currentResearchFunctionTarget
+        researchController.setActiveDocument(currentResearchFunctionReference)
+        researchController.functions.receive(
+            researchController.records?.functionRuns ?? [],
+            targetNoteID: target?.noteID
+        )
+        researchController.functions.invalidateIfTargetChanged(target)
+        reconcileResearchFunctionPresentation()
+        await researchController.functions.refreshAvailability(for: target)
+    }
+
+    private func reconcileResearchFunctionPresentation() {
+        guard case .researchFunction(let route) = presentationRouter.sheet else { return }
+        guard researchController.functions.presentationID == route.presentationID,
+              researchController.functions.activeFunction == route.function,
+              researchController.functions.target?.noteID == currentResearchFunctionTarget?.noteID else {
+            presentationRouter.dismissSheet()
+            return
+        }
     }
 
     var layoutMode: LayoutMode { LayoutMode(windowWidth: windowWidth) }
@@ -1996,12 +2113,11 @@ final class WindowModel: ObservableObject {
                     self.vaultError = error.localizedDescription
                 }
             }
-        case .presentScholia(let route):
-            Task { [weak self] in
-                guard let self else { return }
-                await self.openWorkspaceReference(route.reference)
-                self.openScholia(section: route.section)
-            }
+        case .presentResearchFunction(let route):
+            guard currentResearchFunctionReference == route.target,
+                  researchController.functions.presentationID == route.presentationID,
+                  researchController.functions.activeFunction == route.function else { return }
+            presentationRouter.present(.researchFunction(route))
         case .presentLifecycle(let request):
             noteLifecycleRequest = request
         }
@@ -2212,19 +2328,66 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func openScholia(section: ScholiaSection = .comments) {
-        guard currentNote != nil else { return }
-        scholiaSection = section
-        showScholia = true
-    }
+    func openResearchFunction(
+        _ function: ResearchFunctionID,
+        selection: ResearcherCommentAnchor? = nil
+    ) {
+        guard let assignment = workspaceAssignment,
+              let initialTarget = currentResearchFunctionTarget,
+              function.allowedTargetRoles.contains(initialTarget.role),
+              researchController.functions.availability[function]?.isEnabled == true else {
+            return
+        }
+        let initialNoteID = initialTarget.noteID
 
-    func requestOpenScholia(for path: String, section: ScholiaSection = .comments) {
-        guard notes.contains(where: { $0.relativePath == path }) else { return }
-        enqueueDocumentTransition { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
-            self.openNote(path, inNewTab: false)
-            self.scholiaSection = section
-            self.showScholia = true
+            do {
+                try await self.workspaceStore.flushEditors(in: assignment.id)
+                guard let target = self.currentResearchFunctionTarget,
+                      target.noteID == initialNoteID,
+                      let reference = self.currentResearchFunctionReference else { return }
+                await self.researchController.functions.refreshAvailability(for: target)
+                guard let refreshedTarget = self.currentResearchFunctionTarget,
+                      refreshedTarget == target,
+                      let availability = self.researchController.functions.availability[function],
+                      availability.isEnabled else {
+                    let reason = self.researchController.functions.availability[function]?
+                        .repairReasons.first?.interfaceDescription
+                        ?? "Scholium could not confirm that this function is available for the current note."
+                    self.showToast(reason, kind: .information)
+                    return
+                }
+                let capturedSelection: ResearcherCommentAnchor?
+                if let selection, selection.fingerprint == target.fingerprint {
+                    capturedSelection = selection
+                } else {
+                    capturedSelection = nil
+                    if selection != nil {
+                        self.showToast(
+                            "The selected passage changed while Scholium saved the note. The function will open for the whole note.",
+                            kind: .information
+                        )
+                    }
+                }
+                let presentationID = UUID()
+                self.researchController.functions.begin(
+                    target: target,
+                    function: function,
+                    selection: capturedSelection,
+                    presentationID: presentationID
+                )
+                self.researchController.requestPresentFunction(
+                    function,
+                    target: reference,
+                    presentationID: presentationID
+                )
+            } catch {
+                self.showToast(
+                    "Scholium could not save the current editor before opening \(function.interfaceTitle). \(error.localizedDescription)",
+                    kind: .error
+                )
+            }
         }
     }
 
@@ -2981,6 +3144,33 @@ final class WindowModel: ObservableObject {
             }
         )
         researchController.bind(to: capabilities.research, snapshot: snapshot)
+        researchController.functions.bind(ResearchFunctionClient(
+            availableFunctions: { target in
+                try await capabilities.research.availableFunctions(for: target)
+            },
+            materialCandidates: { target, function in
+                try await capabilities.research.materialCandidates(
+                    for: target,
+                    function: function
+                )
+            },
+            prepare: { [weak self] request in
+                guard let self, let assignment = self.workspaceAssignment else {
+                    throw ScholiumApplicationError.researchStoreUnavailable(
+                        "No workspace is active."
+                    )
+                }
+                try await self.workspaceStore.flushEditors(in: assignment.id)
+                return try await capabilities.research.prepareFunction(request)
+            },
+            complete: { submission in
+                try await capabilities.research.completeFunction(submission)
+            },
+            cancel: { runID in
+                try await capabilities.research.cancelFunction(runID: runID)
+            }
+        ))
+        reconcileResearchFunctionPresentation()
     }
 
     private func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
@@ -3254,34 +3444,6 @@ final class WindowModel: ObservableObject {
         return imported
     }
 
-    func dialogueCandidates() async throws -> [DialogueNoteReference] {
-        var result: [DialogueNoteReference] = []
-        for vault in try await documentController.workspaceSnapshots() {
-            for snapshot in vault.documents where snapshot.lifecycle == .active {
-                guard let noteID = snapshot.stableIdentity.resolvedID else { continue }
-                let document = snapshot.document
-                let title = document.parsedFrontmatter["title"]?.scalarString
-                    ?? (document.relativePath as NSString).lastPathComponent
-                        .replacingOccurrences(of: ".md", with: "")
-                result.append(DialogueNoteReference(
-                    noteID: noteID,
-                    vaultID: vault.vault.id,
-                    vaultName: vault.slot.displayName,
-                    title: title,
-                    relativePath: document.relativePath,
-                    fingerprint: document.fingerprint,
-                    kind: vault.slot == .output
-                        ? document.parsedFrontmatter["kind"]?.scalarString
-                        : nil
-                ))
-            }
-        }
-        return result.sorted {
-            if $0.vaultName != $1.vaultName { return $0.vaultName < $1.vaultName }
-            return $0.title.localizedStandardCompare($1.title) == .orderedAscending
-        }
-    }
-
     /// Confirms an ambiguous read-only Zotero match by recording only the
     /// stable item key in the corresponding Analysis. Zotero itself is never
     /// modified. The save uses the same identity and revision checks as every
@@ -3424,76 +3586,11 @@ final class WindowModel: ObservableObject {
         return (noteID, vaultID, fingerprint)
     }
 
-    @discardableResult
-    func createDialogue(
-        instruction: String,
-        selectedNotes: [DialogueNoteReference],
-        includedCommentIDs: Set<UUID>,
-        requestedDestination: String? = nil,
-        responseProfile: DialogueResponseProfile? = nil
-    ) async throws -> DialogueEntry {
-        guard let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await workspaceStore.flushEditors(in: assignment.id)
-        let preparation = try await researchController.createDialogue(
-            instruction: instruction,
-            selectedNotes: selectedNotes,
-            includedCommentIDs: includedCommentIDs,
-            requestedDestination: requestedDestination,
-            responseProfile: responseProfile
-        )
-        try copyTextToClipboard(
-            preparation.instructions,
-            recovery: "The Dialogue was saved in Note History. Reopen Dialogue to prepare new transport instructions."
-        )
-        return preparation.entry
-    }
-
     func copyTextToClipboard(_ text: String, recovery: String? = nil) throws {
         NSPasteboard.general.clearContents()
         guard NSPasteboard.general.setString(text, forType: .string) else {
             throw ClipboardWorkflowError.copyFailed(recovery: recovery)
         }
-    }
-
-    @discardableResult
-    func copyCritiqueInstructions(
-        for path: String,
-        scope: CritiqueRequestScope,
-        lens: String,
-        selectedRanges: String,
-        additionalInstructions: String
-    ) async throws -> CritiqueAssociation {
-        guard currentVaultRole.allowsCritique,
-              let assignment = workspaceAssignment,
-              let vaultID = currentRegisteredVault?.id,
-              noteIdentityByPath[path] != nil,
-              notes.contains(where: { $0.relativePath == path }) else {
-            throw HumanReviewWorkflowError.unavailableForOutput
-        }
-        try await workspaceStore.flushEditors(in: assignment.id)
-        let workID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
-        let document = try await documentController.load(workID)
-        let preparation = try await researchController.requestCritique(
-            for: workID,
-            expectedRevision: document.fingerprint,
-            scope: scope,
-            lens: lens,
-            selectedRanges: selectedRanges,
-            additionalInstructions: additionalInstructions
-        )
-        try copyTextToClipboard(
-            preparation.instructions,
-            recovery: "The Critique request was saved. Reopen Request Critique to copy its prompt again."
-        )
-        do {
-            try await rescanVault()
-        } catch {
-            refreshStatusText = "Derived refresh failed"
-            workspaceCatalogError = error.localizedDescription
-        }
-        return preparation.association
     }
 
     func refreshRegisteredVaults() async {
@@ -4429,14 +4526,6 @@ final class WindowModel: ObservableObject {
             notes[index] = .workspace(snapshot)
         }
         await refreshWorkspaceCatalog()
-    }
-
-    func requestCritique(of path: String) {
-        guard currentVaultRole.allowsCritique,
-              !CritiquePlacement.isManagedCritiquePath(path),
-              noteIdentityByPath[path] != nil,
-              notes.contains(where: { $0.relativePath == path }) else { return }
-        pendingCritiquePath = path
     }
 
     func openWorkspaceReference(

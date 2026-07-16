@@ -390,6 +390,43 @@ final class WorkspaceStore: ObservableObject {
             researchSkills: { [self] id in
                 try await workspaceHandle(id: id).research.skills()
             },
+            inspectResearchSkillDraft: { [self] workspaceID, id, source, origin in
+                try await workspaceHandle(id: workspaceID).research.inspectSkillDraft(
+                    id: id,
+                    source: source,
+                    origin: origin
+                )
+            },
+            researchFunctionSkillBindingStatus: { [self] workspaceID, function in
+                try await workspaceHandle(id: workspaceID).research
+                    .researchFunctionSkillBindingStatus(for: function)
+            },
+            saveResearchFunctionSkillSelection: {
+                [self] workspaceID, selection, revision in
+                try await workspaceHandle(id: workspaceID).research
+                    .saveResearchFunctionSkillSelection(
+                        selection,
+                        expectedBindingRevision: revision
+                    )
+            },
+            citationMethodStatus: { [self] workspaceID in
+                try await workspaceHandle(id: workspaceID).research.citationMethodStatus()
+            },
+            activateCitationMethod: { [self] workspaceID, selection, revision in
+                try await workspaceHandle(id: workspaceID).research.activateCitationMethod(
+                    selection: selection,
+                    expectedBindingRevision: revision
+                )
+            },
+            clearCitationMethod: { [self] workspaceID, revision in
+                try await workspaceHandle(id: workspaceID).research.clearCitationMethod(
+                    expectedBindingRevision: revision
+                )
+            },
+            adoptBundledCitationStarter: { [self] workspaceID, revision in
+                try await workspaceHandle(id: workspaceID).research
+                    .adoptBundledCitationStarter(expectedBindingRevision: revision)
+            },
             createResearchSkill: { [self] workspaceID, id, source in
                 try await workspaceHandle(id: workspaceID).research.createSkill(
                     id: id,
@@ -420,6 +457,36 @@ final class WorkspaceStore: ObservableObject {
                 try await workspaceHandle(id: workspaceID).research.deleteSkill(
                     id: id,
                     expectedRevision: revision
+                )
+            },
+            researchSkillResourcePaths: { [self] workspaceID, id in
+                try await workspaceHandle(id: workspaceID).research.skillResourcePaths(id: id)
+            },
+            researchSkillResource: { [self] workspaceID, id, relativePath in
+                try await workspaceHandle(id: workspaceID).research.skillResource(
+                    id: id,
+                    relativePath: relativePath
+                )
+            },
+            prepareResearchSkillMaintenance: { [self] workspaceID, request in
+                try await workspaceHandle(id: workspaceID).research.prepareSkillMaintenance(request)
+            },
+            applyResearchSkillMaintenance: {
+                [self] workspaceID, preparation, confirmationToken in
+                try await workspaceHandle(id: workspaceID).research.applySkillMaintenance(
+                    preparation,
+                    confirmationToken: confirmationToken
+                )
+            },
+            researchSkillMaintenanceSnapshots: { [self] workspaceID, packageID in
+                try await workspaceHandle(id: workspaceID).research.skillMaintenanceSnapshots(
+                    packageID: packageID
+                )
+            },
+            restoreResearchSkillMaintenance: { [self] workspaceID, snapshotID, expectedState in
+                try await workspaceHandle(id: workspaceID).research.restoreSkillMaintenance(
+                    snapshotID: snapshotID,
+                    expectedCurrentState: expectedState
                 )
             },
             researchSkillsURL: { [self] id in

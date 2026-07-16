@@ -31,6 +31,7 @@ native implementation to `scholium-swiftui-implementation`.
 - **Delay** — Time before a transition begins.
 - **Duration** — Time assigned to a duration-based transition.
 - **Fill mode** — A web-animation rule governing whether endpoint styles persist outside playback.
+- **Stepped animation** — Motion advances through discrete states rather than continuous interpolation.
 
 ## Movement and geometry
 
@@ -38,6 +39,7 @@ native implementation to `scholium-swiftui-implementation`.
 - **Scale** — Change size around an anchor point.
 - **Rotate** — Turn around an axis or point.
 - **Skew** — Shear a shape along an axis.
+- **3D tilt / flip** — Rotation around a three-dimensional axis that reveals or implies depth.
 - **Perspective** — A projection that changes the apparent depth of 3D transforms.
 - **Transform origin / anchor** — The point around which a geometric transformation occurs.
 - **Origin-aware transition** — A transition whose movement or transformation preserves its relationship to an invoking element.
@@ -80,19 +82,34 @@ native implementation to `scholium-swiftui-implementation`.
 - **Ease-in-out** — Progress accelerates and then decelerates.
 - **Linear** — Progress changes at a constant rate.
 - **Cubic-bezier** — A curve representation commonly used for web easing.
+- **Asymmetric easing** — Acceleration and deceleration use differently shaped portions of an easing curve.
 - **Spring** — Motion computed from a spring-like model rather than only a fixed timing curve.
 - **Stiffness / tension** — A parameter describing the restoring force of a spring model.
 - **Damping** — A parameter describing how oscillation dissipates.
 - **Mass** — A parameter affecting acceleration in a physical model.
 - **Bounce / overshoot** — Motion passes a target before settling.
 - **Momentum** — Motion continues according to carried velocity.
+- **Velocity** — The speed and direction of motion at a particular moment.
 - **Interruptible transition** — A running transition can retarget without first completing.
+
+## Looping and ambient motion
+
+- **Loop** — An animation repeats a finite number of times or indefinitely.
+- **Alternate / yoyo** — Repeated motion reverses direction on each iteration.
+- **Marquee** — Text or content moves continuously across a bounded region.
+- **Orbit** — An element travels around another element or point.
+- **Pulse** — A repeating change in scale, opacity, or another property creates a rhythmic emphasis.
+- **Float** — A gentle repeating drift suggests suspension or weightlessness.
+- **Idle animation** — Motion plays while an element is otherwise waiting for interaction.
 
 ## Visual effects and diagnostics
 
 - **Blur transition** — Blur changes during a transition.
 - **Clip path** — A hard-edged clipping region controls visibility in web or vector rendering.
 - **Mask** — An alpha or luminance image controls partial visibility.
+- **Comparison / before-after slider** — A movable divider reveals different portions of two aligned views for comparison.
+- **Line drawing** — A path is progressively revealed as though traced.
+- **Text morph** — Characters or words transition into replacement text.
 - **Skeleton / shimmer** — A temporary loading representation, sometimes with moving highlight.
 - **Number ticker** — Digits transition as a numeric value changes.
 - **Typewriter effect** — Text is revealed incrementally as if typed.
@@ -100,3 +117,9 @@ native implementation to `scholium-swiftui-implementation`.
 - **Jank** — Perceptible irregularity or stutter in presented motion.
 - **Dropped frame** — A frame misses its presentation deadline.
 - **Reduced motion** — An accessibility preference requesting less vestibular or nonessential motion.
+
+## Classical motion principles
+
+- **Anticipation** — A preparatory movement precedes the primary action, often in the opposite direction.
+- **Follow-through** — Secondary parts continue and settle after the primary movement changes or stops.
+- **Squash and stretch** — A form deforms during motion to suggest weight, force, or flexibility.

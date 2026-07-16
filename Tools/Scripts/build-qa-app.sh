@@ -31,6 +31,7 @@ DEVELOPER_DIR="${XCODE}" swift build \
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${DERIVED}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"
 cp -R "${DERIVED}/debug/Scholium_ScholiumApp.bundle" "${APP}/Contents/Resources/"
+cp -R "${DERIVED}/debug/Scholium_ScholiumCore.bundle" "${APP}/Contents/Resources/"
 cp "${ROOT}/Tools/Packaging/Info.plist" "${APP}/Contents/Info.plist"
 cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${APP}/Contents/Resources/"
 /usr/libexec/PlistBuddy \

@@ -166,6 +166,7 @@ public enum TriptychCheckpointError: LocalizedError, Sendable {
     case missingRoot(String)
     case symbolicLink(String)
     case invalidCheckpoint(UUID)
+    case cannotDiscardManualCheckpoint(UUID)
     case corruptCheckpoint(UUID, String)
     case wrongTriptych(expected: UUID, actual: UUID)
     case invalidRelativePath(String)
@@ -180,6 +181,8 @@ public enum TriptychCheckpointError: LocalizedError, Sendable {
         case .missingRoot(let path): return "A Triptych location is unavailable: \(path)"
         case .symbolicLink(let path): return "Checkpoints do not follow symbolic links: \(path)"
         case .invalidCheckpoint(let id): return "Checkpoint not found or invalid: \(id.uuidString)"
+        case .cannotDiscardManualCheckpoint(let id):
+            return "Only a just-created automatic checkpoint may be discarded: \(id.uuidString)"
         case .corruptCheckpoint(let id, let reason):
             return "Checkpoint \(id.uuidString) failed its integrity check: \(reason)"
         case .wrongTriptych(let expected, let actual):

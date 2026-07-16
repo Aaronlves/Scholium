@@ -56,7 +56,8 @@ struct TriptychControlTests {
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
         #expect(settings.activePromptTemplate(for: .dialogue) == .defaultDialogue)
-        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("academic change summary"))
+        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("concise attributed academic result"))
+        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("authorizes no research-note mutation"))
         #expect(!settings.promptTemplates.contains { $0.name == "Migrated Dialogue" })
     }
 

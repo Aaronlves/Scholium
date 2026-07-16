@@ -71,7 +71,13 @@ import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipbo
 import {linkTargetAt} from "./projection";
 import {rangeKey, semanticProjectionRanges} from "./semantic-projection";
 import {frontmatterEndLine, normalizedDocumentText, replacementChange} from "./state";
-import {announceEditorMessage, editorAccessibilityAttributes, unsupportedFilePasteMessage} from "./accessibility";
+import {
+  announceEditorMessage,
+  editorAccessibilityAttributes,
+  unsupportedFilePasteMessage,
+  updateEditorAccessibility,
+} from "./accessibility";
+import {CompositionRequestGate} from "./composition";
 import {createMarkdownEditor} from "./bootstrap";
 import {recordEditorMetric, sampleEditorMemory} from "./performance";
 
@@ -475,7 +481,10 @@ function buildLiveDecorations(view: EditorView) {
     const codeContext = fencedCodeLines(doc, lastLine);
     while (line.from <= visible.to) {
       const text = line.text;
-      const activeLine = selection.head >= line.from && selection.head <= line.to;
+      const activeLine = selection.head >= line.from && selection.head <= line.to
+        || view.composing && view.state.selection.ranges.some(
+          (range) => range.from <= line.to && range.to >= line.from,
+        );
       const excluded: {from: number; to: number}[] = literals.filter(
         (literal) => literal.from <= line.to && literal.to >= line.from,
       );
@@ -781,7 +790,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
     column: head - line.from + 1,
     lineCount: update.state.doc.lines,
   });
-  post({type: "contextChanged", context: currentEditorContext()});
+  publishEditorContext();
 
   if (update.docChanged) {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -1011,6 +1020,7 @@ function currentEditorContext(): EditorContext {
       if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
       if (!node.parent) break;
     }
+    if (calloutHeader(editor.state.doc.lineAt(selection.head).text)) block.add("Callout");
   }
   const protectedSelection = editor.state.selection.ranges.some((selection) =>
     protectedCommandRanges().some((range) => selection.from < range.to && selection.to > range.from),
@@ -1044,6 +1054,12 @@ function currentEditorContext(): EditorContext {
     undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
     redoLabel: redoDepth(editor.state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
   };
+}
+
+function publishEditorContext() {
+  const context = currentEditorContext();
+  updateEditorAccessibility(editor.contentDOM, currentMode, context);
+  post({type: "contextChanged", context});
 }
 
 function successfulResult(requestID: string, sourceChanged = false, undoLabel?: string): EditorCommandResult {
@@ -1092,6 +1108,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkCompletions": editorOperations.setLinkCompletions(operation.value as LinkCandidate[]); break;
   case "setResearcherComments": editorOperations.setResearcherComments(operation.value as ResearcherCommentAnnotation[]); break;
+  case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line); break;
   case "setScrollFraction": editorOperations.setScrollFraction(operation.fraction); break;
   case "queryText": return {...successfulResult(request.requestID), text: exactEditorSource()};
@@ -1187,8 +1204,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   return successfulResult(request.requestID);
 }
 
-type PendingCompositionRequest = {request: EditorRequest; resolve: (result: EditorCommandResult) => void};
-let pendingCompositionRequests: PendingCompositionRequest[] = [];
+const compositionGate = new CompositionRequestGate<EditorRequest, EditorCommandResult>();
 async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResult> {
   const bridgeStartedAt = performance.now();
   const requestBytes = (() => { try { return encodedByteLength(value); } catch { return 0; } })();
@@ -1196,14 +1212,16 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
     recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes});
     return rejected("invalid", documentVersion, "malformed editor request");
   }
-  if (editor.composing && (value.operation.type === "setMode" || value.operation.type === "command")) {
-    return new Promise((resolve) => pendingCompositionRequests.push({
-      request: value,
-      resolve: (result) => {
-        recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
-        resolve(result);
-      },
-    }));
+  if ((editor.composing || compositionGate.active)
+      && (value.operation.type === "setMode" || value.operation.type === "command")) {
+    const result = compositionGate.enqueue(value);
+    return result.then((accepted) => {
+      recordEditorMetric("bridge-request", bridgeStartedAt, {
+        requestBytes,
+        resultBytes: encodedByteLength(accepted),
+      });
+      return accepted;
+    });
   }
   try {
     const result = await executeEditorRequest(value);
@@ -1220,13 +1238,18 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
   }
 }
 editor.contentDOM.addEventListener("compositionend", () => {
-  const pending = pendingCompositionRequests;
-  pendingCompositionRequests = [];
-  for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
-  post({type: "contextChanged", context: currentEditorContext()});
+  // WebKit may deliver the final input/change notification after
+  // compositionend. A task boundary lets CodeMirror publish that delta and
+  // advance the generation before queued native mutations are validated.
+  window.setTimeout(() => {
+    const pending = compositionGate.finish();
+    for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
+    publishEditorContext();
+  }, 0);
 });
 editor.contentDOM.addEventListener("compositionstart", () => {
-  window.queueMicrotask(() => post({type: "contextChanged", context: currentEditorContext()}));
+  compositionGate.begin();
+  window.queueMicrotask(publishEditorContext);
 });
 
 function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
@@ -1263,10 +1286,11 @@ editor.contentDOM.addEventListener("drop", (event) => {
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
-    for (const pending of pendingCompositionRequests) {
-      pending.resolve(rejected(pending.request.requestID, documentVersion, "editor identity changed during composition"));
-    }
-    pendingCompositionRequests = [];
+    compositionGate.rejectAll((pending) => rejected(
+      pending.requestID,
+      documentVersion,
+      "editor identity changed during composition",
+    ));
     bridgeSessionID = sessionID;
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
@@ -1292,10 +1316,8 @@ const editorOperations = {
     });
     editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
     editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
-    editor.contentDOM.setAttribute("aria-label", editorAccessibilityAttributes(
-      mode === "livePreview" ? "livePreview" : "source",
-    )["aria-label"]);
     currentMode = mode === "livePreview" ? "livePreview" : "source";
+    updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
   },
 
   /** @param {string} css */

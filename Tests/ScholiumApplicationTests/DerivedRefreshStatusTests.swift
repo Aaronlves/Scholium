@@ -177,4 +177,279 @@ struct DerivedRefreshStatusTests {
         #expect(recoveryEvent.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == committedRevision)
         await runtime.shutdown()
     }
+
+    @Test("A committed Research Function returns its packet and completion with a refresh warning")
+    func committedResearchFunctionIsNotReportedAsRetryableFailure() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.snapshot()
+        let note = try #require(snapshot.document(id: fixture.analysisNoteID))
+        guard case .resolved(let noteID) = note.stableIdentity else {
+            Issue.record("The fixture Analysis has no stable identity.")
+            await runtime.shutdown()
+            return
+        }
+        let target = ResearchFunctionTarget(
+            noteID: noteID,
+            note: fixture.analysisNoteID,
+            role: .analysis,
+            fingerprint: note.fingerprint,
+            title: "Analysis"
+        )
+        let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
+        defer { try? FileManager.default.removeItem(at: invalidURL) }
+        try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
+
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: target,
+                checks: [.content]
+            )
+        )
+        #expect(preparation.derivedRefreshWarning?.isEmpty == false)
+
+        try FileManager.default.removeItem(at: invalidURL)
+        _ = try await handle.discovery.refresh()
+        #expect(try await handle.snapshot().research.functionRuns.contains {
+            $0.id == preparation.runID
+        })
+        try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
+        let completion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: preparation.snapshot.confirmationToken,
+                finalTargetFingerprint: target.fingerprint,
+                summary: "Checked the exact Analysis revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: [FidelityCheckOutcome(
+                    check: .content,
+                    state: .passed,
+                    summary: "No content-fidelity issue was found in the supplied evidence."
+                )]
+            )
+        )
+        #expect(completion.state == .complete)
+        #expect(completion.derivedRefreshWarning?.isEmpty == false)
+
+        try FileManager.default.removeItem(at: invalidURL)
+        _ = try await handle.discovery.refresh()
+        #expect(try await handle.snapshot().research.functionRuns.first {
+            $0.id == preparation.runID
+        }?.completion?.state == .complete)
+        await runtime.shutdown()
+    }
+
+    @Test("Committed Fidelity remains reusable while derived refresh keeps failing")
+    func committedFidelityRemainsReusableAcrossRefreshFailures() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await functionTarget(
+            fixture.analysisNoteID,
+            role: .analysis,
+            handle: handle
+        )
+        let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
+        defer { try? FileManager.default.removeItem(at: invalidURL) }
+        try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
+
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: target,
+                checks: [.content]
+            )
+        )
+        #expect(preparation.derivedRefreshWarning?.isEmpty == false)
+        let completion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: preparation.snapshot.confirmationToken,
+                finalTargetFingerprint: target.fingerprint,
+                summary: "Checked the exact Analysis revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passedContent]
+            )
+        )
+        #expect(completion.state == .complete)
+        #expect(completion.derivedRefreshWarning?.isEmpty == false)
+
+        // Both post-commit refreshes failed, so the disposable projection still
+        // has no record of this run. Reuse must come from the durable store.
+        #expect(try await handle.snapshot().research.functionRuns.contains {
+            $0.id == preparation.runID
+        } == false)
+        let reused = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: target,
+                checks: [.content]
+            )
+        )
+        #expect(reused.state == .complete)
+        #expect(reused.reusedCompletion?.runID == completion.runID)
+
+        try FileManager.default.removeItem(at: invalidURL)
+        _ = try await handle.discovery.refresh()
+        let persistedMatches = try await handle.snapshot().research.functionRuns.filter {
+            $0.snapshot.request.function == .fidelity
+                && $0.snapshot.request.target.noteID == target.noteID
+        }
+        #expect(persistedMatches.count == 1)
+        #expect(persistedMatches.first?.completion?.state == .complete)
+        await runtime.shutdown()
+    }
+
+    @Test("Manuscript accepts a committed child while derived refresh remains stale")
+    func manuscriptAcceptsCommittedChildAcrossRefreshFailures() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let worksVaultID = try #require(fixture.assignment.vault(for: .output)?.id)
+        let workID = VaultQualifiedNoteID(
+            vaultID: worksVaultID,
+            relativePath: "Chapter.md"
+        )
+        let work = try await functionTarget(workID, role: .work, handle: handle)
+        let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
+        defer { try? FileManager.default.removeItem(at: invalidURL) }
+
+        let manuscript = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .manuscript, target: work, methods: [])
+        )
+        let revise = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .revise, target: work, methods: [])
+        )
+        try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
+
+        let original = try await handle.documents.load(workID)
+        let revisedSource = original.rawContent
+            + "\nAn explicit premise now supports the inference.\n"
+        try Data(revisedSource.utf8).write(
+            to: fixture.worksURL.appendingPathComponent("Chapter.md"),
+            options: .atomic
+        )
+        let revisedFingerprint = DocumentFingerprint(content: revisedSource)
+        let fidelityOutcomes = try #require(revise.snapshot.fidelityHandoff).checks
+            .sorted(by: { $0.rawValue < $1.rawValue })
+            .map { check in
+                FidelityCheckOutcome(
+                    check: check,
+                    state: .passed,
+                    summary: "The final Work revision passed the selected check."
+                )
+            }
+        let awaitingRevision = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: revise.runID,
+                confirmationToken: revise.snapshot.confirmationToken,
+                finalTargetFingerprint: revisedFingerprint,
+                summary: "Revised the Work; final Fidelity remains pending.",
+                didModifyTarget: true
+            )
+        )
+        #expect(awaitingRevision.state == .awaitingFidelity)
+        let finalWork = ResearchFunctionTarget(
+            noteID: work.noteID,
+            note: work.note,
+            role: work.role,
+            lifecycle: work.lifecycle,
+            fingerprint: revisedFingerprint,
+            title: work.title
+        )
+        let fidelity = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: finalWork,
+                checks: try #require(revise.snapshot.fidelityHandoff).checks
+            )
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: fidelity.runID,
+                confirmationToken: fidelity.snapshot.confirmationToken,
+                finalTargetFingerprint: revisedFingerprint,
+                summary: "Checked the exact final Work revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: fidelityOutcomes
+            )
+        )
+        let reviseCompletion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: revise.runID,
+                confirmationToken: revise.snapshot.confirmationToken,
+                finalTargetFingerprint: revisedFingerprint,
+                summary: "Revised the Work and linked final Fidelity evidence.",
+                didModifyTarget: true,
+                childRunIDs: [fidelity.runID]
+            )
+        )
+        #expect(reviseCompletion.state == .complete)
+        #expect(reviseCompletion.derivedRefreshWarning?.isEmpty == false)
+
+        // The last-known-good snapshot contains the prepared child but not its
+        // committed completion. Child selection must consult the durable store.
+        #expect(try await handle.snapshot().research.functionRuns.first {
+            $0.id == revise.runID
+        }?.completion == nil)
+        let manuscriptCompletion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: manuscript.runID,
+                confirmationToken: manuscript.snapshot.confirmationToken,
+                finalTargetFingerprint: revisedFingerprint,
+                summary: "Coordinated the selected manuscript activity.",
+                didModifyTarget: true,
+                childRunIDs: [revise.runID]
+            )
+        )
+        #expect(manuscriptCompletion.state == .complete)
+        #expect(manuscriptCompletion.childRunIDs == [revise.runID])
+        #expect(manuscriptCompletion.reusedFidelityRunID == revise.runID)
+        #expect(manuscriptCompletion.derivedRefreshWarning?.isEmpty == false)
+
+        try FileManager.default.removeItem(at: invalidURL)
+        _ = try await handle.discovery.refresh()
+        let functionRuns = try await handle.snapshot().research.functionRuns
+        #expect(functionRuns.first { $0.id == revise.runID }?.completion?.state == .complete)
+        #expect(functionRuns.first { $0.id == manuscript.runID }?.completion?.state == .complete)
+        await runtime.shutdown()
+    }
+}
+
+private func functionTarget(
+    _ id: VaultQualifiedNoteID,
+    role: ResearchFunctionTargetRole,
+    handle: WorkspaceHandle
+) async throws -> ResearchFunctionTarget {
+    let note = try #require(try await handle.snapshot().document(id: id))
+    return ResearchFunctionTarget(
+        noteID: try #require(note.stableIdentity.resolvedID),
+        note: id,
+        role: role,
+        lifecycle: note.lifecycle,
+        fingerprint: note.fingerprint,
+        title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
+    )
+}
+
+private extension FidelityCheckOutcome {
+    static let passedContent = Self(
+        check: .content,
+        state: .passed,
+        summary: "The exact final revision passed the Content Fidelity check."
+    )
 }

@@ -206,7 +206,7 @@ struct DocumentLifecycleOperationsTests {
         #expect(commit.removedHumanReview)
         #expect(commit.removedDialogueIDs == [dialogue.entry.id])
         #expect(commit.invalidatedCheckpointIDs.contains(checkpoint.id))
-        #expect(commit.invalidatedCheckpointIDs.contains(dialogue.checkpoint.id))
+        #expect(dialogue.checkpoint == nil)
         #expect(try await handle.research.humanReview(noteID: stableID) == nil)
         #expect(try await handle.research.dialogues(noteID: stableID).isEmpty)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)

@@ -6,6 +6,7 @@ import Yams
 /// `.scholium/skills/<skill-id>/SKILL.md` beside the Works vault.
 public actor ResearchSkillStore {
     public nonisolated let skillsURL: URL
+    public nonisolated let bindingsURL: URL
 
     private let controlURL: URL
     private let fileManager: FileManager
@@ -14,10 +15,12 @@ public actor ResearchSkillStore {
         self.controlURL = controlURL.standardizedFileURL
         self.skillsURL = controlURL.standardizedFileURL
             .appendingPathComponent("skills", isDirectory: true)
+        self.bindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent("research-skill-bindings.json", isDirectory: false)
         self.fileManager = fileManager
     }
 
-    public nonisolated static func inspect(
+    public nonisolated static func inspectDraft(
         id: String,
         source: String,
         origin: ResearchSkillOrigin = .triptych
@@ -41,6 +44,11 @@ public actor ResearchSkillStore {
                 role: package.role,
                 version: package.version,
                 updatePolicy: package.updatePolicy,
+                supportedFunctions: package.supportedFunctions,
+                capabilities: package.capabilities,
+                citationStyles: package.citationStyles,
+                citationStyleResources: package.citationStyleResources,
+                allowsEvolution: package.allowsEvolution,
                 supportedModes: package.supportedModes,
                 automaticModes: package.automaticModes,
                 compatiblePracticeIDs: package.compatiblePracticeIDs,
@@ -224,6 +232,575 @@ public actor ResearchSkillStore {
         relativePath: String
     ) throws -> DocumentFingerprint {
         DocumentFingerprint(content: try resource(id: id, relativePath: relativePath))
+    }
+
+    public func bindingSnapshot() throws -> ResearchSkillBindingSnapshot? {
+        guard fileManager.fileExists(atPath: bindingsURL.path) else { return nil }
+        let values = try bindingsURL.resourceValues(
+            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+        )
+        guard values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw ResearchSkillBindingError.unsafeBindingFile
+        }
+        let data = try Data(contentsOf: bindingsURL)
+        let document: ResearchSkillBindingDocument
+        do {
+            document = try JSONDecoder().decode(ResearchSkillBindingDocument.self, from: data)
+        } catch {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "The JSON cannot be decoded. \(error.localizedDescription)"
+            )
+        }
+        try validateBindingDocument(document)
+        return ResearchSkillBindingSnapshot(
+            document: document,
+            revision: DocumentFingerprint(data: data)
+        )
+    }
+
+    /// Returns the revision of a safe binding file without decoding it. This
+    /// is intentionally available for revision-checked repair of malformed
+    /// researcher-controlled JSON.
+    public func bindingFileRevision() throws -> DocumentFingerprint? {
+        guard fileManager.fileExists(atPath: bindingsURL.path) else { return nil }
+        let values = try bindingsURL.resourceValues(
+            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+        )
+        guard values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw ResearchSkillBindingError.unsafeBindingFile
+        }
+        return DocumentFingerprint(data: try Data(contentsOf: bindingsURL))
+    }
+
+    @discardableResult
+    public func saveBindingDocument(
+        _ document: ResearchSkillBindingDocument,
+        expectedRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillBindingSnapshot {
+        try validateBindingDocument(document)
+        try ensureControlDirectoryForGuidance()
+        if fileManager.fileExists(atPath: bindingsURL.path) {
+            let values = try bindingsURL.resourceValues(
+                forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+            )
+            guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                throw ResearchSkillBindingError.unsafeBindingFile
+            }
+            let current = try Data(contentsOf: bindingsURL)
+            guard let expectedRevision,
+                  DocumentFingerprint(data: current) == expectedRevision else {
+                throw ResearchSkillBindingError.staleBindingFile
+            }
+        } else if expectedRevision != nil {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(document)
+        try data.write(to: bindingsURL, options: .atomic)
+        let readback = try Data(contentsOf: bindingsURL)
+        guard readback == data else {
+            throw ResearchSkillBindingError.unsafeBindingFile
+        }
+        return ResearchSkillBindingSnapshot(
+            document: document,
+            revision: DocumentFingerprint(data: readback)
+        )
+    }
+
+    /// Activates one installed Triptych-local citation package while
+    /// preserving function bindings. The raw expected revision permits a
+    /// malformed but safe binding document to be replaced deliberately.
+    @discardableResult
+    public func activateCitationBinding(
+        packageID: String,
+        citationStyle: String? = nil,
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillBindingSnapshot {
+        let observed = try bindingFileRevision()
+        guard observed == expectedBindingRevision else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        let package = try localPackage(id: packageID)
+        let normalizedStyle = citationStyle?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard package.origin == .triptych,
+              package.isValid,
+              package.supports(.fidelity),
+              package.provides(.citationVerification),
+              package.provides(.citationFormatting),
+              let normalizedStyle,
+              package.citationStyles.contains(normalizedStyle),
+              package.citationStyleResources[normalizedStyle] != nil else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "The selected package and style are not a valid installed citation method."
+            )
+        }
+        let existing = (try? bindingSnapshot()?.document)
+            ?? ResearchSkillBindingDocument()
+        let replacement = ResearchSkillBindingDocument(
+            functionBindings: existing.functionBindings,
+            functionSkillBindings: existing.functionSkillBindings,
+            functionPracticeBindings: existing.functionPracticeBindings,
+            citationBinding: packageID,
+            citationStyle: normalizedStyle
+        )
+        return try saveBindingDocument(
+            replacement,
+            expectedRevision: expectedBindingRevision
+        )
+    }
+
+    /// Clears the active citation package through the same revision-checked
+    /// repair path. A safe malformed file is replaced by a valid empty binding
+    /// document rather than edited in place.
+    @discardableResult
+    public func clearCitationBinding(
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillBindingSnapshot {
+        let observed = try bindingFileRevision()
+        guard observed == expectedBindingRevision else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        let existing = (try? bindingSnapshot()?.document)
+            ?? ResearchSkillBindingDocument()
+        return try saveBindingDocument(
+            ResearchSkillBindingDocument(
+                functionBindings: existing.functionBindings,
+                functionSkillBindings: existing.functionSkillBindings,
+                functionPracticeBindings: existing.functionPracticeBindings,
+                citationBinding: nil,
+                citationStyle: nil
+            ),
+            expectedRevision: expectedBindingRevision
+        )
+    }
+
+    /// Creates a noncolliding Triptych-local copy of the bundled APA starter
+    /// and activates it as one transaction from the caller's perspective. A
+    /// failed binding write removes only the just-created package.
+    public func adoptAPACitationStarter(
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillCitationAdoption {
+        let observed = try bindingFileRevision()
+        guard observed == expectedBindingRevision else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        let templates = try skills().filter { package in
+            package.origin == .bundled
+                && package.skillClass == .researcher
+                && package.supports(.fidelity)
+                && package.provides(.citationVerification)
+                && package.provides(.citationFormatting)
+                && package.citationStyles.contains("apa-7")
+        }
+        guard templates.count == 1, let template = templates.first else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "Scholium could not identify exactly one bundled APA citation starter."
+            )
+        }
+        let occupied = Set(try skills().map(\.id))
+        let baseID = "apa-7-citation"
+        var adoptedID = baseID
+        var suffix = 2
+        while occupied.contains(adoptedID) {
+            adoptedID = "\(baseID)-\(suffix)"
+            suffix += 1
+        }
+        let adopted = try duplicateBundled(id: template.id, as: adoptedID)
+        do {
+            let binding = try activateCitationBinding(
+                packageID: adopted.id,
+                citationStyle: "apa-7",
+                expectedBindingRevision: expectedBindingRevision
+            )
+            return ResearchSkillCitationAdoption(
+                package: try localPackage(id: adopted.id),
+                binding: binding
+            )
+        } catch {
+            do {
+                guard let revision = adopted.revision else {
+                    throw ResearchSkillError.unsafePackage(adopted.id)
+                }
+                try delete(id: adopted.id, expectedRevision: revision)
+            } catch let rollbackError {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "Citation activation failed and the new local starter could not be rolled back: \(rollbackError.localizedDescription)"
+                )
+            }
+            throw error
+        }
+    }
+
+    /// Reads the complete Settings-owned Researcher Skill profile for one
+    /// semantic function. Absence means the release-managed primary workflow
+    /// runs without a researcher-owned refinement.
+    public func functionSkillSelection(
+        for function: ResearchFunctionID
+    ) throws -> ResearchFunctionSkillSelection {
+        guard function != .review else {
+            return ResearchFunctionSkillSelection(function: function)
+        }
+        guard let document = try bindingSnapshot()?.document else {
+            return ResearchFunctionSkillSelection(function: function)
+        }
+        return ResearchFunctionSkillSelection(
+            function: function,
+            primaryPackageID: document.functionBindings[function.rawValue],
+            supplementalPackageIDs: document.functionSkillBindings[function.rawValue] ?? [],
+            selectedPractices: document.functionPracticeBindings[function.rawValue] ?? []
+        )
+    }
+
+    /// Atomically replaces one function's Researcher Skill profile through a
+    /// raw-revision check. A valid explicit save may repair a malformed but
+    /// safe JSON document; it never preserves unvalidated fragments from that
+    /// document.
+    @discardableResult
+    public func saveFunctionSkillSelection(
+        _ selection: ResearchFunctionSkillSelection,
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillBindingSnapshot {
+        let observed = try bindingFileRevision()
+        guard observed == expectedBindingRevision else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        try validateFunctionSkillSelection(selection)
+
+        let existing = (try? bindingSnapshot()?.document)
+            ?? ResearchSkillBindingDocument()
+        var primary = existing.functionBindings
+        var supplemental = existing.functionSkillBindings
+        var practices = existing.functionPracticeBindings
+        let key = selection.function.rawValue
+
+        if let packageID = selection.primaryPackageID {
+            primary[key] = packageID
+        } else {
+            primary.removeValue(forKey: key)
+        }
+        if selection.supplementalPackageIDs.isEmpty {
+            supplemental.removeValue(forKey: key)
+        } else {
+            supplemental[key] = selection.supplementalPackageIDs
+        }
+        if selection.selectedPractices.isEmpty {
+            practices.removeValue(forKey: key)
+        } else {
+            practices[key] = selection.selectedPractices
+        }
+
+        return try saveBindingDocument(
+            ResearchSkillBindingDocument(
+                functionBindings: primary,
+                functionSkillBindings: supplemental,
+                functionPracticeBindings: practices,
+                citationBinding: existing.citationBinding,
+                citationStyle: existing.citationStyle
+            ),
+            expectedRevision: expectedBindingRevision
+        )
+    }
+
+    @discardableResult
+    public func clearFunctionSkillSelection(
+        for function: ResearchFunctionID,
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillBindingSnapshot {
+        try saveFunctionSkillSelection(
+            ResearchFunctionSkillSelection(function: function),
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    /// Resolves the official function package or one explicit Triptych
+    /// override. Missing bindings never cause a filename or global-directory
+    /// search.
+    public func functionBindingResolution(
+        for function: ResearchFunctionID
+    ) throws -> ResearchSkillBindingResolution {
+        let rawBindingRevision = try? bindingFileRevision()
+        if function == .review {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bindingRevision: rawBindingRevision
+            )
+        }
+        let all = try skills()
+        let localCandidates = all.filter {
+            $0.origin == .triptych && $0.isValid && $0.supports(function)
+        }.map(\.id)
+        let primaryClass: ResearchSkillClass = function == .dialogue ? .system : .workflow
+        let bundledCandidates = all.filter {
+            $0.origin == .bundled
+                && $0.skillClass == primaryClass
+                && $0.isValid
+                && $0.supports(function)
+        }
+        let snapshot: ResearchSkillBindingSnapshot?
+        do {
+            snapshot = try bindingSnapshot()
+        } catch {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                installedCandidateIDs: localCandidates,
+                issue: .malformed(error.localizedDescription),
+                bindingRevision: rawBindingRevision
+            )
+        }
+
+        if let id = snapshot?.document.functionBindings[function.rawValue] {
+            let bound: ResearchSkillPackage
+            do {
+                bound = try package(id: id)
+            } catch {
+                return ResearchSkillBindingResolution(
+                    source: .triptychBinding,
+                    bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                    installedCandidateIDs: localCandidates,
+                    issue: .invalidPackage(id),
+                    bindingRevision: rawBindingRevision
+                )
+            }
+            guard bound.isValid else {
+                return ResearchSkillBindingResolution(
+                    source: .triptychBinding,
+                    bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                    installedCandidateIDs: localCandidates,
+                    issue: .invalidPackage(id),
+                    bindingRevision: rawBindingRevision
+                )
+            }
+            guard bound.supports(function) else {
+                return ResearchSkillBindingResolution(
+                    source: .triptychBinding,
+                    bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                    installedCandidateIDs: localCandidates,
+                    issue: .unsupportedFunction(packageID: id, function: function),
+                    bindingRevision: rawBindingRevision
+                )
+            }
+            return ResearchSkillBindingResolution(
+                source: .triptychBinding,
+                package: bound,
+                bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                installedCandidateIDs: localCandidates,
+                bindingRevision: rawBindingRevision
+            )
+        }
+
+        guard bundledCandidates.count == 1, let primary = bundledCandidates.first else {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                installedCandidateIDs: localCandidates,
+                issue: bundledCandidates.isEmpty
+                    ? .missing
+                    : .malformed("More than one bundled package supports \(function.rawValue)."),
+                bindingRevision: rawBindingRevision
+            )
+        }
+        return ResearchSkillBindingResolution(
+            source: .bundledDefault,
+            package: primary,
+            bundledTemplateAvailable: true,
+            installedCandidateIDs: localCandidates,
+            bindingRevision: rawBindingRevision
+        )
+    }
+
+    /// Citation capability is active only through an explicit valid
+    /// Triptych-local binding. Bundled copy-on-adoption templates are merely
+    /// availability hints and can never satisfy the binding.
+    public func citationBindingResolution(
+        requiredCapabilities: Set<ResearchSkillCapability> = [
+            .citationVerification,
+            .citationFormatting,
+        ],
+        citationStyle: String? = nil
+    ) throws -> ResearchSkillBindingResolution {
+        let rawBindingRevision = try? bindingFileRevision()
+        let all = try skills()
+        let bundledTemplateAvailable = all.contains { package in
+            package.origin == .bundled
+                && package.skillClass == .researcher
+                && requiredCapabilities.allSatisfy { package.provides($0) }
+                && !package.citationStyleResources.isEmpty
+        }
+        let localCandidates = all.filter { package in
+            package.origin == .triptych
+                && package.isValid
+                && package.supports(.fidelity)
+                && requiredCapabilities.allSatisfy { package.provides($0) }
+                && !package.citationStyleResources.isEmpty
+        }
+        let snapshot: ResearchSkillBindingSnapshot?
+        do {
+            snapshot = try bindingSnapshot()
+        } catch {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bundledTemplateAvailable: bundledTemplateAvailable,
+                installedCandidateIDs: localCandidates.map(\.id),
+                issue: .malformed(error.localizedDescription),
+                bindingRevision: rawBindingRevision
+            )
+        }
+        guard let id = snapshot?.document.citationBinding else {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bundledTemplateAvailable: bundledTemplateAvailable,
+                installedCandidateIDs: localCandidates.map(\.id),
+                issue: .missing,
+                bindingRevision: rawBindingRevision
+            )
+        }
+        guard let bound = localCandidates.first(where: { $0.id == id }) else {
+            return ResearchSkillBindingResolution(
+                source: .triptychBinding,
+                bundledTemplateAvailable: bundledTemplateAvailable,
+                installedCandidateIDs: localCandidates.map(\.id),
+                issue: .invalidPackage(id),
+                bindingRevision: rawBindingRevision
+            )
+        }
+        guard let activeStyle = snapshot?.document.citationStyle else {
+            return ResearchSkillBindingResolution(
+                source: .triptychBinding,
+                bundledTemplateAvailable: bundledTemplateAvailable,
+                installedCandidateIDs: localCandidates.map(\.id),
+                issue: .citationStyleMissing(packageID: id),
+                bindingRevision: rawBindingRevision
+            )
+        }
+        guard bound.citationStyles.contains(activeStyle),
+              bound.citationStyleResources[activeStyle] != nil else {
+            return ResearchSkillBindingResolution(
+                source: .triptychBinding,
+                bundledTemplateAvailable: bundledTemplateAvailable,
+                installedCandidateIDs: localCandidates.map(\.id),
+                issue: .citationStyleMismatch(packageID: id, requested: activeStyle),
+                bindingRevision: rawBindingRevision
+            )
+        }
+        if let citationStyle {
+            let normalized = citationStyle.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard normalized == activeStyle else {
+                return ResearchSkillBindingResolution(
+                    source: .triptychBinding,
+                    bundledTemplateAvailable: bundledTemplateAvailable,
+                    installedCandidateIDs: localCandidates.map(\.id),
+                    issue: .citationStyleMismatch(packageID: id, requested: normalized),
+                    bindingRevision: rawBindingRevision
+                )
+            }
+        }
+        return ResearchSkillBindingResolution(
+            source: .triptychBinding,
+            package: bound,
+            bundledTemplateAvailable: bundledTemplateAvailable,
+            installedCandidateIDs: localCandidates.map(\.id),
+            citationStyle: activeStyle,
+            bindingRevision: rawBindingRevision
+        )
+    }
+
+    /// Resolves one function and fingerprints only the conditional resources
+    /// selected for this run. The package revision still covers the complete
+    /// bounded package.
+    public func resolvedFunctionPackages(
+        for function: ResearchFunctionID,
+        fidelityChecks: Set<FidelityCheck> = [],
+        citationStyle: String? = nil,
+        additionalSkillIDs: [String] = [],
+        primaryResourcePaths: Set<String> = [],
+        additionalResourcePaths: [String: Set<String>] = [:]
+    ) throws -> [ResolvedResearchSkillSelection] {
+        guard function != .review else { return [] }
+        let primaryResolution = try functionBindingResolution(for: function)
+        guard let primary = primaryResolution.package, primaryResolution.issue == nil else {
+            throw ResearchSkillBindingError.unresolvedBinding(
+                primaryResolution.issue ?? .missing
+            )
+        }
+
+        var requestedIDs = [primary.id] + additionalSkillIDs
+        var resolvedCitationID: String?
+        var resolvedCitationStyle: String?
+        if function == .fidelity, fidelityChecks.contains(.citations) {
+            let capabilities: Set<ResearchSkillCapability> = [
+                .citationVerification,
+                .citationFormatting,
+            ]
+            let citation = try citationBindingResolution(
+                requiredCapabilities: capabilities,
+                citationStyle: citationStyle
+            )
+            guard let package = citation.package, citation.issue == nil else {
+                throw ResearchSkillBindingError.unresolvedBinding(citation.issue ?? .missing)
+            }
+            resolvedCitationID = package.id
+            resolvedCitationStyle = citation.citationStyle
+            requestedIDs.append(package.id)
+        }
+
+        let packages = try resolvedPackages(
+            for: Self.legacyMode(for: function),
+            requestedSkillIDs: Self.unique(requestedIDs)
+        )
+        var selections: [ResolvedResearchSkillSelection] = []
+        for package in packages {
+            guard let packageRevision = package.revision else {
+                throw ResearchSkillError.invalidPackage(package.id, package.validationIssues)
+            }
+            let available = try resourcePaths(id: package.id)
+            var selected: Set<String> = ["SKILL.md"]
+            if package.id == primary.id {
+                selected.formUnion(Self.defaultResourcePaths(
+                    for: function,
+                    fidelityChecks: fidelityChecks
+                ))
+                selected.formUnion(primaryResourcePaths)
+            }
+            if package.id == resolvedCitationID {
+                selected.insert("references/verification-method.md")
+                guard let resolvedCitationStyle,
+                      let styleResource = package.citationStyleResources[
+                        resolvedCitationStyle
+                      ] else {
+                    throw ResearchSkillBindingError.unresolvedBinding(
+                        .citationStyleMissing(packageID: package.id)
+                    )
+                }
+                selected.insert(styleResource)
+            }
+            selected.formUnion(additionalResourcePaths[package.id] ?? [])
+            var loaded: [ResolvedResearchSkillResource] = []
+            for path in selected.sorted() {
+                guard available.contains(path) else {
+                    throw ResearchSkillCatalogError.resourceMissing("\(package.id)/\(path)")
+                }
+                let source = try resource(id: package.id, relativePath: path)
+                loaded.append(ResolvedResearchSkillResource(
+                    relativePath: path,
+                    revision: DocumentFingerprint(content: source),
+                    source: source
+                ))
+            }
+            selections.append(ResolvedResearchSkillSelection(
+                id: package.id,
+                origin: package.origin,
+                version: package.version,
+                packageRevision: packageRevision,
+                availableResourcePaths: available,
+                loadedResources: loaded
+            ))
+        }
+        return selections
     }
 
     /// Selectively assembles only the dependency closure for the requested
@@ -480,6 +1057,226 @@ public actor ResearchSkillStore {
         try validateDirectory(skillsURL, error: .unsafeSkillsRoot)
     }
 
+    private func ensureControlDirectoryForGuidance() throws {
+        if !fileManager.fileExists(atPath: controlURL.path) {
+            try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
+        }
+        let values = try controlURL.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw ResearchSkillBindingError.unsafeBindingFile
+        }
+    }
+
+    private func validateBindingDocument(
+        _ document: ResearchSkillBindingDocument
+    ) throws {
+        guard document.schemaVersion == ResearchSkillBindingDocument.currentSchemaVersion else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "Unsupported schema version \(document.schemaVersion)."
+            )
+        }
+        let functionKeys = Set(document.functionBindings.keys)
+            .union(document.functionSkillBindings.keys)
+            .union(document.functionPracticeBindings.keys)
+        for rawFunction in functionKeys {
+            guard let function = ResearchFunctionID(rawValue: rawFunction),
+                  function != .review else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "Unknown or non-skill function binding: \(rawFunction)."
+                )
+            }
+            try validateFunctionSkillSelection(ResearchFunctionSkillSelection(
+                function: function,
+                primaryPackageID: document.functionBindings[rawFunction],
+                supplementalPackageIDs: document.functionSkillBindings[rawFunction] ?? [],
+                selectedPractices: document.functionPracticeBindings[rawFunction] ?? []
+            ))
+        }
+        if let packageID = document.citationBinding {
+            guard Self.isValidIdentifier(packageID) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The citation binding has an invalid package identifier."
+                )
+            }
+            let package: ResearchSkillPackage
+            do {
+                package = try localPackage(id: packageID)
+            } catch {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The citation binding must name an installed Triptych-local package."
+                )
+            }
+            guard package.origin == .triptych,
+                  package.isValid,
+                  package.supports(.fidelity),
+                  package.provides(.citationVerification),
+                  package.provides(.citationFormatting) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The citation binding lacks Fidelity or a required citation capability."
+                )
+            }
+            // Missing style remains decodable so a pre-style binding can be
+            // surfaced as a precise Settings repair. New writes always include
+            // and validate the semantic style.
+            if let style = document.citationStyle {
+                guard package.citationStyles.contains(style),
+                      package.citationStyleResources[style] != nil else {
+                    throw ResearchSkillBindingError.invalidBindingDocument(
+                        "The citation binding style is not explicitly supported by its package."
+                    )
+                }
+            }
+        } else if document.citationStyle != nil {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "A citation style cannot be selected without a citation package."
+            )
+        }
+    }
+
+    private func validateFunctionSkillSelection(
+        _ selection: ResearchFunctionSkillSelection
+    ) throws {
+        guard selection.function != .review else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "Human Review has no executable Skill binding."
+            )
+        }
+        if selection.function == .dialogue, selection.primaryPackageID != nil {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "Dialogue transport is protected System guidance and cannot be replaced by a Researcher Skill."
+            )
+        }
+        let selectedPracticeIDs = selection.selectedPractices.map(\.selectionID)
+        guard Set(selectedPracticeIDs).count == selectedPracticeIDs.count else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "A function cannot select the same Practice more than once."
+            )
+        }
+        let supplementalIDs = selection.supplementalPackageIDs
+        guard Set(supplementalIDs).count == supplementalIDs.count else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "A function cannot select the same supplemental Skill more than once."
+            )
+        }
+        if let primary = selection.primaryPackageID,
+           supplementalIDs.contains(primary) {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "The same package cannot be both primary and supplemental."
+            )
+        }
+
+        if let packageID = selection.primaryPackageID {
+            let package = try boundLocalPackage(
+                id: packageID,
+                function: selection.function,
+                purpose: "primary"
+            )
+            guard package.role != "practice",
+                  !isCitationMethod(package),
+                  package.role == "workflow"
+                    || (package.role == "specialist"
+                        && !composesWithFunction(package, function: selection.function)) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The primary binding for \(selection.function.rawValue) must be a complete non-citation Researcher Skill."
+                )
+            }
+        }
+
+        for packageID in supplementalIDs {
+            let package = try boundLocalPackage(
+                id: packageID,
+                function: selection.function,
+                purpose: "supplemental"
+            )
+            guard package.role == "specialist",
+                  !isCitationMethod(package),
+                  composesWithFunction(package, function: selection.function) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "Supplemental binding \(packageID) must be a non-citation specialist that explicitly composes with this function."
+                )
+            }
+        }
+
+        for practice in selection.selectedPractices {
+            guard Self.isValidIdentifier(practice.packageID),
+                  Self.isValidIdentifier(practice.practiceID) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "Practice bindings require stable lowercase identifiers."
+                )
+            }
+            let package = try boundLocalPackage(
+                id: practice.packageID,
+                function: selection.function,
+                purpose: "Practice"
+            )
+            guard package.role == "practice",
+                  package.practiceResources[practice.practiceID] != nil else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "Practice \(practice.selectionID) is not declared by a compatible Triptych-local Practice package."
+                )
+            }
+            if practice.application == .replace {
+                guard practice.officialSkillID.map(Self.isValidIdentifier) == true,
+                      Self.hasText(practice.editablePoint),
+                      Self.hasText(practice.scope),
+                      Self.hasText(practice.reason) else {
+                    throw ResearchSkillBindingError.invalidBindingDocument(
+                        "A replacement Practice requires its official Skill, editable point, scope, and reason."
+                    )
+                }
+            }
+        }
+    }
+
+    private func boundLocalPackage(
+        id: String,
+        function: ResearchFunctionID,
+        purpose: String
+    ) throws -> ResearchSkillPackage {
+        guard Self.isValidIdentifier(id) else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "The \(purpose) binding has an invalid package identifier."
+            )
+        }
+        let package: ResearchSkillPackage
+        do {
+            package = try localPackage(id: id)
+        } catch {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "The \(purpose) binding must name an installed Triptych-local package: \(id)."
+            )
+        }
+        guard package.origin == .triptych,
+              package.isValid,
+              package.supports(function) else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "Package \(id) does not validly support \(function.rawValue)."
+            )
+        }
+        return package
+    }
+
+    private func isCitationMethod(_ package: ResearchSkillPackage) -> Bool {
+        package.provides(.citationVerification)
+            || package.provides(.citationFormatting)
+            || !package.citationStyleResources.isEmpty
+    }
+
+    private func composesWithFunction(
+        _ package: ResearchSkillPackage,
+        function: ResearchFunctionID
+    ) -> Bool {
+        package.requiredSkillIDs.contains { dependencyID in
+            (try? self.package(id: dependencyID))?.supports(function) == true
+        }
+    }
+
+    private static func hasText(_ value: String?) -> Bool {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
     private func safePackageURL(id: String) throws -> URL {
         guard Self.isValidIdentifier(id) else { throw ResearchSkillError.invalidIdentifier(id) }
         let url = skillsURL.appendingPathComponent(id, isDirectory: true).standardizedFileURL
@@ -503,6 +1300,49 @@ public actor ResearchSkillStore {
         return packageURL
     }
 
+    /// Validates a complete in-memory replacement through the same package,
+    /// declared-resource, dependency, and cycle rules used for installed local
+    /// packages. Nothing is written; callers use the returned package as the
+    /// authoritative structural result before issuing maintenance confirmation.
+    func validatedProposedResearcherPackage(
+        id: String,
+        sources: [String: String],
+        revision: DocumentFingerprint
+    ) throws -> ResearchSkillPackage {
+        guard Self.isValidIdentifier(id) else {
+            throw ResearchSkillError.invalidIdentifier(id)
+        }
+        if try catalog().entries.contains(where: { $0.id == id }) {
+            throw ResearchSkillError.protectedPackageShadow(id)
+        }
+        guard sources.keys.allSatisfy(ResearchSkillMaintenancePath.isAllowed),
+              let source = sources["SKILL.md"],
+              Self.packageRevision(sources: sources) == revision else {
+            throw ResearchSkillError.unsafePackage(id)
+        }
+
+        let resourcePaths = Set(sources.keys)
+        let inspected = ResearchSkillInspector.inspect(
+            id: id,
+            source: source,
+            origin: .triptych,
+            revision: revision
+        )
+        let candidate = inspected.addingValidationIssues(
+            Self.declaredResourceValidationIssues(
+                for: inspected,
+                availableResourcePaths: resourcePaths
+            )
+        )
+        let bundled = try bundledCatalogPackages()
+        let local = try localSkills().filter { $0.id != id } + [candidate]
+        let validated = try validatedLocalSkills(rawLocal: local, bundled: bundled)
+        guard let result = validated.first(where: { $0.id == id }) else {
+            throw ResearchSkillError.packageNotFound(id)
+        }
+        return result
+    }
+
     private func localPackage(id: String) throws -> ResearchSkillPackage {
         let packageURL = try existingPackageURL(id: id)
         let sourceURL = packageURL.appendingPathComponent("SKILL.md")
@@ -520,19 +1360,48 @@ public actor ResearchSkillStore {
             revision: try packageRevision(packageURL: packageURL)
         )
         let resources = Set(try localResourcePaths(packageURL: packageURL))
+        return parsed.addingValidationIssues(
+            Self.declaredResourceValidationIssues(
+                for: parsed,
+                availableResourcePaths: resources
+            )
+        )
+    }
+
+    private static func declaredResourceValidationIssues(
+        for package: ResearchSkillPackage,
+        availableResourcePaths: Set<String>
+    ) -> [String] {
         var issues: [String] = []
-        if parsed.role == "practice" {
+        if package.role == "practice" {
             for required in [
                 "references/FOUNDATIONAL-DIMENSIONS.md",
                 "references/COMPOSITION-RULES.md",
-            ] where !resources.contains(required) {
+            ] where !availableResourcePaths.contains(required) {
                 issues.append("Practice package requires \(required).")
             }
         }
-        for path in parsed.practiceResources.values where !resources.contains(path) {
+        for path in package.practiceResources.values
+            where !availableResourcePaths.contains(path) {
             issues.append("Declared Practice resource is missing: \(path).")
         }
-        return parsed.addingValidationIssues(issues)
+        for (style, path) in package.citationStyleResources {
+            if !package.citationStyles.contains(style) {
+                issues.append(
+                    "Citation style resource \(style) is not declared in citation_styles."
+                )
+            }
+            if !availableResourcePaths.contains(path) {
+                issues.append(
+                    "Declared citation style resource is missing for \(style): \(path)."
+                )
+            }
+        }
+        for style in package.citationStyles
+            where package.citationStyleResources[style] == nil {
+            issues.append("Citation style \(style) has no declared citation style resource.")
+        }
+        return Self.unique(issues)
     }
 
     private func localResourcePaths(packageURL: URL) throws -> [String] {
@@ -544,7 +1413,7 @@ public actor ResearchSkillStore {
         if entryValues.isRegularFile == true, entryValues.isSymbolicLink != true {
             paths.append("SKILL.md")
         }
-        for directory in ["references", "templates"] {
+        for directory in ["references", "templates", "evals"] {
             let directoryURL = packageURL.appendingPathComponent(directory, isDirectory: true)
             guard let files = try? fileManager.contentsOfDirectory(
                 at: directoryURL,
@@ -574,6 +1443,22 @@ public actor ResearchSkillStore {
         var bytes = Data()
         for path in paths {
             let data = try Data(contentsOf: packageURL.appendingPathComponent(path))
+            bytes.append(Data(path.utf8))
+            bytes.append(0)
+            bytes.append(Data(String(data.count).utf8))
+            bytes.append(0)
+            bytes.append(data)
+            bytes.append(0)
+        }
+        return DocumentFingerprint(data: bytes)
+    }
+
+    private static func packageRevision(
+        sources: [String: String]
+    ) -> DocumentFingerprint {
+        var bytes = Data()
+        for path in sources.keys.sorted() {
+            let data = Data((sources[path] ?? "").utf8)
             bytes.append(Data(path.utf8))
             bytes.append(0)
             bytes.append(Data(String(data.count).utf8))
@@ -622,6 +1507,43 @@ public actor ResearchSkillStore {
         id.range(of: #"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"#, options: .regularExpression) != nil
     }
 
+    private static func legacyMode(for function: ResearchFunctionID) -> ResearchSkillMode {
+        switch function {
+        case .dialogue: .dialogue
+        case .develop: .develop
+        case .review: .review
+        case .fidelity: .audit
+        case .critique: .review
+        case .revise: .write
+        case .manuscript: .manuscript
+        }
+    }
+
+    private static func defaultResourcePaths(
+        for function: ResearchFunctionID,
+        fidelityChecks: Set<FidelityCheck>
+    ) -> Set<String> {
+        switch function {
+        case .dialogue:
+            ["references/response-contract.md", "references/response-method.md"]
+        case .develop:
+            ["references/method.md"]
+        case .review:
+            []
+        case .fidelity:
+            Set([
+                fidelityChecks.contains(.content) ? "references/content.md" : nil,
+                fidelityChecks.contains(.citations) ? "references/citations.md" : nil,
+            ].compactMap { $0 })
+        case .critique:
+            ["references/method.md"]
+        case .revise:
+            ["references/method.md"]
+        case .manuscript:
+            ["references/method.md"]
+        }
+    }
+
     private static func injectedResearcherRoutingMetadata(
         into source: String,
         from entry: ResearchSkillCatalogEntry
@@ -643,9 +1565,19 @@ public actor ResearchSkillStore {
         var routing = [
             "scholium:",
             "  role: \(entry.role)",
+            "  supported_functions: [\(entry.supportedFunctions.map(\.rawValue).joined(separator: ", "))]",
+            "  capabilities: [\(entry.capabilities.map(\.rawValue).joined(separator: ", "))]",
+            "  citation_styles: [\(entry.citationStyles.joined(separator: ", "))]",
+            "  allow_evolution: false",
             "  supported_modes: [\(entry.supportedModes.map(\.rawValue).joined(separator: ", "))]",
             "  required_skills: [\(entry.requiredSkillIDs.joined(separator: ", "))]",
         ]
+        if !entry.citationStyleResources.isEmpty {
+            routing.append("  citation_style_resources:")
+            for style in entry.citationStyleResources.keys.sorted() {
+                routing.append("    \(style): \(entry.citationStyleResources[style]!)")
+            }
+        }
         if !entry.compatiblePracticeIDs.isEmpty {
             routing.append(
                 "  compatible_practices: [\(entry.compatiblePracticeIDs.joined(separator: ", "))]"

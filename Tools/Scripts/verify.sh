@@ -6,9 +6,9 @@ SCRATCH="${TMPDIR:-/tmp}/scholium-verification"
 rm -rf "${SCRATCH}"
 
 # The repository copy is the reviewable source of the protected Skill
-# packages. SwiftPM embeds the mirrored snapshot; release verification must
+# packages. SwiftPM embeds the generated mirror; release verification must
 # fail if those two trees drift, including stale reference documentation.
-diff -qr "${ROOT}/Skills" "${ROOT}/ScholiumCore/Resources/Skills"
+"${ROOT}/Tools/Scripts/sync-product-skills.sh" --check
 
 # Every protected Skill package must ship the local reference files that its
 # SKILL.md names. The mirror check above catches drift between source and the
@@ -50,16 +50,16 @@ if rg -n --glob '*.swift' '[\p{Han}]' \
   exit 1
 fi
 
-# Dialogue has one document-local doorway: Open Scholia… → Dialogue. A
-# standalone showDialogue presentation would recreate the duplicate route that
-# the prototype/report explicitly removed.
-if rg -n --glob '*.swift' '\bshowDialogue\b' \
+# The editor-only Research Strip is the one function doorway. Retired Scholia
+# routing and standalone Dialogue/Critique presentations would recreate the
+# duplicate surfaces that the typed function route replaced.
+if rg -n --glob '*.swift' \
+  '\b(showDialogue|ScholiaPanelView|ScholiaPresentationState|beginScholiaPresentation|pushScholiaDestination)\b|case[[:space:]]+scholia\b|\.[[:space:]]*scholia[[:space:]]*\(' \
   "${ROOT}/Scholium/App" \
   "${ROOT}/Scholium/Models" \
   "${ROOT}/Scholium/Services" \
-  "${ROOT}/Scholium/Views" \
-  "${ROOT}/ScholiumCore"; then
-  echo "Scholia doorway guard failed: production Swift sources contain the removed standalone showDialogue route." >&2
+  "${ROOT}/Scholium/Views"; then
+  echo "Research Strip guard failed: production Swift sources contain a retired Scholia route." >&2
   exit 1
 fi
 
@@ -78,6 +78,28 @@ if rg -n --glob '*.swift' '^import ScholiumCore$' \
   "${ROOT}/Tests/ScholiumAppTests" \
   "${ROOT}/Tests/ScholiumApplicationTests"; then
   echo "Compiler boundary guard failed: a delivery source imports ScholiumCore." >&2
+  exit 1
+fi
+
+# Skill YAML parsing and package-ID routing are backend authorities. Delivery
+# targets may request draft inspection through Application but must never call
+# the parser or catalog YAML loader directly.
+if rg -n --glob '*.swift' \
+  '\bResearchSkillInspector\b|\bResearchSkillCatalog[[:space:]]*\.[[:space:]]*parse[[:space:]]*\(' \
+  "${DELIVERY_ROOTS[@]}"; then
+  echo "Skill authority guard failed: a delivery target parses Skill YAML directly." >&2
+  exit 1
+fi
+
+# The document leaf receives only the immutable Strip projection and action
+# closure. Other adjacent inspector/history views in this source file may own
+# their already-established ResearchController adapters, so inspect only the
+# NoteContentView declaration rather than matching the entire file.
+if sed -n \
+  '/^struct NoteContentView: View/,/^private struct DocumentTabBar: View/p' \
+  "${ROOT}/Scholium/Views/Note/NoteContentView.swift" \
+  | rg -n '\b(ResearchController|WindowModel)\b'; then
+  echo "Research Strip ownership guard failed: NoteContentView received a window or Research feature root." >&2
   exit 1
 fi
 

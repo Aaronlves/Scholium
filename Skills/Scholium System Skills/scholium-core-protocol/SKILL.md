@@ -118,14 +118,24 @@ scholium skills show <workflow-skill-id> --triptych <triptych> --format json
 
 Choose the intellectual mode independently of permission. For example, explaining a concept may use `develop` with `read-only` permission; a substantive request originating in Dialogue may use `analyze`, `develop`, `write`, or `review` while explicitly retaining the Dialogue System packages. Use Mixed mode only for genuinely sequential operations. If the catalog or selected package cannot be retrieved, state that limitation and do not claim to have applied its method.
 
-When a selected package instructs you to read one of its references or templates, retrieve that declared resource through Scholium rather than guessing an app-bundle or repository path:
+Outside a prepared Research Function run, when a selected package instructs
+you to read one of its references or templates, retrieve that declared
+resource through Scholium rather than guessing an app-bundle or repository
+path:
 
 ```sh
 scholium skills resources <skill-id> --triptych <triptych> --format json
 scholium skills show <skill-id> --triptych <triptych> --resource <relative-path> --format json
 ```
 
-The Triptych selector is optional for a protected bundled package and required for a Triptych-local package. Use the returned package revision when a researcher-owned Practice or specialist method must be recorded. Do not treat a Markdown link as evidence that a resource was actually retrieved.
+The Triptych selector is optional for a protected bundled package and required
+for a Triptych-local package. Use the returned package revision when a
+researcher-owned Practice or specialist method must be recorded. Do not treat
+a Markdown link as evidence that a resource was actually retrieved. Within a
+method-unresolved Research Function preflight, select conditional Workflow
+references only through `scholium function select-methods`; generic skill
+retrieval is not attached to the run and must not be reported as loaded-run
+evidence.
 
 When the workflow changes mode, rebuild the read set, write set, permission, method instructions, assumptions, stop condition, and durability expectation. The preceding result becomes a labeled input or handoff, not an accepted commitment.
 
@@ -142,7 +152,7 @@ When the original request contains two or more operations, read [references/mixe
 Treat an audit as bound to the exact target fingerprint and declared audit scope.
 
 - A workflow that creates or substantively changes philosophical content marks the resulting fingerprint `audit-needed`; it does not recursively launch duplicate audits.
-- Run `scholium-content-audit` once for each changed target version and required scope, normally after the final substantive edit in a Mixed sequence.
+- Complete Content Fidelity once for each final changed Target fingerprint and audit key. A prepared write remains Awaiting Fidelity or Unverified until the external agent submits that exact completion; never describe the phase as an automatic background audit.
 - Reuse an audit only when the target fingerprint, audit scope, and relevant evidence are unchanged.
 - Any later content change makes the earlier audit stale for the new version.
 - The audit workflow never schedules itself.

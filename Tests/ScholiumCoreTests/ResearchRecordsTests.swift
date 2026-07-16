@@ -620,7 +620,7 @@ struct ResearchRecordsTests {
             selectedNotes: [reference],
             includedComments: [included],
             generatedPrompt: "Historical path: Old.md",
-            checkpointID: UUID(),
+            checkpointID: nil,
             followUpComments: [followUp],
             replies: [response]
         )
@@ -714,10 +714,11 @@ struct ResearchRecordsTests {
         _ = try await store.save(entry)
         #expect((await store.entries(noteID: first.noteID)).map(\.id) == [entry.id])
         #expect((await store.entries(noteID: second.noteID)).map(\.id) == [entry.id])
-        #expect(prompt.contains("directly modify other relevant Triptych files"))
+        #expect(prompt.contains("selected Target and contextual Materials are read-only"))
+        #expect(prompt.contains("creates no checkpoint and authorizes no research-note mutation"))
         #expect(!prompt.localizedCaseInsensitiveContains("proposal"))
-        #expect(prompt.localizedCaseInsensitiveContains("academic change summary"))
-        #expect(prompt.localizedCaseInsensitiveContains("unresolved question"))
+        #expect(prompt.localizedCaseInsensitiveContains("concise attributed academic result"))
+        #expect(prompt.localizedCaseInsensitiveContains("warranted promotion"))
         #expect(prompt.localizedCaseInsensitiveContains("researcher review"))
         #expect(prompt.contains("Kind: Concept"))
         #expect(prompt.contains("Triptych context:"))
@@ -957,6 +958,244 @@ struct ResearchRecordsTests {
         #expect(moved.workRelativePath == "Drafts/Renamed Paper.md")
         #expect(moved.critiqueRelativePath == "Critiques/Renamed Critique.md")
         #expect(moved.targetFingerprint == association.targetFingerprint)
+    }
+
+    @Test("Dialogue function evidence advances monotonically and incomplete preparation rolls back")
+    func dialogueFunctionEvidenceLifecycle() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = DialogueStore(storageURL: fixture.support.appendingPathComponent("dialogue"))
+        let noteID = UUID()
+        let vaultID = UUID()
+        let source = "# Analysis\n"
+        let preparedFingerprint = DocumentFingerprint(content: source)
+        let target = ResearchFunctionTarget(
+            noteID: noteID,
+            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Analysis.md"),
+            role: .analysis,
+            fingerprint: preparedFingerprint,
+            title: "Analysis"
+        )
+        let checkpointID = UUID()
+        let snapshot = ResearchFunctionSnapshot(
+            request: ResearchFunctionRequest(function: .develop, target: target),
+            recordKind: .dialogue,
+            checkpointID: checkpointID,
+            fidelityHandoff: ResearchFunctionFidelityHandoff(
+                required: true,
+                checks: [.content],
+                preparedTargetFingerprint: preparedFingerprint
+            ),
+            preparedAt: Date(timeIntervalSince1970: 100)
+        )
+        let reference = DialogueNoteReference(
+            noteID: noteID,
+            vaultID: vaultID,
+            vaultName: "Analyses",
+            title: "Analysis",
+            relativePath: "Analysis.md",
+            fingerprint: preparedFingerprint
+        )
+        let entry = DialogueEntry(
+            triptychID: UUID(),
+            instruction: "Develop the argument.",
+            selectedNotes: [reference],
+            includedComments: [],
+            generatedPrompt: "Prepared instructions",
+            checkpointID: checkpointID,
+            functionSnapshot: snapshot
+        )
+        _ = try await store.save(entry)
+        #expect(try await store.functionRecord(runID: snapshot.runID)?.snapshot == snapshot)
+
+        let finalizedRequest = try snapshot.request.selectingMethods([])
+        let finalizedSnapshot = ResearchFunctionSnapshot(
+            runID: snapshot.runID,
+            request: finalizedRequest,
+            recordKind: snapshot.recordKind,
+            recordID: snapshot.recordID,
+            checkpointID: snapshot.checkpointID,
+            skills: snapshot.skills,
+            phases: snapshot.phases,
+            requiredChildFunctions: snapshot.requiredChildFunctions,
+            preparedOutput: snapshot.preparedOutput,
+            evidenceRevisions: snapshot.evidenceRevisions,
+            fidelityHandoff: snapshot.fidelityHandoff,
+            confirmationToken: snapshot.confirmationToken,
+            preparedAt: snapshot.preparedAt
+        )
+        let finalized = try await store.finalizeFunctionPreflight(
+            snapshot: finalizedSnapshot,
+            instructions: "Finalized instructions",
+            runID: snapshot.runID
+        )
+        #expect(finalized.functionSnapshot == finalizedSnapshot)
+        #expect(finalized.generatedPrompt == "Finalized instructions")
+        #expect(finalized.checkpointID == checkpointID)
+        _ = try await store.finalizeFunctionPreflight(
+            snapshot: finalizedSnapshot,
+            instructions: "Finalized instructions",
+            runID: snapshot.runID
+        )
+        let conflictingSnapshot = ResearchFunctionSnapshot(
+            runID: snapshot.runID,
+            request: try snapshot.request.selectingMethods([.developmentSynthesis]),
+            recordKind: snapshot.recordKind,
+            recordID: snapshot.recordID,
+            checkpointID: snapshot.checkpointID,
+            skills: snapshot.skills,
+            phases: snapshot.phases,
+            requiredChildFunctions: snapshot.requiredChildFunctions,
+            preparedOutput: snapshot.preparedOutput,
+            evidenceRevisions: snapshot.evidenceRevisions,
+            fidelityHandoff: snapshot.fidelityHandoff,
+            confirmationToken: snapshot.confirmationToken,
+            preparedAt: snapshot.preparedAt
+        )
+        await #expect(throws: ResearchFunctionRecordStoreError.self) {
+            _ = try await store.finalizeFunctionPreflight(
+                snapshot: conflictingSnapshot,
+                instructions: "Different instructions",
+                runID: snapshot.runID
+            )
+        }
+
+        let finalFingerprint = DocumentFingerprint(content: "# Developed Analysis\n")
+        let awaiting = ResearchFunctionCompletion(
+            runID: snapshot.runID,
+            function: .develop,
+            state: .awaitingFidelity,
+            targetFingerprint: finalFingerprint,
+            materialFingerprints: [:],
+            summary: "The authorized Analysis changed and awaits Fidelity.",
+            didModifyTarget: true,
+            fidelityOutcomes: [],
+            completedAt: Date(timeIntervalSince1970: 200)
+        )
+        _ = try await store.setFunctionCompletion(awaiting, runID: snapshot.runID)
+
+        let complete = ResearchFunctionCompletion(
+            runID: snapshot.runID,
+            function: .develop,
+            state: .complete,
+            targetFingerprint: finalFingerprint,
+            materialFingerprints: [:],
+            summary: "Content Fidelity passed for the exact final revision.",
+            didModifyTarget: true,
+            fidelityOutcomes: [
+                FidelityCheckOutcome(
+                    check: .content,
+                    state: .passed,
+                    summary: "Content Fidelity passed for the attributed final revision."
+                ),
+            ],
+            completedAt: Date(timeIntervalSince1970: 300)
+        )
+        _ = try await store.setFunctionCompletion(complete, runID: snapshot.runID)
+        #expect(try await store.functionRecord(runID: snapshot.runID)?.completion == complete)
+        await #expect(throws: ResearchFunctionRecordStoreError.self) {
+            _ = try await store.setFunctionCompletion(awaiting, runID: snapshot.runID)
+        }
+        await #expect(throws: ResearchFunctionRecordStoreError.self) {
+            _ = try await store.discardPreparedFunctionRecord(runID: snapshot.runID)
+        }
+
+        let rollbackSnapshot = ResearchFunctionSnapshot(
+            request: ResearchFunctionRequest(function: .develop, target: target),
+            recordKind: .dialogue
+        )
+        _ = try await store.save(DialogueEntry(
+            triptychID: entry.triptychID,
+            instruction: "Prepare, then fail.",
+            selectedNotes: [reference],
+            includedComments: [],
+            generatedPrompt: "Prepared instructions",
+            checkpointID: nil,
+            functionSnapshot: rollbackSnapshot
+        ))
+        _ = try await store.discardPreparedFunctionRecord(runID: rollbackSnapshot.runID)
+        #expect(try await store.functionRecord(runID: rollbackSnapshot.runID) == nil)
+
+        let reopened = DialogueStore(storageURL: fixture.support.appendingPathComponent("dialogue"))
+        #expect(try await reopened.functionRecord(runID: snapshot.runID)?.completion == complete)
+    }
+
+    @Test("Critique preparation rollback removes only its incomplete round")
+    func critiqueFunctionPreparationRollback() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let registry = CritiqueRegistry(
+            controlURL: fixture.support.appendingPathComponent("control", isDirectory: true)
+        )
+        let workID = UUID()
+        let vaultID = UUID()
+        let fingerprint = DocumentFingerprint(content: "# Work\n")
+        let target = ResearchFunctionTarget(
+            noteID: workID,
+            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Drafts/Work.md"),
+            role: .work,
+            fingerprint: fingerprint,
+            title: "Work"
+        )
+        let olderRoundID = UUID()
+        _ = try await registry.recordRequest(
+            workNoteID: workID,
+            workRelativePath: "Drafts/Work.md",
+            targetFingerprint: fingerprint,
+            critiqueRelativePath: "Critiques/Work Critique.md",
+            checkpointID: UUID(),
+            scope: .overall,
+            roundID: olderRoundID
+        )
+        let snapshot = ResearchFunctionSnapshot(
+            request: ResearchFunctionRequest(
+                function: .critique,
+                target: target,
+                scope: .whole
+            ),
+            recordKind: .critique,
+            preparedAt: Date(timeIntervalSince1970: 100)
+        )
+        _ = try await registry.recordRequest(
+            workNoteID: workID,
+            workRelativePath: "Drafts/Work.md",
+            targetFingerprint: fingerprint,
+            critiqueRelativePath: "Critiques/Work Critique.md",
+            checkpointID: UUID(),
+            scope: .overall,
+            roundID: UUID(),
+            functionSnapshot: snapshot
+        )
+
+        let preparedRecord = try await registry.functionRecord(runID: snapshot.runID)
+        #expect(preparedRecord?.snapshot == snapshot)
+        let finalizedSnapshot = ResearchFunctionSnapshot(
+            runID: snapshot.runID,
+            request: try snapshot.request.selectingMethods([.critiqueReportTemplate]),
+            recordKind: snapshot.recordKind,
+            recordID: snapshot.recordID,
+            checkpointID: snapshot.checkpointID,
+            skills: snapshot.skills,
+            phases: snapshot.phases,
+            requiredChildFunctions: snapshot.requiredChildFunctions,
+            preparedOutput: snapshot.preparedOutput,
+            evidenceRevisions: snapshot.evidenceRevisions,
+            fidelityHandoff: snapshot.fidelityHandoff,
+            confirmationToken: snapshot.confirmationToken,
+            preparedAt: snapshot.preparedAt
+        )
+        _ = try await registry.finalizeFunctionPreflight(
+            snapshot: finalizedSnapshot,
+            instructions: "Finalized Critique instructions",
+            runID: snapshot.runID
+        )
+        #expect(try await registry.functionRecord(
+            runID: snapshot.runID
+        )?.preparedInstructions == "Finalized Critique instructions")
+        _ = try await registry.discardPreparedFunctionRecord(runID: snapshot.runID)
+        #expect(try await registry.functionRecord(runID: snapshot.runID) == nil)
+        let retained = try #require(await registry.association(workNoteID: workID))
+        #expect(retained.rounds.map(\.id) == [olderRoundID])
     }
 
     @Test("Repeated Critique requests keep one association and bind each round to the current Work")

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 repo_root="${0:A:h:h:h}"
-source_dir="$repo_root/WebEditor"
 committed="$repo_root/Scholium/Resources/Editor/editor.bundle.js"
 callout_styles="$repo_root/Scholium/Resources/Editor/callouts.css"
 editor_styles="$repo_root/Scholium/Resources/Editor/editor.css"
@@ -47,15 +46,7 @@ if ! rg -q 'font-size: 12pt' "$editor_styles" || \
   exit 1
 fi
 
-cd "$source_dir"
-npm ci --ignore-scripts
-npm run typecheck
-./node_modules/.bin/esbuild editor.ts \
-  --bundle \
-  --format=iife \
-  --platform=browser \
-  --target=safari17 \
-  --outfile="$temporary"
+"$repo_root/Tools/Scripts/run-editor-toolchain.sh" --output "$temporary" --test
 
 if ! cmp -s "$temporary" "$committed"; then
   print -u2 "The committed CodeMirror bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."

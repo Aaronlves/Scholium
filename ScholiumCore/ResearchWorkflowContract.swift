@@ -4,6 +4,179 @@ import Foundation
 /// Resolves packages and exact Practice references without persisting the task
 /// contract or adding an embedded agent runtime.
 public enum ResearchWorkflowAssembler {
+    /// Resolves one semantic function without allowing delivery targets to
+    /// select a package identifier or parse Skill metadata. A manuscript or a
+    /// write-plus-Fidelity workflow calls this once per isolated semantic
+    /// function; it never flattens phase authority.
+    public static func resolveFunction(
+        _ contract: ResearchWorkflowContract,
+        function: ResearchFunctionID,
+        fidelityChecks: Set<FidelityCheck> = [],
+        citationStyle: String? = nil,
+        primaryResourcePaths: Set<String> = [],
+        conditionalResourcePaths: [String: Set<String>] = [:],
+        store: ResearchSkillStore
+    ) async throws -> ResolvedResearchWorkflowEnvelope {
+        try contract.validate()
+        let activeSelection = try await store.functionSkillSelection(for: function)
+        let primaryResolution = try await store.functionBindingResolution(for: function)
+        let primarySkillIDs = primaryResolution.package.map { [$0.id] } ?? []
+        let effectiveContract = try applying(
+            activeSelection,
+            primarySkillIDs: primarySkillIDs,
+            to: contract
+        )
+        try effectiveContract.validate()
+        var resolvedPhases: [ResolvedResearchWorkflowPhase] = []
+
+        for phase in effectiveContract.phases {
+            let practicePackageIDs = phase.selectedPractices.map(\.packageID)
+            let additionalIDs = unique(phase.requiredSkillIDs + practicePackageIDs)
+            var selectedPaths = conditionalResourcePaths
+            var blocking = replacementConflicts(in: phase.selectedPractices)
+            var warnings: [String] = []
+
+            for selection in phase.selectedPractices {
+                let package = try await store.package(id: selection.packageID)
+                guard package.role == "practice" else {
+                    throw ResearchWorkflowContractError.invalid(
+                        "Selected package is not a Practice library: \(selection.packageID)."
+                    )
+                }
+                guard let reference = package.practiceResources[selection.practiceID] else {
+                    throw ResearchWorkflowContractError.invalid(
+                        "Practice \(selection.selectionID) is not declared by its package."
+                    )
+                }
+                selectedPaths[package.id, default: []].formUnion([
+                    "references/FOUNDATIONAL-DIMENSIONS.md",
+                    "references/COMPOSITION-RULES.md",
+                    reference,
+                ])
+            }
+
+            let packages = try await store.resolvedFunctionPackages(
+                for: function,
+                fidelityChecks: fidelityChecks,
+                citationStyle: citationStyle,
+                additionalSkillIDs: additionalIDs,
+                primaryResourcePaths: primaryResourcePaths,
+                additionalResourcePaths: selectedPaths
+            )
+            var metadata: [ResearchSkillPackage] = []
+            for package in packages {
+                metadata.append(try await store.package(id: package.id))
+            }
+            let compatible = Set(
+                metadata.filter { $0.role == "workflow" }
+                    .flatMap(\.compatiblePracticeIDs)
+            )
+            for selection in phase.selectedPractices
+            where !compatible.isEmpty && !compatible.contains(selection.practiceID) {
+                warnings.append(
+                    "Practice \(selection.selectionID) is explicitly selected but is not listed as compatible with the phase's official Workflow Skill. Compatibility is advisory; preserve the methodological difference."
+                )
+            }
+
+            blocking = unique(blocking)
+            warnings = unique(warnings)
+            let rendered = try render(
+                phase: phase,
+                packages: packages,
+                warnings: warnings,
+                blockingConflicts: blocking
+            )
+            resolvedPhases.append(ResolvedResearchWorkflowPhase(
+                contract: phase,
+                packages: packages,
+                warnings: warnings,
+                blockingConflicts: blocking,
+                renderedInstructions: rendered
+            ))
+        }
+
+        let warnings = unique(resolvedPhases.flatMap(\.warnings))
+        let conflicts = unique(resolvedPhases.flatMap(\.blockingConflicts))
+        let rendered = ([
+            "# Scholium Research Function",
+            "",
+            "This is an ephemeral function packet. It does not grant permission, certify philosophical adequacy, or merge authority across phases.",
+            "",
+        ] + resolvedPhases.map(\.renderedInstructions)).joined(separator: "\n")
+        return ResolvedResearchWorkflowEnvelope(
+            contract: effectiveContract,
+            phases: resolvedPhases,
+            warnings: warnings,
+            blockingConflicts: conflicts,
+            renderedInstructions: rendered
+        )
+    }
+
+    private static func applying(
+        _ selection: ResearchFunctionSkillSelection,
+        primarySkillIDs: [String],
+        to contract: ResearchWorkflowContract
+    ) throws -> ResearchWorkflowContract {
+        let phases = try contract.phases.map { phase in
+            var practices = phase.selectedPractices
+            var existingByID: [String: ResearchPracticeSelection] = [:]
+            for existing in practices {
+                guard existingByID.updateValue(
+                    existing,
+                    forKey: existing.selectionID
+                ) == nil else {
+                    throw ResearchWorkflowContractError.invalid(
+                        "The task selects Practice \(existing.selectionID) more than once."
+                    )
+                }
+            }
+            for selected in selection.selectedPractices {
+                if let existing = existingByID[selected.selectionID],
+                   existing != selected {
+                    throw ResearchWorkflowContractError.invalid(
+                        "The task and active Triptych binding select Practice \(selected.selectionID) differently. Resolve the methodological conflict in Research Guidance."
+                    )
+                }
+                if existingByID[selected.selectionID] == nil {
+                    practices.append(selected)
+                }
+            }
+            return ResearchWorkflowPhaseContract(
+                phase: phase.phase,
+                mode: phase.mode,
+                purpose: phase.purpose,
+                requiredSkillIDs: unique(
+                    primarySkillIDs
+                        + phase.requiredSkillIDs
+                        + selection.supplementalPackageIDs
+                ),
+                selectedPractices: practices,
+                readSet: phase.readSet,
+                writeSet: phase.writeSet,
+                permission: phase.permission,
+                permissionBasis: phase.permissionBasis,
+                output: phase.output,
+                stopCondition: phase.stopCondition,
+                durability: phase.durability,
+                handoff: phase.handoff,
+                auditState: phase.auditState
+            )
+        }
+        return ResearchWorkflowContract(
+            schemaVersion: contract.schemaVersion,
+            mode: contract.mode,
+            taskObject: contract.taskObject,
+            purpose: contract.purpose,
+            originalReadSet: contract.originalReadSet,
+            originalWriteSet: contract.originalWriteSet,
+            researchUnit: contract.researchUnit,
+            researchUnitAuthorization: contract.researchUnitAuthorization,
+            dialogueTarget: contract.dialogueTarget,
+            responseContractSource: contract.responseContractSource,
+            phases: phases
+        )
+    }
+
     public static func resolve(
         _ contract: ResearchWorkflowContract,
         store: ResearchSkillStore

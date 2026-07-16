@@ -28248,6 +28248,7 @@
     "setUserCSS",
     "setLinkCompletions",
     "setResearcherComments",
+    "announceStatus",
     "goToLine",
     "setScrollFraction",
     "queryText",
@@ -28318,6 +28319,8 @@
         return validMode(operation.mode);
       case "setUserCSS":
         return typeof operation.value === "string" && operation.value.length <= 1e6;
+      case "announceStatus":
+        return typeof operation.value === "string" && operation.value.length <= 500;
       case "setLinkCompletions":
       case "setResearcherComments":
         return Array.isArray(operation.value);
@@ -29035,12 +29038,59 @@ ${fence}
       autocapitalize: "sentences"
     };
   }
+  function activeConstructAccessibilityDescription(context) {
+    const heading2 = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
+    if (heading2) return `Heading level ${heading2.at(-1)}`;
+    if (context.activeInlineConstructs.includes("Link")) return "Link";
+    if (context.activeBlockConstructs.includes("Callout")) return "Callout";
+    if (context.activeBlockConstructs.includes("Blockquote")) return "Quotation";
+    if (context.activeBlockConstructs.includes("Table")) return "Table";
+    if (context.activeBlockConstructs.includes("BulletList")) return "Bulleted list";
+    if (context.activeBlockConstructs.includes("OrderedList")) return "Numbered list";
+    if (context.activeInlineConstructs.includes("StrongEmphasis")) return "Bold text";
+    if (context.activeInlineConstructs.includes("Emphasis")) return "Emphasized text";
+    if (context.activeInlineConstructs.includes("InlineCode")) return "Inline code";
+    return void 0;
+  }
+  function updateEditorAccessibility(content2, mode, context) {
+    const attributes = editorAccessibilityAttributes(mode);
+    for (const [name2, value] of Object.entries(attributes)) content2.setAttribute(name2, value);
+    const description = mode === "livePreview" && context ? activeConstructAccessibilityDescription(context) : mode === "source" ? "Exact Markdown and YAML source" : void 0;
+    if (description) content2.setAttribute("aria-description", description);
+    else content2.removeAttribute("aria-description");
+  }
   function announceEditorMessage(content2, message) {
+    const previous = content2.getAttribute("aria-description");
     content2.setAttribute("aria-description", message);
     window.setTimeout(() => {
-      if (content2.getAttribute("aria-description") === message) content2.removeAttribute("aria-description");
+      if (content2.getAttribute("aria-description") !== message) return;
+      if (previous) content2.setAttribute("aria-description", previous);
+      else content2.removeAttribute("aria-description");
     }, 4e3);
   }
+
+  // composition.ts
+  var CompositionRequestGate = class {
+    requests = [];
+    composing = false;
+    get active() {
+      return this.composing;
+    }
+    begin() {
+      this.composing = true;
+    }
+    enqueue(request) {
+      return new Promise((resolve) => this.requests.push({ request, resolve }));
+    }
+    finish() {
+      this.composing = false;
+      return this.requests.splice(0);
+    }
+    rejectAll(result) {
+      this.composing = false;
+      for (const pending of this.requests.splice(0)) pending.resolve(result(pending.request));
+    }
+  };
 
   // bootstrap.ts
   function createMarkdownEditor(parent, extensions) {
@@ -29440,7 +29490,9 @@ ${fence}
       const codeContext = fencedCodeLines(doc2, lastLine);
       while (line.from <= visible.to) {
         const text = line.text;
-        const activeLine = selection.head >= line.from && selection.head <= line.to;
+        const activeLine = selection.head >= line.from && selection.head <= line.to || view.composing && view.state.selection.ranges.some(
+          (range) => range.from <= line.to && range.to >= line.from
+        );
         const excluded = literals.filter(
           (literal2) => literal2.from <= line.to && literal2.to >= line.from
         );
@@ -29708,7 +29760,7 @@ ${fence}
       column: head - line.from + 1,
       lineCount: update.state.doc.lines
     });
-    post({ type: "contextChanged", context: currentEditorContext() });
+    publishEditorContext();
     if (update.docChanged) {
       if (idleTimer !== null) window.clearTimeout(idleTimer);
       idleTimer = window.setTimeout(() => post({ type: "idle", dirty }), 500);
@@ -29945,6 +29997,7 @@ ${fence}
         if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
         if (!node.parent) break;
       }
+      if (calloutHeader(editor.state.doc.lineAt(selection.head).text)) block.add("Callout");
     }
     const protectedSelection = editor.state.selection.ranges.some(
       (selection) => protectedCommandRanges().some((range) => selection.from < range.to && selection.to > range.from)
@@ -29982,6 +30035,11 @@ ${fence}
       undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
       redoLabel: redoDepth(editor.state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
     };
+  }
+  function publishEditorContext() {
+    const context = currentEditorContext();
+    updateEditorAccessibility(editor.contentDOM, currentMode, context);
+    post({ type: "contextChanged", context });
   }
   function successfulResult(requestID, sourceChanged = false, undoLabel) {
     return {
@@ -30035,6 +30093,9 @@ ${fence}
         break;
       case "setResearcherComments":
         editorOperations.setResearcherComments(operation.value);
+        break;
+      case "announceStatus":
+        announceEditorMessage(editor.contentDOM, operation.value);
         break;
       case "goToLine":
         editorOperations.goToLine(operation.line);
@@ -30143,7 +30204,7 @@ ${fence}
     }
     return successfulResult(request.requestID);
   }
-  var pendingCompositionRequests = [];
+  var compositionGate = new CompositionRequestGate();
   async function dispatchEditorRequest(value) {
     const bridgeStartedAt = performance.now();
     const requestBytes = (() => {
@@ -30157,14 +30218,15 @@ ${fence}
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes });
       return rejected("invalid", documentVersion, "malformed editor request");
     }
-    if (editor.composing && (value.operation.type === "setMode" || value.operation.type === "command")) {
-      return new Promise((resolve) => pendingCompositionRequests.push({
-        request: value,
-        resolve: (result) => {
-          recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes: encodedByteLength(result) });
-          resolve(result);
-        }
-      }));
+    if ((editor.composing || compositionGate.active) && (value.operation.type === "setMode" || value.operation.type === "command")) {
+      const result = compositionGate.enqueue(value);
+      return result.then((accepted) => {
+        recordEditorMetric("bridge-request", bridgeStartedAt, {
+          requestBytes,
+          resultBytes: encodedByteLength(accepted)
+        });
+        return accepted;
+      });
     }
     try {
       const result = await executeEditorRequest(value);
@@ -30181,13 +30243,15 @@ ${fence}
     }
   }
   editor.contentDOM.addEventListener("compositionend", () => {
-    const pending = pendingCompositionRequests;
-    pendingCompositionRequests = [];
-    for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
-    post({ type: "contextChanged", context: currentEditorContext() });
+    window.setTimeout(() => {
+      const pending = compositionGate.finish();
+      for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
+      publishEditorContext();
+    }, 0);
   });
   editor.contentDOM.addEventListener("compositionstart", () => {
-    window.queueMicrotask(() => post({ type: "contextChanged", context: currentEditorContext() }));
+    compositionGate.begin();
+    window.queueMicrotask(publishEditorContext);
   });
   function pasteTransfer(transfer, dropPosition) {
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
@@ -30218,10 +30282,11 @@ ${fence}
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
-      for (const pending of pendingCompositionRequests) {
-        pending.resolve(rejected(pending.request.requestID, documentVersion, "editor identity changed during composition"));
-      }
-      pendingCompositionRequests = [];
+      compositionGate.rejectAll((pending) => rejected(
+        pending.requestID,
+        documentVersion,
+        "editor identity changed during composition"
+      ));
       bridgeSessionID = sessionID;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
@@ -30246,10 +30311,8 @@ ${fence}
       });
       editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
       editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
-      editor.contentDOM.setAttribute("aria-label", editorAccessibilityAttributes(
-        mode === "livePreview" ? "livePreview" : "source"
-      )["aria-label"]);
       currentMode = mode === "livePreview" ? "livePreview" : "source";
+      updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
     },
     /** @param {string} css */
     setUserCSS(css2) {

@@ -23,11 +23,11 @@ Output:
 Stop condition:
 ```
 
-Use `scholium-zotero-integration` when bounded Zotero retrieval is needed, but do not treat a Zotero record as source evidence. Use `scholium-source-analysis` when the source itself must be analyzed and `scholium-content-audit` when the larger question is whether prose stays within verified scope and assigns the source a warranted philosophical role.
+Use `scholium-zotero-integration` when bounded Zotero retrieval is needed, but do not treat a Zotero record as source evidence. If the source itself must be analyzed, request the necessary source material outside the Research Strip. Use `scholium-content-fidelity` when the larger question is whether prose stays within verified scope and assigns the source a warranted philosophical role.
 
 ## Load the method
 
-Read [references/verification-method.md](references/verification-method.md) completely for every substantive check. Read [references/apa-7-starter.md](references/apa-7-starter.md) only when APA 7 form is requested or no other citation convention has been supplied.
+Read [references/verification-method.md](references/verification-method.md) completely for every substantive check. Read [references/apa-7-starter.md](references/apa-7-starter.md) only when APA 7 form is requested. Never use APA merely because no other convention was supplied.
 
 ## Execute
 
@@ -37,7 +37,7 @@ Read [references/verification-method.md](references/verification-method.md) comp
 4. For claim support, state what the source supports, at what scope, and what it does not support.
 5. Apply the requested style only after source identity and locator facts are verified.
 6. Preserve unresolved uncertainty and identify the smallest next check.
-7. Edit a note or reference list only when the exact target and permission are current.
+7. During Fidelity, remain read-only and return atomic corrections. Apply them only through a later Develop or Revise run with a fresh checkpoint and permission.
 
 ## Return
 

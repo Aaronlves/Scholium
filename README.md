@@ -88,6 +88,10 @@ When `WebEditor/` changes:
 ./Tools/Scripts/verify-editor-bundle.sh
 ```
 
+These scripts install the locked npm dependencies in temporary storage rather
+than the synced worktree. An in-tree `WebEditor/node_modules` is rejected;
+remove it and rerun the repository script.
+
 For deterministic interface work, use only the isolated QA app and disposable fixture copy:
 
 ```bash

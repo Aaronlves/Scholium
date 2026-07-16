@@ -757,7 +757,7 @@ extension ScholiumCLI {
             } else {
                 write("Dialogue: \(entry.id.uuidString)\n")
                 write("Instruction: \(entry.instruction)\n")
-                write("Checkpoint: \(entry.checkpointID.uuidString)\n\n")
+                write("Checkpoint: \(entry.checkpointID?.uuidString ?? "None")\n\n")
                 if let contract = entry.responseContract {
                     write("Response contract: request-snapshot\n")
                     write("  Base: \(contract.base)\n")

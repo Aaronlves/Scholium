@@ -265,8 +265,9 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     Use the sections Overall Assessment, Strengths, Major Concerns, Source Support,
     Objections and Alternatives, Revision Priorities, Specific Findings, and
     Materials Consulted and Limitations. Identify the materials actually consulted
-    and any limitations. Write the result to the designated Critique document. Do
-    not modify the target Work unless the researcher's instruction asks you to do so.
+    and any limitations. Write the result only to the designated Critique document.
+    The target Work and all contextual Materials remain read-only. If a later change
+    is warranted, prepare an independent Revise function through Scholium.
     """
 
     public static let defaultDialoguePromptTemplate = """
@@ -290,14 +291,19 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     Requested destination:
     {{requested_destination}}
 
-    Editing rules:
+    Dialogue boundary:
     {{editing_rules}}
-    Inspect the current files before editing. You may inspect and directly modify other relevant Triptych files when the researcher instruction requires it. Treat fingerprints as revision checks, not permission tokens. Neutral links and transitive paths are not evidence.
+    The selected Target and contextual Materials are read-only. Inspect their current
+    revisions before relying on them. If the request requires changing the Target,
+    stop Dialogue mutation and prepare Develop for an Analysis or Topic, or Revise
+    for a Work, through Scholium's Research Function API. Treat fingerprints as
+    revision checks, not permission tokens. Neutral links and transitive paths are
+    not evidence.
 
     Closing response:
-    If you changed research notes, conclude with a concise academic change summary. Foreground changes to arguments, interpretations, evidence, or organization. Identify any unresolved question or required researcher review. Keep routine file-operation details secondary.
-
-    A complete Triptych checkpoint named Before Agent Work was created before these instructions were copied.
+    Conclude with a concise attributed academic result. Identify any unresolved
+    question, warranted promotion, or required researcher review. Dialogue itself
+    creates no checkpoint and authorizes no research-note mutation.
     """
 
     public func activePromptTemplate(for kind: ResearchPromptKind) -> ResearchPromptTemplate {

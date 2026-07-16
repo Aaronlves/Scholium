@@ -28,6 +28,14 @@ public enum BundledResearchSkillLibrary {
                 )
             }
         }
+        for entry in catalog.entries where !entry.citationStyleResources.isEmpty {
+            let available = Set(try resourcePaths(for: entry))
+            for path in entry.citationStyleResources.values where !available.contains(path) {
+                throw ResearchSkillCatalogError.resourceMissing(
+                    "\(entry.resourcePath)/\(path)"
+                )
+            }
+        }
         return catalog
     }
 
@@ -51,7 +59,7 @@ public enum BundledResearchSkillLibrary {
         if entryValues.isRegularFile == true, entryValues.isSymbolicLink != true {
             paths.append("SKILL.md")
         }
-        for directory in ["references", "templates"] {
+        for directory in ["references", "templates", "evals"] {
             let directoryURL = packageRoot.appendingPathComponent(directory, isDirectory: true)
             guard let files = try? fileManager.contentsOfDirectory(
                 at: directoryURL,

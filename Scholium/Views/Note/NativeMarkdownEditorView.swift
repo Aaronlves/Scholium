@@ -69,6 +69,7 @@ struct NativeMarkdownReadView: NSViewRepresentable {
     let topContentInset: CGFloat
     let onLinkClick: (String) -> Void
     let onRequestComment: ((MarkdownReviewSelection) -> Void)?
+    var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
 
     func makeCoordinator() -> NativeMarkdownCoordinator {
         NativeMarkdownCoordinator(
@@ -77,7 +78,8 @@ struct NativeMarkdownReadView: NSViewRepresentable {
             textScale: textScale,
             topContentInset: topContentInset,
             onLinkClick: onLinkClick,
-            onRequestComment: onRequestComment
+            onRequestComment: onRequestComment,
+            onSelectionChange: onSelectionChange
         )
     }
 
@@ -106,6 +108,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
     private var topContentInset: CGFloat
     private let onLinkClick: ((String) -> Void)?
     private let onRequestComment: ((MarkdownReviewSelection) -> Void)?
+    private let onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
     private var isApplyingStyles = false
     private var pendingStyleWork: DispatchWorkItem?
     private var pendingSelectionStyleWork: DispatchWorkItem?
@@ -121,7 +124,8 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         textScale: Double = 1.0,
         topContentInset: CGFloat = 26,
         onLinkClick: ((String) -> Void)?,
-        onRequestComment: ((MarkdownReviewSelection) -> Void)?
+        onRequestComment: ((MarkdownReviewSelection) -> Void)?,
+        onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     ) {
         _text = text
         self.isEditable = isEditable
@@ -129,6 +133,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         self.topContentInset = max(0, topContentInset)
         self.onLinkClick = onLinkClick
         self.onRequestComment = onRequestComment
+        self.onSelectionChange = onSelectionChange
     }
 
     func makeScrollView(initialText: String) -> NSScrollView {
@@ -222,7 +227,12 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
-        guard isEditable, !isApplyingStyles else { return }
+        guard !isApplyingStyles else { return }
+        if !isEditable {
+            guard let textView = notification.object as? NSTextView else { return }
+            onSelectionChange?(reviewSelection(for: textView.selectedRange()))
+            return
+        }
         pendingSelectionStyleWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.applyStyles() }
         pendingSelectionStyleWork = work
@@ -263,12 +273,18 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
     }
 
     private func requestComment(for requestedRange: NSRange) {
-        guard let textView, let onRequestComment else { return }
+        guard let onRequestComment,
+              let selection = reviewSelection(for: requestedRange) else { return }
+        onRequestComment(selection)
+    }
+
+    private func reviewSelection(for requestedRange: NSRange) -> MarkdownReviewSelection? {
+        guard let textView else { return nil }
         let source = textView.string as NSString
         guard requestedRange.location != NSNotFound,
               requestedRange.location >= 0,
               requestedRange.length > 0,
-              NSMaxRange(requestedRange) <= source.length else { return }
+              NSMaxRange(requestedRange) <= source.length else { return nil }
 
         let prefix = source.substring(to: requestedRange.location)
         let startLine = prefix.reduce(into: 1) { count, character in
@@ -280,7 +296,8 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         }
         let trimmed = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
         let excerpt = String(trimmed.prefix(600))
-        onRequestComment(MarkdownReviewSelection(
+        guard !excerpt.isEmpty else { return nil }
+        return MarkdownReviewSelection(
             startLine: startLine,
             endLine: max(startLine, endLine),
             excerpt: excerpt,
@@ -294,7 +311,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
                 location: NSMaxRange(requestedRange),
                 length: min(48, source.length - NSMaxRange(requestedRange))
             ))
-        ))
+        )
     }
 
     func applyStyles() {

@@ -802,7 +802,12 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
     public let selectedNotes: [DialogueNoteReference]
     public let includedComments: [DialogueIncludedComment]
     public let generatedPrompt: String
-    public let checkpointID: UUID
+    public let checkpointID: UUID?
+    /// Optional function-run evidence. A method-unresolved preflight may be
+    /// finalized once without changing its research facts; legacy and ordinary
+    /// Dialogue records decode without it.
+    public let functionSnapshot: ResearchFunctionSnapshot?
+    public let functionCompletion: ResearchFunctionCompletion?
     /// Immutable request-time presentation choices. Nil is retained only for
     /// legacy records written before Beta response contracts existed.
     public let responseContract: DialogueResponseContract?
@@ -820,6 +825,8 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         case includedComments
         case generatedPrompt
         case checkpointID
+        case functionSnapshot
+        case functionCompletion
         case responseContract
         case requestedDestination
         case linkedNoteSummary
@@ -835,7 +842,9 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         selectedNotes: [DialogueNoteReference],
         includedComments: [DialogueIncludedComment],
         generatedPrompt: String,
-        checkpointID: UUID,
+        checkpointID: UUID?,
+        functionSnapshot: ResearchFunctionSnapshot? = nil,
+        functionCompletion: ResearchFunctionCompletion? = nil,
         responseContract: DialogueResponseContract? = nil,
         requestedDestination: String? = nil,
         linkedNoteSummary: String? = nil,
@@ -850,6 +859,8 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         self.includedComments = includedComments
         self.generatedPrompt = generatedPrompt
         self.checkpointID = checkpointID
+        self.functionSnapshot = functionSnapshot
+        self.functionCompletion = functionCompletion
         self.responseContract = responseContract
         let normalizedDestination = requestedDestination?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.requestedDestination = normalizedDestination?.isEmpty == false ? normalizedDestination : nil
@@ -880,7 +891,15 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
             includedComments = decodedComments
         }
         generatedPrompt = try container.decode(String.self, forKey: .generatedPrompt)
-        checkpointID = try container.decode(UUID.self, forKey: .checkpointID)
+        checkpointID = try container.decodeIfPresent(UUID.self, forKey: .checkpointID)
+        functionSnapshot = try container.decodeIfPresent(
+            ResearchFunctionSnapshot.self,
+            forKey: .functionSnapshot
+        )
+        functionCompletion = try container.decodeIfPresent(
+            ResearchFunctionCompletion.self,
+            forKey: .functionCompletion
+        )
         responseContract = try container.decodeIfPresent(
             DialogueResponseContract.self,
             forKey: .responseContract
@@ -903,7 +922,9 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         try container.encode(selectedNotes, forKey: .selectedNotes)
         try container.encode(includedComments, forKey: .includedComments)
         try container.encode(generatedPrompt, forKey: .generatedPrompt)
-        try container.encode(checkpointID, forKey: .checkpointID)
+        try container.encodeIfPresent(checkpointID, forKey: .checkpointID)
+        try container.encodeIfPresent(functionSnapshot, forKey: .functionSnapshot)
+        try container.encodeIfPresent(functionCompletion, forKey: .functionCompletion)
         try container.encodeIfPresent(responseContract, forKey: .responseContract)
         try container.encodeIfPresent(requestedDestination, forKey: .requestedDestination)
         try container.encodeIfPresent(linkedNoteSummary, forKey: .linkedNoteSummary)
@@ -1040,19 +1061,31 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     public let targetFingerprint: DocumentFingerprint
     public let checkpointID: UUID?
     public let scope: CritiqueRequestScope
+    public let functionSnapshot: ResearchFunctionSnapshot?
+    public let functionCompletion: ResearchFunctionCompletion?
+    public let functionInstructions: String?
 
     public init(
         id: UUID = UUID(),
         requestedAt: Date = Date(),
         targetFingerprint: DocumentFingerprint,
         checkpointID: UUID?,
-        scope: CritiqueRequestScope
+        scope: CritiqueRequestScope,
+        functionSnapshot: ResearchFunctionSnapshot? = nil,
+        functionCompletion: ResearchFunctionCompletion? = nil,
+        functionInstructions: String? = nil
     ) {
         self.id = id
         self.requestedAt = requestedAt
         self.targetFingerprint = targetFingerprint
         self.checkpointID = checkpointID
         self.scope = scope
+        self.functionSnapshot = functionSnapshot
+        self.functionCompletion = functionCompletion
+        let normalized = functionInstructions?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        self.functionInstructions = normalized?.isEmpty == false ? normalized : nil
     }
 }
 

@@ -25,6 +25,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(initial == "Thesis\r\nSecond\r\n")
 
+        let accessibility = try await harness.session.testingAccessibilitySnapshot()
+        #expect(accessibility.contentEditableCount == 1)
+        #expect(accessibility.textboxCount == 1)
+        #expect(accessibility.label == "Markdown live preview editor")
+        #expect(accessibility.multiline == "true")
+        #expect(!accessibility.hasValueText)
+        #expect(accessibility.spellcheck == "true")
+
         do {
             try await harness.session.perform(.bold)
         } catch {
@@ -37,18 +45,48 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.latestSource == "****Thesis\r\nSecond\r\n")
         #expect(harness.session.generation == 1)
 
-        try await Task.sleep(for: .milliseconds(350))
-        #expect(harness.session.testingSimulateWebContentProcessTermination())
-        try await harness.waitUntilReady()
-        let recovered = try await harness.session.currentText(for: harness.documentID)
-        #expect(recovered == "****Thesis\r\nSecond\r\n")
-        #expect(harness.session.generation == 1)
-
         let pastePayload = #"{"plainText":"Reason","html":"<strong>Reason</strong>"}"#
         try await harness.session.perform(.pasteMarkdown, argument: pastePayload)
         let pasted = try await harness.session.currentText(for: harness.documentID)
         #expect(pasted == "****Reason****Thesis\r\nSecond\r\n")
         #expect(harness.session.generation == 2)
+
+        let unicode = "e\u{301} | é | 👩🏽‍💻️ | العربية، Markdown | עברית (LTR)"
+        let unicodeInsertionOffset = try #require(harness.session.context?.selections.first?.head)
+        try await harness.session.perform(.pastePlain, argument: unicode)
+        let beforeTermination = try await harness.session.currentText(for: harness.documentID)
+        let expectedBeforeTermination = try inserting(
+            unicode,
+            atUTF16: unicodeInsertionOffset,
+            in: pasted
+        )
+        #expect(Data(beforeTermination.utf8) == Data(expectedBeforeTermination.utf8))
+        #expect(Array(beforeTermination.utf16) == Array(expectedBeforeTermination.utf16))
+        #expect(harness.session.isDirty)
+        let insertionOffset = try #require(harness.session.context?.selections.first?.head)
+
+        // Terminate before the bounded EditorState capture can replace the
+        // delta-checked mirror fallback. Recovery must retain the last context
+        // selection so the next insertion remains at the end of the source.
+        #expect(harness.session.testingSimulateWebContentProcessTermination())
+        try await harness.waitUntilReady()
+        let recovered = try await harness.session.currentText(for: harness.documentID)
+        #expect(Data(recovered.utf8) == Data(beforeTermination.utf8))
+        #expect(Array(recovered.utf16) == Array(beforeTermination.utf16))
+        #expect(harness.session.isDirty)
+
+        try await harness.session.perform(.pastePlain, argument: "!")
+        let afterSelectionRestore = try await harness.session.currentText(for: harness.documentID)
+        let expectedAfterSelectionRestore = try inserting("!", atUTF16: insertionOffset, in: recovered)
+        #expect(Data(afterSelectionRestore.utf8) == Data(expectedAfterSelectionRestore.utf8))
+        #expect(Array(afterSelectionRestore.utf16) == Array(expectedAfterSelectionRestore.utf16))
+    }
+
+    private func inserting(_ insertion: String, atUTF16 offset: Int, in source: String) throws -> String {
+        let units = source.utf16
+        let position = try #require(units.index(units.startIndex, offsetBy: offset, limitedBy: units.endIndex))
+        let index = try #require(String.Index(position, within: source))
+        return String(source[..<index]) + insertion + source[index...]
     }
 
     @MainActor

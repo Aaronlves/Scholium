@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var appState: WindowModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         GeometryReader { geometry in
@@ -124,7 +125,11 @@ struct ContentView: View {
             ScholiumMotion.searchPresentation(reduceMotion: reduceMotion),
             value: appState.showSearchSurface
         )
-        .sheet(item: presentedSheet) { route in
+        .sheet(item: presentedSheet, onDismiss: {
+            if appState.researchController.functions.isPresented {
+                appState.researchController.functions.dismiss()
+            }
+        }) { route in
             sheetContent(for: route)
         }
         .alert(item: presentedAlert) { alert in
@@ -135,6 +140,9 @@ struct ContentView: View {
                     appState.presentationRouter.alert = nil
                 }
             )
+        }
+        .task(id: appState.currentResearchFunctionTarget) {
+            await appState.refreshResearchFunctionAvailability()
         }
     }
 
@@ -273,7 +281,8 @@ struct ContentView: View {
             pendingIdentityRebinding: path.flatMap { appState.pendingIdentityRebinding(for: $0) },
             identityMigrationFailureMessage: path
                 .flatMap { appState.identityMigrationFailure(for: $0)?.message },
-            isResolvingIdentity: appState.isResolvingIdentity
+            isResolvingIdentity: appState.isResolvingIdentity,
+            researchStrip: appState.researchStripPresentation
         )
     }
 
@@ -320,7 +329,9 @@ struct ContentView: View {
                 appState.editingNotePath = path
                 appState.showFrontmatterEditor = true
             },
-            openScholia: { appState.openScholia() },
+            openResearchFunction: { function, selection in
+                appState.openResearchFunction(function, selection: selection)
+            },
             setNoteHistoryVisible: {
                 appState.setNoteHistoryVisible($0, animated: false)
             },
@@ -400,7 +411,6 @@ struct ContentView: View {
             openNote: { appState.requestOpenNote($0, inNewTab: $1) },
             openLifecycleNote: { appState.requestLifecycleNote($0, in: $1) },
             selectWorkspaceVault: { appState.requestWorkspaceVault($0) },
-            presentScholia: { appState.requestOpenScholia(for: $0) },
             lifecycleItems: { try await appState.lifecycleLocationItems(for: $0) },
             prepareLifecycle: { appState.prepareLifecycleOperation($0) },
             clearPreparedLifecycle: { appState.clearPreparedLifecycleOperation(at: $0) },
@@ -511,20 +521,63 @@ struct ContentView: View {
                 }
                     .frame(minWidth: 520, minHeight: 560)
             }
-        case .scholia(let path):
-            if let note = note(at: path) {
-                let presentationID = appState.researchController.scholia.presentationID
-                ScholiaPanelView(
-                    note: note,
-                    controller: appState.researchController,
-                    context: scholiaContext(for: note)
-                ) { destination in
-                    scholiaDestination(destination, note: note)
+        case .researchFunction(let route):
+            if let note = note(at: route.target.relativePath) {
+                ResearchFunctionPanelView(
+                    controller: appState.researchController.functions,
+                    context: ResearchFunctionPanelContext(
+                        comments: appState.humanReviewRecord(
+                            for: route.target.relativePath
+                        )?.comments ?? [],
+                        manageComments: {
+                            appState.requestResearcherComments(
+                                at: route.target.relativePath
+                            )
+                        },
+                        repairCitationMethod: {
+                            UserDefaults.standard.set(
+                                WorkspaceSettingsPane.researchGuidance.rawValue,
+                                forKey: "scholium.settings.selectedPane"
+                            )
+                            UserDefaults.standard.set(
+                                "skills",
+                                forKey: "scholium.settings.researchGuidanceCollection"
+                            )
+                            openSettings()
+                        },
+                        copyInstructions: { instructions in
+                            do {
+                                try appState.copyTextToClipboard(instructions)
+                                appState.showToast("Function instructions copied.")
+                            } catch {
+                                appState.showToast(
+                                    error.localizedDescription,
+                                    kind: .error
+                                )
+                            }
+                        },
+                        dismiss: {
+                            appState.presentationRouter.dismissSheet()
+                        }
+                    )
+                ) {
+                    QualityReviewView(
+                        note: note,
+                        context: qualityReviewContext(for: note),
+                        showsHeader: false
+                    )
                 }
-                    .onDisappear {
-                        guard let presentationID else { return }
-                        appState.researchController.dismissScholiaPresentation(id: presentationID)
+                .onDisappear {
+                    // Normal sheet dismissal is finalized by the root
+                    // `onDismiss`, after AppKit has yielded keyboard focus.
+                    // A direct route replacement still invalidates this draft
+                    // immediately so it cannot leak into the next sheet.
+                    if appState.presentationRouter.sheet != nil {
+                        appState.researchController.functions.dismiss(
+                            presentationID: route.presentationID
+                        )
                     }
+                }
             }
         case .attention:
             AttentionQueueView(
@@ -611,13 +664,6 @@ struct ContentView: View {
                 markResolved: { try await appState.markTransactionRecoveryResolved($0) },
                 revealRecords: { appState.revealTransactionRecoveryRecordsInFinder() }
             )
-        case .critique(let path):
-            if let note = note(at: path) {
-                CritiqueRequestView(
-                    note: note,
-                    context: critiqueRequestContext(for: note)
-                )
-            }
         case .identityResolution(let ambiguity):
             IdentityResolutionView(
                 ambiguity: ambiguity,
@@ -652,30 +698,6 @@ struct ContentView: View {
         appState.notes.first(where: { $0.relativePath == path })
     }
 
-    private func scholiaContext(for note: WindowDocumentLocation) -> ScholiaPanelContext {
-        let hasResolvedIdentity = appState.noteIdentityByPath[note.relativePath] != nil
-        return ScholiaPanelContext(
-            vaultRole: appState.currentVaultRole,
-            humanReviewRecord: appState.humanReviewRecord(for: note.relativePath),
-            canComment: appState.canCommentCurrentNote,
-            canHumanReview: appState.canHumanReviewCurrentNote,
-            canEdit: appState.canEditCurrentNote,
-            hasResolvedIdentity: hasResolvedIdentity,
-            availableWindowWidth: appState.windowWidth,
-            openComments: {
-                appState.researcherCommentsPath = note.relativePath
-            },
-            prepareDialogue: {
-                guard let vaultID = appState.currentRegisteredVault?.id,
-                      hasResolvedIdentity else { return }
-                appState.dialogueInitialNotes = [VaultQualifiedNoteID(
-                    vaultID: vaultID,
-                    relativePath: note.relativePath
-                )]
-            }
-        )
-    }
-
     private func qualityReviewContext(for note: WindowDocumentLocation) -> QualityReviewContext {
         QualityReviewContext(
             revision: appState.documentRevisions[note.relativePath],
@@ -694,31 +716,6 @@ struct ContentView: View {
                     fingerprint: revision,
                     qualification: qualification,
                     reviewNote: reviewNote
-                )
-            }
-        )
-    }
-
-    private func critiqueRequestContext(for note: WindowDocumentLocation) -> CritiqueRequestContext {
-        CritiqueRequestContext(
-            triptychID: appState.workspaceAssignment?.id,
-            existingCritiquePath: {
-                await appState.critiqueAssociation(
-                    for: note.relativePath
-                )?.critiqueRelativePath
-            },
-            copyInstructions: { scope, lens, selectedRanges in
-                _ = try await appState.copyCritiqueInstructions(
-                    for: note.relativePath,
-                    scope: scope,
-                    lens: lens,
-                    selectedRanges: selectedRanges,
-                    additionalInstructions: ""
-                )
-            },
-            didCopyInstructions: {
-                appState.showToast(
-                    "Critique instructions copied. Before Agent Work checkpoint created."
                 )
             }
         )
@@ -778,72 +775,6 @@ struct ContentView: View {
                 return record.comments
             }
         )
-    }
-
-    private func dialogueContext(for note: WindowDocumentLocation) -> DialogueContext {
-        let fallbackInitialNote = appState.currentRegisteredVault.map {
-            VaultQualifiedNoteID(vaultID: $0.id, relativePath: note.relativePath)
-        }
-        return DialogueContext(
-            triptychID: appState.workspaceAssignment?.id,
-            fallbackInitialNote: fallbackInitialNote,
-            initialNotes: appState.dialogueInitialNotes,
-            responseProfile: {
-                try await appState.dialogueResponseProfile()
-            },
-            candidates: {
-                try await appState.dialogueCandidates()
-            },
-            comments: { noteID in
-                await appState.comments(for: noteID)
-            },
-            createDialogue: {
-                instruction,
-                selectedNotes,
-                includedCommentIDs,
-                requestedDestination,
-                responseProfile in
-                try await appState.createDialogue(
-                    instruction: instruction,
-                    selectedNotes: selectedNotes,
-                    includedCommentIDs: includedCommentIDs,
-                    requestedDestination: requestedDestination,
-                    responseProfile: responseProfile
-                )
-            },
-            didCreateDialogue: {
-                appState.showToast(
-                    "Instructions copied. Before Agent Work checkpoint created."
-                )
-                appState.dialogueInitialNotes = []
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func scholiaDestination(
-        _ destination: ScholiaDestination,
-        note: WindowDocumentLocation
-    ) -> some View {
-        switch destination {
-        case .comments:
-            ResearcherCommentsView(
-                note: note,
-                context: researcherCommentsContext(for: note)
-            )
-        case .review:
-            QualityReviewView(
-                note: note,
-                context: qualityReviewContext(for: note)
-            )
-        case .critique:
-            CritiqueRequestView(
-                note: note,
-                context: critiqueRequestContext(for: note)
-            )
-        case .dialogue:
-            DialogueView(context: dialogueContext(for: note))
-        }
     }
 
     private func updateAdaptiveLayout(for width: CGFloat, isInitial: Bool = false) {

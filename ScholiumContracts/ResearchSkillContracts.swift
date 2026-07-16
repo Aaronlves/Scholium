@@ -22,6 +22,13 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
     public let role: String
     public let version: String
     public let updatePolicy: String
+    public let supportedFunctions: [ResearchFunctionID]
+    public let capabilities: [ResearchSkillCapability]
+    public let citationStyles: [String]
+    /// Explicit semantic style identifier to bounded package resource. This
+    /// mapping prevents execution from guessing rules from filenames.
+    public let citationStyleResources: [String: String]
+    public let allowsEvolution: Bool
     public let supportedModes: [ResearchSkillMode]
     public let automaticModes: [ResearchSkillMode]
     public let compatiblePracticeIDs: [String]
@@ -49,6 +56,11 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
         role: String = "specialist",
         version: String = "local",
         updatePolicy: String = "researcher-owned",
+        supportedFunctions: [ResearchFunctionID] = [],
+        capabilities: [ResearchSkillCapability] = [],
+        citationStyles: [String] = [],
+        citationStyleResources: [String: String] = [:],
+        allowsEvolution: Bool = false,
         supportedModes: [ResearchSkillMode] = [.all],
         automaticModes: [ResearchSkillMode] = [],
         compatiblePracticeIDs: [String] = [],
@@ -66,6 +78,19 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
         self.role = role
         self.version = version
         self.updatePolicy = updatePolicy
+        self.supportedFunctions = Self.unique(supportedFunctions)
+        self.capabilities = Self.unique(capabilities)
+        self.citationStyles = Self.unique(citationStyles.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }.filter { !$0.isEmpty })
+        var normalizedStyleResources: [String: String] = [:]
+        for (key, value) in citationStyleResources {
+            normalizedStyleResources[
+                key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ] = value
+        }
+        self.citationStyleResources = normalizedStyleResources
+        self.allowsEvolution = origin == .triptych && allowsEvolution
         self.supportedModes = Self.unique(supportedModes)
         self.automaticModes = Self.unique(automaticModes)
         self.compatiblePracticeIDs = Self.unique(compatiblePracticeIDs)
@@ -77,6 +102,14 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
 
     public func supports(_ mode: ResearchSkillMode) -> Bool {
         supportedModes.contains(.all) || supportedModes.contains(mode)
+    }
+
+    public func supports(_ function: ResearchFunctionID) -> Bool {
+        supportedFunctions.contains(function)
+    }
+
+    public func provides(_ capability: ResearchSkillCapability) -> Bool {
+        capabilities.contains(capability)
     }
 
     public func addingValidationIssues(_ issues: [String]) -> Self {
@@ -91,6 +124,11 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
             role: role,
             version: version,
             updatePolicy: updatePolicy,
+            supportedFunctions: supportedFunctions,
+            capabilities: capabilities,
+            citationStyles: citationStyles,
+            citationStyleResources: citationStyleResources,
+            allowsEvolution: allowsEvolution,
             supportedModes: supportedModes,
             automaticModes: automaticModes,
             compatiblePracticeIDs: compatiblePracticeIDs,

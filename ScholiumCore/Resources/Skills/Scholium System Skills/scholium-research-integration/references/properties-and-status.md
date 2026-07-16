@@ -72,7 +72,7 @@ For a newly authorized durable Analysis, fill:
 
 If required bibliographic identity cannot be verified, do not fabricate it: leave it unresolved under the active creation contract and report the gap. Use `type`, `tags`, `access`, `text_reliability`, `locators`, and `status` only when warranted. Project Relevance belongs in the report body when project context exists; do not add or maintain a default `relevance` property. Preserve existing `relevance` YAML as custom or legacy data.
 
-The optional `debate_importance` property is a whole number from 0–10 and must appear together with non-empty `debate_importance_scope`. Add or change the pair only when both keys are authorized and Source Analysis has adequate checked context for a comparative judgment within the named debate, domain, tradition, period, or reception context. The rating has no pass grade. It is not project relevance, quality, truth, prestige, citation impact, or the source's self-assessment. Omit both fields when the evidence is insufficient and place the rationale or not-assessed reason in the report body.
+The optional `debate_importance` property is a whole number from 0–10 and must appear together with non-empty `debate_importance_scope`. Add or change the pair only when both keys are authorized and the available checked source analysis and comparative context justify a judgment within the named debate, domain, tradition, period, or reception context. The rating has no pass grade. It is not project relevance, quality, truth, prestige, citation impact, or the source's self-assessment. Omit both fields when the evidence is insufficient and place the rationale or not-assessed reason in the report body.
 
 ### Topics
 

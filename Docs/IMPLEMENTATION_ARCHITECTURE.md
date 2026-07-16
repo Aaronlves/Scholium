@@ -50,6 +50,7 @@ WorkspaceRuntime (one live runtime for the app delivery)
         ├── DocumentController
         │   └── DocumentSessionStore
         ├── ResearchController
+        │   └── ResearchFunctionController
         ├── WindowPresentationRouter
         └── typed WindowIntent routing
 ```
@@ -83,6 +84,77 @@ Document, and Research controllers own their independent window state and
 borrow only their matching Application capability. Controllers never mutate
 one another. Settings uses the separate `WorkspaceSettingsModel` and does not
 construct a document window.
+
+## Research Function boundary
+
+Research Functions follow the same in-process compiler boundary as every other
+delivery-neutral capability:
+
+```text
+ResearchStripView / ResearchFunctionPanelView
+        ↓ immutable presentation values and closures
+ResearchFunctionController (one window)
+        ↓ ResearchFunctionClient
+ResearchFunctionUseCases (Contracts)
+        ↓
+ResearchFunctionCoordinator (Application)
+        ↓
+Core skill, checkpoint, record, and repository authorities
+```
+
+`ScholiumContracts` owns `ResearchFunctionID`, Target, Material, Whole/Passage
+scope, Fidelity checks, availability and repair reason codes, prepared runs,
+completion submissions, fingerprints, and the narrow `ResearchFunctionUseCases`
+protocol. `ResearchUseCases` remains a compatibility composite of record,
+checkpoint, skill, and function capabilities. Contracts contain no labels,
+symbols, package storage, YAML inspection, or UI layout.
+
+`ScholiumApplication` owns one delivery-neutral `ResearchFunctionCoordinator`
+per workspace. Its availability, preparation, method-finalization, completion,
+cancellation, and record-projection units resolve stable identities, revalidate
+Target and Materials, resolve exact skill resources, coordinate checkpoints
+and records, validate final fingerprints, and roll back partial preparation. A
+method-unresolved Strip request persists the normal run, checkpoint, and
+Dialogue or Critique record as a read-only preflight. The agent must call
+`selectFunctionMethods` with explicit semantic references—or an empty base-only
+selection—before mutation instructions or completion are available. Core
+atomically extends that same persisted snapshot through
+`finalizeFunctionPreflight`; it never replaces the run, checkpoint, record, or
+preparation identity. Only the exact selected resource references and package
+revisions enter the immutable execution handoff. The public
+`ResearchOperations` facade delegates to it. Legacy Dialogue and Critique
+entry points remain compatibility wrappers while callers migrate.
+
+Write-capable preparation records only a pending Fidelity handoff. Its first
+post-edit completion persists the exact final Target fingerprint as
+`awaitingFidelity`. The external agent then prepares and completes an
+independent read-only Fidelity run against that final revision with the same
+Materials, scope kind, Comments, and checks; a later parent submission links
+the child run ID. Completion rejects direct Fidelity outcomes on the write run
+and validates the child's identity, final fingerprints, evidence, checks, and
+completion before monotonically advancing the parent. Exact evidence keys
+reuse completed evidence instead of storing or scheduling a duplicate audit.
+
+`ScholiumCore` keeps authorities separate: `ResearchSkillStore` owns package
+discovery, metadata, bindings, and fingerprints; `ResearchWorkflowAssembler`
+owns dependency closure and instruction assembly; `TriptychCheckpointStore`
+owns checkpoint and recovery; Dialogue, Critique, and Human Review retain
+separate stores; repositories remain the only exact revision-checked document
+mutation authority. No omnibus function store is introduced.
+
+`ScholiumCLI` decodes Contracts requests, invokes the same Application use
+cases as the app, and encodes results for `function availability`, `prepare`,
+`select-methods`, `complete`, and `cancel`. It never duplicates eligibility, skill routing,
+checkpoint, or write-set policy.
+
+The App keeps `ResearchController` as the per-window feature root. Its owned
+`ResearchFunctionController` contains only the immutable active Target, panel
+draft, selected Materials, scope, selected Comments and Fidelity checks,
+progress, cancellation, errors, presentation identity, and stale-response
+tokens. A narrow `ResearchFunctionClient` combines document flush and current
+selection capture with async use-case closures at the window composition root;
+the controller owns no repository, filesystem, document controller, or
+authoritative research data.
 
 ## Source layout
 
@@ -127,6 +199,52 @@ not own document sessions.
 
 `ContentView` has one `.sheet(item:)` and one typed alert presentation. The
 deliberate `HSplitView` trailing-context workaround remains intact.
+
+The Research Function panel uses one typed `researchFunction` sheet route
+carrying only a stable Target reference, function ID, and presentation ID. The
+router owns sheet exclusivity; `ResearchFunctionController` owns the session
+and draft. `NoteContentView` receives only a `ResearchStripPresentation` and an
+`openResearchFunction(id:selection:)` closure. It never receives
+`WindowModel`, `ResearchController`, or Application authority.
+
+## Product Skill resources and maintenance
+
+`Skills/` is the canonical product-skill tree. The Core resource copy is a
+generated mirror checked by a dedicated sync script. The official Workflow
+layer contains Development, Critique, Revision, Content Fidelity, and
+Manuscript; Dialogue remains System infrastructure and Human Review has no
+skill. Catalog metadata exposes supported functions, capabilities, and
+citation styles while retaining supported modes only for legacy decoding and
+internal method selection.
+
+Function-method activation is a separate Settings-facing capability over the
+same boundary. `ResearchFunctionSkillSelection` represents an optional primary
+replacement, supplemental packages, and exact Practice selections for one
+semantic function. Application lists only valid compatible Triptych-local
+Researcher Skills, validates role and Practice compatibility, and performs
+revision-checked saves through `ResearchSkillStore`. The assembler composes the
+persisted selection into the effective phase contract. The frontend receives
+friendly candidate names only in Research Guidance; the Strip and CLI never
+choose package IDs.
+
+Researcher Skill evolution is an independent Research Guidance maintenance
+slice. Contracts carry the expected revision, complete proposed package,
+evaluation, and confirmation token; Application enforces explicit request and
+confirmation. Core validates the proposal against the same bounded package and
+dependency graph as installed local Skills, snapshots the entire opted-in
+Triptych-local package, replaces it through descriptor-relative operations,
+reads it back, and rolls back on failure. Bundled packages remain immutable.
+This path is never selected by a Research Function.
+
+Snapshot inventory is global to Research Guidance rather than derived from the
+selected Skill. Core enumerates snapshots through stable directory descriptors
+and no-follow reads, returns valid snapshots together with typed per-entry
+issues, and never lets one corrupt entry hide other recovery sources. Restore
+accepts an explicitly expected present-or-missing current state, validates the
+snapshot as a Researcher Skill, and uses atomic replace or guarded missing-
+package installation. An existing displaced package becomes a new undo
+snapshot before replacement; a missing package has no displaced state. The UI
+confirms complete-package replacement before invoking this authority.
 
 ## Shared read models and metadata
 

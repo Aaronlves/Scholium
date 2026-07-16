@@ -5,7 +5,9 @@ description: Interpret and honor the researcher-selected response contract attac
 
 # Scholium Dialogue Response
 
-Apply `scholium-core-protocol`. Treat this protected System Skill as the response contract between the Scholia panel and the agent. It controls how to present and record the result; it does not perform the philosophical workflow, authorize note edits, or decide what the researcher accepts.
+Apply `scholium-core-protocol`. Treat this protected System Skill as the response contract between the Research Strip and the agent. It controls how to present and record the result; it does not perform the philosophical workflow, authorize note edits, or decide what the researcher accepts.
+
+Dialogue is read-only by default. If the researcher explicitly asks to change the current Analysis or Topic, stop Dialogue mutation and prepare Develop through the Research Function API. If the Target is a Work, prepare Revise. The external agent requests this promotion; the frontend does not classify philosophical prose. Never treat a copied Dialogue instruction, selected response module, or earlier checkpoint as write permission.
 
 ## Resolve the request contract
 

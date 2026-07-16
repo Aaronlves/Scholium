@@ -42,7 +42,7 @@ When source access is required:
 - identify the version when possible;
 - record whether full text, an abstract, an excerpt, or metadata only was available;
 - check selectable-text and pagination reliability before using page-specific locators;
-- pass the source packet to the Source Analysis workflow rather than analyzing it inside this adapter.
+- pass the source packet to an explicitly selected external source-analysis method rather than analyzing it inside this adapter; Scholium does not expose Source Analysis as a Strip function.
 
 ## Guarded import protocol
 

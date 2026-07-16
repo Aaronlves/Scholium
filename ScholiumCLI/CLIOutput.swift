@@ -48,6 +48,11 @@ extension ScholiumCLI {
           scholium workflow assemble --from <file|-> [--triptych <selector>]
               --format markdown|json
           scholium workflow audit-plan --from <file|-> --format json
+          scholium function availability --from <json|-> --format json
+          scholium function prepare --from <json|-> --format json|markdown
+          scholium function select-methods --from <json|-> [--triptych <selector>] --format json|markdown
+          scholium function complete --from <json|-> [--triptych <selector>] --format json
+          scholium function cancel <run-id> [--triptych <selector>]
           scholium read <vault>:<relative-path> [--format json]
           scholium note create <vault>:<path> --from <markdown-file>
           scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>

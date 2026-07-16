@@ -48,10 +48,12 @@ Do not claim that Apple prescribes Scholium’s Triptych, evidence hierarchy, re
 ### 1.1 Prototype and layout baseline
 
 `Docs/Prototypes/triptych-document-layout.html` is the researcher-approved
-preferred reference for Scholium's main-window composition and page logic. In
-particular, its current Scholia composition around line 4230 records the
-decision to keep existing whole-note Comments visible while collapsing the new
-Comment composer so that formal Review or Critique remains primary.
+preferred reference for Scholium's main-window composition and page logic. Its
+document-first topology remains useful, but its Scholia doorway and segmented
+panel are superseded by decision D-026's editor-only Research Strip and typed
+function panel. The retained composition principle is that existing whole-note
+Comments remain visible while the new Comment composer stays subordinate to
+formal Review or Critique.
 
 The prototype is a strong design reference, not a frozen specification:
 
@@ -331,7 +333,7 @@ The inspector follows the selected note. Its stable top-level modes are **Incomi
   slides or appears from the trailing edge, moves its control with it, and
   reflows the document instead of covering the panel header or prose.
 
-### 4.8 Review, Dialogue, Critique, and recovery
+### 4.8 Research Strip, function panels, and recovery
 
 **Human Review** records the researcher’s fingerprint-bound assessment and
 qualification of an Analysis or Topic. **Dialogue** records concise scholarly
@@ -339,18 +341,23 @@ Comments and Responses and may package selected-note context into transient
 copyable instructions. **Critique** is an optional attributed agent assessment
 of one Work and remains separate from Work prose.
 
-- Use **Open Scholia…** as the single prominent document-local doorway for
-  Comments, Human Review or Critique, and Dialogue. Opening it presents one
-  role-aware Scholia panel rather than several competing sheets or toolbar
-  actions.
-- For Analyses and Topics, the Scholia segmented control is **Comments &
-  Review** and **Dialogue**. For Works, it is **Comments & Critique** and
-  **Dialogue**. Default to the first segment and retain the selected segment
-  for the current window session.
-- Sharing a panel is a presentation decision only. Comment records, Review
-  qualification and notes, Critique requests and responses, Dialogue records,
-  checkpoints, and Note History entries retain separate eligibility,
-  provenance, completion, and recovery behavior.
+- Mount one restrained Research Strip at the bottom of the editor whenever an
+  Analysis, Topic, or Work is open. Reserve matching editor space so prose and
+  source controls are never obscured. With no selected note there is no editor,
+  Strip, or function panel.
+- Show **Dialogue · Develop · Review · Fidelity** for Analyses and Topics and
+  **Critique · Revise · Dialogue · Fidelity · Manuscript** for Works, in that
+  order. These one-word controls are the only permanent function choices.
+- Choosing one function opens the shared Research Function panel directly at
+  that function. Do not recreate an omnibus segmented Scholia panel or a
+  second-level mode chooser. The panel title and sections adapt to the selected
+  function while the Target remains fixed.
+- Select additional notes only inside the panel. Present them as read-only
+  Materials and make Target duplication impossible. Scope is **Whole |
+  Passage**; a current editor selection defaults relevant functions to Passage.
+- Human Review, Comments, Dialogue, Critique, Fidelity, checkpoints, and Note
+  History retain separate eligibility, provenance, completion, and recovery
+  behavior even when their controls are adapted into one function panel.
 - Keep whole-note Comments subordinate to the formal Review or Critique task.
   Show existing Comments normally, but keep the new whole-note Comment composer
   collapsed behind a compact add-Comment control until the researcher invokes
@@ -358,8 +365,10 @@ of one Work and remains separate from Work prose.
   during Human Review.
 - Use the exact target actions and meanings in Section 10.
 - Keep Human Review, Dialogue entries, Critique associations, and checkpoint versions visibly distinct in Note History.
-- Let the researcher select one or several notes and provide one overall
-  Dialogue Comment or instruction without forcing predefined task types.
+- Let the researcher select Materials and provide one overall Dialogue Comment
+  or instruction without exposing philosophical submodes. Dialogue is read-only
+  unless an external agent explicitly promotes it to Develop or Revise through
+  the function API.
 - Keep prompt templates and assembled technical instructions out of Dialogue,
   Critique, and future research-workflow surfaces. These surfaces show the
   selected research context and scholarly inputs but no template body,
@@ -368,12 +377,25 @@ of one Work and remains separate from Work prose.
   applicable template. Preserve the workflow's selected notes, Comments,
   scope, and keyboard focus path while the Settings window is open.
 - Show Critique authorship, target, target fingerprint, materials consulted, limitations, and source anchors before the body.
+- Combine former overall and focused Critique choices into one **Critique**
+  function using Whole or Passage. Review contains Analysis or Topic Comments;
+  Critique contains Work Comments. Fidelity contains **Content** and
+  **Citations** checks and must show when Citations needs a bound Researcher
+  Skill.
 - Do not imply that a Dialogue entry is a document version or that a Critique judgment is Human Review qualification.
 - Do not require technical prompts, hidden instructions, model parameters, or
   paragraph-level AI provenance in the scholarly Dialogue record.
 - When an agent changes notes, foreground a concise academic change summary;
   routine file-operation details remain secondary.
 - Keep checkpoint comparison keyboard navigable and label created, changed, moved, and deleted files in text rather than color alone.
+
+The Research Strip is a Scholium-specific macOS control surface inspired by the
+researcher's requested bottom ornament placement; it is not Apple's visionOS
+Ornament component. Apple macOS guidance generally cautions against making the
+bottom edge the only home for critical actions because a window can extend
+below the display. The researcher approves this documented exception because
+the Strip remains inside the visible editor layout and every function has a
+direct Research-menu route, keyboard/focus behavior, and accessibility action.
 
 For save and conflict recovery, preserve these exact distinctions:
 
@@ -413,9 +435,29 @@ Conflict comparison uses **Return to Editing** and **Reload from Disk** and keep
   Skills expose no duplicate action. Keep invalid packages visible
   with an inline structural error and never imply that validation certifies
   philosophical accuracy or methodological quality.
-- Skill management does not add a skill picker, skill source, or one-run skill
-  override to Dialogue, Critique, or another research workflow. Any future
-  workflow binding requires a separate approved product decision.
+- Skill management does not add a skill picker, skill source, package
+  identifier, or one-run override to Dialogue, Critique, or another research
+  function. **Research Guidance → Skills → Research Methods** presents one
+  one-word function at a time and uses friendly method names to choose the
+  built-in or a compatible Triptych-local primary method, Supplements, and
+  exact Practices. Application alone validates and persists the semantic
+  binding used by later runs; package identifiers never appear in the Strip.
+- A Triptych-local Researcher Skill that explicitly opts into maintenance may
+  copy an external proposal request containing its complete current package,
+  revision, and maintenance purpose; import the returned complete package JSON;
+  and show per-file current/proposed comparison, evaluation status, **Apply**,
+  and **Restore** in Research Guidance. Keep proposal, evaluation, expected
+  revision, confirmation, and rollback as distinct visible stages. Bundled
+  System and Workflow Skills expose no evolution action, and no research
+  function opens this maintenance flow automatically.
+- Keep **Recovery** as a global Skills section independent of the currently
+  selected package. Valid snapshots remain selectable when their package is
+  missing or malformed and when a different snapshot is corrupt. A selected
+  snapshot names its package, revision, current state, and full-replacement
+  consequence before offering **Restore…**. Confirmation uses **Restore
+  Complete Package** and **Cancel**, explains that files absent from the
+  snapshot are removed, and states whether Scholium will create an undo
+  snapshot of the displaced package or reinstall a missing package.
 - Use **New Triptych…**, **Open Triptych**, **New Window**, and **Manage Triptychs…** consistently. Settings lists complete Triptychs and edits the selected Triptych’s three roots; it never presents Works folders as projects.
 - Keep task-specific settings near their task, except prompt-template mechanics,
   which remain centralized in **Research Guidance** under decision D-028.
@@ -446,13 +488,14 @@ intentional primary home:
 | UI home | Appropriate content |
 | --- | --- |
 | **Menu bar** | Complete command access, keyboard discovery, and infrequent app-, window-, or document-level actions. |
-| **Toolbar** | A small number of frequent actions for the focused window or document, including the bounded open-note strip, Search, **Open Scholia…**, and paired History/Inspector controls when applicable. |
+| **Toolbar** | A small number of frequent window or document actions, including the bounded open-note strip, Search, and paired History/Inspector controls when applicable. |
 | **Document context row** | Document mode, heading outline, compact role-aware Properties, and persistent document-local lifecycle or conflict state. |
+| **Editor Research Strip** | One role-aware row of direct scholarly functions for the open note. It is absent outside the editor and never becomes a folder- or multi-selection toolbar. |
 | **Sidebar or content list** | Triptych scope, folders, queues, locations, notes, and result navigation. |
 | **Triptych Interface** | When no note is open, the main window contracts to a narrow left-middle Library anchor. Its top-right control is Triptych management only. Selecting a note reveals the document from behind its trailing edge; management and **Collapse Note** then form one compact group. No Home or dashboard intervenes. |
 | **Inspector or Note History** | Persistent context for the selected note, including Connections, Research information, diagnostics, provenance, and chronological records. |
 | **Popover or pull-down** | Compact transient selection, search, filtering, or a short command choice that does not require a multi-step decision. |
-| **Sheet or centered panel** | Bounded, consequential, or multi-step work such as Attention triage, classification, Scholia, conflict comparison, and checkpoint recovery. |
+| **Sheet or centered panel** | Bounded, consequential, or multi-step work such as a Research Function, Attention triage, classification, conflict comparison, and checkpoint recovery. |
 | **Context menu** | A short accelerator set for the clicked object; never the sole route to a core action. |
 
 Before adding permanent chrome, consolidate with an existing home or explain
@@ -466,8 +509,7 @@ Preferred ordinary-width composition:
 
 - the leading sidebar contains Triptych identity, role scope, Attention,
   folder hierarchy, Unclassified, Set Aside, and Trash;
-- the central toolbar contains bounded open-note tabs with Search adjacent and
-  one prominent **Open Scholia…** doorway;
+- the central toolbar contains bounded open-note tabs with Search adjacent;
 - the context row combines the single-icon document-mode pull-down, heading
   outline, and restrained Properties on the same readable measure as the
   document;
@@ -475,17 +517,20 @@ Preferred ordinary-width composition:
   keyboard shortcuts and per-window persistence rather than occupying the
   permanent context row;
 - the document remains an opaque, calm, centered prose surface;
+- the bottom editor edge contains one restrained role-aware Research Strip with
+  matching reserved space and complete menu and keyboard alternatives;
 - Inspector and Note History occupy one mutually exclusive trailing region;
-- Scholia appears as one centered, role-aware panel; at wide widths Dialogue
-  may use a selected-notes column beside its instruction/context column and
-  stack them at narrower widths.
+- one Research Function appears in the centered shared panel at a time; at wide
+  widths Materials may sit beside its function-specific draft and stack at
+  narrower widths.
 
 Responsive priority is semantic, not tied to the prototype's numeric
-breakpoints. Shorten tab labels and secondary metadata first; convert
-**Open Scholia…** to a centered icon with its full accessible name before
-hiding it; collapse the trailing region before harming readable text measure;
-then hide or overlay the leading sidebar. Preserve controls for active
-conflict, recovery, and consequential work.
+breakpoints. Shorten tab labels and secondary metadata first; keep the Strip's
+one-word labels and order intact while using compact native spacing; collapse
+the trailing region before harming readable text measure; then hide or overlay
+the leading sidebar. Preserve the Research menu and keyboard path if a Strip
+item is unavailable at the current width, and always preserve active conflict,
+recovery, and consequential work.
 
 The production realization is native macOS 26. Use SwiftUI or AppKit windows,
 toolbars, split views, inspectors, lists/outlines, segmented controls, search
@@ -702,11 +747,8 @@ current 0.1 Experimental build already satisfies it:
 ### Document headers
 
 - Keep the title and note identity legible without competing with the body.
-- Place one text-labelled **Open Scholia…** action prominently. It opens the
-  role-appropriate Comments-and-Review or Comments-and-Critique segment by
-  default and also provides Dialogue. At narrow widths, preserve the action as
-  a centered icon with the full accessible name and help text rather than
-  hiding it.
+- Do not add a generic Open Scholia or function doorway to the header. Direct
+  research functions belong to the bottom editor Strip and Research menu.
 - Keep document mode, properties, history, and inspector controls grouped by purpose.
 - Do not show a large permanent “Saved” badge.
 
@@ -799,86 +841,111 @@ Autosave after a short idle delay and safe lifecycle transitions. Do not require
 
 Native multi-level editor Undo remains distinct from durable recovery. `Command-Z` reverses editing operations. Triptych checkpoint restoration uses **Restore from Checkpoint…** and the same conflict-aware repository path as an ordinary save.
 
-### 10.3 Scholia, Dialogue, Review, Critique, and checkpoints
+### 10.3 Research Strip, functions, records, and checkpoints
 
-**Open Scholia…** opens one document-local panel and does not itself create a
-record or modify a note. Analyses and Topics show **Comments & Review** and
-**Dialogue** in a segmented control. Works show **Comments & Critique** and
-**Dialogue**. Context menus and menu-bar commands may open the same panel at a
-specific segment; they must not create parallel versions of these workflows.
+The bottom editor Research Strip exposes exact one-word function labels. For an
+Analysis or Topic it shows **Dialogue**, **Develop**, **Review**, and
+**Fidelity**. For a Work it shows **Critique**, **Revise**, **Dialogue**,
+**Fidelity**, and **Manuscript**. It opens one typed function panel directly;
+there is no Open Scholia doorway or mode-segmented second level. The Research
+menu exposes the same role-valid functions. `Command-Shift-D` opens Dialogue;
+`Command-R` opens Review for an Analysis or Topic and Critique for a Work.
 
-In **Comments & Review**, Comments and Human Review share a presentation but
-not a record. Existing Comments appear before the review controls. The
-whole-note Comment composer is collapsed by default and expands only after the
-researcher invokes the compact add-Comment control. Human Review retains its
-own verdict, **Review Note**, draft state, and completion actions.
+Every panel names the fixed Target before other content. **Materials** are
+chosen inside the panel, remain read-only, and cannot include the Target.
+Where scope applies, use **Whole | Passage**; a current selection defaults to
+Passage. Keep panel draft, selected Materials, Comments, Fidelity checks,
+progress, cancellation, and errors bound to one presentation identity. A note,
+Triptych runtime, window, or Target change invalidates a stale preparation.
 
-In **Comments & Critique**, Comments and Critique likewise share a presentation
-but not a record. Critique retains attributed agent authorship, target Work and
-fingerprint, materials consulted, limitations, source anchors, request scope,
-and response state.
+**Review** adapts the existing Human Review and Analysis or Topic Comments. It
+shows existing Comments before the review controls and keeps the new whole-note
+Comment composer collapsed until invoked. Completion requires **Qualified** or
+**Unqualified** plus a non-empty **Review Note** of at most 500 characters. Its
+actions remain **Complete Review**, **Save as Draft**, and **Cancel**.
 
-For one or several selected notes, **Dialogue** contains the selected-note
-list, one overall researcher Comment or instruction, included line or
-whole-note Comments, and optional transient transport context. Its actions are
-**Copy Instructions for Agent** and **Cancel**. An external agent is optional.
+**Critique** adapts Work Comments and one attributed assessment. Whole and
+Passage replace separate overall and focused buttons. A Critique identifies
+agent authorship, Target Work and fingerprint, Materials consulted,
+limitations, source anchors, scope, and response state. It never presents
+Qualified or Unqualified as a Work status and never silently revises the Work.
 
-Dialogue does not display or permit selection, preview, or one-run editing of
-the active template or assembled technical instructions. Secondary text says
-that Dialogue uses the template configured for the Triptych and provides
-**Edit Dialogue Template…**, which opens **Settings → Research Guidance** at
-that template. The researcher verifies selected notes, Comments, scope, paths,
-and other consequential context rather than prompt mechanics.
+**Dialogue** contains the fixed Target, selected Materials, one overall
+researcher Comment or instruction, included Comments, and optional transient
+transport context. Its actions are **Copy Instructions for Agent** and
+**Cancel**. It is read-only unless an external agent promotes the request to
+Develop or Revise through the function API. Dialogue remains a scholarly
+Comment-and-Response record, not a document version or a hidden permission
+system.
 
-Before copying, Scholium completes pending autosaves and creates **Before Agent
-Work**. The transient instructions identify selected notes by name,
-vault-relative path, and advisory fingerprint. They may tell the agent to
-inspect and directly modify other relevant Triptych files, but Scholium does
-not transmit research automatically. Every selected note receives the
-scholarly Dialogue record in Note History. The record shows researcher
-Comments, selected-note association, checkpoint, and attributed Responses and
-follow-ups; it does not require raw technical prompts, model metadata, or
-paragraph-level AI provenance. It is not a document version and exposes no
-restore action.
+**Develop** and **Revise** are explicit write-capable functions. Develop serves
+Analysis or Topic exploration, concept and argument development, synthesis,
+and expression without showing those as additional interface modes. Revise
+serves the current Work, including substantive writing and received-feedback
+disposition. **Manuscript** coordinates isolated phases while the current Work
+remains the only document Target.
 
-Analyses and Topics expose Human Review within **Comments & Review**. Completion requires a **Qualified** or **Unqualified** verdict and a non-empty **Review Note** of at most 500 characters. The actions are **Complete Review**, **Save as Draft**, and **Cancel**. A draft changes the relevant in-panel action to **Continue Review** without marking the fingerprint reviewed.
+**Fidelity** contains **Content** and **Citations**. If no valid citation-method
+binding is active, keep Citations visible but unavailable and explain the
+repair in Research Guidance. Show **Awaiting Fidelity**, **Unverified**,
+**Verified**, and **Stale** only according to the exact revision-specific
+function outcome; never imply that an external audit ran automatically.
+After a write function records its substantive final fingerprint, show
+**Awaiting Fidelity** until an independently prepared Fidelity run for that
+exact revision is completed and linked back to it. Do not present pre-edit
+Fidelity, direct outcomes submitted on the write run, or duplicate evidence as
+a completed final audit.
 
-Works expose Critique within **Comments & Critique** rather than Human Review
-qualification. The request offers **Overall Critique**, **Specific Comments**,
-or **Both**, plus optional scholarly scope such as a selection, section, focus,
-or disciplinary lens. It does not expose additional technical instructions,
-the active template, assembled instructions, or one-run prompt editing.
-Secondary text says **Critiques use the template configured for this
-Triptych.** and provides **Edit Critique Template…**, which opens **Settings →
-Research Guidance → Prompt Templates → Critique**. A Critique identifies agent
-authorship, target Work, target fingerprint, source anchors, materials
-consulted, and limitations. It never presents Qualified or Unqualified as a
-Work status.
+If preparation requires agent-selected conditional methods, the panel remains
+read-only while the external agent finalizes that same run through the function
+API. It exposes no method selector or package identifier and must not present
+mutation instructions or a completed state before explicit selection,
+including an explicit empty base-only selection.
 
-If an active Dialogue or Critique template is structurally invalid, preserve
-all current workflow inputs, state that the template needs attention, keep the
-applicable Settings action available, and disable instruction copying or the
-Critique request until the blocking structural error is resolved. Do not reveal
-the malformed template in the workflow.
+No function panel displays or permits selection, preview, or one-run editing of
+the active template, workflow package, assembled instructions, or package ID.
+An applicable **Edit Template…** or **Open Research Guidance…** action may open
+Settings without discarding the panel draft. A structurally invalid binding or
+template preserves inputs, names the required repair, and disables preparation
+until repaired.
 
-Checkpoint commands are **Create Checkpoint…**, **Restore from Checkpoint…**,
-and **Reveal Checkpoints in Finder**. Comparison labels files as created,
-changed, moved, deleted, or unchanged in text. Selective and full restoration
-remain explicit and are never editor Undo. A clean note may refresh quietly
-after an external edit; a dirty note keeps its buffer and uses the conflict
-actions above. Permanent deletion purges associated Dialogue, comment, Review,
-Critique, and checkpoint-copy records, or invalidates a checkpoint that cannot
-be scrubbed safely. If a shared multi-note Dialogue cannot be partitioned
-safely, the shared record is deleted in full. Scholium does not claim to recover
-uncheckpointed external work.
+Before Develop, Revise, Manuscript, promoted Dialogue, or Critique preparation,
+Scholium completes pending autosaves and creates the required **Before Agent
+Work** checkpoint. Review and Fidelity create none. The transient instructions
+identify the Target and Materials by human-readable identity, vault-relative
+path, and advisory fingerprint. Scholium does not transmit research
+automatically.
 
-When an agent changes notes, the default closing response foregrounds the
-concise academic change and any unresolved question or required researcher
-review. It does not foreground a detailed file-operation log. Richer
-reflection modules and alternative comment-preservation modes remain future
-design work.
+Checkpoint commands remain **Create Checkpoint…**, **Restore from
+Checkpoint…**, and **Reveal Checkpoints in Finder**. Comparison labels created,
+changed, moved, deleted, and unchanged files in text. Selective and full
+restoration remain explicit and are never editor Undo. Human Review, Comments,
+Dialogue, Critique, Fidelity, and checkpoint records remain evidentially and
+visually distinct. When an agent changes notes, the closing response
+foregrounds the concise academic change and any unresolved question or required
+researcher review, not a detailed file-operation log.
 
-### 10.4 Verification evidence and design reporting
+### 10.4 Research Guidance methods and Skill recovery
+
+**Research Methods** belongs only in **Settings → Research Guidance → Skills**.
+Its Function picker uses the same one-word function names as the Strip. The
+primary **Method** picker shows **Built-in** plus compatible Triptych-local
+researcher-facing names; **Supplements** and **Practices** are explicit
+independent selections. Do not show a package identifier, filename, routing
+role, or one-run override in the Strip or function panel.
+
+The Skills sidebar contains one global **Recovery** section. It is populated
+independently of the selected Skill and remains available when the current
+package is absent or structurally malformed. Unsafe snapshot entries appear
+under **Recovery Issues** without hiding valid snapshots. A snapshot detail
+uses **Restore…** to open **Restore Complete Researcher Skill?**. Its exact
+confirmation actions are **Restore Complete Package** and **Cancel**. The
+message names the complete-package replacement and removal of files absent
+from the snapshot, and identifies the undo-snapshot or missing-package
+reinstall consequence. Restore success returns to the recovered package; it
+does not imply that Scholium judged the package philosophically sound.
+
+### 10.5 Verification evidence and design reporting
 
 For material interface work, record the source revision or working tree, build configuration, macOS and SDK, fixture root, command, result, and retained result bundle or screenshot when available. Use nonprivate fixtures. A preview, test name, historical screenshot, or prior QA note does not prove the current build exercised a workflow. The isolated QA app is Debug evidence, not release, signing, sandbox, or distribution evidence.
 
@@ -912,10 +979,10 @@ A design review reports the researcher task, affected object, current problem, r
 | D-023 | Scholium does not require technical prompt logs, hidden instructions, model parameters, token counts, paragraph-level AI provenance, or a separate AI audit dashboard. Agent responses foreground concise academic change. | Scholarly Dialogue boundary | Stable target; response presentation acceptance pending |
 | D-024 | External agents, Zotero, and research skills are optional extensions; the manual academic workflow remains complete without them. | Product Guide and standalone workflow requirement | Stable target; clean-environment acceptance pending |
 | D-025 | Document, HTML, PDF, and DOCX export are deferred after 0.1, not permanent product prohibitions. | Product Guide release boundary | Stable target; export not in 0.1 |
-| D-026 | **Open Scholia…** is the shared document-local doorway for Comments, role-appropriate Human Review or Critique, and Dialogue. Its role-aware segmented panel combines navigation only; it does not merge records, provenance, completion, or backend behavior. | Scholium interface composition decision | Stable and implemented; manual accessibility acceptance pending |
+| D-026 | One editor-only bottom **Research Strip** replaces Open Scholia and exposes direct one-word, role-valid functions: Dialogue, Develop, Review, and Fidelity for Analyses/Topics; Critique, Revise, Dialogue, Fidelity, and Manuscript for Works. One typed panel opens directly for the selected function; Target is fixed and Materials are selected inside. The bottom placement is a researcher-approved Scholium-specific macOS exception with complete menu, keyboard, focus, and accessibility parity, not Apple's visionOS Ornament component. | Researcher-approved function architecture; document-first composition; Apple macOS command-parity and accessibility guidance | Implemented; final manual accessibility and appearance acceptance remains open |
 | D-027 | `triptych-document-layout.html` is the preferred, non-binding baseline for main-window composition and page logic. It may evolve when a real frontend capability needs a better UI home, provided the document remains primary, semantic distinctions remain visible, and no layout decision is treated as a backend contract. | Researcher-reviewed prototype; native macOS adaptation | Stable and implemented; manual visual and assistive-technology acceptance pending |
 | D-028 | Prompt templates and assembled technical instructions are configuration, not scholarly workflow content. They are visible and editable only in **Settings → Research Guidance**; Dialogue, Critique, and future research workflows expose scholarly inputs and a direct Settings link but no template picker, preview, or one-run prompt editor. | Researcher-approved prompt-mechanics boundary; Settings and text-entry guidance | Stable target; current Critique interface requires alignment |
-| D-029 | **Research Guidance** manages both **Prompt Templates** and **Skills** while preserving them as distinct item types. User skills are editable file-backed packages discovered only at `.scholium/skills/<skill-id>/SKILL.md`; the workflow UI gains no skill picker or one-run override. Permitted official packages duplicate under a new independent identifier; protected packages expose no reset or replacement path. | Researcher-approved skill-management boundary; local-first storage and Settings guidance | Stable and implemented; final Beta accessibility acceptance pending |
+| D-029 | **Research Guidance** manages both **Prompt Templates** and **Skills** while preserving them as distinct item types. User skills are editable file-backed packages discovered only at `.scholium/skills/<skill-id>/SKILL.md`; **Research Methods** activates compatible Triptych-local primary, supplemental, and exact Practice bindings without adding package IDs or a one-run picker to the Strip. Permitted official packages duplicate under a new independent identifier; protected packages expose no reset or replacement path. A global Recovery inventory remains reachable for missing or malformed packages, confirms complete replacement, and preserves an undo snapshot whenever a current package is displaced. | Researcher-approved skill-management and recovery boundary; local-first storage and Settings guidance | Stable and implemented; final Beta accessibility acceptance pending |
 | D-030 | **Recent Notes** is a per-window, vault-qualified, bounded MRU list exposed through the Navigate menu. It remains independent of chronological Back/Forward history and derived Search state, persists with the window session, and adds no permanent chrome. | Researcher return-to-work task; Apple macOS menu and recents conventions | Stable and implemented |
 | D-031 | Beta Search uses deterministic local FTS5 retrieval. Exact Topic title or alias resolution may expose direct resolved graph connections in a separate Related section; graph relations never alter lexical ranking. Vector search, embeddings, AI ranking, and chat-style query interpretation are excluded from Beta. | Researcher-approved scholarly retrieval boundary | Stable and implemented; bounded Title/Alias/Heading/Body ranking acceptance passes, while broader evaluation remains pending |
 | D-032 | Scholium has no Triptych Home. With no selected note, the narrow left-middle Library is the **Triptych Interface**. Its navigation material extends through a visually titleless native window frame while preserving the standard traffic-light controls and accessible window identity. Its fixed-size top-trailing ellipsis has no redundant disclosure indicator. Selecting a note keeps that Interface fixed and reveals the document toward its trailing side; **Collapse Note** retracts it without discarding the open-tab session. The Interface is visually above the document like a document box or drawer. The resize is calm, spatially coherent, interruptible, and immediate under Reduce Motion. | Researcher-approved simplification; document-first principle; Apple window and motion guidance | Stable and implemented; clean-account plus retract/reveal focused automation pass, while manual motion and assistive-technology acceptance remain pending |

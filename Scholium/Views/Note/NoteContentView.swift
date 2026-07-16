@@ -37,6 +37,7 @@ struct DocumentFeatureState {
     let pendingIdentityRebinding: NoteIdentityPendingRebinding?
     let identityMigrationFailureMessage: String?
     let isResolvingIdentity: Bool
+    let researchStrip: ResearchStripPresentation
 }
 
 struct DocumentFeatureActions {
@@ -59,12 +60,40 @@ struct DocumentFeatureActions {
     let rememberPresentationMode: @MainActor (NotePresentationMode) -> Void
     let setPendingSourceLine: @MainActor (Int?) -> Void
     let editProperties: @MainActor () -> Void
-    let openScholia: @MainActor () -> Void
+    let openResearchFunction: @MainActor (
+        ResearchFunctionID,
+        ResearcherCommentAnchor?
+    ) -> Void
     let setNoteHistoryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let selectTab: @MainActor (String) -> Void
     let closeTab: @MainActor (String) -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
+}
+
+enum ResearchFunctionSelectionCapture {
+    static func anchor(
+        for selection: MarkdownReviewSelection?,
+        in source: String,
+        relativePath: String
+    ) -> ResearcherCommentAnchor? {
+        guard let selection else { return nil }
+        let document = NoteDocument(relativePath: relativePath, rawContent: source)
+        if let exactRange = selection.exactUTF16Range {
+            return ResearcherCommentAnchorBuilder.anchor(
+                in: source,
+                fingerprint: document.fingerprint,
+                utf16Range: exactRange,
+                selectedText: selection.excerpt
+            )
+        }
+        return ResearcherCommentAnchorBuilder.anchor(
+            forRenderedQuotation: selection.excerpt,
+            contextBefore: selection.contextBefore,
+            contextAfter: selection.contextAfter,
+            in: document
+        )
+    }
 }
 
 // MARK: - Note Content Container
@@ -339,6 +368,16 @@ struct NoteContentView: View {
                 documentContextRow
                     .zIndex(2)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !state.researchStrip.items.isEmpty {
+                    ResearchStripView(
+                        presentation: state.researchStrip,
+                        select: openResearchFunction
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
@@ -348,8 +387,13 @@ struct NoteContentView: View {
             actions.beginSearch(mode)
         })
         .focusedSceneValue(
+            \.scholiumResearchFunctionActions,
+            ScholiumFocusedResearchFunctionActions(open: openResearchFunction)
+        )
+        .focusedSceneValue(
             \.scholiumEditorActions,
             isEditing ? ScholiumFocusedEditorActions(
+                isComposing: editorSession.context?.composing == true,
                 isAvailable: { command in
                     editorSession.context?.availableCommands.contains(command) == true
                 },
@@ -393,8 +437,8 @@ struct NoteContentView: View {
             }
         }
         .alert(conflict == nil ? "Save Failed" : "This Note Changed on Disk", isPresented: Binding(
-            get: { editError != nil },
-            set: { if !$0 { editError = nil } }
+            get: { editError != nil && (conflict == nil || !editorIsComposing) },
+            set: { if !$0, !editorIsComposing { editError = nil } }
         )) {
             if conflict != nil {
                 Button("Compare Changes") {
@@ -436,6 +480,9 @@ struct NoteContentView: View {
             // mode for the rest of the session.
             if available { restorePresentationModeIfAvailable() }
         }
+        .onChange(of: isEditing) { _, _ in
+            documentSession.readSelection = nil
+        }
         .onDisappear {
             // The document session, not this reconstructed view, owns the
             // pending autosave. Inspector and window-layout changes can
@@ -449,6 +496,7 @@ struct NoteContentView: View {
         }
         .task(id: noteFingerprint.sha256) {
             failedReadFingerprint = nil
+            documentSession.readSelection = nil
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint.sha256
@@ -461,46 +509,6 @@ struct NoteContentView: View {
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint
         }
-    }
-
-    private var reviewButtonTitle: String {
-        if state.reviewRecord?.draft != nil { return "Continue Review" }
-        switch state.reviewDisplayState {
-        case .qualified: return "Qualified"
-        case .unqualified: return "Unqualified"
-        case .notReviewed, .reviewed: return "Review"
-        }
-    }
-
-    private var reviewButtonSymbol: String {
-        if state.changedSinceReview { return "arrow.triangle.2.circlepath" }
-        switch state.reviewDisplayState {
-        case .qualified: return "checkmark.seal.fill"
-        case .unqualified: return "xmark.seal.fill"
-        case .notReviewed, .reviewed: return "checkmark.circle"
-        }
-    }
-
-    private var reviewButtonTint: Color {
-        if state.changedSinceReview { return .orange }
-        switch state.reviewDisplayState {
-        case .qualified: return .green
-        case .unqualified: return .red
-        case .notReviewed, .reviewed: return .accentColor
-        }
-    }
-
-    private var reviewButtonHelp: String {
-        if state.changedSinceReview {
-            return "Review the changed file bytes"
-        }
-        return state.reviewRecord?.draft != nil
-            ? "Continue the saved Human Review draft"
-            : "Review and qualify this note"
-    }
-
-    private var humanReviewIsAvailable: Bool {
-        state.locationScope == .workspace && state.vaultRole.allowsHumanReview
     }
 
     private var commentingIsAvailable: Bool {
@@ -586,7 +594,10 @@ struct NoteContentView: View {
                 },
                 onRequestComment: commentingIsAvailable ? { selection in
                     actions.requestComments(selection, nil)
-                } : nil
+                } : nil,
+                onSelectionChange: { selection in
+                    documentSession.readSelection = selection
+                }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .layoutPriority(1)
@@ -608,6 +619,9 @@ struct NoteContentView: View {
             onCommentSelection: commentingIsAvailable ? { selection in
                 actions.requestComments(selection, nil)
             } : nil,
+            onSelectionChange: { selection in
+                documentSession.readSelection = selection
+            },
             onCommentActivation: commentingIsAvailable ? { commentID in
                 actions.requestComments(nil, commentID)
             } : nil,
@@ -753,7 +767,15 @@ struct NoteContentView: View {
         documentSession.hasUnsavedChanges
     }
 
+    private var editorIsComposing: Bool {
+        isEditing && editorSession.context?.composing == true
+    }
+
     private func selectPresentationMode(_ mode: NotePresentationMode) {
+        guard !editorIsComposing else {
+            actions.notify("Finish text composition to change document mode.", .information)
+            return
+        }
         if mode == .read {
             guard isEditing else {
                 presentationMode = .read
@@ -872,8 +894,10 @@ struct NoteContentView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .disabled(!editingIsAvailable)
-            .help("Document mode: \(presentationMode.title)")
+            .disabled(!editingIsAvailable || editorIsComposing)
+            .help(editorIsComposing
+                ? "Finish text composition to change document mode."
+                : "Document mode: \(presentationMode.title)")
             .accessibilityLabel("Document mode")
             .accessibilityValue(presentationMode.title)
             .accessibilityIdentifier("scholium.documentModeMenu")
@@ -968,23 +992,6 @@ struct NoteContentView: View {
         }
 
         ToolbarItem(placement: .primaryAction) {
-            if commentingIsAvailable || humanReviewIsAvailable || state.vaultRole.allowsCritique {
-                Button {
-                    actions.openScholia()
-                } label: {
-                    if state.isCompactLayout {
-                        Image(systemName: "text.bubble")
-                    } else {
-                        Label("Open Scholia…", systemImage: "text.bubble")
-                    }
-                }
-                .help("Open comments, review, critique, and Dialogue for this note")
-                .accessibilityLabel("Open Scholia")
-                .accessibilityIdentifier("scholium.openScholiaButton")
-            }
-        }
-
-        ToolbarItem(placement: .primaryAction) {
             ControlGroup {
                 Button {
                     actions.setNoteHistoryVisible(!state.noteHistoryVisible)
@@ -1041,6 +1048,54 @@ struct NoteContentView: View {
                     "Scholium could not capture the current editor selection. Keep editing and try again. \(error.localizedDescription)",
                     .error
                 )
+            }
+        }
+    }
+
+    private func openResearchFunction(_ function: ResearchFunctionID) {
+        guard !editorIsComposing else {
+            actions.notify(
+                "Finish text composition to open a research function.",
+                .information
+            )
+            return
+        }
+        guard isEditing else {
+            let selection = documentSession.readSelection
+            let anchor = ResearchFunctionSelectionCapture.anchor(
+                for: selection,
+                in: note.rawContent,
+                relativePath: note.relativePath
+            )
+            if selection != nil, anchor == nil {
+                actions.notify(
+                    "Scholium could not match the selected passage reliably. The function will open for the whole note.",
+                    .information
+                )
+            }
+            actions.openResearchFunction(function, anchor)
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let currentSource = try await editorSession.currentText(for: note.relativePath)
+                let selection = try await editorSession.currentSelection(
+                    for: note.relativePath,
+                    in: currentSource
+                )
+                let anchor = ResearchFunctionSelectionCapture.anchor(
+                    for: selection,
+                    in: currentSource,
+                    relativePath: note.relativePath
+                )
+                actions.openResearchFunction(function, anchor)
+            } catch {
+                actions.notify(
+                    "Scholium could not capture the current selection. The function will open for the whole note. \(error.localizedDescription)",
+                    .information
+                )
+                actions.openResearchFunction(function, nil)
             }
         }
     }
@@ -1422,6 +1477,7 @@ private enum DialogueHistorySheetRoute: Identifiable {
 
 struct NoteHistorySheet: View {
     @Environment(\.dismiss) var dismiss
+    @ObservedObject private var researchController: ResearchController
     let note: WindowDocumentLocation
     let presentation: NoteHistoryPresentation
     let context: NoteHistoryContext
@@ -1448,6 +1504,7 @@ struct NoteHistorySheet: View {
         self.note = note
         self.presentation = presentation
         self.context = context
+        _researchController = ObservedObject(wrappedValue: context.controller)
     }
 
     var body: some View {
@@ -1504,6 +1561,7 @@ struct NoteHistorySheet: View {
                     VStack(alignment: .leading, spacing: 22) {
                         if context.vaultRole.allowsHumanReview { reviewSection }
                         commentSection
+                        functionRunSection
                         dialogueSection
                         if context.vaultRole.allowsCritique { critiqueSection }
                         checkpointSection
@@ -1664,6 +1722,54 @@ struct NoteHistorySheet: View {
         }
     }
 
+    private var functionRunSection: some View {
+        historySection("Function Runs", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90") {
+            if currentFunctionRuns.isEmpty {
+                emptyText("No Research Function runs are recorded for this note.")
+            } else {
+                Text("Run state is shown here without merging Dialogue, Critique, Human Review, Comments, or Fidelity findings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(currentFunctionRuns) { run in
+                    VStack(alignment: .leading, spacing: 8) {
+                        ResearchFunctionRunStatusView(record: run, showsFunction: true)
+                        if let instructions = run.preparedInstructions,
+                           run.runState != .complete,
+                           run.runState != .cancelled {
+                            Button("Copy Instructions for Agent") {
+                                do {
+                                    try context.copyText(instructions)
+                                    context.notify("Research Function instructions copied")
+                                } catch {
+                                    errorMessage = error.localizedDescription
+                                }
+                            }
+                            .accessibilityIdentifier(
+                                "scholium.noteHistory.copyResearchFunctionInstructions"
+                            )
+                        }
+                    }
+                    if run.id != currentFunctionRuns.last?.id { Divider() }
+                }
+            }
+        }
+        .accessibilityIdentifier("scholium.noteHistory.functionRuns")
+    }
+
+    private var currentFunctionRuns: [ResearchFunctionRecordProjection] {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else {
+            return []
+        }
+        return (researchController.records?.functionRuns ?? [])
+            .filter { $0.snapshot.request.target.noteID == noteID }
+            .sorted {
+                if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
+                    return $0.snapshot.preparedAt > $1.snapshot.preparedAt
+                }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+    }
+
     private var dialogueSection: some View {
         historySection("Dialogue", systemImage: "bubble.left.and.bubble.right") {
             if dialogue.isEmpty {
@@ -1708,10 +1814,12 @@ struct NoteHistorySheet: View {
                             createdAt: entry.createdAt,
                             systemImage: "person"
                         )
-                        Text("Checkpoint: Before Agent Work — \(entry.checkpointID.uuidString.prefix(8))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        if let checkpointID = entry.checkpointID {
+                            Text("Checkpoint: Before Agent Work — \(checkpointID.uuidString.prefix(8))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
                         if let destination = entry.requestedDestination {
                             LabeledContent("Requested Destination") {
                                 Text(destination)
@@ -2459,7 +2567,8 @@ private func dialogueTargetIDs(
         identityAmbiguity: nil,
         pendingIdentityRebinding: nil,
         identityMigrationFailureMessage: nil,
-        isResolvingIdentity: false
+        isResolvingIdentity: false,
+        researchStrip: ResearchStripPresentation(items: [], activeFunction: nil)
     )
     let actions = DocumentFeatureActions(
         requestIdentityResolution: {},
@@ -2477,7 +2586,7 @@ private func dialogueTargetIDs(
         rememberPresentationMode: { _ in },
         setPendingSourceLine: { _ in },
         editProperties: {},
-        openScholia: {},
+        openResearchFunction: { _, _ in },
         setNoteHistoryVisible: { _ in },
         setResearchInspectorVisible: { _ in },
         selectTab: { _ in },

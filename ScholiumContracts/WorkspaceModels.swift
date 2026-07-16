@@ -194,6 +194,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let humanReviews: [HumanReviewRecord]
     public let dialogues: [DialogueEntry]
     public let critiques: [CritiqueAssociation]
+    public let functionRuns: [ResearchFunctionRecordProjection]
     public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
     public let healthIssues: [String]
@@ -202,6 +203,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
         humanReviews: [HumanReviewRecord],
         dialogues: [DialogueEntry],
         critiques: [CritiqueAssociation],
+        functionRuns: [ResearchFunctionRecordProjection] = [],
         checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         healthIssues: [String]
@@ -209,6 +211,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.humanReviews = humanReviews
         self.dialogues = dialogues
         self.critiques = critiques
+        self.functionRuns = functionRuns
         self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords
         self.healthIssues = healthIssues
@@ -220,12 +223,12 @@ public struct WorkspaceResearchSnapshot: Sendable {
 public struct DialoguePreparation: Sendable {
     public let entry: DialogueEntry
     public let instructions: String
-    public let checkpoint: TriptychCheckpoint
+    public let checkpoint: TriptychCheckpoint?
 
     public init(
         entry: DialogueEntry,
         instructions: String,
-        checkpoint: TriptychCheckpoint
+        checkpoint: TriptychCheckpoint?
     ) {
         self.entry = entry
         self.instructions = instructions

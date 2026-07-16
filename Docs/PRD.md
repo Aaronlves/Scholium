@@ -227,8 +227,8 @@ The following core agent capabilities are intentionally deferred beyond 0.1
 and are required for Beta:
 
 - protected System Skills and complete official Workflow Skill packages;
-- bounded catalog and package retrieval with selective mode-aware assembly and
-  Mixed-mode isolation;
+- bounded catalog and package retrieval with function-aware selective assembly
+  and isolated Manuscript phases;
 - immutable Dialogue `responseContract` snapshots and agent-facing exposure;
   and
 - the protected Zotero MCP adapter with a supported local transport.
@@ -719,7 +719,7 @@ a neutral link alone MUST NOT be treated as reliance.
 
 ### 7.4 Dialogue and external agent work
 
-#### PRD-DIA-001 — General Dialogue instruction generation
+#### PRD-DIA-001 — Dialogue function and instruction generation
 
 **Requirement:** Dialogue MUST let the researcher select one or several notes
 and provide one overall researcher Comment or instruction. It MUST generate
@@ -728,6 +728,9 @@ specialized task types. Using an external agent is optional; Dialogue remains
 usable as a researcher-facing record even when no agent is involved. The
 active template and assembled technical instructions MUST remain hidden from
 the Dialogue workflow and MUST NOT permit one-run selection or editing there.
+Dialogue MUST be read-only by default. A request to change the Target MUST be
+promoted through the function API to Develop for an Analysis or Topic or Revise
+for a Work before mutation; the frontend MUST NOT classify philosophical prose.
 
 The generated prompt SHOULD include, as applicable:
 
@@ -735,19 +738,22 @@ The generated prompt SHOULD include, as applicable:
 - selected note names, vault-relative paths, and advisory fingerprints;
 - selected passages, source lines, and included comments;
 - Triptych context, linked-note context, and ordinary Work metadata;
-- requested destination and editing rules; and
-- permission to inspect and directly modify relevant Triptych files.
+- requested destination and read-only boundary; and
+- the exact function-API promotion required before the single Target may be
+  changed.
 
 **Acceptance criteria:**
 
-- The sheet displays the selected-note list, included Comments, consequential
-  context, and one researcher instruction field.
+- The panel fixes the open note as Target, selects additional read-only
+  Materials inside the panel, shows included Comments and consequential
+  context, and provides one researcher instruction field.
 - The researcher verifies the selected context rather than inspecting or
   editing the prompt template or assembled technical instructions.
 - **Edit Dialogue Template…** opens **Settings → Research Guidance** at the
   active Dialogue template without discarding current Dialogue inputs.
-- Pending autosaves complete before copying.
-- A Before Agent Work checkpoint is created before copying.
+- Pending autosaves complete before a write-capable promotion is prepared.
+- A Before Agent Work checkpoint is created for promoted Dialogue, not for a
+  read-only Dialogue record.
 - Scholium does not transmit research automatically.
 
 **Authority:** Product Guide section 8.1; Design Handbook sections 3.5, 4.8,
@@ -902,18 +908,18 @@ duplicated into independent Researcher Skills.
 **Authority:** Product Guide sections 2.2, 3.3, and 8.3; Design Handbook
 sections 4.9 and decision D-029.
 
-#### PRD-RGD-003 — Beta mode-aware skill package architecture
+#### PRD-RGD-003 — Function-aware skill package architecture
 
-**Requirement:** Beta MUST ship protected Scholium System Skills, complete
-official Scholium Workflow Skills, and editable Triptych-local Researcher
-Skills through one bounded package catalog. Official packages MAY contain
-release-pinned one-level references and templates. Scholium MUST own package
-discovery, structural validation, origin and update policy, dependency closure,
-current task facts and permissions, and agent-facing catalog and package
-retrieval. The external CLI-capable agent MUST classify the researcher's
-request, select one mode or an explicit Mixed sequence, and retrieve only the
-required packages. Scholium MUST NOT add an embedded natural-language mode
-classifier, workflow-local skill picker, or global skill-directory scan.
+**Requirement:** Beta MUST ship protected Scholium System Skills, exactly five
+official Scholium Workflow Skills—Development, Critique, Revision, Content
+Fidelity, and Manuscript—and editable Triptych-local Researcher Skills through
+one bounded package catalog. Official packages MAY contain release-pinned one-
+level references and templates. Scholium MUST own package discovery, structural
+validation, origin and update policy, explicit Triptych bindings, dependency
+closure, current task facts and permissions, and exact resource retrieval. The
+Application function coordinator MUST resolve package IDs and revisions; the
+frontend and CLI MUST NOT select package IDs, parse package YAML, or scan a
+global skill directory.
 
 **Acceptance criteria:**
 
@@ -929,37 +935,49 @@ classifier, workflow-local skill picker, or global skill-directory scan.
   copy-on-adoption Researcher Skill, not a protected universal citation
   method; other styles and venue rules remain researcher-selected.
 - The bundled Prose Control starter is classed as a copy-on-adoption
-  Researcher Skill, not part of the official Philosophical Writing method or a
+  Researcher Skill, not part of the official Revision method or a
   universal prose standard. It activates only when explicitly selected and
   preserves its declared semantic ledger; an adopted copy is editable and
   never overwritten by releases.
 - The catalog exposes stable routing metadata without loading full methodology;
   selected-package retrieval exposes only validated, declared resources.
-- `supported_modes` declares package compatibility while `automatic_modes`
-  independently controls default System-package activation. Core loads for
-  every ordinary mode; Dialogue loads automatically only for Dialogue; other
-  adapters remain task-selected.
-- Selective assembly loads the Core Protocol, one primary Workflow Skill,
-  required System adapters, and only explicitly selected Researcher Skills or
-  Practices. Mixed mode resets context, permission, assumptions, and write
-  subsets between phases.
-- A project-neutral family of thorough, concise, and provisional Source
-  Analysis report templates is bundled. Existing target schemas and custom
-  fields remain authoritative, but no researcher- or project-specific
-  compatibility schema is bundled and template availability never triggers
-  migration.
-- Source Analysis distinguishes the current session analysis unit from the
-  durable Research Unit, applies Orientation, Analytical, and Review passes to
-  the session unit, and never converts partial long-source progress into an
-  unqualified whole-source claim.
+- `supported_functions` declares function compatibility;
+  `supported_modes` remains legacy decoding and internal method selection.
+  Capabilities and citation styles are explicit metadata, never inferred from
+  filenames.
+- Selective assembly loads Core Protocol, the resolved Workflow Skill, required
+  System adapters, and only explicitly bound Researcher Skills or Practices.
+  Each run records the exact package revision and conditional resources loaded.
+- A one-click request that still requires agent judgment returns a read-only
+  method preflight. The external agent finalizes semantic conditional
+  references—including an explicit empty selection for primary-method-only
+  work—on the same fixed run before execution. The same run, checkpoint, and
+  Dialogue or Critique record survive finalization; no mutation instructions
+  or completion are available before it, and the finalized snapshot records
+  only the exact selected references and revisions. No UI mode or prose
+  classifier selects them.
+- **Research Guidance → Skills → Research Methods** activates compatible
+  Triptych-local Researcher Skills per function as one primary replacement,
+  zero or more supplements, and exact Practices. Application MUST validate the
+  function, role, Practice, and expected binding revision and persist the
+  change atomically. The Strip MUST receive no package IDs or binding controls.
+- Development conditionally covers exploration, concept development, argument
+  development, synthesis, and Analysis or Topic expression without exposing
+  those submethods in the interface.
+- Critique is Work-read-only and writes a separate Critique; Revision is the
+  independently permissioned current-Work write method; Content Fidelity is
+  read-only; Manuscript resolves every isolated phase independently.
+- Dialogue remains System transport and record infrastructure. Human Review
+  has no Workflow Skill. Source Analysis and self-evolution are neither
+  Workflow packages nor Strip functions.
 - Every official Workflow Skill remains complete without Philosophical
   Practices and declares compatible Practices only as routing hints. Only
   explicitly selected researcher-owned Practices are loaded, with stable IDs,
   revisions, and composition rules preserved; they cannot grant permission or
   silently replace official workflow requirements.
-- Philosophical Writing owns planning, drafting, substantive revision,
-  write-mode permission, and durability. A selected researcher-owned Prose
-  Control package may compose with it for meaning-preserving revision, but
+- Revision owns planning, drafting, substantive revision, write-mode permission,
+  and durability. A selected researcher-owned Prose Control package may compose
+  with it for meaning-preserving revision, but
   remains a separate method and cannot silently change thesis, claims,
   concepts, inferential or dialectical relations, source roles, scope,
   modality, qualification, or status.
@@ -982,6 +1000,104 @@ classifier, workflow-local skill picker, or global skill-directory scan.
 **Authority:** Product Guide sections 2.2, 3.4, and 8.3; [Skills README](../Skills/README.md),
 `catalog.yaml`, and the package evals.
 
+#### PRD-RGD-004 — Guarded Researcher Skill evolution
+
+**Requirement:** Self-evolution MUST be an explicit Research Guidance
+maintenance transaction, not a Research Function. Only an opted-in
+Triptych-local Researcher Skill MAY evolve. Bundled System and Workflow Skills
+MUST remain immutable.
+
+**Acceptance criteria:**
+
+- The request carries the expected package revision, proposed whole-package
+  patch, evaluation result, and confirmation token.
+- The Settings UI shows the diff, evaluation status, **Apply**, and **Restore**.
+- Core validates the complete package and bounded `references/`, `templates/`,
+  and `evals/`, snapshots it, atomically replaces it, reads it back, and rolls
+  back on failure.
+- Settings loads one global Recovery inventory independently of the selected
+  or valid current package. A missing or malformed current package MUST NOT
+  hide its valid snapshots, and one corrupt snapshot MUST NOT hide other valid
+  entries.
+- Restore MUST confirm complete-package replacement, recheck an expected
+  present-or-missing state, remove files absent from the snapshot, and create
+  an undo snapshot before displacing an existing package. Reinstalling a
+  missing package has no displaced package to snapshot. Snapshot discovery and
+  restore MUST use descriptor-relative no-follow reads and report unsafe
+  entries without following them.
+- No research run, model judgment, filename, or global plugin scan triggers
+  evolution automatically.
+
+**Authority:** Product Guide section 8.3; Design Handbook section 4.9.
+
+#### PRD-FUN-001 — Shared Research Function boundary
+
+**Requirement:** Scholium MUST expose delivery-neutral availability,
+material-candidate, preparation, conditional-method selection, completion, and
+cancellation use cases for Dialogue, Develop, Review, Fidelity, Critique,
+Revise, and Manuscript. The App and CLI MUST depend only on Contracts and
+Application and MUST NOT import Core, perform vault I/O, inspect skill YAML, or
+choose package IDs.
+
+**Acceptance criteria:**
+
+- Contracts contain semantic IDs, Target and Material values, Whole/Passage
+  scope, Fidelity checks, availability and repair reason codes, fingerprints,
+  prepared runs, completions, and validation without interface labels or
+  symbols.
+- Analysis/Topic availability is Dialogue, Develop, Review, Fidelity; Work
+  availability is Critique, Revise, Dialogue, Fidelity, Manuscript.
+- `ResearchUseCases` remains a compatibility composite over narrow record,
+  checkpoint, skill, and function protocols.
+- CLI function commands decode and encode Contracts values and invoke the same
+  Application coordinator as the App.
+
+#### PRD-FUN-002 — Preparation and completion transaction
+
+**Requirement:** Application MUST fix one Target, validate every read-only
+Material independently, reject Target duplication, resolve the exact workflow
+resources, create the required checkpoint and record, recheck revisions before
+returning instructions, and roll back a partial preparation. Completion MUST
+validate the prepared run, function, and final fingerprints.
+
+**Acceptance criteria:**
+
+- Develop, Revise, Manuscript, promoted Dialogue, and Critique use the required
+  checkpoint; Review and Fidelity do not.
+- An unresolved conditional-method request persists a read-only preflight on
+  the normal run, checkpoint, and evidential record. Explicit method selection,
+  including an empty base-only selection, atomically finalizes that same run;
+  preparation completion is rejected while selection remains unresolved.
+- Cancellation is explicit and idempotent for a prepared run.
+- Legacy Dialogue and Critique APIs delegate through the coordinator during
+  migration.
+- Dialogue, Critique, Human Review, Comments, and Fidelity remain separate
+  records even when related by one run identifier.
+
+#### PRD-FUN-003 — Revision-specific Fidelity handoff
+
+**Requirement:** Every write-capable preparation MUST include a pending final
+Fidelity handoff, not an eagerly prepared pre-edit audit. Because Scholium has
+no embedded agent runtime, it MUST NOT claim to run the audit in the
+background. The external agent MUST first complete the substantive parent
+against the exact final fingerprint, prepare and complete an independent
+read-only Fidelity child against that final revision, and then link that child
+through a later parent submission.
+
+**Acceptance criteria:**
+
+- The first valid write completion persists as Awaiting Fidelity. Direct
+  Fidelity outcomes on the write run are rejected.
+- The Fidelity child preserves the parent's Target identity at its exact final
+  fingerprint plus the same Materials, scope kind, selected Comments, and
+  required checks. Only a completed matching child run ID advances the parent.
+- The deterministic audit planner rejects duplicate work by reusing rather
+  than persisting a second result for one function, scope, evidence, checks,
+  and final revision. Later Target or evidence changes mark the outcome stale.
+- Content is always available. Citations is available only when the backend
+  validates an active Triptych binding to a compatible citation capability and
+  style; malformed or missing bindings return a typed repair reason.
+
 ### 7.5 Works and Critique
 
 #### PRD-CRI-001 — Critique association and storage
@@ -995,7 +1111,7 @@ manual academic workflow.
 
 **Acceptance criteria:**
 
-- Request Critique is available for a Work where applicable.
+- Critique is available for a Work where applicable.
 - Later Critique rounds update the current Critique while earlier states remain
   available through checkpoint-backed history.
 - Critiques cannot cross the Critiques boundary through ordinary lifecycle
@@ -1007,13 +1123,12 @@ manual academic workflow.
 
 #### PRD-CRI-002 — Critique request and form
 
-**Requirement:** Request Critique MUST offer Overall Critique, Specific
-Comments, or Both, with optional scholarly scope such as a selection, line
-range, section, focus, or disciplinary lens. It MUST NOT display or permit
+**Requirement:** Critique MUST be one Work function offering **Whole |
+Passage**, included Work Comments, and an optional focus or disciplinary lens.
+An existing editor selection MUST default to Passage. It MUST NOT display or permit
 one-run selection or editing of the active template or assembled technical
 instructions.
-Request Critique remains optional; a Work can be written and revised without
-requesting a Critique.
+Critique remains optional; a Work can be written and revised without it.
 
 The default Critique MUST distinguish source reports, support, disputes, and
 uncertainty from agent reconstruction or evaluation. It MUST identify
@@ -1379,6 +1494,13 @@ The product MUST use native windows, split views, inspectors, toolbars, menus,
 sheets, alerts, controls, focus, and file panels where they provide the
 required behavior.
 
+When a note is open, one Research Strip MUST be mounted at the bottom of the
+editor with matching reserved space. It MUST be absent when no note is
+selected, MUST open one typed function panel directly, and MUST NOT add a
+folder- or multi-selection Strip, Open Scholia doorway, or second-level mode
+chooser. The Research menu and keyboard commands MUST provide equivalent
+focused-window access.
+
 ### PRD-UX-003 — Exact lifecycle language
 
 The following meanings and labels MUST remain stable:
@@ -1387,14 +1509,16 @@ The following meanings and labels MUST remain stable:
   Stale, Refresh Failed, and Fully Up to Date;
 - Keep Editing, Retry Save, Compare Changes, Reload from Disk, Return to
   Editing, and Retry Refresh;
-- Open Scholia…, Dialogue, Copy Instructions for Agent, Edit Dialogue
-  Template…, and Cancel;
+- Dialogue, Develop, Review, Fidelity, Critique, Revise, Manuscript, Whole,
+  Passage, Content, Citations, Copy Instructions for Agent, Awaiting Fidelity,
+  Unverified, Verified, Stale, Open Research Guidance…, and Cancel;
 - Review, Continue Review, Qualified, Unqualified, Complete Review, Save as
   Draft, and Cancel;
-- Request Critique, Overall Critique, Specific Comments, Both, and Edit Critique
-  Template…;
+- Edit Dialogue Template… and Edit Critique Template…;
 - Research Guidance, Prompt Templates, Skills, Reveal Skills Folder, and Reset
   to Scholium Default;
+- Research Methods, Function, Method, Built-in, Supplements, Practices,
+  Recovery, Recovery Issues, Restore…, Restore Complete Package, and Cancel;
 - Create Checkpoint…, Restore from Checkpoint…, and Reveal Checkpoints in
   Finder.
 
@@ -1560,14 +1684,14 @@ recovery states are covered.
 | J-005 | Use an Unqualified Analysis | Researcher can continue work while explicit reliance produces a non-blocking source-anchored Attention. |
 | J-006 | Prepare optional agent work | When the researcher chooses an agent, she selects notes, verifies scholarly and consequential context without seeing prompt mechanics, and receives a Before Agent Work checkpoint before copying. |
 | J-007 | Reconcile an external edit | Clean notes refresh; dirty notes preserve the local buffer and present Compare Changes, Reload from Disk, and Keep Editing. |
-| J-008 | Request and inspect Critique | Researcher requests Overall Critique, Specific Comments, or Both and can navigate findings to the target Work. |
+| J-008 | Critique and inspect a Work | Researcher opens Critique from the Work Strip, chooses Whole or Passage with applicable Comments and Materials, and can navigate findings to the fixed Target. |
 | J-009 | Restore a checkpoint | Researcher compares and selectively or completely restores a self-contained checkpoint without confusing restore with Undo. |
 | J-010 | Search and trace Connections | Researcher searches the correct scope, sees snippets and source locations, and does not receive inferred philosophical evidence. |
 | J-011 | Use optional Zotero context | When Zotero is available and selected, the researcher sees only bounded relevant metadata and can open the identified item in Zotero; its absence does not block the workflow. |
 | J-012 | Complete the workflow accessibly | Researcher completes primary journeys with keyboard and assistive technology paths under supported adaptations. |
 | J-013 | Complete the manual workflow without optional integrations | Researcher completes the core academic workflow in a clean environment where Obsidian, Zotero, and external agents are absent; Dialogue and Critique remain optional extensions. |
-| J-014 | Manage research guidance | Researcher edits prompt templates and Researcher Skills, inspects protected System and official Workflow packages, and duplicates a Workflow Skill without exposing technical sources in the scholarly workflow. |
-| J-015 | Run a mode-aware agent workflow | A local agent obtains the bounded catalog, selects one mode or an isolated Mixed sequence, loads only the dependency closure, respects phase-local permission, and answers using the request-scoped Dialogue contract. |
+| J-014 | Manage research guidance | Researcher edits prompt templates and Researcher Skills, inspects protected System and official Workflow packages, activates Triptych-local Research Methods, duplicates a Workflow Skill, and restores a missing or malformed Researcher Skill from the global Recovery inventory without exposing technical sources in the scholarly workflow. |
+| J-015 | Run a function-aware agent workflow | A local agent prepares one typed function, explicitly finalizes any conditional methods on the same run, receives only the resolved dependency closure and selected resources, respects phase-local permission, completes a separate final-fingerprint Fidelity child when required, and answers using the request-scoped Dialogue contract. |
 | J-016 | Use optional agent Zotero MCP | A local agent retrieves an exact Zotero record without treating metadata as source evidence and performs an import only through explicit request, dry run, confirmation, and read-back verification. |
 
 ## 11. Success measures and product outcomes
@@ -1587,7 +1711,7 @@ are proposed measures, not current telemetry or user-study findings.
 | M-008 | Researcher task success | Target and baseline for setup, review, agent preparation, conflict recovery, and restore. | TBD usability protocol and researcher tasks. |
 | M-009 | Performance | Measure warm launch, indexed Search, warm Read activation, and application-cold 5,000-word Read activation on Reference Machine R1 and frozen RDF-1. Proposed strict p95 limits are respectively `< 1,000 ms`, `< 100 ms`, `< 300 ms`, and `< 1,000 ms`; release-owner approval remains required. Complete-boundary instrumentation and the thermally bounded fail-closed runner are implemented, but no packaged Release 30-sample gate run exists. | `PERFORMANCE_BENCHMARK.md`, Release-app timing harness, raw 30-sample artifacts, and RDF-1 correctness results. |
 | M-010 | Obsidian independence | 100% of core academic journey acceptance in a clean environment without Obsidian installed. | Isolated Scholium app run and J-013 workflow checklist. |
-| M-011 | Skill routing integrity | 100% of routing fixtures load only the required dependency closure; zero protected-ID shadows, undeclared resources, global-directory scans, or Mixed-mode permission leaks. | Catalog, loader, CLI, selective-assembly, collision, and forward-routing tests plus J-015. |
+| M-011 | Skill routing integrity | 100% of routing fixtures load only the required function dependency closure; zero protected-ID shadows, undeclared resources, global-directory scans, package-ID selection by delivery adapters, stale binding writes, unresolved-method completion, or Manuscript-phase permission leaks. | Catalog, loader, binding, CLI, selective-assembly, collision, and forward-routing tests plus J-014–J-015. |
 | M-012 | Dialogue response fidelity | 100% of new agent requests expose the immutable request-time `responseContract`; legacy fallbacks are labelled and no response module expands task scope. | Dialogue migration, snapshot, CLI, and response-module tests plus J-015. |
 
 M-008 still requires an explicit usability target before a release decision.
@@ -1651,8 +1775,9 @@ while adding an exit gate to each phase.
 | P4 | Complete researcher-centred Dialogue, Settings-only prompt-template and file-backed skill management, optional pre-agent checkpoints, CLI replies, Critique association, prompt transport, and source-located findings. | Dialogue, Research Guidance, optional agent reply, Critique, provenance, skill-discovery, and fingerprint journeys pass. |
 | P5 | Complete self-contained checkpoints, comparison, selective/full restore, Finder access, and permanent-deletion scrubbing of app-owned records and checkpoint copies. | Recovery and purge journeys pass with newer external changes and conflict paths. |
 | P6 | Complete Search, Attention, canonical Connections, and bounded Zotero integration. | Search, relationship, Attention, and Zotero boundary gates pass. |
-| P7 | Implement the Beta mode-aware skill architecture: bundled package resources, typed catalog, CLI package retrieval, selective assembly, Dialogue response contract, one-shot bootstrap, complete Workflow packages, Mixed-mode isolation, and the protected Zotero MCP adapter and transport. | J-014–J-016, M-007, M-011, and M-012 pass with migration, security, collision, scope, and failure fixtures. |
-| P8 | Complete visual, accessibility, CJK, performance, multiwindow, conflict, recovery, and release acceptance. | All release gates pass or have explicit documented waivers. |
+| P7 | Add Research Function Contracts, the Application coordinator, thin CLI commands, legacy API wrappers, the per-window frontend controller, editor-only Strip, typed panel route, direct menu commands, and mandatory completion/Fidelity handoff. | Function-role, transaction, race, cancellation, parity, target-locking, stale-response, architecture, and UI journeys pass. |
+| P8 | Migrate to the five function-aware Workflow packages, capability and citation bindings, exact resource snapshots, product-skill mirror tooling, and guarded Researcher Skill evolution; retain the protected Zotero MCP adapter and transport. | J-014–J-016, M-007, M-011, and M-012 plus function/skill/evolution rollback cases pass. |
+| P9 | Complete visual, accessibility, CJK, performance, multiwindow, conflict, recovery, and release acceptance. | All release gates pass or have explicit documented waivers. |
 
 The current status identifies the following concrete remaining work:
 
@@ -1681,7 +1806,7 @@ future capability may be deferred without becoming a hidden dependency.
 | G7 — Performance | Approved measurements on Reference Machine R1 and frozen RDF-1 meet the thresholds declared for the stage, with retained artifacts. |
 | G8 — Documentation consistency | PRD, Product Guide, Design Handbook, README, and Implementation Status do not silently contradict one another; target requirements are not presented as current evidence. |
 | G9 — Distribution integrity | Every external binary is built from a clean tagged commit, is paired with exact corresponding GPL source and applicable third-party licenses, contains no private state or research content, states its signing/notarization and architecture accurately, and has a published SHA-256 checksum plus an exact-artifact clean-account smoke test. |
-| G10 — Agent skill architecture | For Beta, protected and researcher-owned package boundaries, selective dependency-closed assembly, Mixed-mode isolation, request-scoped Dialogue responses, one-shot bootstrap safety, and guarded Zotero MCP behavior pass J-014–J-016 and M-007/M-011/M-012 without global skill scanning or hidden authorization. |
+| G10 — Agent skill architecture | For Beta, protected and researcher-owned package boundaries, function-aware dependency-closed assembly, isolated Manuscript phases, citation bindings, guarded evolution, request-scoped Dialogue responses, one-shot bootstrap safety, and guarded Zotero MCP behavior pass J-014–J-016 and M-007/M-011/M-012 without global skill scanning or hidden authorization. |
 
 For 0.1 Experimental, G1, G2, G3, G4, G5, G8, and—whenever an external
 artifact is distributed—G9 are applicable release
@@ -1711,7 +1836,7 @@ daily-workflow definition in Section 5.3.
 | R-007 | Permanent deletion must remove app-owned history, associated Critique content, and every recoverable checkpoint copy of the deleted note. | Resolved implementation evidence | Coordinated Work/current-Critique deletion, cross-store rollback, restart recovery, checkpoint invalidation, destructive confirmation, and durable recovery inspection pass disposable core and isolated UI journeys. Keep them in the release regression set. |
 | R-008 | Manual accessibility and standalone clean-environment acceptance remain incomplete; automated clean-account setup, Critique navigation, and cold compact-width behavior now pass. | Acceptance risk | Complete manual adaptation and assistive-technology acceptance, accept the standalone workflow without optional integrations, and record retained artifacts. |
 | R-009 | Legacy role and schema decoders remain for compatibility. | Resolved migration evidence | Immutable fixtures cover every retained role spelling, property alias, sparse window/Search state, and v0 Triptych identity. Keep these bounded read paths while compatible persisted data remains supported. |
-| R-010 | The Beta mode-aware skill architecture and first-party Zotero MCP transport are structurally implemented. Automated contracts, bounded real-service reads, and one isolated synthetic import/read-back pass, but the ten philosophical field trials, Dialogue response-module UI journey, and manual accessibility acceptance remain open. | Beta acceptance risk | Keep the protected catalog, bounded resources, dependency-closed assembly, Mixed isolation, Dialogue response contract, bootstrap safety, stdio framing, and target-bound import/read-back contract under regression; complete the retained evidence plan in `SKILL_ARCHITECTURE_BETA_EVIDENCE.md` before claiming G10 or J-014–J-016. |
+| R-010 | The function architecture, five-package migration, explicit citation-style bindings, and guarded whole-package Researcher Skill evolution are structurally implemented, but philosophical field trials and manual accessibility acceptance remain incomplete. | Beta acceptance risk | Preserve the verified function, package, citation, and evolution boundaries while completing the retained philosophical and manual acceptance evidence before claiming G10 or J-014–J-016. |
 
 ### 15.3 Unresolved interface questions
 
@@ -1736,7 +1861,8 @@ Implementation Status.
 | Identity and lifecycle | §§5.3, 6 | §§3.3, 4.6, 9–10 | Reachable lifecycle and rename migration; UI acceptance open | J-003, J-007, J-009 |
 | Human Review and comments | §7 | §§4.8, 8, 10 | Reachable; full accessibility/clean-account coverage open | J-004, J-005 |
 | Dialogue and CLI | §8 | §§3.5, 4.8, 10 | Concise chronological record and immutable request-scoped `responseContract` snapshot are reachable; full J-015 acceptance remains open | J-006, J-007, J-015 |
-| Research Guidance, prompt templates, and skills | §8.3 | §§4.8–4.9, 10; D-029 | Settings-only templates, protected packages/resources, typed catalog, CLI retrieval, dependency-closed selective assembly, Mixed isolation, and one-shot bootstrap are reachable; full J-014/J-015 acceptance remains open | J-006, J-008, J-014, J-015 |
+| Research Functions and Strip | §§8.1, 8.4 | §§4.8, 10; D-026 | Coordinator, thin CLI including same-run method selection, editor-only Strip, typed panel, direct menu routes, and parent/child final-fingerprint Fidelity state are reachable; manual accessibility and philosophical field acceptance remain open | J-004, J-006, J-008, J-015 |
+| Research Guidance, prompt templates, and skills | §8.3 | §§4.8–4.9, 10; D-029 | Five independent Workflow packages, exact resource snapshots, explicit citation style and function-method bindings, and guarded whole-package Researcher Skill evolution with global Recovery are reachable; philosophical field trials remain open | J-006, J-008, J-014, J-015 |
 | Critique | §11 | §§4.8, 9–10 | Reachable with source-located findings; deterministic disposable-workspace XCUITest passes | J-008 |
 | Connections | §12 | §§4.7, 8–9 | Canonical graph reachable and absent from document authoring | J-010, J-012 |
 | Search and Attention | §13 | §§4.3, 4.5, 4.7, 9; D-030 | Unified contract, Find, outline, saved-search management, and per-window Recent Notes reachable | J-005, J-010 |

@@ -14,12 +14,23 @@ struct QualityReviewView: View {
 
     let note: WindowDocumentLocation
     let context: QualityReviewContext
+    let showsHeader: Bool
 
     @State private var qualification: NoteQualification?
     @State private var reviewNote = ""
     @State private var reviewRevision: DocumentFingerprint?
     @State private var errorMessage: String?
     @State private var isSaving = false
+
+    init(
+        note: WindowDocumentLocation,
+        context: QualityReviewContext,
+        showsHeader: Bool = true
+    ) {
+        self.note = note
+        self.context = context
+        self.showsHeader = showsHeader
+    }
 
     private var existingReviewIsStale: Bool {
         guard let record = context.record,
@@ -36,8 +47,10 @@ struct QualityReviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if showsHeader {
+                header
+                Divider()
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -51,7 +64,12 @@ struct QualityReviewView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 0, idealWidth: 660, minHeight: 540, idealHeight: 680)
+        .frame(
+            minWidth: 0,
+            idealWidth: 660,
+            minHeight: showsHeader ? 540 : 340,
+            idealHeight: showsHeader ? 680 : 500
+        )
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("scholium.humanReviewSheet")
         .onAppear(perform: loadReview)

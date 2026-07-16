@@ -1,5 +1,4 @@
 import Foundation
-import Yams
 
 /// A bounded mode in which an external agent may use Scholium guidance.
 ///
@@ -60,6 +59,10 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
     public let skillClass: ResearchSkillClass
     public let role: String
     public let version: String
+    public let supportedFunctions: [ResearchFunctionID]
+    public let capabilities: [ResearchSkillCapability]
+    public let citationStyles: [String]
+    public let citationStyleResources: [String: String]
     public let supportedModes: [ResearchSkillMode]
     /// Modes that select this System package without an explicit package ID.
     ///
@@ -87,6 +90,10 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         skillClass: ResearchSkillClass,
         role: String,
         version: String,
+        supportedFunctions: [ResearchFunctionID] = [],
+        capabilities: [ResearchSkillCapability] = [],
+        citationStyles: [String] = [],
+        citationStyleResources: [String: String] = [:],
         supportedModes: [ResearchSkillMode],
         automaticModes: [ResearchSkillMode] = [],
         compatiblePracticeIDs: [String] = [],
@@ -101,6 +108,18 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         self.skillClass = skillClass
         self.role = role
         self.version = version
+        self.supportedFunctions = Self.unique(supportedFunctions)
+        self.capabilities = Self.unique(capabilities)
+        self.citationStyles = Self.unique(citationStyles.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }.filter { !$0.isEmpty })
+        var normalizedStyleResources: [String: String] = [:]
+        for (key, value) in citationStyleResources {
+            normalizedStyleResources[
+                key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ] = value
+        }
+        self.citationStyleResources = normalizedStyleResources
         self.supportedModes = Self.unique(supportedModes)
         self.automaticModes = Self.unique(automaticModes)
         self.compatiblePracticeIDs = Self.unique(compatiblePracticeIDs)
@@ -114,6 +133,14 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         supportedModes.contains(.all) || supportedModes.contains(mode)
     }
 
+    public func supports(_ function: ResearchFunctionID) -> Bool {
+        supportedFunctions.contains(function)
+    }
+
+    public func provides(_ capability: ResearchSkillCapability) -> Bool {
+        capabilities.contains(capability)
+    }
+
     public func activatesAutomatically(in mode: ResearchSkillMode) -> Bool {
         automaticModes.contains(.all) || automaticModes.contains(mode)
     }
@@ -125,6 +152,10 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         case skillClass = "class"
         case role
         case version
+        case supportedFunctions = "supported_functions"
+        case capabilities
+        case citationStyles = "citation_styles"
+        case citationStyleResources = "citation_style_resources"
         case supportedModes = "supported_modes"
         case automaticModes = "automatic_modes"
         case compatiblePracticeIDs = "compatible_practices"
@@ -132,6 +163,53 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         case practiceResources = "practice_resources"
         case updatePolicy = "update_policy"
         case resourcePath = "path"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            name: try container.decode(String.self, forKey: .name),
+            description: try container.decode(String.self, forKey: .description),
+            skillClass: try container.decode(ResearchSkillClass.self, forKey: .skillClass),
+            role: try container.decode(String.self, forKey: .role),
+            version: try container.decode(String.self, forKey: .version),
+            supportedFunctions: try container.decodeIfPresent(
+                [ResearchFunctionID].self,
+                forKey: .supportedFunctions
+            ) ?? [],
+            capabilities: try container.decodeIfPresent(
+                [ResearchSkillCapability].self,
+                forKey: .capabilities
+            ) ?? [],
+            citationStyles: try container.decodeIfPresent(
+                [String].self,
+                forKey: .citationStyles
+            ) ?? [],
+            citationStyleResources: try container.decodeIfPresent(
+                [String: String].self,
+                forKey: .citationStyleResources
+            ) ?? [:],
+            supportedModes: try container.decode([ResearchSkillMode].self, forKey: .supportedModes),
+            automaticModes: try container.decodeIfPresent(
+                [ResearchSkillMode].self,
+                forKey: .automaticModes
+            ) ?? [],
+            compatiblePracticeIDs: try container.decodeIfPresent(
+                [String].self,
+                forKey: .compatiblePracticeIDs
+            ) ?? [],
+            requiredSkillIDs: try container.decodeIfPresent(
+                [String].self,
+                forKey: .requiredSkillIDs
+            ) ?? [],
+            practiceResources: try container.decodeIfPresent(
+                [String: String].self,
+                forKey: .practiceResources
+            ) ?? [:],
+            updatePolicy: try container.decode(String.self, forKey: .updatePolicy),
+            resourcePath: try container.decode(String.self, forKey: .resourcePath)
+        )
     }
 
     private static func unique<T: Hashable>(_ values: [T]) -> [T] {
@@ -198,7 +276,7 @@ public enum ResearchSkillCatalogError: LocalizedError, Sendable {
 /// The release-managed catalog. It deliberately has no API for scanning an
 /// arbitrary directory or importing global agent configuration.
 public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let status: String
@@ -211,7 +289,7 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
     ) throws {
         guard schemaVersion == Self.currentSchemaVersion else {
             throw ResearchSkillCatalogError.malformedCatalog(
-                "Unsupported schema version (schemaVersion)."
+                "Unsupported schema version \(schemaVersion)."
             )
         }
         guard !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -244,6 +322,36 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
                 throw ResearchSkillCatalogError.malformedCatalog(
                     "Skill \(entry.id) must declare at least one supported mode."
                 )
+            }
+            guard entry.skillClass != .workflow || !entry.supportedFunctions.isEmpty else {
+                throw ResearchSkillCatalogError.malformedCatalog(
+                    "Workflow Skill \(entry.id) must declare at least one supported function."
+                )
+            }
+            guard entry.citationStyles.allSatisfy({ style in
+                style.range(
+                    of: #"^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$"#,
+                    options: .regularExpression
+                ) != nil
+            }) else {
+                throw ResearchSkillCatalogError.malformedCatalog(
+                    "Skill \(entry.id) contains an invalid citation style identifier."
+                )
+            }
+            guard Set(entry.citationStyleResources.keys).isSubset(
+                of: Set(entry.citationStyles)
+            ) else {
+                throw ResearchSkillCatalogError.malformedCatalog(
+                    "Skill \(entry.id) maps a resource for an undeclared citation style."
+                )
+            }
+            for (style, path) in entry.citationStyleResources {
+                guard ResearchSkillResourcePath.isAllowed(path),
+                      path.hasPrefix("references/") else {
+                    throw ResearchSkillCatalogError.malformedCatalog(
+                        "\(entry.id).citation_style_resources contains an invalid reference path for \(style): \(path)."
+                    )
+                }
             }
             guard entry.automaticModes.allSatisfy({ entry.supports($0) }) else {
                 throw ResearchSkillCatalogError.malformedCatalog(
@@ -306,6 +414,10 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
 
     public func entries(supporting mode: ResearchSkillMode) -> [ResearchSkillCatalogEntry] {
         entries.filter { $0.supports(mode) }
+    }
+
+    public func entries(supporting function: ResearchFunctionID) -> [ResearchSkillCatalogEntry] {
+        entries.filter { $0.supports(function) }
     }
 
     /// Returns a stable, dependency-closed list for one ordinary mode.
@@ -394,113 +506,6 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
         return components[0] == expectedRoot
     }
 
-    public static func parse(yaml: String) throws -> Self {
-        guard let root = try Yams.load(yaml: yaml) as? [String: Any] else {
-            throw ResearchSkillCatalogError.malformedCatalog("The YAML root is not a mapping.")
-        }
-        let schemaVersion = root["schema_version"] as? Int ?? 0
-        let status = root["status"] as? String ?? "active"
-        guard let rawPackages = root["packages"] as? [[String: Any]] else {
-            throw ResearchSkillCatalogError.malformedCatalog("The packages list is missing.")
-        }
-        let entries = try rawPackages.map { raw in
-            guard let id = raw["id"] as? String,
-                  let name = raw["name"] as? String,
-                  let description = raw["description"] as? String,
-                  let classValue = raw["class"] as? String,
-                  let skillClass = ResearchSkillClass(rawValue: classValue),
-                  let role = raw["role"] as? String,
-                  let version = raw["version"] as? String,
-                  let updatePolicy = raw["update_policy"] as? String,
-                  let resourcePath = raw["path"] as? String else {
-                throw ResearchSkillCatalogError.malformedCatalog(
-                    "Every package requires id, name, description, class, role, version, update_policy, and path."
-                )
-            }
-            let modes = try modeValues(raw["supported_modes"], field: "supported_modes", id: id)
-            let automaticModes = try modeValues(
-                raw["automatic_modes"],
-                field: "automatic_modes",
-                id: id
-            )
-            let compatiblePractices = try stringValues(
-                raw["compatible_practices"],
-                field: "compatible_practices",
-                id: id
-            )
-            let dependencies = try stringValues(raw["required_skills"], field: "required_skills", id: id)
-            let practiceResources = try mappingValues(
-                raw["practice_resources"],
-                field: "practice_resources",
-                id: id
-            )
-            return ResearchSkillCatalogEntry(
-                id: id,
-                name: name,
-                description: description,
-                skillClass: skillClass,
-                role: role,
-                version: version,
-                supportedModes: modes,
-                automaticModes: automaticModes,
-                compatiblePracticeIDs: compatiblePractices,
-                requiredSkillIDs: dependencies,
-                practiceResources: practiceResources,
-                updatePolicy: updatePolicy,
-                resourcePath: resourcePath
-            )
-        }
-        return try Self(schemaVersion: schemaVersion, status: status, entries: entries)
-    }
-
-    private static func stringValues(
-        _ raw: Any?,
-        field: String,
-        id: String
-    ) throws -> [String] {
-        guard let raw else { return [] }
-        guard let values = raw as? [Any] else {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "\(id).\(field) must be a list."
-            )
-        }
-        guard values.allSatisfy({ $0 is String }) else {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "\(id).\(field) must contain only strings."
-            )
-        }
-        return values.compactMap { $0 as? String }
-    }
-
-    private static func modeValues(
-        _ raw: Any?,
-        field: String,
-        id: String
-    ) throws -> [ResearchSkillMode] {
-        try stringValues(raw, field: field, id: id).map { value in
-            guard let mode = ResearchSkillMode(rawValue: value) else {
-                throw ResearchSkillCatalogError.malformedCatalog(
-                    "\(id).\(field) contains unsupported mode \(value)."
-                )
-            }
-            return mode
-        }
-    }
-
-    private static func mappingValues(
-        _ raw: Any?,
-        field: String,
-        id: String
-    ) throws -> [String: String] {
-        guard let raw else { return [:] }
-        guard let values = raw as? [String: Any],
-              values.values.allSatisfy({ $0 is String }) else {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "\(id).\(field) must be a string-to-string mapping."
-            )
-        }
-        return values.compactMapValues { $0 as? String }
-    }
 }
 
 public enum ResearchSkillResourcePath {
@@ -513,6 +518,6 @@ public enum ResearchSkillResourcePath {
             return false
         }
         if components.count == 1 { return components[0] == "SKILL.md" }
-        return ["references", "templates"].contains(components[0])
+        return ["references", "templates", "evals"].contains(components[0])
     }
 }

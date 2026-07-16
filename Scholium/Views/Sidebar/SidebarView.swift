@@ -39,7 +39,6 @@ struct SidebarContext {
     let openNote: (String, Bool) -> Void
     let openLifecycleNote: (String, NoteLocationScope) -> Void
     let selectWorkspaceVault: (WorkspaceVaultSlot) -> Void
-    let presentScholia: (String) -> Void
     let lifecycleItems: (NoteLocationScope) async throws -> [LifecycleLocationItem]
     let prepareLifecycle: (LifecycleLocationItem) -> Void
     let clearPreparedLifecycle: (String) -> Void
@@ -296,7 +295,8 @@ struct SidebarView: View {
                     }
                     .disabled(!context.hasVaultConfiguration)
                 } label: {
-                    Image(systemName: "ellipsis")
+                    Label("Triptych management", systemImage: "ellipsis")
+                        .labelStyle(.iconOnly)
                         .frame(
                             width: ScholiumMetrics.Triptych.headerControlSize,
                             height: ScholiumMetrics.Triptych.headerControlSize
@@ -817,7 +817,6 @@ struct SidebarView: View {
             resolvedIdentityPaths: context.resolvedIdentityPaths,
             reviewDisplayState: context.reviewDisplayState,
             openNote: context.openNote,
-            presentScholia: context.presentScholia,
             requestLifecycle: { controller.requestLifecycle($0) },
             revealNote: context.revealNote,
             setAside: context.setAside,
@@ -1329,7 +1328,6 @@ private struct SidebarTreeContext {
     let resolvedIdentityPaths: Set<String>
     let reviewDisplayState: (String) -> HumanReviewDisplayState
     let openNote: (String, Bool) -> Void
-    let presentScholia: (String) -> Void
     let requestLifecycle: (NoteLifecycleRequest) -> Void
     let revealNote: (String) -> Void
     let setAside: (String) async throws -> Void
@@ -1433,14 +1431,6 @@ private struct TreeNodeView: View {
                         context.openNote(note.relativePath, true)
                     } label: {
                         Label("Open in New Tab", systemImage: "plus.square")
-                    }
-                    if context.locationScope == .workspace,
-                       hasResolvedIdentity(note) {
-                        Button {
-                            context.presentScholia(note.relativePath)
-                        } label: {
-                            Label("Open Scholia…", systemImage: "text.bubble")
-                        }
                     }
                     Divider()
                     if context.locationScope == .workspace {

@@ -56,6 +56,7 @@ export type EditorOperation =
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkCompletions"; value: unknown[]}
   | {type: "setResearcherComments"; value: unknown[]}
+  | {type: "announceStatus"; value: string}
   | {type: "goToLine"; line: number}
   | {type: "setScrollFraction"; fraction: number}
   | {type: "queryText"} | {type: "querySelection"} | {type: "queryContext"}
@@ -88,7 +89,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setUserCSS", "setLinkCompletions", "setResearcherComments",
+  "initialize", "setMode", "setUserCSS", "setLinkCompletions", "setResearcherComments", "announceStatus",
   "goToLine", "setScrollFraction", "queryText", "querySelection", "queryContext",
   "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus",
 ]);
@@ -113,6 +114,7 @@ function validOperation(operation: Record<string, unknown>) {
       && Boolean(operation.dialect) && typeof operation.dialect === "object";
   case "setMode": return validMode(operation.mode);
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
+  case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
   case "setLinkCompletions": case "setResearcherComments": return Array.isArray(operation.value);
   case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1;
   case "setScrollFraction": return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);

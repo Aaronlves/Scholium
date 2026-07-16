@@ -545,6 +545,40 @@ public actor TriptychCheckpointStore {
         return checkpoint
     }
 
+    /// Removes exactly one automatic checkpoint created by a preparation that
+    /// subsequently failed. This is deliberately narrower than retention or
+    /// note-purge operations: the metadata identity, Triptych, inventory, and
+    /// automatic kind are all validated before one directory is removed.
+    @discardableResult
+    public func discardAutomaticCheckpoint(id: UUID) throws -> TriptychCheckpoint {
+        let checkpoint = try checkpoint(id: id)
+        guard checkpoint.kind == .automatic else {
+            throw TriptychCheckpointError.cannotDiscardManualCheckpoint(id)
+        }
+        let destination = checkpointURL(id: id).standardizedFileURL
+        guard destination.deletingLastPathComponent() == storageURL.standardizedFileURL,
+              destination.lastPathComponent == id.uuidString else {
+            throw TriptychCheckpointError.invalidCheckpoint(id)
+        }
+        let values = try destination.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw TriptychCheckpointError.corruptCheckpoint(
+                id,
+                "checkpoint entry is linked or is not a directory"
+            )
+        }
+        try fileManager.removeItem(at: destination)
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            throw TriptychCheckpointError.corruptCheckpoint(
+                id,
+                "automatic checkpoint remained after discard"
+            )
+        }
+        return checkpoint
+    }
+
     /// Permanently invalidates every checkpoint that contains the deleted
     /// note. Scholium removes the complete self-contained checkpoint instead
     /// of rewriting its inventory, identities, and portable associations in

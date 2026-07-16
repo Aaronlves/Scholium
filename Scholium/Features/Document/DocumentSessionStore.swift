@@ -36,6 +36,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var renderedReadHTML = ""
     @Published var renderedReadFingerprint = ""
     @Published var failedReadFingerprint: String?
+    var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     @Published var canRetrySave = false
     @Published var showConflictComparison = false

@@ -69,6 +69,29 @@ struct TriptychCheckpointTests {
         #expect(checkpoints.filter { $0.kind == .manual }.map(\.name) == ["Manual"])
     }
 
+    @Test("Preparation rollback discards exactly one verified automatic checkpoint")
+    func discardsOnlyAutomaticCheckpoint() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychCheckpointStore(
+            triptychID: fixture.triptychID,
+            applicationSupportURL: fixture.support
+        )
+        let manual = try await store.create(name: "Researcher Baseline", kind: .manual, roots: fixture.roots)
+        let automatic = try await store.create(name: "Before Agent Work", kind: .automatic, roots: fixture.roots)
+
+        let discarded = try await store.discardAutomaticCheckpoint(id: automatic.id)
+        #expect(discarded.id == automatic.id)
+        #expect(discarded.kind == .automatic)
+        #expect(discarded.triptychFingerprint == automatic.triptychFingerprint)
+        #expect(!FileManager.default.fileExists(atPath: await store.checkpointURL(id: automatic.id).path))
+        #expect((await store.checkpoints()).map(\.id) == [manual.id])
+        await #expect(throws: TriptychCheckpointError.self) {
+            _ = try await store.discardAutomaticCheckpoint(id: manual.id)
+        }
+        #expect(FileManager.default.fileExists(atPath: await store.checkpointURL(id: manual.id).path))
+    }
+
     @Test("Restoring the oldest automatic checkpoint defers retention until restore completes")
     func restoresOldestRetainedAutomaticCheckpoint() async throws {
         let fixture = try Fixture()

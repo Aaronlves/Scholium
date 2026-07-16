@@ -1,21 +1,21 @@
 ---
 name: scholium-prose-control
-description: Improve the clarity, movement, organization, and audience-fit of existing philosophical prose without changing its thesis, claims, concepts, definitions, distinctions, inferences, objections and replies, source roles, scope, modality, qualifications, or epistemic status. Use in Scholium write mode for surface-level or communicative revision of articles, chapters, proposals, notes, abstracts, literature reviews, exposition, and objection-reply passages when the researcher selects an editable Prose Control method. Use alongside Scholium Philosophical Writing for permission and durability; do not use to invent content, repair arguments substantively, change philosophical commitments, conduct independent review, or format citations.
+description: Improve the clarity, movement, organization, and audience-fit of existing philosophical prose without changing its thesis, claims, concepts, definitions, distinctions, inferences, objections and replies, source roles, scope, modality, qualifications, or epistemic status. Use only as an explicitly selected researcher-owned specialist within Revise. Do not invent content, repair arguments substantively, change philosophical commitments, conduct Critique, or format citations.
 ---
 
 # Scholium Prose Control
 
-Apply `scholium-core-protocol` and the `scholium-philosophical-writing` permission boundary. Treat this package as an editable, researcher-owned specialist method. It controls how existing philosophical content is expressed; it does not decide what the researcher should believe or silently repair the philosophy.
+Apply `scholium-core-protocol` and the `scholium-revision` permission boundary. Treat this package as an editable, researcher-owned specialist method. It controls how existing philosophical content is expressed; it does not decide what the researcher should believe or silently repair the philosophy.
 
 An adopted copy belongs to the researcher. The researcher may replace its style models, priorities, examples, and output preferences, and Scholium releases must not overwrite that copy.
 
 ## Establish the prose-control packet
 
 ```text
-Mode: write
-Primary Workflow: scholium-philosophical-writing
+Legacy mode: write
+Research Function: revise
+Primary Workflow: scholium-revision
 Selected Researcher Skill: scholium-prose-control plus exact package revision
-Permission submode: advisory-only | patch-proposal | authorized-file-edit
 Exact target and current fingerprint when durable:
 Genre, audience, stage, and requested length:
 Local passage or section function:
@@ -28,7 +28,7 @@ Stop condition:
 Durability:
 ```
 
-The writing mode does not grant file-edit permission. Follow the selected Writing permission submode and load `scholium-research-integration` before reading or changing a live Triptych note.
+Selection of Prose Control does not grant file-edit permission. Follow the current Revise packet, checkpoint, exact Target, and write range.
 
 ## Record the preservation ledger
 

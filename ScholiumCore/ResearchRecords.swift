@@ -382,6 +382,129 @@ public actor HumanReviewStore {
 }
 
 
+public enum ResearchFunctionRecordStoreError: LocalizedError, Sendable {
+    case runNotFound(UUID)
+    case duplicateRun(UUID)
+    case preparationMismatch(UUID)
+    case completionMismatch(UUID)
+    case runAlreadyCompleted(UUID)
+
+    public var errorDescription: String? {
+        switch self {
+        case .runNotFound(let id):
+            "Research Function run not found: \(id.uuidString)"
+        case .duplicateRun(let id):
+            "Research Function run is recorded more than once: \(id.uuidString)"
+        case .preparationMismatch(let id):
+            "Research Function preflight finalization does not preserve its fixed run: \(id.uuidString)"
+        case .completionMismatch(let id):
+            "Research Function completion does not match its prepared run: \(id.uuidString)"
+        case .runAlreadyCompleted(let id):
+            "Research Function run already has different completion evidence: \(id.uuidString)"
+        }
+    }
+}
+
+private func canFinalizeFunctionPreflight(
+    _ current: ResearchFunctionSnapshot,
+    as replacement: ResearchFunctionSnapshot
+) -> Bool {
+    guard current.request.awaitsMethodSelection,
+          replacement.request.methods != nil,
+          current.runID == replacement.runID,
+          current.recordKind == replacement.recordKind,
+          current.recordID == replacement.recordID,
+          current.checkpointID == replacement.checkpointID,
+          current.requiredChildFunctions == replacement.requiredChildFunctions,
+          current.preparedOutput == replacement.preparedOutput,
+          current.evidenceRevisions == replacement.evidenceRevisions,
+          current.fidelityHandoff == replacement.fidelityHandoff,
+          current.confirmationToken == replacement.confirmationToken,
+          current.preparedAt == replacement.preparedAt,
+          functionRequestsMatchExceptMethods(current.request, replacement.request),
+          skillSelections(current.skills, areRetainedBy: replacement.skills),
+          current.phases.count == replacement.phases.count else {
+        return false
+    }
+
+    return zip(current.phases, replacement.phases).allSatisfy { old, new in
+        old.phase == new.phase
+            && old.function == new.function
+            && old.citationStyle == new.citationStyle
+            && skillSelections(old.skills, areRetainedBy: new.skills)
+    }
+}
+
+private func functionRequestsMatchExceptMethods(
+    _ lhs: ResearchFunctionRequest,
+    _ rhs: ResearchFunctionRequest
+) -> Bool {
+    ResearchFunctionRequest(
+        function: lhs.function,
+        target: lhs.target,
+        materials: lhs.materials,
+        instruction: lhs.instruction,
+        scope: lhs.scope,
+        checks: lhs.checks,
+        commentIDs: lhs.commentIDs,
+        methods: nil
+    ) == ResearchFunctionRequest(
+        function: rhs.function,
+        target: rhs.target,
+        materials: rhs.materials,
+        instruction: rhs.instruction,
+        scope: rhs.scope,
+        checks: rhs.checks,
+        commentIDs: rhs.commentIDs,
+        methods: nil
+    )
+}
+
+private func skillSelections(
+    _ current: [ResearchFunctionSkillSnapshot],
+    areRetainedBy replacement: [ResearchFunctionSkillSnapshot]
+) -> Bool {
+    guard current.count == replacement.count else { return false }
+    return current.allSatisfy { old in
+        guard let new = replacement.first(where: {
+            $0.packageID == old.packageID && $0.origin == old.origin
+        }),
+        new.version == old.version,
+        new.packageRevision == old.packageRevision else {
+            return false
+        }
+        return Set(old.loadedResources).isSubset(of: Set(new.loadedResources))
+    }
+}
+
+private func canAdvanceFunctionCompletion(
+    from existing: ResearchFunctionCompletion,
+    to replacement: ResearchFunctionCompletion,
+    snapshot: ResearchFunctionSnapshot
+) -> Bool {
+    let stateAdvances: Bool
+    switch (existing.state, replacement.state) {
+    case (.awaitingFidelity, .complete),
+         (.awaitingFidelity, .unverified),
+         (.unverified, .complete),
+         (.stale, .complete):
+        stateAdvances = true
+    default:
+        stateAdvances = false
+    }
+    guard existing.runID == replacement.runID,
+          existing.function == replacement.function,
+          existing.targetFingerprint == replacement.targetFingerprint,
+          existing.materialFingerprints == replacement.materialFingerprints,
+          existing.didModifyTarget == replacement.didModifyTarget,
+          replacement.completedAt >= existing.completedAt,
+          stateAdvances else {
+        return false
+    }
+    let allowedChecks = snapshot.fidelityHandoff?.checks ?? snapshot.request.checks
+    return Set(replacement.fidelityOutcomes.map(\.check)).isSubset(of: allowedChecks)
+}
+
 public actor DialogueStore {
     private struct Payload: Codable {
         let schemaVersion: Int
@@ -440,6 +563,50 @@ public actor DialogueStore {
         entries.values.sorted { $0.createdAt > $1.createdAt }
     }
 
+    public func functionRecord(
+        runID: UUID
+    ) throws -> ResearchFunctionRecordProjection? {
+        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        guard matches.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let entry = matches.first, let snapshot = entry.functionSnapshot else {
+            return nil
+        }
+        return ResearchFunctionRecordProjection(
+            snapshot: snapshot,
+            completion: entry.functionCompletion,
+            preparedInstructions: entry.generatedPrompt
+        )
+    }
+
+    /// Returns the durable Research Function projections owned by Dialogue.
+    /// Application merges this with the Critique authority when planning from
+    /// committed evidence; derived workspace snapshots are not an authority for
+    /// deduplication or Manuscript child selection.
+    public func functionRecords() throws -> [ResearchFunctionRecordProjection] {
+        let records = entries.values.compactMap { entry in
+            entry.functionSnapshot.map {
+                ResearchFunctionRecordProjection(
+                    snapshot: $0,
+                    completion: entry.functionCompletion,
+                    preparedInstructions: entry.generatedPrompt
+                )
+            }
+        }
+        guard Set(records.map(\.id)).count == records.count else {
+            let duplicated = Dictionary(grouping: records, by: \.id)
+                .first(where: { $0.value.count > 1 })!.key
+            throw ResearchFunctionRecordStoreError.duplicateRun(duplicated)
+        }
+        return records.sorted {
+            if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
+                return $0.snapshot.preparedAt > $1.snapshot.preparedAt
+            }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
     /// Removes every Dialogue containing the note. Shared entries are deleted
     /// in full so permanent deletion cannot retain the deleted note's selected
     /// context, comments, quotations, replies, or generated transport text.
@@ -494,6 +661,103 @@ public actor DialogueStore {
         proposed[entry.id] = entry
         try commit(proposed)
         return entries[entry.id] ?? entry
+    }
+
+    /// Persists completion or cancellation evidence on the exact prepared run.
+    /// Repeating the same completion is idempotent; replacing different
+    /// evidence is rejected.
+    @discardableResult
+    public func setFunctionCompletion(
+        _ completion: ResearchFunctionCompletion,
+        runID: UUID
+    ) throws -> DialogueEntry {
+        guard completion.runID == runID else {
+            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
+        }
+        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        guard matches.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let current = matches.first, let snapshot = current.functionSnapshot else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        guard snapshot.request.function == completion.function else {
+            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
+        }
+        if let existing = current.functionCompletion {
+            if existing == completion { return current }
+            guard canAdvanceFunctionCompletion(
+                from: existing,
+                to: completion,
+                snapshot: snapshot
+            ) else {
+                throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
+            }
+        }
+        let updated = Self.replacingFunctionEvidence(
+            in: current,
+            snapshot: snapshot,
+            completion: completion
+        )
+        var proposed = entries
+        proposed[current.id] = updated
+        try commit(proposed)
+        return entries[current.id] ?? updated
+    }
+
+    /// Atomically turns one read-only, method-unresolved preflight into its
+    /// immutable execution handoff. No Target, checkpoint, record identity,
+    /// package revision, or already-loaded resource may change.
+    @discardableResult
+    public func finalizeFunctionPreflight(
+        snapshot replacement: ResearchFunctionSnapshot,
+        instructions: String,
+        runID: UUID
+    ) throws -> DialogueEntry {
+        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        guard matches.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let current = matches.first, let snapshot = current.functionSnapshot else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        guard current.functionCompletion == nil else {
+            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
+        }
+        if snapshot == replacement, current.generatedPrompt == instructions {
+            return current
+        }
+        guard canFinalizeFunctionPreflight(snapshot, as: replacement) else {
+            throw ResearchFunctionRecordStoreError.preparationMismatch(runID)
+        }
+        let updated = Self.replacingFunctionPreparation(
+            in: current,
+            snapshot: replacement,
+            instructions: instructions
+        )
+        var proposed = entries
+        proposed[current.id] = updated
+        try commit(proposed)
+        return entries[current.id] ?? updated
+    }
+
+    /// Rolls back only an incomplete record created for the named run.
+    @discardableResult
+    public func discardPreparedFunctionRecord(runID: UUID) throws -> DialogueEntry {
+        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        guard matches.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let entry = matches.first else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        guard entry.functionCompletion == nil else {
+            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
+        }
+        var proposed = entries
+        proposed.removeValue(forKey: entry.id)
+        try commit(proposed)
+        return entry
     }
 
     @discardableResult
@@ -618,6 +882,9 @@ public actor DialogueStore {
                 includedComments: migratedComments,
                 generatedPrompt: entry.generatedPrompt,
                 checkpointID: entry.checkpointID,
+                functionSnapshot: entry.functionSnapshot,
+                functionCompletion: entry.functionCompletion,
+                responseContract: entry.responseContract,
                 requestedDestination: entry.requestedDestination,
                 linkedNoteSummary: entry.linkedNoteSummary,
                 createdAt: entry.createdAt,
@@ -630,6 +897,54 @@ public actor DialogueStore {
         guard changedEntries > 0 else { return 0 }
         try commit(updatedEntries)
         return changedEntries
+    }
+
+    private static func replacingFunctionEvidence(
+        in entry: DialogueEntry,
+        snapshot: ResearchFunctionSnapshot?,
+        completion: ResearchFunctionCompletion?
+    ) -> DialogueEntry {
+        DialogueEntry(
+            id: entry.id,
+            triptychID: entry.triptychID,
+            instruction: entry.instruction,
+            selectedNotes: entry.selectedNotes,
+            includedComments: entry.includedComments,
+            generatedPrompt: entry.generatedPrompt,
+            checkpointID: entry.checkpointID,
+            functionSnapshot: snapshot,
+            functionCompletion: completion,
+            responseContract: entry.responseContract,
+            requestedDestination: entry.requestedDestination,
+            linkedNoteSummary: entry.linkedNoteSummary,
+            createdAt: entry.createdAt,
+            followUpComments: entry.followUpComments,
+            replies: entry.replies
+        )
+    }
+
+    private static func replacingFunctionPreparation(
+        in entry: DialogueEntry,
+        snapshot: ResearchFunctionSnapshot,
+        instructions: String
+    ) -> DialogueEntry {
+        DialogueEntry(
+            id: entry.id,
+            triptychID: entry.triptychID,
+            instruction: entry.instruction,
+            selectedNotes: entry.selectedNotes,
+            includedComments: entry.includedComments,
+            generatedPrompt: instructions,
+            checkpointID: entry.checkpointID,
+            functionSnapshot: snapshot,
+            functionCompletion: nil,
+            responseContract: entry.responseContract,
+            requestedDestination: entry.requestedDestination,
+            linkedNoteSummary: entry.linkedNoteSummary,
+            createdAt: entry.createdAt,
+            followUpComments: entry.followUpComments,
+            replies: entry.replies
+        )
     }
 
     private func commit(_ proposed: [UUID: DialogueEntry]) throws {
@@ -708,6 +1023,51 @@ public actor CritiqueRegistry {
         associations.values.first { $0.critiqueRelativePath == critiqueRelativePath }
     }
 
+    public func functionRecord(
+        runID: UUID
+    ) throws -> ResearchFunctionRecordProjection? {
+        let matches = associations.values.flatMap(\.rounds).filter {
+            $0.functionSnapshot?.runID == runID
+        }
+        guard matches.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let round = matches.first, let snapshot = round.functionSnapshot else {
+            return nil
+        }
+        return ResearchFunctionRecordProjection(
+            snapshot: snapshot,
+            completion: round.functionCompletion,
+            preparedInstructions: round.functionInstructions
+        )
+    }
+
+    /// Returns the durable Research Function projections owned by Critique.
+    /// Application keeps these evidential records distinct while merging their
+    /// projections with Dialogue-backed runs for authoritative planning.
+    public func functionRecords() throws -> [ResearchFunctionRecordProjection] {
+        let records = associations.values.flatMap(\.rounds).compactMap { round in
+            round.functionSnapshot.map {
+                ResearchFunctionRecordProjection(
+                    snapshot: $0,
+                    completion: round.functionCompletion,
+                    preparedInstructions: round.functionInstructions
+                )
+            }
+        }
+        guard Set(records.map(\.id)).count == records.count else {
+            let duplicated = Dictionary(grouping: records, by: \.id)
+                .first(where: { $0.value.count > 1 })!.key
+            throw ResearchFunctionRecordStoreError.duplicateRun(duplicated)
+        }
+        return records.sorted {
+            if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
+                return $0.snapshot.preparedAt > $1.snapshot.preparedAt
+            }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
     func associationsRelated(noteID: UUID, relativePath: String) -> [CritiqueAssociation] {
         associations.values.filter {
             $0.workNoteID == noteID || $0.critiqueRelativePath == relativePath
@@ -744,6 +1104,10 @@ public actor CritiqueRegistry {
         critiqueRelativePath: String,
         checkpointID: UUID?,
         scope: CritiqueRequestScope,
+        roundID: UUID = UUID(),
+        functionSnapshot: ResearchFunctionSnapshot? = nil,
+        functionCompletion: ResearchFunctionCompletion? = nil,
+        functionInstructions: String? = nil,
         requestedAt: Date = Date()
     ) throws -> CritiqueAssociation {
         var association = association(workNoteID: workNoteID) ?? CritiqueAssociation(
@@ -758,12 +1122,179 @@ public actor CritiqueRegistry {
         association.targetFingerprint = targetFingerprint
         association.critiqueRelativePath = critiqueRelativePath
         association.rounds.append(CritiqueRound(
+            id: roundID,
             requestedAt: requestedAt,
             targetFingerprint: targetFingerprint,
             checkpointID: checkpointID,
-            scope: scope
+            scope: scope,
+            functionSnapshot: functionSnapshot,
+            functionCompletion: functionCompletion,
+            functionInstructions: functionInstructions
         ))
         return try save(association)
+    }
+
+    @discardableResult
+    public func setFunctionCompletion(
+        _ completion: ResearchFunctionCompletion,
+        runID: UUID
+    ) throws -> CritiqueAssociation {
+        guard completion.runID == runID else {
+            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
+        }
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.functionSnapshot?.runID == runID
+                    ? (association.id, index, round)
+                    : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID],
+              let snapshot = round.functionSnapshot else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        guard snapshot.request.function == completion.function else {
+            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
+        }
+        if let existing = round.functionCompletion {
+            if existing == completion { return association }
+            guard canAdvanceFunctionCompletion(
+                from: existing,
+                to: completion,
+                snapshot: snapshot
+            ) else {
+                throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
+            }
+        }
+        association.rounds[index] = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            functionSnapshot: snapshot,
+            functionCompletion: completion,
+            functionInstructions: round.functionInstructions
+        )
+        return try save(association)
+    }
+
+    /// Critique keeps the prepared output and round identity fixed while the
+    /// external agent finalizes only its conditional method references.
+    @discardableResult
+    public func finalizeFunctionPreflight(
+        snapshot replacement: ResearchFunctionSnapshot,
+        instructions: String,
+        runID: UUID
+    ) throws -> CritiqueAssociation {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.functionSnapshot?.runID == runID
+                    ? (association.id, index, round)
+                    : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID],
+              let snapshot = round.functionSnapshot else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        guard round.functionCompletion == nil else {
+            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
+        }
+        if snapshot == replacement, round.functionInstructions == instructions {
+            return association
+        }
+        guard canFinalizeFunctionPreflight(snapshot, as: replacement) else {
+            throw ResearchFunctionRecordStoreError.preparationMismatch(runID)
+        }
+        association.rounds[index] = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            functionSnapshot: replacement,
+            functionCompletion: nil,
+            functionInstructions: instructions
+        )
+        return try save(association)
+    }
+
+    /// Rolls back only the incomplete Critique round prepared for this run.
+    /// An association with older rounds is retained; an otherwise empty
+    /// association is removed.
+    @discardableResult
+    public func discardPreparedFunctionRecord(
+        runID: UUID
+    ) throws -> CritiqueRound {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.functionSnapshot?.runID == runID
+                    ? (association.id, index, round)
+                    : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID] else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        guard round.functionCompletion == nil else {
+            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
+        }
+        association.rounds.remove(at: index)
+        var proposed = associations
+        if association.rounds.isEmpty {
+            proposed.removeValue(forKey: associationID)
+        } else {
+            association.updatedAt = Date()
+            proposed[associationID] = association
+        }
+        try commit(proposed)
+        return round
+    }
+
+    /// Legacy Critique preparation may persist its round before the new
+    /// function snapshot is attached. This rollback key is therefore the
+    /// immutable round identity rather than a run identity. Only an
+    /// uncompleted round can be removed.
+    @discardableResult
+    public func discardPreparedRound(roundID: UUID) throws -> CritiqueRound {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.id == roundID ? (association.id, index, round) : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(roundID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID] else {
+            throw ResearchFunctionRecordStoreError.runNotFound(roundID)
+        }
+        guard round.functionCompletion == nil else {
+            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(roundID)
+        }
+        association.rounds.remove(at: index)
+        var proposed = associations
+        if association.rounds.isEmpty {
+            proposed.removeValue(forKey: associationID)
+        } else {
+            association.updatedAt = Date()
+            proposed[associationID] = association
+        }
+        try commit(proposed)
+        return round
     }
 
     /// Keeps a Work association and its Critique destination attached to a

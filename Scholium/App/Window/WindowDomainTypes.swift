@@ -81,13 +81,6 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-enum ScholiaSection: String, CaseIterable, Identifiable, Sendable {
-    case comments
-    case dialogue
-
-    var id: String { rawValue }
-}
-
 /// A resolved document destination emitted by a feature controller and routed
 /// by the owning `WindowModel`. It carries no repository or presentation
 /// service and therefore remains safe to pass across feature boundaries.
@@ -107,9 +100,10 @@ struct WindowDocumentRoute: Hashable, Sendable {
     }
 }
 
-struct ScholiaRoute: Hashable, Sendable {
-    let reference: VaultNoteReference
-    let section: ScholiaSection
+struct ResearchFunctionPanelRoute: Hashable, Sendable {
+    let target: VaultNoteReference
+    let function: ResearchFunctionID
+    let presentationID: UUID
 }
 
 /// The complete set of cross-feature requests understood by one window.
@@ -119,7 +113,7 @@ enum WindowIntent: Equatable, Sendable {
     case openDocument(WindowDocumentRoute)
     case revealSourceLocator(vaultID: UUID, locator: SourceLocator)
     case switchVault(UUID)
-    case presentScholia(ScholiaRoute)
+    case presentResearchFunction(ResearchFunctionPanelRoute)
     case presentLifecycle(NoteLifecycleRequest)
 }
 

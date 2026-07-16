@@ -196,19 +196,19 @@ struct ResearchSkillStoreTests {
         let store = ResearchSkillStore(controlURL: fixture.control)
 
         let duplicated = try await store.duplicateBundled(
-            id: "scholium-source-analysis",
-            as: "source-analysis-copy"
+            id: "scholium-development",
+            as: "development-copy"
         )
         #expect(duplicated.origin == .triptych)
-        #expect(duplicated.id == "source-analysis-copy")
+        #expect(duplicated.id == "development-copy")
         let duplicatedResources = try await store.resourcePaths(id: duplicated.id)
         #expect(duplicatedResources.contains("SKILL.md"))
         #expect(duplicatedResources.contains("references/method.md"))
-        #expect(duplicatedResources.contains("references/report-templates.md"))
+        #expect(duplicatedResources.contains("references/synthesis.md"))
         #expect(try await store.resource(
             id: duplicated.id,
             relativePath: "references/method.md"
-        ).contains("Three-pass"))
+        ).contains("Choose the intellectual operation"))
         let citation = try await store.duplicateBundled(
             id: "scholium-citation-verification",
             as: "apa-citation-method"
