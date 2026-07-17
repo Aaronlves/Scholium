@@ -140,12 +140,16 @@ public protocol ResearchFunctionUseCases: Sendable {
         _ request: ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation
 
+    func functionRun(
+        id: UUID
+    ) async throws -> ResearchFunctionPreparation
+
     func prepareAutomaticFidelity(
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation
 
-    func selectFunctionMethods(
-        _ submission: ResearchFunctionMethodSelectionSubmission
+    func selectFunctionResources(
+        _ submission: ResearchFunctionResourceSelectionSubmission
     ) async throws -> ResearchFunctionPreparation
 
     func completeFunction(
@@ -162,13 +166,23 @@ public protocol ResearchFunctionUseCases: Sendable {
     func requestCritique(for work: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint, scope: CritiqueRequestScope, lens: String, selectedRanges: String, additionalInstructions: String) async throws -> CritiquePreparation
 }
 
+public extension ResearchFunctionUseCases {
+    @available(*, deprecated, renamed: "selectFunctionResources(_:)")
+    func selectFunctionMethods(
+        _ submission: ResearchFunctionResourceSelectionSubmission
+    ) async throws -> ResearchFunctionPreparation {
+        try await selectFunctionResources(submission)
+    }
+}
+
 /// Compatibility composite used by one per-window workspace activation.
 /// Feature leaves should prefer the smallest component protocol they need.
 public protocol ResearchUseCases:
     ResearchRecordUseCases,
     ResearchCheckpointUseCases,
     ResearchSkillUseCases,
-    ResearchFunctionUseCases
+    ResearchFunctionUseCases,
+    RecommendedBibliographyUseCases
 {
     var skillsURL: URL { get }
     var recoveryRecordsURL: URL { get }

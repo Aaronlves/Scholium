@@ -6,7 +6,7 @@ packages:
     description: Keep every Scholium task philosophy-facing, truth-pursuing, source-faithful, researcher-controlled, and oriented toward a precise, reviewable knowledge base.
     class: system
     role: protocol
-    version: 0.7.0-draft
+    version: 0.8.0-draft
     supported_functions: []
     capabilities: []
     citation_styles: []
@@ -36,7 +36,7 @@ packages:
     description: Resolve a request-scoped Dialogue contract, compose selected scholarly response modules, and persist one concise attributed Response without granting note-edit permission.
     class: system
     role: protocol
-    version: 0.3.0-draft
+    version: 0.4.0-draft
     supported_functions: [dialogue]
     capabilities: []
     citation_styles: []
@@ -51,7 +51,7 @@ packages:
     description: Supply bounded research-library retrieval and explicitly requested guarded imports without treating bibliographic metadata as philosophical evidence.
     class: system
     role: application-adapter
-    version: 0.3.0-draft
+    version: 0.4.0-draft
     supported_functions: []
     capabilities: []
     citation_styles: []
@@ -101,7 +101,7 @@ packages:
     capabilities: []
     citation_styles: []
     supported_modes: [write, feedback]
-    compatible_practices: [thesis-architect, philosophical-expositor, systematizer, conceptual-analyst, dialectical-partner, reviewer]
+    compatible_practices: [thesis-architect, philosophical-expositor, systematizer, conceptual-analyst, dialectical-partner]
     required_skills: [scholium-core-protocol]
     update_policy: release-managed-duplicable
     path: Scholium Workflow Skills/scholium-revision
@@ -116,7 +116,7 @@ packages:
     capabilities: []
     citation_styles: []
     supported_modes: [audit]
-    compatible_practices: [historical-interpreter, conceptual-analyst, argument-reconstructionist, reviewer]
+    compatible_practices: [historical-interpreter, conceptual-analyst, argument-reconstructionist]
     required_skills: [scholium-core-protocol]
     update_policy: release-managed-duplicable
     path: Scholium Workflow Skills/scholium-content-fidelity
@@ -131,7 +131,7 @@ packages:
     capabilities: []
     citation_styles: []
     supported_modes: [manuscript]
-    compatible_practices: [thesis-architect, philosophical-expositor, systematizer, reviewer]
+    compatible_practices: []
     required_skills: [scholium-core-protocol]
     update_policy: release-managed-duplicable
     path: Scholium Workflow Skills/scholium-manuscript
@@ -141,11 +141,11 @@ packages:
     description: Provide an editable researcher-owned library of philosophical Practice references.
     class: researcher
     role: practice
-    version: 0.5.0-template
-    supported_functions: [develop, critique, revise, fidelity, manuscript]
+    version: 0.6.0-template
+    supported_functions: [develop, critique, revise, fidelity]
     capabilities: []
     citation_styles: []
-    supported_modes: [develop, review, write, feedback, audit, manuscript]
+    supported_modes: [analyze, develop, review, write, feedback, audit]
     required_skills: [scholium-core-protocol]
     practice_resources:
       research-explorer: references/Research-Explorer.md
@@ -165,9 +165,9 @@ packages:
     description: Provide a complete editable researcher-owned method for external agents to analyze philosophical and philosophically relevant sources without requiring a Scholium Research Function.
     class: researcher
     role: workflow
-    version: 1.0.0-template
+    version: 1.1.0-template
     supported_functions: []
-    capabilities: []
+    capabilities: [bibliography-recommendation]
     citation_styles: []
     supported_modes: [analyze]
     compatible_practices: [historical-interpreter, conceptual-analyst, argument-reconstructionist]
@@ -180,7 +180,7 @@ packages:
     description: Provide an editable researcher-owned method for improving Work prose without changing substantive commitments.
     class: researcher
     role: specialist
-    version: 0.2.0-template
+    version: 0.3.0-template
     supported_functions: [revise]
     capabilities: []
     citation_styles: []
@@ -194,7 +194,7 @@ packages:
     description: Provide an editable researcher-owned starter for metadata, quotation, locator, atomic source-support, and APA 7 checks inside Fidelity.
     class: researcher
     role: specialist
-    version: 0.2.0-template
+    version: 0.3.0-template
     supported_functions: [fidelity]
     capabilities: [citation-verification, citation-formatting]
     citation_styles: [apa-7]

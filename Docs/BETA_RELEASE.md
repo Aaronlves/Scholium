@@ -9,7 +9,7 @@ release gates yet.
 - App marketing version: `0.1.0`
 - App build number: `1`
 - Minimum system: macOS 26
-- Public binary: Scholium app only; the `scholium` CLI is not a beta asset
+- Public binary: Scholium app only; its version-matched CLI is an embedded helper, not a separate beta asset
 - Source license: `GPL-3.0-or-later`
 
 The public GitHub release is source-first. It provides the exact tagged source
@@ -21,7 +21,7 @@ improvements, not conditions for publishing the source.
 ## Required GitHub release assets
 
 1. `Scholium-0.1.0-beta.1-macos-<architecture>.zip` containing only
-   `Scholium.app`.
+   `Scholium.app`, including its signed `Contents/Helpers/scholium` helper.
 2. The matching `.sha256` checksum file.
 3. GitHub's source archives for the exact `v0.1.0-beta.1` tag.
 4. Release notes stating the supported macOS version and verified
@@ -31,9 +31,9 @@ improvements, not conditions for publishing the source.
    license texts inside the app bundle.
 
 The binary and corresponding source must remain equally easy to find from the
-same release page. No CLI executable, real vault, local Application Support
-state, signing credential, bookmark, index, or research content belongs in a
-release asset.
+same release page. No separate CLI asset, real vault, local Application
+Support state, signing credential, bookmark, index, or research content
+belongs in a release asset.
 
 ## Installation for an unsigned beta
 
@@ -44,6 +44,11 @@ Testers do not need Xcode:
 3. Try to open Scholium once. macOS will block the unidentified developer.
 4. Open **System Settings → Privacy & Security**, scroll to Security, choose
    **Open Anyway**, authenticate, and confirm **Open**.
+5. If an external agent will use Scholium, open **Scholium → Settings →
+   Research Guidance → Skills → Advanced → Scholium CLI**, choose **Install**,
+   and follow the displayed PATH guidance if `~/.local/bin` is not already
+   discoverable. The app installs its version-matched helper; no separate CLI
+   download or Xcode build is required.
 
 The release notes must explain that the beta is not Developer ID signed or
 notarized and that macOS cannot perform Apple's normal publisher and malware
@@ -73,7 +78,7 @@ Before creating the tag or uploading assets:
    Scholium state. Exercise first launch, Triptych selection, read/edit/save,
    conflicts, Search, the Research Strip and a representative Research
    Function, checkpoints, restoration, and unavailable optional integrations.
-6. Complete the applicable PRD quality gates and record every waiver or known
+6. Complete the applicable specification quality gates and record every waiver or known
    limitation. An ad-hoc signature must never be reported as Developer ID
    signing, notarization, or Gatekeeper acceptance.
 7. Run the approved packaged-app G7 protocol in

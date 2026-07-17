@@ -103,7 +103,7 @@ public enum WorkspaceBootstrap {
                 current.appendingPathComponent("Package.swift"),
                 current.appendingPathComponent("ScholiumCore", isDirectory: true),
                 current.appendingPathComponent("Scholium", isDirectory: true),
-                current.appendingPathComponent("Docs/PRODUCT_GUIDE.md"),
+                current.appendingPathComponent("Docs/SCHOLIUM_SPEC.md"),
             ]
             if markers.allSatisfy({ fileManager.fileExists(atPath: $0.path) }) {
                 return current

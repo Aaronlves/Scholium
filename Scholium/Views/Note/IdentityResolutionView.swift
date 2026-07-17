@@ -96,7 +96,13 @@ struct IdentityResolutionView: View {
             if isResolving {
                 ProgressView("Migrating app-owned records…")
                     .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .scholiumEditorialSurface(
+                        .floatingControl,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.loadingSurfaceCornerRadius,
+                            style: .continuous
+                        )
+                    )
             }
         }
         .accessibilityElement(children: .contain)

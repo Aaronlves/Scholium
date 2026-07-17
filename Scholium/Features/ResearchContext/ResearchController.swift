@@ -21,6 +21,7 @@ final class ResearchController: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     let functions = ResearchFunctionController()
+    let bibliography = RecommendedBibliographyController()
 
     private let intentHandler: IntentHandler
     private var operations: (any ResearchUseCases)?
@@ -29,6 +30,9 @@ final class ResearchController: ObservableObject {
     init(intentHandler: @escaping IntentHandler = { _ in }) {
         self.intentHandler = intentHandler
         functions.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        bibliography.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
     }
@@ -44,6 +48,7 @@ final class ResearchController: ObservableObject {
     func unbind() {
         operations = nil
         functions.unbind()
+        bibliography.unbind()
         records = nil
         errorMessage = nil
     }
@@ -443,6 +448,7 @@ final class ResearchController: ObservableObject {
         activeDocument = nil
         inspector = ResearchInspectorState()
         functions.dismiss()
+        bibliography.unbind()
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {

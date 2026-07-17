@@ -298,12 +298,12 @@ public enum ZoteroMetadataMatcher {
         if let title = normalizedText(source.title),
            let year = source.year,
            !source.authors.isEmpty {
-            let sourceAuthors = Set(source.authors.compactMap(normalizedAuthor))
+            let sourceAuthors = source.authors.compactMap(normalizedAuthor)
             let matches = candidates.filter { candidate in
                 guard normalizedText(candidate.title) == title,
                       candidate.year == year else { return false }
-                let candidateAuthors = Set(candidate.authors.compactMap(normalizedAuthor))
-                return !sourceAuthors.isEmpty && sourceAuthors.isSubset(of: candidateAuthors)
+                let candidateAuthors = candidate.authors.compactMap(normalizedAuthor)
+                return !sourceAuthors.isEmpty && sourceAuthors == candidateAuthors
             }
             if !matches.isEmpty { return result(matches, basis: .titleAuthorYear) }
         }
@@ -354,7 +354,7 @@ public enum ZoteroMetadataMatcher {
     private static func normalizedISBN(_ value: String?) -> String? {
         guard let value = normalizedText(value) else { return nil }
         let compact = value.filter { $0.isNumber || $0 == "x" }
-        return compact.isEmpty ? nil : compact
+        return [10, 13].contains(compact.count) ? compact : nil
     }
 
     private static func normalizedAuthor(_ value: String) -> String? {

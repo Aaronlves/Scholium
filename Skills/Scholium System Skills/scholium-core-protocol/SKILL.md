@@ -90,7 +90,7 @@ Use the smallest read and write sets sufficient for the task. A named target may
 - Work against the current document revision or fingerprint when the workflow supplies one.
 - Detect concurrent or external changes and stop rather than silently choose a version.
 - Do not edit `.scholium` machine state directly.
-- Do not scan `.agent`, `~/.codex/skills`, arbitrary filesystem locations, or another agent's global configuration for runtime skills.
+- Do not scan `.agent`, `.agents`, developer-skill directories, global Codex or plugin directories, arbitrary filesystem locations, or another agent's global configuration for shipped research capabilities. Resolve capabilities only through Scholium's bounded catalog.
 - Treat an existing researcher-owned workspace `AGENTS.md` as orientation and instruction, not as a substitute for package validation or permission.
 
 ## Protect private research during external access
@@ -107,16 +107,16 @@ Never copy the Scholium repository's development `AGENTS.md` into a researcher w
 
 ## Control context and modes
 
-Load this protocol, one primary Workflow Skill, and only the explicitly selected Researcher Skills or Practices. Do not load the whole skill library merely because it is available.
+Load this protocol, exactly one complete primary method when the intellectual operation requires one, and only explicitly selected supplemental Practices or adapters. A System Skill is transport or integration infrastructure, never the philosophical method. Do not load the whole skill library merely because it is available.
 
-If the copied request does not already include a primary Workflow Skill, classify the researcher's intellectual operation from the request, inspect the bounded routing catalog, and retrieve exactly one matching Workflow package:
+For a prepared Research Function, use the exact official Workflow or compatible complete Researcher Skill resolved by Scholium. Outside a Research Function, classify the intellectual operation and retrieve exactly one complete matching method only when interpretation, analysis, development, assessment, or revision requires it:
 
 ```sh
 scholium skills catalog --triptych <triptych> --format json
 scholium skills show <workflow-skill-id> --triptych <triptych> --format json
 ```
 
-Choose the intellectual mode independently of permission. For example, explaining a concept may use `develop` with `read-only` permission; a substantive request originating in Dialogue may use `analyze`, `develop`, `write`, or `review` while explicitly retaining the Dialogue System packages. Use Mixed mode only for genuinely sequential operations. If the catalog or selected package cannot be retrieved, state that limitation and do not claim to have applied its method.
+Direct paper analysis may use the complete Source Analyzer without creating a Research Function. Raw Zotero status, search, or item retrieval normally needs only this protocol and Zotero Integration; add Source Analyzer or Citation Verification only when interpretation or verification is requested. Choose the intellectual mode independently of permission. Use Mixed mode only for genuinely sequential operations. If the catalog or selected package cannot be retrieved, state that limitation and do not claim to have applied its method.
 
 Outside a prepared Research Function run, when a selected package instructs
 you to read one of its references or templates, retrieve that declared
@@ -133,9 +133,16 @@ for a Triptych-local package. Use the returned package revision when a
 researcher-owned Practice or specialist method must be recorded. Do not treat
 a Markdown link as evidence that a resource was actually retrieved. Within a
 method-unresolved Research Function preflight, select conditional Workflow
-references only through `scholium function select-methods`; generic skill
+references only through `scholium function select-resources`; generic skill
 retrieval is not attached to the run and must not be reported as loaded-run
 evidence.
+
+At the start of a cold CLI session, use `scholium version --format json` and
+`scholium doctor --format json`; use hierarchical help instead of remembered
+syntax. For prepared runs, prefer the typed `nextActions` argument vectors
+returned by Scholium. Never execute them through shell interpolation, submit
+an unchanged replacement-marker template, or treat a successful transport
+command as philosophical evidence.
 
 When the workflow changes mode, rebuild the read set, write set, permission, method instructions, assumptions, stop condition, and durability expectation. The preceding result becomes a labeled input or handoff, not an accepted commitment.
 

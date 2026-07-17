@@ -1,17 +1,35 @@
-# Scholium Product Guide
+# Scholium Specification
 
-**Status:** Authoritative target-product guide
+**Status:** Canonical product, interface, and release specification
 
 **Applies to:** Scholium for macOS and its agent-facing CLI
 
 **Canonicalized:** 2026-07-17
 
-**Purpose:** Define Scholium's product role, Triptych model, research workflows, collaboration boundaries, and stable feature decisions.
+**Purpose:** Define Scholium's target product, Triptych model, research
+workflows, interface and visual language, accessibility contract, release
+requirements, and stable decisions in one maintained authority.
 
-This guide owns Scholium's target role, terminology, workflows, and feature
-boundaries. The Design Handbook owns stable interface design and exact action
-language; README, source, and executable tests establish current reachability.
+This specification is the sole target authority for Scholium. It owns product
+semantics, interface behavior, exact action language, Scholarly Editorialism,
+accessibility, release requirements, and stable decisions. Subordinate
+implementation documents may explain how the current code realizes this
+contract but cannot redefine it. `IMPLEMENTATION_STATUS.md`, README, live
+construction, and executable tests establish current reachability and evidence.
 Current code that differs is migration work, not an alternative product rule.
+
+Use these terms consistently:
+
+- **Target** means required behavior whether or not it is implemented.
+- **Reachable** means the current build exposes the behavior; it is not release
+  acceptance by itself.
+- **Verified** means the stated evidence directly exercised the behavior.
+- **Deferred** means intentionally outside the present release boundary.
+- **Unresolved** means a decision or acceptance judgment remains open.
+
+Apple Human Interface Guidelines and the selected SDK own Apple platform
+guidance and API behavior. They do not define Scholium's Triptych, scholarly
+semantics, evidence distinctions, or research governance.
 
 This guide's direct-agent-edit decision supersedes older product language requiring every agent change to remain a Proposal or unapplied Revision. Legacy app-owned records created by those retired workflows remain ordinary files for the researcher to archive manually; Scholium does not delete or silently rewrite them.
 
@@ -82,6 +100,13 @@ API, but Scholium does not certify their philosophical conclusions. The
 researcher chooses a visible function; Application validates the Target,
 Materials, revision, applicable workflow, checkpoint, and completion contract.
 The frontend and CLI never inspect skill source or select package identifiers.
+Use exactly one complete primary method when an intellectual operation requires
+one. A prepared Research Function resolves exactly one official Workflow or an
+explicitly compatible complete Researcher Skill; System Skills never count as
+philosophical methods, and Practices only supplement the primary method. Direct
+Source Analysis may use Source Analyzer without a Research Function. Raw Zotero
+status, search, and retrieval need no philosophical method unless interpretation
+or verification is requested.
 For Beta, Scholium distinguishes protected **System Skills**, official
 release-managed **Workflow Skills**, and editable **Researcher Skills**.
 System Skills are not researcher-editable. A Workflow Skill remains read-only
@@ -348,8 +373,10 @@ prioritize a large Analyses vault while keeping the judgment explicitly local
 to a named debate, domain, tradition, period, or reception context. It has no
 pass grade and is not project relevance, source quality, truth, prestige, or
 citation impact. Scholium requires both fields together and permits omission
-when comparative evidence is inadequate. Project Relevance remains contextual
-report prose rather than a universal property.
+when comparative evidence is inadequate. Scholium does not generate, validate,
+or present Project Relevance as an active property or rating. Existing
+`relevance` and `relevance_rating` YAML remains byte-preserved as inactive
+legacy or custom data; the researcher decides project relevance.
 
 Debate Importance is comparable only within one explicit Debate Scope. The
 Library lets the researcher filter to one `debate_importance_scope` and then
@@ -364,7 +391,7 @@ non-empty, and shows the honest value **Not Yet** when the mapping is absent.
 A role-specific top-level `status` may appear beside it but remains a separate
 property: it records Analysis progress, Topic development, or Work production
 rather than time or philosophical truth. The exact profile contract is in
-`PROPERTY_PROFILES.md`.
+Appendix A.
 
 ### 5.3 Duplicate, rename, and identity
 
@@ -550,10 +577,10 @@ counts, or paragraph-level AI provenance.
 When a function has conditional method references, one-click preparation first
 produces a read-only preflight containing the complete primary method. The
 external agent inspects the fixed Target and Materials, then finalizes an
-explicit semantic selection through the function API; an empty selection means
+explicit conditional-resource selection through the function API; an empty selection means
 the primary method is sufficient. The preflight has already persisted the run,
 required checkpoint, and appropriate Dialogue or Critique record. Selecting
-methods finalizes that same run, checkpoint, and record rather than preparing a
+resources finalizes that same run, checkpoint, and record rather than preparing a
 replacement. Until then the run has no mutation instructions and cannot be
 completed. Scholium returns the immutable execution packet with only the
 selected references and their exact package revisions attached. The Strip
@@ -579,10 +606,11 @@ The initial optional modules are Critical Reflection, Remaining Questions,
 Philosophical Significance, Debate Context, and Research Directions. A module
 controls presentation only: it cannot authorize wider retrieval, select a
 different workflow, expand a write set, or require fabricated content merely
-to fill a heading. Selected modules divide a literal 100% optional-module
-attention budget equally, so five selected modules receive 20% each. The
-allocation governs examination rather than output length; Academic Outcome
-and mandatory integrity notices remain outside that budget. Fidelity,
+to fill a heading. The agent considers every selected module and allocates
+methodological effort flexibly according to the actual question and evidence.
+A module may yield no distinct warranted finding, but it may not be silently
+skipped. Scholium stores no numerical weights, coverage labels, or allocation
+ledger. Academic Outcome remains required. Fidelity,
 uncertainty, failure disclosure, and researcher control remain mandatory
 regardless of the selection.
 
@@ -610,9 +638,14 @@ eventual decision.
 
 A local agent may reply through the `scholium dialogue` CLI. The CLI validates request and comment identities and writes immutable, attributed reply records under Application Support; the agent never edits the review database directly. Replies may address the instruction overall, one selected note, or one researcher comment. Only the researcher resolves comments.
 
+Dialogue is note-nonmutating by default: it may read the fixed Target and
+selected Materials and append an attributed Response to Dialogue or Note
+History. A request to change the note must promote through the function API to
+Develop or Revise before mutation; the frontend does not classify prose.
+
 For a Beta request, the CLI also exposes the immutable request-scoped
 `responseContract` to the responding agent. Older entries without a snapshot
-use a clearly identified legacy fallback and must not be described as
+use a clearly identified compatibility fallback and must not be described as
 preserving an exact request-time selection.
 
 An agent without local CLI access can still use the copied prompt. Its reply must be returned manually if the researcher wants it recorded in Note History.
@@ -683,21 +716,25 @@ shadowed by a Triptych-local package.
 Every official Workflow Skill is complete without Philosophical Practices and
 declares compatible Practices only as routing hints. If the current task or an
 active Researcher Skill explicitly selects a Practice, the agent loads only
-that researcher-owned reference, records its stable ID and revision, and
-applies its composition rules. A Practice may refine declared editable points;
-it does not grant permission, weaken fidelity requirements, or silently
-replace the official workflow. Methodological conflicts remain visible for the
-researcher. When several Practices are selected, they divide a literal 100%
-methodological-attention budget. The active complete method may declare
-role-sensitive base weights; otherwise the selected Practices divide the
-budget equally. This allocation governs checking and deliberative coverage,
-not prose length, and never requires fabricated visible output. Development
+the Practices package entry and exact selected resource, records stable IDs and
+revisions, and applies each as a supplement. A Practice never replaces the
+complete primary method. New bindings permit supplementation only; legacy
+`replace` bindings decode but show a typed repair issue and are never silently
+rewritten. Practice selection cannot change Target, Materials, permissions,
+checkpoint rules, or write boundaries. The agent considers every selected
+Practice and allocates effort flexibly according to the work and evidence,
+reports only material influence, and may return no warranted finding. Scholium
+stores no weights, coverage labels, or allocation ledger. Methodological
+conflicts remain visible for the researcher. Development
 conditionally covers exploration, concept and argument
 development, synthesis, and Analysis or Topic expression. Critique assesses a
 Work without editing it. Revision owns substantive Work changes and received-
 feedback disposition. Content Fidelity performs read-only Content and optional
-Citations checks. Manuscript coordinates independently resolved function
-phases, duplicates none of their methods, and grants no submission authority.
+Citations checks. Reviewer remains a researcher-editable Critique-only
+calibration Practice; Critique is complete without it. Manuscript coordinates
+independently resolved function phases, accepts Practices only within compatible
+prepared child phases, duplicates none of their methods, and grants no
+submission authority.
 Dialogue remains System transport and record infrastructure; Human Review has
 no Workflow Skill.
 
@@ -738,7 +775,8 @@ and update policy, explicit Triptych bindings, dependency closure, current task
 facts, permissions, and exact resource retrieval. Each package declares stable
 `supported_functions`; `supported_modes` remains legacy compatibility and an
 internal method hint. Application resolves the function to an exact package
-revision and records only the conditional references actually loaded. An
+revision and records only conditional resources actually loaded, classified as
+methods, templates, or checklists. An
 external agent may choose the philosophical submethod appropriate to the real
 work, but it does not choose a hidden package ID. A clipboard-only agent may
 receive a self-contained bounded fallback prompt, but it must not claim to
@@ -757,7 +795,7 @@ compatible supplemental methods, and select exact researcher-owned Practices.
 Application validates function, package role, Practice identity, and current
 binding revision before atomically persisting the selection. The Strip receives
 only semantic function availability: it never receives or displays package
-identifiers, binding metadata, or a one-run method picker.
+identifiers, binding metadata, or a one-run resource picker.
 
 Dialogue, Critique, and any future approved research workflow expose scholarly
 inputs and scope, not prompt mechanics. They do not display template names,
@@ -807,6 +845,27 @@ stable Target identity and fingerprint, validates every Material independently,
 rejects Target duplication, resolves the exact workflow resources, creates the
 required checkpoint and evidential record, then rechecks all revisions before
 returning instructions. A partial preparation is rolled back.
+
+The CLI uses discoverable agent language: `function available`, `prepare`,
+`show`, `select-resources`, `complete`, `prepare-fidelity`, and `cancel`.
+`availability` and `select-methods` remain undocumented Beta compatibility
+aliases only. `show` recovers the immutable packet and current durable state;
+`prepare-fidelity` constructs or reuses the exact final-revision child from its
+parent rather than making an agent reconstruct a request. JSON preparations
+and completions include typed `nextActions` as argument vectors with optional
+stdin templates. They are never shell-interpolated command strings.
+Dialogue preparations also expose a typed `promote` action that preserves the
+fixed Target, Materials, scope, and selected Comments while preparing Develop
+or Revise. Dialogue itself remains note-nonmutating.
+
+`scholium version`, `doctor`, and hierarchical `help` work without a configured
+Triptych. The parser rejects unknown, duplicate, and valueless options before
+Application state is opened. A command using `--format json` reports a stable
+JSON error envelope. Packaged app builds contain the matching CLI helper;
+**Research Guidance → Skills → Advanced → Scholium CLI** installs or updates it
+in the researcher's user-local command directory, verifies exact bytes and
+executable permission, reports PATH discovery separately, and never edits a
+shell profile automatically.
 
 Fidelity has two invocation kinds with one evidence-validation contract.
 **Manual Fidelity** is the direct Strip function against the current exact
@@ -1115,7 +1174,53 @@ cached metadata labelled with its retrieval time. Scholium's built-in
 integration never modifies Zotero metadata, tags, annotations, files, or the
 live SQLite database.
 
-### 15.3 Optional external-agent Zotero MCP
+### 15.3 Recommended Bibliography
+
+Only an Analysis exposes a compact **Recommended Bibliography** section in the
+Research inspector, immediately after **Zotero Source** and before
+**Connections**. Topics and Works do not expose it. The section is not a
+Research Function, Strip button, Markdown appendix, Zotero write path, or
+source-evidence store. It is labelled **Reading leads, not evidence**.
+
+The researcher may optionally select Background Reading, Core Positions,
+Historical Predecessors, Objections, Replies, Companion Literature,
+Alternative Approaches, Missing Citations, Recent Developments, or Classic
+Works, and may add a purpose. No selected goal requests neutral source-centred
+screening. Source Analyzer supplies the complete default method. Advanced
+Research Guidance may bind one compatible Triptych-local complete Source
+Analyzer; a broken explicit binding shows Repair and never silently falls back.
+
+Preparation locks the Analysis identity and fingerprint, snapshots the exact
+method package and loaded resources, and accepts zero candidates as success.
+The agent distinguishes reference-list occurrence, in-text citation,
+substantive discussion, authorial praise, criticism, or centrality,
+independently verified metadata, and independent source inspection. Unread
+candidates receive no Debate Importance or project-relevance rating.
+
+Scholium stores the atomic portable projection at
+`.scholium/recommended-bibliography.json`, outside note content and Zotero.
+Trusted matching uses verified scoped Zotero item key, DOI, guarded ISBN,
+citation key, then exact normalized title plus complete author identity and
+year. It never automatically merges chapters with books, editions with
+translations, conflicting author lists, incomplete multi-author records, or
+ambiguous title-only matches. A matched Analysis is not proof that the source
+has been analyzed beyond its declared Research Unit and coverage evidence.
+
+The dense inspector rows show title, authors and year, goals, one short reason,
+and verification or match state. Available actions are **Open Analysis**,
+**Open in Zotero** for a verified key, and **Dismiss**. The section provides
+**Recommend…**, **Copy Instructions**, **Cancel**, and **Update
+Recommendations**, preserves prior results during refresh or failure, and
+covers empty, successful-zero, preparing, awaiting-agent, stale, malformed,
+duplicate, ambiguous, Zotero-unavailable, and general-error states with non-colour status,
+keyboard focus, meaningful VoiceOver labels, and compact/narrow adaptation.
+
+The delivery-neutral `RecommendedBibliographyUseCases` capability is separate
+from Research Functions. The CLI exposes `bibliography prepare`, `show`,
+`complete`, and `cancel`; normalization and duplicate discrimination remain
+Core/Application authority rather than a public semantic-ranking command.
+
+### 15.4 Optional external-agent Zotero MCP
 
 The built-in Scholium Zotero interface remains the local, read-only integration
 defined above. For Beta, Scholium also supplies a protected
@@ -1142,7 +1247,7 @@ Researcher Skill. If the MCP capability is unavailable, the agent reports the
 exact boundary and does not bypass it through global configuration scanning or
 raw database access.
 
-## 16. Onboarding and protected researcher additions
+## 16. Onboarding
 
 On first launch, Scholium opens as a narrow, left-middle five-step setup and
 asks for one decision at a time: Analyses, Topics, Works, then the bounded
@@ -1158,47 +1263,7 @@ complete registered Triptychs, edits the three locations of the selected
 Triptych, creates another Triptych, and opens the selected Triptych in a
 separate window.
 
-The following researcher-authored additions are preserved verbatim. Their canonical resolutions appear immediately below each passage.
-
-**My addition:** so maybe we can use [a pull-down button](https://developer.apple.com/design/human-interface-guidelines/pull-down-buttons) under the Works tab (when selected) for users to choose between projects? And we should use Tab style for the Triptych. And [the pull-down button](https://developer.apple.com/design/human-interface-guidelines/pull-down-buttons) should be hidden when there is only 1 project.
-
-**Resolution:** Analyses, Topics, and Works are peer tabs. The later canonical decision supersedes the proposed project pull-down: Works folders are researcher-controlled organization, and Scholium does not display or manage a project selector.
-
-**My addition:**  Scholium should tell users that discarded notes could be stored up for agents to learn from failure. So when the user is to delete one note, give the user options to choose whether she is going to delete it or keep it as failure (the `delete` option should be colored as red, `keep it as failure` colored as blue; there should also be a cancel option in the default color.). You should rename them so that the options are intuitive.
-
-**Resolution:** The final actions are **Set Aside**, **Move to Trash**, and **Cancel**. Set Aside preserves a note without labelling it a failure. Destructive meaning must be conveyed by label and role rather than color alone; system color is only a redundant cue.
-
-**My Addition:** Users mark notes as qualified or unqualified via the `review` button. Users are able to link unqualified analysis, but there should be warnings or attentions provided by Scholium.
-
-**Resolution:** Qualification occurs only through Human Review. Unqualified Analyses remain usable, while explicit reliance produces source-anchored Attention.
-
-**My Addition:** Users mark notes as qualified or unqualified only via the Review process.
-
-**Resolution:** This is binding for Analyses and Topics. Works do not use qualification.
-
-**My Addition:** When the user opens this app for the first time, Scholium should provide a bootstrap page for the user to deploy her workspace, in which Scholium should ask the user to choose between using the recommended organization or using her own, or set it later. Maybe the bootstrap page comes out after the user selected her workspace.
-
-**Resolution:** First-run setup selects only the three Triptych locations. The researcher organizes Works with ordinary folders; Scholium does not configure or manage projects.
-
-## 17. Consolidation requirements
-
-Remove or consolidate obsolete parallel implementations:
-
-- Remove the unreachable legacy `AgentSkillService`/`AgentSkill`; any new skill
-  management follows the file-backed Research Guidance contract in section
-  8.3 rather than reviving the obsolete implementation.
-- Remove unused `IndexGenerator` and generated `_index.md`, `_agent-index.json`, and `_agent-context.json`; a researcher-authored `index.md` remains an ordinary note.
-- Remove unused `NoteViewModel`, obsolete render cache, and handwritten legacy renderer after fallback acceptance.
-- Remove only the unused `selectedKB` state; retain vault assignments, bookmarks, and independently selected locations.
-- Never hydrate writable notes from partial caches.
-- Use one semantic Markdown/Connection graph authority.
-- Use one atomic Human Review store.
-- Use one shared search/filter/Attention contract.
-- Use one Vaults settings pane for the three required roots.
-- Use shared vault repositories, watchers, indexes, graph, review, CSS, and Zotero services; keep window presentation state independent.
-- Remove Proposal, Revision, Research Task, Research Session, Agent Assessment, and legacy Agent Review UI after migrating reachable data into direct editing, Dialogue, Critique, Note History, or checkpoints as appropriate.
-
-## 18. Permanent boundaries and deferred capabilities
+## 17. Permanent boundaries and deferred capabilities
 
 Do not add:
 
@@ -1243,42 +1308,461 @@ Zotero for bibliographic management and PDF reading when the researcher wants
 it. Use external agents for Dialogue or other open-ended work only when the
 researcher chooses to do so.
 
-## 19. Implementation sequence and migration boundary
+## 18. Canonical interface contract
 
-This guide changes target behavior, not existing vault bytes or app-owned records. Implement and migrate deliberately:
+### 18.1 Interface principles
 
-1. Remove obsolete Proposal/Revision/Research Session assumptions from product documents and UI contracts without deleting existing user data.
-2. Complete stable note identity, exact-source autosave, external-edit conflict handling, and shared multiwindow ownership.
-3. Implement safe create, duplicate, import, rename, move, Set Aside, Trash, automatic incoming-link updates, and identity recovery.
-4. Unify Human Review, comments, qualification, Note History, the vault-wide Properties configuration, app-owned creation/modification history, and Research Status presentation.
-5. Implement concise one-note and multi-note Dialogue records, optional transient agent-instruction generation, automatic pre-agent checkpoints, and CLI replies.
-6. Implement self-contained manual/automatic checkpoints, Finder reveal, comparison, and selective/full restoration.
-7. Remove app-managed Works projects while preserving existing files, then
-   complete Critiques, prompt templates, file-backed skill management, and
-   source-located Critique navigation over ordinary Works folders.
-8. Complete unified Search and Attention, canonical Connections, and optional read-only Zotero integration.
-9. Add delivery-neutral Research Function contracts, the Application
-   coordinator and CLI adapters, then route legacy Dialogue and Critique APIs
-   through the coordinator.
-10. Replace Open Scholia with the editor-only Research Strip, per-window
-    function controller, typed panel route, direct Research menu commands, and
-    one-word role-valid functions.
-11. Migrate the official packages to Development, Critique, Revision, Content
-    Fidelity, and Manuscript; record exact revisions and selected resources,
-    then retire superseded workflow packages after mirror parity.
-12. Add opt-in Researcher Skill evolution as an independent Research Guidance
-    maintenance transaction with diff, evaluation, confirmation, snapshot,
-    atomic replacement, and restore.
-13. Retain the first-party Zotero MCP transport and complete its guarded real-
-    service acceptance separately; catalog presence and an initialize
-    handshake alone are not Zotero readiness evidence.
-14. Perform interactive visual, accessibility, conflict, recovery,
-    multiwindow, CJK, and performance acceptance in the isolated QA app before
-    release packaging.
+- The research document is the largest and most stable region. Navigation,
+  Properties, contextual research, diagnostics, and agent assistance remain
+  subordinate to reading and writing.
+- Use native macOS windows, split views, inspectors, toolbars, menus, sheets,
+  alerts, file panels, controls, selection, focus, and native window tabs when
+  they provide the required behavior.
+- Keep one owner for each mutable fact and route commands to the focused native
+  tab, window, or document. Shared repositories, indexes, identities, watchers,
+  and registries remain workspace services rather than window state.
+- Every projection is reversible from one authoritative Markdown source. Read,
+  Live Preview, Source, Properties, Search, and derived research views must not
+  normalize or reconstruct writable source.
+- Distinguish source, researcher writing, agent content, Human Review,
+  Critique, Connections, and derived diagnostics in text and structure, not
+  color alone.
+- Preserve menu, toolbar, keyboard, pointer, focus, accessibility,
+  cancellation, comparison, retry, conflict, and recovery routes. Hover, drag,
+  color, motion, secondary click, and gestures are never the sole route to a
+  core task.
 
-Current source, tests, README, and operational handbook remain the authority for what is implemented today. No code, vault, or app-owned data is migrated merely because this canonical guide changed.
+### 18.2 Workspace shell and native tabs
 
-## Appendix A. Default Critique prompt for Works
+Configured Scholium uses one stable `NavigationSplitView` workspace. First-run
+setup is the sole narrow window state and performs the sole application-driven
+expansion to the preferred **1180 × 760** workspace; the minimum content size is
+**760 × 520**. Reduce Motion makes setup completion immediate. Opening,
+replacing, or closing a note never changes the window frame or position.
+
+The main regions are:
+
+1. **Library:** Triptych identity, Analyses/Topics/Works scope, genuine folder
+   hierarchy, Attention, filters, Unclassified, Set Aside, and Trash.
+2. **Document:** the selected note or decorative no-note artwork.
+3. **Trailing context:** mutually exclusive Research inspector or Note History.
+   It yields before the document becomes unusable.
+
+The native **Show/Hide Sidebar** toolbar item and View command change only
+Library visibility. Scholium has no Collapse Note function, custom `<<`
+control, custom document tabs, Back/Forward, Recent Notes, or Quick Open.
+Switching Library among Analyses, Topics, and Works changes only the browsed
+hierarchy and **This Vault** Search scope; it never closes or replaces the open
+document. Only explicit note selection replaces it.
+
+One native macOS tab is one complete Scholium window session with its own
+selected document, document mode, scroll, Search, presentation router,
+inspector/History state, and document sessions. **Open in New Tab** creates and
+groups another complete session. Standard Window-menu tab commands and
+`Command-W` remain authoritative. Scholium adds no custom tab cycling, closing,
+Merge, or Move commands.
+
+The no-note detail contains only fixed, text-free, VoiceOver-hidden featured
+artwork. It has no Home title, instruction, button, document controls, or
+Research Strip. The Library remains the actionable interface.
+
+### 18.3 Library and Search
+
+- Use one compact native **Filter** menu for research state, tags, metadata,
+  individual properties, and sort. Keep Unreviewed and Unqualified task toggles
+  visible.
+- Note rows remain compact and preserve complete titles accessibly. Selection
+  remains visible when focus moves to the document or inspector.
+- Debate Importance ordering is available only after selecting one exact Debate
+  Scope; unrated matching Analyses follow rated ones. Never compare different
+  scopes as one scale.
+- Shared Search is a compact centered command surface. **This Note**, **This
+  Vault**, and **Triptych** are visible before typing. An empty query shows no
+  empty results sheet; results expand in a bounded vertical list.
+- Exact title, alias, filename, and path matches rank above body matches, so
+  Search also owns known-note navigation. Results identify match context and
+  destination.
+- `Command-F` requires an open note and temporarily invokes **This Note**. On
+  dismissal, restore the prior general scope unless the researcher explicitly
+  selected another scope. Query changes immediately invalidate stale results;
+  dismissal cancels pending work and clears transient query/results.
+- Beta Search is deterministic local lexical retrieval. Vectors, embeddings,
+  AI interpretation, AI ranking, and chat-style search are excluded.
+
+### 18.4 Document modes, context, and Properties
+
+Read, Live Preview, and Source are modes of one document, not tabs.
+
+- **Read** presents selectable semantic prose and committed content.
+- **Live Preview** uses Read's prose grammar wherever editable projection
+  permits, reveals syntax only around the active construct, and never displays
+  line numbers or YAML frontmatter.
+- **Source** exposes the complete Markdown and YAML and may display line
+  numbers. Enter it through the mode pull-down rather than the direct
+  Read/Live Preview toggle.
+
+Live Preview and Source initially clear the document-context surface so the
+first editable line is unobscured. That clearance belongs to scrolling content
+and moves away; later prose may travel beneath the context surface.
+
+The context surface contains one mode/outline group followed by one role-aware
+Properties disclosure. Both compact controls share a **40pt** height and a
+centerline; their complete width and the expanded Properties surface align to
+the **920pt** document measure. Secondary facts disappear before crowding.
+Reader/editor scaling lives in **View → Document Text Size**, persists per
+window, and never changes source.
+
+Properties uses the default profiles in Appendix A and remains a targeted
+frontmatter projection. It distinguishes absent, empty, invalid, derived, and
+not-applicable values. Exact YAML remains available in Source. Research Unit is
+presented as **Research Status**, with Scope first and Limitations only when
+non-empty. An absent mapping is **Not Yet**, not malformed or inferred.
+
+### 18.5 Contextual research and Research Strip
+
+The trailing context region presents either Note History or the Research
+inspector, never competing panels. The inspector uses Incoming, Outgoing, and
+Research modes; it labels direction, predicate, resolution, source anchor,
+provenance, and derived status without presenting Connections as evidence.
+
+The bottom editor Research Strip opens one final typed panel directly:
+
+- Analysis/Topic: **Dialogue · Develop · Review · Fidelity**.
+- Work: **Critique · Revise · Dialogue · Fidelity · Manuscript**.
+
+Review is human judgment and shares one panel with anchored Analysis/Topic
+Comments. Critique shares one panel with anchored Work Comments. A Comment
+requires an exact source anchor; Scholium has no whole-note Comment textbox,
+decoder, migration, or fallback. **Add Comment** opens the role-valid panel and
+focuses its inline anchored composer.
+
+Agent-facing panels fix the Target and expose searchable hierarchical Materials
+with explicit selection, a selected tray, direct one-hop suggestion reasons,
+failure/retry, and freeze-after-preparation. Nothing is selected automatically;
+suggestions are navigation hints, never evidence. Human Review never queries or
+displays Materials.
+
+### 18.6 Canonical state and action meanings
+
+| State | Meaning |
+| --- | --- |
+| **Edited** | The active buffer differs from the last committed source. |
+| **Saving** | A revision-checked commit is in progress. |
+| **Saved** | The repository committed authoritative source successfully. Derived consumers may still be refreshing. |
+| **Save Failed** | Source was not committed; retain the buffer and provide Retry or comparison as appropriate. |
+| **Conflict** | The expected revision no longer matches disk; retain the buffer and require comparison before destructive reload. |
+| **Refreshing** | Derived consumers are catching up to already committed source. |
+| **Derived State Stale** | A derived consumer represents an older committed revision. |
+| **Fully Up to Date** | Source and all named derived consumers represent one committed revision. |
+
+Conflict actions are **Compare Changes**, **Reload from Disk**, and **Keep
+Editing** when comparison exists. Comparison uses **Return to Editing** and
+**Reload from Disk**, with exact editor and disk revision identities visible.
+Version history uses **Restore This Version**. Editor `Command-Z` never means
+version restoration.
+
+Destructive note actions are **Set Aside**, **Move to Trash**, **Put Back**,
+**Delete Permanently**, and **Cancel** as appropriate. Permanent deletion never
+advertises checkpoint or History recovery for deleted content.
+
+## 19. Scholarly Editorialism and design variables
+
+Scholium adopts **Scholarly Editorialism**: a contemporary macOS research
+environment shaped by humanist typography, editorial hierarchy, warm opaque
+surfaces, fine structural rules, marginal organization, deliberate whitespace,
+and restrained chromatic emphasis. It conveys the patience, plurality,
+tension, and accumulated judgment of humanities research without imitating an
+antique book or becoming decorative minimalism.
+
+### 19.1 No custom glass
+
+Scholium-owned Library, document, inspector, Properties, Search, Research Strip,
+diff, diagnostic, conflict, and exact-evidence surfaces are opaque. Scholium
+does not use Liquid Glass, custom blur, vibrancy, translucent cards,
+image-behind-glass treatments, material field cards, or glass as a brand
+language. Depth comes from semantic tone, spacing, alignment, typography, fine
+boundaries, and restrained elevation rather than translucency, floating cards,
+large radii, gradients behind text, or decorative shadows.
+
+System-owned window chrome, menus, sheets, popovers, standard controls, focus,
+selection, and native tabs retain their macOS appearance. Any system material
+is an incidental platform consequence, not a Scholium token or visual motif.
+This rule supersedes every earlier custom-glass, atmospheric-navigation,
+regular-material, vibrancy, or Liquid Glass requirement.
+
+### 19.2 Typography and color
+
+- Use the system font for menus, toolbars, buttons, settings, alerts, compact
+  controls, paths, status text, and dense metadata.
+- Use **Alegreya** for Read prose and Live Preview prose. It may identify
+  content-derived document/note titles and major research-object headings when
+  density, scaling, and mixed-script fallback remain legible.
+- Use **Victor Mono** for Source, code, exact excerpts, line-anchored review
+  content, revision identities, and diffs.
+- Document Body is **12pt**. H1/H2/H3/H4–H6 are **150/130/115/100%** of Body.
+  Callouts inherit Body except an explicitly approved role exception.
+- Provide intentional CJK serif fallback and test Chinese/Latin mixed lines.
+- Use semantic `ScholiumColorRole` values across native and WebKit surfaces;
+  feature views never name raw hex values or palette names.
+- Light appearance uses Ivory Leaf document, Parchment navigation, Vellum
+  contextual surfaces, Carbon/Sepia/Muted Ink text, Binding Rule boundaries,
+  and Vermilion Copper emphasis. Dark appearance is an evening library of
+  Walnut document, Cordovan navigation, Leather contextual surfaces,
+  Parchment text, and Luminous Copper emphasis—not a mechanical inversion.
+- Status, authorship, and Connection colors remain distinct and always have a
+  textual or symbolic redundant cue. Color never establishes philosophical
+  value, support, truth, or authority.
+
+### 19.3 Variable boundary
+
+Maintain eight small semantic families: Color, Typography, Surfaces,
+Elevation, Boundaries, feature-scoped Metrics, Motion, and provisional Document
+Rhythm. Promote a value only when it is a stable cross-component decision or a
+contract-critical accessibility threshold. Do not create generic numbered
+spacing, opacity, radius, shadow, border, gradient, or paper scales.
+
+- Interface typography roles are identity, section title, row title, metadata,
+  and narrowly approved editorial hierarchy. Document roles are Body,
+  `heading(level:)`, Exact Source, Code, Diff, and Revision Identity.
+- Surface roles describe opaque semantic planes. Dense evidence remains the
+  quietest, most legible surface.
+- Boundaries are purpose-named structural divider, subtle boundary, and
+  floating boundary recipes. Increase Contrast strengthens each role rather
+  than becoming a separate role.
+- Native controls own disabled, selected, focused, pressed, hover, and
+  inactive-window presentation. Custom targets prefer **28pt** and never fall
+  below **20pt**; these thresholds do not redefine native sizing.
+- Standard actions use direct SF Symbols. Domain presentations may centralize
+  Scholium-specific meaning, but text remains the primary carrier.
+- Motion is purpose-named, interruptible, and removed where Reduce Motion
+  requires it. Add no duration scale, parallax, animated grain, or decorative
+  motion.
+- Document rhythm remains renderer-aware and provisional until Read and Live
+  Preview pass side-by-side visual review at ordinary, narrow, mixed-script,
+  and 200% text conditions.
+
+## 20. Accessibility and adaptation
+
+- Support System, Light, and Dark appearance without hard-coded inversion.
+- Target at least **4.5:1** contrast for ordinary small text and **3:1** for
+  large or bold text. Audit every important custom target below 28 × 28 points.
+- Preserve the hierarchy under Increase Contrast, Reduce Transparency, Reduce
+  Motion, inactive-window appearance, 200% document text, and accent changes.
+- Give every important state at least two suitable channels. Color, motion,
+  sound, spatial position, or arrow direction alone is insufficient.
+- Provide complete keyboard and visible-focus routes for the core workflow.
+  Restore focus after sheets, alerts, Search, popovers, function panels,
+  conflict comparison, and History close.
+- Keep VoiceOver names, roles, values, headings, source anchors, selected state,
+  errors, and consequences current. Decorative artwork is accessibility-hidden.
+- Do not claim real VoiceOver, Voice Control, Dictation, Full Keyboard Access,
+  or CJK IME acceptance from synthetic events alone. Record those as manual
+  gates when the operating-system interaction cannot be automated faithfully.
+- Test long labels, English/Chinese mixed text, right-to-left chrome, minimum
+  window size, empty/loading/unavailable/malformed/stale/conflict/error states,
+  and WebKit/AppKit focus transitions.
+
+Beta and 1.0 require complete keyboard and VoiceOver coverage for the declared
+core workflow and zero unresolved critical or high-severity accessibility
+defects. A medium-severity ceiling remains a release-owner judgment rather than
+an assumed pass.
+
+## 21. Release requirements and acceptance
+
+### 21.1 Evidence hierarchy
+
+Use evidence in this order:
+
+1. current source and live construction;
+2. executable unit, integration, editor, and UI tests;
+3. isolated QA runs on disposable nonprivate fixtures;
+4. `IMPLEMENTATION_STATUS.md` and retained evidence;
+5. this target specification;
+6. historical screenshots, test names, and remembered behavior as context only.
+
+Target documentation is not implementation evidence. A preview or successful
+compile does not prove a workflow, accessibility journey, packaged Release
+artifact, signing state, or performance gate.
+
+### 21.2 Primary acceptance journeys
+
+The release evidence must cover, as applicable:
+
+- setup, registration, restoration, and several independent Triptych windows;
+- create/open/read/edit/save/search and explicit cross-vault navigation;
+- Live Preview/Source fidelity, formatting, anchored Comments, and mode changes;
+- Properties, Research Status declaration/Not Yet, Human Review, and
+  qualification;
+- Dialogue, Develop, Critique, Revise, manual/automatic Fidelity, Manuscript,
+  hierarchical Materials, and Research Guidance recovery;
+- Connections, Attention, Zotero unavailable/read-only behavior, and CLI parity;
+- external edits, conflicts, stable-identity rename, Set Aside, Trash,
+  permanent deletion, checkpoints, selective/full restore, interrupted
+  recovery, and cross-window dirty-peer behavior;
+- light/dark, Increase Contrast, Reduce Transparency, Reduce Motion, inactive
+  window, 200% document text, mixed-script input, keyboard, focus, and
+  accessibility routes; and
+- 1380-, 1080-, 900-point and minimum-width workspace behavior.
+
+Use disposable fixtures only. Preserve commands, source revision, Xcode/SDK,
+build configuration, fixture identity, result, and retained artifact location
+for material evidence.
+
+### 21.3 Release gates
+
+| Gate | Required condition |
+| --- | --- |
+| **G1 Functional completeness** | Every requirement in the declared release scope has evidence or an explicit waiver. |
+| **G2 Workflow independence** | The manual core workflow works without Obsidian, Zotero, an external agent, or manual filesystem manipulation. |
+| **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
+| **G4 Recovery and deletion** | Conflicts, checkpoints, restore, Trash, permanent purge, external rename, and derived-state failures pass disposable-fixture journeys. |
+| **G5 Scholarly transparency** | Dialogue, Review, Critique, Fidelity, provenance, and uncertainty remain visibly distinct without hidden philosophical judgments. |
+| **G6 Accessibility and internationalization** | The declared accessibility threshold in Section 20 is met. |
+| **G7 Performance** | The approved packaged-app protocol in `PERFORMANCE_BENCHMARK.md` passes on the frozen reference fixture and machine. |
+| **G8 Documentation consistency** | This specification, architecture, status, README, source, and tests do not silently contradict one another. |
+| **G9 Distribution integrity** | Every external binary comes from a clean exact tag, includes corresponding GPL source/licenses, contains no private state, states signing/architecture accurately, publishes a checksum, and passes clean-account smoke testing. |
+| **G10 Agent skill architecture** | Protected/researcher-owned boundaries, function-aware assembly, citation bindings, guarded evolution, Dialogue response contracts, bootstrap, and Zotero MCP behavior pass their declared journeys. |
+
+For 0.1 Experimental, G1–G5 and G8 apply; G9 applies whenever an external
+artifact is distributed. G6 and G7 require an honest baseline and documented
+gaps but must not be represented as passed Beta thresholds. Beta requires all
+applicable gates, including G10. Current gate evidence belongs only in
+`IMPLEMENTATION_STATUS.md`.
+
+### 21.4 Change control
+
+Every target change identifies the affected researcher task, specification
+sections, product/interface/implementation scope, trust and source-fidelity
+impact, compatibility effect on existing vault/app-owned data, acceptance
+evidence, and any new non-goal or unresolved question. Update this
+specification intentionally; never turn temporary implementation or a visual
+experiment into target authority.
+
+## 22. Active decisions and unresolved work
+
+The latest explicitly approved decision supersedes older conflicting language.
+This specification contains only the active rule; full former wording remains
+available in Git history rather than burdening current agents with obsolete
+instructions.
+
+| Decision | Active rule |
+| --- | --- |
+| **D-003** | One exact Markdown source underlies Read, Live Preview, and Source. |
+| **D-026** | One bottom Research Strip opens direct role-valid functions. |
+| **D-031** | Beta Search is deterministic lexical retrieval; graph relations remain separately labelled. |
+| **D-035** | Native and WebKit use one semantic color vocabulary and reviewed light/dark palettes. |
+| **D-036** | Stable workspace geometry, one selected document per native-tab session, decorative no-note artwork, and no retired navigation systems. |
+| **D-037** | Review/Comments and Critique/Comments share role-valid panels; agent Materials remain explicit hierarchical context. |
+| **D-038** | Manual and automatic Fidelity share revision-specific evidence while preserving invocation provenance. |
+| **D-039** | New Analysis permits Declare Now or Not Yet; only Complete Review requires declared Research Status. |
+| **D-040** | Research Guidance provides usable defaults and puts composition/evolution/recovery under Advanced disclosure. |
+| **D-041** | Library vault browsing never replaces the open document. |
+| **D-042** | Live Preview shares Read grammar without line numbers; initial editor clearance scrolls away. |
+| **D-043** | Every Comment is source-anchored; there is no unanchored compatibility path. |
+| **D-044** | Shared Search is a compact command surface with immediately visible scopes. |
+| **D-045** | The design-variable system remains small, semantic, and renderer-aware. |
+| **D-048** | Scholarly Editorialism and opaque Scholium-owned surfaces supersede every custom-glass requirement. |
+| **D-049** | Complete primary methods route flexibly; Practices are supplement-only without numerical allocation, and Analysis-only Recommended Bibliography stores compact reading leads outside notes and Zotero. |
+| **D-050** | The app bundles one version-matched Scholium CLI with strict hierarchical discovery, typed next actions, resumable Function state, direct Fidelity continuation, and explicit user-local installation. |
+
+Unresolved work must not be presented as completed behavior:
+
+- sustained manual VoiceOver, Full Keyboard Access, Voice Control, Dictation,
+  contrast, scaling, localization, and installed-IME acceptance;
+- final visual approval of document rhythm and production mono comparison;
+- compact multi-note Dialogue presentation and richer reflection/compression;
+- broader Search ranking-usability evaluation;
+- packaged Release performance thresholds and measurements; and
+- complete clean-tagged distribution and external-install evidence.
+
+## Appendix A. Default property profiles
+
+Existing and custom YAML remains authoritative and losslessly preserved. These
+profiles define recommended researcher-facing fields; they do not migrate
+notes, erase unknown data, or inject absent YAML during ordinary saves.
+
+Creation and modification time are app-owned History facts. Agents never
+create, infer, or maintain timestamp properties. Existing timestamp keys remain
+exact preserved source but are not target profile fields.
+
+`research_unit` has exactly this shape when present:
+
+```yaml
+research_unit:
+  scope: "Introduction and Chapters 1–4"
+  limitations:
+    - "Chapters 5–8 and the appendix have not been analyzed."
+```
+
+`scope` is required and non-empty whenever the mapping exists. `limitations`
+is an optional list of material boundaries. Do not add nested type, target,
+coverage, percentage, confidence, reading protocol, pass flags, timestamps,
+backlinks, or relation counts.
+
+For a long source, maintain one source-level Analysis by default. Expand Scope
+only to material actually inspected and represented; record unread or excluded
+material in Limitations. Create separate segment Analyses only by explicit
+researcher choice or when the segment requires an independently durable
+scholarly identity.
+
+### Analyses
+
+| Group | Property | YAML | Rule |
+| --- | --- | --- | --- |
+| About | Title | `title` | Required source title. |
+| About | Authors | `authors` | Required list of source authors. |
+| About | Year | `year` | Required publication year. |
+| About | Type | `type` | Optional publication form. |
+| About | Tags | `tags` | Optional retrieval terms. |
+| Research Status | Research Unit | `research_unit` | Optional at creation; required before Complete Review. Not Yet writes nothing. |
+| Source | Access | `access` | Consulted-material extent. |
+| Source | Text Reliability | `text_reliability` | Reliability of the consulted text. |
+| Source | Locators | `locators` | Stability/checkability of citations. |
+| Progress | Status | `status` | `draft`, `complete`, or `reviewed`, relative to declared Research Unit. |
+| Assessment | Debate Importance | `debate_importance` | Optional whole number 0–10. |
+| Assessment | Debate Scope | `debate_importance_scope` | Required whenever Debate Importance exists. |
+
+Debate Importance is local to one named debate/domain/tradition/period and is
+not project relevance, quality, truth, prestige, or citation count. The two
+fields change together. Scholium generates no Project Relevance property or
+rating and byte-preserves legacy `relevance` data as inactive custom content.
+
+### Topics
+
+Topic YAML is optional.
+
+| Group | Property | YAML | Rule |
+| --- | --- | --- | --- |
+| About | Title | `title` | Optional when filename/H1 identifies the Topic. |
+| About | Aliases | `aliases` | Search and link alternatives. |
+| About | Tags | `tags` | Optional retrieval terms. |
+| Research Status | Research Unit | `research_unit` | Optional conceptual/debate boundary. |
+| Progress | Status | `status` | `seed`, `developing`, or `maintained`; never philosophical settlement. |
+
+### Works
+
+| Group | Property | YAML | Rule |
+| --- | --- | --- | --- |
+| About | Title | `title` | Required Work title. |
+| About | Authors | `authors` | Optional co-authors. |
+| About | Kind | `kind` | Form such as paper, chapter, book, talk, review, or teaching material. |
+| About | Tags | `tags` | Optional retrieval terms. |
+| Research Status | Research Unit | `research_unit` | Optional project-question or argumentative boundary. |
+| Progress | Status | `status` | `planning`, `drafting`, `revising`, `review`, `ready`, `submitted`, `published`, or `archived`. |
+| Use | Venue | `venue` | Intended or actual journal, publisher, course, or event. |
+| Use | Deadline | `deadline` | Relevant delivery or submission date. |
+
+Works status records production state only. It does not encode argumentative
+quality, evidential sufficiency, acceptance probability, or project governance.
+Works folders remain ordinary researcher organization; Scholium adds no
+project property or inferred membership.
+
+Legacy aliases remain readable and untouched during ordinary saves. A targeted
+edit writes the canonical key and removes only its corresponding legacy alias;
+it never bulk-migrates a note. Other non-machine fields remain custom
+Properties, and exact YAML remains available in Source.
+
+## Appendix B. Default Critique prompt for Works
 
 ```text
 Critique the Work identified in the Scholium request using the standards and

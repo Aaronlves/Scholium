@@ -164,9 +164,13 @@ public enum FidelityCheck: String, Codable, CaseIterable, Hashable, Sendable {
     case citations
 }
 
-/// Agent-selected internal method references. These values are semantic
+/// Agent-selected conditional package resources. These values are semantic
 /// choices in the function API, never Strip buttons or package identifiers.
-public enum ResearchFunctionMethod: String, Codable, CaseIterable, Hashable, Sendable {
+///
+/// `critiqueReportTemplate` remains decodable for immutable legacy records,
+/// but is not offered for new runs because presentation belongs to the active
+/// Prompt Template rather than the Critique Workflow.
+public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, Hashable, Sendable {
     case developmentExploration = "development_exploration"
     case developmentSynthesis = "development_synthesis"
     case developmentExpression = "development_expression"
@@ -175,6 +179,24 @@ public enum ResearchFunctionMethod: String, Codable, CaseIterable, Hashable, Sen
     case revisionOutputContracts = "revision_output_contracts"
     case critiqueReportTemplate = "critique_report_template"
     case manuscriptGates = "manuscript_gates"
+
+    public var kind: ResearchFunctionConditionalResourceKind {
+        switch self {
+        case .developmentExploration, .developmentSynthesis,
+             .developmentExpression, .developmentDefinitionImpact:
+            .method
+        case .revisionFeedback:
+            .method
+        case .revisionOutputContracts, .critiqueReportTemplate:
+            .template
+        case .manuscriptGates:
+            .checklist
+        }
+    }
+
+    public var isAvailableForNewSelection: Bool {
+        self != .critiqueReportTemplate
+    }
 
     public var function: ResearchFunctionID {
         switch self {
@@ -191,19 +213,36 @@ public enum ResearchFunctionMethod: String, Codable, CaseIterable, Hashable, Sen
     }
 }
 
+public enum ResearchFunctionConditionalResourceKind: String, Codable, Hashable, Sendable {
+    case method
+    case template
+    case checklist
+}
+
+@available(*, deprecated, renamed: "ResearchFunctionConditionalResource")
+public typealias ResearchFunctionMethod = ResearchFunctionConditionalResource
+
 public extension ResearchFunctionID {
     /// Conditional method references available to an external agent after it
     /// has inspected the fixed Target and read-only Materials. An empty
     /// selection still applies the complete primary method; these values are
     /// not an exhaustive taxonomy of philosophical activity.
-    var conditionalMethods: [ResearchFunctionMethod] {
-        ResearchFunctionMethod.allCases.filter { $0.function == self }
+    var conditionalResources: [ResearchFunctionConditionalResource] {
+        ResearchFunctionConditionalResource.allCases.filter {
+            $0.function == self && $0.isAvailableForNewSelection
+        }
+    }
+
+    @available(*, deprecated, renamed: "conditionalResources")
+    var conditionalMethods: [ResearchFunctionConditionalResource] {
+        conditionalResources
     }
 }
 
 public enum ResearchSkillCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case citationVerification = "citation-verification"
     case citationFormatting = "citation-formatting"
+    case bibliographyRecommendation = "bibliography-recommendation"
 }
 
 public enum ResearchFunctionRepairReasonCode: String, Codable, Hashable, Sendable {
@@ -403,7 +442,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     public let scope: ResearchFunctionScope?
     public let checks: Set<FidelityCheck>
     public let commentIDs: [UUID]
-    public let methods: Set<ResearchFunctionMethod>?
+    public let conditionalResources: Set<ResearchFunctionConditionalResource>?
     /// Optional request-scoped presentation modules for Dialogue.
     ///
     /// Nil inherits the current Triptych default at preparation time. An
@@ -420,7 +459,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         scope: ResearchFunctionScope? = nil,
         checks: Set<FidelityCheck> = [],
         commentIDs: [UUID] = [],
-        methods: Set<ResearchFunctionMethod>? = nil,
+        conditionalResources: Set<ResearchFunctionConditionalResource>? = nil,
         dialogueResponseModules: [DialogueResponseModule]? = nil
     ) {
         self.function = function
@@ -431,7 +470,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         self.scope = scope
         self.checks = checks
         self.commentIDs = commentIDs
-        self.methods = methods
+        self.conditionalResources = conditionalResources
         self.dialogueResponseModules = dialogueResponseModules.map { modules in
             modules.sorted { lhs, rhs in
                 let lhsIndex = DialogueResponseModule.allCases.firstIndex(of: lhs) ?? 0
@@ -441,15 +480,40 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         }
     }
 
+    @available(*, deprecated, message: "Use conditionalResources instead of methods.")
+    public init(
+        function: ResearchFunctionID,
+        target: ResearchFunctionTarget,
+        materials: [ResearchFunctionMaterial] = [],
+        instruction: String? = nil,
+        scope: ResearchFunctionScope? = nil,
+        checks: Set<FidelityCheck> = [],
+        commentIDs: [UUID] = [],
+        methods: Set<ResearchFunctionConditionalResource>?,
+        dialogueResponseModules: [DialogueResponseModule]? = nil
+    ) {
+        self.init(
+            function: function,
+            target: target,
+            materials: materials,
+            instruction: instruction,
+            scope: scope,
+            checks: checks,
+            commentIDs: commentIDs,
+            conditionalResources: methods,
+            dialogueResponseModules: dialogueResponseModules
+        )
+    }
+
     /// Nil is a deliberate preflight state for functions with conditional
     /// method references. An explicit empty set finalizes the run with the
     /// complete primary method and no conditional reference.
-    public var awaitsMethodSelection: Bool {
-        methods == nil && !function.conditionalMethods.isEmpty
+    public var awaitsResourceSelection: Bool {
+        conditionalResources == nil && !function.conditionalResources.isEmpty
     }
 
-    public func selectingMethods(
-        _ methods: Set<ResearchFunctionMethod>
+    public func selectingResources(
+        _ resources: Set<ResearchFunctionConditionalResource>
     ) throws -> ResearchFunctionRequest {
         let selected = ResearchFunctionRequest(
             function: function,
@@ -459,7 +523,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             scope: scope,
             checks: checks,
             commentIDs: commentIDs,
-            methods: methods,
+            conditionalResources: resources,
             dialogueResponseModules: dialogueResponseModules
         )
         try selected.validate()
@@ -494,7 +558,9 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         guard Set(commentIDs).count == commentIDs.count else {
             throw ResearchFunctionContractError.duplicateComment
         }
-        guard (methods ?? []).allSatisfy({ $0.function == function }) else {
+        guard (conditionalResources ?? []).allSatisfy({
+            $0.function == function && $0.isAvailableForNewSelection
+        }) else {
             throw ResearchFunctionContractError.invalidMethodSelection
         }
         if function == .dialogue {
@@ -529,26 +595,132 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             throw ResearchFunctionContractError.emptyInstruction(function)
         }
     }
+
+    @available(*, deprecated, renamed: "conditionalResources")
+    public var methods: Set<ResearchFunctionConditionalResource>? {
+        conditionalResources
+    }
+
+    @available(*, deprecated, renamed: "awaitsResourceSelection")
+    public var awaitsMethodSelection: Bool { awaitsResourceSelection }
+
+    @available(*, deprecated, renamed: "selectingResources(_:)")
+    public func selectingMethods(
+        _ methods: Set<ResearchFunctionConditionalResource>
+    ) throws -> ResearchFunctionRequest {
+        try selectingResources(methods)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case function, target, materials, instruction, scope, checks, commentIDs
+        case conditionalResources = "conditional_resources"
+        case legacyMethods = "methods"
+        case dialogueResponseModules
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let resources = try container.decodeIfPresent(
+            Set<ResearchFunctionConditionalResource>.self,
+            forKey: .conditionalResources
+        ) ?? container.decodeIfPresent(
+            Set<ResearchFunctionConditionalResource>.self,
+            forKey: .legacyMethods
+        )
+        self.init(
+            function: try container.decode(ResearchFunctionID.self, forKey: .function),
+            target: try container.decode(ResearchFunctionTarget.self, forKey: .target),
+            materials: try container.decodeIfPresent(
+                [ResearchFunctionMaterial].self,
+                forKey: .materials
+            ) ?? [],
+            instruction: try container.decodeIfPresent(String.self, forKey: .instruction),
+            scope: try container.decodeIfPresent(ResearchFunctionScope.self, forKey: .scope),
+            checks: try container.decodeIfPresent(Set<FidelityCheck>.self, forKey: .checks) ?? [],
+            commentIDs: try container.decodeIfPresent([UUID].self, forKey: .commentIDs) ?? [],
+            conditionalResources: resources,
+            dialogueResponseModules: try container.decodeIfPresent(
+                [DialogueResponseModule].self,
+                forKey: .dialogueResponseModules
+            )
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(function, forKey: .function)
+        try container.encode(target, forKey: .target)
+        if !materials.isEmpty { try container.encode(materials, forKey: .materials) }
+        try container.encodeIfPresent(instruction, forKey: .instruction)
+        try container.encodeIfPresent(scope, forKey: .scope)
+        if !checks.isEmpty { try container.encode(checks, forKey: .checks) }
+        if !commentIDs.isEmpty { try container.encode(commentIDs, forKey: .commentIDs) }
+        try container.encodeIfPresent(conditionalResources, forKey: .conditionalResources)
+        try container.encodeIfPresent(dialogueResponseModules, forKey: .dialogueResponseModules)
+    }
 }
 
 /// Agent-side finalization of a method-unresolved preflight. The Strip never
 /// constructs this value and never exposes its semantic method references as
 /// interface modes.
-public struct ResearchFunctionMethodSelectionSubmission: Codable, Hashable, Sendable {
+public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Sendable {
     public let runID: UUID
     public let confirmationToken: UUID
-    public let methods: Set<ResearchFunctionMethod>
+    public let resources: Set<ResearchFunctionConditionalResource>
 
     public init(
         runID: UUID,
         confirmationToken: UUID,
-        methods: Set<ResearchFunctionMethod>
+        resources: Set<ResearchFunctionConditionalResource>
     ) {
         self.runID = runID
         self.confirmationToken = confirmationToken
-        self.methods = methods
+        self.resources = resources
+    }
+
+    @available(*, deprecated, message: "Use resources instead of methods.")
+    public init(
+        runID: UUID,
+        confirmationToken: UUID,
+        methods: Set<ResearchFunctionConditionalResource>
+    ) {
+        self.init(
+            runID: runID,
+            confirmationToken: confirmationToken,
+            resources: methods
+        )
+    }
+
+    @available(*, deprecated, renamed: "resources")
+    public var methods: Set<ResearchFunctionConditionalResource> { resources }
+
+    private enum CodingKeys: String, CodingKey {
+        case runID, confirmationToken, resources
+        case legacyMethods = "methods"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            runID: try container.decode(UUID.self, forKey: .runID),
+            confirmationToken: try container.decode(UUID.self, forKey: .confirmationToken),
+            resources: try container.decodeIfPresent(
+                Set<ResearchFunctionConditionalResource>.self,
+                forKey: .resources
+            ) ?? container.decode(Set<ResearchFunctionConditionalResource>.self, forKey: .legacyMethods)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(runID, forKey: .runID)
+        try container.encode(confirmationToken, forKey: .confirmationToken)
+        try container.encode(resources, forKey: .resources)
     }
 }
+
+@available(*, deprecated, renamed: "ResearchFunctionResourceSelectionSubmission")
+public typealias ResearchFunctionMethodSelectionSubmission = ResearchFunctionResourceSelectionSubmission
 
 public struct ResearchFunctionResourceSnapshot: Codable, Hashable, Sendable {
     public let relativePath: String
@@ -755,22 +927,28 @@ public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
     /// projection did not refresh. Callers must retain this preparation and
     /// retry only refresh, never the function mutation.
     public let derivedRefreshWarning: String?
+    public let nextActions: [AgentCommandAction]?
 
     public var runID: UUID { snapshot.runID }
-    public var awaitsMethodSelection: Bool { snapshot.request.awaitsMethodSelection }
+    public var awaitsResourceSelection: Bool { snapshot.request.awaitsResourceSelection }
+
+    @available(*, deprecated, renamed: "awaitsResourceSelection")
+    public var awaitsMethodSelection: Bool { awaitsResourceSelection }
 
     public init(
         snapshot: ResearchFunctionSnapshot,
         instructions: String,
         state: ResearchFunctionRunState = .prepared,
         reusedCompletion: ResearchFunctionCompletion? = nil,
-        derivedRefreshWarning: String? = nil
+        derivedRefreshWarning: String? = nil,
+        nextActions: [AgentCommandAction] = []
     ) {
         self.snapshot = snapshot
         self.instructions = instructions
         self.state = state
         self.reusedCompletion = reusedCompletion
         self.derivedRefreshWarning = derivedRefreshWarning
+        self.nextActions = nextActions.isEmpty ? nil : nextActions
     }
 }
 
@@ -781,10 +959,16 @@ public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
 public struct AutomaticFidelityPreparation: Codable, Hashable, Sendable {
     public let parentRunID: UUID
     public let preparation: ResearchFunctionPreparation
+    public let nextActions: [AgentCommandAction]?
 
-    public init(parentRunID: UUID, preparation: ResearchFunctionPreparation) {
+    public init(
+        parentRunID: UUID,
+        preparation: ResearchFunctionPreparation,
+        nextActions: [AgentCommandAction] = []
+    ) {
         self.parentRunID = parentRunID
         self.preparation = preparation
+        self.nextActions = nextActions.isEmpty ? nil : nextActions
     }
 
     public var state: ResearchFunctionRunState { preparation.state }
@@ -907,6 +1091,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     /// A committed completion can carry a recoverable derived-refresh warning.
     /// It is not a failed or repeatable scholarly operation.
     public let derivedRefreshWarning: String?
+    public let nextActions: [AgentCommandAction]?
 
     public init(
         runID: UUID,
@@ -922,7 +1107,8 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         reusedFidelityRunID: UUID? = nil,
         childRunIDs: [UUID] = [],
         completedAt: Date = Date(),
-        derivedRefreshWarning: String? = nil
+        derivedRefreshWarning: String? = nil,
+        nextActions: [AgentCommandAction] = []
     ) {
         self.runID = runID
         self.function = function
@@ -938,6 +1124,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         self.childRunIDs = childRunIDs.isEmpty ? nil : childRunIDs
         self.completedAt = completedAt
         self.derivedRefreshWarning = derivedRefreshWarning
+        self.nextActions = nextActions.isEmpty ? nil : nextActions
     }
 }
 

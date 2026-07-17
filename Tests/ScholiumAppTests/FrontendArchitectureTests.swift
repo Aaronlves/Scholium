@@ -2,6 +2,7 @@ import ScholiumContracts
 import AppKit
 import Foundation
 import ImageIO
+import SwiftUI
 import Testing
 @testable import ScholiumApp
 
@@ -198,40 +199,81 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("Collapse Note"))
         #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.rowTitle)"))
         #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.metadata)"))
-        #expect(sidebarSource.contains(".font(.body)"))
+        #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.noteTitle)"))
     }
 
-    @Test("Atmospheric artwork is fixed, Library-only, and decorative")
-    func atmosphericNavigationArtworkContract() throws {
+    @Test("The Library is an opaque editorial plane and no-note artwork remains decorative")
+    func scholarlyEditorialWorkspaceSurfaceContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         for name in [
-            "ScholiumNavigationBackdropLight.png",
-            "ScholiumNavigationBackdropDark.png",
+            "ScholiumFeaturedFolioLight.png",
+            "ScholiumFeaturedFolioDark.png",
         ] {
             let url = repository.appendingPathComponent("Scholium/Resources/Artwork/\(name)")
             let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
             let properties = try #require(
                 CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
             )
-            #expect(properties[kCGImagePropertyPixelWidth] as? Int == 3_200)
-            #expect(properties[kCGImagePropertyPixelHeight] as? Int == 2_000)
+            #expect(properties[kCGImagePropertyPixelWidth] as? Int == 1_586)
+            #expect(properties[kCGImagePropertyPixelHeight] as? Int == 992)
         }
 
         let content = try String(
             contentsOf: repository.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
         )
-        #expect(content.contains("if !reduceTransparency"))
-        #expect(content.contains("NavigationBackdropView(colorScheme: colorScheme)"))
-        #expect(content.contains("Rectangle().fill(.regularMaterial)"))
+        #expect(content.contains(".scholiumSurface(.navigation)"))
+        #expect(content.contains("ScholiumStructuralRule(orientation: .vertical)"))
         #expect(content.contains(".ignoresSafeArea(.container, edges: .top)"))
-        #expect(content.contains(".backgroundExtensionEffect()"))
-        #expect(content.contains(".accessibilityHidden(true)"))
-        #expect(content.contains("ScholiumMetrics.Navigation.panelInset"))
-        #expect(content.contains("ScholiumMetrics.Navigation.panelCornerRadius"))
+        #expect(content.contains("FeaturedArtworkDetailView()"))
+        #expect(content.contains(".accessibilityIdentifier(\"scholium.featuredArtwork\")"))
+        #expect(content.contains(".padding(.top, ScholiumMetrics.Search.responsiveMargin)"))
+        #expect(!content.contains(".ignoresSafeArea()"))
+        #expect(!content.contains("NavigationBackdropView"))
+        #expect(!content.contains(".backgroundExtensionEffect()"))
+        #expect(!content.contains(".regularMaterial"))
+
+        let preview = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(preview.contains(".init(increasedContrast: true)"))
+        #expect(preview.contains(".init(reduceTransparency: true)"))
+        #expect(preview.contains(".init(reduceMotion: true)"))
+        #expect(preview.contains("swiftUIReadingFont(size: 12, relativeTo: .body)"))
+
+        let productionRoot = repository.appendingPathComponent("Scholium")
+        let forbiddenSurfaceAPIs = [
+            "glassEffect(",
+            "GlassEffectContainer",
+            ".buttonStyle(.glass",
+            ".regularMaterial",
+            ".ultraThinMaterial",
+            "NSVisualEffectView",
+            "backgroundExtensionEffect(",
+            "scholiumGlassSurface(",
+            "scholiumMaterialSurface(",
+        ]
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: productionRoot,
+                includingPropertiesForKeys: nil
+            )
+        )
+        for case let sourceURL as URL in enumerator where sourceURL.pathExtension == "swift" {
+            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            for forbiddenAPI in forbiddenSurfaceAPIs {
+                #expect(
+                    !source.contains(forbiddenAPI),
+                    "\(sourceURL.lastPathComponent) must not use \(forbiddenAPI)"
+                )
+            }
+        }
     }
 
     @Test("Independent windows do not share presentation or document sessions")
@@ -378,6 +420,35 @@ struct FrontendArchitectureTests {
         #expect(!controller.isCurrentSearch(scoped))
     }
 
+    @Test("Search flushes the registered editor before presenting retrieval")
+    func searchPresentationCommitsTheEditorFirst() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let searchBoundary = try #require(
+            appSource.range(of: "func beginSearch(_ invocation: SearchInvocation)")
+        )
+        let dismissalBoundary = try #require(
+            appSource.range(
+                of: "func dismissSearch()",
+                range: searchBoundary.upperBound ..< appSource.endIndex
+            )
+        )
+        let implementation = appSource[searchBoundary.lowerBound ..< dismissalBoundary.lowerBound]
+        let flush = try #require(
+            implementation.range(of: "try await self.flushRegisteredEditorIfNeeded()")
+        )
+        let presentation = try #require(
+            implementation.range(of: "self.discoveryController.presentSearch(invocation)")
+        )
+        #expect(flush.lowerBound < presentation.lowerBound)
+    }
+
     @Test("Research context enforces one trailing context owner")
     func researchContextExclusivity() {
         let controller = ResearchController()
@@ -388,6 +459,60 @@ struct FrontendArchitectureTests {
         controller.showNoteHistory(true)
         #expect(controller.inspector.showsNoteHistory)
         #expect(!controller.inspector.showsResearchInspector)
+    }
+
+    @Test("Recommended Bibliography is an Analysis-only sibling feature")
+    func recommendedBibliographyOwnershipAndPlacement() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let section = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/RecommendedBibliographySection.swift"
+            ),
+            encoding: .utf8
+        )
+        let controller = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/ResearchContext/RecommendedBibliographyController.swift"
+            ),
+            encoding: .utf8
+        )
+        let relationship = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/RelationshipView.swift"
+            ),
+            encoding: .utf8
+        )
+        let app = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+
+        for forbidden in [
+            "WindowModel", "ResearchFunctionController", "FileManager",
+            "ResearchSkillStore", "import ScholiumApplication",
+        ] {
+            #expect(!section.contains(forbidden))
+            #expect(!controller.contains(forbidden))
+        }
+        #expect(controller.contains("final class RecommendedBibliographyController"))
+        #expect(controller.contains("It owns no repository, skill package, YAML, or filesystem authority."))
+        #expect(section.contains("Reading leads, not evidence."))
+        #expect(section.contains("Update Recommendations"))
+        #expect(section.contains("Open in Zotero"))
+        #expect(section.contains("Dismiss"))
+        #expect(section.contains("Repair in Research Guidance"))
+        #expect(app.contains("target.role == .analysis"))
+
+        let zotero = try #require(relationship.range(of: "ZoteroSourceSection("))
+        let bibliography = try #require(relationship.range(
+            of: "RecommendedBibliographySection("
+        ))
+        let connections = try #require(relationship.range(of: "workspaceConnectionsSection"))
+        #expect(zotero.lowerBound < bibliography.lowerBound)
+        #expect(bibliography.lowerBound < connections.lowerBound)
     }
 
     @Test("Research Function presentation is target-locked and resettable")
@@ -647,8 +772,10 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Accessibility.preferredCustomTarget == 28)
         #expect(ScholiumMetrics.Accessibility.minimumCustomTarget == 20)
         #expect(ScholiumMetrics.ContextSurface.controlHeight == 40)
-        #expect(ScholiumMetrics.Navigation.panelInset == 10)
-        #expect(ScholiumMetrics.Navigation.panelCornerRadius == 18)
+        #expect(ScholiumMetrics.Search.preferredWidth == 640)
+        #expect(ScholiumMetrics.Search.cornerRadius == 12)
+        #expect(ScholiumShape.editorialControlCornerRadius == 8)
+        #expect(ScholiumShape.editorialPanelCornerRadius == 10)
     }
 
     @Test("Live Preview omits Source chrome and keeps context clearance in scrolling content")
@@ -714,12 +841,12 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
         let expectedAdoption: [String: [String]] = [
             "Scholium/Views/ContentView.swift": [
-                "scholiumMaterialSurface(",
-                ".navigation",
+                ".scholiumSurface(.navigation)",
                 "ScholiumColorRole.documentBackground",
             ],
             "Scholium/Views/ResearchFunctions/ResearchStripView.swift": [
-                "scholiumGlassSurface(.floatingControl",
+                "scholiumEditorialSurface(",
+                ".apparatus",
                 "ScholiumColorRole.accent",
             ],
             "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift": [
@@ -732,9 +859,22 @@ struct FrontendArchitectureTests {
                 "ScholiumColorRole.destructive",
             ],
             "Scholium/Views/Sidebar/SidebarView.swift": [
-                "scholiumMaterialSurface(",
+                "scholiumEditorialSurface(",
                 ".boundedPanel",
                 "ScholiumColorRole.confirmed",
+            ],
+            "Scholium/Views/Note/NoteContentView.swift": [
+                ".scholiumSurface(.document)",
+                ".scholiumSurface(.apparatus)",
+                "scholiumEditorialSurface(",
+            ],
+            "Scholium/Views/Note/MetadataCardView.swift": [
+                "scholiumEditorialSurface(",
+                ".boundedPanel",
+            ],
+            "Scholium/Views/SearchWorkspaceView.swift": [
+                "scholiumEditorialSurface(",
+                ".searchOverlay",
             ],
         ]
 
@@ -986,46 +1126,68 @@ struct FrontendArchitectureTests {
     @Test("Semantic surfaces, depth, and boundaries adapt without numbered scales")
     func semanticSurfaceRecipeContract() {
         #expect(Set(ScholiumSurfaceRole.allCases) == Set([
-            .document, .navigation, .floatingControl,
+            .document, .navigation, .apparatus, .floatingControl,
             .boundedPanel, .searchOverlay, .denseEvidence,
         ]))
-        #expect(ScholiumSurfaceRole.document.isOpaque)
-        #expect(ScholiumSurfaceRole.denseEvidence.isOpaque)
-        #expect(ScholiumSurfaceRole.navigation.usesMaterial)
-        #expect(ScholiumSurfaceRole.boundedPanel.usesMaterial)
-        #expect(ScholiumSurfaceRole.floatingControl.usesLiquidGlass)
-        #expect(ScholiumSurfaceRole.searchOverlay.usesLiquidGlass)
+        #expect(ScholiumSurfaceRole.allCases.allSatisfy { $0.isOpaque })
+        #expect(ScholiumSurfaceRole.navigation.colorRole == .navigationBackground)
+        #expect(ScholiumSurfaceRole.document.colorRole == .documentBackground)
+        #expect(ScholiumSurfaceRole.apparatus.colorRole == .surfaceBackground)
+        #expect(ScholiumSurfaceRole.floatingControl.defaultBoundaryRole == .floatingBoundary)
+        #expect(ScholiumSurfaceRole.searchOverlay.defaultBoundaryRole == .floatingBoundary)
+        #expect(ScholiumSurfaceRole.boundedPanel.defaultBoundaryRole == .subtleBoundary)
+        #expect(ScholiumSurfaceRole.floatingControl.defaultElevationRole == .floatingControl)
+        #expect(ScholiumSurfaceRole.searchOverlay.defaultElevationRole == .searchOverlay)
+        #expect(ScholiumSurfaceRole.boundedPanel.defaultElevationRole == .boundedPanel)
+        #expect(ScholiumSurfaceRole.document.defaultElevationRole == nil)
+        #expect(ScholiumSurfaceRole.navigation.defaultElevationRole == nil)
+        #expect(ScholiumSurfaceRole.apparatus.defaultElevationRole == nil)
+        #expect(ScholiumSurfaceRole.denseEvidence.defaultElevationRole == nil)
 
-        let triptych = ScholiumElevationRole.triptychEdge.style(
-            reduceTransparency: false,
-            appearsActive: true
+        var environment = EnvironmentValues()
+        environment.scholiumVisualEnvironmentOverride = .init(
+            increasedContrast: true,
+            reduceTransparency: true,
+            reduceMotion: true,
+            appearsActive: false
         )
-        #expect(triptych == .init(opacity: 0.14, radius: 10, x: 5, y: 0))
+        #expect(environment.scholiumIncreasedContrast)
+        #expect(environment.scholiumReduceTransparency)
+        #expect(environment.scholiumReduceMotion)
+        #expect(!environment.scholiumAppearsActive)
+
+        #expect(Set(ScholiumElevationRole.allCases) == Set([
+            .floatingControl, .boundedPanel, .searchOverlay,
+        ]))
         #expect(ScholiumElevationRole.floatingControl.style(
             reduceTransparency: false,
             appearsActive: true
-        ) == .init(opacity: 0.10, radius: 10, x: 0, y: 4))
+        ) == .init(opacity: 0.04, radius: 4, x: 0, y: 2))
         #expect(ScholiumElevationRole.boundedPanel.style(
             reduceTransparency: false,
             appearsActive: true
-        ) == .init(opacity: 0.08, radius: 12, x: 0, y: 4))
+        ) == .init(opacity: 0.03, radius: 4, x: 0, y: 2))
         #expect(ScholiumElevationRole.searchOverlay.style(
             reduceTransparency: false,
             appearsActive: true
-        ) == .init(opacity: 0.20, radius: 22, x: 0, y: 12))
+        ) == .init(opacity: 0.12, radius: 12, x: 0, y: 6))
         #expect(ScholiumElevationRole.searchOverlay.style(
             reduceTransparency: true,
             appearsActive: false
-        ).opacity == 0.06)
+        ).opacity == 0.036)
 
         #expect(ScholiumBoundaryRole.floatingBoundary.style(
             increasedContrast: false,
             reduceTransparency: false
-        ).lineWidth == 0)
+        ).lineWidth == 0.75)
         #expect(ScholiumBoundaryRole.floatingBoundary.style(
             increasedContrast: true,
             reduceTransparency: false
         ).lineWidth == 1)
+        #expect(ScholiumBoundaryRole.structuralDivider.style(
+            increasedContrast: false,
+            reduceTransparency: false
+        ).opacity == 0.42)
         #expect(ScholiumBoundaryRole.structuralDivider.style(
             increasedContrast: false,
             reduceTransparency: true

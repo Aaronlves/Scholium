@@ -495,11 +495,6 @@ enum ScholiumMetrics {
         static let preferredWidth: CGFloat = 360
     }
 
-    enum Navigation {
-        static let panelInset: CGFloat = 10
-        static let panelCornerRadius: CGFloat = 18
-    }
-
     enum Workspace {
         static let minimumWidth: CGFloat = 760
         static let minimumHeight: CGFloat = 520
@@ -514,12 +509,12 @@ enum ScholiumMetrics {
     enum Search {
         static let preferredWidth: CGFloat = 640
         static let maximumWidth: CGFloat = 720
-        static let collapsedHeight: CGFloat = 116
+        static let collapsedHeight: CGFloat = 104
         static let resultRowHeight: CGFloat = 64
         static let expandedHeight: CGFloat = 520
         static let scopeWidth: CGFloat = 320
-        static let responsiveMargin: CGFloat = 24
-        static let cornerRadius: CGFloat = 24
+        static let responsiveMargin: CGFloat = 18
+        static let cornerRadius: CGFloat = 12
     }
 
     enum ContextSurface {
@@ -536,14 +531,16 @@ enum ScholiumMetrics {
 }
 
 enum ScholiumShape {
-    static let inlineStatusCornerRadius: CGFloat = 10
-    static let floatingControlCornerRadius: CGFloat = 12
-    static let loadingSurfaceCornerRadius: CGFloat = 16
+    static let inlineStatusCornerRadius: CGFloat = 8
+    static let editorialControlCornerRadius: CGFloat = 8
+    static let editorialPanelCornerRadius: CGFloat = 10
+    static let loadingSurfaceCornerRadius: CGFloat = 10
 }
 
 enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
     case document
     case navigation
+    case apparatus
     case floatingControl
     case boundedPanel
     case searchOverlay
@@ -553,22 +550,35 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
         switch self {
         case .document: .documentBackground
         case .navigation: .navigationBackground
-        case .floatingControl, .boundedPanel, .searchOverlay: .surfaceBackground
+        case .apparatus, .floatingControl, .boundedPanel, .searchOverlay: .surfaceBackground
         case .denseEvidence: .documentBackground
         }
     }
 
+    /// Scholium-owned surfaces use opaque paper planes. System-owned controls
+    /// keep their native material treatment at their own call sites.
+    var isOpaque: Bool { true }
 
-    var usesLiquidGlass: Bool {
-        self == .floatingControl || self == .searchOverlay
+    var defaultBoundaryRole: ScholiumBoundaryRole {
+        switch self {
+        case .floatingControl, .searchOverlay:
+            .floatingBoundary
+        case .document, .navigation, .apparatus, .boundedPanel, .denseEvidence:
+            .subtleBoundary
+        }
     }
 
-    var usesMaterial: Bool {
-        self == .navigation || self == .boundedPanel
-    }
-
-    var isOpaque: Bool {
-        self == .document || self == .denseEvidence
+    var defaultElevationRole: ScholiumElevationRole? {
+        switch self {
+        case .floatingControl:
+            .floatingControl
+        case .boundedPanel:
+            .boundedPanel
+        case .searchOverlay:
+            .searchOverlay
+        case .document, .navigation, .apparatus, .denseEvidence:
+            nil
+        }
     }
 }
 
@@ -580,21 +590,18 @@ struct ScholiumElevationStyle: Equatable, Sendable {
 }
 
 enum ScholiumElevationRole: CaseIterable, Sendable {
-    case triptychEdge
     case floatingControl
     case boundedPanel
     case searchOverlay
 
     func style(reduceTransparency: Bool, appearsActive: Bool) -> ScholiumElevationStyle {
         let recipe: ScholiumElevationStyle = switch self {
-        case .triptychEdge:
-            .init(opacity: 0.14, radius: 10, x: 5, y: 0)
         case .floatingControl:
-            .init(opacity: 0.10, radius: 10, x: 0, y: 4)
+            .init(opacity: 0.04, radius: 4, x: 0, y: 2)
         case .boundedPanel:
-            .init(opacity: 0.08, radius: 12, x: 0, y: 4)
+            .init(opacity: 0.03, radius: 4, x: 0, y: 2)
         case .searchOverlay:
-            .init(opacity: 0.20, radius: 22, x: 0, y: 12)
+            .init(opacity: 0.12, radius: 12, x: 0, y: 6)
         }
         let transparencyMultiplier = reduceTransparency ? 0.5 : 1.0
         let activityMultiplier = appearsActive ? 1.0 : 0.6
@@ -625,11 +632,11 @@ enum ScholiumBoundaryRole: CaseIterable, Sendable {
         let emphasized = increasedContrast || reduceTransparency
         return switch self {
         case .structuralDivider:
-            .init(colorRole: .separator, opacity: emphasized ? 0.78 : 0.24, lineWidth: emphasized ? 1 : 0.5)
+            .init(colorRole: .separator, opacity: emphasized ? 0.78 : 0.42, lineWidth: emphasized ? 1 : 0.5)
         case .subtleBoundary:
             .init(colorRole: .separator, opacity: emphasized ? 0.82 : 0.34, lineWidth: emphasized ? 1 : 0.75)
         case .floatingBoundary:
-            .init(colorRole: .separator, opacity: emphasized ? 0.82 : 0, lineWidth: emphasized ? 1 : 0)
+            .init(colorRole: .separator, opacity: emphasized ? 0.82 : 0.34, lineWidth: emphasized ? 1 : 0.75)
         }
     }
 }
@@ -643,6 +650,57 @@ enum ScholiumDocumentRenderer: CaseIterable, Sendable {
 enum ScholiumDocumentWidthClass: CaseIterable, Sendable {
     case regular
     case narrow
+}
+
+/// Preview and test overrides for environment-owned visual adaptations. A nil
+/// field preserves the actual macOS environment used by production windows.
+struct ScholiumVisualEnvironmentOverride: Equatable, Sendable {
+    var increasedContrast: Bool?
+    var reduceTransparency: Bool?
+    var reduceMotion: Bool?
+    var appearsActive: Bool?
+
+    init(
+        increasedContrast: Bool? = nil,
+        reduceTransparency: Bool? = nil,
+        reduceMotion: Bool? = nil,
+        appearsActive: Bool? = nil
+    ) {
+        self.increasedContrast = increasedContrast
+        self.reduceTransparency = reduceTransparency
+        self.reduceMotion = reduceMotion
+        self.appearsActive = appearsActive
+    }
+}
+
+private struct ScholiumVisualEnvironmentOverrideKey: EnvironmentKey {
+    static let defaultValue = ScholiumVisualEnvironmentOverride()
+}
+
+extension EnvironmentValues {
+    var scholiumVisualEnvironmentOverride: ScholiumVisualEnvironmentOverride {
+        get { self[ScholiumVisualEnvironmentOverrideKey.self] }
+        set { self[ScholiumVisualEnvironmentOverrideKey.self] = newValue }
+    }
+
+    var scholiumIncreasedContrast: Bool {
+        scholiumVisualEnvironmentOverride.increasedContrast
+            ?? (colorSchemeContrast == .increased)
+    }
+
+    var scholiumReduceTransparency: Bool {
+        scholiumVisualEnvironmentOverride.reduceTransparency
+            ?? accessibilityReduceTransparency
+    }
+
+    var scholiumReduceMotion: Bool {
+        scholiumVisualEnvironmentOverride.reduceMotion
+            ?? accessibilityReduceMotion
+    }
+
+    var scholiumAppearsActive: Bool {
+        scholiumVisualEnvironmentOverride.appearsActive ?? appearsActive
+    }
 }
 
 struct ScholiumDocumentContentInsets: Equatable, Sendable {
@@ -687,26 +745,21 @@ enum ScholiumDocumentRhythm {
 }
 
 private struct ScholiumSurfaceModifier: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     let role: ScholiumSurfaceRole
 
     func body(content: Content) -> some View {
         content.background {
-            if role.usesMaterial, !reduceTransparency {
-                Rectangle().fill(.regularMaterial)
-            } else {
-                Rectangle().fill(role.colorRole.color(
-                    increasedContrast: colorSchemeContrast == .increased
-                ))
-            }
+            Rectangle().fill(role.colorRole.color(
+                increasedContrast: increasedContrast
+            ))
         }
     }
 }
 
 private struct ScholiumElevationModifier: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumAppearsActive) private var appearsActive
     let role: ScholiumElevationRole
 
     func body(content: Content) -> some View {
@@ -724,20 +777,20 @@ private struct ScholiumElevationModifier: ViewModifier {
 }
 
 private struct ScholiumBoundaryModifier<S: InsettableShape>: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     let role: ScholiumBoundaryRole
     let shape: S
 
     func body(content: Content) -> some View {
         let style = role.style(
-            increasedContrast: colorSchemeContrast == .increased,
+            increasedContrast: increasedContrast,
             reduceTransparency: reduceTransparency
         )
         content.overlay {
             shape.strokeBorder(
                 style.colorRole.color(
-                    increasedContrast: colorSchemeContrast == .increased
+                    increasedContrast: increasedContrast
                 ).opacity(style.opacity),
                 lineWidth: style.lineWidth
             )
@@ -746,84 +799,51 @@ private struct ScholiumBoundaryModifier<S: InsettableShape>: ViewModifier {
     }
 }
 
-private struct ScholiumGlassSurfaceModifier<S: InsettableShape>: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+private struct ScholiumEditorialSurfaceModifier<S: InsettableShape>: ViewModifier {
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     let role: ScholiumSurfaceRole
     let boundary: ScholiumBoundaryRole
-    let elevation: ScholiumElevationRole
+    let elevation: ScholiumElevationRole?
     let shape: S
-    let interactive: Bool
 
+    @ViewBuilder
     func body(content: Content) -> some View {
         let boundaryStyle = boundary.style(
-            increasedContrast: colorSchemeContrast == .increased,
+            increasedContrast: increasedContrast,
             reduceTransparency: reduceTransparency
         )
-        content
+        let surfacedContent = content
             .background(
-                reduceTransparency ? role.colorRole.color(
-                    increasedContrast: colorSchemeContrast == .increased
-                ) : Color.clear,
+                role.colorRole.color(
+                    increasedContrast: increasedContrast
+                ),
                 in: shape
             )
-            .glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
             .overlay {
                 shape.strokeBorder(
                     boundaryStyle.colorRole.color(
-                        increasedContrast: colorSchemeContrast == .increased
+                        increasedContrast: increasedContrast
                     ).opacity(boundaryStyle.opacity),
                     lineWidth: boundaryStyle.lineWidth
                 )
                 .allowsHitTesting(false)
             }
-            .scholiumElevation(elevation)
-    }
-}
-
-private struct ScholiumMaterialSurfaceModifier<S: InsettableShape>: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    let role: ScholiumSurfaceRole
-    let boundary: ScholiumBoundaryRole
-    let elevation: ScholiumElevationRole
-    let shape: S
-
-    func body(content: Content) -> some View {
-        let boundaryStyle = boundary.style(
-            increasedContrast: colorSchemeContrast == .increased,
-            reduceTransparency: reduceTransparency
-        )
-        content
-            .background {
-                if reduceTransparency {
-                    shape.fill(role.colorRole.color(
-                        increasedContrast: colorSchemeContrast == .increased
-                    ))
-                } else {
-                    shape.fill(.regularMaterial)
-                }
-            }
-            .overlay {
-                shape.strokeBorder(
-                    boundaryStyle.colorRole.color(
-                        increasedContrast: colorSchemeContrast == .increased
-                    ).opacity(boundaryStyle.opacity),
-                    lineWidth: boundaryStyle.lineWidth
-                )
-                .allowsHitTesting(false)
-            }
-            .scholiumElevation(elevation)
+        if let elevation {
+            surfacedContent.scholiumElevation(elevation)
+        } else {
+            surfacedContent
+        }
     }
 }
 
 private struct ScholiumForegroundModifier: ViewModifier {
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     let role: ScholiumColorRole
 
     func body(content: Content) -> some View {
         content.foregroundStyle(role.color(
-            increasedContrast: colorSchemeContrast == .increased
+            increasedContrast: increasedContrast
         ))
     }
 }
@@ -870,33 +890,16 @@ extension View {
         modifier(ScholiumBoundaryModifier(role: role, shape: shape))
     }
 
-    func scholiumGlassSurface<S: InsettableShape>(
+    func scholiumEditorialSurface<S: InsettableShape>(
         _ role: ScholiumSurfaceRole,
         in shape: S,
-        boundary: ScholiumBoundaryRole = .floatingBoundary,
-        elevation: ScholiumElevationRole = .floatingControl,
-        interactive: Bool = false
+        boundary: ScholiumBoundaryRole? = nil,
+        elevation: ScholiumElevationRole? = nil
     ) -> some View {
-        modifier(ScholiumGlassSurfaceModifier(
+        modifier(ScholiumEditorialSurfaceModifier(
             role: role,
-            boundary: boundary,
-            elevation: elevation,
-            shape: shape,
-            interactive: interactive
-        ))
-    }
-
-
-    func scholiumMaterialSurface<S: InsettableShape>(
-        _ role: ScholiumSurfaceRole,
-        in shape: S,
-        boundary: ScholiumBoundaryRole = .subtleBoundary,
-        elevation: ScholiumElevationRole = .boundedPanel
-    ) -> some View {
-        modifier(ScholiumMaterialSurfaceModifier(
-            role: role,
-            boundary: boundary,
-            elevation: elevation,
+            boundary: boundary ?? role.defaultBoundaryRole,
+            elevation: elevation ?? role.defaultElevationRole,
             shape: shape
         ))
     }

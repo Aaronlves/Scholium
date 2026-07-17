@@ -25,7 +25,7 @@ Supporting:
 - Background-Grasping
 - Concept-Understanding
 
-This practice is constrained by the protected Core Protocol and mapped through [Foundational Dimensions](FOUNDATIONAL-DIMENSIONS.md).
+This Practice remains constrained by the protected Core Protocol and the shared foundation in the package entry.
 
 ## Entry conditions
 

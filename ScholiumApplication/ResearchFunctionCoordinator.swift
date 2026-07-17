@@ -35,28 +35,38 @@ public actor ResearchFunctionCoordinator {
         _ request: ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation {
         let handle = try await reference.requireHandle()
-        return try await handle.prepareResearchFunction(request)
+        let preparation = try await handle.prepareResearchFunction(request)
+        return try await handle.attachingAgentActions(to: preparation)
+    }
+
+    public func functionRun(id: UUID) async throws -> ResearchFunctionPreparation {
+        let handle = try await reference.requireHandle()
+        let preparation = try await handle.researchFunctionRun(id: id)
+        return try await handle.attachingAgentActions(to: preparation)
     }
 
     public func prepareAutomaticFidelity(
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation {
         let handle = try await reference.requireHandle()
-        return try await handle.prepareAutomaticFidelity(parentRunID: parentRunID)
+        let automatic = try await handle.prepareAutomaticFidelity(parentRunID: parentRunID)
+        return try await handle.attachingAgentActions(to: automatic)
     }
 
-    public func selectFunctionMethods(
-        _ submission: ResearchFunctionMethodSelectionSubmission
+    public func selectFunctionResources(
+        _ submission: ResearchFunctionResourceSelectionSubmission
     ) async throws -> ResearchFunctionPreparation {
         let handle = try await reference.requireHandle()
-        return try await handle.selectResearchFunctionMethods(submission)
+        let preparation = try await handle.selectResearchFunctionResources(submission)
+        return try await handle.attachingAgentActions(to: preparation)
     }
 
     public func completeFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion {
         let handle = try await reference.requireHandle()
-        return try await handle.completeResearchFunction(submission)
+        let completion = try await handle.completeResearchFunction(submission)
+        return await handle.attachingAgentActions(to: completion)
     }
 
     public func cancelFunction(runID: UUID) async throws {
@@ -382,7 +392,8 @@ extension WorkspaceHandle {
                 preparation: ResearchFunctionPreparation(
                     snapshot: existing.snapshot,
                     instructions: existing.preparedInstructions ?? "",
-                    state: existing.completion?.state ?? .prepared
+                    state: existing.completion?.state ?? .prepared,
+                    reusedCompletion: existing.completion
                 )
             )
         }
@@ -411,6 +422,21 @@ extension WorkspaceHandle {
         return AutomaticFidelityPreparation(
             parentRunID: parentRunID,
             preparation: preparation
+        )
+    }
+
+    func researchFunctionRun(id: UUID) async throws -> ResearchFunctionPreparation {
+        try requireActive()
+        guard let record = try await authoritativeFunctionRecords().first(where: {
+            $0.id == id
+        }) else {
+            throw ResearchFunctionContractError.preparationNotFound(id)
+        }
+        return ResearchFunctionPreparation(
+            snapshot: record.snapshot,
+            instructions: record.preparedInstructions ?? "",
+            state: record.completion?.state ?? .prepared,
+            reusedCompletion: record.completion
         )
     }
 
@@ -655,8 +681,8 @@ extension WorkspaceHandle {
     /// validated read-only preflight. The Target, Materials, evidence,
     /// checkpoint, record identity, and previously resolved package revisions
     /// remain fixed; no delivery adapter chooses a philosophical method.
-    func selectResearchFunctionMethods(
-        _ submission: ResearchFunctionMethodSelectionSubmission
+    func selectResearchFunctionResources(
+        _ submission: ResearchFunctionResourceSelectionSubmission
     ) async throws -> ResearchFunctionPreparation {
         try requireActive()
         let stored = try await storedFunctionRecord(runID: submission.runID)
@@ -664,13 +690,13 @@ extension WorkspaceHandle {
         guard preflight.confirmationToken == submission.confirmationToken else {
             throw ResearchFunctionContractError.confirmationMismatch
         }
-        guard !preflight.request.function.conditionalMethods.isEmpty else {
+        guard !preflight.request.function.conditionalResources.isEmpty else {
             throw ResearchFunctionContractError.methodSelectionNotRequired(
                 preflight.request.function
             )
         }
-        if let selected = preflight.request.methods {
-            guard selected == submission.methods else {
+        if let selected = preflight.request.conditionalResources {
+            guard selected == submission.resources else {
                 throw ResearchFunctionContractError.methodSelectionAlreadyResolved(
                     submission.runID
                 )
@@ -688,7 +714,7 @@ extension WorkspaceHandle {
             )
         }
 
-        let request = try preflight.request.selectingMethods(submission.methods)
+        let request = try preflight.request.selectingResources(submission.resources)
         let target = try await validateResearchFunctionTarget(
             request.target,
             expected: request.target.fingerprint
@@ -902,7 +928,7 @@ extension WorkspaceHandle {
                 target: target,
                 instruction: normalizedInstruction.isEmpty ? nil : normalizedInstruction,
                 scope: passage.map(ResearchFunctionScope.passage) ?? .whole,
-                methods: []
+                conditionalResources: []
             )
         )
         guard let association = await services.critiqueRegistry.association(
@@ -1027,7 +1053,7 @@ extension WorkspaceHandle {
         guard snapshot.confirmationToken == submission.confirmationToken else {
             throw ResearchFunctionContractError.confirmationMismatch
         }
-        guard !snapshot.request.awaitsMethodSelection else {
+        guard !snapshot.request.awaitsResourceSelection else {
             throw ResearchFunctionContractError.methodSelectionRequired(
                 submission.runID
             )
@@ -1452,15 +1478,15 @@ extension WorkspaceHandle {
             } else {
                 citationStyle = nil
             }
-            let selectedMethods: Set<ResearchFunctionMethod>
-            if let methods = request.methods {
-                selectedMethods = methods
+            let selectedResources: Set<ResearchFunctionConditionalResource>
+            if let resources = request.conditionalResources {
+                selectedResources = resources
             } else {
                 // One-click Strip preparation is a read-only preflight. It
                 // loads the complete primary method but no speculative
                 // conditional reference; the external agent finalizes the
                 // semantic selection after inspecting the real work.
-                selectedMethods = []
+                selectedResources = []
             }
             let envelope = try await ResearchWorkflowAssembler.resolveFunction(
                 contract,
@@ -1468,7 +1494,7 @@ extension WorkspaceHandle {
                 fidelityChecks: checks,
                 citationStyle: citationStyle,
                 primaryResourcePaths: function == request.function
-                    ? researchFunctionResourcePaths(selectedMethods)
+                    ? researchFunctionResourcePaths(selectedResources)
                     : [],
                 store: services.researchSkillStore
             )
@@ -1506,7 +1532,7 @@ extension WorkspaceHandle {
         let target = workflowReference(request.target)
         let materials = request.materials.map(workflowReference)
         let writes = (phaseFunction == .develop || phaseFunction == .revise)
-            && !request.awaitsMethodSelection
+            && !request.awaitsResourceSelection
         let mode = legacyMode(for: phaseFunction)
         let purpose = phasePurpose(function: phaseFunction, request: request)
         let phaseContract = ResearchWorkflowPhaseContract(
@@ -1595,8 +1621,8 @@ extension WorkspaceHandle {
             ]
         }
         let boundary: String
-        if request.awaitsMethodSelection {
-            boundary = "This is a read-only method-selection preflight. Inspect the fixed Target and Materials only; the checkpoint does not authorize mutation. Select the conditional references through the function API and execute only the finalized packet."
+        if request.awaitsResourceSelection {
+            boundary = "This is a read-only conditional-resource preflight. Inspect the fixed Target and Materials only; the checkpoint does not authorize mutation. Select only the needed conditional resources through the function API and execute only the finalized packet."
         } else {
             switch request.function {
             case .develop, .revise:
@@ -1625,26 +1651,27 @@ extension WorkspaceHandle {
             }
             sections += [phase.envelope.renderedInstructions, ""]
         }
-        if request.awaitsMethodSelection {
-            let methods = request.function.conditionalMethods.sorted {
+        if request.awaitsResourceSelection {
+            let resources = request.function.conditionalResources.sorted {
                 $0.rawValue < $1.rawValue
             }
-            let selection = ResearchFunctionMethodSelectionSubmission(
+            let selection = ResearchFunctionResourceSelectionSubmission(
                 runID: runID,
                 confirmationToken: confirmationToken,
-                methods: []
+                resources: []
             )
             sections += [
-                "## Finalize the internal method",
+                "## Finalize conditional resources",
                 "",
                 "After read-only inspection, choose only the conditional references genuinely needed by the philosophical work. These are internal resource selections, not interface modes or an exhaustive list of intellectual operations.",
-                "Available semantic method IDs: \(methods.map(\.rawValue).joined(separator: ", "))",
-                "An explicit empty methods array is correct when the complete primary method is sufficient, including ordinary concept clarification or argument construction and repair.",
+                "Available semantic resource IDs: \(resources.map(\.rawValue).joined(separator: ", "))",
+                "An explicit empty resources array is correct when the complete primary method is sufficient, including ordinary concept clarification or argument construction and repair.",
                 "Do not retrieve an unattached conditional reference with the generic skills command for this run; that would fall outside its loaded-resource evidence.",
-                "Method-selection submission template (JSON):",
+                "Resource-selection submission template (JSON):",
                 try renderFunctionJSON(selection),
-                "Finalize with: scholium function select-methods --from <json-or-> --triptych \(services.manifest.id.uuidString.lowercased()) --format markdown",
+                "Finalize with: scholium function select-resources --from <file|-> --triptych \(services.manifest.id.uuidString.lowercased()) --format markdown",
                 "Execute only the finalized packet returned by that command. It retains this run, checkpoint, Target, Materials, and confirmation token while recording the exact conditional resources loaded.",
+                "Recover this run later with: scholium function show \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased()) --format markdown",
                 "Cancel this preflight with: scholium function cancel \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased())",
             ]
             return sections.joined(separator: "\n")
@@ -1657,31 +1684,282 @@ extension WorkspaceHandle {
         } else if request.function.requiresFinalFidelity {
             sections += [
                 "The run is not complete after the substantive edit. First submit this run with the final Target fingerprint; it will remain Awaiting Fidelity.",
-                "Then prepare a separate Fidelity function against that exact final Target fingerprint, using the same Materials, scope kind, selected Comments, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). Complete that read-only run and resubmit this run with the Fidelity run ID in childRunIDs. Do not submit Fidelity outcomes directly on this write-capable run.",
+                "Then run: scholium function prepare-fidelity \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased()) --format markdown. Scholium constructs or reuses the separate Fidelity function child against the exact final Target fingerprint with the same Materials, scope kind, selected Comments, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). Complete that read-only child and resubmit this parent with the Fidelity run ID in childRunIDs. Do not submit Fidelity outcomes directly on this write-capable run.",
                 "",
             ]
         }
-        let completionTemplate = ResearchFunctionCompletionSubmission(
+        let completionTemplate = try renderCompletionTemplate(
+            request: request,
             runID: runID,
-            confirmationToken: confirmationToken,
-            finalTargetFingerprint: request.target.fingerprint,
-            finalMaterialFingerprints: Dictionary(
-                uniqueKeysWithValues: request.materials.map {
-                    ($0.noteID, $0.fingerprint)
-                }
-            ),
-            summary: "REPLACE with an attributed completion summary",
-            didModifyTarget: false
+            confirmationToken: confirmationToken
         )
         sections += [
             "Submit completion with this run ID and confirmation token. Supply the final full Target fingerprint and a full final Material fingerprint keyed by every Material note ID above. Scholium does not infer that an edit or audit occurred.",
-            "For a write, replace the prepared Target fingerprint and set didModifyTarget truthfully. Add the exact Fidelity outcomes, Critique output fingerprint, or Manuscript child run IDs required by this function.",
+            "This function-specific schema is intentionally not directly submittable: replace every REPLACE_WITH value. For a write, supply the final Target fingerprint and set didModifyTarget truthfully. Supply the exact Fidelity outcomes, Critique output fingerprint, or Manuscript child run IDs shown for this function.",
             "Completion submission template (JSON):",
-            try renderFunctionJSON(completionTemplate),
-            "Submit with: scholium function complete --from <json-or-> --triptych \(services.manifest.id.uuidString.lowercased()) --format json",
+            completionTemplate,
+            "Submit with: scholium function complete --from <file|-> --triptych \(services.manifest.id.uuidString.lowercased()) --format json",
+            "Recover status and the immutable packet with: scholium function show \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased()) --format json",
             "Cancel this prepared run with: scholium function cancel \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased())",
         ]
         return sections.joined(separator: "\n")
+    }
+
+    private func renderCompletionTemplate(
+        request: ResearchFunctionRequest,
+        runID: UUID,
+        confirmationToken: UUID
+    ) throws -> String {
+        func fingerprintObject(_ fingerprint: DocumentFingerprint) -> [String: Any] {
+            ["sha256": fingerprint.sha256, "byteCount": fingerprint.byteCount]
+        }
+        var targetFingerprint = fingerprintObject(request.target.fingerprint)
+        if request.function.writesTarget {
+            targetFingerprint = [
+                "sha256": "REPLACE_WITH_FINAL_TARGET_SHA256",
+                "byteCount": "REPLACE_WITH_FINAL_TARGET_BYTE_COUNT",
+            ]
+        }
+        let materialFingerprints = Dictionary(
+            uniqueKeysWithValues: request.materials.map {
+                ($0.noteID.uuidString.lowercased(), fingerprintObject($0.fingerprint))
+            }
+        )
+        var payload: [String: Any] = [
+            "runID": runID.uuidString.lowercased(),
+            "confirmationToken": confirmationToken.uuidString.lowercased(),
+            "finalTargetFingerprint": targetFingerprint,
+            "finalMaterialFingerprints": materialFingerprints,
+            "summary": "REPLACE_WITH_ATTRIBUTED_COMPLETION_SUMMARY",
+            "didModifyTarget": false,
+            "fidelityOutcomes": [],
+            "childRunIDs": [],
+            "submittedAt": "REPLACE_WITH_ISO_8601_TIMESTAMP",
+        ]
+        if request.function.writesTarget {
+            payload["didModifyTarget"] = "REPLACE_WITH_TRUE_OR_FALSE"
+        }
+        switch request.function {
+        case .fidelity:
+            payload["fidelityOutcomes"] = request.checks.sorted {
+                $0.rawValue < $1.rawValue
+            }.map { check in
+                [
+                    "check": check.rawValue,
+                    "state": "REPLACE_WITH_passed_issues_found_OR_unavailable",
+                    "summary": "REPLACE_WITH_ATTRIBUTED_\(check.rawValue.uppercased())_SUMMARY",
+                    "findings": ["REPLACE_OR_REMOVE_WITH_EXACT_FINDINGS"],
+                ] as [String: Any]
+            }
+        case .critique:
+            payload["outputFingerprint"] = [
+                "sha256": "REPLACE_WITH_CRITIQUE_OUTPUT_SHA256",
+                "byteCount": "REPLACE_WITH_CRITIQUE_OUTPUT_BYTE_COUNT",
+            ]
+        case .manuscript:
+            payload["childRunIDs"] = ["REPLACE_WITH_COMPLETED_CHILD_RUN_UUID"]
+        case .develop, .revise, .dialogue, .review:
+            break
+        }
+        let data = try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    fileprivate func attachingAgentActions(
+        to preparation: ResearchFunctionPreparation
+    ) throws -> ResearchFunctionPreparation {
+        ResearchFunctionPreparation(
+            snapshot: preparation.snapshot,
+            instructions: preparation.instructions,
+            state: preparation.state,
+            reusedCompletion: preparation.reusedCompletion,
+            derivedRefreshWarning: preparation.derivedRefreshWarning,
+            nextActions: try agentActions(
+                snapshot: preparation.snapshot,
+                state: preparation.state
+            )
+        )
+    }
+
+    fileprivate func attachingAgentActions(
+        to completion: ResearchFunctionCompletion
+    ) -> ResearchFunctionCompletion {
+        ResearchFunctionCompletion(
+            runID: completion.runID,
+            function: completion.function,
+            state: completion.state,
+            targetFingerprint: completion.targetFingerprint,
+            materialFingerprints: completion.materialFingerprints,
+            summary: completion.summary,
+            didModifyTarget: completion.didModifyTarget,
+            outputFingerprint: completion.outputFingerprint,
+            fidelityOutcomes: completion.fidelityOutcomes,
+            fidelityEvidenceKey: completion.fidelityEvidenceKey,
+            reusedFidelityRunID: completion.reusedFidelityRunID,
+            childRunIDs: completion.childRunIDs ?? [],
+            completedAt: completion.completedAt,
+            derivedRefreshWarning: completion.derivedRefreshWarning,
+            nextActions: completionAgentActions(completion)
+        )
+    }
+
+    fileprivate func attachingAgentActions(
+        to automatic: AutomaticFidelityPreparation
+    ) async throws -> AutomaticFidelityPreparation {
+        let preparation = try attachingAgentActions(to: automatic.preparation)
+        var actions: [AgentCommandAction] = []
+        if [.complete, .unverified].contains(automatic.state),
+           let parent = try? await researchFunctionRun(id: automatic.parentRunID),
+           let parentCompletion = parent.reusedCompletion {
+            let submission = ResearchFunctionCompletionSubmission(
+                runID: automatic.parentRunID,
+                confirmationToken: parent.snapshot.confirmationToken,
+                finalTargetFingerprint: parentCompletion.targetFingerprint,
+                finalMaterialFingerprints: parentCompletion.materialFingerprints,
+                summary: parentCompletion.summary,
+                didModifyTarget: parentCompletion.didModifyTarget,
+                outputFingerprint: parentCompletion.outputFingerprint,
+                fidelityOutcomes: [],
+                childRunIDs: [automatic.effectiveFidelityRunID]
+            )
+            actions.append(AgentCommandAction(
+                kind: .complete,
+                label: "Link completed Fidelity evidence to the parent run",
+                command: functionCommand(
+                    ["complete", "--from", "-", "--format", "json"]
+                ),
+                inputTemplate: try renderFunctionJSON(submission)
+            ))
+        }
+        return AutomaticFidelityPreparation(
+            parentRunID: automatic.parentRunID,
+            preparation: preparation,
+            nextActions: actions
+        )
+    }
+
+    private func agentActions(
+        snapshot: ResearchFunctionSnapshot,
+        state: ResearchFunctionRunState
+    ) throws -> [AgentCommandAction] {
+        let runID = snapshot.runID.uuidString.lowercased()
+        var actions = [AgentCommandAction(
+            kind: .inspect,
+            label: "Show the immutable run and current state",
+            command: functionCommand(["show", runID, "--format", "json"])
+        )]
+        guard state == .prepared else {
+            if [.awaitingFidelity, .unverified].contains(state),
+               [.develop, .revise].contains(snapshot.request.function) {
+                actions.insert(AgentCommandAction(
+                    kind: .prepareFidelity,
+                    label: "Prepare or reuse final-revision Fidelity",
+                    command: functionCommand([
+                        "prepare-fidelity", runID, "--format", "json",
+                    ])
+                ), at: 0)
+            }
+            return actions
+        }
+
+        if snapshot.request.awaitsResourceSelection {
+            let selection = ResearchFunctionResourceSelectionSubmission(
+                runID: snapshot.runID,
+                confirmationToken: snapshot.confirmationToken,
+                resources: []
+            )
+            actions.insert(AgentCommandAction(
+                kind: .selectResources,
+                label: "Finalize conditional resources",
+                command: functionCommand([
+                    "select-resources", "--from", "-", "--format", "json",
+                ]),
+                inputTemplate: try renderFunctionJSON(selection)
+            ), at: 0)
+        } else {
+            if snapshot.request.function == .dialogue,
+               let recordID = snapshot.recordID {
+                actions.insert(AgentCommandAction(
+                    kind: .reply,
+                    label: "Record the attributed Dialogue response",
+                    command: [
+                        "scholium", "dialogue", "reply",
+                        recordID.uuidString.lowercased(),
+                        "--triptych", services.manifest.id.uuidString.lowercased(),
+                        "--agent", "REPLACE_WITH_AGENT_NAME",
+                        "--from", "-",
+                    ],
+                    inputTemplate: "REPLACE_WITH_ATTRIBUTED_DIALOGUE_RESPONSE"
+                ), at: 0)
+
+                let promotedFunction: ResearchFunctionID =
+                    snapshot.request.target.role == .work ? .revise : .develop
+                let promotedRequest = ResearchFunctionRequest(
+                    function: promotedFunction,
+                    target: snapshot.request.target,
+                    materials: snapshot.request.materials,
+                    instruction: "REPLACE_WITH_AUTHORIZED_NOTE_CHANGE",
+                    scope: snapshot.request.scope,
+                    commentIDs: snapshot.request.commentIDs
+                )
+                actions.insert(AgentCommandAction(
+                    kind: .promote,
+                    label: "Promote an authorized note change to \(promotedFunction.rawValue.capitalized)",
+                    command: functionCommand([
+                        "prepare", "--from", "-", "--format", "json",
+                    ]),
+                    inputTemplate: try renderFunctionJSON(promotedRequest)
+                ), at: 1)
+            }
+            actions.insert(AgentCommandAction(
+                kind: .complete,
+                label: "Submit function completion",
+                command: functionCommand(["complete", "--from", "-", "--format", "json"]),
+                inputTemplate: try renderCompletionTemplate(
+                    request: snapshot.request,
+                    runID: snapshot.runID,
+                    confirmationToken: snapshot.confirmationToken
+                )
+            ), at: actions.first?.kind == .reply ? 2 : 0)
+        }
+        actions.append(AgentCommandAction(
+            kind: .cancel,
+            label: "Cancel this uncompleted run",
+            command: functionCommand(["cancel", runID, "--format", "json"])
+        ))
+        return actions
+    }
+
+    private func completionAgentActions(
+        _ completion: ResearchFunctionCompletion
+    ) -> [AgentCommandAction] {
+        let runID = completion.runID.uuidString.lowercased()
+        var actions: [AgentCommandAction] = []
+        if [.awaitingFidelity, .unverified].contains(completion.state),
+           [.develop, .revise].contains(completion.function) {
+            actions.append(AgentCommandAction(
+                kind: .prepareFidelity,
+                label: "Prepare or reuse final-revision Fidelity",
+                command: functionCommand([
+                    "prepare-fidelity", runID, "--format", "json",
+                ])
+            ))
+        }
+        actions.append(AgentCommandAction(
+            kind: .inspect,
+            label: "Show the immutable run and current state",
+            command: functionCommand(["show", runID, "--format", "json"])
+        ))
+        return actions
+    }
+
+    private func functionCommand(_ arguments: [String]) -> [String] {
+        ["scholium", "function"] + arguments + [
+            "--triptych", services.manifest.id.uuidString.lowercased(),
+        ]
     }
 
     private func renderFunctionJSON<T: Encodable>(_ value: T) throws -> String {
@@ -2472,10 +2750,10 @@ private func researchFunctionRecordTimestamp(_ date: Date = Date()) -> Date {
 }
 
 private func researchFunctionResourcePaths(
-    _ methods: Set<ResearchFunctionMethod>
+    _ resources: Set<ResearchFunctionConditionalResource>
 ) -> Set<String> {
-    Set(methods.map { method in
-        switch method {
+    Set(resources.map { resource in
+        switch resource {
         case .developmentExploration: "references/exploration.md"
         case .developmentSynthesis: "references/synthesis.md"
         case .developmentExpression: "references/expression.md"

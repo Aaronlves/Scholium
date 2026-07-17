@@ -1,23 +1,21 @@
 ---
 name: scholium-source-analyzer
-description: Analyze philosophical and philosophically relevant sources as arguments, conceptual interventions, interpretations, dialectical moves, cases, formal results, normative reasoning, empirical contributions, or topic maps. Use for papers, books, chapters, primary texts, commentaries, handbooks, surveys, and interdisciplinary sources when an external agent has access to the source. Keep source claims, reconstruction, evaluation, and possible research use distinct. This is a complete agent method, not a Scholium Research Function and not a note-writing permission.
+description: Analyze philosophical and philosophically relevant sources as arguments, conceptual interventions, interpretations, dialectical moves, cases, formal results, normative reasoning, empirical contributions, or topic maps. Use for accessible papers, books, chapters, primary texts, commentaries, handbooks, surveys, and interdisciplinary sources. Keep source claims, authorial positioning, reconstruction, evaluation, and later-use proposals distinct. This is a complete agent method, not a Research Function or note-write authority.
 ---
 
 # Source Analyzer
 
-Apply `scholium-core-protocol`. This package contains a complete source-analysis method. It can operate on a source supplied through Zotero, a local file, an attachment, pasted text, or another available channel; Scholium does not need to store or control the source.
+Apply `scholium-core-protocol`. This complete Researcher Skill may operate on a source supplied through Zotero, a local file, an attachment, pasted text, or another authorized channel; Scholium does not need to store or control the source.
 
-## Keep the product boundary explicit
+## Product boundary
 
-Source Analyzer has no Research Strip button and declares no `supported_functions`. An external agent may use it whenever the researcher asks to analyze an accessible source. Producing an analysis does not create, update, or authorize a Scholium note. If the researcher later asks to preserve or develop the result in Scholium, begin a separate, explicitly authorized operation against the exact note and current fingerprint.
+Source Analyzer has no Strip button and no `supported_functions`. It cannot create or update a Scholium note or control Zotero. A later note change begins as a separate authorized operation against the exact note and current fingerprint.
 
 ## Select the analytical form
 
-Read [references/analysis-forms.md](references/analysis-forms.md) and select exactly one form. Default to `analysis-only` when the researcher supplies no project context, and to `analysis-with-handoff-candidates` when project context exists but no later use has been authorized.
+Read [references/analysis-forms.md](references/analysis-forms.md) and select exactly one form. Default to `analysis-only` when the researcher supplies no project context. Neutral analysis is complete work; never invent a researcher position merely to make a handoff.
 
 ## Establish the source packet
-
-Record:
 
 ```text
 Source object and verified identity:
@@ -28,7 +26,7 @@ Session analysis unit:
 Research question or requested purpose:
 Requested depth: concise | thorough | provisional
 Output: ephemeral analysis | durable report | handoff candidates
-Selected Practices and attention allocation:
+Selected supplemental Practices:
 Locator policy:
 Stop condition:
 ```
@@ -39,43 +37,41 @@ Never infer whole-source access from metadata, an abstract, an introduction, a p
 
 Read [references/method.md](references/method.md) completely.
 
-Load conditional references only when triggered:
+Load a conditional resource only when triggered:
 
-- read [references/report-templates.md](references/report-templates.md) when a structured durable report is requested;
-- read [references/bibliography-and-handoff.md](references/bibliography-and-handoff.md) when screening cited literature or proposing later research uses;
-- read [references/source-clusters.md](references/source-clusters.md) for an edited volume, multi-author collection, chapter sequence, or bounded source cluster.
+- [references/report-templates.md](references/report-templates.md) for a structured durable report;
+- [references/bibliography-recommendations.md](references/bibliography-recommendations.md) when screening cited literature or completing an Analysis Recommended Bibliography request;
+- [templates/recommended-bibliography-completion.json](templates/recommended-bibliography-completion.json) only for the structured Scholium completion shape;
+- [references/later-use-handoffs.md](references/later-use-handoffs.md) for possible later research uses;
+- [references/source-clusters.md](references/source-clusters.md) for an edited volume, multi-author collection, chapter sequence, or bounded source cluster.
 
-## Compose selected Philosophical Practices
+## Supplemental Practices
 
-Compatible Practices are `historical-interpreter`, `conceptual-analyst`, and `argument-reconstructionist`. Load only explicitly selected Practice references plus `COMPOSITION-RULES.md`.
+Compatible Practices are `historical-interpreter`, `conceptual-analyst`, and `argument-reconstructionist`. Load the Philosophical Practices package entry and only exact selected Practice files. Consider every selected Practice genuinely and allocate effort flexibly according to the source and task. Do not assign weights, expose an allocation ledger, silently skip a Practice, or manufacture a finding. Practice selection cannot change access, evidence, permissions, or output boundaries.
 
-Source Analyzer declares these researcher-editable base attention profiles. They are a methodological composition contract, not a claim that source genres objectively or universally require these proportions:
+## Three distinct passes
 
-| Dominant source function | Historical Interpreter | Conceptual Analyst | Argument Reconstructionist |
-| --- | ---: | ---: | ---: |
-| historical or exegetical | 50 | 30 | 20 |
-| concept-forming or taxonomic | 20 | 50 | 30 |
-| argument-driven or dialectical | 20 | 30 | 50 |
-| genuinely hybrid or indeterminate | 34 | 33 | 33 |
+1. **Orientation** — traverse the complete session unit in source order. Map question, purpose, provisional thesis or contribution, structure, genre, method, authorial debate framing, turning points, and candidate load-bearing passages. Keep the map provisional.
+2. **Analysis** — traverse the unit again. Reconstruct concepts, distinctions, arguments or interpretive moves, objections, replies, concessions, scope, support, and unresolved alternatives. Preserve evidential layers and reliable locators.
+3. **Review** — traverse the unit a third time while checking the draft against the source. Search for omissions, counterevidence, qualifications, terminology drift, mistaken dialectical roles, weak reconstruction, and quotation or locator error. Revise and mark unresolved uncertainty.
 
-Retain only selected Practices and normalize their base weights to total exactly 100%. If the researcher supplies an explicit allocation totaling 100%, use it instead. The percentages allocate methodological attention, not output length. Apply every selected lens for its full share even if it yields no separate paragraph, and never manufacture a finding to fill a share.
+Search results, metadata, extraction, memory, a prior analysis, and rereading only the draft do not count as source passes. With partial or unreliable access, complete all three passes over the available unit and issue only a provisional analysis. If a pass cannot be completed, identify it and do not claim completed analysis.
 
-## Execute three distinct passes
+## Ratings
 
-1. **Orientation** — traverse the complete session unit in source order. Map the question, purpose, provisional thesis or contribution, structure, genre, method, authorial debate framing, turning points, and candidate load-bearing passages. Keep the map provisional.
-2. **Analysis** — traverse the complete session unit again. Reconstruct concepts, distinctions, arguments or interpretive moves, objections, replies, concessions, scope, support, and unresolved alternatives. Preserve evidential layers and attach reliable locators.
-3. **Review** — traverse the complete session unit a third time while checking the draft against the source. Search for omissions, counterevidence, qualifications, terminology drift, mistaken dialectical roles, weak reconstruction, and quotation or locator error. Revise and mark unresolved uncertainty.
+Source Analyzer does not generate or present Project Relevance. The researcher decides how the source matters to the project.
 
-Search results, metadata inspection, text extraction, memory, a prior analysis, and rereading only the draft do not count as source passes. When access is partial or unreliable, perform all three passes over the available unit and issue only a provisional analysis. If a required pass cannot be completed, identify the failed pass and do not claim completed analysis.
+Debate Importance is optional. Assign it only after analysis, only as a whole integer from `0` through `10`, and only with a named Debate Scope and sufficient checked comparative evidence. It is not project relevance, truth, quality, prestige, reliability, citation impact, or the source's self-assessment. Omit it when those conditions are absent. Unread bibliography candidates receive no rating.
 
 ## Return
 
-Lead with access status and exact analytical scope, then state the source's function, central question or purpose, principal contribution or organizing purpose, reconstructed structure, and strongest warranted unresolved problem, if any. Separate:
+Lead with access status and exact scope, then state the source's function, central question or purpose, principal contribution, reconstructed structure, and strongest warranted unresolved problem, if any. Keep distinct:
 
 1. source-explicit claims and passages;
-2. source-supported reconstruction;
-3. analyst-supplied charitable repair;
-4. analyst evaluation or objection;
-5. possible research use or follow-up lead.
+2. authorial self-positioning;
+3. source-supported analyst reconstruction;
+4. analyst-supplied charitable repair;
+5. analyst evaluation or objection;
+6. bibliography leads and possible later-use handoffs.
 
-Use locators proportionate to the claim. Mark uncertain metadata, access gaps, translation risks, and unverified debate context. An analysis may later become Material for a Scholium note, but it is not itself a note mutation or settled researcher commitment.
+Use locators proportionate to the claim. Mark uncertain metadata, access gaps, translation risks, and unverified debate context. An analysis may later become Material, but it is not a note mutation or settled researcher commitment.

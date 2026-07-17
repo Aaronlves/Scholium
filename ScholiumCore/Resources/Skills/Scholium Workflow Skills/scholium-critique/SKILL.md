@@ -15,15 +15,9 @@ Reject an unavailable or changing Target. Do not issue a whole-Work judgment fro
 
 ## Load the method
 
-Read references/method.md completely. When the packet is marked as a
-method-selection preflight, inspect the Work and Materials read-only and use
-`scholium function select-methods` to select `critique_report_template` only
-when a structured Whole critique materially helps; an explicit empty selection
-keeps the complete primary method alone. Execute only the finalized packet and
-never retrieve an unattached template through the generic skills command. Do
-not force the full template onto a Passage critique.
+Read references/method.md completely. This Workflow owns assessment method; the active Prompt Template owns presentation. New Critique runs do not select a competing report template. Preserve genuinely divergent findings without manufacturing coverage sections.
 
-If an explicit researcher-owned Reviewer Practice is selected, load only that exact resource and composition rules and record its revisions. Preserve methodological disagreements with the official method.
+If Reviewer is selected, load the Philosophical Practices package entry and that exact Critique-only calibration file. Record its revision and preserve methodological disagreements. Reviewer may calibrate genre, form, audience, stage, evidence and severity thresholds, and strengths to preserve; it is not a second criticizer.
 
 ## Execute
 

@@ -41,6 +41,8 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
 /// Settings owns feature state but never receives an Application handle.
 @MainActor
 struct WorkspaceSettingsCapabilities {
+    let commandLineToolStatus: () async -> CommandLineToolStatus
+    let installCommandLineTool: () async throws -> CommandLineToolStatus
     let loadSnapshot: (UUID?) async throws -> WorkspaceSettingsSnapshot
     let configureWorkspace: (
         URL, URL, URL, URL, UUID?, String?
@@ -73,6 +75,12 @@ struct WorkspaceSettingsCapabilities {
     let adoptBundledCitationStarter: (
         UUID, DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus
+    let bibliographyMethodStatus: (
+        UUID
+    ) async throws -> RecommendedBibliographyMethodStatus
+    let setBibliographyMethod: (
+        UUID, String?, DocumentFingerprint?
+    ) async throws -> RecommendedBibliographyMethodStatus
     let createResearchSkill: (UUID, String, String) async throws -> ResearchSkillPackage
     let duplicateBundledResearchSkill: (UUID, String, String) async throws -> ResearchSkillPackage
     let renameResearchSkill: (UUID, String, String, DocumentFingerprint) async throws -> ResearchSkillPackage
@@ -200,6 +208,26 @@ final class WorkspaceSettingsModel: ObservableObject {
         }
     }
 
+    func commandLineToolStatus() async -> CommandLineToolStatus {
+        guard let capabilities else {
+            return CommandLineToolStatus(
+                state: .bundledToolUnavailable,
+                version: "Unknown",
+                installPath: "~/.local/bin/scholium",
+                isOnCurrentPATH: false,
+                repairMessage: "The command-line installer is unavailable in this preview."
+            )
+        }
+        return await capabilities.commandLineToolStatus()
+    }
+
+    func installCommandLineTool() async throws -> CommandLineToolStatus {
+        guard let capabilities else {
+            throw CommandLineToolInstallationError.bundledToolUnavailable
+        }
+        return try await capabilities.installCommandLineTool()
+    }
+
     func refreshRegisteredVaults() async {
         await refresh()
     }
@@ -208,9 +236,18 @@ final class WorkspaceSettingsModel: ObservableObject {
         await refresh()
     }
 
-    func restorePreferredWorkspaceIfNeeded() async {
-        let preferred = UserDefaults.standard.string(forKey: "scholium.settings.triptychID")
-            .flatMap(UUID.init(uuidString:))
+    func restorePreferredWorkspaceIfNeeded(activeTriptychID: UUID? = nil) async {
+        // The application activation is already authoritative enough to route
+        // delivery-neutral Settings capabilities. Publish that ID before the
+        // broader registry/property snapshot finishes so Research Guidance
+        // does not misreport a valid live Triptych as incomplete.
+        if let activeTriptychID {
+            snapshot.activeTriptychID = activeTriptychID
+            activeTriptychServicesID = activeTriptychID
+        }
+        let preferred = activeTriptychID
+            ?? UserDefaults.standard.string(forKey: "scholium.settings.triptychID")
+                .flatMap(UUID.init(uuidString:))
         guard let capabilities else {
             await refresh()
             return
@@ -342,6 +379,27 @@ final class WorkspaceSettingsModel: ObservableObject {
         return try await capabilities.researchFunctionSkillBindingStatus(
             workspaceID,
             function
+        )
+    }
+
+    func bibliographyMethodStatus() async throws -> RecommendedBibliographyMethodStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.bibliographyMethodStatus(workspaceID)
+    }
+
+    func setBibliographyMethod(
+        packageID: String?,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> RecommendedBibliographyMethodStatus {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.setBibliographyMethod(
+            workspaceID,
+            packageID,
+            expectedBindingRevision
         )
     }
 

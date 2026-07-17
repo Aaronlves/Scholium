@@ -30,7 +30,7 @@ Do not proceed unless one registered Triptych and one exact target directory can
 1. Apply `scholium-research-integration` and read its CLI contract.
 2. Resolve the configured Triptych with `scholium vault list`; retain its UUID or unique name as the stable selector.
 3. Canonicalize and inspect the target and its applicable ancestor chain.
-4. Refuse a target that is the Scholium application checkout, including a root identified by `Package.swift`, `ScholiumCore/`, `Scholium/`, and `Docs/PRODUCT_GUIDE.md` together.
+4. Refuse a target that is the Scholium application checkout, including a root identified by `Package.swift`, `ScholiumCore/`, `Scholium/`, and `Docs/SCHOLIUM_SPEC.md` together.
 5. If an `AGENTS.md` already exists at the target or governs it from an ancestor, stop. Report its path and offer a comparison only if the researcher separately requests one. Do not overwrite, merge, shadow, or create a second applicable file.
 
 ## Construct the candidate

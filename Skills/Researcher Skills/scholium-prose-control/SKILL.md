@@ -12,7 +12,6 @@ An adopted copy belongs to the researcher. The researcher may replace its style 
 ## Establish the prose-control packet
 
 ```text
-Legacy mode: write
 Research Function: revise
 Primary Workflow: scholium-revision
 Selected Researcher Skill: scholium-prose-control plus exact package revision
@@ -50,7 +49,7 @@ Treat every populated item as a semantic invariant. If the passage supports two 
 
 ## Load the researcher-owned method
 
-Read [references/academic-prose-style.md](references/academic-prose-style.md) completely before a substantial revision. Treat its **Style Models** section as an editable starting profile rather than a universal Scholium standard. If the named model texts are not in the authorized read set, use only the abstract prose habits recorded in the profile and do not claim direct imitation.
+Read [references/academic-prose-style.md](references/academic-prose-style.md) completely before a substantial revision. Treat it as an editable starting profile rather than a universal Scholium standard. Use a named exemplar only when it belongs to the authorized read set and its relevant prose feature has been checked directly.
 
 ## Execute
 
@@ -73,7 +72,6 @@ Prose Control may:
 - make existing contrasts, burdens, qualifications, and transitions more visible;
 - improve signposting, rhythm, plainness, and audience calibration;
 - replace vague wording with more precise wording only when the established content is preserved;
-- organize literature by philosophical problem, position, pressure, and role rather than by author catalogue.
 
 Prose Control may not silently:
 

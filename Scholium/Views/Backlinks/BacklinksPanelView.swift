@@ -203,7 +203,7 @@ private struct RelationshipPanel: View {
         VStack(spacing: 0) {
             HStack {
                 Label(title, systemImage: symbol)
-                    .font(.headline)
+                    .font(ScholiumInterfaceTypography.apparatusTitle)
                 Spacer()
                 Text(projection.count.formatted())
                     .font(.caption.monospacedDigit())
@@ -212,7 +212,7 @@ private struct RelationshipPanel: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
 
-            Divider()
+            ScholiumStructuralRule()
 
             if isRefreshing {
                 VStack(spacing: 10) {
@@ -270,7 +270,8 @@ private struct VectorSectionHeader: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
-        .font(.caption.weight(.semibold))
+        .font(ScholiumInterfaceTypography.editorialLabel)
+        .tracking(0.4)
         .textCase(nil)
         .padding(.top, 8)
         .accessibilityElement(children: .combine)

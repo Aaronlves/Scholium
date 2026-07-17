@@ -1,6 +1,36 @@
 import ScholiumContracts
 import SwiftUI
 
+struct ScholiumStructuralRule: View {
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
+
+    let orientation: Axis
+
+    init(orientation: Axis = .horizontal) {
+        self.orientation = orientation
+    }
+
+    var body: some View {
+        let style = ScholiumBoundaryRole.structuralDivider.style(
+            increasedContrast: increasedContrast,
+            reduceTransparency: reduceTransparency
+        )
+
+        Rectangle()
+            .fill(
+                style.colorRole.color(increasedContrast: increasedContrast)
+                    .opacity(style.opacity)
+            )
+            .frame(
+                width: orientation == .vertical ? style.lineWidth : nil,
+                height: orientation == .horizontal ? style.lineWidth : nil
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 struct ScholiumPanelHeader<Trailing: View>: View {
     let title: String
     let subtitle: String?

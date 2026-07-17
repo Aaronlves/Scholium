@@ -44,8 +44,7 @@ struct DocumentMeasureAlignedLayout: Layout {
 /// A compact, role-aware Properties summary that expands into the configured
 /// human-facing metadata without competing with the document itself.
 struct MetadataCardView<LeadingControls: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let note: WindowDocumentLocation
     let propertiesConfiguration: VaultPropertiesConfiguration?
     let canEdit: Bool
@@ -202,10 +201,12 @@ struct MetadataCardView<LeadingControls: View>: View {
                 .buttonStyle(.plain)
                 .frame(maxWidth: ScholiumMetrics.ContextSurface.metadataMeasure)
                 .frame(height: ScholiumMetrics.ContextSurface.controlHeight)
-                .scholiumGlassSurface(
+                .scholiumEditorialSurface(
                     .floatingControl,
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous),
-                    interactive: true
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
                 )
                 .accessibilityLabel(isExpanded ? "Hide note properties" : "Show note properties")
                 .accessibilityValue(note.title ?? note.displayName)
@@ -218,8 +219,7 @@ struct MetadataCardView<LeadingControls: View>: View {
                 MetadataDetailsPanel(
                     groups: groups,
                     researchUnit: note.researchUnit,
-                    canEdit: canEdit,
-                    reduceTransparency: reduceTransparency
+                    canEdit: canEdit
                 ) { editProperties() }
                 .frame(maxWidth: .infinity)
                 .transition(
@@ -369,10 +369,12 @@ private struct MetadataDetailsPanel: View {
     let groups: [MetadataDisplayGroup]
     let researchUnit: ResearchUnitDeclaration
     let canEdit: Bool
-    let reduceTransparency: Bool
     let edit: () -> Void
 
-    private let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+    private let shape = RoundedRectangle(
+        cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+        style: .continuous
+    )
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -400,7 +402,7 @@ private struct MetadataDetailsPanel: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .scholiumMaterialSurface(.boundedPanel, in: shape)
+        .scholiumEditorialSurface(.boundedPanel, in: shape)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.metadataPanel")
     }

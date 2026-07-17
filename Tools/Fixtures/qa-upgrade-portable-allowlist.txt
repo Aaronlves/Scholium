@@ -1,0 +1,6 @@
+# Portable state is fail-closed by default. These two files are expected to be
+# regenerated when a copied fixture is registered: the copied vaults receive
+# fresh vault IDs, and scanned fixture notes receive identity records. Their
+# before/after versions remain in the evidence directory for review.
+.scholium/identities.json
+.scholium/manifest.json

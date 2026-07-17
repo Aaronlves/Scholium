@@ -16,14 +16,14 @@ The Work remains the only document Target. Materials are read-only in every phas
 ## Load the coordinator
 
 Read references/method.md completely. When the packet is marked as a
-method-selection preflight, inspect the Work and declared evidence read-only
-and use `scholium function select-methods` to select `manuscript_gates` only
+resource-selection preflight, inspect the Work and declared evidence read-only
+and use `scholium function select-resources` to select `manuscript_gates` only
 when the researcher asks about completion, circulation, or submission
 readiness. An explicit empty selection keeps the complete coordinator alone.
 Execute only the finalized packet and never retrieve an unattached reference
 through the generic skills command.
 
-If an explicit researcher-owned Practice is selected, load it only in the phase for which it is relevant and record the resource revision. Do not let it leak into later phases automatically.
+Do not attach Practices directly to Manuscript. A Practice may be selected only for an independently prepared child phase that declares it compatible; record it within that child and do not let it leak into later phases.
 
 ## Declared function phases
 

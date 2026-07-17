@@ -11,11 +11,9 @@ Begin with one compact statement that answers what the work achieved academicall
 
 Do not use routine operations as the subject of the outcome. “Clarified the distinction between X and Y” is appropriate; “updated three files” is not sufficient.
 
-## 2. Allocate response-module attention
+## 2. Consider every selected module
 
-Treat the selected optional modules as dividing a literal 100% response-module attention budget. With five selected modules, each receives 20%; with four, each receives 25%; with three, each receives one third; with two, each receives 50%; with one, it receives 100%. Academic Outcome and mandatory integrity notices sit outside this optional-module budget.
-
-Give every selected module its full share of checking and deliberative attention. The allocation is not a priority ranking and does not prescribe output length. A module may receive its complete share yet produce no visible section when the evidence warrants nothing distinct. Never invent content to fill a share, and do not expose private chain-of-thought; the observable requirement is faithful coverage of every selected scholarly question.
+Give every selected module genuine consideration and allocate effort freely according to the actual task and evidence. Central pressure may require extended examination while another selected module warrants only a safeguard check or no distinct finding. Do not silently ignore a module, assign numerical shares, expose private deliberation, or invent content merely to make coverage look balanced. Academic Outcome and mandatory integrity notices remain required independently of optional modules.
 
 ## 3. Add selected modules
 

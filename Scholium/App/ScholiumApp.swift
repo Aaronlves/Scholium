@@ -155,7 +155,7 @@ enum ScholiumWindowPresentation: Equatable {
 }
 
 private struct ScholiumWindowRoot: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("scholium.windowSessionID") private var storedWindowSessionID = ""
     @Binding private var route: TriptychWindowRoute?
@@ -760,7 +760,9 @@ private struct ScholiumSettingsRoot: View {
             .environmentObject(settingsModel)
             .frame(width: 700, height: 560)
             .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
-                await settingsModel.restorePreferredWorkspaceIfNeeded()
+                await settingsModel.restorePreferredWorkspaceIfNeeded(
+                    activeTriptychID: workspaceStore.latestWorkspaceActivation?.workspaceID
+                )
             }
     }
 }
@@ -1884,6 +1886,17 @@ final class WindowModel: ObservableObject {
         currentDocumentDescriptor?.reference
     }
 
+    var currentRecommendedBibliographyTarget: RecommendedBibliographyTarget? {
+        guard let target = currentResearchFunctionTarget,
+              target.role == .analysis else { return nil }
+        return RecommendedBibliographyTarget(
+            noteID: target.noteID,
+            note: target.note,
+            fingerprint: target.fingerprint,
+            title: target.title
+        )
+    }
+
     var researchStripPresentation: ResearchStripPresentation {
         guard let target = currentResearchFunctionTarget else {
             return ResearchStripPresentation(items: [], activeFunction: nil)
@@ -1938,6 +1951,9 @@ final class WindowModel: ObservableObject {
         }
         reconcileResearchFunctionPresentation()
         await researchController.functions.refreshAvailability(for: target)
+        await researchController.bibliography.refresh(
+            for: currentRecommendedBibliographyTarget
+        )
     }
 
     private func reconcileResearchFunctionPresentation() {
@@ -2000,23 +2016,28 @@ final class WindowModel: ObservableObject {
 
     var currentDocumentIdentityAmbiguity: NoteIdentityAmbiguity? {
         guard let path = currentNote?.relativePath else { return nil }
-        return currentDocumentVaultSnapshot?.identityRecovery.ambiguities.first {
-            $0.relativePath == path
+        if let snapshot = currentDocumentVaultSnapshot {
+            return snapshot.identityRecovery.ambiguities.first { $0.relativePath == path }
         }
+        return identityAmbiguity(for: path)
     }
 
     var currentDocumentPendingIdentityRebinding: NoteIdentityPendingRebinding? {
         guard let path = currentNote?.relativePath else { return nil }
-        return currentDocumentVaultSnapshot?.identityRecovery.pendingRebindings.first {
-            $0.relativePath == path
+        if let snapshot = currentDocumentVaultSnapshot {
+            return snapshot.identityRecovery.pendingRebindings.first { $0.relativePath == path }
         }
+        return pendingIdentityRebinding(for: path)
     }
 
     var currentDocumentIdentityMigrationFailure: NoteIdentityMigrationFailure? {
         guard let path = currentNote?.relativePath else { return nil }
-        return currentDocumentVaultSnapshot?.identityRecovery.failures.first {
-            $0.rebinding.relativePath == path
+        if let snapshot = currentDocumentVaultSnapshot {
+            return snapshot.identityRecovery.failures.first {
+                $0.rebinding.relativePath == path
+            }
         }
+        return identityMigrationFailure(for: path)
     }
 
     func requestIdentityResolution(for path: String) {
@@ -2214,8 +2235,20 @@ final class WindowModel: ObservableObject {
     /// This Note and leaves the researcher's ordinary scope untouched.
     func beginSearch(_ invocation: SearchInvocation) {
         if case .findInNote = invocation, currentNote == nil { return }
-        discoveryController.presentSearch(invocation)
-        showSearchSurface = true
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.flushRegisteredEditorIfNeeded()
+                self.discoveryController.presentSearch(invocation)
+                self.showSearchSurface = true
+            } catch {
+                self.lastSaveError = error.localizedDescription
+                self.showToast(
+                    "The current note could not be saved, so Search did not open. \(error.localizedDescription)",
+                    kind: .error
+                )
+            }
+        }
     }
 
     func dismissSearch() {
@@ -3211,6 +3244,29 @@ final class WindowModel: ObservableObject {
             },
             cancel: { runID in
                 try await capabilities.research.cancelFunction(runID: runID)
+            }
+        ))
+        researchController.bibliography.bind(RecommendedBibliographyClient(
+            overview: { target in
+                try await capabilities.research.recommendationOverview(for: target)
+            },
+            prepare: { [weak self] request in
+                guard let self, let assignment = self.workspaceAssignment else {
+                    throw ScholiumApplicationError.researchStoreUnavailable(
+                        "No workspace is active."
+                    )
+                }
+                try await self.workspaceStore.flushEditors(in: assignment.id)
+                return try await capabilities.research.prepareRecommendation(request)
+            },
+            cancel: { id in
+                try await capabilities.research.cancelRecommendation(id: id)
+            },
+            dismiss: { requestID, candidateID in
+                try await capabilities.research.dismissRecommendation(
+                    requestID: requestID,
+                    candidateID: candidateID
+                )
             }
         ))
         reconcileResearchFunctionPresentation()
@@ -4413,6 +4469,7 @@ final class WindowModel: ObservableObject {
         }
         PerformanceProbe.shared.beginReadActivation(documentID: path)
         if let snapshot = location.workspaceSnapshot,
+           snapshot.stableIdentity.resolvedID != nil,
            let vault = currentRegisteredVault {
             documentController.installOpenedDocument(
                 snapshot,

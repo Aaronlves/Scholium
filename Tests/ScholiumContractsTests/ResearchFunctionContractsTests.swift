@@ -31,7 +31,7 @@ struct ResearchFunctionContractsTests {
         #expect(!ResearchFunctionID.fidelity.requiresCheckpoint)
     }
 
-    @Test("Requests reject duplicate Targets, invalid scopes, checks, roles, and internal methods")
+    @Test("Requests reject duplicate Targets, invalid scopes, checks, roles, and conditional resources")
     func requestValidation() throws {
         let analysis = target(role: .analysis)
         let work = target(role: .work)
@@ -79,7 +79,7 @@ struct ResearchFunctionContractsTests {
             try ResearchFunctionRequest(
                 function: .develop,
                 target: analysis,
-                methods: [.revisionFeedback]
+                conditionalResources: [.revisionFeedback]
             ).validate()
         }
 
@@ -95,34 +95,38 @@ struct ResearchFunctionContractsTests {
             function: .develop,
             target: analysis,
             scope: .passage(anchor),
-            methods: []
+            conditionalResources: []
         ).validate()
     }
 
-    @Test("Nil and explicit-empty method selections survive their distinct Codable meanings")
-    func methodSelectionCodable() throws {
+    @Test("Conditional resources encode new names and decode legacy methods")
+    func resourceSelectionCodable() throws {
         let target = target(role: .analysis)
         let inherited = ResearchFunctionRequest(function: .develop, target: target)
         let explicitEmpty = ResearchFunctionRequest(
             function: .develop,
             target: target,
-            methods: []
+            conditionalResources: []
         )
-        #expect(inherited.methods == nil)
-        #expect(explicitEmpty.methods == [])
-        #expect(inherited.awaitsMethodSelection)
-        #expect(!explicitEmpty.awaitsMethodSelection)
-        #expect(ResearchFunctionID.develop.conditionalMethods.contains(
+        #expect(inherited.conditionalResources == nil)
+        #expect(explicitEmpty.conditionalResources == [])
+        #expect(inherited.awaitsResourceSelection)
+        #expect(!explicitEmpty.awaitsResourceSelection)
+        #expect(ResearchFunctionID.develop.conditionalResources.contains(
             .developmentSynthesis
         ))
-        #expect(ResearchFunctionID.dialogue.conditionalMethods.isEmpty)
+        #expect(ResearchFunctionID.dialogue.conditionalResources.isEmpty)
+        #expect(ResearchFunctionConditionalResource.developmentSynthesis.kind == .method)
+        #expect(ResearchFunctionConditionalResource.revisionOutputContracts.kind == .template)
+        #expect(ResearchFunctionConditionalResource.manuscriptGates.kind == .checklist)
+        #expect(!ResearchFunctionConditionalResource.critiqueReportTemplate.isAvailableForNewSelection)
 
-        let finalized = try inherited.selectingMethods([.developmentSynthesis])
-        #expect(finalized.methods == [.developmentSynthesis])
+        let finalized = try inherited.selectingResources([.developmentSynthesis])
+        #expect(finalized.conditionalResources == [.developmentSynthesis])
         #expect(finalized.target == inherited.target)
         #expect(finalized.materials == inherited.materials)
         #expect(finalized.instruction == inherited.instruction)
-        #expect(!finalized.awaitsMethodSelection)
+        #expect(!finalized.awaitsResourceSelection)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -135,17 +139,41 @@ struct ResearchFunctionContractsTests {
             ResearchFunctionRequest.self,
             from: encoder.encode(explicitEmpty)
         )
-        #expect(inheritedRoundTrip.methods == nil)
-        #expect(explicitRoundTrip.methods == [])
+        #expect(inheritedRoundTrip.conditionalResources == nil)
+        #expect(explicitRoundTrip.conditionalResources == [])
+        let encodedRequest = String(decoding: try encoder.encode(finalized), as: UTF8.self)
+        #expect(encodedRequest.contains("conditional_resources"))
+        #expect(!encodedRequest.contains("\"methods\""))
 
-        let submission = ResearchFunctionMethodSelectionSubmission(
+        let submission = ResearchFunctionResourceSelectionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
-            methods: [.developmentSynthesis]
+            resources: [.developmentSynthesis]
         )
         #expect(try decoder.decode(
-            ResearchFunctionMethodSelectionSubmission.self,
+            ResearchFunctionResourceSelectionSubmission.self,
             from: encoder.encode(submission)
+        ) == submission)
+        let encodedSubmission = String(decoding: try encoder.encode(submission), as: UTF8.self)
+        #expect(encodedSubmission.contains("\"resources\""))
+        #expect(!encodedSubmission.contains("\"methods\""))
+
+        let legacyRequest = encodedRequest.replacingOccurrences(
+            of: "conditional_resources",
+            with: "methods"
+        )
+        #expect(try decoder.decode(
+            ResearchFunctionRequest.self,
+            from: Data(legacyRequest.utf8)
+        ).conditionalResources == [.developmentSynthesis])
+
+        let legacySubmission = encodedSubmission.replacingOccurrences(
+            of: "resources",
+            with: "methods"
+        )
+        #expect(try decoder.decode(
+            ResearchFunctionResourceSelectionSubmission.self,
+            from: Data(legacySubmission.utf8)
         ) == submission)
     }
 

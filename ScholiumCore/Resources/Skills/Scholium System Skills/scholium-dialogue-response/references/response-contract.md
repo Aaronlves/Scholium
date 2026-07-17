@@ -6,7 +6,7 @@ Keep the mutable Triptych default separate from the immutable request-time choic
 
 | State | Purpose | Authority |
 | --- | --- | --- |
-| Portable profile | Remembers the researcher’s current Scholia-panel defaults for the Triptych | Default for a new Dialogue only |
+| Dialogue Defaults | Remembers the researcher’s current response defaults for the Triptych | Default for a new Dialogue only |
 | Dialogue snapshot | Records the exact choices used when **Copy Instructions for Agent** created one Dialogue | Authoritative for that Dialogue |
 
 This separation prevents a later panel change from changing how an earlier request should be answered.
@@ -26,7 +26,7 @@ Example:
 /Research/Ethics/.scholium/dialogue-response.json
 ```
 
-Scholium creates and updates this file. Agents may inspect it only as a documented legacy fallback or when the researcher explicitly asks about current defaults. Agents never write it directly.
+Scholium creates and updates this file. Agents may inspect it only as a compatibility fallback or when the researcher explicitly asks about current Dialogue Defaults. Agents never write it directly.
 
 ## 3. Portable profile shape
 
@@ -86,7 +86,7 @@ The initial module vocabulary is intentionally small:
 
 These modules are response perspectives, not Workflow Skills or researcher-owned Philosophical Practices. Selecting one changes what the closing Response foregrounds; it does not activate a new workflow or expand retrieval.
 
-The selected modules divide a literal 100% optional-module attention budget equally. Thus all five receive 20% each. This allocation governs the agent's examination, not section length: Dialogue remains concise, an unwarranted section may be omitted, and the agent must not manufacture content to fill a percentage. Academic Outcome and mandatory integrity notices are outside the optional-module budget.
+Consider every selected module and allocate methodological effort flexibly according to the actual question, checked materials, and warranted findings. A module may yield no distinct finding. Do not silently skip a selected module, manufacture filler, expose an allocation ledger, or turn response-module selection into a claim about word count or philosophical importance. Academic Outcome and mandatory integrity notices remain required independently of optional modules.
 
 ## 6. Comment preservation
 
@@ -105,10 +105,10 @@ The original app-owned Comments remain unchanged unless the adopted product desi
 Resolve the contract in this order:
 
 1. the `responseContract` snapshot in the exact Dialogue record;
-2. the portable Triptych profile only when the record predates snapshots;
-3. the legacy default: one concise Academic Outcome plus any material unresolved question or required researcher review.
+2. the portable Triptych Dialogue Defaults only when the record predates snapshots;
+3. the compatibility fallback: one concise Academic Outcome plus any material unresolved question or required researcher review.
 
-When using level 2 or 3, report `Contract source: legacy-profile` or `legacy-default`. Do not claim to know the exact request-time selection.
+When using level 2 or 3, report `Contract source: dialogue-defaults` or `compatibility-fallback`. Do not claim to know the exact request-time selection.
 
 ## 8. Invalid or future values
 
@@ -128,7 +128,7 @@ Triptych selector in the copied transport instructions. Agents retrieve the
 exact request snapshot through the supported `scholium dialogue show` command;
 they do not read or edit the raw Application Support Dialogue store.
 
-Legacy Dialogue entries without a snapshot remain readable and are reported as
-`legacy-default (request-time selection unavailable)`. The external agent still
+Older Dialogue entries without a snapshot remain readable and are reported as
+`compatibility-fallback (request-time selection unavailable)`. The external agent still
 must not claim that a researcher-selected contract was retrieved for those
 entries.

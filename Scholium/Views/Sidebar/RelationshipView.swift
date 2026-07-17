@@ -14,6 +14,8 @@ struct RelationshipViewContext {
     let openZoteroItem: (String) async -> Void
     let confirmZoteroItem: (String, VaultNoteReference) async throws -> Void
     let didConfirmZoteroSource: (String) -> Void
+    let copyResearchText: (String) -> Void
+    let repairBibliographyMethod: () -> Void
 }
 
 /// Document-local research context: Attention, Zotero source identity, and
@@ -62,6 +64,20 @@ struct RelationshipView: View {
                         openItem: context.openZoteroItem,
                         confirmItem: context.confirmZoteroItem,
                         didConfirmSource: context.didConfirmZoteroSource
+                    )
+                    RecommendedBibliographySection(
+                        controller: controller.bibliography,
+                        openAnalysis: { reference in
+                            if let note = context.catalog?.notes.first(where: {
+                                $0.reference.vaultID == reference.vaultID
+                                    && $0.reference.relativePath == reference.relativePath
+                            }) {
+                                controller.requestOpen(note.reference)
+                            }
+                        },
+                        openZoteroItem: context.openZoteroItem,
+                        copyText: context.copyResearchText,
+                        repairMethod: context.repairBibliographyMethod
                     )
                     workspaceConnectionsSection
                 }
@@ -719,7 +735,9 @@ private struct ZoteroSourceSection: View {
             resolveZoteroSource: { _ in .insufficientMetadata },
             openZoteroItem: { _ in },
             confirmZoteroItem: { _, _ in },
-            didConfirmZoteroSource: { _ in }
+            didConfirmZoteroSource: { _ in },
+            copyResearchText: { _ in },
+            repairBibliographyMethod: {}
         )
     )
 }

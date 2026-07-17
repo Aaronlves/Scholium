@@ -267,6 +267,7 @@ public actor ResearchOperations: ResearchUseCases {
     public nonisolated let recoveryRecordsURL: URL
     private let reference: WorkspaceHandleReference
     private let functionCoordinator: ResearchFunctionCoordinator
+    private let bibliographyCoordinator: RecommendedBibliographyCoordinator
 
     init(
         reference: WorkspaceHandleReference,
@@ -275,6 +276,7 @@ public actor ResearchOperations: ResearchUseCases {
     ) {
         self.reference = reference
         functionCoordinator = ResearchFunctionCoordinator(reference: reference)
+        bibliographyCoordinator = RecommendedBibliographyCoordinator(reference: reference)
         self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
     }
@@ -327,16 +329,20 @@ public actor ResearchOperations: ResearchUseCases {
         try await functionCoordinator.prepareFunction(request)
     }
 
+    public func functionRun(id: UUID) async throws -> ResearchFunctionPreparation {
+        try await functionCoordinator.functionRun(id: id)
+    }
+
     public func prepareAutomaticFidelity(
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation {
         try await functionCoordinator.prepareAutomaticFidelity(parentRunID: parentRunID)
     }
 
-    public func selectFunctionMethods(
-        _ submission: ResearchFunctionMethodSelectionSubmission
+    public func selectFunctionResources(
+        _ submission: ResearchFunctionResourceSelectionSubmission
     ) async throws -> ResearchFunctionPreparation {
-        try await functionCoordinator.selectFunctionMethods(submission)
+        try await functionCoordinator.selectFunctionResources(submission)
     }
 
     public func completeFunction(
@@ -347,6 +353,61 @@ public actor ResearchOperations: ResearchUseCases {
 
     public func cancelFunction(runID: UUID) async throws {
         try await functionCoordinator.cancelFunction(runID: runID)
+    }
+
+    public func recommendations(
+        for target: RecommendedBibliographyTarget
+    ) async throws -> RecommendedBibliographyProjection? {
+        try await bibliographyCoordinator.recommendations(for: target)
+    }
+
+    public func recommendationOverview(
+        for target: RecommendedBibliographyTarget
+    ) async throws -> RecommendedBibliographyOverview {
+        try await bibliographyCoordinator.overview(for: target)
+    }
+
+    public func prepareRecommendation(
+        _ request: RecommendedBibliographyRequest
+    ) async throws -> RecommendedBibliographyPreparation {
+        try await bibliographyCoordinator.prepare(request)
+    }
+
+    public func recommendationRequest(
+        id: UUID
+    ) async throws -> RecommendedBibliographyPreparation {
+        try await bibliographyCoordinator.request(id: id)
+    }
+
+    public func completeRecommendation(
+        _ submission: RecommendedBibliographyCompletionSubmission
+    ) async throws -> RecommendedBibliographyProjection {
+        try await bibliographyCoordinator.complete(submission)
+    }
+
+    public func cancelRecommendation(id: UUID) async throws {
+        try await bibliographyCoordinator.cancel(id: id)
+    }
+
+    public func dismissRecommendation(requestID: UUID, candidateID: UUID) async throws {
+        try await bibliographyCoordinator.dismiss(
+            requestID: requestID,
+            candidateID: candidateID
+        )
+    }
+
+    public func bibliographyMethodStatus() async throws -> RecommendedBibliographyMethodStatus {
+        try await bibliographyCoordinator.methodStatus()
+    }
+
+    public func setBibliographyMethod(
+        packageID: String?,
+        expectedBindingRevision: DocumentFingerprint?
+    ) async throws -> RecommendedBibliographyMethodStatus {
+        try await bibliographyCoordinator.setMethod(
+            packageID: packageID,
+            expectedBindingRevision: expectedBindingRevision
+        )
     }
 
     public func snapshot() async throws -> WorkspaceResearchSnapshot {

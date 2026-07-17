@@ -14,16 +14,30 @@ documented API at `127.0.0.1:23119`. The built-in app does not enumerate
 attachments or write Zotero data. The external MCP returns bounded attachment
 pointers only when a tool caller explicitly requests them.
 
-## Supported installation path
+## Install the Scholium CLI
 
-The public Beta app ZIP does not contain the standalone CLI. To use the
-optional external-agent integration, build the CLI from the Scholium source
-tree and put it on the external agent's `PATH`:
+The public Beta has no separate CLI asset. Its app bundle contains the exact
+version-matched **Scholium CLI** helper. In Scholium, open **Settings → Research
+Guidance → Skills → Advanced → Scholium CLI** and choose **Install**. Scholium
+installs the executable and its required resource bundle under
+`~/.local/bin`, verifies the installation, reports whether that directory is
+discoverable through `PATH`, and offers a PATH setup command without editing a
+shell profile.
+
+Confirm the external agent sees the installed executable before configuring
+MCP:
 
 ```sh
-swift build -c release --product scholium
-mkdir -p ~/.local/bin
-install -m 755 .build/release/scholium ~/.local/bin/scholium
+scholium version --format json
+scholium doctor --format json
+scholium help zotero
+```
+
+For development from a source checkout, use the maintained installer rather
+than copying a bare executable without its resource bundle:
+
+```sh
+Tools/Scripts/install-cli.sh
 ```
 
 Print a pasteable MCP client configuration:
@@ -45,8 +59,10 @@ The configuration is:
 }
 ```
 
-If the external agent does not inherit `~/.local/bin`, replace `scholium` with
-its absolute path.
+If the external agent does not inherit `~/.local/bin`, apply the PATH command
+shown by Scholium or replace `scholium` in that agent's MCP configuration with
+the verified absolute executable path. Do not move the executable without its
+adjacent `Scholium_ScholiumCore.bundle` resource bundle.
 
 `scholium zotero mcp status` locates the command without launching it. Add
 `--probe` to launch the first-party service, perform only MCP `initialize` and

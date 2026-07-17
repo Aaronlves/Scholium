@@ -344,7 +344,8 @@ public actor ResearchSkillStore {
             functionSkillBindings: existing.functionSkillBindings,
             functionPracticeBindings: existing.functionPracticeBindings,
             citationBinding: packageID,
-            citationStyle: normalizedStyle
+            citationStyle: normalizedStyle,
+            bibliographyMethodBinding: existing.bibliographyMethodBinding
         )
         return try saveBindingDocument(
             replacement,
@@ -371,7 +372,8 @@ public actor ResearchSkillStore {
                 functionSkillBindings: existing.functionSkillBindings,
                 functionPracticeBindings: existing.functionPracticeBindings,
                 citationBinding: nil,
-                citationStyle: nil
+                citationStyle: nil,
+                bibliographyMethodBinding: existing.bibliographyMethodBinding
             ),
             expectedRevision: expectedBindingRevision
         )
@@ -467,6 +469,24 @@ public actor ResearchSkillStore {
         guard observed == expectedBindingRevision else {
             throw ResearchSkillBindingError.staleBindingFile
         }
+        guard selection.selectedPractices.allSatisfy({
+            $0.application == .supplement
+        }) else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "New Practice bindings may supplement a complete method only. Replace bindings require repair."
+            )
+        }
+        let compatiblePractices = try compatiblePracticeIDs(
+            for: selection.function,
+            primaryPackageID: selection.primaryPackageID
+        )
+        guard selection.selectedPractices.allSatisfy({
+            compatiblePractices.contains($0.practiceID)
+        }) else {
+            throw ResearchSkillBindingError.invalidBindingDocument(
+                "A selected Practice is not compatible with the complete primary method for \(selection.function.rawValue)."
+            )
+        }
         try validateFunctionSkillSelection(selection)
 
         let existing = (try? bindingSnapshot()?.document)
@@ -498,7 +518,8 @@ public actor ResearchSkillStore {
                 functionSkillBindings: supplemental,
                 functionPracticeBindings: practices,
                 citationBinding: existing.citationBinding,
-                citationStyle: existing.citationStyle
+                citationStyle: existing.citationStyle,
+                bibliographyMethodBinding: existing.bibliographyMethodBinding
             ),
             expectedRevision: expectedBindingRevision
         )
@@ -512,6 +533,136 @@ public actor ResearchSkillStore {
         try saveFunctionSkillSelection(
             ResearchFunctionSkillSelection(function: function),
             expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    /// Resolves the exact Practice IDs declared compatible by the complete
+    /// primary method without consulting global Skill directories or inferring
+    /// compatibility from filenames.
+    public func compatiblePracticeIDs(
+        for function: ResearchFunctionID,
+        primaryPackageID: String? = nil
+    ) throws -> Set<String> {
+        if let primaryPackageID {
+            let package = try package(id: primaryPackageID)
+            guard package.supports(function),
+                  package.role == "workflow"
+                    || (package.role == "specialist"
+                        && !composesWithFunction(package, function: function)) else {
+                return []
+            }
+            return Set(package.compatiblePracticeIDs)
+        }
+        let candidates = try skills().filter {
+            $0.origin == .bundled
+                && $0.skillClass == .workflow
+                && $0.supports(function)
+                && $0.isValid
+        }
+        guard candidates.count == 1, let package = candidates.first else {
+            return []
+        }
+        return Set(package.compatiblePracticeIDs)
+    }
+
+    /// Resolves the complete Source Analyzer used by the Analysis-only
+    /// Recommended Bibliography capability. A missing explicit binding uses
+    /// the release-managed template; a broken explicit binding never falls
+    /// back silently.
+    public func bibliographyMethodBindingResolution() throws -> ResearchSkillBindingResolution {
+        let revision = try? bindingFileRevision()
+        let all = try skills()
+        let bundled = all.filter {
+            $0.origin == .bundled
+                && $0.isValid
+                && $0.provides(.bibliographyRecommendation)
+        }
+        let installed = all.filter {
+            $0.origin == .triptych
+                && $0.isValid
+                && $0.provides(.bibliographyRecommendation)
+                && $0.role == "workflow"
+        }
+        let document: ResearchSkillBindingDocument?
+        do {
+            document = try bindingSnapshot()?.document
+        } catch {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bundledTemplateAvailable: !bundled.isEmpty,
+                installedCandidateIDs: installed.map(\.id).sorted(),
+                issue: .malformed(error.localizedDescription),
+                bindingRevision: revision
+            )
+        }
+        if let packageID = document?.bibliographyMethodBinding {
+            guard let package = installed.first(where: { $0.id == packageID }) else {
+                return ResearchSkillBindingResolution(
+                    source: .triptychBinding,
+                    bundledTemplateAvailable: !bundled.isEmpty,
+                    installedCandidateIDs: installed.map(\.id).sorted(),
+                    issue: .invalidPackage(packageID),
+                    bindingRevision: revision
+                )
+            }
+            return ResearchSkillBindingResolution(
+                source: .triptychBinding,
+                package: package,
+                bundledTemplateAvailable: !bundled.isEmpty,
+                installedCandidateIDs: installed.map(\.id).sorted(),
+                bindingRevision: revision
+            )
+        }
+        guard bundled.count == 1, let package = bundled.first else {
+            return ResearchSkillBindingResolution(
+                source: .bundledDefault,
+                bundledTemplateAvailable: !bundled.isEmpty,
+                installedCandidateIDs: installed.map(\.id).sorted(),
+                issue: .missingCapability(.bibliographyRecommendation),
+                bindingRevision: revision
+            )
+        }
+        return ResearchSkillBindingResolution(
+            source: .bundledDefault,
+            package: package,
+            bundledTemplateAvailable: true,
+            installedCandidateIDs: installed.map(\.id).sorted(),
+            bindingRevision: revision
+        )
+    }
+
+    @discardableResult
+    public func setBibliographyMethodBinding(
+        packageID: String?,
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchSkillBindingSnapshot {
+        let observed = try bindingFileRevision()
+        guard observed == expectedBindingRevision else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        if let packageID {
+            let package = try localPackage(id: packageID)
+            guard package.origin == .triptych,
+                  package.isValid,
+                  package.role == "workflow",
+                  package.provides(.bibliographyRecommendation) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The bibliography method must be a valid Triptych-local complete Source Analyzer."
+                )
+            }
+        }
+        let existing = (try? bindingSnapshot()?.document)
+            ?? ResearchSkillBindingDocument()
+        return try saveBindingDocument(
+            ResearchSkillBindingDocument(
+                functionBindings: existing.functionBindings,
+                functionSkillBindings: existing.functionSkillBindings,
+                functionPracticeBindings: existing.functionPracticeBindings,
+                citationBinding: existing.citationBinding,
+                citationStyle: existing.citationStyle,
+                bibliographyMethodBinding: packageID
+            ),
+            expectedRevision: expectedBindingRevision
         )
     }
 
@@ -1133,6 +1284,29 @@ public actor ResearchSkillStore {
                 "A citation style cannot be selected without a citation package."
             )
         }
+        if let packageID = document.bibliographyMethodBinding {
+            guard Self.isValidIdentifier(packageID) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The bibliography method binding has an invalid package identifier."
+                )
+            }
+            let package: ResearchSkillPackage
+            do {
+                package = try localPackage(id: packageID)
+            } catch {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The bibliography method binding must name an installed Triptych-local package."
+                )
+            }
+            guard package.origin == .triptych,
+                  package.isValid,
+                  package.role == "workflow",
+                  package.provides(.bibliographyRecommendation) else {
+                throw ResearchSkillBindingError.invalidBindingDocument(
+                    "The bibliography method binding lacks the required capability."
+                )
+            }
+        }
     }
 
     private func validateFunctionSkillSelection(
@@ -1373,14 +1547,6 @@ public actor ResearchSkillStore {
         availableResourcePaths: Set<String>
     ) -> [String] {
         var issues: [String] = []
-        if package.role == "practice" {
-            for required in [
-                "references/FOUNDATIONAL-DIMENSIONS.md",
-                "references/COMPOSITION-RULES.md",
-            ] where !availableResourcePaths.contains(required) {
-                issues.append("Practice package requires \(required).")
-            }
-        }
         for path in package.practiceResources.values
             where !availableResourcePaths.contains(path) {
             issues.append("Declared Practice resource is missing: \(path).")

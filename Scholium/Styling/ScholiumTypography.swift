@@ -3,8 +3,9 @@ import AppKit
 import CoreText
 import SwiftUI
 
-/// Registers Scholium's document typefaces for this process. The interface
-/// itself continues to use the macOS system font.
+/// Registers Scholium's editorial typefaces for this process. Alegreya is
+/// reserved for document and publication-like hierarchy; operational controls
+/// continue to use the macOS system font.
 enum ScholiumFontRegistry {
     private static let bundledFontNames = [
         "Alegreya-Regular",
@@ -186,6 +187,22 @@ enum ScholiumTypography {
         return .custom(name, size: size, relativeTo: textStyle)
     }
 
+    static func swiftUIReadingFont(
+        size: CGFloat,
+        relativeTo textStyle: Font.TextStyle,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> Font {
+        let name: String
+        switch (bold, italic) {
+        case (false, false): name = "Alegreya-Regular"
+        case (false, true): name = "Alegreya-Italic"
+        case (true, false): name = "Alegreya-Bold"
+        case (true, true): name = "Alegreya-BoldItalic"
+        }
+        return .custom(name, size: size, relativeTo: textStyle)
+    }
+
     static func swiftUICode(scale: CGFloat = 1) -> Font {
         swiftUIMonospaceFont(
             size: codePointSize * scale,
@@ -214,11 +231,31 @@ enum ScholiumTypography {
     }
 }
 
-/// A restrained system-font hierarchy for persistent app chrome. Document
-/// prose and exact-source text continue to use the typefaces above.
+/// Scholarly Editorialism pairs an Alegreya publication hierarchy with system
+/// typography for operational chrome, metadata, and native controls.
 enum ScholiumInterfaceTypography {
-    static let identity = Font.title3.weight(.medium)
+    static let identity = ScholiumTypography.swiftUIReadingFont(
+        size: 22,
+        relativeTo: .title3,
+        bold: true
+    )
+    static let documentTitle = ScholiumTypography.swiftUIReadingFont(
+        size: 31,
+        relativeTo: .title,
+        bold: true
+    )
+    static let noteTitle = ScholiumTypography.swiftUIReadingFont(
+        size: 15,
+        relativeTo: .body,
+        bold: false
+    )
+    static let apparatusTitle = ScholiumTypography.swiftUIReadingFont(
+        size: 17,
+        relativeTo: .headline,
+        bold: true
+    )
     static let sectionTitle = Font.headline.weight(.medium)
     static let rowTitle = Font.callout.weight(.medium)
     static let metadata = Font.caption.weight(.medium)
+    static let editorialLabel = Font.caption2.weight(.semibold)
 }

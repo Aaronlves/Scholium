@@ -17,7 +17,7 @@ struct SpotlightSearchContext {
 
 struct SpotlightSearchPanelView: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let context: SpotlightSearchContext
     let maxPanelHeight: CGFloat?
     @FocusState private var searchFocused: Bool
@@ -84,7 +84,7 @@ struct SpotlightSearchPanelView: View {
                 : ScholiumMetrics.Search.collapsedHeight,
             alignment: .top
         )
-        .scholiumGlassSurface(
+        .scholiumEditorialSurface(
             .searchOverlay,
             in: RoundedRectangle(
                 cornerRadius: ScholiumMetrics.Search.cornerRadius,
@@ -201,14 +201,16 @@ struct SpotlightSearchPanelView: View {
             } label: {
                 Image(systemName: "xmark")
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.borderless)
+            .frame(minWidth: 28, minHeight: 28)
+            .contentShape(Rectangle())
             .keyboardShortcut(.cancelAction)
             .help("Close Search")
             .accessibilityLabel("Close")
             .accessibilityIdentifier("scholium.closeSearchButton")
         }
         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-        .frame(height: 58)
+        .frame(height: 48)
     }
 
     private var searchScopeBar: some View {
@@ -314,7 +316,9 @@ struct SpotlightSearchPanelView: View {
         } label: {
             Image(systemName: "bookmark")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.borderless)
+        .frame(minWidth: 28, minHeight: 28)
+        .contentShape(Rectangle())
         .help("Saved Searches")
         .accessibilityLabel("Saved Searches")
     }

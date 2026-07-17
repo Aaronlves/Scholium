@@ -21,6 +21,9 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
     /// Explicit semantic style identifier selected with `citationBinding`.
     /// Optional for compatibility decoding of pre-style binding documents.
     public let citationStyle: String?
+    /// Optional Triptych-local complete method for Analysis bibliography
+    /// screening. Absence resolves to the bundled Source Analyzer.
+    public let bibliographyMethodBinding: String?
 
     public init(
         schemaVersion: Int = Self.currentSchemaVersion,
@@ -28,7 +31,8 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
         functionSkillBindings: [String: [String]] = [:],
         functionPracticeBindings: [String: [ResearchPracticeSelection]] = [:],
         citationBinding: String? = nil,
-        citationStyle: String? = nil
+        citationStyle: String? = nil,
+        bibliographyMethodBinding: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.functionBindings = functionBindings
@@ -38,6 +42,11 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
         let normalized = citationStyle?.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         self.citationStyle = normalized?.isEmpty == false ? normalized : nil
+        let bibliography = bibliographyMethodBinding?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.bibliographyMethodBinding = bibliography?.isEmpty == false
+            ? bibliography
+            : nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -47,6 +56,7 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
         case functionPracticeBindings = "function_practice_bindings"
         case citationBinding = "citation_binding"
         case citationStyle = "citation_style"
+        case bibliographyMethodBinding = "bibliography_method_binding"
     }
 
     public init(from decoder: Decoder) throws {
@@ -75,6 +85,10 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
             citationStyle: try container.decodeIfPresent(
                 String.self,
                 forKey: .citationStyle
+            ),
+            bibliographyMethodBinding: try container.decodeIfPresent(
+                String.self,
+                forKey: .bibliographyMethodBinding
             )
         )
     }

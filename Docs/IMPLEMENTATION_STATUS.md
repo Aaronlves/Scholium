@@ -1,9 +1,9 @@
 # Scholium Implementation Status
 
-**Audited:** 2026-07-17
-**Authority:** [PRODUCT_GUIDE.md](PRODUCT_GUIDE.md) owns target behavior;
-[DESIGN_HANDBOOK.md](DESIGN_HANDBOOK.md) owns the interface contract; [PRD.md](PRD.md)
-synthesizes requirements. This ledger records current evidence only.
+**Audited:** 2026-07-18
+**Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
+**Scope:** current reachability, verification evidence, migration debt, and open
+acceptance only. This ledger cannot redefine the target specification.
 
 ## Reachable target behavior
 
@@ -27,15 +27,19 @@ synthesizes requirements. This ledger records current evidence only.
   and Content or Citations checks. The toolbar, sidebar, generic Open Scholia
   doorway, omnibus Scholia panel, and duplicate Critique request sheet are no
   longer reachable.
-- Conditional Workflow references use a same-run, read-only preflight. The
-  external agent finalizes semantic method references—including an explicit
-  empty selection when the primary method is sufficient—through `function
-  select-methods`. The preflight has already persisted the normal checkpoint
+- Conditional resources use a same-run, read-only preflight. The external
+  agent finalizes the applicable methods, templates, and checklists—including
+  an explicit empty selection when the complete primary method is sufficient—
+  through `function select-resources`. The deprecated `select-methods` spelling
+  remains an undocumented Beta compatibility alias. The preflight has already
+  persisted the normal checkpoint
   and Dialogue or Critique record; finalization retains that run, record,
   checkpoint, and preparation identity, while completion remains unavailable
   beforehand. The Strip exposes no method controls, and the finalized packet
   records only the exact resources attached to that run.
-- Dialogue is read-only and creates no checkpoint. It preserves the initial
+- Dialogue is note-nonmutating by default and creates no checkpoint. It may
+  read the fixed Target and selected Materials and append attributed responses
+  to Dialogue/Note History. It preserves the initial
   researcher Comment plus chronological researcher follow-up Comments and
   attributed agent Responses; an external agent must prepare Develop or Revise
   before changing the current note. Develop, Revise, Manuscript, and Critique
@@ -106,12 +110,13 @@ synthesizes requirements. This ledger records current evidence only.
   Researcher Skill with `analyze` mode and no supported Research Function; the
   Skills CLI can assemble it directly with Core Protocol, and official
   duplication copies its complete bounded reference set.
-- Dialogue optional modules now divide a literal 100% attention budget equally
-  while Academic Outcome and mandatory integrity notices remain outside that
-  budget. Philosophical Practices use the same 100% budget contract: an active
-  method may declare role-sensitive weights normalized over the selected
-  Practices, otherwise their shares are equal. These are coverage contracts,
-  not output-length targets or permission to fabricate content.
+- Dialogue optional modules and selected Philosophical Practices now receive
+  flexible, evidence-sensitive methodological effort. Every selection is
+  genuinely considered, but only warranted and materially useful influence is
+  reported; no selection may be silently skipped and no filler finding is
+  manufactured. Academic Outcome and universal integrity rules remain
+  mandatory. Practice selection cannot change Target, Materials, permissions,
+  checkpoints, or write boundaries.
 - The protected Core Protocol now makes the shared scholarly orientation explicit: every package is philosophy-facing, truth-pursuing without claiming automatic truth, fidelity-caring, and knowledge-base-constructing. CLI, file, metadata, and MCP operations remain subordinate mechanisms, while application design and coding stay under separate development Skills.
 - The bundled catalog includes an optional copy-on-adoption APA 7 citation-verification starter in the Researcher ownership class. It is editable after adoption, never activates automatically, and does not establish a universal citation convention.
 - Citations is available inside Fidelity only after Core validates an explicit
@@ -167,7 +172,7 @@ synthesizes requirements. This ledger records current evidence only.
 
 ## Adopted boundaries with remaining acceptance work
 
-- The Product Guide defines a minimal nested `research_unit` mapping with
+- The specification defines a minimal nested `research_unit` mapping with
   `scope` and optional `limitations`, presented as **Research Status**. The
   current Properties region has a role-neutral Research Status group and a
   targeted two-field editor. Absent, declared, and invalid mappings remain
@@ -187,7 +192,22 @@ synthesizes requirements. This ledger records current evidence only.
   Zotero. Any later Analysis-note update remains a separate researcher-
   authorized action. A dedicated long-source progress presentation remains
   future work.
-- New default Analysis Properties replace contextual project-relevance and app-owned timestamp fields with optional paired Debate Importance and Debate Scope fields. Debate Importance is a scoped 0–10 prioritization aid with no pass grade; existing relevance or timestamp YAML remains preserved as legacy or custom source.
+- Recommended Bibliography is reachable only for an Analysis in the Research
+  inspector, after Zotero and before Connections. Its compact presentation
+  labels candidates as **Reading leads, not evidence**, supports optional goals
+  and purpose, and keeps refresh failures from replacing prior results. The
+  dedicated Contracts/Application/Core/CLI lifecycle snapshots Source Analyzer,
+  accepts zero recommendations, conservatively discriminates identities, and
+  stores records atomically in `.scholium/recommended-bibliography.json`
+  without changing Markdown or Zotero. Focused controller, executable CLI, and
+  disposable UI automation cover routing and transport; philosophical value
+  and genuine spoken VoiceOver judgment remain researcher-owned acceptance.
+- New default Analysis Properties replace contextual project-relevance and
+  app-owned timestamp fields with optional paired Debate Importance and Debate
+  Scope fields. Debate Importance accepts only a whole integer from 0 through
+  10, requires its scope, and has no pass grade; Project Relevance is inactive,
+  while existing relevance or timestamp YAML remains byte-preserved as legacy
+  or custom source.
 - Protected Skill identifiers cannot be replaced by a Triptych-local package. A conflicting local package remains visible as an invalid, recoverable item so the researcher can rename or delete it; the bundled package remains separately visible and authoritative.
 
 ## Removed from the reachable target UI
@@ -210,8 +230,9 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
   boundaries recorded in
   [IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md). Native and
   WebKit palette parity, appearance mappings, relationship variants, and
-  contrast floors are covered by automated architecture tests. The Design
-  Handbook remains the authority for the palette values and their meanings.
+  contrast floors are covered by automated architecture tests. The
+  specification remains the authority for the palette values and their
+  meanings.
   Document typography now exposes Body, heading-level, and Exact Source roles;
   interface typography exposes identity, section-title, row-title, and metadata
   roles. The dormant AppKit editor implementation now consumes that same 12pt
@@ -221,7 +242,10 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
   preferred and 20pt minimum custom target thresholds are centralized without
   changing native control sizing; the floating document context surface retains
   its feature-owned 40pt height.
-- The native shell follows the Design Handbook's preferred prototype topology: one reflowing Library sidebar, one dominant document region, and one optional trailing Research inspector. The former separate workspace-navigation and note-list columns are no longer reachable.
+- The native shell follows the specification's workspace topology: one
+  reflowing Library sidebar, one dominant document region, and one optional
+  trailing Research inspector. The former separate workspace-navigation and
+  note-list columns are no longer reachable.
 - The current tree uses separate Onboarding and Workspace metrics, one stable
   configured `NavigationSplitView`, one vault-qualified selected document per
   window session, and decorative light/dark artwork in the no-note detail.
@@ -238,7 +262,17 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
   titles, standard tab commands, and `Command-W`; automated responsive journeys
   verify stable frame behavior at 1380, 1080, and 900 points. Manual assistive-
   technology and system-setting acceptance remains pending.
-- The floating document context surface groups Read/Live Preview/Source and heading outline in one restrained icon-only control surface followed by one role-aware Properties disclosure. Both compact surfaces use the same 40-point height and vertical centerline; together with their 10-point gap they occupy the same centered 920-point measure as the Read/editor body. The expanded single-layer panel also occupies exactly 920 points. The opaque boundary band is removed: document content begins below the surface but can scroll visibly beneath its regular glass and softened shadow. Summary facts progressively reduce from three to one before crowding. Document text size remains in **View → Document Text Size** and its keyboard shortcuts instead of occupying permanent document chrome.
+- The document context surface groups Read/Live Preview/Source and heading
+  outline in one restrained control surface followed by one role-aware
+  Properties disclosure. Both compact surfaces use the same 40-point height
+  and vertical centerline; together with their 10-point gap they occupy the
+  same centered 920-point measure as the Read/editor body. The expanded
+  single-layer panel also occupies exactly 920 points. Current source replaces
+  the former custom glass recipe with an opaque editorial surface and fine
+  boundary; initial editor clearance scrolls away so later content may travel
+  beneath it. Summary facts progressively reduce before crowding. Document
+  text size remains in **View → Document Text Size** and its keyboard
+  shortcuts instead of occupying permanent document chrome.
 - The Library consolidates research-state, tag, metadata, and sort choices in one native **Filter** menu while keeping visible Unreviewed and Unqualified task toggles. The bounded research-state filters remain Changed since review, Needs attention, Explicit connections, and Malformed metadata. Analyses prefer author/year secondary metadata, Topics retain relative modification time, and Works prefer document kind/lifecycle state when available. After one exact Debate Scope is selected through the metadata filter, the Library also permits numeric high-to-low Debate Importance sorting with unrated matching Analyses last; it does not compare ratings across scopes.
 - Search is one centered Spotlight-style overlay whose empty state shows **This
   Note**, **This Vault**, and **Triptych** immediately without an empty results
@@ -246,11 +280,13 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
   so Search also owns known-note navigation. `Command-F` temporarily enters
   **This Note** and dismissal restores the ordinary general scope unless the
   researcher explicitly changes it. Dismissal cancels pending work and rejects
-  stale results. Beta Search has no vectors, embeddings, AI interpretation, AI
-  ranking, or chat-style interface. Focused architecture and UI journeys verify
-  visible scopes, current-note results and no-results state, compact geometry,
-  stable dismissal, and immediate rejection of a prior query's result
-  projection.
+  stale results. Presenting Search first flushes the registered editor and does
+  not open the retrieval surface when that save fails, so navigation cannot
+  race an uncommitted Live Preview edit. Beta Search has no vectors, embeddings,
+  AI interpretation, AI ranking, or chat-style interface. Focused architecture
+  and UI journeys verify visible scopes, current-note results and no-results
+  state, compact geometry, stable dismissal, immediate rejection of a prior
+  query's result projection, and the commit-before-Search boundary.
 - One bottom editor Research Strip opens the selected one-word function
   directly. It is absent when no note is open, reserves editor space rather
   than covering prose, retains every role-valid function at compact widths,
@@ -261,8 +297,20 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
   the combined Human Review and Comments presentation without Materials.
 - Note History presents Dialogue as a concise, role-labelled scholarly exchange and lets the researcher append a follow-up Comment or record an attributed agent Response without exposing prompt mechanics. The default Dialogue response contract asks agents to foreground academic changes and unresolved questions or required researcher review.
 - Note History and the Research inspector now share one mutually exclusive trailing context region. Switching between them is an atomic per-window state change, so the document does not acquire competing trailing panels.
-- Unclassified opens as a centered classification surface. Set Aside and Trash remain anchored below Library and rise as mutually exclusive compact Liquid Glass cards over the preserved Library geometry; dense note rows and destructive confirmations remain opaque and native.
-- Liquid Glass is limited to the navigation and control layer: toolbar/context controls, compact Properties disclosure, one bounded expanded Properties panel, transient status, lifecycle cards, and primary actions. The expanded Properties panel uses one regular-material layer with no nested translucent fields and an opaque Reduce Transparency fallback. Document prose, source, diagnostics, and comparison content retain opaque system backgrounds for legibility.
+- Unclassified opens as a centered classification surface. Set Aside and Trash
+  remain anchored below Library and rise as mutually exclusive compact opaque
+  editorial panels over the preserved Library geometry; dense note rows and
+  destructive confirmations remain opaque and native.
+- Current source has removed Scholium-owned Liquid Glass, blur, vibrancy, and
+  regular-material recipes from the Library, document context, Properties,
+  Search, Research Strip, lifecycle, transient-status, and primary-action
+  surfaces. These use semantic opaque planes, fine boundaries, and restrained
+  elevation while system-owned controls keep native macOS appearance. A
+  current bounded QA matrix passes native sidebar and ellipsis behavior,
+  responsive widths, Search, Properties and inspector presentation, light/dark
+  Research Strip behavior, 200% document text, and the canonical journey.
+  This automated evidence does not close real system-setting or assistive-
+  technology visual acceptance.
 - First launch uses the narrow Onboarding measure and left-middle position for a
   five-step native flow with no scrolling page: Welcome, Analyses, Topics,
   Works, and final name/authorization. Each folder is chosen through a standard
@@ -284,24 +332,37 @@ The obsolete Proposal, Research Session, workflow-bridge/readiness/lint, old Rev
   elevation, boundary, typography, feature-metric, motion, and provisional
   renderer-rhythm contracts. Repeated Library, Search, Properties, context,
   lifecycle, transient-status, and Research Strip treatments consume those
-  contracts; native controls retain native sizing and state appearance.
-  Document prose remains 12-point Alegreya, production mono remains Victor
-  Mono, and the preview catalog contains the pending Victor/system-mono proof.
-- Atmospheric navigation is reachable in the native split-view shell. Fixed
-  light and dark artwork is confined to Library and always filtered through
-  regular material; the field and 18-point panel extend through the top safe
-  area while retaining 10-point horizontal and bottom insets and
-  `triptychEdge` separation from the opaque document. The native sidebar item
-  and adjacent leading-toolbar ellipsis are reachable, and Library folder/note
-  rows consume semantic interface typography with leading-aligned outline
-  depth. Reduce Transparency suppresses the artwork in source, and semantic
-  recipes cover increased-contrast and inactive-window adaptation. Focused
-  architecture tests, the native sidebar/ellipsis journey, the
-  1380/1080/900-point responsive journey, and the light/dark appearance journey
-  pass against the isolated QA app with review attachments. This does not
-  replace manual system-setting and inactive-window visual acceptance.
+  contracts; surface roles resolve their own default boundary and elevation,
+  with permanent document, navigation, apparatus, and evidence planes defaulting
+  to no elevation; structural partitions use one environment-aware semantic
+  rule rather than local line literals. Native controls retain native sizing
+  and state appearance. Document prose remains 12-point Alegreya, production
+  mono remains Victor Mono, and the preview catalog contains the pending
+  Victor/system-mono proof plus injectable contrast, transparency, motion, and
+  active-window states for deterministic component review. Thirty-two focused
+  architecture tests currently cover these contracts and prohibit custom glass
+  or material APIs in production Swift source.
+- The former atmospheric artwork/material Library treatment is superseded.
+  Current source presents Library, document, and trailing apparatus as opaque
+  editorial planes separated by tone and fine rules; note titles and
+  apparatus headings use the approved content-derived editorial hierarchy
+  while operational controls retain system typography. Existing native
+  sidebar, ellipsis, responsive, Search, Properties/inspector, light/dark, and
+  200% text journeys pass against the current Scholarly Editorialism source and
+  remain bounded automated behavior and geometry evidence, not final visual
+  acceptance. Real Increase Contrast, Reduce Transparency, Reduce Motion,
+  inactive-window, mixed-script, and assistive-technology acceptance remains
+  open.
+- A fail-closed release-to-release QA gate now copies one disposable Triptych,
+  seeds byte-hostile Markdown fixtures, launches the baseline and candidate
+  sequentially with one isolated application home, and compares path, byte
+  size, SHA-256, permissions, and modification time after each launch. The
+  portable-state allowlist is explicit and retained with the manifests and
+  `.xcresult` evidence. After an identical-build harness proof, a distinct
+  preserved baseline and current candidate also passed with all 195
+  authoritative files unchanged.
 
-Manual accessibility and narrow-window visual acceptance is not yet complete. Automated responsive acceptance now passes at 1380, 1080, and 900 points using the real window frame plus stable toolbar and menu routes. It deliberately avoids treating sidebar-descendant snapshots as a state oracle and does not claim manual visual or assistive-technology acceptance.
+Manual accessibility and visual acceptance is not yet complete. Automated responsive acceptance passes at 1380, 1080, and 900 points using the real window frame plus stable toolbar and menu routes, and the current 200% document-text journey passes. These tests deliberately avoid treating sidebar-descendant snapshots as a state oracle and do not claim manual visual or assistive-technology acceptance.
 
 ## Remaining completion work
 
@@ -325,11 +386,12 @@ library value is retained in the evidence.
 
 | Evidence class | Latest recorded result | Interpretation |
 | --- | --- | --- |
-| Repository verification | The 2026-07-17 complete `verify.sh` record passed the product-skill mirror and protected-reference guards, editor typecheck and 43 editor tests, reproducible bundle verification, deterministic RDF-1 at 800 notes with tree hash `5a7a320c43f19352056e59db88d55c27a340c5284d3c4872dfe43ca667a30319`, the complete Swift suite, executable workflow and Function CLI verification, public-Application symbol-graph isolation, and the SwiftPM production build. The verifier now resolves and exports the complete Xcode developer directory before invoking Swift, so SwiftUI macro availability is part of the reproducible repository path rather than ambient `xcode-select` state. | Repository/build evidence; no package was created and this is not packaged Release-app G7 evidence. |
+| Repository verification | The 2026-07-18 complete `verify.sh` record passed the product-skill mirror and protected-reference guards, editor typecheck and 43 editor tests, reproducible bundle verification, deterministic RDF-1 at 800 notes with tree hash `5a7a320c43f19352056e59db88d55c27a340c5284d3c4872dfe43ca667a30319`, the complete Swift suite, executable workflow and Function CLI verification, public-Application symbol-graph isolation, and the SwiftPM production build. The verifier now resolves and exports the complete Xcode developer directory before invoking Swift, so SwiftUI macro availability is part of the reproducible repository path rather than ambient `xcode-select` state. | Repository/build evidence; no package was created and this is not packaged Release-app G7 evidence. |
 | Beta Skill architecture | The five Workflow packages, protected System layer, function-aware dependency closure, citation bindings, guarded Researcher Skill evolution, Dialogue transport, bootstrap, and Zotero boundaries pass focused suites and the complete verifier. A disposable Settings journey also passed complete-package comparison, structural validation, revision-bound attributed fixture evidence, atomic Apply, byte-and-revision persistence after relaunch, Recovery selection, complete restore, and creation of an undo snapshot. Real local-service reads and an isolated synthetic import/read-back also passed. [Skills/README.md](../Skills/README.md) owns the package architecture and [REAL_WORKFLOW_ASSESSMENT.md](../Skills/evals/REAL_WORKFLOW_ASSESSMENT.md) owns the twelve field trials. | Structural and transport/gating evidence only. The supplied evolution evaluation was synthetic and establishes no philosophical quality; the researcher-owned field trials and manual accessibility acceptance remain open, so G10 and J-014–J-016 are not complete. |
-| Focused Function contracts and CLI | Isolated focused runs passed 8 Contracts tests, 19 controller tests, and 12 Application mutation tests for per-request Dialogue modules, immutable response contracts, stale-result rejection, reset, and routing isolation. The executable Function CLI test and verifier then passed availability; explicit Dialogue modules; show, reply, and completion; Revise method selection and fingerprint-checked edit; Awaiting Fidelity; independent Fidelity completion and parent linkage; idempotent cancellation; stdin/file and JSON/Markdown transport; and the specified malformed, stale, wrong-role, target-duplication, confirmation, and premature-completion failures. | Executable transport, persistence, and orchestration evidence; philosophical adequacy remains researcher-owned. |
+| Focused Function contracts and CLI | Isolated focused runs passed Contracts, controller, Application mutation, installer, and Settings-state tests for per-request Dialogue modules, immutable response contracts, stale-result rejection, reset, routing isolation, application-bundled CLI installation, and preservation of a live Triptych activation during a broader Settings failure. The real executable lifecycle then passed cold-start help, version, doctor, strict option parsing, preferred `function available`, explicit Dialogue modules, immutable show/reply/completion, typed Dialogue promotion, Revise conditional-resource selection and fingerprint-checked edit, Awaiting Fidelity, independent Fidelity completion and parent linkage, reusable audit relinking, idempotent cancellation, Recommended Bibliography, stdin/file and JSON/Markdown transport, and the specified malformed, stale, wrong-role, target-duplication, confirmation, and premature-completion failures. | Executable transport, persistence, and orchestration evidence; philosophical adequacy remains researcher-owned. |
 | Search and derived state | The focused SearchIndex suite passed against a synthetic 2,056-note collision fixture, covering deterministic Title/Alias/Heading/Body precedence, equal-rank path ordering, repeat-query stability, and safe replacement of an incompatible generated contract; an isolated UI run verified the same visible field-context order. Broader ranking-usability evaluation remains open. | Semantic and isolated UI evidence. |
-| Current UI journeys | The usable-first refactor has replaced the navigation, window, Review/Comments, Materials, Research Status, and Research Guidance contracts covered by the earlier journeys. The current canonical acceptance journey passes against a disposable Triptych. Focused journeys also pass clean-account setup/relaunch, anchored-only Review Comments, Work passage Comments and hierarchical Materials, native-tab grouping and standard close, native and contextual editor commands, compact This Note Search through results, no-results, and dismissal, responsive document/Library restoration at 1380, 1080, and 900 points, and light/dark atmospheric-shell presentation around the Research Strip and Dialogue panel. The previous Recent Notes, Back/Forward, contracting-interface, custom-tab, and separate-Comments results are superseded and remain only in repository history. | Automated current-tree acceptance for the listed journeys. This is not packaged Release evidence; real system-setting propagation, inactive-window behavior, Full Keyboard Access, localization, mono/rhythm approval, manual visual review, and broader recovery acceptance remain open. |
+| Current UI journeys | A 2026-07-17 complete-class run executed 58 journeys: 41 passed and 17 failed. Focused reruns then passed the canonical acceptance journey, selective checkpoint restore, stable-identity dirty external rename, ambiguous external-rename confirmation, application-bundled Scholium CLI installation in Settings, and Research Guidance Skill reachability and collision repair. The Settings journeys also verified that an unhydrated broad Settings projection no longer produces the misleading incomplete-Triptych management alert while a live activation exists. The remaining complete-class failures cover existing editor-command, Search, responsive/trailing-context, Zotero, Human Review dismissal, 200% text, and VoiceOver-state routes; the complete class has not yet been rerun green. | Automated disposable-fixture evidence. The focused note-safety and Settings routes are green, but the complete UI acceptance gate remains open and this is not packaged Release evidence. |
+| Upgrade safety | `verify-qa-upgrade-safety.sh` passed a differential baseline/candidate run against one disposable Triptych and one isolated home. Baseline SHA-256 `587b93a0a710bac273601c1fa86ad4db1578702c6cf34884f525c3fb8df8000c` and candidate SHA-256 `b7b3e109cb37e83e4dd3d6c76dac26f04abac1fed019bf85ef518a446480e551` were distinct. All 195 files under Analyses, Topics, and Works retained exact path, size, SHA-256, permissions, and modification time after both launches. Only `.scholium/identities.json` and `.scholium/manifest.json` changed under the retained explicit portable allowlist. | Differential disposable-fixture upgrade evidence for these two QA builds. Future releases must rerun the gate with their own preserved baseline and candidate; this is not installed-app or private-vault evidence. |
 | Performance | Complete-boundary instrumentation, the external XCUITest driver, strict validator, privacy-safe capture, and fail-closed runner are implemented. Debug scenario runs validated the plumbing, but their temporary reports are not retained evidence. The canonical RDF-1 protocol requires the exact packaged Release app on R1 and five warm-ups plus 30 retained samples; no packaged Release gate run or threshold approval exists. | Scenario-only; G7 remains open. |
 | Distribution | A 2026-07-15 local arm64 Release preflight passed signature, metadata, checksum, license, and resource checks, but recorded `source_clean=false` and no exact tag. | Local preflight; not clean-tagged G9 evidence or a release asset. |
 

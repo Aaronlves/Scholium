@@ -11,7 +11,7 @@ The skill file supplies the instruction contract; it does not itself create an M
 
 ## Supported MCP transport
 
-Scholium's Beta-supported transport is the first-party `scholium zotero mcp serve` stdio service. Build and optionally install the `scholium` CLI from the Scholium source tree, then use `scholium zotero mcp config --format json` for the external-agent configuration. `scholium zotero mcp status` reports command availability; add `--probe` to perform only the data-free MCP initialize lifecycle.
+Scholium's supported transport is the installed Scholium CLI or MCP adapter, including the first-party `scholium zotero mcp serve` stdio service. Use `scholium zotero mcp config --format json` for the external-agent configuration and `scholium zotero mcp status` to report command availability; add `--probe` only for the data-free MCP initialize lifecycle. If the installed adapter is unavailable, report that limitation rather than searching developer directories or trying to build Scholium.
 
 The first-party service uses Zotero Desktop's loopback API for readiness, search, item inspection, and explicitly requested bounded attachment pointers. That API is read-only. BibTeX and RIS imports use Zotero's localhost Connector and require an exact-content dry run; the returned authorization token is short-lived, one-shot, and bound to the content hash and selected destination. The confirmed call rechecks the destination and then reads every returned item back through the local API. No Zotero Web API key is required or stored. Scholium's built-in UI remains read-only and never inherits this external-agent write capability.
 

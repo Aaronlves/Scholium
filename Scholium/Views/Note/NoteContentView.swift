@@ -211,14 +211,17 @@ struct ResearchInspectorView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .scholiumGlassSurface(
+            .scholiumEditorialSurface(
                 .floatingControl,
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
             )
             .padding(.horizontal, 8)
             .padding(.top, 8)
 
-            Divider()
+            ScholiumStructuralRule()
 
             Group {
                 switch inspectorMode.wrappedValue {
@@ -235,7 +238,7 @@ struct ResearchInspectorView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scholiumSurface(.apparatus)
         .accessibilityIdentifier("scholium.researchInspector")
     }
 
@@ -262,7 +265,7 @@ struct ResearchInspectorView: View {
 // MARK: - Note Content View
 
 struct NoteContentView: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @ObservedObject private var controller: DocumentController
     let target: DocumentEditingTarget
     let note: WindowDocumentLocation
@@ -381,6 +384,7 @@ struct NoteContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
+        .scholiumSurface(.document)
         .toolbar { noteToolbar }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
             actions.beginSearch(invocation)
@@ -586,31 +590,34 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private var documentBodySurface: some View {
-        if isEditing {
-            bodyEditor
-        } else if ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_NATIVE_READ"] != "1",
-                  renderedReadFingerprint == noteFingerprint.sha256,
-                  !renderedReadHTML.isEmpty,
-                  failedReadFingerprint != noteFingerprint.sha256 {
-            readDocumentSurface
-        } else {
-            NativeMarkdownReadView(
-                source: note.rawContent,
-                textScale: state.documentTextScale,
-                topContentInset: ScholiumMetrics.ContextSurface.initialOverlayClearance,
-                onLinkClick: {
-                    actions.openInternalLink($0)
-                },
-                onRequestComment: commentingIsAvailable ? { selection in
-                    actions.requestComments(selection, nil)
-                } : nil,
-                onSelectionChange: { selection in
-                    documentSession.readSelection = selection
-                }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
+        Group {
+            if isEditing {
+                bodyEditor
+            } else if ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_NATIVE_READ"] != "1",
+                      renderedReadFingerprint == noteFingerprint.sha256,
+                      !renderedReadHTML.isEmpty,
+                      failedReadFingerprint != noteFingerprint.sha256 {
+                readDocumentSurface
+            } else {
+                NativeMarkdownReadView(
+                    source: note.rawContent,
+                    textScale: state.documentTextScale,
+                    topContentInset: ScholiumMetrics.ContextSurface.initialOverlayClearance,
+                    onLinkClick: {
+                        actions.openInternalLink($0)
+                    },
+                    onRequestComment: commentingIsAvailable ? { selection in
+                        actions.requestComments(selection, nil)
+                    } : nil,
+                    onSelectionChange: { selection in
+                        documentSession.readSelection = selection
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+            }
         }
+        .scholiumSurface(.document)
     }
 
     private var readDocumentSurface: some View {
@@ -882,9 +889,9 @@ struct NoteContentView: View {
                 documentContextControls
             }
         }
-        // The controls, Properties strip, expanded panel, and document all
-        // share one centered 920-point measure. This view floats above the
-        // scrolling document rather than reserving an opaque toolbar band.
+        // The controls, Properties strip, expanded panel, and document share
+        // one centered 920-point measure. The paper apparatus initially clears
+        // the prose, while later scrolling content can travel beneath it.
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
     }
@@ -950,9 +957,12 @@ struct NoteContentView: View {
             width: ScholiumMetrics.ContextSurface.leadingControlsWidth,
             height: ScholiumMetrics.ContextSurface.controlHeight
         )
-        .scholiumGlassSurface(
+        .scholiumEditorialSurface(
             .floatingControl,
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.documentContextControls")
@@ -1339,7 +1349,7 @@ struct NoteHistorySheet: View {
                         Label("Hide Note History", systemImage: "xmark")
                             .labelStyle(.iconOnly)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.borderless)
                     .help("Hide Note History")
                 }
             }

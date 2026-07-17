@@ -37,10 +37,11 @@ cordovan midtones with parchment and luminous copper. Both prompts explicitly
 excluded text, figures, logos, books, document details, icons, windows,
 controls, and watermarks.
 
-The generated 1586 by 992 PNGs were resized to the approved 3200 by 2000
-resource dimensions and converted to the sRGB IEC61966-2.1 profile. The
-artwork is decorative, appears only behind Library navigation, and is hidden
-when Reduce Transparency is enabled.
+The generated 1586 by 992 PNGs were resized to the formerly approved 3200 by
+2000 resource dimensions and converted to the sRGB IEC61966-2.1 profile. The
+later Scholarly Editorialism decision superseded their runtime use. They remain
+tracked as historical authored resources, but current production source does
+not load or present them behind the Library or elsewhere in the interface.
 
 | Resource | SHA-256 |
 | --- | --- |

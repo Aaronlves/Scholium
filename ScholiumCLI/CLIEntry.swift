@@ -5,10 +5,11 @@ import Foundation
 @main
 struct ScholiumCLI {
     static func main() async {
+        let arguments = Array(CommandLine.arguments.dropFirst())
         do {
-            try await run(Array(CommandLine.arguments.dropFirst()))
+            try await run(arguments)
         } catch {
-            writeError("scholium: \(error.localizedDescription)\n")
+            writeCLIError(error, arguments: arguments)
             exit(1)
         }
     }
@@ -19,9 +20,19 @@ struct ScholiumCLI {
             return
         }
 
+        if try renderMetaCommandIfPresent(arguments) { return }
+        try validateCLIArguments(arguments)
+
         switch command {
-        case "help", "--help", "-h":
-            printHelp()
+        case "doctor":
+            let context = try await CLIContext.make()
+            do {
+                try await runDoctor(Array(arguments.dropFirst()), context: context)
+            } catch {
+                await context.shutdown()
+                throw error
+            }
+            await context.shutdown()
         default:
             let context = try await CLIContext.make()
             do {
@@ -47,6 +58,8 @@ struct ScholiumCLI {
                     try await runWorkflow(Array(arguments.dropFirst()), context: context)
                 case "function":
                     try await runFunction(Array(arguments.dropFirst()), context: context)
+                case "bibliography":
+                    try await runBibliography(Array(arguments.dropFirst()), context: context)
                 case "read":
                     try await runRead(Array(arguments.dropFirst()), context: context)
                 case "note":

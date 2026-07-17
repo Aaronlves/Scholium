@@ -18,12 +18,12 @@ System:
 
 - scholium-core-protocol: universal integrity and phase isolation;
 - scholium-research-integration: bounded Triptych reads, writes, and records;
-- scholium-dialogue-response: read-only-by-default Dialogue transport and response persistence;
+- scholium-dialogue-response: note-nonmutating Dialogue transport and attributed response persistence;
 - scholium-zotero-integration: bounded optional library transport.
 
 Workflow — exactly five:
 
-- scholium-development: Develop an Analysis or Topic. Exploration, concept work, argument work, synthesis, and expression are conditional methods chosen by the agent from the real burden.
+- scholium-development: Develop an Analysis or Topic. Exploration, concept work, argument work, synthesis, and expression are conditional resources selected from the real burden.
 - scholium-critique: assess an exact Work or passage read-only and write a separate Critique.
 - scholium-revision: revise the current Work, including explicit received-feedback disposition.
 - scholium-content-fidelity: run revision-bound Content checks and coordinate optional bound Citations checks read-only.
@@ -40,9 +40,9 @@ Dialogue is System transport and record infrastructure. Human Review is a resear
 
 ## Function routing
 
-Catalog supported_functions binds packages to semantic Research Function IDs. The visible function selects a function, never a package ID or internal method. Application resolves one eligible package, its dependency closure, explicit Triptych bindings, and only the conditional resources needed for the run.
+Catalog supported_functions binds packages to semantic Research Function IDs. The visible function selects a function, never a package ID or internal method. When an intellectual task needs a complete philosophical method, Application resolves exactly one eligible official Workflow or explicitly compatible complete Researcher Skill, its dependency closure, explicit Triptych bindings, and only the conditional resources needed for the run. System Skills are transport and integrity authorities, not philosophical methods; Practices only supplement the primary method. Direct Source Analysis may use Source Analyzer without a Research Function.
 
-Legacy supported_modes remains for older records and internal method compatibility. It is not interface language or write permission. A one-click run with conditional methods first produces a read-only preflight containing the complete primary method. After inspecting the real work, the external agent finalizes an explicit semantic selection—including an empty selection when the primary method is sufficient—through the function API. The same run then records whole-package revisions and the exact conditional resources attached to its immutable execution packet.
+Legacy supported_modes remains for older records and internal compatibility. It is not interface language or write permission. A one-click run with conditional resources first produces a read-only preflight containing the complete primary method. After inspecting the real work, the external agent finalizes an explicit semantic selection—including an empty selection when the primary method is sufficient—through the function API. The same run then records whole-package revisions and the exact conditional resources attached to its immutable execution packet.
 
 Function boundaries:
 
@@ -52,7 +52,14 @@ Function boundaries:
 - Fidelity: every Target role read-only; Content always available, Citations capability-bound.
 - Manuscript: current Work Target only; every phase independently prepared.
 
-Dialogue is read-only unless an explicit note-changing request is promoted through the function API to Develop or Revise. Write-capable functions require a Before Agent Work checkpoint and end with a pending revision-specific Fidelity handoff. Scholium has no embedded agent runtime, so awaiting or missing Fidelity must never be presented as an automatic audit.
+Dialogue is note-nonmutating by default: it may read the fixed Target and Materials and append an attributed response to Dialogue/Note History. An explicit note-changing request must be promoted through the function API to Develop or Revise before mutation. Write-capable functions require a Before Agent Work checkpoint and end with a pending revision-specific Fidelity handoff. Scholium has no embedded agent runtime, so awaiting or missing Fidelity must never be presented as an automatic audit.
+
+Prepared Function JSON exposes typed, shell-safe `nextActions`. Agents recover
+state with `function show`, finalize only declared conditional resources, and
+use `function prepare-fidelity` for a changed Develop or Revise parent instead
+of reconstructing a child request. `version`, `doctor`, and hierarchical `help`
+are the cold-start discovery boundary; strict parsing never silently ignores a
+misspelled option.
 
 ## Capability and citation bindings
 
@@ -70,12 +77,16 @@ Application determines whether a bundled template is available, a valid Triptych
 An ordinary run contains:
 
 1. scholium-core-protocol;
-2. one primary Workflow package, except Dialogue and Human Review;
+2. exactly one complete primary Workflow or explicitly compatible complete Researcher Skill when the intellectual task requires one, except Dialogue and Human Review;
 3. the research-integration or Dialogue System adapters required by the operation;
 4. only explicitly selected Researcher Skills or Practices;
 5. only conditional resources actually needed.
 
 Manuscript is an orchestrator. It declares only the role-valid Work phases actually warranted from Revise, Fidelity, and optional Critique; it does not impose one universal sequence, depend on, or concatenate every Workflow package. Application resolves each needed phase independently, resets Target and Material fingerprints, evidence, permission, and write scope, and preserves a labeled handoff. Conceptual or argumentative development of the Work occurs inside Revise; Develop remains Analysis/Topic-only and never creates a second Target.
+
+## Recommended Bibliography
+
+Recommended Bibliography is an Analysis-only Research inspector capability, not a Research Function or note appendix. The bundled Source Analyzer supplies its complete default method. Application locks the Analysis revision, stores reading leads in `.scholium/recommended-bibliography.json`, distinguishes duplicate or ambiguous identities conservatively, and performs no note or Zotero write. Zero recommendations is valid. The CLI exposes `bibliography prepare`, `show`, `complete`, and `cancel`; Scholium retains normalization and duplicate discrimination rather than exposing a semantic-ranking command.
 
 ## Researcher-skill evolution
 

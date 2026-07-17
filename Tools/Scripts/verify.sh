@@ -193,11 +193,14 @@ if rg -n --glob '*.swift' '\b(struct[[:space:]]+Note|enum[[:space:]]+Frontmatter
 fi
 
 zsh -n "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh"
+zsh -n "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"
 zsh -n "${ROOT}/Tools/Scripts/package-app.sh"
 PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
-  "${ROOT}/Tools/Scripts/summarize-performance-results.py"
+  "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
+  "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
+python3 "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py" self-test
 "${ROOT}/Tools/Scripts/verify-editor-bundle.sh"
 "${ROOT}/Tools/Scripts/verify-rdf1-fixture.sh"
 swift test --package-path "${ROOT}" --scratch-path "${SCRATCH}"

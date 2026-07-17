@@ -16,10 +16,10 @@ The Application must provide a Before Agent Work checkpoint before mutation. Rec
 ## Load the method
 
 Read references/method.md completely. When the packet is marked as a
-method-selection preflight, inspect the fixed Work and Materials read-only and
-use `scholium function select-methods` to select `revision_feedback` when the
+resource-selection preflight, inspect the fixed Work and Materials read-only and
+use `scholium function select-resources` to select `revision_feedback` when the
 request includes actual received feedback, and `revision_output_contracts`
-only when a structured candidate or handoff helps. An explicit empty selection
+only when a structured candidate or handoff helps. An explicit empty `resources` selection
 keeps the complete primary method alone. Execute only the finalized packet and
 never retrieve an unattached reference through the generic skills command.
 
@@ -32,7 +32,7 @@ When the request is limited to meaning-preserving prose improvement, an explicit
 3. Distinguish researcher commitments, source positions, Critique findings, received feedback, Dialogue, and agent proposals.
 4. Build or repair the logical, interpretive, explanatory, or dialectical route before polishing prose.
 5. Verify load-bearing source use or leave explicit checks.
-6. When feedback is present, preserve each item, recommend or record a disposition, and revise only accepted or explicitly authorized items.
+6. When feedback is present, preserve each item and distinguish an agent-recommended disposition, a researcher-confirmed decision, and task-authorized implementation. A recommendation never becomes the researcher's decision silently; revise only confirmed or explicitly authorized items.
 7. Recheck thesis, scope, modality, terminology, source roles, objections, replies, and untouched Markdown.
 8. Return the final fingerprint with a pending Fidelity handoff. Do not say the edit was automatically audited.
 

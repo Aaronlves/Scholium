@@ -50,7 +50,7 @@ struct SidebarContext {
 
 struct SidebarView: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let context: SidebarContext
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
@@ -157,7 +157,7 @@ struct SidebarView: View {
                 visibleAttentionCount.map { "\($0) items" } ?? "Loading"
             )
 
-            Divider().opacity(0.15)
+            ScholiumStructuralRule()
 
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
@@ -214,8 +214,7 @@ struct SidebarView: View {
                 }
             }
 
-            Divider()
-                .opacity(0.5)
+            ScholiumStructuralRule()
 
             unclassifiedNavigation
 
@@ -357,9 +356,14 @@ struct SidebarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .glassEffect(
-            lifecycleOverlayScope == scope ? .regular.interactive() : .identity,
-            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+        .background(
+            lifecycleOverlayScope == scope
+                ? ScholiumColorRole.raisedSurfaceBackground.color
+                : Color.clear,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
         )
         .accessibilityAddTraits(lifecycleOverlayScope == scope ? .isSelected : [])
         .accessibilityIdentifier(
@@ -665,7 +669,7 @@ struct SidebarView: View {
                 )
             }
             .menuStyle(.button)
-            .buttonStyle(.glass)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .help(libraryFilterHelp)
             .accessibilityLabel("Library filters")
@@ -821,7 +825,7 @@ struct SidebarView: View {
 }
 
 private struct SidebarLifecycleCard: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
 
     let scope: NoteLocationScope
     let items: [LifecycleLocationItem]
@@ -944,10 +948,16 @@ private struct SidebarLifecycleCard: View {
             }
         }
         .frame(minHeight: 170, idealHeight: 280, maxHeight: 360)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .scholiumMaterialSurface(
+        .clipShape(RoundedRectangle(
+            cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+            style: .continuous
+        ))
+        .scholiumEditorialSurface(
             .boundedPanel,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
@@ -1096,7 +1106,7 @@ private struct UnclassifiedClassificationRow: View {
 
     private var classifyButton: some View {
         Button("Classify") { performClassification() }
-            .buttonStyle(.glass)
+            .buttonStyle(.borderedProminent)
             .disabled(isClassifying)
     }
 
@@ -1271,7 +1281,7 @@ private struct SidebarTreeContext {
 }
 
 private struct TreeNodeView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let node: TreeNode
     @Binding var expandedFolders: Set<String>
     let selectedDocumentPath: String?
@@ -1524,7 +1534,7 @@ struct NoteCardRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(note.title ?? note.displayName)
-                        .font(.body)
+                        .font(ScholiumInterfaceTypography.noteTitle)
                         .fontWeight(isActive ? .semibold : .regular)
                         .lineLimit(1)
                         .foregroundStyle(.primary)
@@ -1551,7 +1561,19 @@ struct NoteCardRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(isActive ? ScholiumColorRole.accent.color.opacity(0.14) : Color.clear)
+        .background(
+            isActive ? ScholiumColorRole.raisedSurfaceBackground.color : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
+        .overlay(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(ScholiumColorRole.accent.color)
+                    .frame(width: 3)
+                    .padding(.vertical, 5)
+                    .accessibilityHidden(true)
+            }
+        }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 

@@ -17,10 +17,10 @@ Default to candidate output. A direct edit requires explicit current-task permis
 
 Read references/method.md completely.
 
-When the packet is marked as a method-selection preflight, inspect the Target
+When the packet is marked as a resource-selection preflight, inspect the Target
 and Materials read-only, choose the semantic conditional references warranted
-by the real work, and call `scholium function select-methods` with the same run
-and confirmation token. An explicit empty `methods` array means the complete
+by the real work, and call `scholium function select-resources` with the same run
+and confirmation token. An explicit empty `resources` array means the complete
 primary method is sufficient, including ordinary concept clarification or
 argument construction and repair. Execute only the finalized packet. Do not
 load an unattached conditional reference with `scholium skills show`, because
@@ -38,14 +38,14 @@ These are internal method choices, not researcher-facing modes. Combine them onl
 
 ## Apply selected Practices
 
-Load only an explicitly selected researcher-owned Practice and its composition rules. Record the exact package and resource revisions. A Practice may refine attention but cannot widen evidence, scope, or permission.
+Load the Philosophical Practices package entry and only explicitly selected Practice files. Record exact revisions. Consider each selected Practice flexibly as a supplement; it cannot replace this complete method or widen evidence, scope, or permission.
 
 ## Execute
 
 1. Preserve the researcher's question, commitments, uncertainty, and source terminology.
 2. Identify the exact philosophical object and its present epistemic status.
 3. Choose the smallest method that resolves the real burden.
-4. Distinguish source-explicit content, reconstruction, researcher commitment, and agent proposal.
+4. Distinguish authorial self-positioning, the researcher's map, source-explicit content, the agent's reconstruction, independently verified debate context, researcher commitment, and agent proposal. If no researcher position is supplied, provide neutral orientation rather than inventing one.
 5. Test the strongest relevant pressure, alternative, or missing support.
 6. State what the candidate preserves, changes, costs, and leaves unresolved.
 7. Edit only the authorized Target range after a fresh fingerprint check; otherwise return candidates.

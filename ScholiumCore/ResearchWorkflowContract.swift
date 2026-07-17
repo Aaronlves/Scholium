@@ -48,11 +48,7 @@ public enum ResearchWorkflowAssembler {
                         "Practice \(selection.selectionID) is not declared by its package."
                     )
                 }
-                selectedPaths[package.id, default: []].formUnion([
-                    "references/FOUNDATIONAL-DIMENSIONS.md",
-                    "references/COMPOSITION-RULES.md",
-                    reference,
-                ])
+                selectedPaths[package.id, default: []].insert(reference)
             }
 
             let packages = try await store.resolvedFunctionPackages(
@@ -72,9 +68,10 @@ public enum ResearchWorkflowAssembler {
                     .flatMap(\.compatiblePracticeIDs)
             )
             for selection in phase.selectedPractices
-            where !compatible.isEmpty && !compatible.contains(selection.practiceID) {
-                warnings.append(
-                    "Practice \(selection.selectionID) is explicitly selected but is not listed as compatible with the phase's official Workflow Skill. Compatibility is advisory; preserve the methodological difference."
+            where selection.application == .supplement
+                && !compatible.contains(selection.practiceID) {
+                blocking.append(
+                    "Practice \(selection.selectionID) is incompatible with the complete primary method for this phase and requires Research Guidance repair."
                 )
             }
 
@@ -219,14 +216,11 @@ public enum ResearchWorkflowAssembler {
                         "Practice \(selection.selectionID) is not declared by its package."
                     )
                 }
-                selectedPaths[package.id, default: []].formUnion([
-                    "references/FOUNDATIONAL-DIMENSIONS.md",
-                    "references/COMPOSITION-RULES.md",
-                    reference,
-                ])
-                if !compatible.isEmpty, !compatible.contains(selection.practiceID) {
-                    warnings.append(
-                        "Practice \(selection.selectionID) is explicitly selected but is not listed as compatible with the phase's official Workflow Skill. Compatibility is advisory; preserve the methodological difference."
+                selectedPaths[package.id, default: []].insert(reference)
+                if selection.application == .supplement,
+                   !compatible.contains(selection.practiceID) {
+                    blocking.append(
+                        "Practice \(selection.selectionID) is incompatible with the complete primary method for this phase and requires Research Guidance repair."
                     )
                 }
             }
@@ -303,18 +297,12 @@ public enum ResearchWorkflowAssembler {
         in selections: [ResearchPracticeSelection]
     ) -> [String] {
         let replacements = selections.filter { $0.application == .replace }
-        let groups = Dictionary(grouping: replacements) {
-            "\($0.officialSkillID ?? "")::\($0.editablePoint ?? "")"
+        guard replacements.isEmpty else {
+            return [
+                "Legacy replacement Practices require repair. Practices may supplement a complete method only; use a complete independent Researcher Skill when replacing the primary method."
+            ]
         }
-        return groups.values.compactMap { group in
-            guard group.count > 1 else { return nil }
-            let precedence = group.compactMap(\.precedence)
-            guard precedence.count == group.count,
-                  Set(precedence).count == group.count else {
-                return "Replacement Practices \(group.map(\.selectionID).joined(separator: ", ")) target the same editable point without unique researcher-declared precedence. Stop for researcher judgment."
-            }
-            return nil
-        }
+        return []
     }
 
     private static func render(

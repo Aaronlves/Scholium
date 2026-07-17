@@ -20,7 +20,7 @@ The five Workflow packages now match the five skill-backed functions:
 | Fidelity | scholium-content-fidelity | Every Target role read-only; audit outcome only |
 | Manuscript | scholium-manuscript | Orchestrates the smallest declared plan of isolated Revise, Fidelity, and optional Critique; current Work remains the only document Target |
 
-Dialogue is protected System transport and remains read-only unless the external agent promotes an explicit edit request to Develop or Revise. Human Review has no skill. Source Analysis and Researcher-skill evolution are outside the Workflow set. Source Analyzer is instead a complete copy-on-adoption Researcher Skill that an external agent may use directly; it has no `supported_functions`, Strip control, note-write permission, or dependency on Scholium storing the source.
+Dialogue is protected System transport and remains note-nonmutating unless the external agent promotes an explicit edit request to Develop or Revise. It may append an attributed Response to Dialogue or Note History. Human Review has no skill. Source Analysis and Researcher-skill evolution are outside the Workflow set. Source Analyzer is instead a complete copy-on-adoption Researcher Skill that an external agent may use directly; it has no `supported_functions`, Strip control, note-write permission, or dependency on Scholium storing the source.
 
 This is the smallest package partition that preserves incompatible epistemic purposes and write boundaries. In particular, Critique and Revision must not share one package: the former assesses independently and the latter changes the Work.
 
@@ -53,7 +53,7 @@ Fail a case if the agent:
 Use disposable nonprivate Triptychs and record exact Target and Material fingerprints, package revisions, loaded resources, write set, output fingerprint, audit key, and researcher verdict.
 
 1. Analyze one complete paper and one partial source with Source Analyzer; confirm three distinct source passes, exact access boundaries, layer separation, and no Scholium function or note mutation.
-2. Run Source Analyzer with each declared Practice attention profile; confirm the selected weights normalize to 100%, every selected lens is genuinely applied, and visible section length does not masquerade as attention allocation.
+2. Run Source Analyzer with each compatible Practice alone and in combination; confirm every selected lens is genuinely considered, materially changes the method when warranted, can return no finding, creates no filler, and exposes no numerical allocation ledger.
 3. Develop an Analysis question with incomplete source access and confirm the output narrows rather than invents.
 4. Synthesize three Analyses into a Topic and confirm relation evidence and read-only Materials.
 5. Critique a whole Work, then a passage, and confirm only a separate Critique record changes.
@@ -63,10 +63,12 @@ Use disposable nonprivate Triptychs and record exact Target and Material fingerp
 9. Prepare the same Fidelity key twice and confirm audit deduplication; change one evidence Material and confirm staleness.
 10. Run Manuscript through several declared plans—including Revision plus final Fidelity and a plan with optional Critique—and verify phase isolation, no eager preparation of later phases, and one writable Work Target.
 11. Ask Dialogue to edit an Analysis and a Work and confirm promotion to Develop and Revise occurs through the function API.
-12. Run Dialogue with all five optional modules; confirm each receives 20% of the optional-module attention budget while the Response remains concise and creates no filler.
+12. Run Dialogue with all five optional modules; confirm every module is genuinely considered, the agent allocates effort flexibly, the Response remains concise, no module is silently skipped, and no filler or numerical allocation appears.
 13. Evolve an opted-in local Researcher Skill after passing evaluation, restore its snapshot, then test stale revision, symlink, nested-resource, and failed-evaluation rejection.
 14. Attempt to evolve bundled Core, Revision, and the generated mirror and confirm refusal.
 15. Request a Zotero-only source without accessible text and confirm no philosophical reconstruction is fabricated.
+16. Run Research Explorer with no researcher position and confirm neutral orientation plus structured candidate-gap records; require documented repositories, queries, languages, dates, and inclusion basis before `field-verified`.
+17. Complete Recommended Bibliography with zero candidates and with reference-list, cited, discussed, appraised, metadata-verified, and source-inspected candidates; confirm the distinctions survive, unread sources receive no rating, and the list remains outside notes and Zotero.
 
 ## Trial record
 
@@ -86,4 +88,4 @@ For each trial preserve:
 
 ## Beta decision rule
 
-Do not call the architecture field-ready because files parse or tests pass. It is ready only when these trials show that function selection is understandable, packages load selectively, philosophical methods remain distinct, direct edits stay bounded, source and researcher layers remain visible, citation binding fails honestly, and every conflict or incomplete audit stops without fabricated success.
+Automated cases certify routing, transport, fidelity, permissions, and safeguards—not philosophical quality. Do not call the architecture field-ready because files parse or tests pass. It is ready only when these trials and researcher-led philosophical field judgments show that function selection is understandable, packages load selectively, methods remain useful and distinct, direct edits stay bounded, evidential layers remain visible, citation binding fails honestly, and every conflict or incomplete audit stops without fabricated success.

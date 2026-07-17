@@ -161,13 +161,6 @@ struct ResearchSkillStoreTests {
             atomically: true,
             encoding: .utf8
         )
-        for name in ["FOUNDATIONAL-DIMENSIONS.md", "COMPOSITION-RULES.md"] {
-            try "# \(name)\n".write(
-                to: references.appendingPathComponent(name),
-                atomically: true,
-                encoding: .utf8
-            )
-        }
         let outside = fixture.root.appendingPathComponent("Reviewer.md")
         try "# Linked reviewer\n".write(to: outside, atomically: true, encoding: .utf8)
         try FileManager.default.createSymbolicLink(
@@ -499,9 +492,6 @@ struct ResearchSkillStoreTests {
         #expect(!cycleA.isValid)
         #expect(cycleA.validationIssues.contains { $0.contains("cycle") })
         #expect(!practices.isValid)
-        #expect(practices.validationIssues.contains {
-            $0.contains("FOUNDATIONAL-DIMENSIONS")
-        })
         #expect(practices.validationIssues.contains { $0.contains("Reviewer.md") })
         await #expect(throws: ResearchSkillError.self) {
             _ = try await store.resolvedPackages(
@@ -530,8 +520,8 @@ struct ResearchSkillStoreTests {
         #expect(copy.practiceResources["reviewer"] == "references/Reviewer.md")
         #expect(source.contains("scholium:"))
         #expect(source.contains("practice_resources:"))
-        #expect(paths.contains("references/FOUNDATIONAL-DIMENSIONS.md"))
-        #expect(paths.contains("references/COMPOSITION-RULES.md"))
+        #expect(!paths.contains("references/FOUNDATIONAL-DIMENSIONS.md"))
+        #expect(!paths.contains("references/COMPOSITION-RULES.md"))
         #expect(paths.contains("references/Reviewer.md"))
         #expect(copy.isValid)
     }

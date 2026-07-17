@@ -23,8 +23,8 @@ enum ScholiumLibraryVisibilityPolicy {
 
 struct ContentView: View {
     @EnvironmentObject var appState: WindowModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -110,7 +110,13 @@ struct ContentView: View {
                 .font(.caption)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .scholiumGlassSurface(.floatingControl, in: Capsule())
+                .scholiumEditorialSurface(
+                    .floatingControl,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .padding(10)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("scholium.refreshStatus")
@@ -229,6 +235,22 @@ struct ContentView: View {
             },
             didConfirmZoteroSource: { title in
                 appState.showToast("Zotero source confirmed for \(title).")
+            },
+            copyResearchText: { text in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                appState.showToast("Research instructions copied.")
+            },
+            repairBibliographyMethod: {
+                UserDefaults.standard.set(
+                    WorkspaceSettingsPane.researchGuidance.rawValue,
+                    forKey: "scholium.settings.selectedPane"
+                )
+                UserDefaults.standard.set(
+                    "skills",
+                    forKey: "scholium.settings.researchGuidanceCollection"
+                )
+                openSettings()
             }
         )
     }
@@ -913,8 +935,6 @@ struct ContentView: View {
 }
 
 private struct LibrarySurface<Content: View>: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorScheme) private var colorScheme
     let isElevatedOverDocument: Bool
     let content: Content
 
@@ -927,54 +947,16 @@ private struct LibrarySurface<Content: View>: View {
     }
 
     var body: some View {
-        ZStack {
-            NavigationAtmosphere(
-                colorScheme: colorScheme,
-                reduceTransparency: reduceTransparency
-            )
-
-            content
-                .background(Color.clear)
-                .clipShape(panelShape)
-                .scholiumMaterialSurface(
-                    .navigation,
-                    in: panelShape,
-                    boundary: .floatingBoundary,
-                    elevation: .triptychEdge
-                )
-                .backgroundExtensionEffect()
-                .padding(.horizontal, ScholiumMetrics.Navigation.panelInset)
-                .padding(.bottom, ScholiumMetrics.Navigation.panelInset)
-        }
+        content
+            .scholiumSurface(.navigation)
+            .overlay(alignment: .trailing) {
+                ScholiumStructuralRule(orientation: .vertical)
+            }
+            .ignoresSafeArea(.container, edges: .top)
             .zIndex(isElevatedOverDocument ? 2 : 0)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Library")
             .accessibilityIdentifier("scholium.librarySurface")
-    }
-
-    private var panelShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: ScholiumMetrics.Navigation.panelCornerRadius,
-            style: .continuous
-        )
-    }
-}
-
-private struct NavigationAtmosphere: View {
-    let colorScheme: ColorScheme
-    let reduceTransparency: Bool
-
-    var body: some View {
-        ZStack {
-            ScholiumColorRole.navigationBackground.color
-            if !reduceTransparency {
-                NavigationBackdropView(colorScheme: colorScheme)
-                Rectangle().fill(.regularMaterial)
-            }
-        }
-        .ignoresSafeArea(.container, edges: .top)
-        .accessibilityHidden(true)
-        .allowsHitTesting(false)
     }
 }
 
@@ -1001,36 +983,6 @@ private struct TriptychActionsMenu: View {
         .help("Triptych management")
         .accessibilityLabel("Triptych management")
         .accessibilityIdentifier("scholium.triptychManagement")
-    }
-}
-
-private struct NavigationBackdropView: View {
-    let colorScheme: ColorScheme
-
-    var body: some View {
-        GeometryReader { geometry in
-            if let artwork {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
-            }
-        }
-        .accessibilityHidden(true)
-        .allowsHitTesting(false)
-    }
-
-    private var artwork: NSImage? {
-        let name = colorScheme == .dark
-            ? "ScholiumNavigationBackdropDark"
-            : "ScholiumNavigationBackdropLight"
-        let url = Bundle.module.url(
-            forResource: name,
-            withExtension: "png",
-            subdirectory: "Artwork"
-        ) ?? Bundle.module.url(forResource: name, withExtension: "png")
-        return url.flatMap(NSImage.init(contentsOf:))
     }
 }
 
@@ -1079,7 +1031,7 @@ private struct FeaturedArtworkDetailView: View {
 
 private struct SpotlightSearchOverlay: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     let context: SpotlightSearchContext
 
     init(controller: DiscoveryController, context: SpotlightSearchContext) {
@@ -1090,14 +1042,12 @@ private struct SpotlightSearchOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .top) {
-                if reduceTransparency {
-                    Rectangle()
-                        .fill(ScholiumColorRole.documentBackground.color.opacity(0.97))
-                } else {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(Color.black.opacity(0.08))
-                }
+                Rectangle()
+                    .fill(
+                        reduceTransparency
+                            ? ScholiumColorRole.documentBackground.color
+                            : ScholiumColorRole.primaryText.color.opacity(0.12)
+                    )
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture(perform: context.dismiss)
@@ -1108,7 +1058,8 @@ private struct SpotlightSearchOverlay: View {
                     context: context,
                     maxPanelHeight: max(
                         ScholiumMetrics.Search.collapsedHeight,
-                        geometry.size.height - (ScholiumMetrics.Search.responsiveMargin * 2)
+                        geometry.size.height
+                            - (ScholiumMetrics.Search.responsiveMargin * 2)
                     )
                 )
                     .frame(width: panelWidth(for: geometry.size.width))
@@ -1116,7 +1067,6 @@ private struct SpotlightSearchOverlay: View {
                     .padding(.top, ScholiumMetrics.Search.responsiveMargin)
             }
         }
-        .ignoresSafeArea()
         .accessibilityAddTraits(.isModal)
         .accessibilityValue(searchPresentationValue)
         .accessibilityIdentifier("scholium.searchWorkspace")
@@ -1183,9 +1133,12 @@ private struct LoadingOverlay: View {
         ProgressView("Opening vault…")
             .controlSize(.large)
             .padding(28)
-            .scholiumGlassSurface(
+            .scholiumEditorialSurface(
                 .floatingControl,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.loadingSurfaceCornerRadius,
+                    style: .continuous
+                )
             )
             .accessibilityAddTraits(.isModal)
     }
@@ -1207,7 +1160,13 @@ struct ToastView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
-        .scholiumGlassSurface(.floatingControl, in: Capsule())
+        .scholiumEditorialSurface(
+            .floatingControl,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                style: .continuous
+            )
+        )
         .accessibilityElement(children: .combine)
     }
 }

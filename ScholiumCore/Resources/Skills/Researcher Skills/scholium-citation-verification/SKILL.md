@@ -44,6 +44,7 @@ Read [references/verification-method.md](references/verification-method.md) comp
 ```text
 Citation or source:
 Verification focus:
+Verification status: verified | provisional | unavailable
 Source version or edition:
 Metadata status:
 Quotation status:
@@ -57,3 +58,7 @@ Next verification step:
 ```
 
 Never invent bibliographic details, quotations, locators, DOI or ISBN values, publication facts, source positions, or style-specific punctuation. If the source text is unavailable, do not claim that a quotation, locator, or source-support relation has been verified.
+
+Use `verified` only when the requested atomic questions were checked against sufficient evidence. Use `provisional` when some useful check was possible but access, identity, edition, locator, or context remains incomplete. Use `unavailable` when the requested verification could not responsibly be performed. State which fields remain unresolved.
+
+Handle chapters in edited volumes, editions and translations, canonical locators, complete author order, same-author/year disambiguation, and quotation versus close paraphrase as distinct boundary cases. Do not collapse chapter authorship into volume editorship or silently transfer a locator across editions.

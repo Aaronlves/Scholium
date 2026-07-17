@@ -35,7 +35,9 @@ struct CLIApplicationDelegationTests {
         #expect(sources.entry.contains(#"case "function":"#))
         #expect(sources.function.contains("handle.research.availableFunctions(for: target)"))
         #expect(sources.function.contains("handle.research.prepareFunction(request)"))
-        #expect(sources.function.contains("handle.research.selectFunctionMethods(submission)"))
+        #expect(sources.function.contains("handle.research.functionRun(id: runID)"))
+        #expect(sources.function.contains("handle.research.prepareAutomaticFidelity("))
+        #expect(sources.function.contains("handle.research.selectFunctionResources(submission)"))
         #expect(sources.function.contains("handle.research.completeFunction(submission)"))
         #expect(sources.function.contains("handle.research.cancelFunction(runID: runID)"))
         #expect(!sources.function.contains("import " + "ScholiumCore"))
@@ -59,7 +61,7 @@ struct CLIApplicationDelegationTests {
             target: target,
             instruction: "Strengthen only the stated inference.",
             scope: .whole,
-            methods: [.revisionFeedback]
+            conditionalResources: [.revisionFeedback]
         )
         let submission = ResearchFunctionCompletionSubmission(
             runID: UUID(),
@@ -75,10 +77,10 @@ struct CLIApplicationDelegationTests {
             childRunIDs: [UUID()],
             submittedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        let methodSelection = ResearchFunctionMethodSelectionSubmission(
+        let methodSelection = ResearchFunctionResourceSelectionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
-            methods: [.revisionFeedback]
+            resources: [.revisionFeedback]
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -95,9 +97,24 @@ struct CLIApplicationDelegationTests {
             from: encoder.encode(submission)
         ) == submission)
         #expect(try decoder.decode(
-            ResearchFunctionMethodSelectionSubmission.self,
+            ResearchFunctionResourceSelectionSubmission.self,
             from: encoder.encode(methodSelection)
         ) == methodSelection)
+    }
+
+    @Test("Bibliography CLI is a thin Contracts-to-Application adapter")
+    func bibliographyCommandsDelegateWithoutPolicy() throws {
+        let sources = try CLISources.load()
+
+        #expect(sources.entry.contains(#"case "bibliography":"#))
+        #expect(sources.bibliography.contains("handle.research.prepareRecommendation(request)"))
+        #expect(sources.bibliography.contains("handle.research.recommendationRequest(id: requestID)"))
+        #expect(sources.bibliography.contains("handle.research.completeRecommendation(submission)"))
+        #expect(sources.bibliography.contains("handle.research.cancelRecommendation(id: requestID)"))
+        #expect(!sources.bibliography.contains("import " + "ScholiumCore"))
+        #expect(!sources.bibliography.contains("bibliographyRecommendation"))
+        #expect(!sources.bibliography.contains("zotero.resolve"))
+        #expect(!sources.bibliography.contains("recommended-bibliography.json"))
     }
 
     @Test("Search, catalog, read, and lifecycle output schemas remain stable")
@@ -139,6 +156,7 @@ private struct CLISources {
     let document: String
     let zotero: String
     let function: String
+    let bibliography: String
 
     static func load() throws -> Self {
         let root = URL(fileURLWithPath: #filePath)
@@ -169,6 +187,12 @@ private struct CLISources {
             ),
             function: String(
                 contentsOf: cli.appendingPathComponent("ResearchFunctionCommandHandler.swift"),
+                encoding: .utf8
+            ),
+            bibliography: String(
+                contentsOf: cli.appendingPathComponent(
+                    "RecommendedBibliographyCommandHandler.swift"
+                ),
                 encoding: .utf8
             )
         )

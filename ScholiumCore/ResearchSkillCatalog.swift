@@ -13,11 +13,7 @@ public enum BundledResearchSkillLibrary {
         let catalog = try ResearchSkillCatalog.parse(yaml: yaml)
         for entry in catalog.entries where !entry.practiceResources.isEmpty {
             let available = Set(try resourcePaths(for: entry))
-            for required in [
-                "SKILL.md",
-                "references/FOUNDATIONAL-DIMENSIONS.md",
-                "references/COMPOSITION-RULES.md",
-            ] where !available.contains(required) {
+            for required in ["SKILL.md"] where !available.contains(required) {
                 throw ResearchSkillCatalogError.resourceMissing(
                     "\(entry.resourcePath)/\(required)"
                 )

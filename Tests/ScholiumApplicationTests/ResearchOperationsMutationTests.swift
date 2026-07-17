@@ -452,9 +452,9 @@ struct ResearchFunctionOperationsTests {
         #expect(packet.contains("\"utf8Range\""))
         #expect(packet.contains(commentID.uuidString))
         #expect(packet.contains("Preserve the distinction between textual support and reconstruction."))
-        #expect(preparation.awaitsMethodSelection)
-        #expect(packet.contains("read-only method-selection preflight"))
-        #expect(packet.contains("scholium function select-methods"))
+        #expect(preparation.awaitsResourceSelection)
+        #expect(packet.contains("## Finalize conditional resources"))
+        #expect(packet.contains("scholium function select-resources"))
         #expect(!packet.contains("scholium function complete --from"))
         #expect(packet.contains("scholium function cancel"))
         #expect(try await handle.snapshot().research.functionRuns.first {
@@ -463,8 +463,8 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("External method selection finalizes the same run with only exact conditional resources")
-    func methodSelectionFinalizesSameRun() async throws {
+    @Test("External resource selection finalizes the same run with only exact conditional resources")
+    func resourceSelectionFinalizesSameRun() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -502,20 +502,20 @@ struct ResearchFunctionOperationsTests {
                     confirmationToken: preflight.snapshot.confirmationToken,
                     finalTargetFingerprint: target.fingerprint,
                     finalMaterialFingerprints: [material.noteID: material.fingerprint],
-                    summary: "This must not bypass method selection.",
+                    summary: "This must not bypass resource selection.",
                     didModifyTarget: false
                 )
             )
         }
 
-        let submission = ResearchFunctionMethodSelectionSubmission(
+        let submission = ResearchFunctionResourceSelectionSubmission(
             runID: preflight.runID,
             confirmationToken: preflight.snapshot.confirmationToken,
-            methods: [.developmentSynthesis]
+            resources: [.developmentSynthesis]
         )
-        let finalized = try await handle.research.selectFunctionMethods(submission)
-        #expect(!finalized.awaitsMethodSelection)
-        #expect(finalized.snapshot.request.methods == [.developmentSynthesis])
+        let finalized = try await handle.research.selectFunctionResources(submission)
+        #expect(!finalized.awaitsResourceSelection)
+        #expect(finalized.snapshot.request.conditionalResources == [.developmentSynthesis])
         #expect(finalized.runID == preflight.runID)
         #expect(finalized.snapshot.recordID == preflight.snapshot.recordID)
         #expect(finalized.snapshot.checkpointID == preflight.snapshot.checkpointID)
@@ -532,15 +532,15 @@ struct ResearchFunctionOperationsTests {
         #expect(!finalizedResources.contains("references/expression.md"))
         #expect(try await handle.research.checkpoints().checkpoints.count == checkpointCount)
 
-        let repeated = try await handle.research.selectFunctionMethods(submission)
+        let repeated = try await handle.research.selectFunctionResources(submission)
         #expect(repeated.snapshot == finalized.snapshot)
         #expect(repeated.instructions == finalized.instructions)
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.selectFunctionMethods(
-                ResearchFunctionMethodSelectionSubmission(
+            _ = try await handle.research.selectFunctionResources(
+                ResearchFunctionResourceSelectionSubmission(
                     runID: preflight.runID,
                     confirmationToken: preflight.snapshot.confirmationToken,
-                    methods: [.developmentExploration]
+                    resources: [.developmentExploration]
                 )
             )
         }
@@ -552,14 +552,14 @@ struct ResearchFunctionOperationsTests {
                 materials: [material]
             )
         )
-        let baseOnly = try await handle.research.selectFunctionMethods(
-            ResearchFunctionMethodSelectionSubmission(
+        let baseOnly = try await handle.research.selectFunctionResources(
+            ResearchFunctionResourceSelectionSubmission(
                 runID: baseOnlyPreflight.runID,
                 confirmationToken: baseOnlyPreflight.snapshot.confirmationToken,
-                methods: []
+                resources: []
             )
         )
-        #expect(baseOnly.snapshot.request.methods == [])
+        #expect(baseOnly.snapshot.request.conditionalResources == [])
         #expect(!baseOnly.snapshot.phases.flatMap(\.skills)
             .flatMap(\.loadedResources).contains {
                 $0.relativePath == "references/synthesis.md"
@@ -581,11 +581,11 @@ struct ResearchFunctionOperationsTests {
         let checkpointCountBeforeStaleSelection = try await handle.research
             .checkpoints().checkpoints.count
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.selectFunctionMethods(
-                ResearchFunctionMethodSelectionSubmission(
+            _ = try await handle.research.selectFunctionResources(
+                ResearchFunctionResourceSelectionSubmission(
                     runID: stalePreflight.runID,
                     confirmationToken: stalePreflight.snapshot.confirmationToken,
-                    methods: [.developmentSynthesis]
+                    resources: [.developmentSynthesis]
                 )
             )
         }
@@ -593,7 +593,7 @@ struct ResearchFunctionOperationsTests {
             == checkpointCountBeforeStaleSelection)
         #expect(try await handle.snapshot().research.functionRuns.first {
             $0.id == stalePreflight.runID
-        }?.snapshot.request.methods == nil)
+        }?.snapshot.request.conditionalResources == nil)
         await runtime.shutdown()
     }
 
@@ -724,7 +724,7 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .develop, target: target, methods: [])
+            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
         let original = try await handle.documents.load(fixture.analysisID)
         let saved = try await handle.documents.save(
@@ -842,7 +842,7 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis, methods: [])
+            ResearchFunctionRequest(function: .develop, target: analysis, conditionalResources: [])
         )
 
         // Even matching completed manual evidence cannot be attached to an
@@ -897,7 +897,7 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let revise = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .revise, target: work, methods: [])
+            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
         )
         let unchangedRevise = try await handle.research.completeFunction(
             ResearchFunctionCompletionSubmission(
@@ -944,7 +944,7 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .develop, target: target, methods: [])
+            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
         let original = try await handle.documents.load(fixture.analysisID)
         let saved = try await handle.documents.save(
@@ -1007,7 +1007,7 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .develop, target: target, methods: [])
+            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
         #expect(develop.snapshot.checkpointID != nil)
         #expect(develop.snapshot.phases.map(\.function) == [.develop])
@@ -1226,7 +1226,7 @@ struct ResearchFunctionOperationsTests {
         #expect(completion.fidelityEvidenceKey != nil)
 
         let develop = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .develop, target: target, methods: [])
+            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
         #expect(develop.snapshot.fidelityHandoff?.checks == [.content, .citations])
         #expect(develop.snapshot.phases.map(\.function) == [.develop])
@@ -1320,7 +1320,7 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .revise, target: work, methods: [])
+            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
         )
         let phase = try #require(preparation.snapshot.phases.first {
             $0.function == .revise
@@ -1341,6 +1341,70 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Legacy incompatible and replacement Practices expose typed repair")
+    func legacyPracticeBindingRepair() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let practices = try await handle.research.duplicateBundledSkill(
+            id: "scholium-philosophical-practices",
+            as: "my-legacy-practices"
+        )
+        let bindingURL = fixture.rootURL
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("research-skill-bindings.json")
+
+        let incompatible = """
+        {
+          "schema_version": 1,
+          "function_bindings": {},
+          "function_skill_bindings": {},
+          "function_practice_bindings": {
+            "revise": [
+              {
+                "package_id": "\(practices.id)",
+                "practice_id": "reviewer",
+                "application": "supplement"
+              }
+            ]
+          }
+        }
+        """
+        try Data(incompatible.utf8).write(to: bindingURL, options: .atomic)
+        let invalidStatus = try await handle.research
+            .researchFunctionSkillBindingStatus(for: .revise)
+        #expect(invalidStatus.issue?.code == .invalidPractice)
+        #expect(invalidStatus.issue?.selectedPracticeID == "reviewer")
+
+        let replacement = """
+        {
+          "schema_version": 1,
+          "function_bindings": {},
+          "function_skill_bindings": {},
+          "function_practice_bindings": {
+            "critique": [
+              {
+                "package_id": "\(practices.id)",
+                "practice_id": "reviewer",
+                "application": "replace",
+                "official_skill_id": "scholium-critique",
+                "editable_point": "review calibration",
+                "scope": "one Critique",
+                "reason": "legacy fixture"
+              }
+            ]
+          }
+        }
+        """
+        try Data(replacement.utf8).write(to: bindingURL, options: .atomic)
+        let replacementStatus = try await handle.research
+            .researchFunctionSkillBindingStatus(for: .critique)
+        #expect(replacementStatus.issue?.code == .legacyReplacementPractice)
+        #expect(replacementStatus.issue?.selectedPracticeID == "reviewer")
+        await runtime.shutdown()
+    }
+
     @Test("Critique completion binds a changed separate record, while Manuscript selects independent revision-specific child runs")
     func critiqueAndManuscriptChildren() async throws {
         let fixture = try await ResearchFixture.make()
@@ -1358,7 +1422,7 @@ struct ResearchFunctionOperationsTests {
                 function: .critique,
                 target: work,
                 scope: .whole,
-                methods: []
+                conditionalResources: []
             )
         )
         let critiqueOutput = try #require(critique.snapshot.preparedOutput)
@@ -1401,12 +1465,12 @@ struct ResearchFunctionOperationsTests {
         #expect(try await handle.documents.load(fixture.workID).fingerprint == work.fingerprint)
 
         let manuscript = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .manuscript, target: work, methods: [])
+            ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
         )
         #expect(manuscript.snapshot.requiredChildFunctions.isEmpty)
         #expect(!manuscript.instructions.contains("Critique, then Revise, then Fidelity"))
         let revise = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .revise, target: work, methods: [])
+            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
         )
         let workDocument = try await handle.documents.load(fixture.workID)
         let revised = try await handle.documents.save(
@@ -1485,6 +1549,83 @@ struct ResearchFunctionOperationsTests {
         #expect(completedManuscript.state == .complete)
         #expect(completedManuscript.childRunIDs == [revise.runID])
         #expect(completedManuscript.reusedFidelityRunID == revise.runID)
+        await runtime.shutdown()
+    }
+
+    @Test("Recommended Bibliography is Analysis-only, immutable, and accepts zero results")
+    func recommendedBibliographyLifecycle() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try #require(
+            try await handle.snapshot().document(id: fixture.analysisID)
+        )
+        let stableID = try #require(analysis.stableIdentity.resolvedID)
+        let target = RecommendedBibliographyTarget(
+            noteID: stableID,
+            note: fixture.analysisID,
+            fingerprint: analysis.fingerprint,
+            title: "Analysis"
+        )
+        let preparation = try await handle.research.prepareRecommendation(
+            RecommendedBibliographyRequest(
+                target: target,
+                goals: [.objections, .replies],
+                purpose: "Identify only source-grounded reading leads."
+            )
+        )
+        #expect(preparation.method.packageID == "scholium-source-analyzer")
+        #expect(preparation.method.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/bibliography-recommendations.md",
+            "references/method.md",
+            "templates/recommended-bibliography-completion.json",
+        ])
+        #expect(preparation.method.renderedResources.map(\.relativePath)
+            == preparation.method.loadedResources.map(\.relativePath))
+        #expect(preparation.method.renderedResources.allSatisfy { resource in
+            DocumentFingerprint(content: resource.source) == resource.revision
+                && preparation.instructions.contains(resource.source)
+        })
+        #expect(preparation.instructions.contains("Reading leads, not evidence"))
+        #expect(preparation.instructions.contains("\"identity\""))
+        #expect(preparation.instructions.contains("\"discussionStatus\""))
+        #expect(preparation.instructions.contains("\"requiredNextCheck\""))
+        #expect(try await handle.documents.load(fixture.analysisID).fingerprint == analysis.fingerprint)
+
+        let projection = try await handle.research.completeRecommendation(
+            RecommendedBibliographyCompletionSubmission(
+                requestID: preparation.id,
+                confirmationToken: preparation.confirmationToken,
+                targetFingerprint: analysis.fingerprint,
+                sourceScope: "Complete Analysis and its documented source scope",
+                candidates: []
+            )
+        )
+        #expect(projection.state == .complete)
+        #expect(projection.candidates.isEmpty)
+        #expect(try await handle.research.recommendations(for: target) == projection)
+        #expect(try await handle.research.recommendationOverview(for: target).result == projection)
+        #expect(try await handle.documents.load(fixture.analysisID).fingerprint == analysis.fingerprint)
+
+        let work = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        await #expect(throws: RecommendedBibliographyError.self) {
+            _ = try await handle.research.prepareRecommendation(
+                RecommendedBibliographyRequest(
+                    target: RecommendedBibliographyTarget(
+                        noteID: work.noteID,
+                        note: work.note,
+                        fingerprint: work.fingerprint,
+                        title: work.title
+                    )
+                )
+            )
+        }
         await runtime.shutdown()
     }
 }

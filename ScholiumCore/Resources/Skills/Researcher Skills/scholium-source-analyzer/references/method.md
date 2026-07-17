@@ -21,7 +21,7 @@ Keep these layers visibly separate:
 - source-supported analyst reconstruction;
 - charitable repair or bridging premise supplied by the analyst;
 - analyst objection, comparison, or evaluation;
-- project-use candidate or unread follow-up lead.
+- later-use candidate or unread bibliography lead.
 
 A plausible reconstruction is not a quotation. A charitable repair is not the author's argument. The author's account of a debate is not independently verified field history.
 
@@ -100,9 +100,9 @@ Revise from the source outward and record unresolved problems. Proofreading only
 
 Reconstruct how the author presents rivals, allies, foils, precursors, and borrowed machinery. Separate this self-positioning from independently checked context.
 
-Assign a possible research role only when supported: primary evidence, interpretation, target, rival, partial ally, conceptual resource, methodological model, case source, objection source, background, or lead. Do not infer support, criticism, influence, or participation from citation, keyword overlap, chronology, graph proximity, or similar wording.
+Propose a possible later-use role only when supported: primary evidence, interpretation, target, rival, partial ally, conceptual resource, methodological model, case source, objection source, background, or lead. Do not infer support, criticism, influence, or participation from citation, keyword overlap, chronology, graph proximity, or similar wording. The researcher decides project relevance.
 
-Unread bibliography items remain leads. A project-relevance or debate-importance rating is optional, context-bound, and requires an explicit scope plus checked comparative evidence. It is not a score of truth, quality, prestige, or reliability.
+Unread bibliography items remain unrated leads. Debate Importance is optional, must be a whole integer from 0 through 10, requires an explicit Debate Scope and sufficient checked comparative evidence, and may be assigned only after analysis. It is not project relevance, truth, quality, prestige, reliability, citation impact, or the source's self-assessment. Omit it when the conditions are absent.
 
 ## 8. Completion standard
 

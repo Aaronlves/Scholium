@@ -263,7 +263,7 @@ extension WindowDocumentLocation {
   var year: Int? { frontmatter["year"]?.appIntValue }
   var authors: [String] { frontmatter["authors"]?.appArrayValue ?? [] }
   var debateImportance: Int? {
-    guard let rating = property(at: "debate_importance")?.appIntValue,
+    guard case .integer(let rating)? = property(at: "debate_importance"),
           let contract = propertyContract(for: "debate_importance"),
           contract.containsInteger(rating) else { return nil }
     return rating
@@ -356,7 +356,14 @@ extension WindowDocumentLocation {
 
   var filterableProperties: [String: [String]] {
     var result: [String: [String]] = [:]
-    for (key, value) in frontmatter {
+    let inactiveAnalysisKeys: Set<String>
+    switch schemaProfile {
+    case .analysis, .paperAnalysisV1:
+      inactiveAnalysisKeys = ["relevance", "relevance_rating"]
+    default:
+      inactiveAnalysisKeys = []
+    }
+    for (key, value) in frontmatter where !inactiveAnalysisKeys.contains(key) {
       if case .object(let nested) = value {
         for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
           result["\(key).\(path)"] = [nestedValue]

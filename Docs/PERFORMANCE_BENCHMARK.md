@@ -22,7 +22,7 @@ Scholium keeps three kinds of performance evidence separate:
 3. **Product-gate measurements** exercise the exact packaged Release app,
    frozen RDF-1, complete user-visible boundaries, and 30 retained samples.
 
-Only the third class can satisfy PRD gate G7. A passing unit test, Debug build,
+Only the third class can satisfy specification gate G7. A passing unit test, Debug build,
 human stopwatch run, or internal engine timer must never be reported as the
 product gate.
 

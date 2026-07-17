@@ -25,7 +25,7 @@ Operation:
 Active Workflow Skill:
 Triptych selector:
 Dialogue ID: none | UUID
-Response contract source: none | request-snapshot | legacy-profile | legacy-default
+Response contract source: none | request-snapshot | dialogue-defaults | compatibility-fallback
 Input and evidential status:
 Exact read set:
 Exact write set:
@@ -56,13 +56,14 @@ Additionally:
 
 1. Resolve the selected Triptych through Scholium rather than guessing paths from folder names.
 2. Retrieve the smallest sufficient catalog, note, comment, relation, or Dialogue context.
-3. Read every existing write target with `--format json` and retain its SHA-256 fingerprint.
-4. Apply the active Workflow Skill's method while preserving evidential layers and unrelated Markdown or YAML.
-5. Recheck the exact write set, declared Research Unit, permitted property keys, status criteria, and direct-edit authorization.
-6. Write through the Scholium CLI using the expected fingerprint; stop on any revision mismatch.
-7. Reread the changed note and record its new fingerprint.
-8. Mark substantive philosophical changes for one version-bound content audit.
-9. When a Dialogue ID is present, use `scholium-dialogue-response` to compose the base academic outcome and selected response modules, then persist exactly one final Response through the CLI after completing or stopping the work.
+3. For a prepared Research Function, recover its exact state with `function show` and prefer its typed `nextActions`; do not reconstruct continuation commands from prose.
+4. Read every existing write target with `--format json` and retain its SHA-256 fingerprint.
+5. Apply the active Workflow Skill's method while preserving evidential layers and unrelated Markdown or YAML.
+6. Recheck the exact write set, declared Research Unit, permitted property keys, status criteria, and direct-edit authorization.
+7. Write through the Scholium CLI using the expected fingerprint; stop on any revision mismatch.
+8. Reread the changed note and record its new fingerprint.
+9. Mark substantive philosophical changes for one version-bound content audit. Use the returned `prepare_fidelity` action; do not manually reconstruct the child request.
+10. When a Dialogue ID is present, use `scholium-dialogue-response` to compose the base academic outcome and selected response modules, then persist exactly one final Response through the CLI after completing or stopping the work.
 
 ## Preserve the boundary
 

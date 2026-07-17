@@ -70,6 +70,7 @@ final class WorkspaceStore: ObservableObject {
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
+    let commandLineToolInstaller: CommandLineToolInstaller
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
     @Published private(set) var workspaceEventGenerations: [UUID: UInt64] = [:]
@@ -112,6 +113,7 @@ final class WorkspaceStore: ObservableObject {
         )))
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
+        commandLineToolInstaller = CommandLineToolInstaller()
     }
 
     deinit {
@@ -353,6 +355,12 @@ final class WorkspaceStore: ObservableObject {
 
     func settingsCapabilities() -> WorkspaceSettingsCapabilities {
         WorkspaceSettingsCapabilities(
+            commandLineToolStatus: { [self] in
+                await commandLineToolInstaller.commandLineToolStatus()
+            },
+            installCommandLineTool: { [self] in
+                try await commandLineToolInstaller.installCommandLineTool()
+            },
             loadSnapshot: { [self] preferredID in
                 try await settingsSnapshot(preferredTriptychID: preferredID)
             },
@@ -426,6 +434,17 @@ final class WorkspaceStore: ObservableObject {
             adoptBundledCitationStarter: { [self] workspaceID, revision in
                 try await workspaceHandle(id: workspaceID).research
                     .adoptBundledCitationStarter(expectedBindingRevision: revision)
+            },
+            bibliographyMethodStatus: { [self] workspaceID in
+                try await workspaceHandle(id: workspaceID).research
+                    .bibliographyMethodStatus()
+            },
+            setBibliographyMethod: { [self] workspaceID, packageID, revision in
+                try await workspaceHandle(id: workspaceID).research
+                    .setBibliographyMethod(
+                        packageID: packageID,
+                        expectedBindingRevision: revision
+                    )
             },
             createResearchSkill: { [self] workspaceID, id, source in
                 try await workspaceHandle(id: workspaceID).research.createSkill(

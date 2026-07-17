@@ -2,6 +2,23 @@
 
 Use the `scholium` executable as the supported agent-facing boundary for configured Triptychs. Do not infer vault paths or write directly to registered research files when the CLI operation is available.
 
+## 0. Confirm the executable and discover syntax
+
+Before a cold-start task, confirm that the current executable is the expected
+Scholium CLI and that its local configuration is usable:
+
+```sh
+scholium version --format json
+scholium doctor --format json
+scholium help function --format json
+```
+
+Use `scholium help <command> <subcommand>` or append `--help` to that command.
+Do not rely on remembered Beta syntax. Unknown, duplicate, or valueless options
+are errors; never reinterpret a failed option as if it had been applied. When a
+command supports `--format json`, errors use a stable JSON envelope with `code`,
+`message`, and `help`.
+
 ## 1. Discover the Triptych
 
 List the researcher-configured Triptychs and their canonical Analyses, Topics, and Works locations:
@@ -36,7 +53,48 @@ Retain:
 
 A fingerprint detects stale state. It does not grant permission.
 
-## 3. Create or replace notes
+## 3. Execute prepared Research Functions
+
+Prefer `nextActions` from JSON preparation and completion results. Each action
+contains an argument-vector `command`, not a shell string. Execute the
+arguments without interpolation and supply `inputTemplate` through stdin only
+after replacing every `REPLACE_WITH` marker with checked evidence.
+For Dialogue, the typed `promote` action carries the fixed Target, Materials,
+scope, and Comments into Develop or Revise. Use it when an explicitly
+authorized request would change the note; do not reconstruct that request or
+mutate the note through Dialogue.
+
+The normal lifecycle is:
+
+```sh
+scholium function available --from <target-json|-> --format json
+scholium function prepare --from <request-json|-> --format json
+scholium function show <run-id> --triptych <triptych> --format json
+```
+
+If the preparation awaits conditional resources, inspect only the fixed Target
+and Materials, choose exact resource IDs or an explicit empty set, then submit
+the preparation's `select_resources` action. Generic `skills show` retrieval is
+not attached to that run.
+
+Record any required Dialogue reply or Critique output, perform only the
+authorized write, and submit the function-specific completion schema. A
+Develop or Revise completion that changed the Target returns
+`awaiting_fidelity` plus a `prepare_fidelity` action. Use it instead of
+constructing a Fidelity request manually:
+
+```sh
+scholium function prepare-fidelity <parent-run-id> \
+  --triptych <triptych> --format json
+```
+
+Complete the returned read-only Fidelity child. Call `prepare-fidelity` again
+when recovery is needed; exact existing evidence is reused and the result
+provides the parent-link completion action. Use `function show` after process
+loss or uncertainty. Cancellation is idempotent only before durable completion
+evidence exists.
+
+## 4. Create or replace notes
 
 Create only an exact authorized path:
 
@@ -54,7 +112,7 @@ After replacement, reread the note. On `Revision mismatch`, stop, discard the pe
 
 Use `move`, `set-aside`, `trash`, or permanent `delete` only when the researcher explicitly requests that exact lifecycle action. They are not integration shortcuts.
 
-## 4. Read and answer Dialogue
+## 5. Read and answer Dialogue
 
 When a Dialogue ID is supplied, retrieve its exact record:
 
@@ -64,7 +122,7 @@ scholium dialogue show <dialogue-id> --triptych <triptych> --format json
 
 Treat the initial instruction, included Comments, follow-up Comments, and agent Responses as the scholarly exchange. A legacy `generatedPrompt` field is transport history, not a methodological authority or a required research record. A selected note fingerprint stored in Dialogue is advisory request-time context; reread the live note before every mutation.
 
-For the target Dialogue-response architecture, the JSON record also contains the request-scoped `responseContract` snapshot. Use that snapshot through `scholium-dialogue-response`; do not replace it with a newer Triptych default. Older records may lack the field and must use the explicit legacy fallback. Copied instructions must identify the Dialogue ID and Triptych selector so the agent can retrieve the exact record without guessing.
+For the Dialogue-response architecture, the JSON record also contains the request-scoped `responseContract` snapshot. Use that snapshot through `scholium-dialogue-response`; do not replace it with newer Dialogue Defaults. Older records may lack the field and must use the explicit compatibility fallback. Copied instructions must identify the Dialogue ID and Triptych selector so the agent can retrieve the exact record without guessing.
 
 Use `dialogue list` only when discovery is necessary. Filter by Triptych and note whenever possible.
 
@@ -78,7 +136,14 @@ When the response addresses one selected note or Comment, add the exact `--note 
 
 Use `--from` for multiline responses. Never interpolate untrusted Markdown or researcher text into a shell command. Compose the reply under `scholium-dialogue-response`; it should contain the base academic outcome, only the researcher-selected optional modules, material uncertainty, and any needed researcher decision—not commands, token counts, or routine file operations.
 
-## 5. Failure behavior
+## 6. Recommended Bibliography
+
+Recommended Bibliography is a separate Analysis-only lifecycle. Prefer its
+typed `nextActions`; recover a prepared request with `bibliography show`. These
+commands transport structured reading leads only and never authorize note or
+Zotero mutation.
+
+## 7. Failure behavior
 
 Stop the affected operation when:
 
@@ -89,5 +154,9 @@ Stop the affected operation when:
 - the Dialogue store reports a health error;
 - the CLI is unavailable or lacks the required command;
 - the exact target or authorization is ambiguous.
+
+Also stop when a required `nextActions` command is absent from the installed
+CLI. Run `scholium version`, `doctor`, and command-specific help; do not fall
+back to guessed options or direct `.scholium` edits.
 
 Report the failure in the active conversation. If a Dialogue ID remains writable, also record a concise stopped-state Response there.

@@ -17,13 +17,13 @@ cases:
     expected_result: provisional-partial-source-analysis
     invariants: [no-research-function, available-unit-explicit, three-passes-over-available-unit, no-whole-paper-claim, missing-evidence-visible]
 
-  - id: source-analyzer-practice-attention
+  - id: source-analyzer-practice-composition
     request: Analyze this argument-driven paper using Historical Interpreter, Conceptual Analyst, and Argument Reconstructionist.
     expected_mode: analyze
     expected_primary: scholium-source-analyzer
     expected_researcher: [scholium-source-analyzer, scholium-philosophical-practices]
-    expected_result: argument-driven-normalized-attention
-    invariants: [literal-100-percent-attention-budget, argument-profile-20-30-50, every-selected-practice-applied, allocation-not-output-length, no-manufactured-findings]
+    expected_result: flexible-source-grounded-composition
+    invariants: [every-selected-practice-considered, materially-useful-influence-only, no-warranted-finding-allowed, no-numerical-allocation, no-allocation-ledger, no-manufactured-findings]
 
   - id: develop-analysis-question
     request: Develop the question in this Analysis and identify the strongest next philosophical pressure.
@@ -225,20 +225,20 @@ cases:
     expected_result: ready-for-researcher-decision-at-most
     invariants: [no-upload, no-email, no-submission-authorization, researcher-decides]
 
-  - id: dialogue-read-only
+  - id: dialogue-note-nonmutating
     request: Discuss this Work passage with me.
     expected_function: dialogue
     expected_primary: scholium-dialogue-response
     expected_system: [scholium-core-protocol, scholium-research-integration]
     expected_result: attributed-dialogue-response
-    invariants: [read-only-default, no-note-write, response-not-settled-knowledge]
+    invariants: [note-nonmutating-default, attributed-history-append-allowed, no-note-write, response-not-settled-knowledge]
 
-  - id: dialogue-five-module-attention
+  - id: dialogue-five-module-coverage
     request: Respond to this Dialogue using all five optional response modules.
     expected_function: dialogue
     expected_primary: scholium-dialogue-response
     expected_result: concise-five-module-response
-    invariants: [literal-100-percent-attention-budget, each-selected-module-receives-20-percent, academic-outcome-outside-budget, integrity-notices-outside-budget, allocation-not-output-length, no-manufactured-section]
+    invariants: [every-selected-module-considered, flexible-effort, no-module-silently-skipped, academic-outcome-mandatory, integrity-notices-mandatory, no-numerical-allocation, no-manufactured-section]
 
   - id: dialogue-promotes-analysis-edit
     request: In Dialogue, change the current Analysis to adopt this formulation.
@@ -306,4 +306,29 @@ cases:
     expected_primary: scholium-critique
     expected_researcher: [scholium-philosophical-practices]
     expected_result: methodological-conflict-preserved
-    invariants: [literal-100-percent-attention-budget, normalized-selected-practice-weights, no-last-loaded-wins, no-false-consensus, researcher-decision]
+    invariants: [every-selected-practice-considered, no-numerical-allocation, no-last-loaded-wins, no-false-consensus, researcher-decision]
+
+  - id: research-explorer-neutral-gap
+    request: I have no settled position. Orient me to this question and identify only gaps warranted by the checked materials.
+    expected_primary: scholium-development
+    expected_researcher: [scholium-philosophical-practices]
+    expected_result: neutral-candidate-gap-map
+    invariants: [no-invented-thesis, structured-gap-record, candidate-gap-without-field-search, counterevidence-and-falsifier, bounded-next-investigation]
+
+  - id: recommended-bibliography-zero
+    request: Screen this completed Analysis for worthwhile reading leads; none are required.
+    expected_primary: scholium-source-analyzer
+    expected_result: successful-zero-recommendations
+    invariants: [analysis-only-capability, zero-valid, reading-leads-not-evidence, no-note-write, no-zotero-write, no-rating]
+
+  - id: recommended-bibliography-evidence-layers
+    request: Recommend the most useful cited literature from this analyzed paper for objections and replies.
+    expected_primary: scholium-source-analyzer
+    expected_result: structured-bibliography-candidates
+    invariants: [reference-list-vs-cited-vs-discussed, authorial-appraisal-distinct, metadata-verification-distinct, source-inspection-distinct, chapter-volume-identity-preserved, unread-unrated]
+
+  - id: citation-boundary-status
+    request: Verify this translated chapter citation and close paraphrase, including author order, edition, canonical locator, and same-year disambiguation.
+    expected_researcher: [scholium-citation-verification]
+    expected_result: atomic-citation-status
+    invariants: [verified-provisional-or-unavailable, chapter-editors-distinct, edition-and-translation-distinct, canonical-locator, complete-author-order, quotation-paraphrase-distinct]

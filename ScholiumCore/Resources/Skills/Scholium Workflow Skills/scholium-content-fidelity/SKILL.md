@@ -17,7 +17,7 @@ Content is supplied by this official package. Citations may run only when Applic
 
 Read references/content.md when Content is selected. Read references/citations.md when Citations is selected, then load only the exact bound citation package and conditional resources supplied by Application.
 
-If an explicit researcher-owned Practice is selected for Content, load only its exact resource and composition rules and record the revisions. A Practice cannot replace the audit categories or evidence hierarchy.
+If an explicit researcher-owned Practice is selected for Content, load the Philosophical Practices package entry and only its exact resource, then record the revisions. A Practice supplements this complete audit and cannot replace its categories or evidence hierarchy.
 
 ## Execute
 

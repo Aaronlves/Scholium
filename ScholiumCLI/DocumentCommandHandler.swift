@@ -9,13 +9,17 @@ extension ScholiumCLI {
         guard let specification = arguments.first else {
             throw CLIError.usage("Usage: scholium read <vault>:<relative-path>")
         }
+        let format = option("--format", in: arguments) ?? "text"
+        guard format == "text" || format == "json" else {
+            throw CLIError.usage("Read supports --format text or json.")
+        }
         let (vault, relativePath) = try await context.resolveTarget(specification)
         let assignment = try await context.triptych(containing: [vault.id])
         let handle = try await context.handle(for: assignment)
         let document = try await handle.documents.load(
             VaultQualifiedNoteID(vaultID: vault.id, relativePath: relativePath)
         )
-        if option("--format", in: arguments) == "json" {
+        if format == "json" {
             let payload: [String: String] = [
                 "vault_id": vault.id.uuidString,
                 "vault_name": vault.name,

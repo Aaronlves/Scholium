@@ -4,13 +4,18 @@ Scholium is a local-first macOS research workbench where researchers and externa
 
 ## Documentation
 
-Use one authority for each question:
+Use the smallest authority set that answers the question:
 
-1. [Product Guide](Docs/PRODUCT_GUIDE.md): what Scholium should become—Triptych structure, research workflows, terminology, feature boundaries, and non-goals.
-2. [Design Handbook](Docs/DESIGN_HANDBOOK.md): how Scholium should look and behave, including exact interface state meanings and action labels.
-3. [Product Requirements Document](Docs/PRD.md): a release-oriented synthesis of the Product Guide and Design Handbook into numbered requirements, gates, risks, and traceability. It does not override either authority above it.
-4. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md): what the current build demonstrates, where it differs from the target, and migration evidence.
-5. This README, live construction call sites, executable tests, and scripts: setup plus current reachability evidence.
+1. [Scholium Specification](Docs/SCHOLIUM_SPEC.md): the sole target authority
+   for product behavior, interface design, Scholarly Editorialism,
+   accessibility, release requirements, and active decisions.
+2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md): the
+   subordinate structural contract for modules, runtimes, state ownership, and
+   the CodeMirror/WKWebView boundary.
+3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md): current
+   reachability, evidence, migration debt, and open acceptance.
+4. This README, live construction call sites, executable tests, and scripts:
+   setup plus current reachability evidence.
 
 `AGENTS.md` enforces this hierarchy and provides repository rules; it does not
 redefine the product or interface contract. Repository-specific development
@@ -19,11 +24,9 @@ skills remain separately governed under `Skills/`.
 
 Target rules are not implementation claims. Live construction call sites, executable tests, and scripts remain the final evidence for current reachability.
 
-Additional reference documents include the subordinate
-[Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md),
-[Editor Architecture](Docs/EDITOR_ARCHITECTURE.md),
-[Property Profiles](Docs/PROPERTY_PROFILES.md),
-[CSS Snippets](Docs/CSS_SNIPPETS.md), and the bundled
+Additional operational references include
+[CSS Snippets](Docs/CSS_SNIPPETS.md), the
+[first-party Zotero MCP transport](Docs/ZOTERO_MCP.md), and the bundled
 [Product Skill Packages](Skills/README.md).
 The [Beta Performance Benchmark](Docs/PERFORMANCE_BENCHMARK.md) separates
 internal regression microbenchmarks and scenario-only runs from the unexecuted
@@ -104,14 +107,35 @@ These commands use `/tmp/Scholium-QA.app` with bundle identifier
 `SCHOLIUM_TEST_VAULTS` (default: `~/Desktop/TestVaults`). They do not package a
 release or open a real research vault.
 
+Before adopting a future build, compare an old QA app and its candidate against
+one disposable Triptych and one isolated application home:
+
+```bash
+./Tools/Scripts/verify-qa-upgrade-safety.sh \
+  --baseline /tmp/Scholium-Previous-QA.app \
+  --candidate /tmp/Scholium-QA.app \
+  --output /tmp/Scholium-Upgrade-Evidence
+```
+
+The gate seeds BOM, CRLF, LF, no-final-newline, comment, unknown and multiline
+YAML, Unicode/CJK, and empty-note cases. It records path, byte size, SHA-256,
+permissions, and modification time before launch and after each app, then fails
+if any file in Analyses, Topics, or Works changes. Portable `.scholium/` changes
+also fail unless their path is explicitly reviewed in
+`Tools/Fixtures/qa-upgrade-portable-allowlist.txt`. Logs, manifests, and both
+`.xcresult` bundles remain in the requested evidence directory. Passing with
+identical app hashes proves the harness only; release-to-release evidence needs
+distinct baseline and candidate builds.
+
 Packaging, signing, notarization, and distribution are separate release work and are not part of ordinary verification.
 
 ## Source-first beta distribution
 
 The planned first external build is `0.1.0-beta.1`: public tagged source under
 `GPL-3.0-or-later` plus an optional ad-hoc-signed Scholium app ZIP and SHA-256
-checksum on the same GitHub release page. The public beta contains the app only;
-the standalone CLI is not a beta asset.
+checksum on the same GitHub release page. The public beta has no separate CLI
+asset; the app contains its matching Scholium CLI helper for explicit user-local
+installation from Research Guidance.
 
 The convenience app is not Developer ID signed or notarized. Testers do not
 need Xcode, but must approve the trusted download through **System Settings →
@@ -130,9 +154,19 @@ Each Triptych needs its own Works parent because its portable `.scholium/` contr
 
 The researcher-facing workspace always uses the three Triptych vaults. Stored legacy role aliases and the one-release legacy CLI search syntax remain read/command compatibility; the CLI no longer registers arbitrary vaults outside a complete Triptych.
 
-## Agent CLI
+## Scholium CLI
 
-Install the current CLI locally:
+From a packaged app, open **Settings → Research Guidance → Skills → Advanced →
+Scholium CLI** and choose **Install**. Scholium installs the version-matched helper
+to `~/.local/bin/scholium`, reports whether that directory is discoverable in
+the current PATH, and offers a PATH setup command without editing shell files.
+
+The shipped [Scholium CLI Contract](Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)
+defines the exact agent lifecycle and failure behavior. The
+[Zotero MCP guide](Docs/ZOTERO_MCP.md) covers the optional first-party Zotero
+transport. This README remains the concise human installation entry point.
+
+For a source checkout, build and install the current CLI locally:
 
 ```bash
 chmod +x Tools/Scripts/install-cli.sh
@@ -142,13 +176,19 @@ Tools/Scripts/install-cli.sh
 Inspect available commands rather than relying on examples that may become stale:
 
 ```bash
-scholium --help
-scholium vault --help
-scholium search --help
-scholium links --help
+scholium version --format json
+scholium doctor --format json
+scholium help function
+scholium function prepare --help
 ```
 
-The CLI supports registered-vault inspection, shared search, links, graph traces, canonical workspace catalog and Attention output, exact reads, Dialogue replies, and revision-checked direct note operations. Existing-note mutations require the current SHA-256 returned by `scholium read --format json`.
+The CLI supports registered-vault inspection, shared search, links, graph
+traces, canonical workspace catalog and Attention output, exact reads,
+Dialogue replies, resumable Research Functions, Recommended Bibliography, and
+revision-checked direct note operations. JSON Function results include typed
+next actions; use `function show` for recovery and `function prepare-fidelity`
+after a changed Develop or Revise run. Existing-note mutations require the
+current SHA-256 returned by `scholium read --format json`.
 
 For isolated CLI testing:
 
@@ -195,16 +235,11 @@ Tests/ScholiumApplicationTests/
                            Runtime, operation, event, and delivery-parity tests
 Tests/ScholiumAppTests/    Window composition and interface architecture tests
 UITests/                   Isolated macOS UI tests
-Docs/PRODUCT_GUIDE.md      Target product authority
-Docs/DESIGN_HANDBOOK.md    Interface and exact UI-contract authority
-Docs/PRD.md                Requirements synthesis and release traceability
+Docs/SCHOLIUM_SPEC.md      Product, interface, and release target authority
 Docs/IMPLEMENTATION_STATUS.md
                            Current evidence and migration ledger
 Docs/IMPLEMENTATION_ARCHITECTURE.md
-                           Module, runtime, delivery, and state ownership
-Docs/EDITOR_ARCHITECTURE.md
-                           CodeMirror, WebKit, and editor-session boundary
-Docs/PROPERTY_PROFILES.md   Target researcher-facing property vocabulary
+                           Module, runtime, state, and editor ownership
 Docs/CSS_SNIPPETS.md       Supported document-style customization contract
 Skills/README.md           Bundled product-skill architecture and evidence boundary
 Docs/BETA_RELEASE.md       Source-first beta policy and release gates

@@ -27,9 +27,16 @@ DEVELOPER_DIR="${XCODE}" swift build \
   --scratch-path "${DERIVED}" \
   --configuration debug \
   --product ScholiumApp
+DEVELOPER_DIR="${XCODE}" swift build \
+  --package-path "${ROOT}" \
+  --scratch-path "${DERIVED}" \
+  --configuration debug \
+  --product scholium
 
-mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
+mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Helpers" "${APP}/Contents/Resources"
 cp "${DERIVED}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"
+cp "${DERIVED}/debug/scholium" "${APP}/Contents/Helpers/scholium"
+chmod +x "${APP}/Contents/Helpers/scholium"
 cp -R "${DERIVED}/debug/Scholium_ScholiumApp.bundle" "${APP}/Contents/Resources/"
 cp -R "${DERIVED}/debug/Scholium_ScholiumCore.bundle" "${APP}/Contents/Resources/"
 cp "${ROOT}/Tools/Packaging/Info.plist" "${APP}/Contents/Info.plist"

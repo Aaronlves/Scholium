@@ -48,14 +48,18 @@ Do not infer support, criticism, influence, or debate participation from citatio
 
 ## Status language
 
-Use one of:
+Return exactly one overall status:
 
-- `verified`;
-- `partly verified`;
-- `unverified`;
-- `probably wrong`;
-- `unsupported by available evidence`;
-- `needs page check`;
-- `needs edition check`.
+- `verified` — every requested atomic verification question was checked against sufficient evidence;
+- `provisional` — a bounded result is useful, but access, identity, edition, locator, context, or style authority remains incomplete;
+- `unavailable` — the requested verification could not responsibly be performed.
 
-State why the status applies. A status label without evidence is not a verification result.
+Then state the evidence, unresolved fields, and any narrower verdict such as `probably wrong`, `unsupported by available evidence`, `needs page check`, or `needs edition check`. A status label without evidence is not a verification result.
+
+## Bibliographic boundary cases
+
+- Keep chapter authors, chapter title, editors, and volume title in their proper roles.
+- Distinguish editions, reprints, translations, original publication dates, and the exact version consulted.
+- Preserve complete author order and apply same-author/year disambiguation only after the relevant bibliography set is known.
+- Use canonical locators when a tradition or primary text requires them; do not silently substitute unstable file pages.
+- Distinguish exact quotation from close paraphrase and verify each under the appropriate standard.

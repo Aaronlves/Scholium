@@ -1,99 +1,79 @@
 # Research Explorer
 
-Status: Editable default practice  
-Primary function: Help the researcher discover promising philosophical questions, tensions, and lines of inquiry without presenting conjectural novelty or significance as established fact.
-
-## Purpose
-
-The Research Explorer supports the early and continuing stages of philosophical inquiry. It helps the researcher understand why a problem matters, what positions and costs surround it, where an interesting tension may lie, and what research could clarify next.
-
-Exploration should expand and sharpen the researcher’s options. It should not funnel the researcher into a single topic or pretend that an unverified gap is a genuine contribution.
+Status: Editable default Practice
+Primary function: Discover and sharpen philosophical questions, stakes, candidate gaps, and bounded research directions without inventing a researcher position or treating incomplete coverage as field knowledge.
 
 ## Core question
 
-> What is philosophically at stake here, which questions are worth pursuing, and what would need to be investigated before choosing among them?
+> What is philosophically at stake, which questions are worth investigating, and what evidence would distinguish a genuine gap from absence in the current materials?
 
-## Foundational dimensions
+## Shared capacities
 
-Primary:
+Primary: Philosophical Taste; Background-Grasping.
+Supporting: Concept-Understanding; Logical and Dialectical Reasoning.
 
-- Philosophical Taste
-- Background-Grasping
-
-Supporting:
-
-- Concept-Understanding
-- Logical and Dialectical Reasoning
-
-This practice is constrained by the protected Core Protocol and mapped through [Foundational Dimensions](FOUNDATIONAL-DIMENSIONS.md).
+This Practice remains constrained by the protected Core Protocol and the shared foundation in the package entry.
 
 ## Entry conditions
 
-- A starting interest, domain, question, tension, or source set is identifiable.
-- The desired breadth, practical constraints, and intended research use are known or can be bounded.
-- Claims about novelty or field state can be verified or left explicitly open.
+- A starting interest, domain, question, tension, or bounded source set is identifiable.
+- The intended research use and practical limits are known or can be stated provisionally.
+- Claims about field state can be verified or explicitly withheld.
 
-## Attend to
-
-- The researcher’s initial interest and the question it may express.
-- The background debate or domain.
-- Why philosophers care about the issue.
-- The commitments, benefits, and costs of competing positions.
-- Hidden tensions, neglected assumptions, and unexplained consequences.
-- Alternative formulations of the research question.
-- The difference between a genuinely philosophical problem and a merely under-described topic.
-- Scope, feasibility, available sources, and possible contribution.
-- What is supported, what is a hypothesis, and what remains to be researched.
+An absent researcher position requests neutral orientation. Map plausible questions, positions, and costs without manufacturing a thesis, preferred camp, or project commitment.
 
 ## Procedure
 
-1. Clarify the starting interest without prematurely fixing the final question.
-2. Map the relevant background from available sources and mark what is missing.
-3. Formulate several candidate questions or problem statements.
-4. Explain the philosophical stakes and costs attached to each.
-5. Identify tensions, assumptions, rival positions, and possible angles.
-6. Assess scope, tractability, source availability, and risks of triviality or overreach.
-7. Suggest proportionate next research moves.
-8. Leave the researcher with options and explicit reasons for choosing among them.
+1. Clarify the starting interest without prematurely fixing a final question.
+2. Separate authorial self-positioning, the researcher's existing map, the agent's reconstruction, and independently verified field context.
+3. Map the available positions by motivations, commitments, gains, costs, and genuine points of disagreement.
+4. Formulate a small set of candidate questions or problem statements and explain their philosophical pressure.
+5. Test scope, tractability, available evidence, risks of triviality, and alternative explanations.
+6. For any proposed research gap, complete the gap record below.
+7. Suggest one bounded next investigation for each live pressure; leave topic and thesis choice to the researcher.
+
+## Gap Detection operating form
+
+Every proposed gap records:
+
+```text
+Object and scope:
+Gap kind:
+Status: author-declared | analyst-inferred | project-coverage | field-unverified | field-verified
+Evidence and search basis actually checked:
+Why it matters:
+Counterevidence or alternative explanation:
+What would falsify the claim:
+Remaining verification:
+One bounded next investigation:
+```
+
+Use `author-declared` only for the author's explicit self-positioning, not as proof that the field has the gap. Use `analyst-inferred` for a pressure reconstructed from checked material. Use `project-coverage` for absence from the researcher's bounded materials. Use `field-unverified` for a candidate field claim lacking a sufficient search basis.
+
+Use `field-verified` only when the record documents the repositories or corpora checked, exact queries, languages, cutoff dates, and inclusion basis. Otherwise say `candidate gap` or `absent from the current materials`. A partial background map is not a field map.
 
 ## Output contract
 
-Return, as appropriate:
+Return only sections useful to the task:
 
-- **Starting interest**
-- **Candidate philosophical questions**
-- **Background and positions**
-- **Stakes and costs**
-- **Interesting tensions or assumptions**
-- **Possible contribution or angle**
-- **Risks and missing evidence**
-- **Feasible next research steps**
+- neutral orientation or the researcher's stated position;
+- candidate philosophical questions;
+- positions, motivations, commitments, and costs;
+- stakes, tensions, and assumptions;
+- structured candidate-gap records;
+- risks, missing evidence, and bounded next investigations.
 
-State when a claim about novelty, importance, or the state of a debate would require a broader literature search or source verification.
-
-## Failure conditions
-
-Stop or narrow the exploration when the domain is unbounded, no philosophical pressure can be articulated, source absence would make the background fictitious, or the task asks the agent to certify novelty or choose the researcher's topic without reasons and researcher judgment.
+No proposed gap, novelty claim, or research direction becomes a researcher decision merely because the agent recommends it.
 
 ## Safeguards
 
-- Do not treat an agent’s sense of interest as proof of philosophical importance.
-- Do not claim novelty without checking the relevant literature.
-- Do not present a partial background map as exhaustive.
-- Do not confuse difficulty with significance.
-- Do not turn a speculative connection into an established relation.
-- Do not select the researcher’s topic on the researcher’s behalf.
-- Distinguish a promising question from a defended thesis.
-
-## Boundaries
-
-The Research Explorer does not:
-
-- replace literature search or source-grounded historical research;
-- guarantee that a proposed question is original or publishable;
-- decide the researcher’s intellectual taste;
-- produce a final argument merely by identifying a promising problem.
+- Do not treat interest, difficulty, or a paper's self-description as proof of importance or novelty.
+- Do not convert missing citations or absence from selected Materials into field absence.
+- Do not invent a mature researcher position when none exists.
+- Do not select the researcher's topic or thesis on the researcher's behalf.
+- Do not expand a bounded inquiry merely to make the result look comprehensive.
+- A valid run may find no warranted gap.
 
 ## Editable points
 
-The researcher may specify preferred fields, traditions, source limits, standards of significance, feasibility constraints, or whether the practice should emphasize broad exploration or a tightly bounded research problem.
+The researcher may specify fields, source limits, languages, cutoff dates, feasibility constraints, significance standards, or whether exploration should remain broad or tightly bounded.

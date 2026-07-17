@@ -102,8 +102,8 @@ struct WorkspaceBootstrapTests {
             at: fixture.root.appendingPathComponent("Docs"),
             withIntermediateDirectories: true
         )
-        try "# Product Guide\n".write(
-            to: fixture.root.appendingPathComponent("Docs/PRODUCT_GUIDE.md"),
+        try "# Scholium Specification\n".write(
+            to: fixture.root.appendingPathComponent("Docs/SCHOLIUM_SPEC.md"),
             atomically: true,
             encoding: .utf8
         )

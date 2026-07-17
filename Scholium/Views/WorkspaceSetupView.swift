@@ -55,7 +55,7 @@ private enum GuidedSetupStep: Int, CaseIterable {
 }
 
 private struct GuidedWorkspaceSetupView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
 
     let context: WorkspaceSetupContext
     let completionTitle: LocalizedStringResource
@@ -492,7 +492,7 @@ private struct GuidedSetupFooter: View {
             Button(action: onContinue) {
                 Text(primaryTitle)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(primaryDisabled)
         }

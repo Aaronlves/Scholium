@@ -101,6 +101,7 @@ public enum ResearchFunctionSkillBindingIssueCode: String, Codable, Hashable, Se
     case unsupportedFunction = "unsupported_function"
     case invalidRole = "invalid_role"
     case invalidPractice = "invalid_practice"
+    case legacyReplacementPractice = "legacy_replacement_practice"
 }
 
 public struct ResearchFunctionSkillBindingIssue: Codable, Hashable, Sendable {

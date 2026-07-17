@@ -9,7 +9,33 @@ extension ScholiumCLI {
         switch subcommand {
         case "list":
             let triptychs = try await context.assignments()
-            if triptychs.isEmpty {
+            let format = option("--format", in: arguments) ?? "text"
+            guard format == "text" || format == "json" else {
+                throw CLIError.usage("Vault list supports --format text or json.")
+            }
+            if format == "json" {
+                let payload = triptychs.map { assignment -> [String: Any] in
+                    let vaults = WorkspaceVaultSlot.allCases.compactMap { slot -> [String: Any]? in
+                        guard let vault = assignment.vault(for: slot) else { return nil }
+                        return [
+                            "role": slot.rawValue,
+                            "id": vault.id.uuidString.lowercased(),
+                            "name": vault.name,
+                            "path": vault.canonicalPath,
+                        ]
+                    }
+                    return [
+                        "id": assignment.id.uuidString.lowercased(),
+                        "name": assignment.triptych.name,
+                        "vaults": vaults,
+                    ]
+                }
+                let data = try JSONSerialization.data(
+                    withJSONObject: payload,
+                    options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                )
+                write(String(decoding: data, as: UTF8.self) + "\n")
+            } else if triptychs.isEmpty {
                 write("No Scholium Triptychs are configured. Use Scholium onboarding or Manage Triptychs.\n")
             } else {
                 for assignment in triptychs {
@@ -59,7 +85,10 @@ extension ScholiumCLI {
         }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { throw CLIError.usage("Search query cannot be empty.") }
-        let limit = Int(option("--limit", in: arguments) ?? "20") ?? 20
+        let limitText = option("--limit", in: arguments) ?? "20"
+        guard let limit = Int(limitText), (1 ... 500).contains(limit) else {
+            throw CLIError.usage("--limit must be a whole number from 1 through 500.")
+        }
         let handle = try await context.handle(for: assignment)
         let hits = try await handle.discovery.search(
             SearchQuery(trimmedQuery),
@@ -91,6 +120,9 @@ extension ScholiumCLI {
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard (option("--format", in: arguments) ?? "json") == "json" else {
+            throw CLIError.usage("Links commands support --format json.")
+        }
         switch subcommand {
         case "incoming", "outgoing":
             guard arguments.count >= 2 else {
@@ -153,7 +185,14 @@ extension ScholiumCLI {
         let (sourceVault, sourcePath) = try await context.resolveTarget(arguments[1])
         let (targetVault, targetPath) = try await context.resolveTarget(arguments[2])
         let assignment = try await context.triptych(containing: [sourceVault.id, targetVault.id])
-        let maximumDepth = max(1, min(Int(option("--max-depth", in: arguments) ?? "3") ?? 3, 10))
+        let maximumDepthText = option("--max-depth", in: arguments) ?? "3"
+        guard let maximumDepth = Int(maximumDepthText),
+              (1 ... 10).contains(maximumDepth) else {
+            throw CLIError.usage("--max-depth must be a whole number from 1 through 10.")
+        }
+        guard (option("--format", in: arguments) ?? "json") == "json" else {
+            throw CLIError.usage("Graph commands support --format json.")
+        }
         let handle = try await context.handle(for: assignment)
         let catalog = try await handle.discovery.snapshot().catalog
         guard let snapshot = catalog.graph else {
@@ -193,6 +232,9 @@ extension ScholiumCLI {
         )
         let handle = try await context.handle(for: assignment)
         let snapshot = try await handle.discovery.snapshot().catalog
+        guard (option("--format", in: arguments) ?? "json") == "json" else {
+            throw CLIError.usage("Workspace catalog and attention support --format json.")
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -720,6 +762,10 @@ extension ScholiumCLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         switch subcommand {
         case "list":
+            let format = option("--format", in: arguments) ?? "text"
+            guard format == "text" || format == "json" else {
+                throw CLIError.usage("Dialogue list supports --format text or json.")
+            }
             let entries: [DialogueEntry]
             if let target = option("--note", in: arguments) {
                 let (vault, relativePath) = try await context.resolveTarget(
@@ -735,7 +781,7 @@ extension ScholiumCLI {
             } else {
                 entries = try await research.dialogueEntries()
             }
-            if option("--format", in: arguments) == "json" {
+            if format == "json" {
                 write(String(decoding: try encoder.encode(entries), as: UTF8.self) + "\n")
             } else if entries.isEmpty {
                 write("No Dialogue entries.\n")
@@ -752,7 +798,11 @@ extension ScholiumCLI {
                 throw CLIError.usage("Usage: scholium dialogue show <dialogue-id> [--format json]")
             }
             let entry = try await research.dialogue(id: id)
-            if option("--format", in: arguments) == "json" {
+            let format = option("--format", in: arguments) ?? "text"
+            guard format == "text" || format == "json" else {
+                throw CLIError.usage("Dialogue show supports --format text or json.")
+            }
+            if format == "json" {
                 write(String(decoding: try encoder.encode(entry), as: UTF8.self) + "\n")
             } else {
                 write("Dialogue: \(entry.id.uuidString)\n")

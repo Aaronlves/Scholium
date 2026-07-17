@@ -329,10 +329,10 @@ struct DerivedRefreshStatusTests {
         defer { try? FileManager.default.removeItem(at: invalidURL) }
 
         let manuscript = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .manuscript, target: work, methods: [])
+            ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
         )
         let revise = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(function: .revise, target: work, methods: [])
+            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
         )
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
 

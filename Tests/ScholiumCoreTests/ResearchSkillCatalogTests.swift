@@ -49,6 +49,7 @@ struct ResearchSkillCatalogTests {
         #expect(core.automaticModes == [.all])
         #expect(practices.practiceResources.count == 9)
         #expect(practices.practiceResources["reviewer"] == "references/Reviewer.md")
+        #expect(practices.supportedModes.contains(.analyze))
         for entry in catalog.entries {
             let source = try BundledResearchSkillLibrary.source(for: entry)
             #expect(!source.isEmpty)
@@ -65,6 +66,7 @@ struct ResearchSkillCatalogTests {
         #expect(analyzer.updatePolicy == "copy-on-adoption-researcher-owned")
         #expect(analyzer.supportedFunctions.isEmpty)
         #expect(analyzer.supportedModes == [.analyze])
+        #expect(analyzer.capabilities == [.bibliographyRecommendation])
         #expect(analyzer.compatiblePracticeIDs == [
             "historical-interpreter",
             "conceptual-analyst",
@@ -74,10 +76,12 @@ struct ResearchSkillCatalogTests {
         #expect(try BundledResearchSkillLibrary.resourcePaths(for: analyzer) == [
             "SKILL.md",
             "references/analysis-forms.md",
-            "references/bibliography-and-handoff.md",
+            "references/bibliography-recommendations.md",
+            "references/later-use-handoffs.md",
             "references/method.md",
             "references/report-templates.md",
             "references/source-clusters.md",
+            "templates/recommended-bibliography-completion.json",
         ])
     }
 
@@ -177,8 +181,10 @@ struct ResearchSkillCatalogTests {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             })
 
+            var resolvedMode: ResearchSkillMode?
             if let rawMode = workflowCase["expected_mode"] as? String {
-                #expect(ResearchSkillMode(rawValue: rawMode) != nil)
+                resolvedMode = ResearchSkillMode(rawValue: rawMode)
+                #expect(resolvedMode != nil)
             }
 
             if let primaryID = workflowCase["expected_primary"] as? String,
@@ -194,6 +200,20 @@ struct ResearchSkillCatalogTests {
                     let entry = try catalog.entry(id: skillID)
                     #expect(entry.skillClass == expectedClass)
                 }
+            }
+
+            if let resolvedMode, resolvedMode != .mixed {
+                let system = workflowCase["expected_system"] as? [String] ?? []
+                let researcher = workflowCase["expected_researcher"] as? [String] ?? []
+                let primary = (workflowCase["expected_primary"] as? String).map { [$0] } ?? []
+                let requested = Array(Set((primary + system + researcher).filter {
+                    $0.hasPrefix("scholium-")
+                })).sorted()
+                let assembled = try catalog.dependencyClosedIDs(
+                    for: resolvedMode,
+                    requestedSkillIDs: requested
+                )
+                #expect(requested.allSatisfy(assembled.contains))
             }
 
             for phase in workflowCase["expected_phases"] as? [String] ?? [] {

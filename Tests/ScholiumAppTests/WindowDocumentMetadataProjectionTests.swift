@@ -60,8 +60,8 @@ struct WindowDocumentMetadataProjectionTests {
             (String(bounds.upperBound), bounds.upperBound),
             (String(bounds.lowerBound - 1), nil),
             (String(bounds.upperBound + 1), nil),
-            ("\"\(midpoint)\"", midpoint),
-            ("\(midpoint).0", midpoint),
+            ("\"\(midpoint)\"", nil),
+            ("\(midpoint).0", nil),
         ]
 
         for item in cases {
@@ -108,6 +108,8 @@ struct WindowDocumentMetadataProjectionTests {
               - Beauvoir
               - Arendt
             custom: Alpha
+            relevance: 9
+            relevance_rating: 7
             nested:
               child: Gamma
             too_long: \(String(repeating: "x", count: 81))
@@ -137,6 +139,8 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(options.valuesByKey["status"] == ["complete", "reviewed"])
         #expect(options.valuesByKey["authors"] == ["Arendt", "Beauvoir", "Weil"])
         #expect(options.valuesByKey["custom"] == ["Alpha", "Beta"])
+        #expect(options.valuesByKey["relevance"] == nil)
+        #expect(options.valuesByKey["relevance_rating"] == nil)
         #expect(options.valuesByKey["nested.child"] == ["Gamma"])
         #expect(options.valuesByKey["too_long"] == nil)
         #expect(options.keys == options.keys.sorted {

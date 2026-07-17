@@ -38,7 +38,15 @@ struct ResearchStripView: View {
     let select: (ResearchFunctionID) -> Void
 
     var body: some View {
-        GlassEffectContainer(spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Text("RESEARCH STRIP")
+                    .font(ScholiumInterfaceTypography.editorialLabel)
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                ScholiumStructuralRule()
+            }
+
             ViewThatFits(in: .horizontal) {
                 ResearchStripButtonRow(
                     presentation: presentation,
@@ -56,7 +64,15 @@ struct ResearchStripView: View {
                 )
             }
         }
-        .scholiumGlassSurface(.floatingControl, in: Capsule())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .scholiumEditorialSurface(
+            .apparatus,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Research functions")
         .accessibilityIdentifier("scholium.researchStrip")
@@ -120,14 +136,14 @@ private struct ResearchStripButton: View {
         Button(action: activate) {
             if isCompact {
                 Text(item.id.interfaceTitle)
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(isActive ? .semibold : .medium))
                     .lineLimit(1)
                     .padding(.horizontal, 6)
                     .frame(minHeight: 36)
                     .contentShape(Rectangle())
             } else {
                 Label(item.id.interfaceTitle, systemImage: item.id.interfaceSymbol)
-                    .font(.callout.weight(.medium))
+                    .font(.callout.weight(isActive ? .semibold : .medium))
                     .lineLimit(1)
                     .padding(.horizontal, 9)
                     .frame(minHeight: 36)
@@ -138,8 +154,8 @@ private struct ResearchStripButton: View {
         .focusable(interactions: .activate)
         .focused(focusedControl, equals: focusIdentity)
         .background(
-            isActive ? ScholiumColorRole.accent.color.opacity(0.16) : Color.clear,
-            in: Capsule()
+            isActive ? ScholiumColorRole.accent.color.opacity(0.12) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .disabled(!item.isEnabled)
         .help(item.disabledReason ?? item.id.interfaceHelp)

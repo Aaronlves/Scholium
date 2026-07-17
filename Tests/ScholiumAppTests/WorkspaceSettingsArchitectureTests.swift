@@ -258,6 +258,21 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!model.isRefreshing)
     }
 
+    @Test("A live activation remains usable while the broader Settings snapshot fails")
+    func activationHintSurvivesSnapshotFailure() async {
+        struct FixtureError: Error {}
+        let activeID = UUID()
+        let model = WorkspaceSettingsModel(loadSnapshot: {
+            throw FixtureError()
+        })
+
+        await model.restorePreferredWorkspaceIfNeeded(activeTriptychID: activeID)
+
+        #expect(model.activeTriptychServicesID == activeID)
+        #expect(model.snapshot.activeTriptychID == activeID)
+        #expect(model.errorMessage != nil)
+    }
+
     @Test("Explicit Triptych activation supersedes an older Settings refresh")
     func activationSupersedesInFlightRefresh() async {
         let refreshEntered = SettingsTestSignal()

@@ -300,11 +300,49 @@ struct ResearchFunctionSkillTests {
         )
         #expect(selectedPractice.loadedResources.map(\.relativePath) == [
             "SKILL.md",
-            "references/COMPOSITION-RULES.md",
-            "references/FOUNDATIONAL-DIMENSIONS.md",
             "references/Philosophical-Expositor.md",
         ])
         #expect(envelope.isExecutable)
+    }
+
+    @Test("Reviewer calibrates Critique only")
+    func reviewerIsCritiqueOnly() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+        let practices = try await store.duplicateBundled(
+            id: "scholium-philosophical-practices",
+            as: "my-review-practices"
+        )
+        let reviewer = ResearchPracticeSelection(
+            packageID: practices.id,
+            practiceID: "reviewer"
+        )
+
+        #expect(try await store.compatiblePracticeIDs(for: .critique) == ["reviewer"])
+        #expect(!(try await store.compatiblePracticeIDs(for: .revise)).contains("reviewer"))
+        #expect(!(try await store.compatiblePracticeIDs(for: .fidelity)).contains("reviewer"))
+        #expect((try await store.compatiblePracticeIDs(for: .manuscript)).isEmpty)
+
+        let saved = try await store.saveFunctionSkillSelection(
+            ResearchFunctionSkillSelection(
+                function: .critique,
+                selectedPractices: [reviewer]
+            ),
+            expectedBindingRevision: nil
+        )
+        #expect(try await store.functionSkillSelection(for: .critique)
+            .selectedPractices == [reviewer])
+
+        await #expect(throws: ResearchSkillBindingError.self) {
+            _ = try await store.saveFunctionSkillSelection(
+                ResearchFunctionSkillSelection(
+                    function: .revise,
+                    selectedPractices: [reviewer]
+                ),
+                expectedBindingRevision: saved.revision
+            )
+        }
     }
 
     @Test("Legacy binding JSON defaults new function refinement collections to empty")
@@ -857,19 +895,6 @@ struct ResearchFunctionSkillTests {
                     dependencies: ["cycle-peer"]
                 )),
                 "cycle"
-            ),
-            (
-                "Practice foundations",
-                Self.maintenanceProposal(
-                    skillSource: Self.routedMaintenanceSource(
-                        name: "Incomplete Practice",
-                        role: "practice",
-                        dependencies: ["scholium-core-protocol"],
-                        practiceResources: ["reviewer": "references/Reviewer.md"]
-                    ),
-                    resources: ["references/Reviewer.md": "# Reviewer"]
-                ),
-                "FOUNDATIONAL-DIMENSIONS"
             ),
             (
                 "undeclared citation style resource",

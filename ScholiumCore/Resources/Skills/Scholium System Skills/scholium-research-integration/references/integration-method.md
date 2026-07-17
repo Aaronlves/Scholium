@@ -42,7 +42,7 @@ For each proposed insertion:
 4. preserve qualifications, scope, modality, and disputed readings;
 5. integrate only the amount needed by the target note;
 6. use citations or source-anchored links where the available material supports them;
-7. leave unsupported relevance as a labeled candidate rather than durable content.
+7. leave possible later project use to researcher judgment rather than generating a relevance property or score.
 
 Do not let the needs of the target note reshape the source analysis. If integration exposes an ambiguity in the analysis, stop the insertion and return to source analysis with a bounded question.
 

@@ -2,8 +2,22 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-BINARY="${1:-${ROOT}/.build/debug/scholium}"
+DEVELOPER_DIR="${DEVELOPER_DIR:-$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")}"
+export DEVELOPER_DIR
 SCRATCH="${2:-${TMPDIR:-/tmp}/scholium-function-cli-verification}"
+
+if (( $# >= 1 )); then
+  BINARY="$1"
+else
+  swift build \
+    --package-path "${ROOT}" \
+    --scratch-path "${SCRATCH}" \
+    --product scholium
+  BINARY="$(swift build \
+    --package-path "${ROOT}" \
+    --scratch-path "${SCRATCH}" \
+    --show-bin-path)/scholium"
+fi
 
 if [[ ! -x "${BINARY}" ]]; then
   print -u2 "Function CLI verifier cannot execute ${BINARY}."
@@ -11,10 +25,9 @@ if [[ ! -x "${BINARY}" ]]; then
 fi
 
 SCHOLIUM_FUNCTION_CLI_BINARY="${BINARY}" \
-DEVELOPER_DIR="${DEVELOPER_DIR:-$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")}" \
 swift test \
   --package-path "${ROOT}" \
   --scratch-path "${SCRATCH}" \
   --filter FunctionCLIExecutableLifecycleTests
 
-print "Function CLI: executable availability, Dialogue, Revise, edit, Fidelity, completion, cancellation, and failure lifecycle verified"
+print "Research CLI: Function and Recommended Bibliography executable lifecycles verified"

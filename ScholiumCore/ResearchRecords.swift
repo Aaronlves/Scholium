@@ -409,8 +409,8 @@ private func canFinalizeFunctionPreflight(
     _ current: ResearchFunctionSnapshot,
     as replacement: ResearchFunctionSnapshot
 ) -> Bool {
-    guard current.request.awaitsMethodSelection,
-          replacement.request.methods != nil,
+    guard current.request.awaitsResourceSelection,
+          replacement.request.conditionalResources != nil,
           current.runID == replacement.runID,
           current.recordKind == replacement.recordKind,
           current.recordID == replacement.recordID,
@@ -447,7 +447,7 @@ private func functionRequestsMatchExceptMethods(
         scope: lhs.scope,
         checks: lhs.checks,
         commentIDs: lhs.commentIDs,
-        methods: nil
+        conditionalResources: nil
     ) == ResearchFunctionRequest(
         function: rhs.function,
         target: rhs.target,
@@ -456,7 +456,7 @@ private func functionRequestsMatchExceptMethods(
         scope: rhs.scope,
         checks: rhs.checks,
         commentIDs: rhs.commentIDs,
-        methods: nil
+        conditionalResources: nil
     )
 }
 

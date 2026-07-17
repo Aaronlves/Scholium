@@ -85,6 +85,35 @@ struct ZoteroMetadataTests {
         assertUnique(source, [candidate], key: "FOOT1967", basis: .titleAuthorYear)
     }
 
+    @Test("Title fallback requires the complete author identity")
+    func titleFallbackRejectsIncompleteAuthorLists() {
+        let source = ZoteroSourceIdentity(
+            title: "A Collaborative Work",
+            authors: ["First Author"],
+            year: 2024
+        )
+        let candidate = item(
+            key: "COLLAB24",
+            title: "A Collaborative Work",
+            authors: ["First Author", "Second Author"],
+            year: 2024
+        )
+        switch ZoteroMetadataMatcher.match(source: source, candidates: [candidate]) {
+        case .notFound: break
+        default: Issue.record("Incomplete author identity must not produce a Zotero match.")
+        }
+    }
+
+    @Test("Malformed ISBN lengths do not become stable identifier matches")
+    func malformedISBNDoesNotMatch() {
+        let source = ZoteroSourceIdentity(isbn: "12345")
+        let candidate = item(key: "BADISBN1", title: "Bad ISBN", isbn: "12345")
+        switch ZoteroMetadataMatcher.match(source: source, candidates: [candidate]) {
+        case .notFound: break
+        default: Issue.record("Only ISBN-10 and ISBN-13 identities may match.")
+        }
+    }
+
     @Test("Title fallback stays ambiguous and incomplete metadata stays explicit")
     func titleAmbiguityAndInsufficientMetadata() {
         let source = ZoteroSourceIdentity(title: "Same", authors: ["A. Author"], year: 2020)

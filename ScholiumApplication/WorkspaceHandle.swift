@@ -17,6 +17,8 @@ struct WorkspaceServices: Sendable {
     let controlStore: TriptychControlStore
     let researchSkillStore: ResearchSkillStore
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
+    let recommendedBibliographyStore: RecommendedBibliographyStore
+    let zotero: ZoteroOperations
     let humanReviewStore: HumanReviewStore
     let dialogueStore: DialogueStore
     let critiqueRegistry: CritiqueRegistry
@@ -136,6 +138,7 @@ public actor WorkspaceHandle {
         applicationSupportURL: URL,
         windowSessionStore: WindowSessionSnapshotStore,
         vaultPool: WorkspaceVaultPool,
+        zotero: ZoteroOperations,
         access: WorkspaceAccessConfiguration
     ) async throws -> WorkspaceHandle {
         try Task.checkCancellation()
@@ -242,6 +245,10 @@ public actor WorkspaceHandle {
                 controlStore: controlStore,
                 researchSkillStore: researchSkillStore,
                 researchSkillMaintenanceStore: researchSkillMaintenanceStore,
+                recommendedBibliographyStore: RecommendedBibliographyStore(
+                    controlURL: controlURL
+                ),
+                zotero: zotero,
                 humanReviewStore: humanReviewStore,
                 dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,

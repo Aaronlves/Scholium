@@ -290,8 +290,6 @@ struct ResearchWorkflowContractTests {
         let loaded = practice.loadedResources.map(\.relativePath)
         #expect(loaded == [
             "SKILL.md",
-            "references/COMPOSITION-RULES.md",
-            "references/FOUNDATIONAL-DIMENSIONS.md",
             "references/Reviewer.md",
         ])
         #expect(!loaded.contains("references/Dialectical-Partner.md"))
@@ -303,7 +301,7 @@ struct ResearchWorkflowContractTests {
         #expect(envelope.renderedInstructions.contains("ephemeral structural task packet"))
     }
 
-    @Test("Conflicting replacement Practices remain visible until precedence is explicit")
+    @Test("Legacy replacement Practices always require repair")
     func replacementPracticeConflict() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -345,8 +343,8 @@ struct ResearchWorkflowContractTests {
             )]
         )
         let resolved = try await ResearchWorkflowAssembler.resolve(ordered, store: store)
-        #expect(resolved.isExecutable)
-        #expect(resolved.blockingConflicts.isEmpty)
+        #expect(!resolved.isExecutable)
+        #expect(resolved.blockingConflicts.count == 1)
     }
 
     @Test("The audit planner keeps final substantive revisions and never self-schedules")

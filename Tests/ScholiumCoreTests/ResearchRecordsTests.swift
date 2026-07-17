@@ -1019,7 +1019,7 @@ struct ResearchRecordsTests {
         _ = try await store.save(entry)
         #expect(try await store.functionRecord(runID: snapshot.runID)?.snapshot == snapshot)
 
-        let finalizedRequest = try snapshot.request.selectingMethods([])
+        let finalizedRequest = try snapshot.request.selectingResources([])
         let finalizedSnapshot = ResearchFunctionSnapshot(
             runID: snapshot.runID,
             request: finalizedRequest,
@@ -1050,7 +1050,7 @@ struct ResearchRecordsTests {
         )
         let conflictingSnapshot = ResearchFunctionSnapshot(
             runID: snapshot.runID,
-            request: try snapshot.request.selectingMethods([.developmentSynthesis]),
+            request: try snapshot.request.selectingResources([.developmentSynthesis]),
             recordKind: snapshot.recordKind,
             recordID: snapshot.recordID,
             checkpointID: snapshot.checkpointID,
@@ -1180,29 +1180,6 @@ struct ResearchRecordsTests {
 
         let preparedRecord = try await registry.functionRecord(runID: snapshot.runID)
         #expect(preparedRecord?.snapshot == snapshot)
-        let finalizedSnapshot = ResearchFunctionSnapshot(
-            runID: snapshot.runID,
-            request: try snapshot.request.selectingMethods([.critiqueReportTemplate]),
-            recordKind: snapshot.recordKind,
-            recordID: snapshot.recordID,
-            checkpointID: snapshot.checkpointID,
-            skills: snapshot.skills,
-            phases: snapshot.phases,
-            requiredChildFunctions: snapshot.requiredChildFunctions,
-            preparedOutput: snapshot.preparedOutput,
-            evidenceRevisions: snapshot.evidenceRevisions,
-            fidelityHandoff: snapshot.fidelityHandoff,
-            confirmationToken: snapshot.confirmationToken,
-            preparedAt: snapshot.preparedAt
-        )
-        _ = try await registry.finalizeFunctionPreflight(
-            snapshot: finalizedSnapshot,
-            instructions: "Finalized Critique instructions",
-            runID: snapshot.runID
-        )
-        #expect(try await registry.functionRecord(
-            runID: snapshot.runID
-        )?.preparedInstructions == "Finalized Critique instructions")
         _ = try await registry.discardPreparedFunctionRecord(runID: snapshot.runID)
         #expect(try await registry.functionRecord(runID: snapshot.runID) == nil)
         let retained = try #require(await registry.association(workNoteID: workID))

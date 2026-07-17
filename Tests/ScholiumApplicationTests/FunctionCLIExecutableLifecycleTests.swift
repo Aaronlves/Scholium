@@ -22,7 +22,7 @@ struct FunctionCLIExecutableLifecycleTests {
         let decoder = Self.decoder()
 
         let availability = try cli.run(
-            ["function", "availability", "--from", "-", "--format", "json"],
+            ["function", "available", "--from", "-", "--format", "json"],
             stdin: try encoder.encode(fixture.analysisTarget)
         )
         let available = try decoder.decode(
@@ -54,6 +54,18 @@ struct FunctionCLIExecutableLifecycleTests {
             .criticalReflection,
             .philosophicalSignificance,
         ])
+        #expect(Set(dialogue.nextActions?.map(\.kind) ?? []) == [
+            .reply, .promote, .complete, .inspect, .cancel,
+        ])
+        let shownDialogueRun = try decoder.decode(
+            ResearchFunctionPreparation.self,
+            from: try cli.run([
+                "function", "show", dialogue.runID.uuidString,
+                "--triptych", fixture.assignment.id.uuidString,
+                "--format", "json",
+            ]).stdout
+        )
+        #expect(shownDialogueRun.snapshot == dialogue.snapshot)
 
         let shownResult = try cli.run([
             "dialogue", "show", dialogue.runID.uuidString,
@@ -112,7 +124,7 @@ struct FunctionCLIExecutableLifecycleTests {
                 "function", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(reviseRequest)).stdout
         )
-        #expect(revise.awaitsMethodSelection)
+        #expect(revise.awaitsResourceSelection)
 
         let premature = ResearchFunctionCompletionSubmission(
             runID: revise.runID,
@@ -127,31 +139,31 @@ struct FunctionCLIExecutableLifecycleTests {
             "--format", "json",
         ], stdin: try encoder.encode(premature), contains: "conditional methods")
 
-        let wrongConfirmation = ResearchFunctionMethodSelectionSubmission(
+        let wrongConfirmation = ResearchFunctionResourceSelectionSubmission(
             runID: revise.runID,
             confirmationToken: UUID(),
-            methods: []
+            resources: []
         )
         try cli.expectFailure([
-            "function", "select-methods", "--from", "-",
+            "function", "select-resources", "--from", "-",
             "--triptych", fixture.assignment.triptych.name,
             "--format", "json",
         ], stdin: try encoder.encode(wrongConfirmation), contains: "does not match")
 
-        let methodSelection = ResearchFunctionMethodSelectionSubmission(
+        let methodSelection = ResearchFunctionResourceSelectionSubmission(
             runID: revise.runID,
             confirmationToken: revise.snapshot.confirmationToken,
-            methods: []
+            resources: []
         )
         let finalizedRevise = try decoder.decode(
             ResearchFunctionPreparation.self,
             from: try cli.run([
-                "function", "select-methods", "--from", "-",
+                "function", "select-resources", "--from", "-",
                 "--triptych", fixture.assignment.triptych.name,
                 "--format", "json",
             ], stdin: try encoder.encode(methodSelection)).stdout
         )
-        #expect(finalizedRevise.snapshot.request.methods == [])
+        #expect(finalizedRevise.snapshot.request.conditionalResources == [])
 
         let readBefore = try Self.readPayload(try cli.run([
             "read", "Works:Draft Argument.md", "--format", "json",
@@ -193,24 +205,19 @@ struct FunctionCLIExecutableLifecycleTests {
             ))).stdout
         )
         #expect(awaiting.state == .awaitingFidelity)
+        #expect(awaiting.nextActions?.first?.kind == .prepareFidelity)
 
-        let finalWorkTarget = ResearchFunctionTarget(
-            noteID: fixture.workTarget.noteID,
-            note: fixture.workTarget.note,
-            role: .work,
-            fingerprint: finalWorkFingerprint,
-            title: fixture.workTarget.title
-        )
-        let fidelity = try decoder.decode(
-            ResearchFunctionPreparation.self,
+        let automatic = try decoder.decode(
+            AutomaticFidelityPreparation.self,
             from: try cli.run([
-                "function", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .fidelity,
-                target: finalWorkTarget,
-                checks: [.content]
-            ))).stdout
+                "function", "prepare-fidelity", revise.runID.uuidString,
+                "--triptych", fixture.assignment.id.uuidString,
+                "--format", "json",
+            ]).stdout
         )
+        let fidelity = automatic.preparation
+        #expect(fidelity.snapshot.request.target.fingerprint == finalWorkFingerprint)
+        #expect(fidelity.snapshot.resolvedFidelityInvocation == .automatic(parentRunID: revise.runID))
         let fidelityCompletion = try decoder.decode(
             ResearchFunctionCompletion.self,
             from: try cli.run([
@@ -232,20 +239,30 @@ struct FunctionCLIExecutableLifecycleTests {
         )
         #expect(fidelityCompletion.state == .complete)
 
+        let reusedAutomatic = try decoder.decode(
+            AutomaticFidelityPreparation.self,
+            from: try cli.run([
+                "function", "prepare-fidelity", revise.runID.uuidString,
+                "--triptych", fixture.assignment.id.uuidString,
+                "--format", "json",
+            ]).stdout
+        )
+        #expect(reusedAutomatic.reusedExistingEvidence)
+        let parentAction = try #require(reusedAutomatic.nextActions?.first {
+            $0.kind == .complete
+        })
+        let parentInput = try #require(parentAction.inputTemplate)
+        let parentSubmission = try decoder.decode(
+            ResearchFunctionCompletionSubmission.self,
+            from: Data(parentInput.utf8)
+        )
         let verifiedParent = try decoder.decode(
             ResearchFunctionCompletion.self,
             from: try cli.run([
                 "function", "complete", "--from", "-",
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
-            ], stdin: try encoder.encode(ResearchFunctionCompletionSubmission(
-                runID: revise.runID,
-                confirmationToken: revise.snapshot.confirmationToken,
-                finalTargetFingerprint: finalWorkFingerprint,
-                summary: "Linked the synthetic final-revision evidence.",
-                didModifyTarget: true,
-                childRunIDs: [fidelity.runID]
-            ))).stdout
+            ], stdin: try encoder.encode(parentSubmission)).stdout
         )
         #expect(verifiedParent.state == .complete)
         #expect(verifiedParent.childRunIDs == [fidelity.runID])
@@ -256,7 +273,13 @@ struct FunctionCLIExecutableLifecycleTests {
                 "function", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(ResearchFunctionRequest(
                 function: .dialogue,
-                target: finalWorkTarget,
+                target: ResearchFunctionTarget(
+                    noteID: fixture.workTarget.noteID,
+                    note: fixture.workTarget.note,
+                    role: .work,
+                    fingerprint: finalWorkFingerprint,
+                    title: fixture.workTarget.title
+                ),
                 instruction: "Prepare a cancellable synthetic Dialogue.",
                 dialogueResponseModules: []
             ))).stdout
@@ -276,7 +299,13 @@ struct FunctionCLIExecutableLifecycleTests {
             "function", "prepare", "--from", "-", "--format", "markdown",
         ], stdin: try encoder.encode(ResearchFunctionRequest(
             function: .dialogue,
-            target: finalWorkTarget,
+            target: ResearchFunctionTarget(
+                noteID: fixture.workTarget.noteID,
+                note: fixture.workTarget.note,
+                role: .work,
+                fingerprint: finalWorkFingerprint,
+                title: fixture.workTarget.title
+            ),
             instruction: "Render a Markdown handoff fixture.",
             dialogueResponseModules: [.remainingQuestions]
         )))
@@ -285,7 +314,7 @@ struct FunctionCLIExecutableLifecycleTests {
         try cli.expectFailure(
             ["function", "prepare", "--from", "-", "--format", "json"],
             stdin: Data("{malformed".utf8),
-            contains: "data"
+            contains: "invalid_json"
         )
         try cli.expectFailure(
             ["function", "prepare", "--from", "-", "--format", "json"],
@@ -314,6 +343,187 @@ struct FunctionCLIExecutableLifecycleTests {
         )
     }
 
+    @Test("Help, version, doctor, and strict parsing work without a configured Triptych")
+    func discoveryAndStrictParsing() throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_FUNCTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "scholium-cli-discovery-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: root)
+
+        let version = try cli.run(["version", "--format", "json"])
+        #expect(String(decoding: version.stdout, as: UTF8.self).contains("cli_version"))
+        let help = try cli.run(["function", "prepare", "--help", "--format", "json"])
+        #expect(String(decoding: help.stdout, as: UTF8.self).contains("function prepare"))
+        let doctor = try cli.run(["doctor", "--format", "json"])
+        #expect(String(decoding: doctor.stdout, as: UTF8.self).contains("triptych_count"))
+        try cli.expectFailure(
+            ["skills", "catalog", "--resouce", "references/method.md", "--format", "json"],
+            contains: "Unknown option '--resouce'"
+        )
+        try cli.expectFailure(
+            ["skills", "catalog", "--format"],
+            contains: "requires a value"
+        )
+    }
+
+    @Test("The real CLI preserves the Recommended Bibliography lifecycle")
+    func bibliographyLifecycle() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_FUNCTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await FunctionCLIFixture.make()
+        defer { fixture.remove() }
+        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let encoder = Self.encoder()
+        let decoder = Self.decoder()
+        let analysis = RecommendedBibliographyTarget(
+            noteID: fixture.analysisTarget.noteID,
+            note: fixture.analysisTarget.note,
+            fingerprint: fixture.analysisTarget.fingerprint,
+            title: fixture.analysisTarget.title
+        )
+
+        let request = RecommendedBibliographyRequest(
+            target: analysis,
+            goals: [.objections, .classicWorks],
+            purpose: "Screen only source-grounded reading leads."
+        )
+        let requestURL = fixture.rootURL.appendingPathComponent("bibliography-request.json")
+        try encoder.encode(request).write(to: requestURL, options: .atomic)
+        let preparation = try decoder.decode(
+            RecommendedBibliographyPreparation.self,
+            from: try cli.run([
+                "bibliography", "prepare", "--from", requestURL.path,
+                "--format", "json",
+            ]).stdout
+        )
+        #expect(preparation.request == request)
+        #expect(preparation.method.packageID == "scholium-source-analyzer")
+
+        let shown = try cli.run([
+            "bibliography", "show", preparation.id.uuidString,
+            "--triptych", fixture.assignment.id.uuidString,
+            "--format", "markdown",
+        ])
+        #expect(String(decoding: shown.stdout, as: UTF8.self).contains(
+            "Reading leads, not evidence"
+        ))
+
+        let first = Self.bibliographyCandidate(title: "A Bounded Objection")
+        let second = Self.bibliographyCandidate(title: "A Bounded Objection")
+        let completion = RecommendedBibliographyCompletionSubmission(
+            requestID: preparation.id,
+            confirmationToken: preparation.confirmationToken,
+            targetFingerprint: analysis.fingerprint,
+            sourceScope: "Synthetic complete source fixture",
+            candidates: [first, second]
+        )
+        let completionURL = fixture.rootURL.appendingPathComponent("bibliography-completion.json")
+        try encoder.encode(completion).write(to: completionURL, options: .atomic)
+        let projection = try decoder.decode(
+            RecommendedBibliographyProjection.self,
+            from: try cli.run([
+                "bibliography", "complete", "--from", completionURL.path,
+                "--triptych", fixture.assignment.triptych.name,
+                "--format", "json",
+            ]).stdout
+        )
+        #expect(projection.state == .complete)
+        #expect(projection.candidates.count == 2)
+        #expect(projection.candidates[1].matchState == .duplicate)
+        #expect(projection.candidates[1].duplicateOfCandidateID == first.id)
+
+        let cancellable = try decoder.decode(
+            RecommendedBibliographyPreparation.self,
+            from: try cli.run([
+                "bibliography", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
+                target: analysis,
+                goals: []
+            ))).stdout
+        )
+        for _ in 0..<2 {
+            let cancelled = try decoder.decode(
+                BibliographyCancellationReport.self,
+                from: try cli.run([
+                    "bibliography", "cancel", cancellable.id.uuidString,
+                    "--triptych", fixture.assignment.id.uuidString,
+                ]).stdout
+            )
+            #expect(cancelled.requestID == cancellable.id)
+            #expect(cancelled.state == "cancelled")
+        }
+
+        let wrongConfirmation = try decoder.decode(
+            RecommendedBibliographyPreparation.self,
+            from: try cli.run([
+                "bibliography", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
+                target: analysis
+            ))).stdout
+        )
+        try cli.expectFailure([
+            "bibliography", "complete", "--from", "-",
+            "--triptych", fixture.assignment.id.uuidString,
+            "--format", "json",
+        ], stdin: try encoder.encode(RecommendedBibliographyCompletionSubmission(
+            requestID: wrongConfirmation.id,
+            confirmationToken: UUID(),
+            targetFingerprint: analysis.fingerprint,
+            sourceScope: "Synthetic source",
+            candidates: []
+        )), contains: "confirmation token")
+        _ = try cli.run([
+            "bibliography", "cancel", wrongConfirmation.id.uuidString,
+            "--triptych", fixture.assignment.id.uuidString,
+        ])
+
+        let workTarget = RecommendedBibliographyTarget(
+            noteID: fixture.workTarget.noteID,
+            note: fixture.workTarget.note,
+            fingerprint: fixture.workTarget.fingerprint,
+            title: fixture.workTarget.title
+        )
+        try cli.expectFailure(
+            ["bibliography", "prepare", "--from", "-", "--format", "json"],
+            stdin: try encoder.encode(RecommendedBibliographyRequest(target: workTarget)),
+            contains: "only for an Analysis"
+        )
+        try cli.expectFailure(
+            ["bibliography", "prepare", "--from", "-", "--format", "json"],
+            stdin: Data("{malformed".utf8),
+            contains: "data"
+        )
+
+        let stale = try decoder.decode(
+            RecommendedBibliographyPreparation.self,
+            from: try cli.run([
+                "bibliography", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
+                target: analysis
+            ))).stdout
+        )
+        try Data("---\ntitle: Analysis\n---\n# Analysis\n\nChanged after preparation.\n".utf8)
+            .write(to: fixture.analysisURL, options: .atomic)
+        try cli.expectFailure([
+            "bibliography", "complete", "--from", "-",
+            "--triptych", fixture.assignment.id.uuidString,
+            "--format", "json",
+        ], stdin: try encoder.encode(RecommendedBibliographyCompletionSubmission(
+            requestID: stale.id,
+            confirmationToken: stale.confirmationToken,
+            targetFingerprint: analysis.fingerprint,
+            sourceScope: "Synthetic source",
+            candidates: []
+        )), contains: "changed")
+    }
+
     private static func encoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -330,6 +540,30 @@ struct FunctionCLIExecutableLifecycleTests {
     private static func readPayload(_ data: Data) throws -> CLIReadPayload {
         try JSONDecoder().decode(CLIReadPayload.self, from: data)
     }
+
+    private static func bibliographyCandidate(
+        title: String
+    ) -> RecommendedBibliographyCandidate {
+        RecommendedBibliographyCandidate(
+            identity: BibliographyCandidateIdentity(
+                rawCitation: "A. Author, \(title), 2020",
+                title: title,
+                authors: ["A. Author"],
+                year: 2020,
+                doi: "10.1000/bounded-objection",
+                isChapter: false
+            ),
+            goals: [.objections],
+            reason: "The source discusses this as a bounded objection.",
+            evidence: BibliographyRecommendationEvidence(
+                discussionStatus: .substantivelyDiscussed,
+                sourceLocators: ["pp. 10–12"],
+                metadataVerified: true,
+                verificationProvenance: "Synthetic fixture metadata"
+            ),
+            requiredNextCheck: "Inspect the complete recommended source."
+        )
+    }
 }
 
 private struct CLIReadPayload: Decodable {
@@ -339,6 +573,16 @@ private struct CLIReadPayload: Decodable {
 
 private struct CLICancellationReport: Decodable {
     let runID: UUID
+}
+
+private struct BibliographyCancellationReport: Decodable {
+    let requestID: UUID
+    let state: String
+
+    private enum CodingKeys: String, CodingKey {
+        case requestID = "request_id"
+        case state
+    }
 }
 
 private struct FunctionCLIProcess {
@@ -408,6 +652,7 @@ private struct FunctionCLIFixture {
     let assignment: TriptychAssignment
     let analysisTarget: ResearchFunctionTarget
     let workTarget: ResearchFunctionTarget
+    let analysisURL: URL
 
     static func make() async throws -> Self {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -423,8 +668,9 @@ private struct FunctionCLIFixture {
         for directory in [home, appSupport, registry, analyses, topics, works] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        let analysisURL = analyses.appendingPathComponent("Analysis.md")
         try Data("---\ntitle: Analysis\n---\n# Analysis\n\nA synthetic analysis claim.\n".utf8)
-            .write(to: analyses.appendingPathComponent("Analysis.md"), options: .atomic)
+            .write(to: analysisURL, options: .atomic)
         try Data("---\ntitle: Topic\n---\n# Topic\n\nA synthetic topic.\n".utf8)
             .write(to: topics.appendingPathComponent("Topic.md"), options: .atomic)
         try Data("---\ntitle: Draft Argument\nkind: chapter\n---\n# Draft Argument\n\nA synthetic work claim.\n".utf8)
@@ -460,7 +706,8 @@ private struct FunctionCLIFixture {
             homeURL: home,
             assignment: assignment,
             analysisTarget: analysisTarget,
-            workTarget: workTarget
+            workTarget: workTarget,
+            analysisURL: analysisURL
         )
     }
 

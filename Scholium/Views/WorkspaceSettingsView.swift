@@ -737,11 +737,17 @@ private struct ResearchGuidanceSettingsView: View {
                             if showsAdvanced {
                                 ScrollView {
                                     VStack(spacing: 0) {
+                                        AgentCLISettingsView()
+                                            .padding(.vertical, 8)
+                                        Divider()
                                         ResearchCitationMethodSettingsView { updated in
                                             citationStatus = updated
                                         }
                                         .padding(.vertical, 8)
                                         .id(ResearchGuidanceAdvancedDestination.citationMethod.anchorID)
+                                        Divider()
+                                        RecommendedBibliographyMethodSettingsView()
+                                            .padding(.vertical, 8)
                                         Divider()
                                         ResearchFunctionMethodSettingsView(
                                             selectedFunction: $selectedMethodFunction
@@ -757,7 +763,7 @@ private struct ResearchGuidanceSettingsView: View {
                                     }
                                     .padding(.leading, 18)
                                 }
-                                .frame(maxHeight: 180)
+                                .frame(maxHeight: 260)
                             }
                         }
                         Divider()
@@ -854,6 +860,214 @@ private struct ResearchGuidanceSettingsView: View {
             methodStatuses = [:]
             citationStatus = nil
             statusLoadState = .unavailable
+        }
+    }
+}
+
+private struct AgentCLISettingsView: View {
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @State private var status: CommandLineToolStatus?
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        GroupBox("Scholium CLI") {
+            VStack(alignment: .leading, spacing: 8) {
+                if let status {
+                    Label(statusLabel(status), systemImage: statusSymbol(status))
+                        .accessibilityLabel("Scholium CLI status")
+                        .accessibilityValue(statusLabel(status))
+                        .accessibilityIdentifier("scholium.agentCLI.status")
+                    Text(status.installPath)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("CLI installation path")
+                        .accessibilityValue(status.installPath)
+                    if let repair = status.repairMessage {
+                        Text(repair)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        if status.state == .notInstalled || status.state == .updateAvailable {
+                            Button(status.state == .updateAvailable ? "Update" : "Install") {
+                                Task { await install() }
+                            }
+                            .disabled(isWorking)
+                            .accessibilityHint(
+                                "Installs the bundled Scholium command in the displayed user-local path"
+                            )
+                            .accessibilityIdentifier("scholium.agentCLI.install")
+                        }
+                        if !status.isOnCurrentPATH
+                            && (status.state == .installed || status.state == .updateAvailable) {
+                            Button("Copy PATH Setup") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(
+                                    "export PATH=\"$HOME/.local/bin:$PATH\"",
+                                    forType: .string
+                                )
+                                settingsModel.showToast("PATH setup copied")
+                            }
+                            .accessibilityHint(
+                                "Copies a shell command; run it in your shell profile and start a new agent task"
+                            )
+                            .accessibilityIdentifier("scholium.agentCLI.pathSetup")
+                        }
+                        if isWorking { ProgressView().controlSize(.small) }
+                    }
+                } else {
+                    ProgressView("Checking command-line tool…")
+                        .controlSize(.small)
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .textSelection(.enabled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("scholium.agentCLI.section")
+        .task { status = await settingsModel.commandLineToolStatus() }
+    }
+
+    private func install() async {
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+        do {
+            status = try await settingsModel.installCommandLineTool()
+            settingsModel.showToast("Scholium CLI installed")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func statusLabel(_ status: CommandLineToolStatus) -> String {
+        switch status.state {
+        case .bundledToolUnavailable: "Not included in this build"
+        case .notInstalled: "Ready to install"
+        case .updateAvailable: "Update available"
+        case .installed: status.isOnCurrentPATH ? "Installed and discoverable" : "Installed"
+        case .invalidInstallation: "Needs attention"
+        }
+    }
+
+    private func statusSymbol(_ status: CommandLineToolStatus) -> String {
+        switch status.state {
+        case .installed: status.isOnCurrentPATH ? "checkmark.circle" : "checkmark"
+        case .notInstalled, .updateAvailable: "terminal"
+        case .bundledToolUnavailable, .invalidInstallation: "exclamationmark.triangle"
+        }
+    }
+}
+
+/// Recommended Bibliography uses one complete Source Analyzer independently
+/// of the Strip's Research Function bindings.
+private struct RecommendedBibliographyMethodSettingsView: View {
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @State private var status: RecommendedBibliographyMethodStatus?
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    private var loadIdentity: String {
+        settingsModel.activeTriptychServicesID?.uuidString ?? "none"
+    }
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                if let status {
+                    Picker("Bibliography Method", selection: selection) {
+                        Text("Built-in Source Analyzer").tag(String?.none)
+                        ForEach(status.candidates) { candidate in
+                            Text(candidate.name).tag(String?.some(candidate.packageID))
+                        }
+                    }
+                    .frame(maxWidth: 420)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier(
+                        "scholium.researchGuidance.bibliographyMethod"
+                    )
+
+                    Text("Used only to screen reading leads from an Analysis. It does not create a Strip function, edit notes, or write to Zotero.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if status.issue != nil {
+                        Label(
+                            "The explicit bibliography method requires repair. Scholium will not silently fall back to the built-in method.",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    }
+                } else {
+                    ProgressView("Loading bibliography method…")
+                        .controlSize(.small)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Bibliography Method", systemImage: "text.book.closed")
+                .font(.headline)
+        }
+        .task(id: loadIdentity) { await reload() }
+        .alert("Could Not Update Bibliography Method", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Dismiss", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var selection: Binding<String?> {
+        Binding(
+            get: { status?.activePackageID },
+            set: { packageID in
+                guard packageID != status?.activePackageID else { return }
+                update(packageID)
+            }
+        )
+    }
+
+    private func reload() async {
+        guard settingsModel.activeTriptychServicesID != nil else {
+            status = nil
+            errorMessage = nil
+            return
+        }
+        do {
+            status = try await settingsModel.bibliographyMethodStatus()
+            errorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            status = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func update(_ packageID: String?) {
+        guard let status else { return }
+        isWorking = true
+        Task {
+            do {
+                self.status = try await settingsModel.setBibliographyMethod(
+                    packageID: packageID,
+                    expectedBindingRevision: status.bindingRevision
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+                await reload()
+            }
+            isWorking = false
         }
     }
 }
@@ -1125,6 +1339,8 @@ private struct ResearchFunctionMethodSettingsView: View {
             "The selected guidance cannot play this role."
         case .invalidPractice:
             "The selected practice is no longer available."
+        case .legacyReplacementPractice:
+            "A legacy replacement Practice must become a supplement or a complete Researcher Skill."
         }
     }
 
@@ -1421,7 +1637,7 @@ private struct DialogueResponseSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(12)
-        .task { await load() }
+        .task(id: settingsModel.activeTriptychServicesID) { await load() }
         .alert("Could Not Save Dialogue Defaults", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -1446,6 +1662,10 @@ private struct DialogueResponseSettingsView: View {
     }
 
     private func load() async {
+        guard settingsModel.activeTriptychServicesID != nil else {
+            errorMessage = nil
+            return
+        }
         do {
             let profile = try await settingsModel.dialogueResponseProfile()
             selectedModules = Set(profile.knownModules)
@@ -2415,6 +2635,7 @@ private struct ResearchSkillsSettingsView: View {
         switch capability {
         case .citationVerification: "Citation Verification"
         case .citationFormatting: "Citation Formatting"
+        case .bibliographyRecommendation: "Bibliography Recommendation"
         }
     }
 
@@ -2779,7 +3000,10 @@ private struct ResearchSkillsSettingsView: View {
                 id: skill.id,
                 expectedRevision: revision
             )
-            await reload()
+            // When a Triptych package shadowed a bundled package with the
+            // same ID, keep the researcher's conceptual selection on that
+            // package after deletion instead of jumping to an unrelated row.
+            await reload(selecting: skill.id)
             refreshGuidanceStatus()
         }
     }

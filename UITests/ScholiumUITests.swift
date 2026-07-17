@@ -588,6 +588,35 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testScholiumCLIInstallsFromSettings() throws {
+        openResearchGuidanceSkills(expandAdvanced: true)
+
+        let section = app.descendants(matching: .any)["scholium.agentCLI.section"]
+        let status = app.descendants(matching: .any)["scholium.agentCLI.status"]
+        let install = app.descendants(matching: .any)["scholium.agentCLI.install"]
+        XCTAssertTrue(section.waitForExistence(timeout: 10))
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        XCTAssertEqual(status.label, "Scholium CLI status")
+        XCTAssertTrue(install.waitForExistence(timeout: 5))
+        XCTAssertTrue(install.isEnabled)
+        install.click()
+
+        let installedTool = testDirectory.appendingPathComponent("cli-bin/scholium")
+        let installedCatalog = testDirectory.appendingPathComponent(
+            "cli-bin/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml"
+        )
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            FileManager.default.isExecutableFile(atPath: installedTool.path)
+                && FileManager.default.fileExists(atPath: installedCatalog.path)
+        })
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (status.value as? String) == "Installed"
+                || (status.value as? String) == "Installed and discoverable"
+        })
+        XCTAssertFalse(install.exists)
+    }
+
+    @MainActor
     func testGuidedEvolutionAppliesAndRestoresACompleteResearcherSkill() throws {
         XCTAssertTrue(app.radioButtons["Works"].waitForExistence(timeout: 15))
         waitForDocumentSurface()
@@ -2017,7 +2046,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
 
         let shellScreenshot = XCTAttachment(screenshot: window.screenshot())
-        shellScreenshot.name = "Full-height vibrant Library with native sidebar controls"
+        shellScreenshot.name = "Full-height editorial Library with native sidebar controls"
         shellScreenshot.lifetime = .keepAlways
         add(shellScreenshot)
     }
@@ -3058,6 +3087,64 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testRecommendedBibliographyIsAnalysisOnlyAndExposesCompactControls() throws {
+        let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
+        if !inspector.exists {
+            let inspectorButton = app.descendants(matching: .any)[
+                "scholium.researchInspectorButton"
+            ]
+            XCTAssertTrue(inspectorButton.waitForExistence(timeout: 5))
+            inspectorButton.click()
+        }
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+
+        let research = app.radioButtons["Research"]
+        XCTAssertTrue(research.waitForExistence(timeout: 3))
+        research.click()
+
+        let section = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography"
+        ]
+        XCTAssertTrue(section.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Recommended Bibliography"].exists)
+        XCTAssertTrue(app.staticTexts["Reading leads, not evidence."].exists)
+
+        let goals = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.goals"
+        ]
+        let purpose = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.purpose"
+        ]
+        let prepare = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.prepare"
+        ]
+        XCTAssertTrue(goals.exists)
+        XCTAssertEqual(goals.value as? String, "Goals: Neutral")
+        XCTAssertTrue(purpose.exists)
+        XCTAssertTrue(prepare.isEnabled)
+
+        goals.click()
+        let objections = app.menuItems["Objections"]
+        XCTAssertTrue(objections.waitForExistence(timeout: 3))
+        objections.click()
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            (goals.value as? String) == "Goals: 1"
+        })
+
+        app.radioButtons["Topics"].click()
+        let topic = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
+        XCTAssertTrue(topic.waitForExistence(timeout: 8))
+        topic.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !section.exists })
+
+        app.radioButtons["Works"].click()
+        let work = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+        XCTAssertTrue(work.waitForExistence(timeout: 8))
+        work.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !section.exists })
+    }
+
+    @MainActor
     func testDirtyLivePreviewCommitsBeforeOpeningSearch() throws {
         let token = " SEARCH-\(UUID().uuidString)"
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
@@ -3223,19 +3310,17 @@ final class ScholiumUITests: XCTestCase {
 
         XCTAssertTrue(waitUntil(timeout: 12) { !chooseIdentity.exists })
         XCTAssertTrue(researchStrip.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchFunction.dialogue"
-        ].isEnabled)
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchFunction.review"
-        ].isEnabled)
+        let dialogue = app.descendants(matching: .any)["scholium.researchFunction.dialogue"]
+        let review = app.descendants(matching: .any)["scholium.researchFunction.review"]
+        XCTAssertTrue(dialogue.exists)
+        XCTAssertTrue(review.exists)
         XCTAssertEqual(try source(at: movedURL), ambiguousSource)
         XCTAssertFalse(FileManager.default.fileExists(atPath: firstURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: secondURL.path))
     }
 
     @MainActor
-    func testDirtyExternalRenamePreservesTheUncommittedEditorBuffer() throws {
+    func testDirtyExternalRenameRebindsAndPreservesTheUncommittedEditorBuffer() throws {
         let localToken = " DIRTY-RENAME-\(UUID().uuidString)"
         let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
         let originalURL = analyses.appendingPathComponent("QA Autosave A.md")
@@ -3257,23 +3342,19 @@ final class ScholiumUITests: XCTestCase {
             "An external path change must never replace the dirty in-memory buffer."
         )
 
-        // Autosave cannot authoritatively commit to a path that disappeared.
-        // The document-local failure keeps the editor and buffer visible.
-        let alert = app.windows.firstMatch.sheets.firstMatch
-        let keepEditing = alert.buttons["Keep Editing"]
-        XCTAssertTrue(keepEditing.waitForExistence(timeout: 12))
-        XCTAssertFalse(alert.buttons["Reload from Disk"].exists)
-        XCTAssertEqual(try source(at: renamedURL), originalSource)
-        XCTAssertFalse(try source(at: renamedURL).contains(localToken))
+        // A unique same-byte rename preserves the stable note identity. The
+        // retained session therefore changes location without discarding its
+        // exact buffer, and the existing fingerprint gate authorizes autosave
+        // only against the unchanged bytes at that new location.
+        XCTAssertTrue(
+            waitUntil(timeout: 15) { (try? self.source(at: renamedURL).contains(localToken)) == true },
+            "The identity-rebound session must autosave its preserved buffer at the confirmed new path."
+        )
         XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
-
-        keepEditing.click()
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].exists)
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertTrue((editor.value as? String ?? "").contains(localToken))
-        XCTAssertTrue(
-            app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].exists,
-            "The deleted-path document session must remain reachable for manual recovery while dirty."
-        )
+        XCTAssertTrue(try source(at: renamedURL).hasPrefix(originalSource))
     }
 
     @MainActor
@@ -3567,6 +3648,9 @@ final class ScholiumUITests: XCTestCase {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
         }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeDirectory.path
+        application.launchEnvironment["SCHOLIUM_CLI_INSTALL_PATH"] = testDirectory
+            .appendingPathComponent("cli-bin/scholium")
+            .path
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = triptychDirectory.path
         // Keep navigation assertions independent of the user's persisted note
         // sort preference. The journey deliberately starts from A, then
@@ -4227,5 +4311,62 @@ final class ScholiumPerformanceUITests: XCTestCase {
             object: nil
         )
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+}
+
+/// External, read-only launch driver for the release-to-release Triptych
+/// integrity gate. `verify-qa-upgrade-safety.sh` owns fixture copying, exact
+/// manifests, process serialization, and evidence retention.
+final class ScholiumUpgradeSafetyUITests: XCTestCase {
+    @MainActor
+    func testReadOnlyLaunch() throws {
+        continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_UPGRADE_DRIVER_APP_PATH"] != nil else {
+            throw XCTSkip("The external upgrade-safety driver is not configured.")
+        }
+
+        let applicationPath = try required("SCHOLIUM_UPGRADE_DRIVER_APP_PATH", in: environment)
+        let fixtureRoot = try required("SCHOLIUM_UPGRADE_DRIVER_FIXTURE_ROOT", in: environment)
+        let homeRoot = try required("SCHOLIUM_UPGRADE_DRIVER_HOME_ROOT", in: environment)
+        let label = try required("SCHOLIUM_UPGRADE_DRIVER_LABEL", in: environment)
+        let application = XCUIApplication(
+            url: URL(fileURLWithPath: applicationPath, isDirectory: true)
+        )
+        application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
+        application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "upgrade-safety-\(label)"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "paper_analysis"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Upgrade Safety/Launch Probe.md"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_WINDOW_WIDTH"] = "1080"
+
+        defer { application.terminate() }
+        application.launch()
+        XCTAssertTrue(
+            application.windows.firstMatch.waitForExistence(timeout: 30),
+            "The \(label) app window did not appear."
+        )
+        XCTAssertTrue(
+            application.descendants(matching: .any)["scholium.librarySurface"]
+                .waitForExistence(timeout: 30),
+            "The \(label) Library did not become available."
+        )
+        XCTAssertTrue(
+            application.descendants(matching: .any)[
+                "scholium.renderedDocument.Upgrade Safety/Launch Probe.md"
+            ].waitForExistence(timeout: 30),
+            "The \(label) read-only launch probe did not render."
+        )
+
+        let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+        screenshot.name = "\(label)-read-only-launch"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    private func required(_ key: String, in environment: [String: String]) throws -> String {
+        let value = try XCTUnwrap(environment[key], "Missing \(key).")
+        return try XCTUnwrap(value.isEmpty ? nil : value, "Empty \(key).")
     }
 }

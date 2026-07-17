@@ -40,10 +40,12 @@ rm -rf \
   "${OUTPUT}/scholium" \
   "${OUTPUT}/Scholium_ScholiumCore.bundle" \
   "${SCRATCH}"
-mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Resources" "${OUTPUT}"
+mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Helpers" "${STAGING_APP}/Contents/Resources" "${OUTPUT}"
 
 swift build --package-path "${ROOT}" -c release --scratch-path "${SCRATCH}"
 cp "${SCRATCH}/release/ScholiumApp" "${STAGING_APP}/Contents/MacOS/Scholium"
+cp "${SCRATCH}/release/scholium" "${STAGING_APP}/Contents/Helpers/scholium"
+chmod +x "${STAGING_APP}/Contents/Helpers/scholium"
 if [[ -d "${SCRATCH}/release/Scholium_ScholiumApp.bundle" ]]; then
   cp -R "${SCRATCH}/release/Scholium_ScholiumApp.bundle" "${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
@@ -111,10 +113,13 @@ mv "${STAGING_APP}/Contents/MacOS/Scholium.sdk-fixed" "${STAGING_APP}/Contents/M
 # Strip that non-runtime metadata before signing so a distributed package does
 # not disclose the builder's home-directory path.
 xcrun strip -S -x "${STAGING_APP}/Contents/MacOS/Scholium"
+xcrun strip -S -x "${STAGING_APP}/Contents/Helpers/scholium"
 xcrun strip -S -x "${OUTPUT}/scholium"
 xcrun vtool -show-build "${STAGING_APP}/Contents/MacOS/Scholium" | rg -q "sdk ${SDK_VERSION}"
 if LC_ALL=C grep -aEq '/Users/[^/]+/' \
-  "${STAGING_APP}/Contents/MacOS/Scholium" "${OUTPUT}/scholium"; then
+  "${STAGING_APP}/Contents/MacOS/Scholium" \
+  "${STAGING_APP}/Contents/Helpers/scholium" \
+  "${OUTPUT}/scholium"; then
   print -u2 "Refusing to package binaries containing a user home-directory path."
   exit 65
 fi
@@ -147,6 +152,8 @@ SCHOLIUM_HOME="${SCRATCH}/cli-smoke-home" \
   print -u2 "Packaged CLI could not load the protected Skill catalog."
   exit 66
 }
+SCHOLIUM_HOME="${SCRATCH}/bundled-cli-smoke-home" \
+  "${APP}/Contents/Helpers/scholium" skills catalog --format json >/dev/null
 
 ARCHITECTURES="$(lipo -archs "${APP}/Contents/MacOS/Scholium")"
 if [[ "${ARCHITECTURES}" == "arm64 x86_64" || "${ARCHITECTURES}" == "x86_64 arm64" ]]; then

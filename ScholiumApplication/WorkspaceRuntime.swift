@@ -555,6 +555,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                     applicationSupportURL: supportURL,
                     windowSessionStore: windowSessionStore,
                     vaultPool: vaultPool,
+                    zotero: zotero,
                     access: .live(
                         portableControlAccessRegistry: portableRegistry,
                         refreshInterval: refreshInterval
@@ -569,6 +570,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                     applicationSupportURL: supportURL,
                     windowSessionStore: windowSessionStore,
                     vaultPool: vaultPool,
+                    zotero: zotero,
                     access: .snapshot
                 )
             }
