@@ -51,7 +51,10 @@ struct PermanentDeletionTests {
             noteID: identity.id,
             vaultID: vaultID,
             relativePath: path,
-            comment: ResearcherComment(text: "Delete this private comment too.")
+            comment: ResearcherComment(
+                text: "Delete this private comment too.",
+                anchor: testCommentAnchor(fingerprint: fingerprint)
+            )
         )
         let dialogueStore = DialogueStore(
             storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
@@ -369,13 +372,21 @@ struct PermanentDeletionTests {
                 noteID: workIdentity.id,
                 vaultID: vaultID,
                 relativePath: workPath,
-                comment: ResearcherComment(text: "Private deletion rollback fixture.")
+                comment: ResearcherComment(
+                    text: "Private deletion rollback fixture.",
+                    anchor: testCommentAnchor(fingerprint: workFingerprint)
+                )
             )
             _ = try await humanReviewStore.addComment(
                 noteID: critiqueIdentity.id,
                 vaultID: vaultID,
                 relativePath: critiquePath,
-                comment: ResearcherComment(text: "Critique-local comment.")
+                comment: ResearcherComment(
+                    text: "Critique-local comment.",
+                    anchor: testCommentAnchor(
+                        fingerprint: DocumentFingerprint(content: critiqueSource)
+                    )
+                )
             )
             dialogueStore = DialogueStore(
                 storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
@@ -496,4 +507,18 @@ struct PermanentDeletionTests {
             try? FileManager.default.removeItem(at: root)
         }
     }
+}
+
+private func testCommentAnchor(
+    fingerprint: DocumentFingerprint,
+    quotation: String = "source passage"
+) -> ResearcherCommentAnchor {
+    ResearcherCommentAnchor(
+        fingerprint: fingerprint,
+        utf8Range: 0..<quotation.utf8.count,
+        utf16Range: 0..<quotation.utf16.count,
+        line: 1,
+        endLine: 1,
+        quotation: quotation
+    )
 }

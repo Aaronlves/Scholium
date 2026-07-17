@@ -20,7 +20,7 @@ The five Workflow packages now match the five skill-backed functions:
 | Fidelity | scholium-content-fidelity | Every Target role read-only; audit outcome only |
 | Manuscript | scholium-manuscript | Orchestrates the smallest declared plan of isolated Revise, Fidelity, and optional Critique; current Work remains the only document Target |
 
-Dialogue is protected System transport and remains read-only unless the external agent promotes an explicit edit request to Develop or Revise. Human Review has no skill. Source Analysis and Researcher-skill evolution are outside the Workflow set.
+Dialogue is protected System transport and remains read-only unless the external agent promotes an explicit edit request to Develop or Revise. Human Review has no skill. Source Analysis and Researcher-skill evolution are outside the Workflow set. Source Analyzer is instead a complete copy-on-adoption Researcher Skill that an external agent may use directly; it has no `supported_functions`, Strip control, note-write permission, or dependency on Scholium storing the source.
 
 This is the smallest package partition that preserves incompatible epistemic purposes and write boundaries. In particular, Critique and Revision must not share one package: the former assesses independently and the latter changes the Work.
 
@@ -52,18 +52,21 @@ Fail a case if the agent:
 
 Use disposable nonprivate Triptychs and record exact Target and Material fingerprints, package revisions, loaded resources, write set, output fingerprint, audit key, and researcher verdict.
 
-1. Develop an Analysis question with incomplete source access and confirm the output narrows rather than invents.
-2. Synthesize three Analyses into a Topic and confirm relation evidence and read-only Materials.
-3. Critique a whole Work, then a passage, and confirm only a separate Critique record changes.
-4. Revise one Work passage from actual feedback and confirm explicit dispositions, checkpoint, exact-range preservation, and Awaiting Fidelity.
-5. Run Content Fidelity on the final revision and confirm missing primary evidence yields Unverified.
-6. Run Citations with the adopted APA starter, then request Chicago and confirm a typed style-repair result instead of APA substitution.
-7. Prepare the same Fidelity key twice and confirm audit deduplication; change one evidence Material and confirm staleness.
-8. Run Manuscript through several declared plans—including Revision plus final Fidelity and a plan with optional Critique—and verify phase isolation, no eager preparation of later phases, and one writable Work Target.
-9. Ask Dialogue to edit an Analysis and a Work and confirm promotion to Develop and Revise occurs through the function API.
-10. Evolve an opted-in local Researcher Skill after passing evaluation, restore its snapshot, then test stale revision, symlink, nested-resource, and failed-evaluation rejection.
-11. Attempt to evolve bundled Core, Revision, and the generated mirror and confirm refusal.
-12. Request a Zotero-only source without accessible text and confirm no philosophical reconstruction is fabricated.
+1. Analyze one complete paper and one partial source with Source Analyzer; confirm three distinct source passes, exact access boundaries, layer separation, and no Scholium function or note mutation.
+2. Run Source Analyzer with each declared Practice attention profile; confirm the selected weights normalize to 100%, every selected lens is genuinely applied, and visible section length does not masquerade as attention allocation.
+3. Develop an Analysis question with incomplete source access and confirm the output narrows rather than invents.
+4. Synthesize three Analyses into a Topic and confirm relation evidence and read-only Materials.
+5. Critique a whole Work, then a passage, and confirm only a separate Critique record changes.
+6. Revise one Work passage from actual feedback and confirm explicit dispositions, checkpoint, exact-range preservation, and Awaiting Fidelity.
+7. Run Content Fidelity on the final revision and confirm missing primary evidence yields Unverified.
+8. Run Citations with the adopted APA starter, then request Chicago and confirm a typed style-repair result instead of APA substitution.
+9. Prepare the same Fidelity key twice and confirm audit deduplication; change one evidence Material and confirm staleness.
+10. Run Manuscript through several declared plans—including Revision plus final Fidelity and a plan with optional Critique—and verify phase isolation, no eager preparation of later phases, and one writable Work Target.
+11. Ask Dialogue to edit an Analysis and a Work and confirm promotion to Develop and Revise occurs through the function API.
+12. Run Dialogue with all five optional modules; confirm each receives 20% of the optional-module attention budget while the Response remains concise and creates no filler.
+13. Evolve an opted-in local Researcher Skill after passing evaluation, restore its snapshot, then test stale revision, symlink, nested-resource, and failed-evaluation rejection.
+14. Attempt to evolve bundled Core, Revision, and the generated mirror and confirm refusal.
+15. Request a Zotero-only source without accessible text and confirm no philosophical reconstruction is fabricated.
 
 ## Trial record
 

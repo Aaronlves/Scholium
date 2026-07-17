@@ -33,6 +33,14 @@ struct ResearchSkillCatalogTests {
                 && $0.role == "specialist"
                 && $0.automaticModes.isEmpty
         })
+        #expect(catalog.entries.contains {
+            $0.id == "scholium-source-analyzer"
+                && $0.skillClass == .researcher
+                && $0.role == "workflow"
+                && $0.supportedFunctions.isEmpty
+                && $0.supportedModes == [.analyze]
+                && $0.automaticModes.isEmpty
+        })
         let writing = try catalog.entry(id: "scholium-revision")
         let core = try catalog.entry(id: "scholium-core-protocol")
         let practices = try catalog.entry(id: "scholium-philosophical-practices")
@@ -45,6 +53,32 @@ struct ResearchSkillCatalogTests {
             let source = try BundledResearchSkillLibrary.source(for: entry)
             #expect(!source.isEmpty)
         }
+    }
+
+    @Test("Source Analyzer is a complete agent method without a Research Function")
+    func sourceAnalyzerIsExternalResearcherMethod() throws {
+        let catalog = try BundledResearchSkillLibrary.catalog()
+        let analyzer = try catalog.entry(id: "scholium-source-analyzer")
+
+        #expect(analyzer.skillClass == .researcher)
+        #expect(analyzer.role == "workflow")
+        #expect(analyzer.updatePolicy == "copy-on-adoption-researcher-owned")
+        #expect(analyzer.supportedFunctions.isEmpty)
+        #expect(analyzer.supportedModes == [.analyze])
+        #expect(analyzer.compatiblePracticeIDs == [
+            "historical-interpreter",
+            "conceptual-analyst",
+            "argument-reconstructionist",
+        ])
+        #expect(analyzer.requiredSkillIDs == ["scholium-core-protocol"])
+        #expect(try BundledResearchSkillLibrary.resourcePaths(for: analyzer) == [
+            "SKILL.md",
+            "references/analysis-forms.md",
+            "references/bibliography-and-handoff.md",
+            "references/method.md",
+            "references/report-templates.md",
+            "references/source-clusters.md",
+        ])
     }
 
     @Test("The bundled resource mirror is byte-for-byte equal to canonical Skills")

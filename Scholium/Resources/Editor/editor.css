@@ -23,6 +23,22 @@
   --scholium-color-connection-neutral: #a94c22;
   --scholium-color-connection-support: #276f68;
   --scholium-color-connection-incompatible: #6f4d83;
+  --scholium-rhythm-prose-line-height: 1.58;
+  --scholium-rhythm-source-line-height: 1.5;
+  --scholium-rhythm-paragraph-gap: 0.7em;
+  --scholium-rhythm-heading-line-height: 1.18;
+  --scholium-rhythm-heading-before: 1.45em;
+  --scholium-rhythm-heading-after: 0.55em;
+  --scholium-rhythm-code-inset: 16px;
+  --scholium-rhythm-quote-inset: 18px;
+  --scholium-rhythm-live-code-inline-inset: 0.8em;
+  --scholium-rhythm-live-quote-inline-inset: 12px;
+  --scholium-rhythm-inline-regular: 54px;
+  --scholium-rhythm-inline-source: 42px;
+  --scholium-rhythm-inline-narrow: 24px;
+  --scholium-rhythm-read-block-start: 44px;
+  --scholium-rhythm-read-narrow-block-start: 28px;
+  --scholium-rhythm-trailing-scroll: 45vh;
   --scholium-symbol-link: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAGKADAAQAAAABAAAAGAAAAADiNXWtAAACV0lEQVRIDe3US0hVQRjA8atpD3uIFYVWBIYkRIsWbQqyMFq4KF1EhVAQEe1EEkRbSItA3FRQFBHUwkKCHkJQ5EYMQty46GVU0KYWtehhLwur/z/uwFw9V68Grfzg55lz5pyZ+b6Zayo1E5NUIG+S/qTuOTzcgVqU4QVuoRej+KdYwded+IrfGE5ff3E9CyefVuTzVQV68AnnsRHlMJu7+I4zKMSUwjI6+D18RCsWIo4l3NzBT1TFHbm0V/NSGLyF9oIsH5mJZTudpT/xcQlPL8CVN2M55qMAY2MND9yb7rjD2k4Uu+jcjnO4hg7cQB3mIo6l3LjJb+KHSRPM4oVlsK7V8IRchh+/hftxEbsRTs0i2ocxgpvIGk5YiXbUwNMxiFKE2EZjCM9gWdyTNljGSwiT0swMT0sZuvASrvAK/CFtgJmFOEbDY7kX+/EBt2HmGRF/VELPQeyBA5vqPGyBkz+Gg1oyN9nBH6bbZt6A10gMB9iJAZyCv1jDqxm5wpOogiWoxRc0Yj1WwTHGRThuxfRsgpvl6sNJcEXH4fHbmr660fVw0gcwM7NKjDBBEb2L8Rlulj+YEE9pHIWbb581dzFX8QhZB6cvZe2MHzBla+6/gfCc5t94z99X2IcDuA9LaWY5xWzeOoQnaILHMkzidSVOwNK5J2uRWHOeZ0Q4Rf4fdzUO5Gab9gg84+U4AuvehzY8R1xGbpMjXoUrrYAZbE6//o2r+zOM6+iEWeQ0OO+NS9MJ3UwnWAczeId+uPqxB4BHE0ecQfxmITceXffG0k15YL75P/EHCCx3R5I0KkcAAAAASUVORK5CYII=");
   --scholium-symbol-supports: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACTUlEQVQ4EdXUPUhVYRzH8Zu9v1lmZVb0wkVILMReKInIorbApWjJhlpaCsHBQMSpralyU2lpCGppDrqGi1T2oqgpSmARBb1aiSXl93v13O4591Q4NPiDD97znHOe1/8xkZhtmfOPCedzvxTbUIg36Ec3vmPGWcMb59GJH/iVZYLfD3AODhyb6Izn8tRhNGAn3iGFxxiFs7bdZwrQgXo8gQPGxkEq8AwfcBXlyEM022logYP1YA/+mI3cuYa3qIUz+lvmc7MRX9CO5ciJW3Aaz3EJRYhmGQ3rYIdB5vGjFR6ke56TTbS4tEG4HdG9pylxHM7sKLI7L+P6FR5hMUKp5soDuo2103dcxQLYiTbjFrpxCAthnMQNWD27kU5wMEmunLUjf4WdWr9VODLNWr4Dl+/B7oLPWYpdsN130vHCuH/OwE5/YhUuwk6ddRD3cgl8/gxc5RjewxRP/Zkaxd/f4Evukav4hDbch9tgHNBKOQU7d/Yu3wQfinUfigfTg5tYHbrz+8KXL6MPJxCs1ok4iQlUIpStXFkVdm6xu3fRHKMhhZMIOuVnYgeG8RArEIr7eBb+g2nCBnja2bG27STYGu+5NVfwGX5UsUnS2owBWOx2HjdzmtODOtAFfEQKfjyZZL/ogfnQQVinrsIqGYez99lFWIkSWBV1sET9tJ8ik+hyfXkvalAFD6QXrzEGy8ySqoAVcRfX0QWrJpNox96wLYkD2I99WA9XYEm+gPV7D+14CT+SUOI6Dh6wI/fZL2wLlmIUQ7DjEeR0SNv/zSRjEXIpUvpbJgAAAABJRU5ErkJggg==");
   --scholium-symbol-supported-by: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACVUlEQVQ4EdXUuWtUURSA8WhcIhpNkLgjyiAobhgNCYi4FuksrUwRmzSGSBALESv/AZdOQRIsLGy1CVlAkBCNKxKVyIDZFNw1oonL903mPsY7L4iFhQd+zJvz3rv33HvPTEnJ/xYz/lDwQu5vwHosxksM4CG+4a+jijeOohcT+Flgkus+NMGJUyOuuJSn9uEkqvEa3biLj7Bq8z5TiZs4gXtwwtRwkm14gLc4h62YiTg2kbgIJ3uEGkwbq7hzHq/QAisKEa/M/Gycwif0oBxF4RY04AnOYClCzOFiJRwojlkkLsGDdM+LYjUZl/YMbkeo0Bcb4V66XAuIYyOJYdzBvPjmQRIe0DUsyd8s4/MQsjgLV2H1Vu5n2HuLuAK7ZwdyEW5m+GbVzvwZVlYP9zCLW3Al+3Eg/+k7vm8r9sPV2fO58IuxAHPhoD9QgcPwZSu1YicLYZVXcQxf8AbG8qmPqVm8HocH4B5ZhW10A+7fGK7DSQvDrQu/vvBDse9zESrO8m0EzujgDtIG99nW+4p2fEAcFmK/f8fj+OZaEnZFaPawbA/qODqxBSHPZRKbuXqO21iUZPMXnvIR+AdzGvZtaDmr9uDKEUclCffflbiy1MiQvYCnaIKDp1VIOjeph9qMd+jGMiRR+OJ7sj60G3vhKtxr99fqfdbqK7AOjWiFLWpb3kcSYbkh4cu1sNX2YBIeyChsK9vSA3Zr/EF04DL6YZsmEQ/sDXMZ7MJO1GEFXIHtlYWt1oUeDMEfyW+RNnB4wIHc5+1Yg/mwvwfhwC9QNCC5fxu/AGL/diOPbj0lAAAAAElFTkSuQmCC");
@@ -46,7 +62,7 @@ body,
 }
 
 .cm-scroller {
-  line-height: 1.58;
+  line-height: var(--scholium-rhythm-prose-line-height);
 }
 
 .scholium-live-mode .cm-scroller {
@@ -57,7 +73,7 @@ body,
 .scholium-source-mode .cm-scroller {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 15px;
-  line-height: 1.5;
+  line-height: var(--scholium-rhythm-source-line-height);
 }
 
 .cm-content {
@@ -66,12 +82,13 @@ body,
   width: 100%;
   max-width: 920px;
   margin: 0 auto;
-  padding: 28px 42px 45vh;
+  padding: 28px var(--scholium-rhythm-inline-source) var(--scholium-rhythm-trailing-scroll);
   caret-color: var(--scholium-color-accent);
 }
 
 .scholium-live-mode .cm-content {
   overflow-wrap: anywhere;
+  padding-inline: var(--scholium-rhythm-inline-regular);
 }
 
 .cm-gutters {
@@ -83,13 +100,19 @@ body,
 /* Live Preview is a body projection, not an exact-source surface. Keep YAML
    and source locators available in Source mode without exposing either here. */
 .scholium-live-mode .cm-gutters,
+.scholium-live-mode .cm-lineNumbers,
 .scholium-live-mode .cm-live-frontmatter {
   display: none;
 }
 
-.cm-activeLine,
-.cm-activeLineGutter {
+.scholium-source-mode .cm-activeLine,
+.scholium-source-mode .cm-activeLineGutter {
   background: color-mix(in srgb, var(--scholium-color-raised-surface-background) 58%, transparent);
+}
+
+.scholium-live-mode .cm-activeLine,
+.scholium-live-mode .cm-activeLineGutter {
+  background: transparent;
 }
 
 .cm-selectionBackground,
@@ -119,15 +142,22 @@ body,
 .cm-live-heading {
   font-family: "Alegreya", Georgia, serif;
   font-weight: 650;
-  line-height: 1.35;
+  line-height: var(--scholium-rhythm-heading-line-height);
+  padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after);
 }
 
-.cm-live-h1 { font-size: 150%; padding-top: 0.55em; }
-.cm-live-h2 { font-size: 130%; padding-top: 0.45em; }
-.cm-live-h3 { font-size: 115%; padding-top: 0.35em; }
+.cm-live-h1 { font-size: 150%; }
+.cm-live-h2 { font-size: 130%; }
+.cm-live-h3 { font-size: 115%; }
 .cm-live-h4 { font-size: 100%; }
 .cm-live-h5,
 .cm-live-h6 { font-size: 100%; }
+
+@media (max-width: 700px) {
+  .scholium-live-mode .cm-content {
+    padding-inline: var(--scholium-rhythm-inline-narrow);
+  }
+}
 
 .cm-live-strong { font-weight: 700; }
 .cm-live-emphasis { font-style: italic; }
@@ -209,7 +239,7 @@ body,
 .cm-live-codeblock {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   background: color-mix(in srgb, var(--scholium-color-primary-text) 6%, transparent);
-  padding-inline: 0.8em;
+  padding-inline: var(--scholium-rhythm-live-code-inline-inset);
 }
 
 .cm-live-table {
@@ -237,7 +267,7 @@ body,
 .cm-live-quote {
   box-shadow: inset 3px 0 color-mix(in srgb, var(--scholium-color-accent) 55%, transparent);
   color: var(--scholium-color-secondary-text);
-  padding-left: 12px;
+  padding-left: var(--scholium-rhythm-live-quote-inline-inset);
 }
 
 /* Protected Callout presentation is injected from callouts.css by the app. */

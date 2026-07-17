@@ -134,6 +134,9 @@ final class WorkspaceSettingsModel: ObservableObject {
     private let loadSnapshot: SnapshotLoader?
     private let activateSnapshot: TriptychActivator?
     private let saveSnapshot: SettingsSaver?
+    /// The Settings scene root and its visible pane can refresh concurrently.
+    /// A newer request must run and win rather than being dropped as "busy."
+    private var refreshGeneration: UInt64 = 0
 
     /// Production construction borrows the application composition root.
     init(
@@ -541,13 +544,24 @@ final class WorkspaceSettingsModel: ObservableObject {
     private func perform(
         _ operation: @MainActor () async throws -> WorkspaceSettingsSnapshot
     ) async {
-        guard !isRefreshing else { return }
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         isRefreshing = true
         errorMessage = nil
-        defer { isRefreshing = false }
+        defer {
+            if refreshGeneration == generation {
+                isRefreshing = false
+            }
+        }
         do {
-            replaceSnapshot(try await operation())
+            let refreshedSnapshot = try await operation()
+            try Task.checkCancellation()
+            guard refreshGeneration == generation else { return }
+            replaceSnapshot(refreshedSnapshot)
+        } catch is CancellationError {
+            return
         } catch {
+            guard refreshGeneration == generation else { return }
             errorMessage = error.localizedDescription
         }
     }

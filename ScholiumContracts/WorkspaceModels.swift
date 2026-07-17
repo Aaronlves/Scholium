@@ -607,6 +607,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
 public enum ResearchOperationError: LocalizedError, Sendable {
     case noteUnavailable(VaultQualifiedNoteID)
     case humanReviewUnavailable(VaultRole)
+    case researchStatusRequiredForReview
     case commentUnavailable(VaultRole)
     case critiqueUnavailable(VaultRole)
     case critiqueTargetMustBeOrdinaryWork(String)
@@ -623,6 +624,8 @@ public enum ResearchOperationError: LocalizedError, Sendable {
             "The note at \(id.relativePath) is not available in this workspace generation."
         case .humanReviewUnavailable:
             "Human Review is available only for Analyses and Topics."
+        case .researchStatusRequiredForReview:
+            "Declare Research Status before completing this Analysis Review. You can keep editing or save the Review as a draft in the meantime."
         case .commentUnavailable:
             "Comments require a reliably identified Analysis, Topic, or Work."
         case .critiqueUnavailable:

@@ -1,6 +1,7 @@
 import ScholiumContracts
 import AppKit
 import Foundation
+import ImageIO
 import Testing
 @testable import ScholiumApp
 
@@ -11,15 +12,19 @@ struct FrontendArchitectureTests {
     func presentationRouteExclusivity() {
         let router = WindowPresentationRouter()
 
-        router.present(.quickOpen)
-        #expect(router.sheet?.id == "quick-open")
+        router.present(.createCheckpoint)
+        #expect(router.sheet?.id == "create-checkpoint")
 
-        router.present(.frontmatter(path: "Topics/Agency.md"))
-        #expect(router.sheet?.id == "frontmatter:Topics/Agency.md")
-        router.dismissSheet(if: "quick-open")
-        #expect(router.sheet?.id == "frontmatter:Topics/Agency.md")
+        router.presentFrontmatter(path: "Topics/Agency.md")
+        guard case .frontmatter(let frontmatterRoute) = router.sheet else {
+            Issue.record("Expected Properties to replace the checkpoint route")
+            return
+        }
+        #expect(frontmatterRoute.path == "Topics/Agency.md")
+        router.dismissSheet(if: "create-checkpoint")
+        #expect(router.sheet?.id == frontmatterRoute.id)
 
-        router.dismissSheet(if: "frontmatter:Topics/Agency.md")
+        router.dismissSheet(if: frontmatterRoute.id)
         #expect(router.sheet == nil)
 
         router.fileImport = .markdown
@@ -29,6 +34,81 @@ struct FrontendArchitectureTests {
         router.dismissAll()
         #expect(router.fileImport == nil)
         #expect(router.alert == nil)
+    }
+
+    @Test("Properties can suspend and resume exactly one Research Function route")
+    func frontmatterResearchFunctionContinuation() throws {
+        let router = WindowPresentationRouter()
+        let functionRoute = ResearchFunctionPanelRoute(
+            target: VaultNoteReference(
+                vaultID: UUID(),
+                vaultName: "Topics",
+                vaultRole: .topicKnowledge,
+                relativePath: "Topics/Agency.md"
+            ),
+            function: .review,
+            presentationID: UUID()
+        )
+        let propertiesRoute = FrontmatterPanelRoute(
+            path: "Topics/Agency.md",
+            returnToResearchFunction: functionRoute
+        )
+
+        router.present(.researchFunction(functionRoute))
+        router.present(.frontmatter(propertiesRoute))
+        #expect(router.suspendsResearchFunction(
+            presentationID: functionRoute.presentationID
+        ))
+
+        router.finishFrontmatter(propertiesRoute)
+        guard case .researchFunction(let resumedRoute) = router.sheet else {
+            Issue.record("Expected the same Review route to resume")
+            return
+        }
+        #expect(resumedRoute == functionRoute)
+        router.dismissSheet(if: propertiesRoute.id)
+        #expect(router.sheet?.id == "research-function:\(functionRoute.presentationID.uuidString.lowercased())")
+    }
+
+    @Test("A stale Properties completion cannot replace a newer same-path continuation")
+    func staleFrontmatterContinuationIsRejected() {
+        let router = WindowPresentationRouter()
+        let target = VaultNoteReference(
+            vaultID: UUID(),
+            vaultName: "Topics",
+            vaultRole: .topicKnowledge,
+            relativePath: "Topics/Agency.md"
+        )
+        let olderFunction = ResearchFunctionPanelRoute(
+            target: target,
+            function: .review,
+            presentationID: UUID()
+        )
+        let newerFunction = ResearchFunctionPanelRoute(
+            target: target,
+            function: .dialogue,
+            presentationID: UUID()
+        )
+        let older = FrontmatterPanelRoute(
+            path: target.relativePath,
+            returnToResearchFunction: olderFunction
+        )
+        let newer = FrontmatterPanelRoute(
+            path: target.relativePath,
+            returnToResearchFunction: newerFunction
+        )
+
+        router.present(.frontmatter(older))
+        router.present(.frontmatter(newer))
+        router.finishFrontmatter(older)
+        #expect(router.sheet?.id == newer.id)
+
+        router.finishFrontmatter(newer)
+        guard case .researchFunction(let resumed) = router.sheet else {
+            Issue.record("Expected only the current Properties continuation to resume")
+            return
+        }
+        #expect(resumed == newerFunction)
     }
 
     @Test("Root setup and workspace setup sheet are mutually exclusive")
@@ -45,11 +125,120 @@ struct FrontendArchitectureTests {
         #expect(router.sheet == nil)
     }
 
+    @Test("Launch geometry waits for restoration before choosing setup or workspace")
+    func launchGeometryDecision() {
+        #expect(ScholiumWindowPresentation.resolve(
+            hasCompletedInitialRestore: false,
+            hasVaultConfiguration: false
+        ) == .launching)
+        #expect(ScholiumWindowPresentation.resolve(
+            hasCompletedInitialRestore: false,
+            hasVaultConfiguration: true
+        ) == .launching)
+        #expect(ScholiumWindowPresentation.resolve(
+            hasCompletedInitialRestore: true,
+            hasVaultConfiguration: false
+        ) == .setup)
+        #expect(ScholiumWindowPresentation.resolve(
+            hasCompletedInitialRestore: true,
+            hasVaultConfiguration: true
+        ) == .workspace)
+    }
+
+    @Test("A 900-point workspace keeps Library reachable through native sidebar chrome")
+    func compactLibraryReachability() throws {
+        #expect(ScholiumLibraryVisibilityPolicy.automaticVisibility(
+            windowWidth: 900,
+            hasOpenDocument: false,
+            isInitial: true,
+            previousLayoutMode: .medium
+        ) == true)
+        #expect(ScholiumLibraryVisibilityPolicy.automaticVisibility(
+            windowWidth: 900,
+            hasOpenDocument: true,
+            isInitial: true,
+            previousLayoutMode: .medium
+        ) == false)
+        #expect(ScholiumLibraryVisibilityPolicy.automaticVisibility(
+            windowWidth: 900,
+            hasOpenDocument: false,
+            isInitial: true,
+            previousLayoutMode: .compact
+        ) == true)
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
+            encoding: .utf8
+        )
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let sidebarSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarView.swift"
+            ),
+            encoding: .utf8
+        )
+        let noteSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(!contentSource.contains(".toolbar(removing: .sidebarToggle)"))
+        #expect(!noteSource.contains(".toolbar(removing: .sidebarToggle)"))
+        #expect(contentSource.contains("ToolbarItem(placement: .navigation)"))
+        #expect(contentSource.contains("Label(\"Triptych management\", systemImage: \"ellipsis\")"))
+        #expect(!appSource.contains("suppressSystemSidebarToggle"))
+        #expect(!appSource.contains("Collapse Note"))
+        #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.rowTitle)"))
+        #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.metadata)"))
+        #expect(sidebarSource.contains(".font(.body)"))
+    }
+
+    @Test("Atmospheric artwork is fixed, Library-only, and decorative")
+    func atmosphericNavigationArtworkContract() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        for name in [
+            "ScholiumNavigationBackdropLight.png",
+            "ScholiumNavigationBackdropDark.png",
+        ] {
+            let url = repository.appendingPathComponent("Scholium/Resources/Artwork/\(name)")
+            let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
+            let properties = try #require(
+                CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            )
+            #expect(properties[kCGImagePropertyPixelWidth] as? Int == 3_200)
+            #expect(properties[kCGImagePropertyPixelHeight] as? Int == 2_000)
+        }
+
+        let content = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Views/ContentView.swift"),
+            encoding: .utf8
+        )
+        #expect(content.contains("if !reduceTransparency"))
+        #expect(content.contains("NavigationBackdropView(colorScheme: colorScheme)"))
+        #expect(content.contains("Rectangle().fill(.regularMaterial)"))
+        #expect(content.contains(".ignoresSafeArea(.container, edges: .top)"))
+        #expect(content.contains(".backgroundExtensionEffect()"))
+        #expect(content.contains(".accessibilityHidden(true)"))
+        #expect(content.contains("ScholiumMetrics.Navigation.panelInset"))
+        #expect(content.contains("ScholiumMetrics.Navigation.panelCornerRadius"))
+    }
+
     @Test("Independent windows do not share presentation or document sessions")
     func windowIsolation() {
         let firstRouter = WindowPresentationRouter()
         let secondRouter = WindowPresentationRouter()
-        firstRouter.present(.quickOpen)
+        firstRouter.present(.createCheckpoint)
         #expect(secondRouter.sheet == nil)
 
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
@@ -125,6 +314,70 @@ struct FrontendArchitectureTests {
         #expect(controller.search.errorMessage == "current")
     }
 
+    @Test("Editing a Search query removes the prior result projection immediately")
+    func searchQueryChangeClearsPriorProjection() {
+        let controller = DiscoveryController()
+        let hit = SearchHit(
+            vaultID: UUID(),
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            relativePath: "First.md",
+            stableNoteID: nil,
+            title: "First",
+            matchedField: .title,
+            context: nil,
+            sourceLine: 1,
+            snippet: "First",
+            highlights: [],
+            score: 1,
+            fingerprint: DocumentFingerprint(content: "# First\n"),
+            indexGeneration: 1,
+            evidentialLayer: .paperAnalysis,
+            classification: .retrievalLead
+        )
+        let first = controller.beginSearch(SearchWorkspaceState(
+            query: "first",
+            scope: .triptych
+        ))
+        controller.receiveSearchResults(
+            hits: [hit],
+            relatedItems: [],
+            for: first
+        )
+        #expect(controller.search.hits.count == 1)
+        #expect(controller.search.criteria.selectedResultID != nil)
+
+        controller.updateSearchQuery("second")
+
+        #expect(controller.search.criteria.query == "second")
+        #expect(controller.search.criteria.selectedResultID == nil)
+        #expect(controller.search.hits.isEmpty)
+        #expect(controller.search.relatedItems.isEmpty)
+        #expect(controller.search.isRunning)
+        #expect(!controller.isCurrentSearch(first))
+
+        let second = controller.beginSearch(controller.search.criteria)
+        controller.receiveSearchResults(hits: [hit], relatedItems: [], for: second)
+        controller.selectSearchScope(.thisNote)
+        #expect(controller.search.criteria.scope == .thisNote)
+        #expect(controller.search.hits.isEmpty)
+        #expect(controller.search.relatedItems.isEmpty)
+        #expect(controller.search.isRunning)
+        #expect(!controller.isCurrentSearch(second))
+
+        let scoped = controller.beginSearch(controller.search.criteria)
+        controller.receiveSearchResults(hits: [hit], relatedItems: [], for: scoped)
+        controller.replaceSearchCriteria(SearchWorkspaceState(
+            query: "saved",
+            scope: .currentVault
+        ))
+        #expect(controller.search.criteria.query == "saved")
+        #expect(controller.search.criteria.scope == .currentVault)
+        #expect(controller.search.hits.isEmpty)
+        #expect(controller.search.isRunning)
+        #expect(!controller.isCurrentSearch(scoped))
+    }
+
     @Test("Research context enforces one trailing context owner")
     func researchContextExclusivity() {
         let controller = ResearchController()
@@ -180,32 +433,132 @@ struct FrontendArchitectureTests {
         #expect(controller.functions.target == nil)
     }
 
-    @Test("Quick Open rejects a superseded completion")
-    func quickOpenStaleResultRejection() {
+    @Test("Command-F restores the previous ordinary scope and rejects late results")
+    func temporaryFindScopeRestoration() {
         let controller = DiscoveryController()
-        let first = controller.beginQuickOpen("first")
-        let second = controller.beginQuickOpen("second")
-        let result = WorkspaceCatalogNote(
-            reference: VaultNoteReference(
-                vaultID: UUID(),
-                vaultName: "Fixture Topics",
-                vaultRole: .topicKnowledge,
-                relativePath: "Topics/Agency.md",
-                stableNoteID: UUID().uuidString.lowercased()
-            ),
-            title: "Agency",
-            zoteroItemKey: nil,
-            zoteroSourceIdentity: nil,
-            fingerprint: DocumentFingerprint(content: "# Agency\n"),
-            validationWarnings: []
+        controller.replaceSearchCriteria(SearchWorkspaceState(scope: .currentVault))
+        controller.presentSearch(.findInNote(previousScope: .currentVault))
+        #expect(controller.search.criteria.scope == .thisNote)
+        controller.updateSearchQuery("agency")
+        let request = controller.beginSearch(controller.search.criteria)
+
+        controller.dismissSearch()
+        controller.failSearch("late", for: request)
+
+        #expect(controller.search.criteria.query.isEmpty)
+        #expect(controller.search.criteria.scope == .currentVault)
+        #expect(controller.search.ordinaryScope == .currentVault)
+        #expect(controller.search.errorMessage == nil)
+    }
+
+    @Test("Changing scope during Command-F makes that scope ordinary")
+    func temporaryFindExplicitScopeChange() {
+        let controller = DiscoveryController()
+        controller.presentSearch(.findInNote(previousScope: .currentVault))
+        controller.selectSearchScope(.triptych)
+        controller.dismissSearch()
+
+        #expect(controller.search.criteria.scope == .triptych)
+        #expect(controller.search.ordinaryScope == .triptych)
+        #expect(controller.search.invocation == .general)
+    }
+
+    @Test("Native tab coordinator groups complete Scholium windows")
+    func nativeTabGrouping() {
+        let coordinator = NativeWindowTabCoordinator()
+        let anchorID = UUID()
+        let childID = UUID()
+        let anchor = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let child = NSWindow(
+            contentRect: NSRect(x: 40, y: 40, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
         )
 
-        controller.receiveQuickOpenResults([result], for: first)
-        #expect(controller.quickOpen.query == "second")
-        #expect(controller.quickOpen.results.isEmpty)
+        coordinator.register(anchor, id: anchorID, anchorWindowID: nil)
+        coordinator.register(child, id: childID, anchorWindowID: anchorID)
 
-        controller.receiveQuickOpenResults([result], for: second)
-        #expect(controller.quickOpen.results == [result])
+        #expect(anchor.tabbingMode == .automatic)
+        #expect(child.tabbingMode == .automatic)
+        #expect(anchor.tabbingIdentifier == NativeWindowTabCoordinator.tabbingIdentifier)
+        #expect(child.tabbingIdentifier == NativeWindowTabCoordinator.tabbingIdentifier)
+        #expect(anchor.tabGroup?.windows.contains(where: { $0 === child }) == true)
+
+        coordinator.unregister(id: childID, window: child)
+        coordinator.unregister(id: anchorID, window: anchor)
+    }
+
+    @Test("Duplicate native-tab titles gain Triptych and path context")
+    func nativeTabTitleDisambiguation() {
+        let coordinator = NativeWindowTabCoordinator()
+        let anchorID = UUID()
+        let childID = UUID()
+        let anchor = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let child = NSWindow(
+            contentRect: NSRect(x: 40, y: 40, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        coordinator.register(anchor, id: anchorID, anchorWindowID: nil)
+        coordinator.register(child, id: childID, anchorWindowID: anchorID)
+
+        let anchorToolTip = "Agency — Ethics — Topics/Agency.md"
+        let childToolTip = "Agency — Mind — Analyses/Agency.md"
+        coordinator.updateIdentity(NativeWindowTabIdentity(
+            baseTitle: "Agency",
+            triptychName: "Ethics",
+            relativePath: "Topics/Agency.md",
+            toolTip: anchorToolTip,
+            isDocumentEdited: false
+        ), for: anchorID)
+        coordinator.updateIdentity(NativeWindowTabIdentity(
+            baseTitle: "Agency",
+            triptychName: "Mind",
+            relativePath: "Analyses/Agency.md",
+            toolTip: childToolTip,
+            isDocumentEdited: true
+        ), for: childID)
+
+        #expect(anchor.tab.title == "Agency — Ethics")
+        #expect(child.tab.title == "Agency — Mind")
+        #expect(anchor.tab.toolTip == anchorToolTip)
+        #expect(child.tab.toolTip == childToolTip)
+        #expect(child.isDocumentEdited)
+
+        coordinator.updateIdentity(NativeWindowTabIdentity(
+            baseTitle: "Agency",
+            triptychName: "Ethics",
+            relativePath: "Works/Agency.md",
+            toolTip: "Agency — Ethics — Works/Agency.md",
+            isDocumentEdited: true
+        ), for: childID)
+        #expect(anchor.tab.title == "Agency — Ethics — Topics/Agency.md")
+        #expect(child.tab.title == "Agency — Ethics — Works/Agency.md")
+
+        coordinator.updateIdentity(NativeWindowTabIdentity(
+            baseTitle: "Reasons",
+            triptychName: "Ethics",
+            relativePath: "Works/Reasons.md",
+            toolTip: "Reasons — Ethics — Works/Reasons.md",
+            isDocumentEdited: false
+        ), for: childID)
+        #expect(anchor.tab.title == "Agency")
+        #expect(child.tab.title == "Reasons")
+
+        coordinator.unregister(id: childID, window: child)
+        coordinator.unregister(id: anchorID, window: anchor)
     }
 
     @Test("Native and WebKit color roles use one semantic vocabulary")
@@ -240,6 +593,182 @@ struct FrontendArchitectureTests {
                 #expect(css.contains(normalized))
             }
         }
+    }
+
+    @Test("Document and interface typography expose semantic roles")
+    func semanticTypographyContract() {
+        #expect(ScholiumTypography.body().pointSize == 12)
+        #expect(ScholiumTypography.exactSource().pointSize == 14)
+        #expect(ScholiumTypography.code().pointSize == 13)
+        #expect(ScholiumTypography.diff().pointSize == 13)
+        #expect(ScholiumTypography.revisionIdentity().pointSize == 11)
+
+        let expectedHeadingSizes: [(ScholiumTypography.HeadingLevel, CGFloat)] = [
+            (.h1, 18),
+            (.h2, 15.6),
+            (.h3, 13.8),
+            (.h4, 12),
+            (.h5, 12),
+            (.h6, 12),
+        ]
+        for (level, expectedSize) in expectedHeadingSizes {
+            #expect(abs(ScholiumTypography.heading(level: level).pointSize - expectedSize) < 0.001)
+        }
+    }
+
+    @Test("Dormant native editor shares the document typography contract")
+    func dormantNativeEditorTypographyContract() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let nativeEditor = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NativeMarkdownEditorView.swift"
+            ),
+            encoding: .utf8
+        )
+        let productionDocument = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(nativeEditor.contains("ScholiumTypography.body("))
+        #expect(nativeEditor.contains("ScholiumTypography.heading("))
+        #expect(nativeEditor.contains("ScholiumTypography.exactSource("))
+        #expect(!nativeEditor.contains("readingBodySize"))
+        #expect(!productionDocument.contains("NativeMarkdownEditorView("))
+    }
+
+    @Test("Custom control metrics preserve native-control ownership")
+    func customControlMetricContract() {
+        #expect(ScholiumMetrics.Accessibility.preferredCustomTarget == 28)
+        #expect(ScholiumMetrics.Accessibility.minimumCustomTarget == 20)
+        #expect(ScholiumMetrics.ContextSurface.controlHeight == 40)
+        #expect(ScholiumMetrics.Navigation.panelInset == 10)
+        #expect(ScholiumMetrics.Navigation.panelCornerRadius == 18)
+    }
+
+    @Test("Live Preview omits Source chrome and keeps context clearance in scrolling content")
+    func livePreviewPresentationContract() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let editorStyles = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
+            encoding: .utf8
+        )
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Views/Note/NoteContentView.swift"),
+            encoding: .utf8
+        )
+
+        let extensionsStart = try #require(editorSource.range(of: "const editorExtensions = ["))
+        let extensionSuffix = editorSource[extensionsStart.upperBound...]
+        let extensionsEnd = try #require(extensionSuffix.range(of: "];"))
+        let staticExtensions = editorSource[
+            extensionsStart.lowerBound..<extensionsEnd.upperBound
+        ]
+        for sourceOnlyExtension in [
+            "lineNumbers()",
+            "highlightActiveLineGutter()",
+            "foldGutter()",
+            "highlightActiveLine()",
+        ] {
+            #expect(!staticExtensions.contains(sourceOnlyExtension))
+            #expect(editorSource.contains(sourceOnlyExtension))
+        }
+        #expect(editorSource.contains("const sourceMode = ["))
+        #expect(editorSource.contains(
+            "modeCompartment.reconfigure(mode === \"livePreview\" ? livePreviewMode : sourceMode)"
+        ))
+
+        #expect(editorStyles.contains(".scholium-live-mode .cm-lineNumbers"))
+        #expect(editorStyles.contains(".scholium-source-mode .cm-activeLine"))
+        #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
+        #expect(editorStyles.contains("padding-inline: var(--scholium-rhythm-inline-regular)"))
+        #expect(editorStyles.contains(
+            "padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after)"
+        ))
+
+        #expect(ScholiumMetrics.ContextSurface.initialOverlayClearance == 92)
+        #expect(noteSource.contains(".scholium-live-mode .cm-content,"))
+        #expect(noteSource.contains(".scholium-source-mode .cm-content"))
+        #expect(noteSource.contains(
+            #"padding-top: \(ScholiumMetrics.ContextSurface.initialOverlayClearance)px;"#
+        ))
+    }
+
+    @Test("Production native surfaces consume semantic color roles")
+    func productionNativeSurfaceTokenAdoption() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let expectedAdoption: [String: [String]] = [
+            "Scholium/Views/ContentView.swift": [
+                "scholiumMaterialSurface(",
+                ".navigation",
+                "ScholiumColorRole.documentBackground",
+            ],
+            "Scholium/Views/ResearchFunctions/ResearchStripView.swift": [
+                "scholiumGlassSurface(.floatingControl",
+                "ScholiumColorRole.accent",
+            ],
+            "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift": [
+                "scholiumSurface(.denseEvidence)",
+                "ScholiumColorRole.documentBackground",
+                "scholiumForeground(.attention)",
+            ],
+            "Scholium/Views/QualityReviewView.swift": [
+                "scholiumSurface(.denseEvidence)",
+                "ScholiumColorRole.destructive",
+            ],
+            "Scholium/Views/Sidebar/SidebarView.swift": [
+                "scholiumMaterialSurface(",
+                ".boundedPanel",
+                "ScholiumColorRole.confirmed",
+            ],
+        ]
+
+        for (path, tokens) in expectedAdoption {
+            let source = try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+            for token in tokens {
+                #expect(source.contains(token), "\(path) must consume \(token)")
+            }
+        }
+    }
+
+    @Test("Transient status motion is accessibility-owned by the view")
+    func transientStatusMotionToken() throws {
+        #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
+        #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let showToastSource = try #require(
+            appSource.range(of: "func showToast(_ message:")
+        )
+        let suffix = appSource[showToastSource.lowerBound...]
+        let end = suffix.range(of: "private func refreshDocumentRevisions")
+        let body = end.map { String(suffix[..<$0.lowerBound]) } ?? String(suffix.prefix(1_000))
+        #expect(!body.contains("withAnimation"))
     }
 
     @Test("Light and dark appearances use the reviewed Scholium palettes")
@@ -454,15 +983,85 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
     }
 
-    @Test("Reduce Transparency selects the opaque Research Strip fallback")
-    func reducedTransparencyUsesOpaqueResearchStripSurface() {
-        let reduced = ResearchStripSurfaceStyle(reduceTransparency: true)
-        #expect(reduced.usesOpaqueBackground)
-        #expect(reduced.separatorOpacity == 0.72)
+    @Test("Semantic surfaces, depth, and boundaries adapt without numbered scales")
+    func semanticSurfaceRecipeContract() {
+        #expect(Set(ScholiumSurfaceRole.allCases) == Set([
+            .document, .navigation, .floatingControl,
+            .boundedPanel, .searchOverlay, .denseEvidence,
+        ]))
+        #expect(ScholiumSurfaceRole.document.isOpaque)
+        #expect(ScholiumSurfaceRole.denseEvidence.isOpaque)
+        #expect(ScholiumSurfaceRole.navigation.usesMaterial)
+        #expect(ScholiumSurfaceRole.boundedPanel.usesMaterial)
+        #expect(ScholiumSurfaceRole.floatingControl.usesLiquidGlass)
+        #expect(ScholiumSurfaceRole.searchOverlay.usesLiquidGlass)
 
-        let standard = ResearchStripSurfaceStyle(reduceTransparency: false)
-        #expect(!standard.usesOpaqueBackground)
-        #expect(standard.separatorOpacity == 0.28)
+        let triptych = ScholiumElevationRole.triptychEdge.style(
+            reduceTransparency: false,
+            appearsActive: true
+        )
+        #expect(triptych == .init(opacity: 0.14, radius: 10, x: 5, y: 0))
+        #expect(ScholiumElevationRole.floatingControl.style(
+            reduceTransparency: false,
+            appearsActive: true
+        ) == .init(opacity: 0.10, radius: 10, x: 0, y: 4))
+        #expect(ScholiumElevationRole.boundedPanel.style(
+            reduceTransparency: false,
+            appearsActive: true
+        ) == .init(opacity: 0.08, radius: 12, x: 0, y: 4))
+        #expect(ScholiumElevationRole.searchOverlay.style(
+            reduceTransparency: false,
+            appearsActive: true
+        ) == .init(opacity: 0.20, radius: 22, x: 0, y: 12))
+        #expect(ScholiumElevationRole.searchOverlay.style(
+            reduceTransparency: true,
+            appearsActive: false
+        ).opacity == 0.06)
+
+        #expect(ScholiumBoundaryRole.floatingBoundary.style(
+            increasedContrast: false,
+            reduceTransparency: false
+        ).lineWidth == 0)
+        #expect(ScholiumBoundaryRole.floatingBoundary.style(
+            increasedContrast: true,
+            reduceTransparency: false
+        ).lineWidth == 1)
+        #expect(ScholiumBoundaryRole.structuralDivider.style(
+            increasedContrast: false,
+            reduceTransparency: true
+        ).opacity == 0.78)
+    }
+
+    @Test("Document rhythm remains renderer-aware and CSS-aligned")
+    func provisionalDocumentRhythmContract() throws {
+        #expect(ScholiumDocumentRhythm.lineHeight(for: .read) == 1.58)
+        #expect(ScholiumDocumentRhythm.lineHeight(for: .livePreview) == 1.58)
+        #expect(ScholiumDocumentRhythm.lineHeight(for: .source) == 1.5)
+        #expect(ScholiumDocumentRhythm.contentInsets(
+            for: .read,
+            widthClass: .regular
+        ) == .init(inline: 54, blockStart: 44, trailingViewportFraction: 0.45))
+        #expect(ScholiumDocumentRhythm.contentInsets(
+            for: .source,
+            widthClass: .regular
+        ) == .init(inline: 42, blockStart: 92, trailingViewportFraction: 0.45))
+        #expect(ScholiumDocumentRhythm.contentInsets(
+            for: .livePreview,
+            widthClass: .narrow
+        ) == .init(inline: 24, blockStart: 92, trailingViewportFraction: 0.45))
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let css = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
+            encoding: .utf8
+        )
+        for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
+            let normalized = declaration.trimmingCharacters(in: .whitespaces)
+            #expect(css.contains(normalized.replacingOccurrences(of: ".0", with: "")))
+        }
     }
 
     @Test("Relationship colors provide increased-contrast variants")
@@ -517,6 +1116,65 @@ struct FrontendArchitectureTests {
         #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#ddbce5"))
         for value in ["#195a54", "#50365f", "#9cd5ca", "#ddbce5"] {
             #expect(css.contains(value))
+        }
+    }
+
+    @Test("Connection inspectors share one semantic presentation")
+    func sharedConnectionPresentation() throws {
+        let expected: [
+            (ScholiumConnectionPresentation, String, String, ScholiumColorRole)
+        ] = [
+            (.supports, "Supports", "arrow.right.circle", .connectionSupport),
+            (.supportedBy, "Supported By", "arrow.left.circle", .connectionSupport),
+            (.incompatible, "Incompatible With", "xmark.circle", .connectionIncompatible),
+            (.neutral, "Related", "link.circle", .connectionNeutral),
+        ]
+        for (presentation, title, symbolName, colorRole) in expected {
+            #expect(presentation.title == title)
+            #expect(presentation.symbolName == symbolName)
+            #expect(presentation.colorRole == colorRole)
+        }
+
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: .supportsTarget,
+            currentIsSource: true
+        ) == .supports)
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: .supportsTarget,
+            currentIsSource: false
+        ) == .supportedBy)
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: .supportedByTarget,
+            currentIsSource: true
+        ) == .supportedBy)
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: .supportedByTarget,
+            currentIsSource: false
+        ) == .supports)
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: .incompatible,
+            currentIsSource: true
+        ) == .incompatible)
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: nil,
+            currentIsSource: true
+        ) == .neutral)
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        for relativePath in [
+            "Scholium/Views/Backlinks/BacklinksPanelView.swift",
+            "Scholium/Views/Sidebar/RelationshipView.swift",
+        ] {
+            let source = try String(
+                contentsOf: repository.appendingPathComponent(relativePath),
+                encoding: .utf8
+            )
+            #expect(source.contains("ScholiumConnectionPresentation"))
+            #expect(!source.contains("VectorRelationshipSection"))
+            #expect(!source.contains("WorkspaceConnectionKind"))
         }
     }
 

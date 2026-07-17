@@ -149,6 +149,74 @@ struct ResearchFunctionContractsTests {
         ) == submission)
     }
 
+    @Test("Dialogue module selection is ordered, request scoped, and legacy compatible")
+    func dialogueResponseModuleSelection() throws {
+        let analysis = target(role: .analysis)
+        let selected = ResearchFunctionRequest(
+            function: .dialogue,
+            target: analysis,
+            instruction: "State the bounded academic outcome.",
+            dialogueResponseModules: [
+                .researchDirections,
+                .criticalReflection,
+                .remainingQuestions,
+            ]
+        )
+        #expect(selected.dialogueResponseModules == [
+            .criticalReflection,
+            .remainingQuestions,
+            .researchDirections,
+        ])
+        try selected.validate()
+
+        let academicOutcomeOnly = ResearchFunctionRequest(
+            function: .dialogue,
+            target: analysis,
+            instruction: "State the bounded academic outcome.",
+            dialogueResponseModules: []
+        )
+        #expect(academicOutcomeOnly.dialogueResponseModules == [])
+        try academicOutcomeOnly.validate()
+
+        #expect(throws: ResearchFunctionContractError.self) {
+            try ResearchFunctionRequest(
+                function: .dialogue,
+                target: analysis,
+                instruction: "State the bounded academic outcome.",
+                dialogueResponseModules: [
+                    .remainingQuestions,
+                    .remainingQuestions,
+                ]
+            ).validate()
+        }
+        #expect(throws: ResearchFunctionContractError.self) {
+            try ResearchFunctionRequest(
+                function: .develop,
+                target: analysis,
+                dialogueResponseModules: []
+            ).validate()
+        }
+
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        let roundTrip = try decoder.decode(
+            ResearchFunctionRequest.self,
+            from: encoder.encode(selected)
+        )
+        #expect(roundTrip.dialogueResponseModules == selected.dialogueResponseModules)
+
+        let legacyData = try JSONSerialization.data(withJSONObject: [
+            "function": "dialogue",
+            "target": try JSONSerialization.jsonObject(with: encoder.encode(analysis)),
+            "materials": [],
+            "instruction": "State the bounded academic outcome.",
+            "checks": [],
+            "commentIDs": [],
+        ])
+        let legacy = try decoder.decode(ResearchFunctionRequest.self, from: legacyData)
+        #expect(legacy.dialogueResponseModules == nil)
+    }
+
     @Test("Citation style selection is explicit while legacy package-only input remains decodable")
     func citationStyleSelectionCompatibility() throws {
         let legacy = try JSONDecoder().decode(
@@ -168,6 +236,124 @@ struct ResearchFunctionContractsTests {
             from: JSONEncoder().encode(selected)
         )
         #expect(roundTrip == selected)
+    }
+
+    @Test("Material candidate metadata is deterministic and legacy compatible")
+    func materialCandidateMetadataCompatibility() throws {
+        let vaultID = UUID()
+        let material = ResearchFunctionMaterial(
+            noteID: UUID(),
+            note: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Topics/Debates/Agency.md"
+            ),
+            role: .topic,
+            fingerprint: DocumentFingerprint(content: "agency"),
+            title: "Agency"
+        )
+        let target = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Analyses/Source.md"
+        )
+        let candidate = ResearchFunctionMaterialCandidate(
+            material: material,
+            aliases: [" Freedom ", "Agency", "Freedom", ""],
+            suggestionReasons: [
+                suggestionReason(
+                    .linksDirectlyToTarget,
+                    source: material.note,
+                    lowerBound: 40
+                ),
+                suggestionReason(
+                    .linkedFromTarget,
+                    source: target,
+                    lowerBound: 20
+                ),
+                suggestionReason(
+                    .linkedFromSelectedPassage,
+                    source: target,
+                    lowerBound: 20
+                ),
+            ]
+        )
+
+        #expect(candidate.aliases == ["Agency", "Freedom"])
+        #expect(candidate.suggestionReasons.map(\.kind) == [
+            .linkedFromSelectedPassage,
+            .linkedFromTarget,
+            .linksDirectlyToTarget,
+        ])
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        #expect(try decoder.decode(
+            ResearchFunctionMaterialCandidate.self,
+            from: encoder.encode(candidate)
+        ) == candidate)
+
+        let legacyData = try JSONSerialization.data(withJSONObject: [
+            "material": try JSONSerialization.jsonObject(with: encoder.encode(material)),
+            "isSelectable": true,
+            "repairReasons": [],
+        ])
+        let legacy = try decoder.decode(
+            ResearchFunctionMaterialCandidate.self,
+            from: legacyData
+        )
+        #expect(legacy.aliases.isEmpty)
+        #expect(legacy.suggestionReasons.isEmpty)
+        #expect(legacy.material == material)
+    }
+
+    @Test("Fidelity invocation provenance round trips without changing evidence identity")
+    func fidelityInvocationProvenance() throws {
+        let target = target(role: .analysis)
+        let request = ResearchFunctionRequest(
+            function: .fidelity,
+            target: target,
+            checks: [.content]
+        )
+        let parentRunID = UUID()
+        let manual = ResearchFunctionSnapshot(
+            request: request,
+            recordKind: .functionEnvelope,
+            fidelityInvocation: .manual
+        )
+        let automatic = ResearchFunctionSnapshot(
+            request: request,
+            recordKind: .functionEnvelope,
+            fidelityInvocation: .automatic(parentRunID: parentRunID)
+        )
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let roundTrip = try decoder.decode(
+            ResearchFunctionSnapshot.self,
+            from: encoder.encode(automatic)
+        )
+        #expect(roundTrip.resolvedFidelityInvocation == .automatic(
+            parentRunID: parentRunID
+        ))
+
+        let makeKey: (ResearchFunctionSnapshot) -> ResearchFidelityEvidenceKey = {
+            ResearchFidelityEvidenceKey(
+                snapshot: $0,
+                finalTargetFingerprint: target.fingerprint,
+                finalMaterialFingerprints: [:],
+                checks: [.content]
+            )
+        }
+        #expect(makeKey(manual) == makeKey(automatic))
+
+        var legacyObject = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(manual))
+                as? [String: Any]
+        )
+        legacyObject.removeValue(forKey: "fidelityInvocation")
+        let legacy = try decoder.decode(
+            ResearchFunctionSnapshot.self,
+            from: JSONSerialization.data(withJSONObject: legacyObject)
+        )
+        #expect(legacy.fidelityInvocation == nil)
+        #expect(legacy.resolvedFidelityInvocation == .manual)
     }
 
     @Test("Fidelity evidence identity changes with revision, scope, comments, and loaded audit resources")
@@ -358,6 +544,33 @@ struct ResearchFunctionContractsTests {
                 citationStyle: citationStyle
             )],
             evidenceRevisions: evidence
+        )
+    }
+
+    private func suggestionReason(
+        _ kind: ResearchFunctionMaterialSuggestionReason.Kind,
+        source: VaultQualifiedNoteID,
+        lowerBound: Int
+    ) -> ResearchFunctionMaterialSuggestionReason {
+        ResearchFunctionMaterialSuggestionReason(
+            kind: kind,
+            sourceNote: source,
+            sourceSpan: SourceSpan(
+                utf8LowerBound: lowerBound,
+                utf8UpperBound: lowerBound + 5,
+                utf16LowerBound: lowerBound,
+                utf16UpperBound: lowerBound + 5,
+                start: SourcePosition(
+                    line: 1,
+                    utf8Column: lowerBound + 1,
+                    utf16Column: lowerBound + 1
+                ),
+                end: SourcePosition(
+                    line: 1,
+                    utf8Column: lowerBound + 6,
+                    utf16Column: lowerBound + 6
+                )
+            )
         )
     }
 }

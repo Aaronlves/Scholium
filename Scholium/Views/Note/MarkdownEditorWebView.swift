@@ -6,16 +6,59 @@ private final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
     weak var editorSession: MarkdownEditorSession?
     var onRequestComment: (() -> Void)?
+    private var rightMouseMonitor: Any?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil, let action = onFirstWindowAttachment else { return }
+        guard window != nil else {
+            removeRightMouseMonitor()
+            return
+        }
+        installRightMouseMonitorIfNeeded()
+        guard let action = onFirstWindowAttachment else { return }
         onFirstWindowAttachment = nil
         action()
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
+        return prepareEditorContextMenu(menu)
+    }
+
+    private func installRightMouseMonitorIfNeeded() {
+        guard rightMouseMonitor == nil else { return }
+        rightMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) {
+            [weak self] event in
+            self?.handleRightMouseDown(event) ?? event
+        }
+    }
+
+    private func removeRightMouseMonitor() {
+        guard let rightMouseMonitor else { return }
+        NSEvent.removeMonitor(rightMouseMonitor)
+        self.rightMouseMonitor = nil
+    }
+
+    private func handleRightMouseDown(_ event: NSEvent) -> NSEvent? {
+        guard event.window === window else { return event }
+        let point = convert(event.locationInWindow, from: nil)
+        guard bounds.contains(point) else { return event }
+
+        // WKWebView dispatches pointer events to a private descendant view, so
+        // overriding the outer view's menu(for:) is not enough. Ask the actual
+        // hit view for WebKit's standard menu, append Scholium's domain
+        // commands, then consume this one event to avoid a duplicate menu.
+        let targetView = hitTest(point) ?? self
+        let standardMenu = targetView === self
+            ? (super.menu(for: event) ?? NSMenu())
+            : (targetView.menu(for: event) ?? NSMenu())
+        let menu = prepareEditorContextMenu(standardMenu)
+        NSMenu.popUpContextMenu(menu, with: event, for: targetView)
+        return nil
+    }
+
+    private func prepareEditorContextMenu(_ menu: NSMenu) -> NSMenu {
+        menu.identifier = NSUserInterfaceItemIdentifier("scholium.editor.contextMenu")
         for item in menu.items where item.identifier?.rawValue.hasPrefix("scholium.editor.") == true {
             menu.removeItem(item)
         }
@@ -54,7 +97,9 @@ private final class WindowAttachedWebView: WKWebView {
             menu.addItem(item)
             addedAction = true
         }
-        if onRequestComment != nil, editorSession.context?.composing != true {
+        if onRequestComment != nil,
+           editorSession.context?.composing != true,
+           editorSession.context?.selections.contains(where: \.isNonempty) == true {
             if !addedAction { menu.addItem(.separator()) }
             let item = NSMenuItem(title: "Add Comment…", action: #selector(requestComment(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.comment")
@@ -197,7 +242,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingLine: Int?
     private var pendingLinkCompletions: [EditorLinkCompletion] = []
     private var pendingResearcherComments: [MarkdownEditorCommentAnnotation] = []
-    private var pendingScrollFraction: Double = 0
+    private var pendingScrollFraction: Double?
     private var startupTask: Task<Void, Never>?
     private var recoveryCaptureTask: Task<Void, Never>?
     private var requestBarrier: Task<Void, Never>?
@@ -226,6 +271,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let multiline: String
         let hasValueText: Bool
         let spellcheck: String
+        let isFocused: Bool
+        let gutterCount: Int
+        let lineNumberCount: Int
+        let activeLineCount: Int
+        let contentPaddingTop: String
+        let contentPaddingInlineStart: String
     }
 
     @discardableResult
@@ -245,13 +296,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             const editable = document.querySelectorAll('[contenteditable="true"]');
             const textboxes = document.querySelectorAll('[role="textbox"]');
             const content = editable[0];
+            const contentStyle = content ? getComputedStyle(content) : null;
             return {
                 contentEditableCount: editable.length,
                 textboxCount: textboxes.length,
                 label: content?.getAttribute('aria-label') || '',
                 multiline: content?.getAttribute('aria-multiline') || '',
                 hasValueText: content?.hasAttribute('aria-valuetext') || false,
-                spellcheck: content?.getAttribute('spellcheck') || ''
+                spellcheck: content?.getAttribute('spellcheck') || '',
+                isFocused: document.activeElement === content,
+                gutterCount: document.querySelectorAll('.cm-gutters').length,
+                lineNumberCount: document.querySelectorAll('.cm-lineNumbers .cm-gutterElement').length,
+                activeLineCount: document.querySelectorAll('.cm-activeLine').length,
+                contentPaddingTop: contentStyle?.paddingTop || '',
+                contentPaddingInlineStart: contentStyle?.paddingInlineStart || ''
             };
             """,
             arguments: [:],
@@ -266,6 +324,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return snapshot
     }
 
+    var testingRetainedScrollFraction: Double? { pendingScrollFraction }
+
     #endif
 
     fileprivate func attach(_ webView: WKWebView) {
@@ -274,7 +334,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         isReady = false
         isLoaded = false
         errorMessage = nil
-        recoverySnapshot = nil
         requestBarrier = nil
         installQATerminationObserverIfEnabled()
         startupTask?.cancel()
@@ -311,6 +370,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     fileprivate func updateContext(_ context: MarkdownEditorContext) {
         self.context = context
         lastKnownSelections = context.selections
+        scheduleRecoveryCapture()
     }
 
     fileprivate func reportError(_ message: String) {
@@ -372,11 +432,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func setScrollFraction(_ fraction: Double) {
-        pendingScrollFraction = min(1, max(0, fraction))
+        let normalized = min(1, max(0, fraction))
+        pendingScrollFraction = normalized
         guard isReady, isLoaded, let webView else { return }
         Task {
-            _ = try? await send(.setScrollFraction(pendingScrollFraction), in: webView)
+            _ = try? await send(.setScrollFraction(normalized), in: webView)
         }
+    }
+
+    fileprivate func recordScrollFraction(_ fraction: Double) {
+        pendingScrollFraction = min(1, max(0, fraction))
+    }
+
+    fileprivate func retainedScrollFraction(fallback: Double) -> Double {
+        pendingScrollFraction ?? min(1, max(0, fallback))
     }
 
     func setLinkCompletions(_ candidates: [EditorLinkCompletion]) {
@@ -390,8 +459,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func setResearcherComments(_ comments: [ResearcherComment], in source: String) {
         let fingerprint = DocumentFingerprint(content: source)
         pendingResearcherComments = comments.compactMap { comment in
-            guard let anchor = comment.anchor,
-                  anchor.state == .attached,
+            let anchor = comment.anchor
+            guard anchor.state == .attached,
                   anchor.fingerprint == fingerprint,
                   let from = Self.editorUTF16Offset(
                     forSourceUTF16Offset: anchor.utf16Range.lowerBound,
@@ -423,6 +492,30 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard let text = result.text else { throw SessionError.invalidResult }
         try reconcileMirror(with: text, publish: true)
         return checkedSource
+    }
+
+    /// Captures CodeMirror's exact source, selection, and bounded history before
+    /// SwiftUI removes the WKWebView during a note collapse or replacement.
+    /// The retained document session replays this snapshot into the next view.
+    func captureStateForViewReconstruction() async throws {
+        recoveryCaptureTask?.cancel()
+        recoveryCaptureTask = nil
+        guard isReady, isLoaded, let webView else { return }
+        let result = try await send(.captureRecovery, in: webView)
+        guard let snapshot = result.recovery,
+              snapshot.documentID == documentID,
+              snapshot.fingerprint == startingFingerprint,
+              snapshot.generation == generation,
+              snapshot.source == checkedSource else {
+            throw SessionError.invalidResult
+        }
+        recoverySnapshot = snapshot
+        lastKnownSelections = snapshot.ranges
+    }
+
+    fileprivate func hasRecoverySnapshot(documentID: String, source: String) -> Bool {
+        recoverySnapshot?.documentID == documentID
+            && recoverySnapshot?.source == source
     }
 
     func currentSelection(
@@ -593,16 +686,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         recoveryCaptureTask?.cancel()
         recoveryCaptureTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled, let self, self.isReady, self.isLoaded,
-                  let webView = self.webView else { return }
-            guard let result = try? await self.send(.captureRecovery, in: webView),
-                  let snapshot = result.recovery,
-                  snapshot.documentID == self.documentID,
-                  snapshot.fingerprint == self.startingFingerprint,
-                  snapshot.generation == self.generation,
-                  snapshot.source == self.checkedSource else { return }
-            self.recoverySnapshot = snapshot
-            self.lastKnownSelections = snapshot.ranges
+            guard !Task.isCancelled, let self else { return }
+            try? await self.captureStateForViewReconstruction()
         }
     }
 
@@ -627,7 +712,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 _ = try await send(.setUserCSS(pendingUserCSS), in: webView)
                 _ = try await send(.setLinkCompletions(pendingLinkCompletions), in: webView)
                 _ = try await send(.setResearcherComments(pendingResearcherComments), in: webView)
-                _ = try await send(.setScrollFraction(pendingScrollFraction), in: webView)
                 if let snapshot = matchingRecovery,
                    snapshot.fingerprint == startingFingerprint,
                    snapshot.source == checkedSource {
@@ -651,6 +735,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 } else {
                     isDirty = false
                 }
+                // Recovery replaces the complete EditorState and can reset the
+                // scroller. Apply the retained position only after restoration.
+                _ = try await send(.setScrollFraction(pendingScrollFraction ?? 0), in: webView)
                 isLoaded = true
                 flushPendingLine()
                 focus()
@@ -781,13 +868,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     #endif
 
     private func reconcileMirror(with text: String, publish: Bool) throws {
-        let exactText = checkedSource.contains("\r\n") && !text.contains("\r\n")
-            ? text.replacingOccurrences(of: "\n", with: "\r\n")
-            : text
         let replacement = MarkdownEditorDelta(
             fromUTF16: 0,
             toUTF16: checkedSource.utf16.count,
-            insertion: exactText
+            insertion: text
         )
         checkedSource = try MarkdownEditorDeltaApplier.apply([replacement], to: checkedSource)
         if publish { sourceChangeHandler?(checkedSource) }
@@ -1139,6 +1223,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                       let fraction = payload.scrollFraction,
                       fraction.isFinite,
                       (0...1).contains(fraction) else { return }
+                session.recordScrollFraction(fraction)
                 onScrollFractionChange(fraction)
             default:
                 break
@@ -1199,18 +1284,22 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private func signalReady() {
             guard !hasSignaledReady else { return }
             hasSignaledReady = true
+            let preservesRetainedSession = recoveringAfterTermination
+                || session.hasRecoverySnapshot(documentID: documentID, source: source)
             session.loadDocument(
                 source,
                 documentID: documentID,
                 mode: mode,
-                preservingRecovery: recoveringAfterTermination
+                preservingRecovery: preservesRetainedSession
             )
             recoveringAfterTermination = false
             session.editorBecameReady()
             session.setUserCSS(userCSS)
             session.setLinkCompletions(linkCompletions)
             session.setResearcherComments(researcherComments, in: source)
-            session.setScrollFraction(initialScrollFraction)
+            session.setScrollFraction(
+                session.retainedScrollFraction(fallback: initialScrollFraction)
+            )
         }
 
         private func validEnvelope(_ payload: EditorBridgeMessage) -> Bool {

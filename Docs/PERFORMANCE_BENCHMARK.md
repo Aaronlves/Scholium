@@ -7,7 +7,7 @@ or gate.
 
 **Current status:** RDF-1, complete-boundary instrumentation, the external
 XCUITest driver, strict report validator, and fail-closed runner are
-implemented. One four-metric Debug scenario run has validated the plumbing.
+implemented. Debug scenario runs have validated the plumbing.
 No packaged Release product-gate run or threshold approval exists, so G7 is
 not passed.
 
@@ -128,7 +128,8 @@ also refuses to run without explicit release-owner threshold approval.
 Scenario-only smoke run:
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
+DEVELOPER_DIR="$developer_dir" \
   ./Tools/Scripts/run-performance-benchmarks.sh \
   --app /tmp/Scholium-QA.app \
   --fixture /tmp/scholium-rdf1 \
@@ -140,8 +141,9 @@ Product gate after the reviewed commit is clean, exactly tagged, packaged, and
 the proposed thresholds are approved:
 
 ```bash
+developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1 \
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+DEVELOPER_DIR="$developer_dir" \
   ./Tools/Scripts/run-performance-benchmarks.sh \
   --app "/path/to/Scholium.app" \
   --fixture /tmp/scholium-rdf1 \
@@ -149,28 +151,11 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
   --gate
 ```
 
-## Verified scenario-only evidence
+## Evidence pointer
 
-On 2026-07-14, the four-metric runner completed with a Debug QA app, zero
-warm-ups, and one retained sample per metric. It produced four privacy-safe
-JSONL files, an environment record, and a report classified as
-`scenario_only` with `gate_status: not_applicable`. The recorded durations
-were 7,668.7 ms library launch, 327.1 ms indexed Search, 267.2 ms warm Read,
-and 8,606.0 ms cold Read. These values validate the harness only; they are not
-p95 measurements and do not support a Beta performance claim. RDF-1 verified
-before and after the run with the same complete tree hash.
-
-On 2026-07-15, the thermally bounded driver completed a second four-metric
-Debug QA smoke with zero warm-ups and one retained sample. Warm Search and
-warm Read each used one app process; Library and Cold Read retained their
-process-boundary launches. The report at
-`/tmp/scholium-performance-batched-smoke-v3/report.json` recorded 7,225.0 ms
-Library, 430.0 ms Search, 265.2 ms Warm Read, and 8,614.5 ms Cold Read with all
-correctness checks passing. It is `scenario_only` / `not_applicable` and proves
-the revised harness contract only. An earlier 1+3 diagnostic exposed duplicate
-Search begin events and Command-F resetting scope to This Note; the driver now
-re-arms only after leaving the target query and explicitly selects This Vault
-before warm-Read navigation.
+Current scenario and gate evidence is maintained only in
+[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md). Temporary Debug smoke
+results validate the harness at most; they are never Beta performance evidence.
 
 ## Remaining activation work
 

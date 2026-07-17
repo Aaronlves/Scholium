@@ -497,7 +497,7 @@ public struct ResearcherComment: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let author: String
     public var text: String
-    public var anchor: ResearcherCommentAnchor?
+    public var anchor: ResearcherCommentAnchor
     public let createdAt: Date
     public var updatedAt: Date
     public var resolvedAt: Date?
@@ -506,7 +506,7 @@ public struct ResearcherComment: Codable, Hashable, Identifiable, Sendable {
         id: UUID = UUID(),
         author: String = "Researcher",
         text: String,
-        anchor: ResearcherCommentAnchor? = nil,
+        anchor: ResearcherCommentAnchor,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         resolvedAt: Date? = nil
@@ -683,12 +683,8 @@ public struct DialogueNoteReference: Codable, Hashable, Identifiable, Sendable {
 /// exact note identity shown to the agent. The note reference is a snapshot of
 /// the title, vault-relative path, and advisory fingerprint at request time.
 ///
-/// `note` is optional only so Dialogue records written by builds that stored a
-/// bare `ResearcherComment` continue to decode. New Dialogue requests always
-/// create this value with a note reference and the UI labels an unresolved
-/// legacy owner explicitly instead of presenting an ambiguous line number.
 public struct DialogueIncludedComment: Codable, Hashable, Identifiable, Sendable {
-    public let note: DialogueNoteReference?
+    public let note: DialogueNoteReference
     public let comment: ResearcherComment
 
     public var id: UUID { comment.id }
@@ -698,29 +694,6 @@ public struct DialogueIncludedComment: Codable, Hashable, Identifiable, Sendable
         self.comment = comment
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case note
-        case comment
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.comment) {
-            note = try container.decodeIfPresent(DialogueNoteReference.self, forKey: .note)
-            comment = try container.decode(ResearcherComment.self, forKey: .comment)
-        } else {
-            // Compatibility with schema v1, where includedComments contained
-            // bare ResearcherComment values and therefore had no note owner.
-            note = nil
-            comment = try ResearcherComment(from: decoder)
-        }
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(note, forKey: .note)
-        try container.encode(comment, forKey: .comment)
-    }
 }
 
 public struct DialogueReply: Codable, Hashable, Identifiable, Sendable {
@@ -877,19 +850,10 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         triptychID = try container.decode(UUID.self, forKey: .triptychID)
         instruction = try container.decode(String.self, forKey: .instruction)
         selectedNotes = try container.decode([DialogueNoteReference].self, forKey: .selectedNotes)
-        let decodedComments = try container.decodeIfPresent(
+        includedComments = try container.decodeIfPresent(
             [DialogueIncludedComment].self,
             forKey: .includedComments
         ) ?? []
-        if selectedNotes.count == 1, let onlyNote = selectedNotes.first {
-            includedComments = decodedComments.map { included in
-                included.note == nil
-                    ? DialogueIncludedComment(note: onlyNote, comment: included.comment)
-                    : included
-            }
-        } else {
-            includedComments = decodedComments
-        }
         generatedPrompt = try container.decode(String.self, forKey: .generatedPrompt)
         checkpointID = try container.decodeIfPresent(UUID.self, forKey: .checkpointID)
         functionSnapshot = try container.decodeIfPresent(
@@ -989,22 +953,15 @@ public enum DialoguePromptBuilder {
         var commentLines: [String] = []
         for includedComment in context.comments {
             let comment = includedComment.comment
-            if let note = includedComment.note {
-                commentLines.append("- Note: \(note.title)")
-                commentLines.append("  Note ID: \(note.noteID.uuidString)")
-                commentLines.append("  Vault: \(note.vaultName)")
-                commentLines.append("  Path: \(note.relativePath)")
-            } else {
-                commentLines.append("- Note: Source note unavailable (legacy Dialogue entry)")
-            }
-            if let anchor = comment.anchor {
-                commentLines.append("  Location: Lines \(anchor.line)–\(anchor.endLine)")
-                commentLines.append("  Comment: \(comment.text)")
-                commentLines.append("  Selected text: \(anchor.quotation)")
-            } else {
-                commentLines.append("  Location: Whole note")
-                commentLines.append("  Comment: \(comment.text)")
-            }
+            let note = includedComment.note
+            let anchor = comment.anchor
+            commentLines.append("- Note: \(note.title)")
+            commentLines.append("  Note ID: \(note.noteID.uuidString)")
+            commentLines.append("  Vault: \(note.vaultName)")
+            commentLines.append("  Path: \(note.relativePath)")
+            commentLines.append("  Location: Lines \(anchor.line)–\(anchor.endLine)")
+            commentLines.append("  Comment: \(comment.text)")
+            commentLines.append("  Selected text: \(anchor.quotation)")
         }
         let replacements = [
             "{{researcher_instruction}}": context.instruction.trimmingCharacters(in: .whitespacesAndNewlines),

@@ -9,10 +9,6 @@ Design Handbook owns interface structure, interaction, accessibility, and
 exact user-facing language. This document records only the implementation
 boundary that realizes those authorities; it cannot override either one.
 
-> Scholium is a research-grade writing environment where philosophers can
-> think naturally while the system preserves the exact intellectual artifact
-> underneath.
-
 ## Governing invariants
 
 1. One exact Markdown source is the only writable document authority.
@@ -80,29 +76,25 @@ CodeMirror transaction and one undo event. Multiple selections succeed
 atomically or not at all. Transformations refuse frontmatter, code, raw HTML,
 comments, protected literals, and malformed ranges whose boundaries cannot be
 proved. Add Comment is not a Markdown command: it captures an exact selection
-snapshot and opens the existing app-owned Comments workflow.
+snapshot, opens the role-valid combined Review or Critique panel, and focuses
+its inline Comments composer.
 
 Command-F opens Scholium's shared **This Note** Search surface. The embedded
 CodeMirror Find panel is not part of Scholium's editor architecture.
 
-## Verification evidence
+## Verification contract
 
-Pure TypeScript tests currently cover protocol validation, exact
-transformations, single-transaction undo/redo, Lezer-backed representative
-projection, Contracts parity fixtures, guarded lists and tables, and inert
-clipboard conversion, plus synthetic composition timing and the single-textbox
-accessibility contract. Swift Testing covers the immutable Contracts dialect,
-protocol encoding, architecture boundaries, controller convergence, and one
-real WKWebView journey through initialization, exact CRLF reconciliation,
-formatting, raw UTF-8/UTF-16 Unicode preservation, selection-preserving dirty
-mirror recovery, generation restoration, and Paste as Markdown.
-The isolated QA app passes the canonical Live Preview editing and
-commit-before-navigation journey, plus a focused journey proving that the
-native Format, Insert, and editor context menus expose commands for the
-focused session. A Debug-only, explicit-argument QA fault journey also proves
-dirty-buffer reload and byte-exact commit through the normal Read boundary.
-See `EDITOR_INTERACTION_ACCEPTANCE.md` for the dated split between automated
-evidence and still-open real assistive-technology and IME journeys.
+The editor boundary requires pure TypeScript coverage for protocol validation,
+exact transformations, projection, clipboard conversion, composition policy,
+and accessibility structure; Swift coverage for Contracts parity, protocol
+encoding, controller convergence, and a real WKWebView lifecycle; and isolated
+QA coverage for focused native commands, commit-before-navigation, recovery,
+conflict, and exact-buffer preservation. Real operating-system acceptance must
+exercise assistive technologies, text services, and installed IMEs rather than
+substituting synthetic events for those facilities.
+
+Current results and the still-open matrix are maintained only in
+[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 Performance claims follow `PERFORMANCE_BENCHMARK.md`. Measurements are evidence,
 not release gates, until the release owner explicitly approves numeric gates.

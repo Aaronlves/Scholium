@@ -8,47 +8,12 @@ private enum InspectorRelationshipMode {
     case outgoing
 }
 
-private enum VectorRelationshipSection: String, CaseIterable, Identifiable {
-    case supports
-    case supportedBy
-    case incompatible
-    case related
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .supports: "Supports"
-        case .supportedBy: "Supported By"
-        case .incompatible: "Incompatible With"
-        case .related: "Related"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .supports: "arrow.right.circle"
-        case .supportedBy: "arrow.left.circle"
-        case .incompatible: "xmark.circle"
-        case .related: "link"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .supports, .supportedBy: .teal
-        case .incompatible: .purple
-        case .related: .secondary
-        }
-    }
-}
-
 private struct InspectorRelationshipItem: Identifiable {
     let edge: LinkGraphEdge
     let peerID: VaultQualifiedNoteID?
     let peer: WorkspaceCatalogNote?
     let source: WorkspaceCatalogNote?
-    let section: VectorRelationshipSection
+    let section: ScholiumConnectionPresentation
 
     var id: String {
         let span = edge.occurrence.span
@@ -58,13 +23,13 @@ private struct InspectorRelationshipItem: Identifiable {
             peerID?.vaultID.uuidString ?? "unresolved",
             peerID?.relativePath ?? edge.occurrence.target,
             String(span.utf16LowerBound),
-            section.rawValue,
+            String(section.rawValue),
         ].joined(separator: ":")
     }
 }
 
 private struct InspectorRelationshipProjection {
-    let sections: [(VectorRelationshipSection, [InspectorRelationshipItem])]
+    let sections: [(ScholiumConnectionPresentation, [InspectorRelationshipItem])]
 
     var count: Int {
         sections.reduce(0) { $0 + $1.1.count }
@@ -80,7 +45,7 @@ private struct InspectorRelationshipProjection {
         let notesByID = Dictionary(uniqueKeysWithValues: (catalog?.notes ?? []).map {
             (VaultQualifiedNoteID(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath), $0)
         })
-        var groups: [VectorRelationshipSection: [InspectorRelationshipItem]] = [:]
+        var groups: [ScholiumConnectionPresentation: [InspectorRelationshipItem]] = [:]
 
         for edge in graph.outgoing[current] ?? [] {
             append(
@@ -103,9 +68,9 @@ private struct InspectorRelationshipProjection {
             )
         }
 
-        let visibleSections: [VectorRelationshipSection] = mode == .incoming
-            ? [.supportedBy, .incompatible, .related]
-            : [.supports, .incompatible, .related]
+        let visibleSections: [ScholiumConnectionPresentation] = mode == .incoming
+            ? [.supportedBy, .incompatible, .neutral]
+            : [.supports, .incompatible, .neutral]
         return Self(sections: visibleSections.compactMap { section in
             guard let items = groups[section], !items.isEmpty else { return nil }
             return (section, items.sorted(by: relationshipOrder))
@@ -118,27 +83,21 @@ private struct InspectorRelationshipProjection {
         currentIsAuthoredSource: Bool,
         requestedMode: InspectorRelationshipMode,
         notesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote],
-        groups: inout [VectorRelationshipSection: [InspectorRelationshipItem]]
+        groups: inout [ScholiumConnectionPresentation: [InspectorRelationshipItem]]
     ) {
-        let semantic: (VectorRelationshipSection, InspectorRelationshipMode)
-        if edge.destination == nil {
-            semantic = (.related, .outgoing)
-        } else {
-            semantic = switch (edge.occurrence.vectorKind, currentIsAuthoredSource) {
-            case (.supportsTarget, true), (.supportedByTarget, false):
-                (.supports, .outgoing)
-            case (.supportsTarget, false), (.supportedByTarget, true):
-                (.supportedBy, .incoming)
-            case (.incompatible, true):
-                (.incompatible, .outgoing)
-            case (.incompatible, false):
-                (.incompatible, .incoming)
-            case (.neutral, true), (.none, true):
-                (.related, .outgoing)
-            case (.neutral, false), (.none, false):
-                (.related, .incoming)
-            }
+        let presentation = edge.destination == nil
+            ? ScholiumConnectionPresentation.neutral
+            : ScholiumConnectionPresentation(
+                vectorKind: edge.occurrence.vectorKind,
+                currentIsSource: currentIsAuthoredSource
+            )
+        let relationshipMode: InspectorRelationshipMode = switch presentation {
+        case .supports: .outgoing
+        case .supportedBy: .incoming
+        case .incompatible, .neutral:
+            currentIsAuthoredSource ? .outgoing : .incoming
         }
+        let semantic = (presentation, relationshipMode)
         guard semantic.1 == requestedMode else { return }
         groups[semantic.0, default: []].append(InspectorRelationshipItem(
             edge: edge,
@@ -297,13 +256,13 @@ private struct RelationshipPanel: View {
 }
 
 private struct VectorSectionHeader: View {
-    let section: VectorRelationshipSection
+    let section: ScholiumConnectionPresentation
     let count: Int
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: section.symbol)
-                .foregroundStyle(section.color)
+            Image(systemName: section.symbolName)
+                .scholiumForeground(section.colorRole)
             Text(section.title)
                 .foregroundStyle(.primary)
             Spacer()
@@ -400,9 +359,9 @@ private struct InspectorRelationshipRow: View {
 
     private var relationLabel: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: item.section.symbol)
+            Image(systemName: item.section.symbolName)
                 .font(.callout)
-                .foregroundStyle(item.section.color)
+                .scholiumForeground(item.section.colorRole)
                 .frame(width: 16)
             Text(peerTitle)
                 .font(.callout.weight(.medium))

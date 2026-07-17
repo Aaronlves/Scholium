@@ -18,7 +18,6 @@ struct SpotlightSearchContext {
 struct SpotlightSearchPanelView: View {
     @ObservedObject private var controller: DiscoveryController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let context: SpotlightSearchContext
     let maxPanelHeight: CGFloat?
     @FocusState private var searchFocused: Bool
@@ -42,13 +41,13 @@ struct SpotlightSearchPanelView: View {
         VStack(spacing: 0) {
             searchBar
 
+            Divider()
+                .opacity(0.55)
+                .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+
+            searchScopeBar
+
             if isExpanded {
-                Divider()
-                    .opacity(0.55)
-                    .padding(.horizontal, 28)
-
-                searchScopeBar
-
                 if let searchError = controller.search.errorMessage {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Label("Search Unavailable", systemImage: "exclamationmark.triangle")
@@ -74,34 +73,30 @@ struct SpotlightSearchPanelView: View {
                 searchContent
             }
         }
-        // Keep the Spotlight surface large at ordinary widths, but let the
-        // centered overlay contract with a compact window instead of forcing
-        // the window wider than its available content region.
-        .frame(minWidth: 0, idealWidth: 960, maxWidth: 1_060)
-        .frame(height: isExpanded ? expandedPanelHeight : 106, alignment: .top)
-        .glassEffect(
-            .regular,
-            in: RoundedRectangle(
-                cornerRadius: isExpanded ? 32 : 48,
-                style: .continuous
-            )
+        .frame(
+            minWidth: 0,
+            idealWidth: ScholiumMetrics.Search.preferredWidth,
+            maxWidth: ScholiumMetrics.Search.maximumWidth
         )
-        .background(
-            reduceTransparency
-                ? Color(nsColor: .windowBackgroundColor)
-                : Color.clear,
-            in: RoundedRectangle(
-                cornerRadius: isExpanded ? 32 : 48,
-                style: .continuous
-            )
+        .frame(
+            height: isExpanded
+                ? expandedPanelHeight
+                : ScholiumMetrics.Search.collapsedHeight,
+            alignment: .top
         )
-        .shadow(color: .black.opacity(0.24), radius: 30, y: 16)
+        .scholiumGlassSurface(
+            .searchOverlay,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumMetrics.Search.cornerRadius,
+                style: .continuous
+            ),
+            elevation: .searchOverlay
+        )
         .animation(
             ScholiumMotion.searchExpansion(reduceMotion: reduceMotion),
             value: isExpanded
         )
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.searchPanel")
         .onAppear {
             searchFocused = true
             normalizeSelection()
@@ -157,9 +152,9 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 32, weight: .regular))
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
@@ -169,13 +164,14 @@ struct SpotlightSearchPanelView: View {
                 prompt: Text("Spotlight Search").foregroundStyle(.secondary)
             )
                 .textFieldStyle(.plain)
-                .font(.system(size: 34, weight: .regular))
+                .font(.body)
                 .lineLimit(1)
                 .focused($searchFocused)
                 .accessibilityIdentifier("scholium.searchField")
                 .accessibilityLabel("Search")
                 .onSubmit {
-                    if controller.search.hits.isEmpty && controller.search.relatedItems.isEmpty {
+                    if controller.search.isRunning
+                        || controller.search.criteria.selectedResultID == nil {
                         Task { await context.refresh() }
                     } else {
                         openSelectedResult()
@@ -191,14 +187,14 @@ struct SpotlightSearchPanelView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
                 .help("Clear Search")
                 .accessibilityLabel("Clear Search")
             }
 
-            if isExpanded {
-                savedSearchesMenu
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            }
+            savedSearchesMenu
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
 
             Button {
                 context.dismiss()
@@ -211,17 +207,17 @@ struct SpotlightSearchPanelView: View {
             .accessibilityLabel("Close")
             .accessibilityIdentifier("scholium.closeSearchButton")
         }
-        .padding(.horizontal, 28)
-        .frame(height: 106)
+        .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+        .frame(height: 58)
     }
 
     private var searchScopeBar: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 18) {
+            HStack(spacing: 12) {
                 scopePicker
-                    .frame(width: 430)
+                    .frame(width: ScholiumMetrics.Search.scopeWidth)
 
-                Spacer(minLength: 18)
+                Spacer(minLength: 12)
 
                 searchSummary
             }
@@ -233,8 +229,8 @@ struct SpotlightSearchPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.horizontal, 30)
-        .padding(.vertical, 14)
+        .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+        .padding(.vertical, 6)
     }
 
     private var scopePicker: some View {
@@ -250,7 +246,7 @@ struct SpotlightSearchPanelView: View {
 
     @ViewBuilder
     private var searchSummary: some View {
-        if !controller.search.isRunning {
+        if isExpanded, !controller.search.isRunning {
             Text(searchResultSummary)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -259,7 +255,13 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var expandedPanelHeight: CGFloat {
-        max(180, min(650, maxPanelHeight ?? 650))
+        max(
+            ScholiumMetrics.Search.collapsedHeight,
+            min(
+                ScholiumMetrics.Search.expandedHeight,
+                maxPanelHeight ?? ScholiumMetrics.Search.expandedHeight
+            )
+        )
     }
 
     @ViewBuilder
@@ -464,7 +466,9 @@ struct SpotlightSearchPanelView: View {
     }
 
     private func openSelectedResult() {
-        let selected = controller.search.criteria.selectedResultID
+        guard let selected = controller.search.criteria.selectedResultID else {
+            return
+        }
         if let hit = controller.search.hits.first(where: {
             SearchResultIdentity.lexical($0) == selected
         }) {
@@ -474,12 +478,6 @@ struct SpotlightSearchPanelView: View {
         if let item = controller.search.relatedItems.first(where: {
             SearchResultIdentity.related($0) == selected
         }) {
-            open(.related(item))
-            return
-        }
-        if let hit = controller.search.hits.first {
-            open(.lexical(hit))
-        } else if let item = controller.search.relatedItems.first {
             open(.related(item))
         }
     }
@@ -514,7 +512,7 @@ private struct WorkspaceSearchResultRow: View {
 
             Text(highlightedSnippet)
                 .font(.body)
-                .lineLimit(3)
+                .lineLimit(1)
                 .multilineTextAlignment(.leading)
 
             HStack(spacing: 8) {
@@ -528,7 +526,7 @@ private struct WorkspaceSearchResultRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .padding(.vertical, 6)
+        .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
     }
 
     private var highlightedSnippet: AttributedString {
@@ -567,6 +565,7 @@ private struct RelatedSearchResultRow: View {
 
             Text(item.explanation)
                 .font(.body)
+                .lineLimit(1)
                 .multilineTextAlignment(.leading)
 
             HStack(spacing: 8) {
@@ -579,6 +578,6 @@ private struct RelatedSearchResultRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .padding(.vertical, 6)
+        .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
     }
 }

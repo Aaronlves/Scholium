@@ -29019,6 +29019,39 @@ ${fence}
     }
     return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
   }
+  function exactOffsetForNormalizedOffset(exactSource2, requestedOffset) {
+    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0) return null;
+    let exactOffset = 0;
+    let normalizedOffset = 0;
+    while (exactOffset < exactSource2.length && normalizedOffset < requestedOffset) {
+      if (exactSource2.charCodeAt(exactOffset) === 13 && exactSource2.charCodeAt(exactOffset + 1) === 10) {
+        exactOffset += 2;
+      } else {
+        exactOffset += 1;
+      }
+      normalizedOffset += 1;
+    }
+    return normalizedOffset === requestedOffset ? exactOffset : null;
+  }
+  function applyNormalizedChangesToExactSource(exactSource2, changes) {
+    const usesCRLF = exactSource2.includes("\r\n");
+    const exactChanges = changes.map((change) => {
+      const from = exactOffsetForNormalizedOffset(exactSource2, change.from);
+      const to = exactOffsetForNormalizedOffset(exactSource2, change.to);
+      if (from === null || to === null || to < from) return null;
+      return {
+        from,
+        to,
+        insert: usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert
+      };
+    });
+    if (exactChanges.some((change) => change === null)) return null;
+    let result = exactSource2;
+    for (const change of exactChanges.filter((candidate) => candidate !== null).sort((lhs, rhs) => rhs.from - lhs.from)) {
+      result = result.slice(0, change.from) + change.insert + result.slice(change.to);
+    }
+    return result;
+  }
   function frontmatterEndLine(doc2) {
     if (doc2.lines < 2 || doc2.line(1).text.trim() !== "---") return 0;
     for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
@@ -29126,7 +29159,7 @@ ${fence}
   var bridgeDocumentID = "";
   var bridgeFingerprint = "";
   var documentVersion = 0;
-  var sourceLineSeparator = "\n";
+  var exactSource = "";
   var linkCandidates = [];
   var editingDialect = null;
   var currentMode = "livePreview";
@@ -29141,8 +29174,7 @@ ${fence}
     ...message
   });
   function exactEditorSource() {
-    const source = editor.state.doc.toString();
-    return sourceLineSeparator === "\r\n" ? source.replaceAll("\n", "\r\n") : source;
+    return exactSource;
   }
   var modeCompartment = new Compartment();
   var lineSeparatorCompartment = new Compartment();
@@ -29724,6 +29756,12 @@ ${fence}
     decorations: (value) => value.decorations
   });
   var livePreviewMode = [livePreview, EditorView.lineWrapping];
+  var sourceMode = [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    foldGutter(),
+    highlightActiveLine()
+  ];
   var dirty = false;
   var pendingKeyStartedAt = null;
   var idleTimer = null;
@@ -29749,6 +29787,15 @@ ${fence}
       update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
         changes.push({ from: fromA, to: toA, insert: inserted.toString() });
       });
+      const updatedExactSource = applyNormalizedChangesToExactSource(exactSource, changes);
+      if (updatedExactSource === null || normalizedDocumentText(updatedExactSource) !== normalizedDocumentText(update.state.doc.toString())) {
+        post({
+          type: "editorError",
+          message: "The editor could not preserve the exact source line endings."
+        });
+        return;
+      }
+      exactSource = updatedExactSource;
       post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
     }
     const head = update.state.selection.main.head;
@@ -29876,11 +29923,8 @@ ${fence}
     return { from: context.pos - match[2].length, options, filter: false };
   }
   var editorExtensions = [
-    lineNumbers(),
-    highlightActiveLineGutter(),
     highlightSpecialChars(),
     history(),
-    foldGutter(),
     drawSelection(),
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
@@ -29890,7 +29934,6 @@ ${fence}
     closeBrackets(),
     autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
     rectangularSelection(),
-    highlightActiveLine(),
     highlightSelectionMatches(),
     markdown({ base: markdownLanguage }),
     keymap.of([
@@ -30144,8 +30187,9 @@ ${fence}
               { extensions: editorExtensions },
               { history: historyField }
             );
-            if (restored.doc.toString() === normalizedDocumentText(snapshot.source)) {
+            if (normalizedDocumentText(restored.doc.toString()) === normalizedDocumentText(snapshot.source)) {
               editor.setState(restored);
+              exactSource = snapshot.source;
               restoredHistory = true;
             }
           } catch {
@@ -30158,6 +30202,7 @@ ${fence}
             selection: EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head))),
             annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
           });
+          exactSource = snapshot.source;
         }
         editorOperations.setMode(currentMode);
         dirty = snapshot.dirty;
@@ -30292,7 +30337,7 @@ ${fence}
       bridgeFingerprint = startingFingerprint;
       documentVersion = 0;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
-      sourceLineSeparator = separator;
+      exactSource = text;
       editor.dispatch({
         changes: replacementChange(editor.state.doc.toString(), text),
         effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -30307,7 +30352,7 @@ ${fence}
     /** @param {string} mode */
     setMode(mode) {
       editor.dispatch({
-        effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : [])
+        effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : sourceMode)
       });
       editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
       editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
@@ -30357,10 +30402,9 @@ ${fence}
       });
     },
     synchronizeCommittedText(expectedText, committedText, startingFingerprint) {
-      if (editor.state.doc.toString() !== normalizedDocumentText(expectedText)) return false;
+      if (exactSource !== expectedText || normalizedDocumentText(editor.state.doc.toString()) !== normalizedDocumentText(expectedText)) return false;
       bridgeFingerprint = startingFingerprint;
       const separator = committedText.includes("\r\n") ? "\r\n" : "\n";
-      sourceLineSeparator = separator;
       editor.dispatch({
         changes: replacementChange(editor.state.doc.toString(), committedText),
         effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -30369,6 +30413,7 @@ ${fence}
           programmaticDocumentChange.of(true)
         ]
       });
+      exactSource = committedText;
       dirty = false;
       post({
         type: "stateChanged",

@@ -4,7 +4,7 @@
 
 **Applies to:** Scholium for macOS and its agent-facing CLI
 
-**Canonicalized:** 2026-07-16
+**Canonicalized:** 2026-07-17
 
 **Purpose:** Define Scholium's product role, Triptych model, research workflows, collaboration boundaries, and stable feature decisions.
 
@@ -24,7 +24,9 @@ This guide's direct-agent-edit decision supersedes older product language requir
 - **Critique** is an attributed agent assessment of one Work. It does not replace its target.
 - **Research Function** is one researcher-selected scholarly operation exposed by the document-local Research Strip and executed through the shared Application API. The visible functions are Dialogue, Develop, Review, Fidelity, Critique, Revise, and Manuscript.
 - **Target** is the one immutable Analysis, Topic, or Work whose state a Research Function concerns. A function run never has more than one writable Target.
-- **Materials** are additional read-only notes selected inside a function panel. They never become implicit write targets.
+- **Materials** are additional read-only notes selected inside an agent-facing
+  function panel. They never become implicit write targets. Human Review does
+  not create an agent instruction packet and therefore has no Materials draft.
 - **Fidelity** is an exact-revision audit of philosophical content and, when an applicable Researcher Skill is bound, citations. It remains evidentially distinct from Human Review and Critique.
 - **Research Strip** is the single bottom editor control surface that exposes only functions valid for the selected note's role.
 - **Human Review** is the researcher's fingerprint-bound review of an Analysis or Topic.
@@ -126,16 +128,39 @@ Because each Triptych has one portable `.scholium/` directory beside Works, the 
 
 ### 3.2 Triptych navigation and windows
 
-Scholium presents **Analyses | Topics | Works** as three peer tabs without replacing the established document-first, three-column window. Different Triptychs may be open simultaneously in separate windows. Each window owns its tabs, selection, document modes, history, inspector, scroll locations, and search state while shared vault services remain coherent.
+Scholium presents **Analyses | Topics | Works** as three peer tabs inside one
+stable document-first workspace. Different Triptychs may be open
+simultaneously in separate windows or grouped by macOS as native window tabs.
+Each native tab is a complete Scholium window session: it owns one selected
+document, document mode, inspector and History presentation, scroll location,
+Search state, and pending presentation while shared vault services remain
+coherent. Scholium provides no second in-window document-tab system.
 
-One window belongs to one complete Triptych. **File → New Triptych…** opens setup for three new locations, **File → Open Triptych** opens a registered Triptych in its own window, and **File → New Window** opens another independent window for the focused Triptych. Scholium does not put a Triptych switcher inside the document area or confuse a Triptych with a Works folder.
+One window or native tab belongs to one complete Triptych. **File → New
+Triptych…** opens setup for three new locations, **File → Open Triptych**
+opens a registered Triptych in its own window, and **File → New Window**
+opens another independent window for the focused Triptych. Ordinary note
+selection replaces the selected document in that session. Switching the
+Library among **Analyses**, **Topics**, and **Works** changes only the browsed
+hierarchy and the meaning of **This Vault** Search; it does not close,
+collapse, or replace the document already open in the session. **Open in New Tab**
+creates another complete window session and asks macOS to group it with the
+source window; windows from different Triptychs may share the same native tab
+group. Standard macOS Window-menu tab commands and `Command-W` remain the tab
+and close model. Scholium does not add custom tab cycling, tab closing,
+Merge/Move commands, a Triptych switcher inside the document area, or a Works
+project selector.
 
-With no note open, the leading Library is the **Triptych Interface**: a narrow,
-left-middle workflow anchor for selecting Analyses, Topics, Works, folders, and
-notes. It contains one compact Triptych-management menu and no explanatory
-Home page. Selecting a note reveals the document to its trailing side while
-the Interface remains spatially fixed; **Collapse Note** retracts the document
-without discarding its open-tab session.
+After setup, the workspace keeps one stable frame and one configured
+`NavigationSplitView` hierarchy. Its detail contains either the selected
+document or Scholium's fixed featured artwork. Opening, replacing, or closing a
+note never changes the window frame or position. The native macOS Show/Hide
+Sidebar control and View-menu command change only Library visibility; they do
+not clear or replace the selected document. Scholium provides no separate
+Collapse Note command. The no-note detail contains only a decorative,
+text-free Scholium composition; it has no Home title, instruction, button,
+document controls, or Research Strip. The actionable Library remains available
+through the standard sidebar route.
 
 Works folders are ordinary researcher-controlled folders. A researcher may use one folder for each paper, chapter, book, or other project, but Scholium does not register, select, assign, validate, or otherwise manage projects. No project selector appears below the Triptych navigation.
 
@@ -162,7 +187,8 @@ Machine-specific and replaceable state remains in Application Support:
 - security-scoped bookmarks and absolute paths, including the separate bookmark
   for the folder containing Works that authorizes the sibling `.scholium/`
   directory without creating a fourth vault;
-- window sessions and open tabs;
+- window sessions and their single vault-qualified selected document; legacy
+  tab and navigation fields remain decode-only during migration;
 - search, link, graph, and render indexes;
 - temporary files and caches;
 - app-owned Human Review, comments, and Dialogue replies;
@@ -235,16 +261,16 @@ Analysis, Topic, and ordinary Work notes support:
 - folder organization through the app or external tools;
 - exact-source preservation, conflict detection, and atomic app writes;
 - incoming and outgoing Connections with source locations and ambiguity;
-- line-level and whole-note researcher comments;
+- source-anchored researcher comments;
 - one-note or multi-note Dialogue records with optional transient copyable
   instructions for an external agent;
 - role-aware Properties;
-- one Search field with **This Note**, **This Vault**, and **Triptych** modes, plus Quick Open,
-  Recent Notes, filters, and Attention;
-- a compact Triptych Interface when no note is open; selecting a note expands
-  the same window into the document workspace, while closing the last note
-  or choosing **Collapse Note** returns to the Interface without an
-  intermediate Home or dashboard;
+- one Search field with **This Note**, **This Vault**, and **Triptych** modes,
+  known-note ranking, filters, and Attention;
+- one stable configured workspace whose no-note detail is the decorative
+  featured artwork; selecting, replacing, or closing a note never resizes or
+  repositions the window, and the standard sidebar control changes only Library
+  visibility;
 - Note History and available checkpoint comparison.
 
 Critique bodies are read-only inside Scholium but remain ordinary Markdown files that external editors may modify. Scholium does not enforce filesystem-level read-only permissions.
@@ -252,8 +278,17 @@ Critique bodies are read-only inside Scholium but remain ordinary Markdown files
 ### 5.1 Document modes and YAML
 
 - **Read** renders the committed note for reading, selection, navigation, and commenting.
-- **Live Preview** edits the exact Markdown body through a visual projection. It does not display YAML frontmatter or a line-number gutter.
+- **Live Preview** edits the exact Markdown body through a visual projection.
+  Wherever an editable projection permits, it uses the same prose typography
+  and rendered-construct styling as Read and reveals Markdown syntax only
+  around the active construct. It does not display YAML frontmatter or a
+  line-number gutter.
 - **Source** exposes and edits the complete Markdown and YAML and may display line numbers.
+
+When either editable mode first opens a note, its first line begins below the
+floating Metadata and Properties surface. That clearance belongs to the
+scrolling document rather than a permanent safe area: once the researcher
+scrolls it away, later text may travel beneath the floating surface.
 
 Only Read and Live Preview receive a direct keyboard toggle. Source is entered through the document-mode pull-down menu so accidental entry is less likely. Source mode may edit protected or machine-facing YAML directly; the researcher assumes responsibility for those exact-source edits. Scholium still validates and preserves bytes without whole-frontmatter reserialization.
 
@@ -285,12 +320,22 @@ links, backlinks, relation counts, coverage percentages, confidence, reading
 passes, or timestamps. Scholium derives what it can from role, identity,
 Connections, and app-owned state.
 
-A new durable Analysis requires a Research Unit. Existing Analyses without one
-remain valid and have undeclared rather than malformed scope. Topics and Works
-may use the same mapping when a durable conceptual, debate, project-question,
-or argumentative boundary adds information not already clear from the title,
-body, and links. Scholium does not inject YAML into a Topic merely to add a
-Research Unit and performs no automatic bulk migration.
+Creating a new Analysis asks the researcher to choose **Declare Now** or **Not
+Yet**. Declare Now records a Research Unit with non-empty Scope and optional
+Limitations. Not Yet writes no `research_unit` mapping and no sentinel value.
+Such an Analysis remains editable and available for Comments, Dialogue,
+Develop, and a Review draft, but **Complete Review** is unavailable until the
+Research Status is declared. Existing Analyses without a Research Unit remain
+valid and receive no migration or automatic YAML rewrite. Topics and Works may
+use the same mapping when a durable conceptual, debate, project-question, or
+argumentative boundary adds information not already clear from the title,
+body, and links. Scholium does not inject YAML merely to create an absent
+Research Unit.
+
+An external agent may add the declaration through an ordinary researcher-
+authorized exact-source edit. The normal fingerprint, conflict, and byte-
+preservation rules apply; Research Status creates no special authorization
+path.
 
 Creation and modification time are app-owned History data, not properties that
 researchers or agents must fill. Agents never create, infer, or maintain
@@ -315,10 +360,11 @@ Reviewer verdict, may recalibrate a large corpus against one common debate map.
 
 The interface presents `research_unit` as **Research Status** inside the
 existing Properties region. It shows Scope first and Limitations only when
-non-empty. A role-specific top-level `status` may appear beside it but remains
-a separate property: it records Analysis progress, Topic development, or Work
-production rather than time or philosophical truth. The exact profile contract
-is in `PROPERTY_PROFILES.md`.
+non-empty, and shows the honest value **Not Yet** when the mapping is absent.
+A role-specific top-level `status` may appear beside it but remains a separate
+property: it records Analysis progress, Topic development, or Work production
+rather than time or philosophical truth. The exact profile contract is in
+`PROPERTY_PROFILES.md`.
 
 ### 5.3 Duplicate, rename, and identity
 
@@ -360,10 +406,23 @@ Human Review applies to Analyses and Topics. Works use Critique instead of quali
 
 A completed Human Review requires:
 
+- a declared Research Status for an Analysis;
 - a Qualified or Unqualified verdict;
 - a non-empty Review Note of at most 500 characters.
 
-The sheet shows a character counter and never truncates the note automatically. **Complete Review** remains unavailable until both conditions are satisfied. **Save as Draft** preserves an incomplete review without marking the fingerprint reviewed. **Cancel** discards unsaved changes to the sheet.
+Review and Comments share one panel with no second-level Comments sheet. The
+panel shows existing Comments before the Human Review controls. An inline
+Comment composer appears only when the panel receives a current source anchor;
+without one, the panel offers no whole-note Comment textbox and directs the
+researcher to select a passage and use **Add Comment**. The Review Note remains
+the separate note-level Human Review judgment field. The sheet shows a
+character counter and never truncates the note
+automatically. **Complete Review** remains unavailable until all applicable
+conditions are satisfied. When an Analysis has no Research Status, the panel
+explains the gate and offers **Declare Research Status…**; **Save as Draft**,
+Comments, editing, Dialogue, and Develop remain available. **Save as Draft**
+preserves an incomplete review without marking the fingerprint reviewed.
+**Cancel** discards unsaved changes to the sheet.
 
 The Review control displays only the applicable state: **Review**, **Continue Review**, **Qualified**, or **Unqualified**. Qualification can be changed only through Review.
 
@@ -379,7 +438,18 @@ Researcher comments remain app-owned and outside the Markdown source. A selectio
 
 Read and editor selections create the same record. Scholium renders a restrained annotation without inserting hidden Markdown. After edits, it reattaches only when quotation and context identify one reliable location; otherwise it marks the comment **Needs Reattachment**.
 
-A whole-note comment has no source span. The researcher may edit, delete, resolve, or reattach a comment. The agent may reply but cannot resolve a researcher comment.
+Every Comment requires a source anchor. Scholium has no whole-note Comment
+record, creation path, display state, or compatibility decoder. Note-level
+judgment belongs to Human Review for an Analysis or Topic and to Critique for a
+Work rather than being duplicated as a Comment. The researcher may reattach an
+unresolved Comment. The agent may reply but cannot resolve a researcher
+Comment.
+
+Editor **Add Comment** opens the role-valid combined panel, focuses its inline
+composer, and carries the current source anchor. Analysis and Topic Comments
+share Review presentation; Work Comments share Critique presentation. Comment
+records, Human Review, and Critique provenance remain distinct in storage and
+History despite this shared presentation.
 
 ### 7.3 Unqualified Analyses
 
@@ -400,13 +470,49 @@ one-word, role-valid scholarly functions in this fixed order:
 | Analysis or Topic | **Dialogue · Develop · Review · Fidelity** |
 | Work | **Critique · Revise · Dialogue · Fidelity · Manuscript** |
 
+For agent-facing functions, the visible optional-agent journey is deliberately
+direct:
+
+1. Choose a function.
+2. Inspect or adjust scholarly context.
+3. Copy the instructions.
+4. Send them through the researcher's chosen agent surface.
+5. Return to Scholium and inspect the resulting source change and status.
+
+Fingerprints, checkpoints, method resolution, package identities, and evidence
+keys remain behind that journey unless repair or recovery requires them.
+
 Choosing a function opens one shared function panel with function-specific
-sections. The current note becomes the immutable Target. Additional notes are
-chosen only inside the panel as read-only Materials. A current selection
-defaults applicable work to **Passage**; otherwise the scope is **Whole**.
-Review includes Analysis or Topic Comments, Critique includes Work Comments,
-and Fidelity offers **Content** and **Citations** checks. The frontend never
-shows workflow modes, skill package identifiers, or prompt mechanics.
+sections. Review is the researcher's Human Review and combined Comments
+surface; it does not prepare instructions or select Materials. In every
+agent-facing panel, the current note becomes the immutable Target. Additional
+notes are chosen only inside the panel as read-only Materials. The Materials browser
+shows a search field, an optional **Suggested Only** filter, a compact
+**Selected Materials (n)** tray with individual Remove actions, and the real
+**Analyses**, **Topics**, and **Works** folder hierarchy. Search covers title,
+alias, filename, and path while retaining matching ancestors. Every candidate
+starts unselected; there is no bulk selection. Preparation freezes Materials
+so the visible packet cannot diverge from copied instructions. Loading, true
+empty, and failure remain distinct; failure blocks preparation and offers
+**Retry Materials**.
+
+Material suggestions are explainable navigation hints, never evidence. They
+use only explicit, resolved, one-hop Connections in this precedence: linked
+from the selected passage, linked from the Target, then links directly to the
+Target. The interface labels the reason, such as **Suggested — Linked from
+Target**, and shows the direct source location when available. Scholium does
+not use transitive paths, lexical similarity, AI ranking, Comment text, or an
+inferred evidential role to suggest Materials.
+
+A current selection defaults applicable agent-facing work to **Passage**;
+otherwise the scope is **Whole**. Review contains Analysis or Topic Comments
+and Human Review controls in the same panel, Critique contains Work Comments in
+the same panel, and Fidelity offers
+**Content** and **Citations** checks. There is no **Manage Comments** doorway or
+second-level Comments, Review, or Critique sheet. The frontend never shows
+workflow modes, skill package identifiers, or prompt mechanics.
+`Command-R` opens Review for an Analysis or Topic and Critique for a Work;
+role-valid routing and one sheet channel make them mutually exclusive.
 
 Dialogue remains a concise scholarly interaction record with optional
 transient instruction generation. It does not communicate with an agent
@@ -473,8 +579,12 @@ The initial optional modules are Critical Reflection, Remaining Questions,
 Philosophical Significance, Debate Context, and Research Directions. A module
 controls presentation only: it cannot authorize wider retrieval, select a
 different workflow, expand a write set, or require fabricated content merely
-to fill a heading. Fidelity, uncertainty, failure disclosure, and researcher
-control remain mandatory regardless of the selection.
+to fill a heading. Selected modules divide a literal 100% optional-module
+attention budget equally, so five selected modules receive 20% each. The
+allocation governs examination rather than output length; Academic Outcome
+and mandatory integrity notices remain outside that budget. Fidelity,
+uncertainty, failure disclosure, and researcher control remain mandatory
+regardless of the selection.
 
 Develop, Revise, Manuscript, and a Dialogue promoted to a writing function
 complete pending autosaves and create **Before Agent Work** before instructions
@@ -530,15 +640,41 @@ shows three ownership classes:
   **Manuscript**; and
 - editable **Researcher Skills**, including independent copies of official
   workflows, researcher-owned Philosophical Practices, and optional editable
-  specialist starters such as APA 7 citation verification and Prose Control.
+  complete or specialist methods such as Source Analyzer, APA 7 citation
+  verification, and Prose Control.
+
+**Prompt Templates** and **Skills** are the two principal Research Guidance
+collections. Per-Triptych **Dialogue Defaults** are a subordinate ordinary
+section under Prompt Templates for new Dialogue requests, not a third peer
+collection and not a Skill or prompt-template item.
+
+Bundled Skills are immediately usable with Scholium's valid defaults; using a
+research function does not require the researcher to configure package
+composition. The default Skills presentation shows only the human-facing name,
+plain-language purpose, relevant function, **Built-in** or **Triptych**
+ownership, structural validity, and active status. A bundled Workflow Skill
+offers **Duplicate** but no disabled source editor. A Triptych-owned
+Researcher Skill offers ordinary edit and duplicate actions.
+
+One **Advanced** disclosure contains Research Methods, Supplements, Practices,
+citation bindings, routing metadata, revision comparison, evolution, and
+Recovery. **Evolve…** remains available only for an eligible Triptych-owned
+Researcher Skill. If required configuration is missing or malformed, the
+ordinary summary presents **Repair…**, which opens the exact Advanced recovery
+destination. Progressive disclosure changes presentation only: validation,
+snapshots, atomic replacement, provenance, and recovery boundaries remain
+unchanged.
 
 Official packages may include release-pinned one-level references and
 templates in addition to `SKILL.md`. Duplicating a permitted official package
 copies the complete bounded package under a new local ID, not only its
 `SKILL.md`; its package revision and resources thereafter belong to the
 researcher and do not receive release updates. Source Analysis is not a
-Workflow package or Strip function; an external agent may use an available
-source-analysis method when directly asked to inspect a source. A researcher
+Workflow package or Strip function. Scholium ships Source Analyzer as a
+complete copy-on-adoption Researcher Skill for an external agent directly
+asked to inspect an accessible source. It has no Research Function, does not
+require Scholium to store the source or control Zotero, and grants no note-
+write permission. A researcher
 may duplicate a Workflow Skill
 into a new independent Researcher Skill, but later releases update only the
 official copy. System Skills cannot be edited, duplicated as replacements, or
@@ -551,7 +687,12 @@ that researcher-owned reference, records its stable ID and revision, and
 applies its composition rules. A Practice may refine declared editable points;
 it does not grant permission, weaken fidelity requirements, or silently
 replace the official workflow. Methodological conflicts remain visible for the
-researcher. Development conditionally covers exploration, concept and argument
+researcher. When several Practices are selected, they divide a literal 100%
+methodological-attention budget. The active complete method may declare
+role-sensitive base weights; otherwise the selected Practices divide the
+budget equally. This allocation governs checking and deliberative coverage,
+not prose length, and never requires fabricated visible output. Development
+conditionally covers exploration, concept and argument
 development, synthesis, and Analysis or Topic expression. Critique assesses a
 Work without editing it. Revision owns substantive Work changes and received-
 feedback disposition. Content Fidelity performs read-only Content and optional
@@ -658,30 +799,36 @@ redirect recovery.
 
 ### 8.4 Function preparation, completion, and Fidelity
 
-The Application function coordinator owns availability, preparation,
-completion, and cancellation for both the app and CLI. Preparation resolves a
+The Application function coordinator owns agent-facing availability,
+preparation, completion, and cancellation for both the app and CLI. Review
+routes directly to the separate Human Review and Comments authorities and does
+not produce an execution packet. Agent-facing preparation resolves a
 stable Target identity and fingerprint, validates every Material independently,
 rejects Target duplication, resolves the exact workflow resources, creates the
 required checkpoint and evidential record, then rechecks all revisions before
 returning instructions. A partial preparation is rolled back.
 
-Because Scholium has no embedded agent runtime, it never claims to run an audit
-in the background. Every write-capable preparation includes only a pending
-Fidelity handoff, not an eager pre-edit audit. After the substantive edit, the
-external agent first submits the parent run with the exact final Target
-fingerprint; the durable parent completion becomes **Awaiting Fidelity**. The
-agent then prepares and completes an independent read-only Fidelity child
-against that exact final fingerprint, carrying the same Materials, scope kind,
-selected Comments, and required checks, and resubmits the parent with that
-completed child run ID. Only that validated link may advance the parent to its
-verified terminal state; direct Fidelity outcomes on the write run are
-rejected. The deterministic evidence key prevents a second audit from being
-scheduled or persisted for the same function, scope, evidence, checks, and
-final revision and instead identifies the already completed evidence. A
-missing or unavailable child leaves the parent **Awaiting Fidelity** or
-**Unverified**. Later Target or evidence changes make the result stale. Human
-Review, Comments, Dialogue, Critique, and Fidelity outcomes remain separate
-even when their run records are linked.
+Fidelity has two invocation kinds with one evidence-validation contract.
+**Manual Fidelity** is the direct Strip function against the current exact
+revision. **Automatic Fidelity** is orchestration after Develop or Revise
+modifies the Target: after the substantive parent records its exact final
+fingerprint, Scholium creates or reuses the final-fingerprint Fidelity child
+with the same Materials, scope kind, selected Comments, and checks. The
+researcher does not operate that linkage. Manuscript reuses the automatic
+Fidelity evidence attached to its final selected Revise child. Critique and
+Dialogue do not trigger Target Fidelity because they do not edit the Target.
+
+Automatic orchestration does not mean that Scholium runs or fabricates an
+audit. Because Scholium has no embedded agent runtime, the child remains
+**Awaiting Fidelity** until an agent submits actual outcomes. Only a completed,
+matching child may advance the parent to its verified terminal state; direct
+Fidelity outcomes on the write run are rejected. The deterministic evidence
+key reuses rather than duplicates identical evidence for one function, scope,
+evidence set, checks, and final revision. A missing or unavailable child leaves
+the parent **Awaiting Fidelity** or **Unverified**. Later Target or evidence
+changes make the result **Stale**. Manual and automatic paths record their
+invocation kind for provenance while Human Review, Comments, Dialogue,
+Critique, and Fidelity outcomes remain separate even when linked.
 
 ### 8.5 External edits and conflicts
 
@@ -690,7 +837,7 @@ When an external agent or editor changes a clean open note, Scholium quietly ref
 ## 9. Analyses workflow
 
 1. The researcher creates or imports an Analysis and writes or revises it in Scholium, using a paper or other source when available.
-2. The researcher reads the Analysis, follows linked Topics and Works, and adds line or whole-note comments.
+2. The researcher reads the Analysis, follows linked Topics and Works, and adds source-anchored Comments where needed.
 3. From the editor Strip, the researcher may open Dialogue, Develop, Review,
    or Fidelity. Review is the existing Human Review; Develop covers the
    context-sensitive exploratory, conceptual, argumentative, synthetic, or
@@ -825,19 +972,31 @@ Do not present a separate in-note Find field or a separate advanced-search
 workspace. The standard Find command activates **This Note** in the shared
 Search field.
 
-Search uses a centered, two-stage Spotlight-style overlay. Before a committed
-query it presents one wide Liquid Glass search bar over a softly obscured
-window. After text is committed, the same surface expands downward to reveal
-the **This Note / This Vault / Triptych** segmented control and native result
-list. It follows the active system appearance and accessibility adaptations;
-it does not copy Spotlight's application categories or Finder-specific
-actions.
+Search uses a centered Spotlight-style overlay. The **This Note / This Vault /
+Triptych** scope control is visible immediately, including before text is
+entered. Empty Search shows the field and scope without an empty results
+sheet. At rest, Search is a compact command surface rather than a workspace-
+scale sheet: it uses ordinary interface-sized text and occupies only the width
+needed for the field and three scopes. Entering text expands it vertically to
+reveal a bounded native result list while its width remains compact and
+responsive. It follows the active
+system appearance and accessibility adaptations and does not copy Spotlight's
+application categories or Finder-specific actions.
 
-Quick Open remains a separate title, path, and alias navigation command.
-Recent Notes is a per-window, most-recent-first navigation command under
-**Navigate**. It remains distinct from chronological Back/Forward history,
-open tabs, Search, and Quick Open, and it does not add permanent sidebar or
-toolbar chrome.
+Known-note navigation belongs to Search. Exact title, alias, filename, and
+path matches rank above body matches without becoming a separate mode.
+Scholium provides no Quick Open, Recent Notes, or Back/Forward navigation
+history and persists none of their state. Ordinary navigation uses the
+Library or Search; parallel work uses a native macOS tab or window.
+
+Each window remembers the last explicitly selected ordinary scope.
+`Command-F` is available only when a note is open and temporarily invokes the
+shared Search surface in **This Note**. Dismissing Find restores the previous
+ordinary scope. If the researcher explicitly changes scope during temporary
+Find, that choice becomes the new ordinary scope and ends the temporary
+override. Dismissal cancels pending work, rejects stale results, clears the
+transient query and results, and retains only the ordinary scope and saved
+searches.
 The document-local Research inspector and Attention remain contextual and
 derived surfaces rather than Search modes. Search results are retrieval leads,
 not evidence.
@@ -985,13 +1144,14 @@ raw database access.
 
 ## 16. Onboarding and protected researcher additions
 
-On first launch, Scholium opens at the same narrow measure and left-middle
-screen position as the Triptych Interface and asks for one
-decision at a time: Analyses, Topics, Works, then the bounded authorization
-needed beside Works. The flow uses standard Open panels, has no scrolling page,
-and reaches a usable Triptych Interface without a feature tour or explanatory
-manual. Completing it never presents the same guide again over the newly
-configured Triptych.
+On first launch, Scholium opens as a narrow, left-middle five-step setup and
+asks for one decision at a time: Analyses, Topics, Works, then the bounded
+authorization needed beside Works. The flow uses standard Open panels, has no
+scrolling page, and reaches a usable workspace without a feature tour or
+explanatory manual. Completing setup performs the only application-driven
+expansion to the normal workspace frame; Reduce Motion makes that change
+immediate. Configured windows launch or restore at the normal workspace size,
+and the setup guide never appears again over the configured Triptych.
 Scholium does not ask the researcher to register a project or choose an
 app-managed Works structure. Later, **Manage Triptychs…** in Settings lists
 complete registered Triptychs, edits the three locations of the selected

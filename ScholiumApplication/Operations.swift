@@ -246,14 +246,6 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return try await handle.search(query, scope: scope, limit: limit)
     }
 
-    public func quickOpen(
-        query: String,
-        limit: Int = 40
-    ) async throws -> [WorkspaceCatalogNote] {
-        let handle = try await reference.requireHandle()
-        return try await handle.quickOpen(query: query, limit: limit)
-    }
-
     public func related(
         query: String,
         scope: SearchScope,
@@ -300,7 +292,20 @@ public actor ResearchOperations: ResearchUseCases {
         source: String,
         origin: ResearchSkillOrigin
     ) async -> ResearchSkillPackage {
-        Self.inspectSkillDraft(id: id, source: source, origin: origin)
+        let inspected = Self.inspectSkillDraft(id: id, source: source, origin: origin)
+        guard origin == .triptych,
+              let handle = try? await reference.requireHandle(),
+              let persistedSkills = try? await handle.services.researchSkillStore.skills(),
+              let persisted = persistedSkills.first(where: {
+                  $0.id == id && $0.origin == origin
+              }) else {
+            return inspected
+        }
+        let packageBoundaryIssues = persisted.validationIssues.filter { issue in
+            issue.contains("protected Scholium package")
+                && !inspected.validationIssues.contains(issue)
+        }
+        return inspected.addingValidationIssues(packageBoundaryIssues)
     }
 
     public func availableFunctions(
@@ -320,6 +325,12 @@ public actor ResearchOperations: ResearchUseCases {
         _ request: ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation {
         try await functionCoordinator.prepareFunction(request)
+    }
+
+    public func prepareAutomaticFidelity(
+        parentRunID: UUID
+    ) async throws -> AutomaticFidelityPreparation {
+        try await functionCoordinator.prepareAutomaticFidelity(parentRunID: parentRunID)
     }
 
     public func selectFunctionMethods(
@@ -357,7 +368,7 @@ public actor ResearchOperations: ResearchUseCases {
     public func addComment(
         to note: VaultQualifiedNoteID,
         text: String,
-        anchor: ResearcherCommentAnchor? = nil,
+        anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
     ) async throws -> HumanReviewRecord {
         let handle = try await reference.requireHandle()

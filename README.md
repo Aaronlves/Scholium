@@ -200,6 +200,12 @@ Docs/DESIGN_HANDBOOK.md    Interface and exact UI-contract authority
 Docs/PRD.md                Requirements synthesis and release traceability
 Docs/IMPLEMENTATION_STATUS.md
                            Current evidence and migration ledger
+Docs/IMPLEMENTATION_ARCHITECTURE.md
+                           Module, runtime, delivery, and state ownership
+Docs/EDITOR_ARCHITECTURE.md
+                           CodeMirror, WebKit, and editor-session boundary
+Docs/PROPERTY_PROFILES.md   Target researcher-facing property vocabulary
+Docs/CSS_SNIPPETS.md       Supported document-style customization contract
 Skills/README.md           Bundled product-skill architecture and evidence boundary
 Docs/BETA_RELEASE.md       Source-first beta policy and release gates
 AGENTS.md                  Repository design/build rules and authority routing

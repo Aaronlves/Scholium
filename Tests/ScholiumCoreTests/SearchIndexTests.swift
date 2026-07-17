@@ -223,6 +223,28 @@ struct SearchIndexTests {
         #expect(repeated.map(\.relativePath) == hits.map(\.relativePath))
     }
 
+    @Test("Exact filename and path matches rank above body occurrences")
+    func exactNoteIdentityPrecedesBodyMatches() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(databaseURL: fixture.databaseURL, vaultID: fixture.vault.id)
+        _ = try await index.rebuild([
+            fixture.item(
+                "Archive/Known Note.md",
+                "---\ntitle: Archival Entry\n---\nNo matching prose here."
+            ),
+            fixture.item(
+                "Body.md",
+                "---\ntitle: Background\n---\nThis paragraph mentions Known Note and Archive/Known Note.md."
+            ),
+        ])
+
+        let filenameHits = try await index.search(SearchQuery("\"Known Note\""))
+        #expect(filenameHits.first?.relativePath == "Archive/Known Note.md")
+
+        let pathHits = try await index.search(SearchQuery("\"Archive/Known Note.md\""))
+        #expect(pathHits.first?.relativePath == "Archive/Known Note.md")
+    }
+
     @Test("Incremental add, edit, rename, and delete converge with a clean rebuild")
     func incrementalParity() async throws {
         let fixture = try Fixture()

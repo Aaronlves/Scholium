@@ -59,7 +59,7 @@ struct ResearchOperationsMutationTests {
             anchor: anchor,
             expectedRevision: note.fingerprint
         )
-        #expect(reattached.comments.first?.anchor?.state == .attached)
+        #expect(reattached.comments.first?.anchor.state == .attached)
         _ = try await handle.research.reattachComments(
             to: fixture.analysisID,
             expectedRevision: note.fingerprint
@@ -95,6 +95,7 @@ struct ResearchOperationsMutationTests {
             _ = try await handle.research.addComment(
                 to: fixture.analysisID,
                 text: "This stale Comment must not land.",
+                anchor: anchor,
                 expectedRevision: note.fingerprint
             )
         }
@@ -182,9 +183,11 @@ struct ResearchOperationsMutationTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let note = try #require(try await handle.snapshot().document(id: fixture.analysisID))
         let stableID = try #require(note.stableIdentity.resolvedID)
+        let anchor = try commentAnchor(in: note.document)
         let commentRecord = try await handle.research.addComment(
             to: fixture.analysisID,
             text: "Preserve this distinction.",
+            anchor: anchor,
             expectedRevision: note.fingerprint
         )
         let commentID = try #require(commentRecord.comments.first?.id)
@@ -314,11 +317,17 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
 
+        let originalProfile = try await handle.research.dialogueResponseProfile()
+
         let preparation = try await handle.research.prepareFunction(
             ResearchFunctionRequest(
                 function: .dialogue,
                 target: target,
-                instruction: "Change this Analysis into a stronger argument."
+                instruction: "Change this Analysis into a stronger argument.",
+                dialogueResponseModules: [
+                    .criticalReflection,
+                    .philosophicalSignificance,
+                ]
             )
         )
         #expect(preparation.snapshot.checkpointID == nil)
@@ -329,6 +338,27 @@ struct ResearchFunctionOperationsTests {
         }?.preparedInstructions == preparation.instructions)
         #expect(try await handle.documents.load(fixture.analysisID).fingerprint == target.fingerprint)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
+        let dialogue = try await handle.research.dialogue(id: preparation.runID)
+        #expect(dialogue.responseContract?.knownModules == [
+            .criticalReflection,
+            .philosophicalSignificance,
+        ])
+        #expect(preparation.snapshot.request.dialogueResponseModules == [
+            .criticalReflection,
+            .philosophicalSignificance,
+        ])
+        #expect(preparation.instructions.contains("critical-reflection"))
+        #expect(preparation.instructions.contains("philosophical-significance"))
+
+        try await handle.research.saveDialogueResponseProfile(DialogueResponseProfile(
+            modules: [.researchDirections]
+        ))
+        let unchangedDialogue = try await handle.research.dialogue(id: preparation.runID)
+        #expect(unchangedDialogue.responseContract == dialogue.responseContract)
+        #expect(unchangedDialogue.generatedPrompt == dialogue.generatedPrompt)
+        #expect(unchangedDialogue.functionSnapshot?.request == preparation.snapshot.request)
+        #expect(unchangedDialogue.responseContract?.profileRevision
+            != originalProfile.profileRevision)
 
         let incomplete = ResearchFunctionCompletionSubmission(
             runID: preparation.runID,
@@ -623,6 +653,348 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Material suggestions use only resolved one-hop links and preserve catalog aliases")
+    func materialCandidateSuggestions() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let candidates = try await handle.research.materialCandidates(
+            for: target,
+            function: .develop
+        )
+
+        let agency = try #require(candidates.first {
+            $0.material.note == fixture.topicID
+        })
+        #expect(agency.aliases.contains("Freedom"))
+        #expect(agency.suggestionReasons.map(\.kind) == [.linkedFromTarget])
+        #expect(agency.suggestionReasons.first?.sourceNote == target.note)
+
+        let work = try #require(candidates.first {
+            $0.material.note == fixture.workID
+        })
+        #expect(work.suggestionReasons.map(\.kind) == [.linksDirectlyToTarget])
+        #expect(work.suggestionReasons.first?.sourceNote == fixture.workID)
+
+        let transitive = try #require(candidates.first {
+            $0.material.note.relativePath == "Debates/Nested Topic.md"
+        })
+        #expect(transitive.suggestionReasons.isEmpty)
+        #expect(!candidates.contains { $0.material.note == target.note })
+        await runtime.shutdown()
+    }
+
+    @Test("Human Review rejects the agent Materials candidate boundary")
+    func humanReviewRejectsMaterialCandidates() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.materialCandidates(
+                for: target,
+                function: .review
+            )
+        }
+        #expect(try await handle.snapshot().research.functionRuns.isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Automatic Fidelity prepares an independent final-revision child and reuses its evidence")
+    func automaticFidelityOrchestration() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let develop = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: target, methods: [])
+        )
+        let original = try await handle.documents.load(fixture.analysisID)
+        let saved = try await handle.documents.save(
+            fixture.analysisID,
+            changeSet: .exactContent(original.rawContent + "\nA developed claim.\n"),
+            expectedRevision: original.fingerprint
+        )
+        let awaiting = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: develop.runID,
+                confirmationToken: develop.snapshot.confirmationToken,
+                finalTargetFingerprint: saved.document.fingerprint,
+                summary: "Developed one bounded claim.",
+                didModifyTarget: true
+            )
+        )
+        #expect(awaiting.state == .awaitingFidelity)
+
+        let afterCompletion = try await handle.snapshot().research.functionRuns
+        let automaticallyPrepared = try #require(afterCompletion.first { record in
+            record.snapshot.resolvedFidelityInvocation == .automatic(
+                parentRunID: develop.runID
+            )
+        })
+        #expect(automaticallyPrepared.completion == nil)
+        #expect(automaticallyPrepared.preparedInstructions?.isEmpty == false)
+
+        let automatic = try await handle.research.prepareAutomaticFidelity(
+            parentRunID: develop.runID
+        )
+        #expect(automatic.state == .prepared)
+        #expect(automatic.effectiveFidelityRunID == automaticallyPrepared.id)
+        #expect(automatic.preparation.snapshot.resolvedFidelityInvocation == .automatic(
+            parentRunID: develop.runID
+        ))
+        #expect(automatic.preparation.snapshot.request.target.fingerprint
+            == saved.document.fingerprint)
+        #expect(automatic.preparation.snapshot.request.checks
+            == develop.snapshot.fidelityHandoff?.checks)
+        #expect(automatic.preparation.snapshot.request.materials
+            == develop.snapshot.request.materials)
+        #expect(automatic.preparation.snapshot.request.scope
+            == develop.snapshot.request.scope)
+        #expect(automatic.preparation.snapshot.request.commentIDs
+            == develop.snapshot.request.commentIDs)
+
+        let repeated = try await handle.research.prepareAutomaticFidelity(
+            parentRunID: develop.runID
+        )
+        #expect(repeated.state == .prepared)
+        #expect(repeated.effectiveFidelityRunID == automatic.effectiveFidelityRunID)
+        #expect(try await handle.snapshot().research.functionRuns.filter {
+            $0.snapshot.resolvedFidelityInvocation == .automatic(
+                parentRunID: develop.runID
+            )
+        }.count == 1)
+
+        let fidelityCompletion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: automatic.preparation.runID,
+                confirmationToken: automatic.preparation.snapshot.confirmationToken,
+                finalTargetFingerprint: saved.document.fingerprint,
+                summary: "Checked the exact final revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passedContent]
+            )
+        )
+        let completedProjection = try await handle.research.prepareAutomaticFidelity(
+            parentRunID: develop.runID
+        )
+        #expect(completedProjection.state == .complete)
+        #expect(completedProjection.effectiveFidelityRunID == fidelityCompletion.runID)
+
+        let verified = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: develop.runID,
+                confirmationToken: develop.snapshot.confirmationToken,
+                finalTargetFingerprint: saved.document.fingerprint,
+                summary: "Developed and checked one bounded claim.",
+                didModifyTarget: true,
+                childRunIDs: [automatic.preparation.runID]
+            )
+        )
+        #expect(verified.state == .complete)
+        #expect(verified.reusedFidelityRunID == fidelityCompletion.runID)
+
+        let currentTarget = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let manualReuse = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: currentTarget,
+                checks: try #require(develop.snapshot.fidelityHandoff).checks
+            )
+        )
+        #expect(manualReuse.state == .complete)
+        #expect(manualReuse.reusedCompletion?.runID == fidelityCompletion.runID)
+        #expect(manualReuse.snapshot.resolvedFidelityInvocation == .manual)
+        await runtime.shutdown()
+    }
+
+    @Test("Unchanged Develop and Revise runs complete without Automatic Fidelity")
+    func unchangedWritesSkipAutomaticFidelity() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let develop = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis, methods: [])
+        )
+
+        // Even matching completed manual evidence cannot be attached to an
+        // unchanged substantive run: there is no post-edit revision to audit.
+        let manual = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: analysis,
+                checks: try #require(develop.snapshot.fidelityHandoff).checks
+            )
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: manual.runID,
+                confirmationToken: manual.snapshot.confirmationToken,
+                finalTargetFingerprint: analysis.fingerprint,
+                summary: "Checked the unchanged Analysis revision manually.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passedContent]
+            )
+        )
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: develop.runID,
+                    confirmationToken: develop.snapshot.confirmationToken,
+                    finalTargetFingerprint: analysis.fingerprint,
+                    summary: "No Analysis change was needed.",
+                    didModifyTarget: false,
+                    childRunIDs: [manual.runID]
+                )
+            )
+        }
+
+        let unchangedDevelop = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: develop.runID,
+                confirmationToken: develop.snapshot.confirmationToken,
+                finalTargetFingerprint: analysis.fingerprint,
+                summary: "No Analysis change was needed.",
+                didModifyTarget: false
+            )
+        )
+        #expect(unchangedDevelop.state == .complete)
+        #expect(!unchangedDevelop.didModifyTarget)
+        #expect(unchangedDevelop.childRunIDs == nil)
+        #expect(unchangedDevelop.reusedFidelityRunID == nil)
+
+        let work = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let revise = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .revise, target: work, methods: [])
+        )
+        let unchangedRevise = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: revise.runID,
+                confirmationToken: revise.snapshot.confirmationToken,
+                finalTargetFingerprint: work.fingerprint,
+                summary: "No Work change was needed.",
+                didModifyTarget: false
+            )
+        )
+        #expect(unchangedRevise.state == .complete)
+        #expect(!unchangedRevise.didModifyTarget)
+        #expect(unchangedRevise.childRunIDs == nil)
+        #expect(unchangedRevise.reusedFidelityRunID == nil)
+
+        for parentRunID in [develop.runID, revise.runID] {
+            await #expect(throws: ResearchFunctionContractError.self) {
+                _ = try await handle.research.prepareAutomaticFidelity(
+                    parentRunID: parentRunID
+                )
+            }
+        }
+        let records = try await handle.snapshot().research.functionRuns
+        let automaticChildren = records.filter { record in
+            guard case .automatic(let parentRunID)? =
+                    record.snapshot.resolvedFidelityInvocation else {
+                return false
+            }
+            return parentRunID == develop.runID || parentRunID == revise.runID
+        }
+        #expect(automaticChildren.isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Automatic Fidelity immediately links exact completed manual evidence")
+    func automaticFidelityReusesCompletedManualEvidence() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let develop = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: target, methods: [])
+        )
+        let original = try await handle.documents.load(fixture.analysisID)
+        let saved = try await handle.documents.save(
+            fixture.analysisID,
+            changeSet: .exactContent(original.rawContent + "\nA developed claim.\n"),
+            expectedRevision: original.fingerprint
+        )
+        let finalTarget = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let manual = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .fidelity,
+                target: finalTarget,
+                checks: try #require(develop.snapshot.fidelityHandoff).checks
+            )
+        )
+        let manualCompletion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: manual.runID,
+                confirmationToken: manual.snapshot.confirmationToken,
+                finalTargetFingerprint: finalTarget.fingerprint,
+                summary: "Checked the exact final revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passedContent]
+            )
+        )
+
+        let completed = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: develop.runID,
+                confirmationToken: develop.snapshot.confirmationToken,
+                finalTargetFingerprint: saved.document.fingerprint,
+                summary: "Developed one bounded claim.",
+                didModifyTarget: true
+            )
+        )
+        #expect(completed.state == .complete)
+        #expect(completed.reusedFidelityRunID == manualCompletion.runID)
+        #expect(completed.childRunIDs == [manualCompletion.runID])
+        #expect(try await handle.snapshot().research.functionRuns.filter {
+            $0.snapshot.resolvedFidelityInvocation == .automatic(
+                parentRunID: develop.runID
+            )
+        }.isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Develop records its exact Fidelity handoff, advances completion, deduplicates exact audits, and marks later evidence stale")
     func fidelityHandoffDeduplicationAndStaleness() async throws {
         let fixture = try await ResearchFixture.make()
@@ -763,9 +1135,11 @@ struct ResearchFunctionOperationsTests {
         #expect(directReuse.state == .complete)
         #expect(directReuse.reusedCompletion?.runID == finalFidelity.runID)
 
+        let finalDocument = try await handle.documents.load(fixture.analysisID)
         let commentRecord = try await handle.research.addComment(
             to: fixture.analysisID,
             text: "Check this additional evidence-bound concern.",
+            anchor: try commentAnchor(in: finalDocument),
             expectedRevision: finalTarget.fingerprint
         )
         let commentID = try #require(commentRecord.comments.first?.id)
@@ -859,6 +1233,44 @@ struct ResearchFunctionOperationsTests {
         #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
         #expect(!develop.instructions.contains("Citation style: apa-7"))
         try await handle.research.cancelFunction(runID: develop.runID)
+        await runtime.shutdown()
+    }
+
+    @Test("Draft inspection preserves protected package collisions")
+    func draftInspectionPreservesProtectedCollision() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let source = """
+        ---
+        name: Conflicting Development
+        description: A researcher-owned draft with a protected identifier.
+        ---
+        Keep the method explicit.
+        """ + "\n"
+        let packageURL = fixture.rootURL.appendingPathComponent(
+            ".scholium/skills/scholium-development",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: packageURL,
+            withIntermediateDirectories: true
+        )
+        try Data(source.utf8).write(
+            to: packageURL.appendingPathComponent("SKILL.md"),
+            options: .atomic
+        )
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let inspected = await handle.research.inspectSkillDraft(
+            id: "scholium-development",
+            source: source,
+            origin: .triptych
+        )
+        #expect(!inspected.isValid)
+        #expect(inspected.validationIssues.contains {
+            $0.contains("protected Scholium package")
+        })
         await runtime.shutdown()
     }
 
@@ -1103,16 +1515,25 @@ private struct ResearchFixture: Sendable {
             )
         }
 
-        let analysisSource = "\u{FEFF}---\r\ntitle: Analysis\r\nunknown_key: 'preserve me'\r\n---\r\n# Analysis\r\n\r\nExact philosophical claim with a narrow reconstruction.\r\n"
+        let analysisSource = "\u{FEFF}---\r\ntitle: Analysis\r\nresearch_unit:\r\n  scope: 'One bounded source'\r\nunknown_key: 'preserve me'\r\n---\r\n# Analysis\r\n\r\nExact philosophical claim with a narrow reconstruction. See [[Agency]].\r\n"
         try Data(analysisSource.utf8).write(
             to: analyses.appendingPathComponent("Analysis.md"),
             options: .atomic
         )
-        try Data("---\ntitle: Agency\n---\n# Agency\n".utf8).write(
+        try Data("---\ntitle: Agency\naliases:\n  - Freedom\n---\n# Agency\n\nSee [[Nested Topic]].\n".utf8).write(
             to: topics.appendingPathComponent("Agency.md"),
             options: .atomic
         )
-        try Data("---\ntitle: Draft Argument\nkind: chapter\n---\n# Draft Argument\n\nA claim requiring Critique.\n".utf8).write(
+        let debates = topics.appendingPathComponent("Debates", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: debates,
+            withIntermediateDirectories: true
+        )
+        try Data("---\ntitle: Nested Topic\n---\n# Nested Topic\n".utf8).write(
+            to: debates.appendingPathComponent("Nested Topic.md"),
+            options: .atomic
+        )
+        try Data("---\ntitle: Draft Argument\nkind: chapter\n---\n# Draft Argument\n\nA claim requiring Critique. See [[Analysis]].\n".utf8).write(
             to: works.appendingPathComponent("Draft Argument.md"),
             options: .atomic
         )
@@ -1195,6 +1616,20 @@ private func researchFunctionTarget(
         fingerprint: note.fingerprint,
         title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
     )
+}
+
+private func commentAnchor(
+    in document: NoteDocument,
+    quotation: String = "Exact philosophical claim"
+) throws -> ResearcherCommentAnchor {
+    let range = try #require(document.rawContent.range(of: quotation))
+    let lowerUTF16 = range.lowerBound.utf16Offset(in: document.rawContent)
+    let upperUTF16 = range.upperBound.utf16Offset(in: document.rawContent)
+    return try #require(ResearcherCommentAnchorBuilder.anchor(
+        in: document.rawContent,
+        fingerprint: document.fingerprint,
+        utf16Range: lowerUTF16..<upperUTF16
+    ))
 }
 
 private extension FidelityCheckOutcome {

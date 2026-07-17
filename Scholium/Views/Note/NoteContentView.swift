@@ -9,8 +9,8 @@ enum DocumentNotificationKind {
 
 struct DocumentFeatureState {
     let notes: [WindowDocumentLocation]
-    let activeTab: String?
-    let openTabs: [String]
+    let selectedDocumentPath: String?
+    let ordinarySearchScope: SearchPresentationScope
     let currentVaultID: UUID?
     let vaultRole: VaultRole
     let locationScope: NoteLocationScope
@@ -29,7 +29,6 @@ struct DocumentFeatureState {
     let initialScrollFraction: Double
     let requestedPresentationMode: NotePresentationMode?
     let pendingSourceLine: Int?
-    let storedPresentationMode: NotePresentationMode
     let isCompactLayout: Bool
     let noteHistoryVisible: Bool
     let researchInspectorVisible: Bool
@@ -43,11 +42,12 @@ struct DocumentFeatureState {
 struct DocumentFeatureActions {
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
-    let beginSearch: @MainActor (SearchPresentationScope) -> Void
+    let beginSearch: @MainActor (SearchInvocation) -> Void
     let clearRequestedPresentationMode: @MainActor () -> Void
     let registerEditorFlush: @MainActor (
         String,
         UUID,
+        @escaping @MainActor () async throws -> Void,
         @escaping @MainActor () async throws -> Void
     ) -> Void
     let unregisterEditorFlush: @MainActor (UUID) -> Void
@@ -66,8 +66,6 @@ struct DocumentFeatureActions {
     ) -> Void
     let setNoteHistoryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
-    let selectTab: @MainActor (String) -> Void
-    let closeTab: @MainActor (String) -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
 
@@ -98,7 +96,7 @@ enum ResearchFunctionSelectionCapture {
 
 // MARK: - Note Content Container
 
-struct NoteTabView: View {
+struct DocumentFeatureView: View {
     @ObservedObject private var controller: DocumentController
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
@@ -117,8 +115,8 @@ struct NoteTabView: View {
     }
 
     var body: some View {
-        if let activeTab = state.activeTab,
-           let note = state.notes.first(where: { $0.relativePath == activeTab }) {
+        if let selectedDocumentPath = state.selectedDocumentPath,
+           let note = state.notes.first(where: { $0.relativePath == selectedDocumentPath }) {
             if let vaultID = state.currentVaultID,
                let noteID = state.noteIdentityByPath[note.relativePath] {
                 let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
@@ -143,7 +141,7 @@ struct NoteTabView: View {
                     actions: actions,
                     critiqueProvenanceContext: critiqueProvenanceContext
                 )
-                    .id(activeTab)
+                    .id(selectedDocumentPath)
             }
         }
     }
@@ -156,14 +154,13 @@ private struct DocumentSessionFallback: View {
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
-    @StateObject private var session = DocumentSessionModel(key: nil)
 
     var body: some View {
         NoteContentView(
             controller: controller,
             target: target,
             note: note,
-            documentSession: session,
+            documentSession: controller.session(for: target),
             state: state,
             actions: actions,
             critiqueProvenanceContext: critiqueProvenanceContext
@@ -214,7 +211,10 @@ struct ResearchInspectorView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .scholiumGlassSurface(
+                .floatingControl,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
             .padding(.horizontal, 8)
             .padding(.top, 8)
 
@@ -381,10 +381,9 @@ struct NoteContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
-        .toolbar(removing: .sidebarToggle)
         .toolbar { noteToolbar }
-        .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { mode in
-            actions.beginSearch(mode)
+        .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
+            actions.beginSearch(invocation)
         })
         .focusedSceneValue(
             \.scholiumResearchFunctionActions,
@@ -396,6 +395,9 @@ struct NoteContentView: View {
                 isComposing: editorSession.context?.composing == true,
                 isAvailable: { command in
                     editorSession.context?.availableCommands.contains(command) == true
+                },
+                canAddComment: {
+                    editorSession.context?.selections.contains(where: \.isNonempty) == true
                 },
                 perform: { command in
                     Task { @MainActor in
@@ -465,12 +467,19 @@ struct NoteContentView: View {
             controller.observe(documentSession)
             restorePresentationModeIfAvailable()
             consumePendingPresentationRequest()
-            actions.registerEditorFlush(note.relativePath, editorFlushToken) {
-                try await controller.flushForExternalOperation(
-                    session: documentSession,
-                    target: target
-                )
-            }
+            actions.registerEditorFlush(
+                note.relativePath,
+                editorFlushToken,
+                {
+                    try await controller.flushForExternalOperation(
+                        session: documentSession,
+                        target: target
+                    )
+                },
+                {
+                    try await editorSession.captureStateForViewReconstruction()
+                }
+            )
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -512,7 +521,7 @@ struct NoteContentView: View {
     }
 
     private var commentingIsAvailable: Bool {
-        state.activeTab == note.relativePath && state.canComment
+        state.selectedDocumentPath == note.relativePath && state.canComment
     }
 
     private var editingIsAvailable: Bool {
@@ -554,7 +563,7 @@ struct NoteContentView: View {
                 }
             },
             onRequestSearch: {
-                actions.beginSearch(.thisNote)
+                actions.beginSearch(.findInNote(previousScope: state.ordinarySearchScope))
             },
             onRequestComment: requestResearcherCommentsFromDocument,
             onLinkActivation: { target in
@@ -588,7 +597,7 @@ struct NoteContentView: View {
             NativeMarkdownReadView(
                 source: note.rawContent,
                 textScale: state.documentTextScale,
-                topContentInset: 92,
+                topContentInset: ScholiumMetrics.ContextSurface.initialOverlayClearance,
                 onLinkClick: {
                     actions.openInternalLink($0)
                 },
@@ -649,12 +658,19 @@ struct NoteContentView: View {
 
     private var scaledReadCSS: String {
         state.readCSS
-            + "\n.scholium-document { font-size: \(state.documentTextScale)em; padding-top: 92px; }"
+            + "\n.scholium-document { font-size: \(state.documentTextScale)em; padding-top: \(ScholiumMetrics.ContextSurface.initialOverlayClearance)px; }"
     }
 
     private var scaledEditorCSS: String {
         state.livePreviewCSS
-            + "\n.cm-content { font-size: \(state.documentTextScale)em; padding-top: 92px; }"
+            + """
+
+            .cm-content { font-size: \(state.documentTextScale)em; }
+            .scholium-live-mode .cm-content,
+            .scholium-source-mode .cm-content {
+              padding-top: \(ScholiumMetrics.ContextSurface.initialOverlayClearance)px;
+            }
+            """
     }
 
     private var editorLinkCompletions: [EditorLinkCompletion] {
@@ -810,10 +826,10 @@ struct NoteContentView: View {
     }
 
     private func restorePresentationModeIfAvailable() {
-        guard presentationMode == .read else { return }
-        let restoredMode = state.storedPresentationMode
-        guard restoredMode != .read, editingIsAvailable else { return }
-        selectPresentationMode(restoredMode)
+        guard !isEditing,
+              presentationMode != .read,
+              editingIsAvailable else { return }
+        beginEditing(mode: presentationMode)
     }
 
     private func consumePendingPresentationRequest() {
@@ -934,23 +950,9 @@ struct NoteContentView: View {
             width: ScholiumMetrics.ContextSurface.leadingControlsWidth,
             height: ScholiumMetrics.ContextSurface.controlHeight
         )
-        .background(
-            reduceTransparency ? Color(nsColor: .controlBackgroundColor) : Color.clear,
+        .scholiumGlassSurface(
+            .floatingControl,
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(
-                    Color(nsColor: .separatorColor).opacity(reduceTransparency ? 0.72 : 0.28),
-                    lineWidth: 0.75
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: Color(nsColor: .shadowColor).opacity(reduceTransparency ? 0.05 : 0.10),
-            radius: 10,
-            y: 4
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.documentContextControls")
@@ -958,27 +960,9 @@ struct NoteContentView: View {
 
     @ToolbarContentBuilder
     var noteToolbar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            // Keep the active document's identity in the central toolbar band
-            // even when it is the only open document. The prototype reserves
-            // this position for the document strip, and a single bounded tab
-            // is still useful for close/state/accessibility semantics.
-            if !state.openTabs.isEmpty {
-                DocumentTabBar(
-                    openTabs: state.openTabs,
-                    activeTab: state.activeTab,
-                    notes: state.notes,
-                    activeStatus: documentTabStatus,
-                    selectTab: actions.selectTab,
-                    closeTab: actions.closeTab
-                )
-                    .frame(minWidth: 180, idealWidth: 420, maxWidth: 600)
-            }
-        }
-
         ToolbarItem(placement: .primaryAction) {
             Button {
-                actions.beginSearch(.triptych)
+                actions.beginSearch(.general)
             } label: {
                 if state.isCompactLayout {
                     Image(systemName: "magnifyingglass")
@@ -1019,16 +1003,13 @@ struct NoteContentView: View {
         }
     }
 
-    private var documentTabStatus: DocumentTabStatus {
-        if conflict != nil { return .conflict }
-        if hasUnsavedChanges { return .edited }
-        return .clean
-    }
-
     private func requestResearcherCommentsFromDocument() {
         guard commentingIsAvailable else { return }
         guard isEditing else {
-            actions.requestComments(nil, nil)
+            actions.notify(
+                "Select a passage in Read, Live Preview, or Source before adding a Comment.",
+                .information
+            )
             return
         }
         Task { @MainActor in
@@ -1038,6 +1019,19 @@ struct NoteContentView: View {
                     for: note.relativePath,
                     in: currentSource
                 )
+                guard let selection,
+                      ResearchFunctionSelectionCapture.anchor(
+                          for: selection,
+                          in: currentSource,
+                          relativePath: note.relativePath
+                      ) != nil else {
+                    actions.notify(
+                        "Select a passage before adding a Comment. Review or Critique provides the whole-note judgment.",
+                        .information
+                    )
+                    editorSession.focus()
+                    return
+                }
                 try await controller.flushForExternalOperation(
                     session: documentSession,
                     target: target
@@ -1106,201 +1100,6 @@ struct NoteContentView: View {
         ).headings
     }
 
-    func noteDisplayName(_ path: String) -> String {
-        guard let note = state.notes.first(where: { $0.relativePath == path }) else {
-            return (path as NSString).lastPathComponent
-        }
-        return note.title ?? note.displayName
-    }
-}
-
-private enum DocumentTabStatus: Equatable {
-    case clean
-    case edited
-    case conflict
-
-    var label: String? {
-        switch self {
-        case .clean: nil
-        case .edited: "Edited"
-        case .conflict: "Conflict"
-        }
-    }
-
-    var symbol: String? {
-        switch self {
-        case .clean: nil
-        case .edited: "circle.fill"
-        case .conflict: "exclamationmark.triangle.fill"
-        }
-    }
-}
-
-// MARK: - Document Tabs
-
-private struct DocumentTabBar: View {
-    let openTabs: [String]
-    let activeTab: String?
-    let notes: [WindowDocumentLocation]
-    let activeStatus: DocumentTabStatus
-    let selectTab: (String) -> Void
-    let closeTab: (String) -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ScrollView(.horizontal) {
-                GlassEffectContainer(spacing: 4) {
-                    HStack(spacing: 4) {
-                        ForEach(openTabs, id: \.self) { path in
-                            let note = notes.first { $0.relativePath == path }
-                            DocumentTab(
-                                path: path,
-                                title: note?.title ?? note?.displayName
-                                    ?? (path as NSString).lastPathComponent,
-                                authors: note?.authors ?? [],
-                                year: note?.year,
-                                isSelected: activeTab == path,
-                                status: status(for: path),
-                                select: { selectTab(path) },
-                                close: { closeTab(path) }
-                            )
-                        }
-                    }
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 5)
-            }
-            .scrollIndicators(.hidden)
-
-            if openTabs.count > 1 {
-                Menu {
-                    ForEach(openTabs, id: \.self) { path in
-                        Button {
-                            selectTab(path)
-                        } label: {
-                            if activeTab == path {
-                                Label(overflowLabel(for: path), systemImage: "checkmark")
-                            } else {
-                                Text(overflowLabel(for: path))
-                            }
-                        }
-                    }
-                } label: {
-                    Label("Open Tabs", systemImage: "chevron.down")
-                        .labelStyle(.iconOnly)
-                }
-                .menuStyle(.borderlessButton)
-                .help("Open document tabs")
-                .accessibilityLabel("Open document tabs")
-            }
-        }
-        .frame(height: 32)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityLabel("Open document tabs")
-        .accessibilityIdentifier("scholium.documentTabs")
-    }
-
-    private func noteDisplayName(_ path: String) -> String {
-        guard let note = notes.first(where: { $0.relativePath == path }) else {
-            return (path as NSString).lastPathComponent
-        }
-        return note.title ?? note.displayName
-    }
-
-    private func status(for path: String) -> DocumentTabStatus {
-        activeTab == path ? activeStatus : .clean
-    }
-
-    private func overflowLabel(for path: String) -> String {
-        guard let label = status(for: path).label else { return noteDisplayName(path) }
-        return "\(noteDisplayName(path)) — \(label)"
-    }
-}
-
-private struct DocumentTab: View {
-    let path: String
-    let title: String
-    let authors: [String]
-    let year: Int?
-    let isSelected: Bool
-    let status: DocumentTabStatus
-    let select: () -> Void
-    let close: () -> Void
-
-    @State private var isHovering = false
-
-    private var tabLabel: String {
-        title
-    }
-
-    private var supplementaryLabel: String? {
-        let author = authors.first?.split(separator: " ").last.map(String.init)
-        let formattedYear = year.map { $0.formatted(.number.grouping(.never)) }
-        let label = [author, formattedYear].compactMap { $0 }.joined(separator: " ")
-        return label.isEmpty ? nil : label
-    }
-
-    private var accessibleTitle: String {
-        let identity = supplementaryLabel.map { "\(title), \($0)" } ?? title
-        guard let statusLabel = status.label else { return identity }
-        return "\(identity), \(statusLabel)"
-    }
-
-    private var accessibilityValue: String {
-        [isSelected ? "Selected" : nil, status.label]
-            .compactMap { $0 }
-            .joined(separator: ", ")
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Button {
-                select()
-            } label: {
-                Text(tabLabel)
-                    .font(.callout.weight(isSelected ? .medium : .regular))
-                    .lineLimit(1)
-                    .frame(minWidth: 72, maxWidth: 150, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(supplementaryLabel.map { "\(title) — \($0)" } ?? title)
-            .accessibilityLabel(accessibleTitle)
-            .accessibilityValue(accessibilityValue)
-            .accessibilityIdentifier("scholium.documentTab.\(path)")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-
-            if let symbol = status.symbol, let statusLabel = status.label {
-                Image(systemName: symbol)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(status == .conflict ? Color.orange : Color.secondary)
-                    .help(statusLabel)
-                    .accessibilityHidden(true)
-            }
-
-            Button {
-                close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.semibold))
-                    .frame(width: 20, height: 20)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .opacity(isSelected || isHovering ? 1 : 0)
-            .accessibilityLabel("Close \(title)")
-            .help("Close \(title)")
-        }
-        .padding(.horizontal, 9)
-        .frame(height: 31)
-        .foregroundStyle(isSelected ? .primary : .secondary)
-        .glassEffect(
-            isSelected ? .regular.interactive() : .identity,
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-        )
-        .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-    }
 }
 
 // MARK: - Note History
@@ -1317,7 +1116,7 @@ private struct ConflictComparisonSheet: View {
                     Text("Compare Changes")
                         .font(.title2.weight(.semibold))
                     Text(conflict.relativePath)
-                        .font(ScholiumTypography.swiftUIMonospaceFont(size: 11, relativeTo: .caption))
+                        .font(ScholiumTypography.swiftUIRevisionIdentity())
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -1349,16 +1148,12 @@ private struct ConflictComparisonSheet: View {
                     ForEach(Array(diffLines.enumerated()), id: \.offset) { _, line in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(marker(for: line.kind))
-                                .font(ScholiumTypography.swiftUIMonospaceFont(
-                                    size: 13,
-                                    relativeTo: .body,
-                                    bold: true
-                                ))
+                                .font(ScholiumTypography.swiftUIDiff(bold: true))
                                 .foregroundStyle(color(for: line.kind))
                                 .frame(width: 16)
                                 .accessibilityLabel(label(for: line.kind))
                             Text(line.text.isEmpty ? " " : line.text)
-                                .font(ScholiumTypography.swiftUIMonospaceFont(size: 13, relativeTo: .body))
+                                .font(ScholiumTypography.swiftUIDiff())
                                 .textSelection(.enabled)
                         }
                         .padding(.horizontal, 16)
@@ -1395,7 +1190,7 @@ private struct ConflictComparisonSheet: View {
             Text(title)
                 .font(.headline)
             Text(short(fingerprint))
-                .font(ScholiumTypography.swiftUIMonospaceFont(size: 11, relativeTo: .caption))
+                .font(ScholiumTypography.swiftUIRevisionIdentity())
                 .textSelection(.enabled)
             Text(detail)
                 .font(.caption)
@@ -1690,13 +1485,14 @@ struct NoteHistorySheet: View {
                 ForEach(comments) { comment in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text(comment.anchor.map {
-                                $0.state == .needsReattachment
-                                    ? "Needs Reattachment — originally line \($0.line)"
-                                    : ($0.line == $0.endLine ? "Line \($0.line)" : "Lines \($0.line)–\($0.endLine)")
-                            } ?? "Whole note")
+                            let anchor = comment.anchor
+                            Text(anchor.state == .needsReattachment
+                                ? "Needs Reattachment — originally line \(anchor.line)"
+                                : (anchor.line == anchor.endLine
+                                    ? "Line \(anchor.line)"
+                                    : "Lines \(anchor.line)–\(anchor.endLine)"))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(comment.anchor?.state == .needsReattachment ? Color.orange : Color.secondary)
+                            .foregroundStyle(anchor.state == .needsReattachment ? Color.orange : Color.secondary)
                             if comment.resolvedAt != nil {
                                 Text("Resolved")
                                     .font(.caption)
@@ -1705,13 +1501,11 @@ struct NoteHistorySheet: View {
                             Spacer()
                         }
                         Text(comment.text).textSelection(.enabled)
-                        if let anchor = comment.anchor {
-                            Text(anchor.selectedText ?? anchor.quotation)
-                                .font(ScholiumTypography.swiftUIMonospaceFont(size: 11, relativeTo: .caption))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .lineLimit(3)
-                        }
+                        Text(comment.anchor.selectedText ?? comment.anchor.quotation)
+                            .font(ScholiumTypography.swiftUIMonospaceFont(size: 11, relativeTo: .caption))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(3)
                     }
                     .padding(.vertical, 3)
                     if comment.id != comments.last?.id { Divider() }
@@ -1861,32 +1655,25 @@ struct NoteHistorySheet: View {
                                 .font(.subheadline.weight(.semibold))
                             ForEach(entry.includedComments) { includedComment in
                                 VStack(alignment: .leading, spacing: 3) {
-                                    if let sourceNote = includedComment.note {
-                                        Text(sourceNote.title)
-                                            .font(.subheadline.weight(.medium))
-                                        Text("\(sourceNote.vaultName) — \(sourceNote.relativePath)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                        Text("Note ID: \(sourceNote.noteID.uuidString)")
-                                            .font(ScholiumTypography.swiftUIMonospaceFont(
-                                                size: 10,
-                                                relativeTo: .caption
-                                            ))
-                                            .foregroundStyle(.tertiary)
-                                            .textSelection(.enabled)
-                                    } else {
-                                        Text("Source note unavailable")
-                                            .font(.subheadline.weight(.medium))
-                                        Text("Legacy Dialogue entry")
-                                            .font(.caption)
-                                            .foregroundStyle(.orange)
-                                    }
+                                    let sourceNote = includedComment.note
+                                    Text(sourceNote.title)
+                                        .font(.subheadline.weight(.medium))
+                                    Text("\(sourceNote.vaultName) — \(sourceNote.relativePath)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                    Text("Note ID: \(sourceNote.noteID.uuidString)")
+                                        .font(ScholiumTypography.swiftUIMonospaceFont(
+                                            size: 10,
+                                            relativeTo: .caption
+                                        ))
+                                        .foregroundStyle(.tertiary)
+                                        .textSelection(.enabled)
                                     Text(includedComment.comment.text)
                                         .textSelection(.enabled)
-                                    Text(includedComment.comment.anchor.map {
-                                        "Lines \($0.line)–\($0.endLine)"
-                                    } ?? "Whole note")
+                                    Text(
+                                        "Lines \(includedComment.comment.anchor.line)–\(includedComment.comment.anchor.endLine)"
+                                    )
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 }
@@ -1989,8 +1776,7 @@ struct NoteHistorySheet: View {
     ) -> String {
         if let commentID,
            let included = entry.includedComments.first(where: { $0.comment.id == commentID }) {
-            let owner = included.note?.title ?? "comment"
-            return "Comment in \(owner)"
+            return "Comment in \(included.note.title)"
         }
         if let noteID,
            let selected = entry.selectedNotes.first(where: { $0.noteID == noteID }) {
@@ -2091,7 +1877,7 @@ struct NoteHistorySheet: View {
                             ScrollView([.vertical, .horizontal]) {
                                 Text(checkpointSource)
                                     .font(ScholiumTypography.swiftUIMonospaceFont(
-                                        size: ScholiumTypography.sourceBodySize,
+                                        size: ScholiumTypography.exactSourcePointSize,
                                         relativeTo: .body
                                     ))
                                     .textSelection(.enabled)
@@ -2508,8 +2294,7 @@ private func dialogueTargetLabel(
         guard let included = entry.includedComments.first(where: {
             $0.comment.id == commentID
         }) else { return "Researcher Comment" }
-        let owner = included.note?.title ?? "selected note"
-        return "Comment in \(owner): \(included.comment.text)"
+        return "Comment in \(included.note.title): \(included.comment.text)"
     }
 }
 
@@ -2525,7 +2310,7 @@ private func dialogueTargetIDs(
     case .comment(let id):
         let noteID = entry.includedComments.first(where: {
             $0.comment.id == id
-        })?.note?.noteID
+        })?.note.noteID
         return (noteID, id)
     }
 }
@@ -2540,8 +2325,8 @@ private func dialogueTargetIDs(
     ))
     let state = DocumentFeatureState(
         notes: [note],
-        activeTab: note.relativePath,
-        openTabs: [note.relativePath],
+        selectedDocumentPath: note.relativePath,
+        ordinarySearchScope: .triptych,
         currentVaultID: nil,
         vaultRole: .other,
         locationScope: .unclassified,
@@ -2560,7 +2345,6 @@ private func dialogueTargetIDs(
         initialScrollFraction: 0,
         requestedPresentationMode: nil,
         pendingSourceLine: nil,
-        storedPresentationMode: .read,
         isCompactLayout: false,
         noteHistoryVisible: false,
         researchInspectorVisible: false,
@@ -2575,7 +2359,7 @@ private func dialogueTargetIDs(
         retryIdentityRecovery: {},
         beginSearch: { _ in },
         clearRequestedPresentationMode: {},
-        registerEditorFlush: { _, _, _ in },
+        registerEditorFlush: { _, _, _, _ in },
         unregisterEditorFlush: { _ in },
         clearPendingSourceLine: {},
         requestComments: { _, _ in },
@@ -2589,8 +2373,6 @@ private func dialogueTargetIDs(
         openResearchFunction: { _, _ in },
         setNoteHistoryVisible: { _ in },
         setResearchInspectorVisible: { _ in },
-        selectTab: { _ in },
-        closeTab: { _ in },
         notify: { _, _ in }
     )
     let critiqueProvenanceContext = CritiqueProvenanceContext(

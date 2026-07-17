@@ -3,7 +3,7 @@
 **Status:** Draft consolidated requirements baseline
 **Product:** Scholium for macOS and its agent-facing CLI
 **Platform baseline:** macOS 26 or later
-**Document date:** 2026-07-15
+**Document date:** 2026-07-17
 **Product owner:** Imna
 **Release owner:** Imna
 **Current release:** 0.1 Experimental
@@ -412,21 +412,33 @@ Triptychs to share one portable control directory beside Works.
 #### PRD-TRI-002 — Triptych windows
 
 **Requirement:** One window MUST belong to one complete Triptych. Multiple
-Triptychs MAY be open simultaneously in separate windows. Each window MUST own
-its selection, tabs, document modes, History, inspector, scroll locations,
-search state while shared services remain coherent.
+Triptychs MAY be open simultaneously in separate windows or grouped as native
+macOS window tabs. One native tab MUST be one complete window scene and session
+with one selected document, document mode, History, inspector, scroll
+location, Search state, and presentation router while shared services remain
+coherent. Scholium MUST NOT maintain custom document tabs.
 
 **Acceptance criteria:**
 
 - File → New Triptych… opens setup for three new locations.
 - File → Open Triptych opens a registered Triptych in its own window.
 - File → New Window opens another independent window for the focused Triptych.
+- Ordinary note selection replaces the focused session's document.
+- Switching the Library among Analyses, Topics, and Works retains the focused
+  session's document and changes only the browsed hierarchy and **This Vault**
+  Search scope.
+- Open in New Tab creates another window scene and groups it explicitly with
+  the source window, including across different Triptychs.
+- Standard Window-menu tab commands and `Command-W` remain functional.
+- Native tab title, tooltip, and edited indicator follow note identity,
+  Triptych, path disambiguation, and the active editor session.
+- Closing flushes only the focused native tab and is blocked on save failure.
 - Commands route to the focused window and document.
 - Shared repositories, indexes, watchers, identity registries, and graph state
   do not become divergent per-window copies.
 
-**Authority:** Product Guide section 3.2; Design Handbook sections 4.1–4.2 and
-decision D-020.
+**Authority:** Product Guide section 3.2; Design Handbook sections 4.1–4.5 and
+decisions D-020, D-036, and D-041.
 
 #### PRD-TRI-003 — Works organization without project management
 
@@ -458,13 +470,19 @@ project setup.
 **Acceptance criteria:**
 
 - First-run setup reaches usable folders without requiring a feature tour.
+- Setup completion performs the sole application-driven expansion to the
+  preferred 1180 × 760 configured workspace with a 760 × 520 minimum;
+  Reduce Motion makes it immediate.
+- Configured windows launch or restore at the normal workspace frame. Note
+  open, replace, and close preserve frame and position exactly.
 - First-run setup has no scrolling page and never presents all folder choices
   at once.
 - Manage Triptychs… lists complete registered Triptychs.
 - Standard Open panels are used for vault and import selection.
 - Errors identify the affected operation and offer recovery actions.
 
-**Authority:** Product Guide section 16; Design Handbook section 4.9.
+**Authority:** Product Guide section 16; Design Handbook sections 4.9 and 10.5
+and decision D-036.
 
 #### PRD-TRI-005 — Unclassified import
 
@@ -482,6 +500,33 @@ Properties behavior until classification.
 - Failed classification does not leave an unverified partial migration.
 
 **Authority:** Product Guide section 3.5.
+
+#### PRD-TRI-006 — Stable no-note workspace and session migration
+
+**Requirement:** A configured window MUST use one stable
+`NavigationSplitView` root. Its detail MUST display either the selected
+document or the fixed decorative Scholium artwork. The native Show/Hide Sidebar
+item MUST change only Library visibility and MUST remain paired with the
+standard View-menu command. Scholium MUST NOT add a separate Collapse Note
+function.
+
+**Acceptance criteria:**
+
+- The no-note detail contains only the authored 16:10 light/dark artwork: no
+  Home title, instructions, buttons, document controls, or Research Strip.
+- The artwork is decorative and excluded from VoiceOver; Library remains the
+  actionable interface.
+- Both variants preserve the approved semantic palette, use a centered
+  proportional crop, and have recorded generation and asset provenance.
+- Opening, replacing, or closing a document changes no window
+  frame coordinate.
+- Legacy snapshots restore the former active tab or otherwise the last valid
+  open-tab entry as the single selected document. Legacy tab/history fields are
+  decode-only and disappear on the next save; no legacy snapshot creates
+  multiple native tabs.
+
+**Authority:** Product Guide sections 3.2 and 16; Design Handbook sections 4.2,
+4.5, and 10.5 and decisions D-036 and D-047.
 
 ### 7.2 Documents, source fidelity, and identity
 
@@ -514,15 +559,20 @@ not separate files or ordinary tabs.
 
 - Read provides selectable semantic prose and source navigation.
 - Live Preview edits the exact Markdown body through a visual projection,
-  hides YAML frontmatter, and does not expose a line-number gutter.
+  matches Read's prose and construct presentation wherever its editable
+  projection permits, hides YAML frontmatter, and does not expose a line-
+  number gutter.
 - Source exposes complete Markdown and YAML and MAY show line numbers.
+- Live Preview and Source initially place the first editable line below the
+  floating Metadata and Properties surface. That clearance scrolls away so
+  later text can travel beneath the surface.
 - Mode transitions preserve focus, selection, scroll, and nearest semantic
   location where possible.
 - Source and editor behavior supports undo, Find, keyboard access, marked-text
   composition, and accessibility.
 
 **Authority:** Product Guide section 5.1; Design Handbook sections 4.4, 5,
-8.2, and 10.
+8.2, and 10 and decision D-042.
 
 #### PRD-DOC-003 — Common note capabilities
 
@@ -555,8 +605,7 @@ moves and renames preserve associated app-owned records.
 - Ambiguous external identity changes keep the note readable but block
   identity-dependent mutations until confirmation.
 
-**Authority:** Product Guide section 5.3; Implementation Status sections 1 and
-2.
+**Authority:** Product Guide section 5.3.
 
 #### PRD-DOC-005 — Properties and Research Status
 
@@ -584,8 +633,19 @@ for compatibility but is not part of the target default profiles.
 - Protected fields remain available in Source mode for exact YAML editing.
 - Absent, empty, invalid, derived, and not-applicable values are distinct.
 - Legacy YAML remains readable and is not bulk-rewritten automatically.
-- A new durable Analysis requires `research_unit.scope`; an existing Analysis
-  without it remains valid and presents undeclared rather than malformed scope.
+- New Analysis creation offers exact choices **Declare Now** and **Not Yet**.
+  Declare Now requires non-empty Scope and may include Limitations. Not Yet
+  writes no `research_unit` mapping and no sentinel value.
+- An Analysis with no mapping remains editable and available for Comments,
+  Dialogue, Develop, and Review drafts. **Complete Review** remains unavailable
+  until Research Status is declared and the panel offers **Declare Research
+  Status…**.
+- Properties presents an absent mapping as **Not Yet**, not inferred or
+  malformed scope. Existing notes receive no migration or automatic YAML
+  rewrite.
+- An agent MAY declare Research Status through an ordinary authorized exact-
+  source edit subject to existing fingerprint, conflict, and source-fidelity
+  rules; no special mutation path is created.
 - Topics and Works may declare Research Units without making YAML mandatory;
   ordinary reading, editing, or saving never injects Topic YAML solely for this
   purpose.
@@ -613,7 +673,7 @@ for compatibility but is not part of the target default profiles.
   choice or for an independently durable scholarly purpose.
 
 **Authority:** Product Guide section 5.2; Property Profiles; Design Handbook
-sections 4.6 and 9 and decision D-033.
+sections 4.6, 9, and 10 and decisions D-033 and D-039.
 
 #### PRD-DOC-006 — Set Aside, Trash, and deletion
 
@@ -676,30 +736,45 @@ qualification.
 - The available action is Review, Continue Review, Qualified, or Unqualified,
   according to state.
 - Complete Review is unavailable until verdict and review note are present.
+- For an Analysis, Complete Review is also unavailable while Research Status
+  is **Not Yet**; the same panel explains the gate and offers **Declare
+  Research Status…**.
 - Save as Draft preserves incomplete work without marking the fingerprint
   reviewed.
 - Cancel discards unsaved sheet changes.
 - Qualification can change only through Review.
 
-**Authority:** Product Guide section 7; Design Handbook sections 4.8 and 10.
+**Authority:** Product Guide sections 5.2 and 7; Design Handbook sections 4.8
+and 10 and decisions D-037 and D-039.
 
 #### PRD-REV-002 — App-owned comments
 
-**Requirement:** Researcher comments MUST remain outside Markdown source and
-bind to stable identity, exact fingerprint, source range, quotation, and
-context where applicable. Comments MUST not insert hidden Markdown.
+**Requirement:** Researcher Comments MUST remain outside Markdown source and
+MUST bind to stable identity, exact fingerprint, source range, quotation, and
+context. Scholium MUST NOT store, decode, or present an unanchored Comment.
+Comments MUST not insert hidden Markdown. Note-level judgment belongs to Human
+Review or Critique rather than being duplicated as a Comment.
 
 **Acceptance criteria:**
 
 - Read and editor selections create the same comment record shape.
-- A comment can be edited, deleted, resolved, or reattached by the researcher.
+- Every Comment has a source anchor. A Comment can be edited,
+  deleted, resolved, or reattached by the researcher.
 - After edits, reattachment occurs only when quotation and context identify one
   reliable location.
 - Ambiguous comments are marked Needs Reattachment.
 - An agent MAY reply but MUST NOT resolve a researcher comment.
+- Analysis/Topic Comments appear with Human Review in one panel; Work Comments
+  appear with Critique in one panel. Both show existing Comments and show an
+  inline composer only when a source anchor is present, without a Manage
+  Comments doorway, whole-note Comment textbox, or second-level sheet.
+- Editor Add Comment opens the role-valid panel and focuses the inline composer
+  with the current source anchor.
+- Shared presentation MUST NOT merge the storage or provenance of Comment,
+  Human Review, and Critique records.
 
 **Authority:** Product Guide section 7.2; Design Handbook sections 3.4, 8,
-  and 10.
+and 10 and decisions D-037 and D-043.
 
 #### PRD-REV-003 — Unqualified Analysis Attention
 
@@ -744,7 +819,7 @@ The generated prompt SHOULD include, as applicable:
 
 **Acceptance criteria:**
 
-- The panel fixes the open note as Target, selects additional read-only
+- The Dialogue panel fixes the open note as Target, selects additional read-only
   Materials inside the panel, shows included Comments and consequential
   context, and provides one researcher instruction field.
 - The researcher verifies the selected context rather than inspecting or
@@ -852,6 +927,9 @@ prompt editors.
 
 - Research Guidance provides a **Prompt Templates** collection and one native
   multiline editor, with structural validation and preview.
+- Research Guidance has exactly two principal collections, **Prompt Templates**
+  and **Skills**. Per-Triptych **Dialogue Defaults** are a subordinate section
+  under Prompt Templates and MUST NOT appear as a third peer collection.
 - Researchers can create, duplicate, rename, delete, and assign templates.
 - Editing a Scholium default creates a researcher-owned customization, and
   **Reset to Scholium Default** restores the bundled baseline without silently
@@ -886,6 +964,11 @@ duplicated into independent Researcher Skills.
 
 **Acceptance criteria:**
 
+- Bundled Skills are immediately usable through Scholium defaults without
+  requiring composition knowledge.
+- The ordinary Skill detail shows name, plain-language purpose, relevant
+  function, Built-in/Triptych ownership, structural validity, and active
+  status.
 - Research Guidance identifies **Bundled** and **Triptych** skills in text and
   uses the same native list-and-detail editing architecture as Prompt
   Templates without merging their semantics.
@@ -894,6 +977,8 @@ duplicated into independent Researcher Skills.
   Triptych package, rename or delete a Triptych-local skill, and use **Reveal
   Skills Folder** to open the supported location. Protected System Skills do
   not expose a duplicate action.
+- A bundled Workflow Skill offers Duplicate without a disabled source editor.
+  A Triptych-owned Skill offers ordinary edit and duplicate actions.
 - A user package is manageable only when it is located under the supported
   skills root and contains `SKILL.md`. Structural validation identifies missing
   or malformed required metadata without judging philosophical accuracy,
@@ -904,9 +989,16 @@ duplicated into independent Researcher Skills.
   installation, embedded agent runtime, workflow-local picker, one-run skill
   override, or claim that Scholium endorses a skill's output.
 - Skill source does not become part of the permanent scholarly Dialogue record.
+- Research Methods, Supplements, Practices, citation bindings, routing
+  metadata, revision comparison, evolution, and Recovery appear under one
+  **Advanced** disclosure. Eligible Triptych-owned Skills alone expose
+  **Evolve…**.
+- Missing or malformed configuration exposes **Repair…**, which opens the
+  exact Advanced recovery destination without weakening validation or atomic
+  replacement.
 
 **Authority:** Product Guide sections 2.2, 3.3, and 8.3; Design Handbook
-sections 4.9 and decision D-029.
+sections 4.9 and 10 and decisions D-029 and D-040.
 
 #### PRD-RGD-003 — Function-aware skill package architecture
 
@@ -969,12 +1061,21 @@ global skill directory.
   read-only; Manuscript resolves every isolated phase independently.
 - Dialogue remains System transport and record infrastructure. Human Review
   has no Workflow Skill. Source Analysis and self-evolution are neither
-  Workflow packages nor Strip functions.
+  Workflow packages nor Strip functions. Source Analyzer is a complete
+  copy-on-adoption Researcher Skill for direct external-agent source work; it
+  declares no supported function, requires no Scholium-owned PDF or Zotero
+  control, and grants no note-write permission.
 - Every official Workflow Skill remains complete without Philosophical
   Practices and declares compatible Practices only as routing hints. Only
   explicitly selected researcher-owned Practices are loaded, with stable IDs,
   revisions, and composition rules preserved; they cannot grant permission or
   silently replace official workflow requirements.
+- Selected Practices divide a literal 100% methodological-attention budget.
+  The complete active method may declare role-sensitive base weights, which
+  are normalized across the selected Practices; otherwise the split is equal.
+  Dialogue's selected optional response modules divide their own 100% budget
+  equally, so five modules receive 20% each. Attention allocation is distinct
+  from output length and never licenses filler or fabricated findings.
 - Revision owns planning, drafting, substantive revision, write-mode permission,
   and durability. A selected researcher-owned Prose Control package may compose
   with it for meaning-preserving revision, but
@@ -998,7 +1099,8 @@ global skill directory.
   receive focused implementation and migration tests before Beta.
 
 **Authority:** Product Guide sections 2.2, 3.4, and 8.3; [Skills README](../Skills/README.md),
-`catalog.yaml`, and the package evals.
+`catalog.yaml`, the package evals, and Design Handbook decisions D-029 and
+D-040.
 
 #### PRD-RGD-004 — Guarded Researcher Skill evolution
 
@@ -1028,14 +1130,17 @@ MUST remain immutable.
 - No research run, model judgment, filename, or global plugin scan triggers
   evolution automatically.
 
-**Authority:** Product Guide section 8.3; Design Handbook section 4.9.
+**Authority:** Product Guide section 8.3; Design Handbook sections 4.9 and 10
+and decisions D-029 and D-040.
 
 #### PRD-FUN-001 — Shared Research Function boundary
 
-**Requirement:** Scholium MUST expose delivery-neutral availability,
-material-candidate, preparation, conditional-method selection, completion, and
-cancellation use cases for Dialogue, Develop, Review, Fidelity, Critique,
-Revise, and Manuscript. The App and CLI MUST depend only on Contracts and
+**Requirement:** Scholium MUST expose delivery-neutral role availability for
+Dialogue, Develop, Review, Fidelity, Critique, Revise, and Manuscript. Review
+MUST route to Human Review and Comments without creating an agent instruction
+packet. Scholium MUST expose material-candidate, preparation,
+conditional-method selection, completion, and cancellation use cases for the
+agent-facing functions. The App and CLI MUST depend only on Contracts and
 Application and MUST NOT import Core, perform vault I/O, inspect skill YAML, or
 choose package IDs.
 
@@ -1045,6 +1150,14 @@ choose package IDs.
   scope, Fidelity checks, availability and repair reason codes, fingerprints,
   prepared runs, completions, and validation without interface labels or
   symbols.
+- Material candidates project aliases, direct source location when available,
+  and typed suggestion reasons for linked-from-selected-passage,
+  linked-from-Target, or links-to-Target. Only explicit resolved one-hop
+  Connections qualify; transitive paths, lexical similarity, AI ranking,
+  Comment text, and inferred evidential roles MUST NOT qualify.
+- Agent-facing panels expose one `ResearchFunctionMaterialsState` and typed actions
+  for query, disclosure, Suggested Only, selection, removal, retry, and reset;
+  the per-window function controller remains the sole draft owner.
 - Analysis/Topic availability is Dialogue, Develop, Review, Fidelity; Work
   availability is Critique, Revise, Dialogue, Fidelity, Manuscript.
 - `ResearchUseCases` remains a compatibility composite over narrow record,
@@ -1052,9 +1165,12 @@ choose package IDs.
 - CLI function commands decode and encode Contracts values and invoke the same
   Application coordinator as the App.
 
+**Authority:** Product Guide sections 8.1 and 12; Design Handbook sections 4.8
+and 10 and decision D-037.
+
 #### PRD-FUN-002 — Preparation and completion transaction
 
-**Requirement:** Application MUST fix one Target, validate every read-only
+**Requirement:** For agent-facing preparation, Application MUST fix one Target, validate every read-only
 Material independently, reject Target duplication, resolve the exact workflow
 resources, create the required checkpoint and record, recheck revisions before
 returning instructions, and roll back a partial preparation. Completion MUST
@@ -1063,7 +1179,8 @@ validate the prepared run, function, and final fingerprints.
 **Acceptance criteria:**
 
 - Develop, Revise, Manuscript, promoted Dialogue, and Critique use the required
-  checkpoint; Review and Fidelity do not.
+  checkpoint; Fidelity does not. Review bypasses agent preparation and uses the
+  Human Review contract.
 - An unresolved conditional-method request persists a read-only preflight on
   the normal run, checkpoint, and evidential record. Explicit method selection,
   including an empty base-only selection, atomically finalizes that same run;
@@ -1073,16 +1190,27 @@ validate the prepared run, function, and final fingerprints.
   migration.
 - Dialogue, Critique, Human Review, Comments, and Fidelity remain separate
   records even when related by one run identifier.
+- Every Material starts unselected. The browser supports title, alias,
+  filename, and path search while retaining matching Analyses/Topics/Works
+  ancestors, an optional Suggested Only filter, and a Selected Materials tray
+  with individual Remove actions. There is no bulk selection.
+- Material failure blocks preparation and offers Retry Materials; honest empty
+  permits Target-only preparation. Preparation freezes Materials so the
+  packet cannot diverge from copied instructions.
+
+**Authority:** Product Guide sections 8.1 and 8.4; Design Handbook sections 4.8
+and 10 and decisions D-026 and D-037.
 
 #### PRD-FUN-003 — Revision-specific Fidelity handoff
 
-**Requirement:** Every write-capable preparation MUST include a pending final
-Fidelity handoff, not an eagerly prepared pre-edit audit. Because Scholium has
-no embedded agent runtime, it MUST NOT claim to run the audit in the
-background. The external agent MUST first complete the substantive parent
-against the exact final fingerprint, prepare and complete an independent
-read-only Fidelity child against that final revision, and then link that child
-through a later parent submission.
+**Requirement:** Fidelity MUST record manual or automatic invocation provenance
+through one exact-revision evidence contract. Manual Fidelity MUST remain the
+direct Strip function against the current exact revision. After Develop or
+Revise changes the Target, automatic orchestration MUST create or reuse an
+independent read-only Fidelity child against the exact final fingerprint and
+link it without requiring the researcher to operate that relationship. Because
+Scholium has no embedded agent runtime, automatic orchestration MUST NOT claim
+that an audit occurred before an agent submits actual outcomes.
 
 **Acceptance criteria:**
 
@@ -1097,6 +1225,14 @@ through a later parent submission.
 - Content is always available. Citations is available only when the backend
   validates an active Triptych binding to a compatible citation capability and
   style; malformed or missing bindings return a typed repair reason.
+- Manuscript reuses automatic Fidelity evidence attached to its final selected
+  Revise child. Critique and Dialogue do not trigger Target Fidelity because
+  they do not edit the Target.
+- Manual and automatic paths share evidence validation and deterministic
+  revision-specific reuse while preserving invocation kind for provenance.
+
+**Authority:** Product Guide section 8.4; Design Handbook sections 4.8 and 10
+and decision D-038.
 
 ### 7.5 Works and Critique
 
@@ -1119,7 +1255,7 @@ manual academic workflow.
 - Critique association records the target Work and target fingerprint.
 - External edits to the ordinary Critique file are detected safely.
 
-**Authority:** Product Guide section 11; Implementation Status section 1.
+**Authority:** Product Guide section 11.
 
 #### PRD-CRI-002 — Critique request and form
 
@@ -1136,6 +1272,8 @@ materials consulted and limitations.
 
 **Acceptance criteria:**
 
+- Existing Work Comments and the anchored inline composer appear directly in
+  Critique; no Manage Comments doorway or second-level Comments sheet exists.
 - The Critique contains the default sections: Overall Assessment, Strengths,
   Major Concerns, Source Support, Objections and Alternatives, Revision
   Priorities, Specific Findings, and Materials Consulted and Limitations.
@@ -1154,7 +1292,7 @@ materials consulted and limitations.
   workflow.
 
 **Authority:** Product Guide section 11.3–11.4 and Appendix A; Design Handbook
-sections 4.8, 9, and 10.
+sections 4.8, 9, and 10 and decision D-037.
 
 ### 7.6 Connections, Search, and Attention
 
@@ -1199,10 +1337,14 @@ sections 3.4 and 7.
 
 #### PRD-SEA-001 — Search scopes
 
-**Requirement:** Sidebar filtering, Quick Open, unified ranked Search, and
-Research inspector retrieval MUST remain distinct tasks while sharing a clear
-query and filter contract. Command-F MUST activate **This Note** in the shared
-Search surface; Scholium MUST NOT present a separate in-note Find interface.
+**Requirement:** Sidebar filtering, unified ranked Search, and Research
+inspector retrieval MUST remain distinct tasks while sharing a clear query and
+filter contract. Search MUST also provide known-note navigation by ranking
+exact title, alias, filename, and path matches above body matches without a
+separate mode. Scholium MUST NOT provide Back/Forward, Recent Notes, Quick
+Open, or their commands, state, persistence, or tests. Command-F MUST activate
+temporary **This Note** in the shared Search surface only when a note is open;
+Scholium MUST NOT present a separate in-note Find interface.
 
 Beta Search MUST use deterministic local SQLite FTS5 retrieval. It MAY resolve
 one exact Topic title or alias and show only its direct resolved graph
@@ -1213,16 +1355,20 @@ search are excluded from Beta.
 
 **Acceptance criteria:**
 
-- Empty Search is a centered, wide Liquid Glass bar over a softly obscured
-  window; it does not expose a blank full-height result panel.
-- Committing a non-empty query expands the same surface and then exposes the
-  **This Note / This Vault / Triptych** segmented control and result list.
+- Empty Search is a centered, compact Liquid Glass command surface over a
+  softly obscured window with ordinary interface-sized text and **This Note /
+  This Vault / Triptych** visible immediately; it does not expose a blank
+  result panel or occupy most of the document region.
+- Entering a non-empty query expands the same surface vertically to reveal a
+  bounded result list while keeping a compact responsive width. Exact title,
+  alias, filename, and path matches rank above body matches.
 - Search results show title, snippet, field/context, and destination.
-- Quick Open supports Triptych-wide title, path, and alias navigation with
-  vault-qualified destinations.
-- Recent Notes returns to a bounded, per-window, vault-qualified MRU list
-  without depending on derived Search or graph readiness.
 - **This Note** operates within the exact vault-qualified current note.
+- Each window retains the last explicitly selected general scope. Dismissing
+  temporary Find restores that scope unless the researcher changed scope,
+  which makes the chosen scope ordinary and ends the override.
+- Dismissal cancels pending work, rejects stale results, clears transient query
+  and results, and retains only the ordinary scope and saved searches.
 - Every lexical result identifies its match context and source destination.
 - Related items identify the direct graph relation and remain visually and
   semantically separate from lexical results.
@@ -1230,7 +1376,8 @@ search are excluded from Beta.
   scoped and recoverable.
 - Search does not rewrite source or claim evidential support.
 
-**Authority:** Product Guide section 13; Design Handbook sections 4.3 and 9.
+**Authority:** Product Guide section 13; Design Handbook sections 4.3, 4.5, 9,
+and 10 and decisions D-031, D-036, and D-044.
 
 #### PRD-ATT-001 — Derived Attention
 
@@ -1262,13 +1409,15 @@ Attention MAY report:
 
 #### PRD-CHK-001 — Before Agent Work checkpoint
 
-**Requirement:** Immediately before Scholium generates and copies researcher
-instructions for an agent, it MUST complete pending autosaves and create a
-named, fingerprint-bound checkpoint of the entire Triptych.
+**Requirement:** Immediately before Scholium prepares Develop, Revise,
+Manuscript, promoted Dialogue, or Critique work for an agent, it MUST complete
+pending autosaves and create the required named, fingerprint-bound checkpoint
+of the entire Triptych. Read-only Dialogue, Review, and Fidelity MUST NOT
+create that checkpoint.
 
 **Acceptance criteria:**
 
-- The checkpoint is named Before Agent Work.
+- The checkpoint uses the function's required Before Agent Work reason.
 - It contains the complete Triptych and portable configuration needed to
   interpret it.
 - It is stored outside the vaults.
@@ -1333,8 +1482,7 @@ MCP target is governed by PRD-ZOT-004 and does not broaden the built-in UI.
 - Cached metadata is labelled with retrieval time.
 - The only source action is Open in Zotero.
 
-**Authority:** Product Guide section 15; Implementation Status sections 2 and
-  3.
+**Authority:** Product Guide section 15.
 
 #### PRD-ZOT-002 — Stable matching
 
@@ -1367,7 +1515,7 @@ wider library MUST be excluded.
 - Expanded metadata is disclosed separately.
 - The Research inspector does not present unrelated library items.
 
-**Authority:** Product Guide section 15.2; Implementation Status section 1.
+**Authority:** Product Guide section 15.2.
 
 #### PRD-ZOT-004 — Protected external-agent Zotero MCP adapter
 
@@ -1424,7 +1572,7 @@ vault-relative paths.
 - CLI behavior does not reintroduce Proposal as an authorization layer.
 
 **Authority:** Product Guide sections 2.2, 8.2, and 17; Scholium development
-guidance; Implementation Status sections 1 and 3.
+guidance.
 
 ### 7.10 Standalone academic workflow
 
@@ -1474,21 +1622,30 @@ the document becomes unusable.
 
 The main hierarchy MUST distinguish:
 
-1. navigation sidebar for scope, vault, search, Attention, hierarchy, and
-   filters;
+1. navigation sidebar for scope, vault, Attention, hierarchy, and filters;
 2. a content list when needed;
 3. document detail for header, Properties, reader/editor, and local commands;
 4. a trailing research inspector for contextual Connections, Zotero identity,
    Attention, and source-located diagnostics.
 
-The product MUST NOT provide a Triptych Home or dashboard. When no note is
-selected, the window MUST contract to the narrow left-middle **Triptych
-Interface**. Selecting a note MUST keep that Interface as the leading workflow
-anchor while revealing the document toward its trailing side. **Collapse
-Note** and closing the last note MUST return to the Interface. First-run setup
-MUST use the same narrow measure and position, complete without scrolling, and
-MUST NOT re-present after configuration. The transitions MUST honor Reduce
-Motion.
+The product MUST NOT provide a Triptych Home or dashboard. A configured window
+MUST keep one stable workspace frame and `NavigationSplitView` root. With no
+selected note, Library remains the actionable leading interface and detail
+contains only the decorative featured artwork. Selecting, replacing,
+or closing a note MUST NOT change frame or position. The native Show/Hide
+Sidebar control MUST change only Library visibility, and Scholium MUST NOT add a
+separate Collapse Note function. First-run setup MUST remain the only narrow
+window state, complete without scrolling, expand once to the normal workspace,
+and honor Reduce Motion.
+
+Changing the Library's Analyses, Topics, or Works browser scope MUST retain the
+open document. Only explicit note selection replaces it; showing or hiding
+Library MUST NOT clear it.
+
+Parallel document work MUST use native macOS window tabs as complete window
+sessions. The product MUST retain standard Window-menu tab commands and
+`Command-W` and MUST NOT add a custom document-tab strip, custom cycling or
+closing, or custom Merge/Move commands.
 
 The product MUST use native windows, split views, inspectors, toolbars, menus,
 sheets, alerts, controls, focus, and file panels where they provide the
@@ -1513,12 +1670,16 @@ The following meanings and labels MUST remain stable:
   Passage, Content, Citations, Copy Instructions for Agent, Awaiting Fidelity,
   Unverified, Verified, Stale, Open Research Guidance…, and Cancel;
 - Review, Continue Review, Qualified, Unqualified, Complete Review, Save as
-  Draft, and Cancel;
+  Draft, Declare Now, Not Yet, Declare Research Status…, and Cancel;
+- Suggested Only, Selected Materials (n), Remove, Suggested — Linked from
+  Selected Passage, Suggested — Linked from Target, Suggested — Links to
+  Target, and Retry Materials;
 - Edit Dialogue Template… and Edit Critique Template…;
 - Research Guidance, Prompt Templates, Skills, Reveal Skills Folder, and Reset
   to Scholium Default;
 - Research Methods, Function, Method, Built-in, Supplements, Practices,
-  Recovery, Recovery Issues, Restore…, Restore Complete Package, and Cancel;
+  Advanced, Repair…, Evolve…, Recovery, Recovery Issues, Restore…, Restore
+  Complete Package, and Cancel;
 - Create Checkpoint…, Restore from Checkpoint…, and Reveal Checkpoints in
   Finder.
 
@@ -1572,16 +1733,12 @@ malformed, conflict, error, cancellation, and successful states where
 applicable. A malformed note remains readable and exposes a repair path.
 Unaffected content remains usable during scoped derived failures.
 
-### 8.1 UX requirement status
+### 8.1 UX acceptance pointer
 
-| Requirement | Detailed authority | Current status |
-| --- | --- | --- |
-| PRD-UX-001 | Design Handbook sections 3.1 and 4.2 | Partial; the document-first structure and automated wide/medium/compact behavior pass, while manual visual and adaptation acceptance remains open. |
-| PRD-UX-002 | Design Handbook sections 4.1–4.2 and 4.7 | Reachable; shared multiwindow state is implemented, while sustained interactive acceptance remains open. |
-| PRD-UX-003 | Design Handbook section 10 | Target; exact state/action alignment requires continued UI audit. |
-| PRD-UX-004 | Design Handbook sections 6 and 10 | Target; command, focus, cancellation, and recovery coverage remains part of acceptance. |
-| PRD-UX-005 | Design Handbook section 8 and decision record | Partial; manual accessibility and adaptation verification remains incomplete. |
-| PRD-UX-006 | Design Handbook section 9 | Target; each material surface must document and verify its adjacent states. |
+The Design Handbook sections cited by PRD-UX-001 through PRD-UX-006 define
+their interface acceptance contract. Current reachability and remaining
+manual acceptance work are maintained only in
+[Implementation Status](IMPLEMENTATION_STATUS.md).
 
 ## 9. Cross-cutting quality requirements
 
@@ -1677,21 +1834,21 @@ recovery states are covered.
 
 | ID | Journey | Required outcome |
 | --- | --- | --- |
-| J-001 | Create or open a Triptych | Researcher selects three roots, sees peer vaults, and opens a usable document-first window. |
+| J-001 | Create or open a Triptych | Researcher selects three roots in narrow setup, expands once into the stable workspace, sees peer vaults and the artwork-only no-note detail, and can group complete sessions through native tabs. |
 | J-002 | Read and edit a note | Researcher reads, switches modes, edits exact source, and receives authoritative Saved or recoverable failure state. |
-| J-003 | Configure Properties and inspect Research Status | Researcher configures vault-wide visible fields, sees declared Scope and material Limitations without raw-YAML clutter, receives app-owned creation/modification History, and does not corrupt unrelated YAML or protected identity. |
-| J-004 | Review an Analysis or Topic | Researcher adds comments, completes or drafts Human Review, and sees fingerprint-bound state. |
+| J-003 | Configure Properties and inspect Research Status | Researcher configures vault-wide visible fields, chooses Declare Now or Not Yet for a new Analysis, sees declared Scope/Limitations or honest Not Yet without raw-YAML clutter, receives app-owned creation/modification History, and does not corrupt unrelated YAML or protected identity. |
+| J-004 | Review an Analysis or Topic | Researcher sees and adds anchored Comments in the Review panel, completes or drafts Human Review, receives the Research Status completion gate when applicable, and sees fingerprint-bound state. |
 | J-005 | Use an Unqualified Analysis | Researcher can continue work while explicit reliance produces a non-blocking source-anchored Attention. |
-| J-006 | Prepare optional agent work | When the researcher chooses an agent, she selects notes, verifies scholarly and consequential context without seeing prompt mechanics, and receives a Before Agent Work checkpoint before copying. |
+| J-006 | Prepare optional agent work | When the researcher chooses an agent, she searches the real folder hierarchy, evaluates direct explainable Material suggestions, makes an explicit frozen selection, and verifies scholarly and consequential context without seeing prompt mechanics. Checkpoint-eligible write or Critique preparation completes Before Agent Work before mutation instructions; read-only functions create none. |
 | J-007 | Reconcile an external edit | Clean notes refresh; dirty notes preserve the local buffer and present Compare Changes, Reload from Disk, and Keep Editing. |
-| J-008 | Critique and inspect a Work | Researcher opens Critique from the Work Strip, chooses Whole or Passage with applicable Comments and Materials, and can navigate findings to the fixed Target. |
+| J-008 | Critique and inspect a Work | Researcher opens Critique from the Work Strip, sees and adds anchored Work Comments in the same panel, chooses Whole or Passage with Materials, and can navigate findings to the fixed Target. |
 | J-009 | Restore a checkpoint | Researcher compares and selectively or completely restores a self-contained checkpoint without confusing restore with Undo. |
-| J-010 | Search and trace Connections | Researcher searches the correct scope, sees snippets and source locations, and does not receive inferred philosophical evidence. |
+| J-010 | Search and trace Connections | Researcher always sees the three scopes, uses Search for known-note navigation, temporarily enters This Note with Command-F and restores the general scope, sees snippets and source locations, and does not receive inferred philosophical evidence. |
 | J-011 | Use optional Zotero context | When Zotero is available and selected, the researcher sees only bounded relevant metadata and can open the identified item in Zotero; its absence does not block the workflow. |
 | J-012 | Complete the workflow accessibly | Researcher completes primary journeys with keyboard and assistive technology paths under supported adaptations. |
 | J-013 | Complete the manual workflow without optional integrations | Researcher completes the core academic workflow in a clean environment where Obsidian, Zotero, and external agents are absent; Dialogue and Critique remain optional extensions. |
-| J-014 | Manage research guidance | Researcher edits prompt templates and Researcher Skills, inspects protected System and official Workflow packages, activates Triptych-local Research Methods, duplicates a Workflow Skill, and restores a missing or malformed Researcher Skill from the global Recovery inventory without exposing technical sources in the scholarly workflow. |
-| J-015 | Run a function-aware agent workflow | A local agent prepares one typed function, explicitly finalizes any conditional methods on the same run, receives only the resolved dependency closure and selected resources, respects phase-local permission, completes a separate final-fingerprint Fidelity child when required, and answers using the request-scoped Dialogue contract. |
+| J-014 | Manage research guidance | Researcher uses bundled defaults from the plain-language Skills summary, edits or duplicates according to ownership, opens Advanced only for composition or maintenance, and follows Repair directly to recovery without exposing technical sources in the scholarly workflow. |
+| J-015 | Run a function-aware agent workflow | A local agent prepares one typed function, explicitly finalizes any conditional methods on the same run, receives only the resolved dependency closure and selected resources, respects phase-local permission, submits actual outcomes to an automatically linked/reused final-fingerprint Fidelity child when required, and answers using the request-scoped Dialogue contract. |
 | J-016 | Use optional agent Zotero MCP | A local agent retrieves an exact Zotero record without treating metadata as source evidence and performs an import only through explicit request, dry run, confirmation, and read-back verification. |
 
 ## 11. Success measures and product outcomes
@@ -1703,7 +1860,7 @@ are proposed measures, not current telemetry or user-study findings.
 | --- | --- | --- | --- |
 | M-001 | Unexpected source mutation | Zero unexpected bytes changed outside the explicitly edited range in fidelity fixtures. | Source-fidelity test matrix and readback comparison. |
 | M-002 | Dirty-buffer overwrite | Zero accepted writes that overwrite a dirty local buffer after an external revision change. | Conflict and repository tests plus QA journey J-007. |
-| M-003 | Checkpoint boundary | 100% of accepted Dialogue-copy journeys create Before Agent Work before copying. | Dialogue tests and QA evidence for J-006. |
+| M-003 | Checkpoint boundary | 100% of Develop, Revise, Manuscript, promoted-Dialogue, and Critique preparation journeys create the required Before Agent Work checkpoint before mutation instructions; read-only Dialogue, Review, and Fidelity create none. | Function tests and QA evidence for J-006 and J-008. |
 | M-004 | Derived-status honesty | 100% of user-visible diagnostics identify their derived scope and source anchor or explicitly state that no anchor exists. | Attention, Connections, Critique, and UI review. |
 | M-005 | Accessibility path coverage | Every primary journey has a tested keyboard path; all required assistive-technology gaps are explicitly dispositioned before release. | UI automation, manual accessibility audit, and retained artifacts. |
 | M-006 | Recovery correctness | Selective and complete restore preserve source integrity and expose conflicts rather than silently replacing newer work. | Checkpoint fixtures and QA journey J-009. |
@@ -1779,16 +1936,9 @@ while adding an exit gate to each phase.
 | P8 | Migrate to the five function-aware Workflow packages, capability and citation bindings, exact resource snapshots, product-skill mirror tooling, and guarded Researcher Skill evolution; retain the protected Zotero MCP adapter and transport. | J-014–J-016, M-007, M-011, and M-012 plus function/skill/evolution rollback cases pass. |
 | P9 | Complete visual, accessibility, CJK, performance, multiwindow, conflict, recovery, and release acceptance. | All release gates pass or have explicit documented waivers. |
 
-The current status identifies the following concrete remaining work:
-
-1. complete manual accessibility and adaptation acceptance, including the
-   standalone academic workflow on a clean environment without optional
-   integrations;
-2. approve and retain the Beta performance thresholds on R1/RDF-1 and extend
-   the 512-note explainable lexical-ranking acceptance to larger alias/heading
-   collision sets and a broader ranking-usability review; and
-3. satisfy the distribution-integrity gate from a clean tagged commit before
-   publishing an external Beta artifact.
+Current remaining work is maintained only in
+[Implementation Status](IMPLEMENTATION_STATUS.md). The release gates below
+define the required outcomes without duplicating the dated work ledger.
 
 ## 14. Release quality gates
 
@@ -1831,7 +1981,7 @@ daily-workflow definition in Section 5.3.
 
 | ID | Item | Type | Current disposition |
 | --- | --- | --- | --- |
-| R-005 | Shared multiwindow ownership, sustained same-process interaction, simultaneous restored sessions, and explicit native AppKit grouping and separation are accepted on disposable fixtures. | Resolved acceptance evidence | Keep the independent-session, shared-commit, dirty-conflict, focused-routing, rename-convergence, restored-multiwindow, and native-grouping matrix in the release regression set. |
+| R-005 | Shared multiwindow ownership is implemented, but sustained same-process interaction, simultaneous restored sessions, the dirty-peer UI path, and explicit native AppKit grouping and separation still require complete interactive acceptance. | Acceptance risk | Complete and retain the independent-session, shared-commit, dirty-conflict, focused-routing, rename-convergence, restored-multiwindow, and native-grouping matrix before closing the risk. |
 | R-006 | External rename migration and its clean, dirty, ambiguous, and multiwindow interactive matrix are accepted on disposable fixtures. | Resolved acceptance evidence | Keep the combined rename matrix in the release regression set and preserve researcher confirmation for ambiguous identity. |
 | R-007 | Permanent deletion must remove app-owned history, associated Critique content, and every recoverable checkpoint copy of the deleted note. | Resolved implementation evidence | Coordinated Work/current-Critique deletion, cross-store rollback, restart recovery, checkpoint invalidation, destructive confirmation, and durable recovery inspection pass disposable core and isolated UI journeys. Keep them in the release regression set. |
 | R-008 | Manual accessibility and standalone clean-environment acceptance remain incomplete; automated clean-account setup, Critique navigation, and cold compact-width behavior now pass. | Acceptance risk | Complete manual adaptation and assistive-technology acceptance, accept the standalone workflow without optional integrations, and record retained artifacts. |
@@ -1845,31 +1995,30 @@ be presented as completed behavior:
 
 - sustained VoiceOver, Full Keyboard Access, Voice Control, contrast, scaling,
   and localization verification across CodeMirror/WKWebView;
-- final Quick Open presentation; and
 - compact multi-note Dialogue presentation in Note History.
 
 ## 16. Requirement traceability
 
-The following matrix provides the top-level mapping. Requirement-specific
-authority remains beside each requirement; current status is centralized in
-Implementation Status.
+The following matrix provides the top-level authority and journey mapping.
+Requirement-specific authority remains beside each requirement; current
+status is centralized in [Implementation Status](IMPLEMENTATION_STATUS.md).
 
-| Requirement area | Product Guide | Design Handbook | Implementation Status | Primary journeys |
-| --- | --- | --- | --- | --- |
-| Triptych and vaults | §§1, 3–4 | §§1, 4.1–4.2 | Reachable multi-Triptych and shared-store evidence; sustained UI acceptance open | J-001 |
-| Exact Markdown, YAML, and Research Unit | §5.1–5.2 | §§3.3, 4.4, 4.6, 9–10; D-033 | Exact-source fidelity, Research Status presentation/editor, new Analysis scope enforcement, and app-owned timestamp boundary are reachable; dedicated long-source progress and manual acceptance remain open | J-002, J-003 |
-| Identity and lifecycle | §§5.3, 6 | §§3.3, 4.6, 9–10 | Reachable lifecycle and rename migration; UI acceptance open | J-003, J-007, J-009 |
-| Human Review and comments | §7 | §§4.8, 8, 10 | Reachable; full accessibility/clean-account coverage open | J-004, J-005 |
-| Dialogue and CLI | §8 | §§3.5, 4.8, 10 | Concise chronological record and immutable request-scoped `responseContract` snapshot are reachable; full J-015 acceptance remains open | J-006, J-007, J-015 |
-| Research Functions and Strip | §§8.1, 8.4 | §§4.8, 10; D-026 | Coordinator, thin CLI including same-run method selection, editor-only Strip, typed panel, direct menu routes, and parent/child final-fingerprint Fidelity state are reachable; manual accessibility and philosophical field acceptance remain open | J-004, J-006, J-008, J-015 |
-| Research Guidance, prompt templates, and skills | §8.3 | §§4.8–4.9, 10; D-029 | Five independent Workflow packages, exact resource snapshots, explicit citation style and function-method bindings, and guarded whole-package Researcher Skill evolution with global Recovery are reachable; philosophical field trials remain open | J-006, J-008, J-014, J-015 |
-| Critique | §11 | §§4.8, 9–10 | Reachable with source-located findings; deterministic disposable-workspace XCUITest passes | J-008 |
-| Connections | §12 | §§4.7, 8–9 | Canonical graph reachable and absent from document authoring | J-010, J-012 |
-| Search and Attention | §13 | §§4.3, 4.5, 4.7, 9; D-030 | Unified contract, Find, outline, saved-search management, and per-window Recent Notes reachable | J-005, J-010 |
-| Checkpoints and recovery | §14 | §§3.3, 4.8, 9–10 | Reachable; full journey acceptance open | J-006, J-007, J-009 |
-| Zotero | §15 | §§4.7, 4.9 | Bounded built-in localhost integration, protected external-agent adapter, and first-party stdio transport are reachable; mocked boundaries, bounded real-service reads, and an isolated synthetic import/read-back pass, while the complete J-016 field and manual acceptance record remains open | J-011, J-016 |
-| Standalone academic workflow | §2.1 | §2 | Not separately accepted; add clean-environment coverage | J-013 |
-| Accessibility and visual language | — | §§3, 5–10, 13 | Manual acceptance incomplete; Beta/1.0 pass threshold defined in PRD-UX-005 | J-002, J-004, J-006–J-016 |
+| Requirement area | Product Guide | Design Handbook | Primary journeys |
+| --- | --- | --- | --- |
+| Triptych, windows, native tabs, and no-note artwork | §§1, 3–4, 16 | §§1, 4.1–4.5, 10.5; D-036, D-041 | J-001 |
+| Exact Markdown, YAML, and Research Unit | §5.1–5.2 | §§3.3, 4.4, 4.6, 9–10; D-033, D-042 | J-002, J-003 |
+| Identity and lifecycle | §§5.3, 6 | §§3.3, 4.6, 9–10 | J-003, J-007, J-009 |
+| Human Review, comments, and Research Status gate | §§5.2, 7 | §§4.6, 4.8, 8, 10; D-037, D-039, D-043 | J-003–J-005 |
+| Dialogue and CLI | §8 | §§3.5, 4.8, 10 | J-006, J-007, J-015 |
+| Research Functions, Materials, and Fidelity | §§8.1, 8.4 | §§4.8, 10; D-026, D-037, D-038 | J-004, J-006, J-008, J-015 |
+| Research Guidance, prompt templates, and skills | §8.3 | §§4.8–4.9, 10; D-029, D-040 | J-006, J-008, J-014, J-015 |
+| Critique | §11 | §§4.8, 9–10 | J-008 |
+| Connections | §12 | §§4.7, 8–9 | J-010, J-012 |
+| Search and Attention | §13 | §§4.3, 4.5, 4.7, 9–10; D-031, D-036, D-044 | J-005, J-010 |
+| Checkpoints and recovery | §14 | §§3.3, 4.8, 9–10 | J-006, J-007, J-009 |
+| Zotero | §15 | §§4.7, 4.9 | J-011, J-016 |
+| Standalone academic workflow | §2.1 | §2 | J-013 |
+| Accessibility and visual language | — | §§3, 5–10, 13 | J-002, J-004, J-006–J-016 |
 
 ## 17. Change-control protocol
 
@@ -1900,15 +2049,14 @@ current-status terms by [Implementation Status](IMPLEMENTATION_STATUS.md).
 Requirement language is defined in Section 0.1. This PRD keeps no second
 product glossary.
 
-## Appendix B. Current source set
+## Appendix B. Maintained source set
 
-- Product Guide, canonicalized 2026-07-14.
-- Design Handbook, last reviewed 2026-07-14.
-- Implementation Status, audited 2026-07-15 with a compact representative
-  evidence ledger.
+- Product Guide.
+- Design Handbook.
+- Implementation Status with a compact representative evidence ledger.
 - Scholium README and repository AGENTS.md.
 - Swift package manifest, which sets macOS 26 as the package platform baseline.
 
-This appendix identifies the source set used to create this PRD. It does not
+This appendix identifies the maintained source set for this PRD. It does not
 replace current source, tests, or the explicit authority hierarchy in Section
 0.

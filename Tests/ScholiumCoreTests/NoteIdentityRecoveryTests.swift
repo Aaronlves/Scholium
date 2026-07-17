@@ -27,7 +27,10 @@ struct NoteIdentityRecoveryTests {
             noteID: identity.id,
             vaultID: fixture.worksID,
             relativePath: "Old.md",
-            comment: ResearcherComment(text: "Keep this distinction.")
+            comment: ResearcherComment(
+                text: "Keep this distinction.",
+                anchor: testCommentAnchor(fingerprint: saved.document.fingerprint)
+            )
         )
         let reference = DialogueNoteReference(
             noteID: identity.id,
@@ -57,10 +60,10 @@ struct NoteIdentityRecoveryTests {
         try await stores.sessions.save(WindowSessionSnapshot(
             id: stores.sessionID,
             vaultID: fixture.worksID,
-            openTabs: ["Old.md"],
-            activeTab: "Old.md",
-            navigationHistory: ["Old.md"],
-            navigationIndex: 0,
+            selectedDocument: VaultQualifiedNoteID(
+                vaultID: fixture.worksID,
+                relativePath: "Old.md"
+            ),
             documentModes: ["Old.md": "read"],
             scrollPositions: ["Old.md": 42]
         ))
@@ -96,7 +99,7 @@ struct NoteIdentityRecoveryTests {
         #expect(migratedDialogue.generatedPrompt == "Historical target: Old.md")
         #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
-        #expect(session.activeTab == "Folder/New.md")
+        #expect(session.selectedDocument?.relativePath == "Folder/New.md")
         #expect((await repository.versions(relativePath: "Old.md")).isEmpty)
         #expect((await repository.versions(relativePath: "Folder/New.md")).count == 1)
     }
@@ -124,13 +127,19 @@ struct NoteIdentityRecoveryTests {
             noteID: analysisIdentity.id,
             vaultID: fixture.analysesID,
             relativePath: "Shared.md",
-            comment: ResearcherComment(text: "Analysis comment")
+            comment: ResearcherComment(
+                text: "Analysis comment",
+                anchor: testCommentAnchor(fingerprint: analysisDocument.fingerprint)
+            )
         )
         _ = try await stores.reviews.addComment(
             noteID: topicIdentity.id,
             vaultID: fixture.topicsID,
             relativePath: "Shared.md",
-            comment: ResearcherComment(text: "Topic comment")
+            comment: ResearcherComment(
+                text: "Topic comment",
+                anchor: testCommentAnchor(fingerprint: topicDocument.fingerprint)
+            )
         )
         let references = [
             DialogueNoteReference(
@@ -304,4 +313,18 @@ struct NoteIdentityRecoveryTests {
             try? FileManager.default.removeItem(at: root)
         }
     }
+}
+
+private func testCommentAnchor(
+    fingerprint: DocumentFingerprint,
+    quotation: String = "source passage"
+) -> ResearcherCommentAnchor {
+    ResearcherCommentAnchor(
+        fingerprint: fingerprint,
+        utf8Range: 0..<quotation.utf8.count,
+        utf16Range: 0..<quotation.utf16.count,
+        line: 1,
+        endLine: 1,
+        quotation: quotation
+    )
 }

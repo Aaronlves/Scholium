@@ -6,6 +6,89 @@ import Testing
 @Suite("Research Function controller")
 @MainActor
 struct ResearchFunctionControllerTests {
+    @Test("Human Review draft survives a Properties handoff and advances revision")
+    func humanReviewDraftHandoff() {
+        let original = target(title: "Agency", path: "Topics/Agency.md")
+        let persistedDraft = HumanReviewDraft(
+            fingerprint: original.fingerprint,
+            qualification: .qualified,
+            reviewNote: "Persisted judgment"
+        )
+        let record = HumanReviewRecord(
+            noteID: original.noteID,
+            vaultID: original.note.vaultID,
+            relativePath: original.note.relativePath,
+            draft: persistedDraft
+        )
+        let presentationID = UUID()
+        let controller = ResearchFunctionController()
+        controller.begin(
+            target: original,
+            function: .review,
+            selection: nil,
+            presentationID: presentationID
+        )
+        controller.beginHumanReviewDraft(
+            revision: original.fingerprint,
+            record: record
+        )
+
+        #expect(controller.humanReviewRevision == original.fingerprint)
+        #expect(controller.humanReviewQualification == .qualified)
+        #expect(controller.humanReviewNote == "Persisted judgment")
+        controller.humanReviewQualification = .unqualified
+        controller.humanReviewNote = "Unsaved judgment retained across Properties"
+
+        let updated = ResearchFunctionTarget(
+            noteID: original.noteID,
+            note: original.note,
+            role: original.role,
+            lifecycle: original.lifecycle,
+            fingerprint: DocumentFingerprint(content: "# Agency\nresearch status declared\n"),
+            title: original.title
+        )
+        controller.resumeHumanReviewDraft(
+            presentationID: UUID(),
+            target: updated
+        )
+        #expect(controller.humanReviewRevision == original.fingerprint)
+
+        controller.resumeHumanReviewDraft(
+            presentationID: presentationID,
+            target: updated
+        )
+        #expect(controller.target == updated)
+        #expect(controller.humanReviewRevision == updated.fingerprint)
+        #expect(controller.humanReviewQualification == .unqualified)
+        #expect(controller.humanReviewNote == "Unsaved judgment retained across Properties")
+
+        controller.dismiss(presentationID: presentationID)
+        #expect(controller.humanReviewRevision == nil)
+        #expect(controller.humanReviewQualification == nil)
+        #expect(controller.humanReviewNote.isEmpty)
+    }
+
+    @Test("Human Review never loads hidden agent Materials")
+    func humanReviewSkipsMaterials() async {
+        let controller = ResearchFunctionController()
+        var materialCandidateCalls = 0
+        controller.bind(client(materialCandidates: { _, _ in
+            materialCandidateCalls += 1
+            return []
+        }))
+        controller.begin(
+            target: target(title: "Agency", path: "Topics/Agency.md"),
+            function: .review,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil { controller.phase == .editing }
+
+        #expect(materialCandidateCalls == 0)
+        #expect(controller.materialsState.phase == .empty)
+        #expect(controller.materialCandidates.isEmpty)
+    }
+
     @Test("A superseded asynchronous panel load cannot replace the current Target")
     func staleLoadIsRejected() async throws {
         let controller = ResearchFunctionController()
@@ -37,12 +120,154 @@ struct ResearchFunctionControllerTests {
 
         gate.release("Second")
         await gate.waitUntilPassed("Second", count: 2)
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
 
         #expect(controller.target == second)
         #expect(controller.activeFunction == .develop)
         #expect(controller.phase == .editing)
         #expect(controller.materialCandidates.first?.material.title == "Material for Second")
+    }
+
+    @Test("Dialogue defaults become an explicit request-scoped module selection")
+    func dialogueDefaultsAndRequestConstruction() async throws {
+        let controller = ResearchFunctionController()
+        var capturedRequest: ResearchFunctionRequest?
+        controller.bind(client(
+            dialogueResponseProfile: {
+                DialogueResponseProfile(modules: [
+                    .researchDirections,
+                    .criticalReflection,
+                ])
+            },
+            prepare: { request in
+                capturedRequest = request
+                return ResearchFunctionPreparation(
+                    snapshot: ResearchFunctionSnapshot(
+                        request: request,
+                        recordKind: .dialogue
+                    ),
+                    instructions: "Prepared"
+                )
+            }
+        ))
+        controller.begin(
+            target: target(title: "Agency", path: "Topics/Agency.md"),
+            function: .dialogue,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil {
+            controller.phase == .editing
+                && controller.dialogueResponseDefaultsLoaded
+                && controller.materialCandidates.count == 1
+        }
+
+        #expect(controller.dialogueResponseDefaultsLoaded)
+        #expect(controller.dialogueResponseModules == [
+            .criticalReflection,
+            .researchDirections,
+        ])
+        controller.setDialogueResponseModule(.researchDirections, isSelected: false)
+        controller.setDialogueResponseModule(.remainingQuestions, isSelected: true)
+        controller.instruction = "Which distinction needs further development?"
+        #expect(controller.canPrepare)
+        controller.prepare()
+        await waitUntil { capturedRequest != nil }
+
+        #expect(capturedRequest?.dialogueResponseModules == [
+            .criticalReflection,
+            .remainingQuestions,
+        ])
+    }
+
+    @Test("Dialogue permits an explicit Academic Outcome only request and resets it")
+    func dialogueExplicitEmptyAndReset() async throws {
+        let controller = ResearchFunctionController()
+        var capturedRequest: ResearchFunctionRequest?
+        controller.bind(client(
+            dialogueResponseProfile: {
+                DialogueResponseProfile(modules: [.remainingQuestions])
+            },
+            prepare: { request in
+                capturedRequest = request
+                return ResearchFunctionPreparation(
+                    snapshot: ResearchFunctionSnapshot(
+                        request: request,
+                        recordKind: .dialogue
+                    ),
+                    instructions: "Prepared"
+                )
+            }
+        ))
+        controller.begin(
+            target: target(title: "Agency", path: "Topics/Agency.md"),
+            function: .dialogue,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil {
+            controller.phase == .editing
+                && controller.dialogueResponseDefaultsLoaded
+                && controller.materialCandidates.count == 1
+        }
+        controller.setDialogueResponseModule(.remainingQuestions, isSelected: false)
+        controller.instruction = "Give the bounded academic outcome."
+        #expect(controller.canPrepare)
+        controller.prepare()
+        await waitUntil { capturedRequest != nil }
+
+        #expect(capturedRequest?.dialogueResponseModules == [])
+        controller.dismiss()
+        #expect(controller.dialogueResponseModules.isEmpty)
+        #expect(!controller.dialogueResponseDefaultsLoaded)
+    }
+
+    @Test("Dialogue default loading fails closed and exposes the error")
+    func dialogueDefaultLoadingFailure() async {
+        let controller = ResearchFunctionController()
+        controller.bind(client(dialogueResponseProfile: {
+            throw TestFailure.dialogueDefaultsUnavailable
+        }))
+        controller.begin(
+            target: target(title: "Agency", path: "Topics/Agency.md"),
+            function: .dialogue,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil { controller.phase == .failed }
+
+        #expect(!controller.dialogueResponseDefaultsLoaded)
+        #expect(!controller.canPrepare)
+        #expect(controller.errorMessage == TestFailure.dialogueDefaultsUnavailable.localizedDescription)
+    }
+
+    @Test("A superseded Dialogue-default response cannot replace a new function draft")
+    func staleDialogueDefaultsAreRejected() async {
+        let controller = ResearchFunctionController()
+        let gate = LoadGate()
+        controller.bind(client(dialogueResponseProfile: {
+            await gate.wait("Dialogue profile")
+            return DialogueResponseProfile(modules: [.researchDirections])
+        }))
+        controller.begin(
+            target: target(title: "First", path: "Topics/First.md"),
+            function: .dialogue,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await gate.waitUntilArrived("Dialogue profile", count: 1)
+        controller.begin(
+            target: target(title: "Second", path: "Topics/Second.md"),
+            function: .develop,
+            selection: nil,
+            presentationID: UUID()
+        )
+        gate.release("Dialogue profile")
+        await waitUntil { controller.canPrepare }
+
+        #expect(controller.activeFunction == .develop)
+        #expect(controller.dialogueResponseModules.isEmpty)
+        #expect(!controller.dialogueResponseDefaultsLoaded)
     }
 
     @Test("Target identity and revision remain locked for one presentation")
@@ -86,11 +311,14 @@ struct ResearchFunctionControllerTests {
             presentationID: UUID()
         )
         first.functions.instruction = "Question the distinction."
+        first.functions.sendMaterials(.setQuery("agency"))
 
         #expect(first.functions.activeFunction == .dialogue)
         #expect(first.functions.instruction == "Question the distinction.")
+        #expect(first.functions.materialsViewState.query == "agency")
         #expect(second.functions.activeFunction == nil)
         #expect(second.functions.instruction.isEmpty)
+        #expect(second.functions.materialsViewState.query.isEmpty)
     }
 
     @Test("Runtime rebinding invalidates an open draft")
@@ -122,7 +350,7 @@ struct ResearchFunctionControllerTests {
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
         controller.prepare()
         await waitUntil { controller.preparation != nil }
         let preparation = try #require(controller.preparation)
@@ -186,7 +414,7 @@ struct ResearchFunctionControllerTests {
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
 
         controller.prepare()
         await waitUntil { controller.phase == .completed }
@@ -324,8 +552,156 @@ struct ResearchFunctionControllerTests {
         #expect(!controller.canPrepare)
         gate.release("Agency")
         await gate.waitUntilPassed("Agency", count: 2)
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
         #expect(controller.canPrepare)
+    }
+
+    @Test("Materials preserve role and folder ancestors while search and suggestions intersect")
+    func materialsHierarchySearchAndSelection() throws {
+        let target = target(title: "Source", path: "Source.md")
+        let passage = ResearcherCommentAnchor(
+            fingerprint: target.fingerprint,
+            utf8Range: 12..<24,
+            utf16Range: 12..<24,
+            line: 1,
+            endLine: 1,
+            quotation: "selected link"
+        )
+        let suggested = materialCandidate(
+            title: "Agency",
+            path: "Debates/Agency.md",
+            role: .topic,
+            vaultID: target.note.vaultID,
+            aliases: ["Freedom"],
+            suggestionReasons: [suggestionReason(
+                .linkedFromTarget,
+                source: target.note,
+                lowerBound: 16
+            )]
+        )
+        let analysis = materialCandidate(
+            title: "Other Source",
+            path: "Archive/Other Source.md",
+            role: .analysis
+        )
+        let work = materialCandidate(
+            title: "Chapter",
+            path: "Dissertation/Chapter.md",
+            role: .work
+        )
+        var state = ResearchFunctionMaterialsState()
+        state.beginLoading()
+        state.receive(
+            [work, suggested, analysis],
+            target: target.note,
+            passage: passage
+        )
+
+        #expect(state.phase == .ready)
+        #expect(state.selectedMaterialIDs.isEmpty)
+        #expect(state.viewState.roots.map(\.title) == ["Analyses", "Topics", "Works"])
+        let topicRoot = try #require(state.viewState.roots.first {
+            $0.title == "Topics"
+        })
+        #expect(topicRoot.children.first?.title == "Debates")
+        #expect(topicRoot.children.first?.children.first?.title == "Agency")
+        let debates = try #require(topicRoot.children.first)
+        #expect(debates.isExpanded)
+        state.apply(.toggleFolder(debates.id))
+        let collapsedTopic = try #require(state.viewState.roots.first {
+            $0.title == "Topics"
+        })
+        #expect(collapsedTopic.children.first?.isExpanded == false)
+        #expect(suggested.suggestionReasons.first?.kind == .linkedFromTarget)
+        #expect(state.candidates.first { $0.id == suggested.id }?
+            .suggestionReasons.first?.kind == .linkedFromSelectedPassage)
+
+        state.apply(.setQuery("freedom"))
+        state.apply(.setSuggestedOnly(true))
+        #expect(state.viewState.roots.map(\.title) == ["Topics"])
+        #expect(state.viewState.roots.first?.children.first?.title == "Debates")
+        state.apply(.setSelected(suggested.id, true))
+        #expect(state.viewState.selectedCandidates.map(\.id) == [suggested.id])
+
+        state.freeze()
+        let frozen = state
+        state.apply(.setQuery("chapter"))
+        state.apply(.remove(suggested.id))
+        state.apply(.setSuggestedOnly(false))
+        #expect(state == frozen)
+        state.apply(.reset)
+        #expect(state.phase == .idle)
+        #expect(state.candidates.isEmpty)
+        #expect(state.viewState.query.isEmpty)
+        #expect(!state.isFrozen)
+    }
+
+    @Test("Materials failure rejects generation until an explicit retry succeeds")
+    func materialsFailureAndRetry() async {
+        let controller = ResearchFunctionController()
+        var attemptCount = 0
+        controller.bind(client(materialCandidates: { target, _ in
+            attemptCount += 1
+            if attemptCount == 1 { throw TestFailure.materialsUnavailable }
+            return [materialCandidate(
+                title: "Agency",
+                path: "Debates/Agency.md",
+                role: .topic,
+                vaultID: target.note.vaultID
+            )]
+        }))
+        controller.begin(
+            target: target(title: "Source", path: "Source.md"),
+            function: .develop,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil {
+            if case .failed = controller.materialsState.phase { return true }
+            return false
+        }
+
+        #expect(!controller.canPrepare)
+        #expect(controller.materialCandidates.isEmpty)
+        controller.sendMaterials(.retry)
+        await waitUntil { controller.canPrepare }
+        #expect(attemptCount == 2)
+        #expect(controller.materialCandidates.map(\.material.title) == ["Agency"])
+        #expect(controller.selectedMaterialIDs.isEmpty)
+    }
+
+    @Test("Preparing freezes the exact Materials selection")
+    func preparationFreezesMaterials() async throws {
+        let controller = ResearchFunctionController()
+        var capturedRequest: ResearchFunctionRequest?
+        controller.bind(client(prepare: { request in
+            capturedRequest = request
+            return ResearchFunctionPreparation(
+                snapshot: ResearchFunctionSnapshot(
+                    request: request,
+                    recordKind: .functionEnvelope
+                ),
+                instructions: "Prepared"
+            )
+        }))
+        controller.begin(
+            target: target(title: "Source", path: "Source.md"),
+            function: .develop,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil { controller.canPrepare }
+        let candidate = try #require(controller.materialCandidates.first)
+        controller.setMaterialSelected(candidate.id, isSelected: true)
+        controller.prepare()
+        #expect(controller.materialsState.isFrozen)
+        controller.setMaterialSelected(candidate.id, isSelected: false)
+        controller.sendMaterials(.setQuery("different"))
+        await waitUntil { capturedRequest != nil }
+
+        #expect(capturedRequest?.materials == [candidate.material])
+        #expect(controller.selectedMaterialIDs == [candidate.id])
+        #expect(controller.materialsViewState.query.isEmpty)
     }
 
     @Test("Function leaves preserve the compiler-enforced delivery boundary")
@@ -470,6 +846,13 @@ struct ResearchFunctionControllerTests {
 
     private func client(
         beforeLoad: @escaping @MainActor (ResearchFunctionTarget) async -> Void = { _ in },
+        dialogueResponseProfile: @escaping @MainActor () async throws -> DialogueResponseProfile = {
+            DialogueResponseProfile(modules: [.remainingQuestions])
+        },
+        materialCandidates: (@MainActor (
+            ResearchFunctionTarget,
+            ResearchFunctionID
+        ) async throws -> [ResearchFunctionMaterialCandidate])? = nil,
         prepare: (@MainActor (ResearchFunctionRequest) async throws -> ResearchFunctionPreparation)? = nil
     ) -> ResearchFunctionClient {
         ResearchFunctionClient(
@@ -490,20 +873,16 @@ struct ResearchFunctionControllerTests {
                         ),
                     ]
             },
-            materialCandidates: { target, _ in
+            materialCandidates: materialCandidates ?? { target, _ in
                 await beforeLoad(target)
-                let material = ResearchFunctionMaterial(
-                    noteID: UUID(),
-                    note: VaultQualifiedNoteID(
-                        vaultID: target.note.vaultID,
-                        relativePath: "Topics/Material-\(target.title).md"
-                    ),
+                return [materialCandidate(
+                    title: "Material for \(target.title)",
+                    path: "Material-\(target.title).md",
                     role: .topic,
-                    fingerprint: DocumentFingerprint(content: "material"),
-                    title: "Material for \(target.title)"
-                )
-                return [.init(material: material)]
+                    vaultID: target.note.vaultID
+                )]
             },
+            dialogueResponseProfile: dialogueResponseProfile,
             prepare: prepare ?? { request in
                 let snapshot = ResearchFunctionSnapshot(
                     request: request,
@@ -540,11 +919,78 @@ struct ResearchFunctionControllerTests {
         )
     }
 
-    private func waitUntil(_ condition: @MainActor () -> Bool) async {
-        for _ in 0..<200 where !condition() {
-            await Task.yield()
+    private func materialCandidate(
+        title: String,
+        path: String,
+        role: ResearchFunctionTargetRole,
+        vaultID: UUID = UUID(),
+        aliases: [String] = [],
+        suggestionReasons: [ResearchFunctionMaterialSuggestionReason] = []
+    ) -> ResearchFunctionMaterialCandidate {
+        ResearchFunctionMaterialCandidate(
+            material: ResearchFunctionMaterial(
+                noteID: UUID(),
+                note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
+                role: role,
+                fingerprint: DocumentFingerprint(content: title),
+                title: title
+            ),
+            aliases: aliases,
+            suggestionReasons: suggestionReasons
+        )
+    }
+
+    private func suggestionReason(
+        _ kind: ResearchFunctionMaterialSuggestionReason.Kind,
+        source: VaultQualifiedNoteID,
+        lowerBound: Int
+    ) -> ResearchFunctionMaterialSuggestionReason {
+        ResearchFunctionMaterialSuggestionReason(
+            kind: kind,
+            sourceNote: source,
+            sourceSpan: SourceSpan(
+                utf8LowerBound: lowerBound,
+                utf8UpperBound: lowerBound + 4,
+                utf16LowerBound: lowerBound,
+                utf16UpperBound: lowerBound + 4,
+                start: SourcePosition(
+                    line: 1,
+                    utf8Column: lowerBound + 1,
+                    utf16Column: lowerBound + 1
+                ),
+                end: SourcePosition(
+                    line: 1,
+                    utf8Column: lowerBound + 5,
+                    utf16Column: lowerBound + 5
+                )
+            )
+        )
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @MainActor () -> Bool
+    ) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !condition(), clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
         }
         #expect(condition())
+    }
+
+    private enum TestFailure: LocalizedError {
+        case dialogueDefaultsUnavailable
+        case materialsUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .dialogueDefaultsUnavailable:
+                "Dialogue defaults are unavailable."
+            case .materialsUnavailable:
+                "Materials are unavailable."
+            }
+        }
     }
 
     @MainActor

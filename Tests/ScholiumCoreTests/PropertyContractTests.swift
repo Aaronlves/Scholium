@@ -28,7 +28,7 @@ struct PropertyContractTests {
             PropertyContractCatalog.contract(for: "research_unit", profile: .analysis)
         )
         #expect(researchUnit.valueKind == .mapping)
-        #expect(researchUnit.creationRequirement == .required)
+        #expect(researchUnit.creationRequirement == .optional)
         let importance = try #require(
             PropertyContractCatalog.contract(for: "debate_importance", profile: .analysis)
         )
@@ -117,8 +117,7 @@ struct PropertyContractTests {
             profile: .analysis,
             context: .creation
         )
-        #expect(creation.compactMap(\.propertyKey) == ["research_unit"])
-        #expect(creation.allSatisfy { $0.code == .missingRequiredProperty })
+        #expect(creation.isEmpty)
 
         let yamlFreeTopic = NoteDocument(
             relativePath: "Topics/Agency.md",

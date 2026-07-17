@@ -27,7 +27,6 @@ public protocol DiscoveryUseCases: Sendable {
     func snapshot() async throws -> WorkspaceDiscoverySnapshot
     func refresh() async throws -> WorkspaceSnapshot
     func search(_ query: SearchQuery, scope: SearchScope, limit: Int) async throws -> [SearchHit]
-    func quickOpen(query: String, limit: Int) async throws -> [WorkspaceCatalogNote]
     func related(query: String, scope: SearchScope, excluding: Set<VaultQualifiedNoteID>, limit: Int) async throws -> [RelatedSearchItem]
 }
 
@@ -35,7 +34,7 @@ public protocol ResearchRecordUseCases: Sendable {
     func snapshot() async throws -> WorkspaceResearchSnapshot
     func humanReview(noteID: UUID) async throws -> HumanReviewRecord?
     func comments(noteID: UUID) async throws -> [ResearcherComment]
-    func addComment(to note: VaultQualifiedNoteID, text: String, anchor: ResearcherCommentAnchor?, expectedRevision: DocumentFingerprint) async throws -> HumanReviewRecord
+    func addComment(to note: VaultQualifiedNoteID, text: String, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> HumanReviewRecord
     func updateComment(noteID: UUID, commentID: UUID, text: String) async throws -> HumanReviewRecord
     func setCommentResolved(noteID: UUID, commentID: UUID, resolved: Bool) async throws -> HumanReviewRecord
     func deleteComment(noteID: UUID, commentID: UUID) async throws -> HumanReviewRecord
@@ -140,6 +139,10 @@ public protocol ResearchFunctionUseCases: Sendable {
     func prepareFunction(
         _ request: ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation
+
+    func prepareAutomaticFidelity(
+        parentRunID: UUID
+    ) async throws -> AutomaticFidelityPreparation
 
     func selectFunctionMethods(
         _ submission: ResearchFunctionMethodSelectionSubmission

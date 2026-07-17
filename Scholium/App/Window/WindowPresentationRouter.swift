@@ -2,14 +2,11 @@ import ScholiumContracts
 import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
-    case quickOpen
     case adaptiveContext
     case workspaceSetup
-    case frontmatter(path: String)
+    case frontmatter(FrontmatterPanelRoute)
     case researchFunction(ResearchFunctionPanelRoute)
     case attention
-    case qualityReview(path: String)
-    case researcherComments(path: String)
     case createCheckpoint
     case restoreCheckpoint
     case lifecycle(NoteLifecycleRequest)
@@ -18,15 +15,12 @@ enum WindowSheetRoute: Identifiable {
 
     var id: String {
         switch self {
-        case .quickOpen: "quick-open"
         case .adaptiveContext: "adaptive-context"
         case .workspaceSetup: "workspace-setup"
-        case .frontmatter(let path): "frontmatter:\(path)"
+        case .frontmatter(let route): route.id
         case .researchFunction(let route):
             "research-function:\(route.presentationID.uuidString.lowercased())"
         case .attention: "attention"
-        case .qualityReview(let path): "quality-review:\(path)"
-        case .researcherComments(let path): "researcher-comments:\(path)"
         case .createCheckpoint: "create-checkpoint"
         case .restoreCheckpoint: "restore-checkpoint"
         case .lifecycle(let request): "lifecycle:\(request.id)"
@@ -83,6 +77,30 @@ final class WindowPresentationRouter: ObservableObject {
     func dismissSheet(if routeID: String) {
         guard sheet?.id == routeID else { return }
         sheet = nil
+    }
+
+    func presentFrontmatter(
+        path: String,
+        returningTo researchFunction: ResearchFunctionPanelRoute? = nil
+    ) {
+        present(.frontmatter(FrontmatterPanelRoute(
+            path: path,
+            returnToResearchFunction: researchFunction
+        )))
+    }
+
+    func finishFrontmatter(_ route: FrontmatterPanelRoute) {
+        guard sheet?.id == route.id else { return }
+        if let continuation = route.returnToResearchFunction {
+            present(.researchFunction(continuation))
+        } else {
+            dismissSheet()
+        }
+    }
+
+    func suspendsResearchFunction(presentationID: UUID) -> Bool {
+        guard case .frontmatter(let route) = sheet else { return false }
+        return route.returnToResearchFunction?.presentationID == presentationID
     }
 
     func setWorkspaceSetupPresented(

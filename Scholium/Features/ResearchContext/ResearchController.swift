@@ -84,7 +84,7 @@ final class ResearchController: ObservableObject {
     func addComment(
         to note: VaultQualifiedNoteID,
         text: String,
-        anchor: ResearcherCommentAnchor? = nil,
+        anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
     ) async throws -> HumanReviewRecord {
         try await requireOperations().addComment(
@@ -404,12 +404,14 @@ final class ResearchController: ObservableObject {
     func requestPresentFunction(
         _ function: ResearchFunctionID,
         target: VaultNoteReference,
-        presentationID: UUID
+        presentationID: UUID,
+        focusCommentComposer: Bool = false
     ) {
         intentHandler(.presentResearchFunction(ResearchFunctionPanelRoute(
             target: target,
             function: function,
-            presentationID: presentationID
+            presentationID: presentationID,
+            focusCommentComposer: focusCommentComposer
         )))
     }
 

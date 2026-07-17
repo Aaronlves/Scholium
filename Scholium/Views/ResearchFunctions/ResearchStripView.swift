@@ -25,32 +25,17 @@ struct ResearchStripItem: Identifiable {
     }
 }
 
-struct ResearchStripSurfaceStyle: Equatable {
-    let usesOpaqueBackground: Bool
-    let separatorOpacity: Double
-
-    init(reduceTransparency: Bool) {
-        usesOpaqueBackground = reduceTransparency
-        separatorOpacity = reduceTransparency ? 0.72 : 0.28
-    }
-}
-
 private struct ResearchStripControlFocus: Hashable {
     let function: ResearchFunctionID
     let isCompact: Bool
 }
 
 struct ResearchStripView: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @FocusState private var focusedControl: ResearchStripControlFocus?
     @State private var originatingControl: ResearchStripControlFocus?
 
     let presentation: ResearchStripPresentation
     let select: (ResearchFunctionID) -> Void
-
-    private var surfaceStyle: ResearchStripSurfaceStyle {
-        ResearchStripSurfaceStyle(reduceTransparency: reduceTransparency)
-    }
 
     var body: some View {
         GlassEffectContainer(spacing: 4) {
@@ -71,21 +56,7 @@ struct ResearchStripView: View {
                 )
             }
         }
-        .background(
-            surfaceStyle.usesOpaqueBackground
-                ? Color(nsColor: .controlBackgroundColor)
-                : Color.clear,
-            in: Capsule()
-        )
-        .glassEffect(.regular, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(
-                    Color(nsColor: .separatorColor).opacity(surfaceStyle.separatorOpacity),
-                    lineWidth: 0.75
-                )
-                .allowsHitTesting(false)
-        }
+        .scholiumGlassSurface(.floatingControl, in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Research functions")
         .accessibilityIdentifier("scholium.researchStrip")
@@ -167,7 +138,7 @@ private struct ResearchStripButton: View {
         .focusable(interactions: .activate)
         .focused(focusedControl, equals: focusIdentity)
         .background(
-            isActive ? Color.accentColor.opacity(0.16) : Color.clear,
+            isActive ? ScholiumColorRole.accent.color.opacity(0.16) : Color.clear,
             in: Capsule()
         )
         .disabled(!item.isEnabled)

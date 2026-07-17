@@ -18,6 +18,11 @@ struct DiscoveryFilterState: Equatable, Sendable {
 }
 
 struct DiscoveryLibraryState: Equatable {
+    /// The vault hierarchy currently being browsed in Library. This is
+    /// deliberately independent of `DocumentController.selectedDocument` so a
+    /// researcher can inspect another Triptych facet without disturbing the
+    /// open document or its editor session.
+    var workspaceSlot: WorkspaceVaultSlot = .paperAnalysis
     var locationScope: NoteLocationScope = .workspace
     var filters = DiscoveryFilterState()
     var sortOrder: NoteSortOrder = .modifiedNewest
@@ -33,10 +38,19 @@ struct DiscoveryLibraryState: Equatable {
 
 struct DiscoverySearchState: Equatable, Sendable {
     var criteria = SearchWorkspaceState()
+    var ordinaryScope: SearchPresentationScope = .triptych
+    var invocation: SearchInvocation = .general
     var hits: [SearchHit] = []
     var relatedItems: [RelatedSearchItem] = []
     var errorMessage: String?
     var isRunning = false
+}
+
+/// The one Search surface can be entered as ordinary workspace search or as
+/// the temporary standard Find command for an open note.
+enum SearchInvocation: Equatable, Sendable {
+    case general
+    case findInNote(previousScope: SearchPresentationScope)
 }
 
 struct DiscoverySearchRequest: Equatable, Sendable {
@@ -66,18 +80,7 @@ struct DiscoveryLifecycleRequest: Equatable, Sendable {
     let scope: NoteLocationScope
 }
 
-struct DiscoveryQuickOpenState: Equatable, Sendable {
-    var query = ""
-    var results: [WorkspaceCatalogNote] = []
-    var selectedResultID: WorkspaceCatalogNote.ID?
-}
-
-struct DiscoveryQuickOpenRequest: Equatable, Sendable {
-    let id: UUID
-    let query: String
-}
-
-/// Per-window owner for Library, Search, and Quick Open presentation state.
+/// Per-window owner for Library and Search presentation state.
 /// It accepts immutable results from Application operations and emits only
 /// closed `WindowIntent` values for cross-feature routing.
 @MainActor
@@ -86,11 +89,9 @@ final class DiscoveryController: ObservableObject {
 
     @Published private(set) var library: DiscoveryLibraryState
     @Published private(set) var search = DiscoverySearchState()
-    @Published private(set) var quickOpen = DiscoveryQuickOpenState()
 
     private var activeLifecycleRequestID: UUID?
     private var activeSearchRequestID: UUID?
-    private var activeQuickOpenRequestID: UUID?
     private let intentHandler: IntentHandler
     private var operations: (any DiscoveryUseCases)?
 
@@ -109,7 +110,6 @@ final class DiscoveryController: ObservableObject {
     func unbind() {
         operations = nil
         cancelSearch()
-        resetQuickOpen()
     }
 
     func discoverySnapshot() async throws -> WorkspaceDiscoverySnapshot {
@@ -201,15 +201,14 @@ final class DiscoveryController: ObservableObject {
         }
     }
 
-    func quickOpenResults(
-        query: String,
-        limit: Int = 40
-    ) async throws -> [WorkspaceCatalogNote] {
-        try await requireOperations().quickOpen(query: query, limit: limit)
-    }
-
     func selectLocationScope(_ scope: NoteLocationScope) {
         library.locationScope = scope
+    }
+
+    func selectWorkspaceSlot(_ slot: WorkspaceVaultSlot) {
+        library.workspaceSlot = slot
+        library.locationScope = .workspace
+        dismissLifecycleListing()
     }
 
     func replaceFilters(_ filters: DiscoveryFilterState) {
@@ -281,22 +280,88 @@ final class DiscoveryController: ObservableObject {
     }
 
     func replaceSearchCriteria(_ criteria: SearchWorkspaceState) {
+        let scope = criteria.scope.canonical
         search.criteria = SearchWorkspaceState(
             query: criteria.query,
-            scope: criteria.scope.canonical,
+            scope: scope,
             selectedRoles: criteria.selectedRoles,
             selectedResultID: criteria.selectedResultID
+        )
+        search.ordinaryScope = scope
+        search.invocation = .general
+        invalidateSearchProjection()
+    }
+
+    /// Clears transient results and installs the invocation-specific scope
+    /// before the shared overlay appears.
+    func presentSearch(_ invocation: SearchInvocation) {
+        activeSearchRequestID = nil
+        search.invocation = invocation
+        search.criteria.query = ""
+        search.criteria.selectedResultID = nil
+        search.hits = []
+        search.relatedItems = []
+        search.errorMessage = nil
+        search.isRunning = false
+        switch invocation {
+        case .general:
+            search.criteria.scope = search.ordinaryScope.canonical
+        case .findInNote(let previousScope):
+            search.ordinaryScope = previousScope.canonical
+            search.criteria.scope = .thisNote
+        }
+    }
+
+    /// Dismissal retains only the ordinary scope. Query, selection, results,
+    /// errors, and the active generation are deliberately transient.
+    func dismissSearch() {
+        activeSearchRequestID = nil
+        let ordinaryScope: SearchPresentationScope = switch search.invocation {
+        case .general:
+            search.ordinaryScope.canonical
+        case .findInNote(let previousScope):
+            previousScope.canonical
+        }
+        search = DiscoverySearchState(
+            criteria: SearchWorkspaceState(scope: ordinaryScope),
+            ordinaryScope: ordinaryScope,
+            invocation: .general
         )
     }
 
     func updateSearchQuery(_ query: String) {
         search.criteria.query = query
-        search.criteria.selectedResultID = nil
+        invalidateSearchProjection()
     }
 
     func selectSearchScope(_ scope: SearchPresentationScope) {
-        search.criteria.scope = scope.canonical
+        let canonical = scope.canonical
+        search.criteria.scope = canonical
         search.criteria.selectedResultID = nil
+        switch search.invocation {
+        case .general:
+            search.ordinaryScope = canonical
+        case .findInNote:
+            // An explicit scope choice converts temporary Find into ordinary
+            // Search so closing it must not restore an older scope.
+            search.ordinaryScope = canonical
+            search.invocation = .general
+        }
+        invalidateSearchProjection()
+    }
+
+    /// A Search projection is meaningful only for the exact query and scope
+    /// that produced it. Remove it synchronously while the replacement request
+    /// is debounced so a visible row can never route through stale criteria.
+    private func invalidateSearchProjection() {
+        activeSearchRequestID = nil
+        search.criteria.selectedResultID = nil
+        search.hits = []
+        search.relatedItems = []
+        search.errorMessage = nil
+        search.isRunning = !search.criteria.query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
     }
 
     @discardableResult
@@ -345,8 +410,7 @@ final class DiscoveryController: ObservableObject {
     }
 
     func cancelSearch() {
-        activeSearchRequestID = nil
-        search = DiscoverySearchState(criteria: search.criteria)
+        dismissSearch()
     }
 
     func selectSearchResult(_ id: String?) {
@@ -357,75 +421,41 @@ final class DiscoveryController: ObservableObject {
         isCurrent(request)
     }
 
-    @discardableResult
-    func beginQuickOpen(_ query: String) -> DiscoveryQuickOpenRequest {
-        let request = DiscoveryQuickOpenRequest(id: UUID(), query: query)
-        activeQuickOpenRequestID = request.id
-        quickOpen.query = query
-        quickOpen.results = []
-        quickOpen.selectedResultID = nil
-        return request
-    }
-
-    func updateQuickOpenQuery(_ query: String) {
-        quickOpen.query = query
-    }
-
-    func receiveQuickOpenResults(
-        _ results: [WorkspaceCatalogNote],
-        for request: DiscoveryQuickOpenRequest
-    ) {
-        guard activeQuickOpenRequestID == request.id,
-              quickOpen.query == request.query else { return }
-        quickOpen.results = results
-        quickOpen.selectedResultID = results.first?.id
-    }
-
-    func selectQuickOpenResult(_ id: WorkspaceCatalogNote.ID?) {
-        quickOpen.selectedResultID = id
-    }
-
-    func moveQuickOpenSelection(by delta: Int) {
-        guard !quickOpen.results.isEmpty else { return }
-        let current = quickOpen.selectedResultID.flatMap { selectedID in
-            quickOpen.results.firstIndex(where: { $0.id == selectedID })
-        } ?? 0
-        let next = min(quickOpen.results.count - 1, max(0, current + delta))
-        quickOpen.selectedResultID = quickOpen.results[next].id
-    }
-
-    func resetQuickOpen() {
-        activeQuickOpenRequestID = nil
-        quickOpen = DiscoveryQuickOpenState()
-    }
-
     func reset() {
         activeLifecycleRequestID = nil
         activeSearchRequestID = nil
-        activeQuickOpenRequestID = nil
-        library = DiscoveryLibraryState(sortOrder: library.sortOrder)
-        search = DiscoverySearchState()
-        quickOpen = DiscoveryQuickOpenState()
+        library = DiscoveryLibraryState(
+            workspaceSlot: library.workspaceSlot,
+            sortOrder: library.sortOrder
+        )
+        let ordinaryScope = search.ordinaryScope
+        search = DiscoverySearchState(
+            criteria: SearchWorkspaceState(scope: ordinaryScope),
+            ordinaryScope: ordinaryScope
+        )
     }
 
     func requestOpen(
         _ reference: VaultNoteReference,
         sourceLocator: SourceLocator? = nil,
-        inNewTab: Bool = false
+        disposition: WindowOpenDisposition = .replaceCurrent
     ) {
         intentHandler(.openDocument(WindowDocumentRoute(
             reference: reference,
             sourceLocator: sourceLocator,
-            opensInNewTab: inNewTab
+            disposition: disposition
         )))
     }
 
-    func requestOpen(_ result: SearchResultSelection, inNewTab: Bool = false) {
+    func requestOpen(
+        _ result: SearchResultSelection,
+        disposition: WindowOpenDisposition = .replaceCurrent
+    ) {
         var route = result.documentRoute
         route = WindowDocumentRoute(
             reference: route.reference,
             sourceLocator: route.sourceLocator,
-            opensInNewTab: inNewTab
+            disposition: disposition
         )
         intentHandler(.openDocument(route))
     }

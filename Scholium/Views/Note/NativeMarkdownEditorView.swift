@@ -330,7 +330,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         styledSelectionRanges = selections.map(\.rangeValue)
         let source = storage.string as NSString
         let fullRange = NSRange(location: 0, length: source.length)
-        let baseFont = readingFont(size: ScholiumTypography.readingBodySize)
+        let baseFont = ScholiumTypography.body(scale: CGFloat(textScale))
         let baseParagraph = NSMutableParagraphStyle()
         baseParagraph.lineSpacing = scaled(4)
         baseParagraph.paragraphSpacing = scaled(5)
@@ -592,8 +592,8 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             let content = match.range(at: 1)
             storage.addAttribute(
                 .font,
-                value: readingFont(
-                    size: ScholiumTypography.readingBodySize,
+                value: ScholiumTypography.body(
+                    scale: CGFloat(textScale),
                     bold: true
                 ),
                 range: content
@@ -602,8 +602,8 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
             hide(NSRange(location: NSMaxRange(content), length: NSMaxRange(match.range) - NSMaxRange(content)), in: storage, revealWithin: match.range)
         }
 
-        let italicFont = readingFont(
-            size: ScholiumTypography.readingBodySize,
+        let italicFont = ScholiumTypography.body(
+            scale: CGFloat(textScale),
             italic: true
         )
         forEachMatch(#"(?<!\*)\*([^*\n]+)\*(?!\*)"#, in: source, range: range) { match in
@@ -616,7 +616,7 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         forEachMatch(#"`([^`\n]+)`"#, in: source, range: range) { match in
             let content = match.range(at: 1)
             storage.addAttributes([
-                .font: monospaceFont(size: 14),
+                .font: ScholiumTypography.exactSource(scale: CGFloat(textScale)),
                 .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.16),
             ], range: content)
             hide(NSRange(location: match.range.location, length: 1), in: storage, revealWithin: match.range)
@@ -648,8 +648,8 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         storage: NSTextStorage,
         baseFont: NSFont
     ) {
-        let quoteFont = readingFont(
-            size: ScholiumTypography.readingBodySize,
+        let quoteFont = ScholiumTypography.body(
+            scale: CGFloat(textScale),
             italic: true
         )
         forEachMatch(#"(?m)^(\s*>\s?)(.*)$"#, in: source, range: range) { match in
@@ -672,16 +672,16 @@ final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
     private func styleHeadings(in source: NSString, range: NSRange, storage: NSTextStorage) {
         forEachMatch(#"(?m)^(\*\*)?(#{1,6}\s+)(.+?)(\*\*)?$"#, in: source, range: range) { match in
             let level = min(6, max(1, match.range(at: 2).length - 1))
-            let sizes: [CGFloat] = [32, 27, 23, 20, 18.5, 17]
+            guard let headingLevel = ScholiumTypography.HeadingLevel(rawValue: level) else { return }
             let content = match.range(at: 3)
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = scaled(2)
             paragraph.paragraphSpacingBefore = scaled(level <= 2 ? 18 : 12)
             paragraph.paragraphSpacing = scaled(level <= 2 ? 10 : 7)
             storage.addAttributes([
-                .font: readingFont(
-                    size: sizes[level - 1],
-                    bold: true
+                .font: ScholiumTypography.heading(
+                    level: headingLevel,
+                    scale: CGFloat(textScale)
                 ),
                 .paragraphStyle: paragraph,
             ], range: content)

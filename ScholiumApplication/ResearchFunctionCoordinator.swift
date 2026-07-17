@@ -38,6 +38,13 @@ public actor ResearchFunctionCoordinator {
         return try await handle.prepareResearchFunction(request)
     }
 
+    public func prepareAutomaticFidelity(
+        parentRunID: UUID
+    ) async throws -> AutomaticFidelityPreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareAutomaticFidelity(parentRunID: parentRunID)
+    }
+
     public func selectFunctionMethods(
         _ submission: ResearchFunctionMethodSelectionSubmission
     ) async throws -> ResearchFunctionPreparation {
@@ -219,12 +226,53 @@ extension WorkspaceHandle {
         function: ResearchFunctionID
     ) async throws -> [ResearchFunctionMaterialCandidate] {
         try requireActive()
+        guard function != .review else {
+            throw ResearchFunctionContractError.humanReviewMustUseRecordAPI
+        }
         _ = try await validateResearchFunctionTarget(target, expected: target.fingerprint)
         guard function.allowedTargetRoles.contains(target.role) else {
             throw ResearchFunctionContractError.invalidTargetRole(
                 function: function,
                 role: target.role
             )
+        }
+
+        let catalogByLocation = Dictionary(uniqueKeysWithValues:
+            currentSnapshot.discovery.catalog.notes.map { note in
+                (
+                    VaultQualifiedNoteID(
+                        vaultID: note.reference.vaultID,
+                        relativePath: note.reference.relativePath
+                    ),
+                    note
+                )
+            }
+        )
+        var suggestionsByLocation: [
+            VaultQualifiedNoteID: Set<ResearchFunctionMaterialSuggestionReason>
+        ] = [:]
+        if let graph = currentSnapshot.discovery.catalog.graph {
+            for edge in graph.outgoing[target.note, default: []] {
+                guard let destination = edge.destination?.note,
+                      destination != target.note else { continue }
+                suggestionsByLocation[destination, default: []].insert(
+                    ResearchFunctionMaterialSuggestionReason(
+                        kind: .linkedFromTarget,
+                        sourceNote: target.note,
+                        sourceSpan: edge.occurrence.span
+                    )
+                )
+            }
+            for edge in graph.incoming[target.note, default: []] {
+                guard edge.source != target.note else { continue }
+                suggestionsByLocation[edge.source, default: []].insert(
+                    ResearchFunctionMaterialSuggestionReason(
+                        kind: .linksDirectlyToTarget,
+                        sourceNote: edge.source,
+                        sourceSpan: edge.occurrence.span
+                    )
+                )
+            }
         }
 
         return currentSnapshot.vaults.flatMap(\.documents).compactMap { note in
@@ -245,13 +293,22 @@ extension WorkspaceHandle {
                 title: title
             )
             _ = vault // Keeps candidate creation explicitly vault-bound.
-            return ResearchFunctionMaterialCandidate(material: material)
+            return ResearchFunctionMaterialCandidate(
+                material: material,
+                aliases: catalogByLocation[note.id]?.aliases ?? [],
+                suggestionReasons: Array(suggestionsByLocation[note.id] ?? [])
+            )
         }.sorted { lhs, rhs in
             if lhs.material.role != rhs.material.role {
                 return lhs.material.role.rawValue < rhs.material.role.rawValue
             }
-            return lhs.material.title.localizedStandardCompare(rhs.material.title)
-                == .orderedAscending
+            let titleOrder = lhs.material.title.localizedStandardCompare(
+                rhs.material.title
+            )
+            if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+            return lhs.material.note.relativePath.localizedStandardCompare(
+                rhs.material.note.relativePath
+            ) == .orderedAscending
         }
     }
 
@@ -262,13 +319,105 @@ extension WorkspaceHandle {
     ) async throws -> ResearchFunctionPreparation {
         try await prepareResearchFunction(
             request,
-            dialogueOptions: nil
+            dialogueOptions: nil,
+            fidelityInvocation: request.function == .fidelity ? .manual : nil
+        )
+    }
+
+    /// Prepares, but never executes or completes, the revision-bound Fidelity
+    /// child required after a Develop or Revise completion that actually
+    /// modified its Target. Repeated calls are idempotent for an existing
+    /// current automatic child, and exact completed manual evidence remains
+    /// reusable through the ordinary evidence key.
+    func prepareAutomaticFidelity(
+        parentRunID: UUID
+    ) async throws -> AutomaticFidelityPreparation {
+        try requireActive()
+        let records = try await authoritativeFunctionRecords()
+        guard let parent = records.first(where: { $0.id == parentRunID }),
+              [.develop, .revise].contains(parent.snapshot.request.function),
+              let handoff = parent.snapshot.fidelityHandoff,
+              handoff.required,
+              let parentCompletion = parent.completion else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Automatic Fidelity requires a completed Develop or Revise run with a final-revision handoff."
+            )
+        }
+        guard parentCompletion.didModifyTarget,
+              parentCompletion.targetFingerprint != handoff.preparedTargetFingerprint else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Automatic Fidelity requires a Develop or Revise run that actually modified its Target."
+            )
+        }
+        guard [.awaitingFidelity, .unverified].contains(parentCompletion.state) else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Automatic Fidelity can be prepared only while the parent run is awaiting valid final-revision evidence."
+            )
+        }
+
+        let parentRequest = parent.snapshot.request
+        if let existing = records.first(where: { record in
+            guard case .automatic(let recordedParentID)? =
+                    record.snapshot.resolvedFidelityInvocation,
+                  recordedParentID == parentRunID,
+                  record.snapshot.request.target.noteID == parentRequest.target.noteID,
+                  record.snapshot.request.target.note == parentRequest.target.note,
+                  record.snapshot.request.target.role == parentRequest.target.role,
+                  record.snapshot.request.target.lifecycle == parentRequest.target.lifecycle,
+                  record.snapshot.request.target.fingerprint
+                    == parentCompletion.targetFingerprint,
+                  record.snapshot.request.materials
+                    == parentRequest.materials,
+                  record.snapshot.request.scope == parentRequest.scope,
+                  Set(record.snapshot.request.commentIDs)
+                    == Set(parentRequest.commentIDs),
+                  record.snapshot.request.checks == handoff.checks else {
+                return false
+            }
+            return record.completion?.state != .stale
+                && record.completion?.state != .cancelled
+        }) {
+            return AutomaticFidelityPreparation(
+                parentRunID: parentRunID,
+                preparation: ResearchFunctionPreparation(
+                    snapshot: existing.snapshot,
+                    instructions: existing.preparedInstructions ?? "",
+                    state: existing.completion?.state ?? .prepared
+                )
+            )
+        }
+
+        let finalTarget = ResearchFunctionTarget(
+            noteID: parentRequest.target.noteID,
+            note: parentRequest.target.note,
+            role: parentRequest.target.role,
+            lifecycle: parentRequest.target.lifecycle,
+            fingerprint: parentCompletion.targetFingerprint,
+            title: parentRequest.target.title
+        )
+        let request = ResearchFunctionRequest(
+            function: .fidelity,
+            target: finalTarget,
+            materials: parentRequest.materials,
+            scope: parentRequest.scope,
+            checks: handoff.checks,
+            commentIDs: parentRequest.commentIDs
+        )
+        let preparation = try await prepareResearchFunction(
+            request,
+            dialogueOptions: nil,
+            fidelityInvocation: .automatic(parentRunID: parentRunID)
+        )
+        return AutomaticFidelityPreparation(
+            parentRunID: parentRunID,
+            preparation: preparation
         )
     }
 
     private func prepareResearchFunction(
         _ request: ResearchFunctionRequest,
-        dialogueOptions: DialogueFunctionOptions?
+        dialogueOptions: DialogueFunctionOptions?,
+        fidelityInvocation: FidelityInvocationKind? = nil
     ) async throws -> ResearchFunctionPreparation {
         try requireActive()
         try request.validate()
@@ -371,6 +520,7 @@ extension WorkspaceHandle {
             requiredChildFunctions: handoff == nil ? [] : [.fidelity],
             evidenceRevisions: evidenceRevisions,
             fidelityHandoff: handoff,
+            fidelityInvocation: fidelityInvocation,
             confirmationToken: confirmationToken,
             preparedAt: preparedAt
         )
@@ -406,6 +556,18 @@ extension WorkspaceHandle {
             fidelityHandoffChecks: automaticFidelityChecks
         )
         if request.function == .dialogue {
+            let responseProfile: DialogueResponseProfile?
+            if let legacyProfile = dialogueOptions?.responseProfile {
+                responseProfile = legacyProfile
+            } else if let modules = request.dialogueResponseModules {
+                let storedProfile = try await services.controlStore
+                    .dialogueResponseProfile()
+                responseProfile = storedProfile.updated(
+                    modules: modules.map(\.rawValue)
+                )
+            } else {
+                responseProfile = nil
+            }
             let preparation: DialoguePreparation
             var refreshWarning: String?
             do {
@@ -414,7 +576,7 @@ extension WorkspaceHandle {
                     selectedNotes: ([target] + materials).map(\.reference),
                     includedCommentIDs: Set(request.commentIDs),
                     requestedDestination: dialogueOptions?.requestedDestination,
-                    responseProfile: dialogueOptions?.responseProfile,
+                    responseProfile: responseProfile,
                     dialogueID: runID,
                     functionSnapshot: snapshot,
                     skillInstructionsOverride: functionInstructions
@@ -572,6 +734,7 @@ extension WorkspaceHandle {
             preparedOutput: preflight.preparedOutput,
             evidenceRevisions: preflight.evidenceRevisions,
             fidelityHandoff: preflight.fidelityHandoff,
+            fidelityInvocation: preflight.fidelityInvocation,
             confirmationToken: preflight.confirmationToken,
             preparedAt: preflight.preparedAt
         )
@@ -1000,6 +1163,11 @@ extension WorkspaceHandle {
                     "A write-capable Research Function may select at most one final Fidelity child run."
                 )
             }
+            guard submission.didModifyTarget || submittedChildRunIDs.isEmpty else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "An unchanged Develop or Revise run cannot select final Fidelity evidence."
+                )
+            }
         case .manuscript:
             break
         case .dialogue, .review, .fidelity, .critique:
@@ -1074,6 +1242,9 @@ extension WorkspaceHandle {
             state = manuscriptFidelity.state
         } else if let linkedFinalFidelity {
             state = linkedFinalFidelity.state
+        } else if [.develop, .revise].contains(snapshot.request.function),
+                  !submission.didModifyTarget {
+            state = .complete
         } else if requiredChecks.isEmpty {
             state = .complete
         } else if submission.fidelityOutcomes.isEmpty {
@@ -1127,6 +1298,21 @@ extension WorkspaceHandle {
             completedAt: submission.submittedAt
         )
         try await persistFunctionCompletion(completion, in: stored)
+
+        // The substantive completion is authoritative before orchestration
+        // begins. Automatic Fidelity preparation is therefore recoverable:
+        // failure leaves the parent truthfully awaiting Fidelity, and the
+        // explicit preparation API can retry without repeating agent work.
+        // A newly prepared child remains pending; exact completed evidence can
+        // be linked immediately because it has already passed normal child
+        // validation and does not claim a new audit occurred.
+        if let advanced = await advanceWithAutomaticFidelityIfAvailable(
+            completion: completion,
+            submission: submission
+        ) {
+            return advanced
+        }
+
         let refreshWarning = try await recoverableResearchRefreshWarning {
             try await refreshAfterCommittedOperation(
                 "The Research Function completion",
@@ -1150,6 +1336,40 @@ extension WorkspaceHandle {
             completedAt: completion.completedAt,
             derivedRefreshWarning: refreshWarning
         )
+    }
+
+    private func advanceWithAutomaticFidelityIfAvailable(
+        completion: ResearchFunctionCompletion,
+        submission: ResearchFunctionCompletionSubmission
+    ) async -> ResearchFunctionCompletion? {
+        guard completion.state == .awaitingFidelity,
+              completion.didModifyTarget,
+              [.develop, .revise].contains(completion.function),
+              (submission.childRunIDs ?? []).isEmpty else { return nil }
+        do {
+            let automatic = try await prepareAutomaticFidelity(
+                parentRunID: completion.runID
+            )
+            guard [.complete, .unverified].contains(automatic.state) else {
+                return nil
+            }
+            return try await completeResearchFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: submission.runID,
+                    confirmationToken: submission.confirmationToken,
+                    finalTargetFingerprint: submission.finalTargetFingerprint,
+                    finalMaterialFingerprints: submission.finalMaterialFingerprints,
+                    summary: submission.summary,
+                    didModifyTarget: submission.didModifyTarget,
+                    outputFingerprint: submission.outputFingerprint,
+                    fidelityOutcomes: submission.fidelityOutcomes,
+                    childRunIDs: [automatic.effectiveFidelityRunID],
+                    submittedAt: submission.submittedAt
+                )
+            )
+        } catch {
+            return nil
+        }
     }
 
     func cancelResearchFunction(runID: UUID) async throws {
@@ -1703,6 +1923,14 @@ extension WorkspaceHandle {
               !completion.fidelityOutcomes.isEmpty else {
             throw ResearchFunctionContractError.invalidCompletion(
                 "The selected final Fidelity child is unavailable, incomplete, stale, or not an independent Fidelity run."
+            )
+        }
+
+        if case .automatic(let recordedParentRunID)? =
+            child.snapshot.resolvedFidelityInvocation,
+           recordedParentRunID != parent.runID {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The selected automatic Fidelity child belongs to another parent run."
             )
         }
 

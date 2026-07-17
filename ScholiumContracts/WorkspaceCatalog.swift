@@ -245,50 +245,6 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
     public let attention: [AttentionQueueItem]
     public let graph: GraphSnapshot?
 
-    /// Returns deterministic Triptych-wide navigation candidates without
-    /// borrowing full-text Search ranking or evidential semantics.
-    public func quickOpenResults(
-        for query: String,
-        limit: Int = 40
-    ) -> [WorkspaceCatalogNote] {
-        let needle = Self.quickOpenComparable(
-            query.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-        let ranked = notes.compactMap { note -> (note: WorkspaceCatalogNote, rank: Int)? in
-            guard !needle.isEmpty else { return (note, 3) }
-            let path = note.reference.relativePath
-            let stem = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
-            let fields = [note.title, stem, path] + note.aliases
-            let rank = fields.compactMap { field -> Int? in
-                let comparable = Self.quickOpenComparable(field)
-                if comparable == needle { return 0 }
-                if comparable.hasPrefix(needle) { return 1 }
-                if comparable.contains(needle) { return 2 }
-                return nil
-            }.min()
-            return rank.map { (note, $0) }
-        }
-
-        return ranked.sorted { lhs, rhs in
-            if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
-            let lhsTitle = Self.quickOpenComparable(lhs.note.title)
-            let rhsTitle = Self.quickOpenComparable(rhs.note.title)
-            if lhsTitle != rhsTitle { return lhsTitle < rhsTitle }
-            let lhsRole = Self.quickOpenRoleRank(lhs.note.reference.vaultRole)
-            let rhsRole = Self.quickOpenRoleRank(rhs.note.reference.vaultRole)
-            if lhsRole != rhsRole { return lhsRole < rhsRole }
-            let lhsVault = Self.quickOpenComparable(lhs.note.reference.vaultName)
-            let rhsVault = Self.quickOpenComparable(rhs.note.reference.vaultName)
-            if lhsVault != rhsVault { return lhsVault < rhsVault }
-            let lhsPath = Self.quickOpenComparable(lhs.note.reference.relativePath)
-            let rhsPath = Self.quickOpenComparable(rhs.note.reference.relativePath)
-            if lhsPath != rhsPath { return lhsPath < rhsPath }
-            return lhs.note.reference.vaultID.uuidString < rhs.note.reference.vaultID.uuidString
-        }
-        .prefix(max(0, limit))
-        .map(\.note)
-    }
-
     /// Expands an exact Topic title or alias through direct resolved links.
     ///
     /// This is deliberately not semantic search: ambiguous concepts, fielded
@@ -307,11 +263,11 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
               !Self.looksLikeStructuredSearch(trimmed),
               let graph else { return [] }
 
-        let needle = Self.quickOpenComparable(trimmed)
+        let needle = Self.searchIdentityComparable(trimmed)
         let matchingConcepts = notes.filter { note in
             guard note.reference.vaultRole == .topicKnowledge else { return false }
             return ([note.title] + note.aliases).contains {
-                Self.quickOpenComparable($0) == needle
+                Self.searchIdentityComparable($0) == needle
             }
         }
         // Scholium does not guess which concept the researcher intended.
@@ -421,7 +377,7 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
         }
     }
 
-    private static func quickOpenComparable(_ value: String) -> String {
+    private static func searchIdentityComparable(_ value: String) -> String {
         value.folding(
             options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
             locale: Locale(identifier: "en_US_POSIX")
@@ -450,19 +406,19 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
     }
 
     private static func relatedSearchOrder(_ lhs: RelatedSearchItem, _ rhs: RelatedSearchItem) -> Bool {
-        let lhsTitle = quickOpenComparable(lhs.note.title)
-        let rhsTitle = quickOpenComparable(rhs.note.title)
+        let lhsTitle = searchIdentityComparable(lhs.note.title)
+        let rhsTitle = searchIdentityComparable(rhs.note.title)
         if lhsTitle != rhsTitle { return lhsTitle < rhsTitle }
-        let lhsRole = quickOpenRoleRank(lhs.note.reference.vaultRole)
-        let rhsRole = quickOpenRoleRank(rhs.note.reference.vaultRole)
+        let lhsRole = catalogRoleRank(lhs.note.reference.vaultRole)
+        let rhsRole = catalogRoleRank(rhs.note.reference.vaultRole)
         if lhsRole != rhsRole { return lhsRole < rhsRole }
-        let lhsPath = quickOpenComparable(lhs.note.reference.relativePath)
-        let rhsPath = quickOpenComparable(rhs.note.reference.relativePath)
+        let lhsPath = searchIdentityComparable(lhs.note.reference.relativePath)
+        let rhsPath = searchIdentityComparable(rhs.note.reference.relativePath)
         if lhsPath != rhsPath { return lhsPath < rhsPath }
         return lhs.note.reference.vaultID.uuidString < rhs.note.reference.vaultID.uuidString
     }
 
-    private static func quickOpenRoleRank(_ role: VaultRole) -> Int {
+    private static func catalogRoleRank(_ role: VaultRole) -> Int {
         switch role {
         case .sourceCorpus: 0
         case .topicKnowledge: 1

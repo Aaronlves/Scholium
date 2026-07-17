@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
 SCRATCH="${TMPDIR:-/tmp}/scholium-verification"
+DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
+export DEVELOPER_DIR
 rm -rf "${SCRATCH}"
 
 # The repository copy is the reviewable source of the protected Skill
@@ -96,7 +98,7 @@ fi
 # their already-established ResearchController adapters, so inspect only the
 # NoteContentView declaration rather than matching the entire file.
 if sed -n \
-  '/^struct NoteContentView: View/,/^private struct DocumentTabBar: View/p' \
+  '/^struct NoteContentView: View/,/^\/\/ MARK: - Note History/p' \
   "${ROOT}/Scholium/Views/Note/NoteContentView.swift" \
   | rg -n '\b(ResearchController|WindowModel)\b'; then
   echo "Research Strip ownership guard failed: NoteContentView received a window or Research feature root." >&2
@@ -211,4 +213,7 @@ if rg -n 'ScholiumCore' \
 fi
 
 "${ROOT}/Tools/Scripts/verify-workflow-cli.sh" "${SCRATCH}/debug/scholium"
+"${ROOT}/Tools/Scripts/verify-function-cli.sh" \
+  "${SCRATCH}/debug/scholium" \
+  "${SCRATCH}"
 swift build --package-path "${ROOT}" -c release --scratch-path "${SCRATCH}-release"

@@ -28,14 +28,12 @@ struct DocumentControllerConvergenceTests {
         dirty.installOpenedDocument(
             original,
             vaultName: "Works",
-            vaultRole: .draftProject,
-            inNewTab: false
+            vaultRole: .draftProject
         )
         clean.installOpenedDocument(
             original,
             vaultName: "Works",
-            vaultRole: .draftProject,
-            inNewTab: false
+            vaultRole: .draftProject
         )
 
         let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
@@ -45,14 +43,12 @@ struct DocumentControllerConvergenceTests {
         dirty.installOpenedDocument(
             external,
             vaultName: "Works",
-            vaultRole: .draftProject,
-            inNewTab: false
+            vaultRole: .draftProject
         )
         clean.installOpenedDocument(
             external,
             vaultName: "Works",
-            vaultRole: .draftProject,
-            inNewTab: false
+            vaultRole: .draftProject
         )
 
         let dirtySession = try #require(dirty.retainedSession(for: key))
@@ -82,8 +78,7 @@ struct DocumentControllerConvergenceTests {
         controller.installOpenedDocument(
             original,
             vaultName: "Works",
-            vaultRole: .draftProject,
-            inNewTab: false
+            vaultRole: .draftProject
         )
         let descriptor = try #require(controller.activeDocument)
         let session = controller.session(for: descriptor)
@@ -97,8 +92,7 @@ struct DocumentControllerConvergenceTests {
                 source: "draft\n"
             ),
             vaultName: "Works",
-            vaultRole: .draftProject,
-            inNewTab: false
+            vaultRole: .draftProject
         )
 
         let renamed = try #require(controller.activeDocument)
@@ -143,8 +137,8 @@ struct DocumentControllerConvergenceTests {
         )
         let boundaries = [
             (
-                name: "NoteTabView",
-                start: "struct NoteTabView: View {",
+                name: "DocumentFeatureView",
+                start: "struct DocumentFeatureView: View {",
                 end: "private struct DocumentSessionFallback: View {"
             ),
             (
@@ -155,7 +149,7 @@ struct DocumentControllerConvergenceTests {
             (
                 name: "NoteContentView",
                 start: "struct NoteContentView: View {",
-                end: "private enum DocumentTabStatus: Equatable {"
+                end: "// MARK: - Note History"
             ),
         ]
 

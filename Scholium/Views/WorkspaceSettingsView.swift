@@ -434,15 +434,249 @@ private struct PropertiesSettingsView: View {
     }
 }
 
+enum ResearchGuidanceStatusLoadState: Hashable {
+    case loading
+    case loaded
+    case unavailable
+}
+
+enum ResearchGuidanceAdvancedDestination: Hashable {
+    case citationMethod
+    case researchMethod(ResearchFunctionID)
+
+    var anchorID: String {
+        switch self {
+        case .citationMethod:
+            "scholium.researchGuidance.advanced.citationMethod"
+        case .researchMethod:
+            "scholium.researchGuidance.advanced.researchMethods"
+        }
+    }
+
+    var selectionID: String {
+        switch self {
+        case .citationMethod:
+            "citation-method"
+        case .researchMethod(let function):
+            "research-method:\(function.rawValue)"
+        }
+    }
+}
+
+struct ResearchGuidanceRepairPrompt: Identifiable, Hashable {
+    let message: String
+    let destination: ResearchGuidanceAdvancedDestination
+
+    var id: String { destination.selectionID }
+}
+
+enum ResearchGuidancePresentation {
+    static let configurableFunctions: [ResearchFunctionID] = [
+        .develop,
+        .critique,
+        .revise,
+        .fidelity,
+        .manuscript,
+    ]
+
+    static func repairPrompts(
+        methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus],
+        citationStatus: ResearchCitationMethodStatus?
+    ) -> [ResearchGuidanceRepairPrompt] {
+        var prompts: [ResearchGuidanceRepairPrompt] = []
+        if citationStatus?.issue != nil {
+            prompts.append(ResearchGuidanceRepairPrompt(
+                message: "Citation method configuration needs repair.",
+                destination: .citationMethod
+            ))
+        }
+        for function in configurableFunctions
+        where methodStatuses[function]?.issue != nil {
+            prompts.append(ResearchGuidanceRepairPrompt(
+                message: "\(function.interfaceTitle) method configuration needs repair.",
+                destination: .researchMethod(function)
+            ))
+        }
+        return prompts
+    }
+
+    static func ownershipLabel(for skill: ResearchSkillPackage) -> String {
+        skill.origin == .bundled ? "Built-in" : "Triptych"
+    }
+
+    static func statusLabel(
+        for skill: ResearchSkillPackage,
+        allSkills: [ResearchSkillPackage],
+        methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus],
+        citationStatus: ResearchCitationMethodStatus?,
+        loadState: ResearchGuidanceStatusLoadState
+    ) -> String {
+        guard skill.isValid else { return "Inactive until repaired" }
+        switch loadState {
+        case .loading:
+            return "Loading active status…"
+        case .unavailable:
+            return "Active status unavailable"
+        case .loaded:
+            break
+        }
+
+        let validMethodStatuses = configurableFunctions.compactMap {
+            methodStatuses[$0]
+        }.filter { $0.issue == nil }
+
+        if skill.isTriptychLocal {
+            let primaryFunctions = validMethodStatuses.compactMap { status in
+                status.selection.primaryPackageID == skill.id ? status.function : nil
+            }
+            let supplementalFunctions = validMethodStatuses.compactMap { status in
+                status.selection.supplementalPackageIDs.contains(skill.id)
+                    ? status.function
+                    : nil
+            }
+            let practiceFunctions = validMethodStatuses.compactMap { status in
+                status.selection.selectedPractices.contains { $0.packageID == skill.id }
+                    ? status.function
+                    : nil
+            }
+            let isCitationMethod = citationStatus?.issue == nil
+                && citationStatus?.activePackageID == skill.id
+                && citationStatus?.activeCitationStyle != nil
+            var bindings: [String] = []
+            if !primaryFunctions.isEmpty {
+                bindings.append("Primary for \(functionList(primaryFunctions))")
+            }
+            if !supplementalFunctions.isEmpty {
+                bindings.append("Supplement for \(functionList(supplementalFunctions))")
+            }
+            if !practiceFunctions.isEmpty {
+                bindings.append("Practice for \(functionList(practiceFunctions))")
+            }
+            if isCitationMethod {
+                bindings.append("Citation method for Fidelity")
+            }
+            if !bindings.isEmpty {
+                return "Bound — \(bindings.joined(separator: "; "))"
+            }
+        }
+
+        if skill.origin == .bundled,
+           skill.skillClass == .system,
+           !skill.automaticModes.isEmpty {
+            if skill.automaticModes.contains(.all) {
+                return "Active automatically"
+            }
+            return "Active automatically — \(skill.automaticModes.map(\.displayName).joined(separator: ", "))"
+        }
+
+        if skill.origin == .bundled, skill.skillClass == .workflow {
+            let defaultFunctions = validMethodStatuses.compactMap { status in
+                status.selection.primaryPackageID == nil && skill.supports(status.function)
+                    ? status.function
+                    : nil
+            }
+            if !defaultFunctions.isEmpty {
+                return "Active — \(functionList(defaultFunctions))"
+            }
+        }
+
+        if activePackageIDs(
+            in: allSkills,
+            methodStatuses: methodStatuses,
+            citationStatus: citationStatus
+        ).contains(skill.id) {
+            return "Active dependency"
+        }
+        return "Not active"
+    }
+
+    private static func functionList(_ functions: [ResearchFunctionID]) -> String {
+        let selected = Set(functions)
+        return configurableFunctions
+            .filter { selected.contains($0) }
+            .map(\.interfaceTitle)
+            .joined(separator: ", ")
+    }
+
+    private static func activePackageIDs(
+        in skills: [ResearchSkillPackage],
+        methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus],
+        citationStatus: ResearchCitationMethodStatus?
+    ) -> Set<String> {
+        var packagesByID: [String: ResearchSkillPackage] = [:]
+        for skill in skills where packagesByID[skill.id] == nil {
+            packagesByID[skill.id] = skill
+        }
+        var seeds = Set(skills.filter {
+            $0.origin == .bundled
+                && $0.skillClass == .system
+                && $0.isValid
+                && !$0.automaticModes.isEmpty
+        }.map(\.id))
+
+        for status in methodStatuses.values where status.issue == nil {
+            if let primaryPackageID = status.selection.primaryPackageID {
+                seeds.insert(primaryPackageID)
+            } else {
+                for skill in skills where skill.origin == .bundled
+                    && skill.skillClass == .workflow
+                    && skill.isValid
+                    && skill.supports(status.function) {
+                    seeds.insert(skill.id)
+                }
+            }
+            seeds.formUnion(status.selection.supplementalPackageIDs)
+            seeds.formUnion(status.selection.selectedPractices.map(\.packageID))
+        }
+        if citationStatus?.issue == nil,
+           citationStatus?.activeCitationStyle != nil,
+           let activePackageID = citationStatus?.activePackageID {
+            seeds.insert(activePackageID)
+        }
+
+        var active: Set<String> = []
+        func include(_ packageID: String) {
+            guard active.insert(packageID).inserted,
+                  let package = packagesByID[packageID] else { return }
+            for dependencyID in package.requiredSkillIDs {
+                include(dependencyID)
+            }
+        }
+        for packageID in seeds {
+            include(packageID)
+        }
+        return active
+    }
+}
+
 private struct ResearchGuidanceSettingsView: View {
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @AppStorage("scholium.settings.researchGuidanceCollection") private var collection = "prompt-templates"
+    @AppStorage("scholium.settings.researchGuidancePromptSection") private var promptSection = "templates"
+    @State private var showsAdvanced = false
+    @State private var selectedMethodFunction: ResearchFunctionID = .develop
+    @State private var methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus] = [:]
+    @State private var citationStatus: ResearchCitationMethodStatus?
+    @State private var statusLoadState: ResearchGuidanceStatusLoadState = .loading
+    @State private var statusRefreshGeneration = 0
+
+    private var repairPrompts: [ResearchGuidanceRepairPrompt] {
+        ResearchGuidancePresentation.repairPrompts(
+            methodStatuses: methodStatuses,
+            citationStatus: citationStatus
+        )
+    }
+
+    private var statusLoadIdentity: String {
+        let workspace = settingsModel.activeTriptychServicesID?.uuidString ?? "none"
+        return "\(workspace):\(collection):\(statusRefreshGeneration)"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Picker("Research Guidance Collection", selection: $collection) {
                 Text("Prompt Templates").tag("prompt-templates")
                 Text("Skills").tag("skills")
-                Text("Dialogue Response").tag("dialogue-response")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -451,29 +685,175 @@ private struct ResearchGuidanceSettingsView: View {
             .accessibilityIdentifier("scholium.researchGuidance.collection")
             Divider()
             if collection == "skills" {
-                VStack(spacing: 0) {
-                    ResearchCitationMethodSettingsView()
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                    Divider()
-                    ResearchFunctionMethodSettingsView()
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                    Divider()
-                    // A SKILL.md can be thousands of lines long. Keep its editor
-                    // inside the finite Settings viewport instead of allowing the
-                    // text view's intrinsic document height to expand and clip the
-                    // collection picker and package list.
-                    GeometryReader { proxy in
-                        ResearchSkillsSettingsView()
+                ScrollViewReader { advancedProxy in
+                    VStack(spacing: 0) {
+                        VStack(spacing: 0) {
+                            Button {
+                                showsAdvanced.toggle()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: showsAdvanced ? "chevron.down" : "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .accessibilityHidden(true)
+                                    Text("Advanced")
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 12)
+                            .frame(height: 38)
+                            .accessibilityValue(showsAdvanced ? "Expanded" : "Collapsed")
+                            .accessibilityHint("Shows research methods, bindings, routing, evolution, and recovery")
+                            .accessibilityIdentifier("scholium.researchGuidance.advanced")
+
+                            if !repairPrompts.isEmpty {
+                                VStack(spacing: 6) {
+                                    ForEach(repairPrompts) { prompt in
+                                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                            Label(
+                                                prompt.message,
+                                                systemImage: "exclamationmark.triangle"
+                                            )
+                                            .font(.caption)
+                                            .foregroundStyle(ScholiumColorRole.attention.color)
+                                            Spacer(minLength: 8)
+                                            Button("Repair…") {
+                                                openAdvanced(prompt.destination, with: advancedProxy)
+                                            }
+                                            .accessibilityHint(
+                                                "Opens the issue-specific Advanced recovery destination"
+                                            )
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 8)
+                                .accessibilityIdentifier(
+                                    "scholium.researchGuidance.repairSummary"
+                                )
+                            }
+
+                            if showsAdvanced {
+                                ScrollView {
+                                    VStack(spacing: 0) {
+                                        ResearchCitationMethodSettingsView { updated in
+                                            citationStatus = updated
+                                        }
+                                        .padding(.vertical, 8)
+                                        .id(ResearchGuidanceAdvancedDestination.citationMethod.anchorID)
+                                        Divider()
+                                        ResearchFunctionMethodSettingsView(
+                                            selectedFunction: $selectedMethodFunction
+                                        ) { updated in
+                                            methodStatuses[updated.function] = updated
+                                        }
+                                        .padding(.vertical, 8)
+                                        .id(
+                                            ResearchGuidanceAdvancedDestination
+                                                .researchMethod(selectedMethodFunction)
+                                                .anchorID
+                                        )
+                                    }
+                                    .padding(.leading, 18)
+                                }
+                                .frame(maxHeight: 180)
+                            }
+                        }
+                        Divider()
+                        // A SKILL.md can be thousands of lines long. Keep its editor
+                        // inside the finite Settings viewport instead of allowing the
+                        // text view's intrinsic document height to expand and clip the
+                        // collection picker and package list.
+                        GeometryReader { proxy in
+                            ResearchSkillsSettingsView(
+                                showsAdvanced: $showsAdvanced,
+                                methodStatuses: methodStatuses,
+                                citationStatus: citationStatus,
+                                statusLoadState: statusLoadState,
+                                refreshGuidanceStatus: {
+                                    statusRefreshGeneration &+= 1
+                                }
+                            )
                             .frame(width: proxy.size.width, height: proxy.size.height)
+                        }
                     }
                 }
-            } else if collection == "dialogue-response" {
-                DialogueResponseSettingsView()
             } else {
-                PromptTemplateSettingsView()
+                VStack(spacing: 0) {
+                    Picker("Prompt Guidance Section", selection: $promptSection) {
+                        Text("Templates").tag("templates")
+                        Text("Dialogue Defaults").tag("dialogue-response")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 300)
+                    .padding(.vertical, 8)
+                    .accessibilityIdentifier("scholium.researchGuidance.promptSection")
+                    Divider()
+                    if promptSection == "dialogue-response" {
+                        DialogueResponseSettingsView()
+                    } else {
+                        PromptTemplateSettingsView()
+                    }
+                }
             }
+        }
+        .onAppear {
+            // Migrate the former third peer collection into the subordinate
+            // Prompt Templates section without discarding the researcher's
+            // last visible destination.
+            if collection == "dialogue-response" {
+                collection = "prompt-templates"
+                promptSection = "dialogue-response"
+            }
+        }
+        .task(id: statusLoadIdentity) {
+            guard collection == "skills" else { return }
+            await reloadGuidanceStatus()
+        }
+    }
+
+    private func openAdvanced(
+        _ destination: ResearchGuidanceAdvancedDestination,
+        with proxy: ScrollViewProxy
+    ) {
+        if case .researchMethod(let function) = destination {
+            selectedMethodFunction = function
+        }
+        showsAdvanced = true
+        DispatchQueue.main.async {
+            proxy.scrollTo(destination.anchorID, anchor: .top)
+        }
+    }
+
+    private func reloadGuidanceStatus() async {
+        guard let workspaceID = settingsModel.activeTriptychServicesID else {
+            methodStatuses = [:]
+            citationStatus = nil
+            statusLoadState = .unavailable
+            return
+        }
+        statusLoadState = .loading
+        do {
+            var loadedMethods: [ResearchFunctionID: ResearchFunctionSkillBindingStatus] = [:]
+            for function in ResearchGuidancePresentation.configurableFunctions {
+                loadedMethods[function] = try await settingsModel
+                    .researchFunctionSkillBindingStatus(for: function)
+            }
+            let loadedCitation = try await settingsModel.citationMethodStatus()
+            try Task.checkCancellation()
+            guard settingsModel.activeTriptychServicesID == workspaceID else { return }
+            methodStatuses = loadedMethods
+            citationStatus = loadedCitation
+            statusLoadState = .loaded
+        } catch is CancellationError {
+            return
+        } catch {
+            guard settingsModel.activeTriptychServicesID == workspaceID else { return }
+            methodStatuses = [:]
+            citationStatus = nil
+            statusLoadState = .unavailable
         }
     }
 }
@@ -482,16 +862,9 @@ private struct ResearchGuidanceSettingsView: View {
 /// Researcher Skills. The editor Strip receives semantic function
 /// availability, never package identifiers or routing metadata.
 private struct ResearchFunctionMethodSettingsView: View {
-    private static let configurableFunctions: [ResearchFunctionID] = [
-        .develop,
-        .critique,
-        .revise,
-        .fidelity,
-        .manuscript,
-    ]
-
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @State private var selectedFunction: ResearchFunctionID = .develop
+    @Binding var selectedFunction: ResearchFunctionID
+    let onStatusChange: (ResearchFunctionSkillBindingStatus) -> Void
     @State private var status: ResearchFunctionSkillBindingStatus?
     @State private var isWorking = false
     @State private var errorMessage: String?
@@ -518,7 +891,7 @@ private struct ResearchFunctionMethodSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     Picker("Function", selection: $selectedFunction) {
-                        ForEach(Self.configurableFunctions, id: \.self) { function in
+                        ForEach(ResearchGuidancePresentation.configurableFunctions, id: \.self) { function in
                             Text(function.interfaceTitle).tag(function)
                         }
                     }
@@ -710,6 +1083,7 @@ private struct ResearchFunctionMethodSettingsView: View {
                 )
                 guard selectedFunction == selection.function else { return }
                 self.status = updated
+                onStatusChange(updated)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -755,6 +1129,11 @@ private struct ResearchFunctionMethodSettingsView: View {
     }
 
     private func reload() async {
+        guard settingsModel.activeTriptychServicesID != nil else {
+            status = nil
+            errorMessage = nil
+            return
+        }
         let function = selectedFunction
         status = nil
         do {
@@ -764,6 +1143,7 @@ private struct ResearchFunctionMethodSettingsView: View {
             try Task.checkCancellation()
             guard selectedFunction == function else { return }
             status = loaded
+            onStatusChange(loaded)
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -781,6 +1161,7 @@ private struct ResearchCitationMethodSettingsView: View {
     }
 
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    let onStatusChange: (ResearchCitationMethodStatus) -> Void
     @State private var status: ResearchCitationMethodStatus?
     @State private var isWorking = false
     @State private var errorMessage: String?
@@ -922,8 +1303,14 @@ private struct ResearchCitationMethodSettingsView: View {
     }
 
     private func reload() async {
+        guard settingsModel.activeTriptychServicesID != nil else {
+            status = nil
+            errorMessage = nil
+            return
+        }
         do {
             status = try await settingsModel.citationMethodStatus()
+            if let status { onStatusChange(status) }
             errorMessage = nil
         } catch {
             status = nil
@@ -961,7 +1348,10 @@ private struct ResearchCitationMethodSettingsView: View {
         isWorking = true
         Task { @MainActor in
             defer { isWorking = false }
-            do { try await operation() }
+            do {
+                try await operation()
+                if let status { onStatusChange(status) }
+            }
             catch { errorMessage = error.localizedDescription }
         }
     }
@@ -1024,7 +1414,7 @@ private struct DialogueResponseSettingsView: View {
             }
 
             Section {
-                Button("Save Dialogue Response Defaults") { save() }
+                Button("Save Dialogue Defaults") { save() }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSaving || !unknownModuleIDs.isEmpty)
             }
@@ -1032,7 +1422,7 @@ private struct DialogueResponseSettingsView: View {
         .formStyle(.grouped)
         .padding(12)
         .task { await load() }
-        .alert("Could Not Save Dialogue Response Defaults", isPresented: Binding(
+        .alert("Could Not Save Dialogue Defaults", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -1079,7 +1469,7 @@ private struct DialogueResponseSettingsView: View {
                     commentPreservation: commentPreservation
                 )
                 try await settingsModel.saveDialogueResponseProfile(profile)
-                settingsModel.showToast("Dialogue response defaults saved")
+                settingsModel.showToast("Dialogue Defaults saved")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1330,13 +1720,18 @@ private struct PromptTemplateSettingsView: View {
 
 private struct ResearchSkillsSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Binding var showsAdvanced: Bool
+    let methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus]
+    let citationStatus: ResearchCitationMethodStatus?
+    let statusLoadState: ResearchGuidanceStatusLoadState
+    let refreshGuidanceStatus: () -> Void
     @State private var skills: [ResearchSkillPackage] = []
     @State private var selectedSkillID: String?
     @State private var source = ""
     @State private var inspectedDraft: ResearchSkillPackage?
     @State private var draftInspectionTask: Task<Void, Never>?
     @State private var isInspectingDraft = false
-    @State private var showsRoutingMetadata = true
+    @State private var showsRoutingMetadata = false
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var pendingDeletion: ResearchSkillPackage?
@@ -1424,9 +1819,11 @@ private struct ResearchSkillsSettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedSkillID) {
-                skillSection("Bundled", skills: skills.filter { $0.origin == .bundled })
+                skillSection("Built-in", skills: skills.filter { $0.origin == .bundled })
                 skillSection("Triptych", skills: skills.filter { $0.origin != .bundled })
-                recoverySection
+                if showsAdvanced {
+                    recoverySection
+                }
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 270)
@@ -1446,8 +1843,10 @@ private struct ResearchSkillsSettingsView: View {
                     .disabled(selectedSkill?.isTriptychLocal != true)
                     .accessibilityLabel("Delete Triptych Skill")
                     Spacer()
-                    Button("Reveal Skills Folder", action: revealSkillsFolder)
-                        .buttonStyle(.borderless)
+                    if showsAdvanced {
+                        Button("Reveal Skills Folder", action: revealSkillsFolder)
+                            .buttonStyle(.borderless)
+                    }
                 }
                 .padding(.horizontal, 8)
                 .frame(height: 28)
@@ -1455,124 +1854,191 @@ private struct ResearchSkillsSettingsView: View {
             }
         } detail: {
             if let skill = selectedSkill {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline) {
                             Text(skill.name)
                                 .font(.title2.weight(.semibold))
-                            Text(ownershipLabel(for: skill))
-                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("scholium.researchGuidance.skillTitle")
                             Spacer()
                         }
-                        Text(skill.description.isEmpty ? "No valid description is available." : skill.description)
+                        Text(skill.description.isEmpty ? "No valid purpose is available." : skill.description)
                             .foregroundStyle(.secondary)
-                        if let routing = displayedRoutingPackage {
-                            DisclosureGroup(
-                                "Routing Metadata",
-                                isExpanded: $showsRoutingMetadata
-                            ) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    routingRow(
-                                        "Functions",
-                                        routing.supportedFunctions.isEmpty
-                                            ? "General guidance"
-                                            : routing.supportedFunctions
-                                                .map(\.interfaceTitle)
-                                                .joined(separator: ", ")
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        GroupBox("Skill") {
+                            VStack(alignment: .leading, spacing: 7) {
+                                routingRow("Ownership", ownershipLabel(for: skill))
+                                routingRow(
+                                    "Relevant function",
+                                    skill.supportedFunctions.isEmpty
+                                        ? "General guidance"
+                                        : skill.supportedFunctions
+                                            .map(\.interfaceTitle)
+                                            .joined(separator: ", ")
+                                )
+                                routingRow("Validity", skill.isValid ? "Valid" : "Needs Repair")
+                                routingRow(
+                                    "Status",
+                                    ResearchGuidancePresentation.statusLabel(
+                                        for: skill,
+                                        allSkills: skills,
+                                        methodStatuses: methodStatuses,
+                                        citationStatus: citationStatus,
+                                        loadState: statusLoadState
                                     )
-                                    routingRow(
-                                        "Capabilities",
-                                        routing.capabilities.isEmpty
-                                            ? "None"
-                                            : routing.capabilities
-                                                .map(capabilityTitle)
-                                                .joined(separator: ", ")
-                                    )
-                                    routingRow(
-                                        "Citation Styles",
-                                        routing.citationStyles.isEmpty
-                                            ? "None"
-                                            : routing.citationStyles
-                                                .map(citationStyleTitle)
-                                                .joined(separator: ", ")
-                                    )
-                                    routingRow(
-                                        "Guided Evolution",
-                                        routing.allowsEvolution ? "Eligible" : "Not enabled"
-                                    )
-                                    routingRow("Version", routing.version)
-                                    Text("Functions and capabilities are validated by Scholium. Guided evolution applies only to eligible Triptych-local Researcher Skills and always requires explicit confirmation.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.top, 6)
+                                )
                             }
-                            .accessibilityIdentifier("scholium.researchGuidance.skillRouting")
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        TextEditor(text: $source)
-                            .font(ScholiumTypography.swiftUIMonospaceFont(size: 13, relativeTo: .body))
-                            .frame(maxWidth: .infinity, minHeight: 220, idealHeight: 300, maxHeight: 360)
-                            .scrollContentBackground(.visible)
-                            .disabled(skill.origin == .bundled || skill.revision == nil)
-                            .accessibilityLabel("SKILL.md source")
-                        if !displayedValidationIssues.isEmpty {
-                            Label(displayedValidationIssues.joined(separator: " "), systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .accessibilityIdentifier("scholium.researchGuidance.skillValidation")
-                        } else {
-                            Text("Valid packages supply name and description frontmatter plus nonempty instruction content. Scholium validates structure, not philosophical quality.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if skill.isTriptychLocal,
-                           skill.skillClass == .researcher,
-                           skill.allowsEvolution {
-                            ResearchSkillMaintenanceView(
-                                instruction: $maintenanceInstruction,
-                                proposalSource: $maintenanceProposalSource,
-                                evaluationEvidenceSource: $maintenanceEvaluationEvidenceSource,
-                                currentPackage: maintenanceCurrentPackage,
-                                proposedPackage: maintenanceProposedPackage,
-                                proposalError: maintenanceProposalError,
-                                preparation: maintenancePreparation,
-                                appliedOutcome: maintenanceOutcome,
-                                recoverySnapshots: maintenanceSnapshots.filter {
-                                    $0.packageID == skill.id
-                                },
-                                currentPackageRevision: skill.revision,
-                                isWorking: isWorking,
-                                isLoadingCurrentPackage: isLoadingMaintenancePackage,
-                                hasUnsavedSkillDraft: source != skill.source,
-                                proposalSourceMatchesImport: maintenanceProposalSourceMatchesImport,
-                                canRequestEvaluation: maintenancePreparationMatchesProposalDraft,
-                                canApply: maintenancePreparationMatchesDraft,
-                                copyProposalRequest: copyMaintenanceProposalRequest,
-                                importProposal: importMaintenanceProposal,
-                                copyEvaluationRequest: copyMaintenanceEvaluationRequest,
-                                prepare: prepareMaintenance,
-                                apply: applyMaintenance,
-                                restore: requestMaintenanceRestore
+
+                        if !skill.isValid || !displayedValidationIssues.isEmpty {
+                            Label(
+                                displayedValidationIssues.isEmpty
+                                    ? "This Skill is inactive until its package is repaired."
+                                    : displayedValidationIssues.joined(separator: " "),
+                                systemImage: "exclamationmark.triangle.fill"
                             )
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("scholium.researchGuidance.skillValidation")
+                            Button("Repair…") {
+                                showsAdvanced = true
+                                DispatchQueue.main.async {
+                                    scrollProxy.scrollTo(
+                                        "scholium.researchGuidance.repairDestination",
+                                        anchor: .top
+                                    )
+                                }
+                            }
+                            .accessibilityHint("Opens the Advanced repair surface for this Skill")
+                            .accessibilityIdentifier("scholium.researchGuidance.repairSkill")
                         }
+
                         HStack {
-                            if skill.canDuplicate {
-                                Button("Duplicate into Triptych", action: duplicateBundled)
+                            if skill.canDuplicate || skill.isTriptychLocal {
+                                Button("Duplicate", action: duplicateSelectedSkill)
+                            }
+                            if skill.isTriptychLocal {
+                                Button("Edit") { showsAdvanced = true }
+                                    .disabled(showsAdvanced)
                             }
                             Spacer()
+                        }
+
+                        if showsAdvanced {
+                            Divider()
+                                .id("scholium.researchGuidance.repairDestination")
+                            if let routing = displayedRoutingPackage {
+                                DisclosureGroup(
+                                    "Routing Metadata",
+                                    isExpanded: $showsRoutingMetadata
+                                ) {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        routingRow(
+                                            "Capabilities",
+                                            routing.capabilities.isEmpty
+                                                ? "None"
+                                                : routing.capabilities
+                                                    .map(capabilityTitle)
+                                                    .joined(separator: ", ")
+                                        )
+                                        routingRow(
+                                            "Citation Styles",
+                                            routing.citationStyles.isEmpty
+                                                ? "None"
+                                                : routing.citationStyles
+                                                    .map(citationStyleTitle)
+                                                    .joined(separator: ", ")
+                                        )
+                                        routingRow(
+                                            "Guided Evolution",
+                                            routing.allowsEvolution ? "Eligible" : "Not enabled"
+                                        )
+                                        routingRow("Version", routing.version)
+                                    }
+                                    .padding(.top, 6)
+                                }
+                                .accessibilityIdentifier("scholium.researchGuidance.skillRouting")
+                            }
+
                             if skill.isTriptychLocal {
-                                Button("Save Skill", action: saveSkill)
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(
-                                        inspectedDraft?.validationIssues.isEmpty != true
-                                            || isInspectingDraft
-                                            || isWorking
-                                            || skill.revision == nil
+                                TextEditor(text: $source)
+                                    .font(ScholiumTypography.swiftUIMonospaceFont(size: 13, relativeTo: .body))
+                                    .frame(maxWidth: .infinity, minHeight: 220, idealHeight: 300, maxHeight: 360)
+                                    .scrollContentBackground(.visible)
+                                    .disabled(skill.revision == nil)
+                                    .accessibilityLabel("SKILL.md source")
+
+                                Text("Scholium validates package structure and routing, not philosophical quality.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                if skill.skillClass == .researcher,
+                                   skill.allowsEvolution {
+                                    Button("Evolve…") {
+                                        scrollProxy.scrollTo(
+                                            "scholium.researchGuidance.maintenanceAnchor",
+                                            anchor: .top
+                                        )
+                                    }
+                                    .accessibilityHint(
+                                        "Moves to explicit whole-package maintenance for this Triptych Skill"
                                     )
+                                    .accessibilityIdentifier(
+                                        "scholium.researchGuidance.openMaintenance"
+                                    )
+
+                                    ResearchSkillMaintenanceView(
+                                        instruction: $maintenanceInstruction,
+                                        proposalSource: $maintenanceProposalSource,
+                                        evaluationEvidenceSource: $maintenanceEvaluationEvidenceSource,
+                                        currentPackage: maintenanceCurrentPackage,
+                                        proposedPackage: maintenanceProposedPackage,
+                                        proposalError: maintenanceProposalError,
+                                        preparation: maintenancePreparation,
+                                        appliedOutcome: maintenanceOutcome,
+                                        recoverySnapshots: maintenanceSnapshots.filter {
+                                            $0.packageID == skill.id
+                                        },
+                                        currentPackageRevision: skill.revision,
+                                        isWorking: isWorking,
+                                        isLoadingCurrentPackage: isLoadingMaintenancePackage,
+                                        hasUnsavedSkillDraft: source != skill.source,
+                                        proposalSourceMatchesImport: maintenanceProposalSourceMatchesImport,
+                                        canRequestEvaluation: maintenancePreparationMatchesProposalDraft,
+                                        canApply: maintenancePreparationMatchesDraft,
+                                        copyProposalRequest: copyMaintenanceProposalRequest,
+                                        importProposal: importMaintenanceProposal,
+                                        copyEvaluationRequest: copyMaintenanceEvaluationRequest,
+                                        prepare: prepareMaintenance,
+                                        apply: applyMaintenance,
+                                        restore: requestMaintenanceRestore
+                                    )
+                                    .id("scholium.researchGuidance.maintenanceAnchor")
+                                }
+
+                                HStack {
+                                    Spacer()
+                                    Button("Save Skill", action: saveSkill)
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(
+                                            inspectedDraft?.validationIssues.isEmpty != true
+                                                || isInspectingDraft
+                                                || isWorking
+                                                || skill.revision == nil
+                                        )
+                                }
+                            } else {
+                                Text("Built-in Skill source is release-managed. Duplicate it to make a Triptych-owned revision.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
+                        }
+                        .padding(18)
                     }
-                    .padding(18)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("scholium.researchGuidance.skillEditor")
@@ -1931,15 +2397,7 @@ private struct ResearchSkillsSettingsView: View {
     }
 
     private func ownershipLabel(for skill: ResearchSkillPackage) -> String {
-        if skill.origin == .bundled, skill.skillClass == .researcher {
-            return "Researcher Template · Bundled"
-        }
-        let classLabel = switch skill.skillClass {
-        case .system: "System"
-        case .workflow: "Workflow"
-        case .researcher: "Researcher"
-        }
-        return "\(classLabel) · \(skill.origin.displayName)"
+        ResearchGuidancePresentation.ownershipLabel(for: skill)
     }
 
     @ViewBuilder
@@ -1971,6 +2429,13 @@ private struct ResearchSkillsSettingsView: View {
     }
 
     private func reload(selecting id: String? = nil) async {
+        guard settingsModel.activeTriptychServicesID != nil else {
+            skills = []
+            maintenanceSnapshots = []
+            maintenanceSnapshotIssues = []
+            errorMessage = nil
+            return
+        }
         do {
             skills = try await settingsModel.researchSkills()
             do {
@@ -1996,6 +2461,7 @@ private struct ResearchSkillsSettingsView: View {
                !recoverySelectionExists {
                 selectedSkillID = skills.first?.selectionID
             }
+            errorMessage = nil
             loadDraft()
         } catch {
             errorMessage = error.localizedDescription
@@ -2023,11 +2489,13 @@ private struct ResearchSkillsSettingsView: View {
         perform {
             _ = try await settingsModel.createResearchSkill(id: id, source: source)
             await reload(selecting: id)
+            refreshGuidanceStatus()
         }
     }
 
-    private func duplicateBundled() {
-        guard let skill = selectedSkill, skill.canDuplicate else { return }
+    private func duplicateSelectedSkill() {
+        guard let skill = selectedSkill,
+              skill.canDuplicate || skill.isTriptychLocal else { return }
         let existing = Set(skills.map(\.id))
         let officialStem = skill.id.hasPrefix("scholium-")
             ? String(skill.id.dropFirst("scholium-".count))
@@ -2040,11 +2508,19 @@ private struct ResearchSkillsSettingsView: View {
         }
         let duplicateID = newID
         perform {
-            _ = try await settingsModel.duplicateBundledResearchSkill(
-                id: skill.id,
-                as: duplicateID
-            )
+            if skill.origin == .bundled {
+                _ = try await settingsModel.duplicateBundledResearchSkill(
+                    id: skill.id,
+                    as: duplicateID
+                )
+            } else {
+                _ = try await settingsModel.createResearchSkill(
+                    id: duplicateID,
+                    source: skill.source
+                )
+            }
             await reload(selecting: duplicateID)
+            refreshGuidanceStatus()
         }
     }
 
@@ -2064,6 +2540,7 @@ private struct ResearchSkillsSettingsView: View {
                 )
             }
             await reload(selecting: skill.id)
+            refreshGuidanceStatus()
             settingsModel.showToast("Skill saved")
         }
     }
@@ -2224,6 +2701,7 @@ private struct ResearchSkillsSettingsView: View {
             maintenanceOutcome = try await settingsModel
                 .applyResearchSkillMaintenance(preparation)
             await reload(selecting: selectedID)
+            refreshGuidanceStatus()
         }
     }
 
@@ -2261,6 +2739,7 @@ private struct ResearchSkillsSettingsView: View {
             )
             maintenanceOutcome = nil
             await reload(selecting: selectedID)
+            refreshGuidanceStatus()
         }
     }
 
@@ -2301,6 +2780,7 @@ private struct ResearchSkillsSettingsView: View {
                 expectedRevision: revision
             )
             await reload()
+            refreshGuidanceStatus()
         }
     }
 

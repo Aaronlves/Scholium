@@ -5,60 +5,6 @@ import ScholiumContracts
 
 @Suite("Triptych workspace catalog")
 struct WorkspaceCatalogTests {
-    @Test("Quick Open matches title, path, and aliases across the Triptych")
-    func quickOpenUsesTheTriptychCatalog() {
-        let analyses = vault("Analyses", .sourceCorpus)
-        let topics = vault("Topics", .topicKnowledge)
-        let works = vault("Works", .draftProject)
-        let analysis = note(
-            "Papers/Cafe.md",
-            "---\ntitle: Café Analysis\naliases: [Normative source]\n---\nAnalysis"
-        )
-        let topic = note(
-            "Debates/Reasons.md",
-            "---\ntitle: 理由与规范性\nalias: Normative nexus\n---\nTopic"
-        )
-        let work = note("Drafts/Reasons.md", "---\ntitle: Reasons Draft\n---\nDraft")
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [analyses, topics, works],
-            documents: [
-                analyses.id: [analysis],
-                topics.id: [topic],
-                works.id: [work],
-            ]
-        )
-
-        #expect(snapshot.quickOpenResults(for: "cafe").map(\.reference.vaultID) == [analyses.id])
-        #expect(snapshot.quickOpenResults(for: "nexus").map(\.reference.vaultID) == [topics.id])
-        #expect(snapshot.quickOpenResults(for: "理由").map(\.reference.vaultID) == [topics.id])
-        #expect(snapshot.quickOpenResults(for: "Drafts/Reasons").map(\.reference.vaultID) == [works.id])
-        #expect(snapshot.quickOpenResults(for: "Reasons.md").count == 2)
-    }
-
-    @Test("Quick Open ranks exact aliases before title prefixes and keeps vault-qualified identity")
-    func quickOpenRankingAndIdentityAreDeterministic() {
-        let analyses = vault("Analyses", .sourceCorpus)
-        let topics = vault("Topics", .topicKnowledge)
-        let titlePrefix = note(
-            "Shared.md",
-            "---\ntitle: Practical Identity Draft\n---\nAnalysis"
-        )
-        let exactAlias = note(
-            "Shared.md",
-            "---\ntitle: Agency\naliases: [Practical Identity]\n---\nTopic"
-        )
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [analyses, topics],
-            documents: [analyses.id: [titlePrefix], topics.id: [exactAlias]]
-        )
-
-        let matches = snapshot.quickOpenResults(for: "Practical Identity")
-        #expect(matches.map(\.reference.vaultID) == [topics.id, analyses.id])
-        #expect(Set(matches.map(\.id)).count == 2)
-        #expect(snapshot.quickOpenResults(for: "", limit: 1).count == 1)
-        #expect(snapshot.quickOpenResults(for: "", limit: 0).isEmpty)
-    }
-
     @Test("Search expansion uses only direct links from one exact Topic concept")
     func relatedSearchIsDirectExplainableAndScopeBounded() throws {
         let analyses = vault("Analyses", .sourceCorpus)

@@ -26,28 +26,16 @@ struct LegacyCompatibilityTests {
         ).load(id: id))
 
         #expect(snapshot.triptychID == nil)
-        #expect(snapshot.openTabs == ["Legacy Note.md"])
-        #expect(snapshot.navigationHistory.isEmpty)
-        #expect(snapshot.navigationIndex == -1)
+        #expect(snapshot.selectedDocument == VaultQualifiedNoteID(
+            vaultID: try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222")),
+            relativePath: "Legacy Note.md"
+        ))
         #expect(snapshot.documentModes.isEmpty)
         #expect(snapshot.scrollPositions.isEmpty)
         #expect(snapshot.inspectorMode == "incoming")
         #expect(snapshot.searchState == SearchWorkspaceState())
         #expect(snapshot.contentDestination == .document)
         #expect(try Data(contentsOf: target) == source)
-    }
-
-    @Test("A sparse per-vault presentation receives only presentation defaults")
-    func sparseVaultPresentation() throws {
-        let presentation = try JSONDecoder().decode(
-            WindowVaultPresentationSnapshot.self,
-            from: fixtureData("window-vault-presentation-v0", extension: "json")
-        )
-
-        #expect(presentation.openTabs == ["Legacy Note.md"])
-        #expect(presentation.activeTab == nil)
-        #expect(presentation.documentModes.isEmpty)
-        #expect(presentation.scrollPositions.isEmpty)
     }
 
     @Test("A malformed present window field fails closed without rewriting its file")
@@ -57,7 +45,7 @@ struct LegacyCompatibilityTests {
         let id = try #require(UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"))
         let directory = root.appendingPathComponent("Window Sessions", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let source = Data(#"{"id":"BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB","navigationIndex":"invalid"}"#.utf8)
+        let source = Data(#"{"id":"BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB","selectedDocument":"invalid"}"#.utf8)
         let target = directory.appendingPathComponent("\(id.uuidString).json")
         try source.write(to: target)
         let store = WindowSessionSnapshotStore(applicationSupportURL: root)

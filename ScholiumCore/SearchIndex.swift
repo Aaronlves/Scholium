@@ -259,7 +259,14 @@ public actor SQLiteSearchIndex {
             bindings.append(.text(predicate.value))
         }
         sql += " ORDER BY rank ASC, title COLLATE NOCASE ASC, relative_path ASC LIMIT ?;"
-        bindings.append(.int(max(1, min(limit, 500))))
+        // Pull a modest candidate pool before applying exact identity
+        // precedence. Path-like queries receive the larger pool because path
+        // columns have weaker FTS weight than titles and aliases; ordinary
+        // prose and fielded searches must not parse hundreds of full sources.
+        bindings.append(.int(SearchIdentityRanking.candidateLimit(
+            query: query.rawValue,
+            requested: limit
+        )))
 
         var hits: [SearchHit] = []
         try database.query(sql, bindings: bindings) { statement in
@@ -312,7 +319,11 @@ public actor SQLiteSearchIndex {
                 classification: .retrievalLead
             ))
         }
-        return hits
+        return hits.sorted {
+            SearchIdentityRanking.precedes($0, $1, query: query.rawValue)
+        }
+        .prefix(limit)
+        .map { $0 }
     }
 
     private static func createSchema(in database: SQLiteDatabase) throws {
@@ -578,11 +589,62 @@ public enum FederatedSearchEngine {
             hits.append(contentsOf: try await item.index.search(query, limit: limit))
         }
         return hits.sorted {
-            if $0.score != $1.score { return $0.score > $1.score }
-            if $0.title != $1.title { return $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-            if $0.vaultID != $1.vaultID { return $0.vaultID.uuidString < $1.vaultID.uuidString }
-            return $0.relativePath < $1.relativePath
-        }.prefix(limit).map { $0 }
+            SearchIdentityRanking.precedes($0, $1, query: query.rawValue)
+        }
+        .prefix(limit)
+        .map { $0 }
+    }
+}
+
+/// Search remains one mode, but exact document identity is a stronger
+/// navigation signal than an occurrence in prose. This rank is deliberately
+/// lexical and does not infer semantic relevance or evidential support.
+private enum SearchIdentityRanking {
+    static func candidateLimit(query: String, requested: Int) -> Int {
+        let boundedRequest = max(1, min(requested, 500))
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isPathLike = value.contains("/") || value.localizedCaseInsensitiveContains(".md")
+        return isPathLike ? 500 : max(boundedRequest, 100)
+    }
+
+    static func precedes(_ lhs: SearchHit, _ rhs: SearchHit, query: String) -> Bool {
+        let lhsPriority = priority(of: lhs, query: query)
+        let rhsPriority = priority(of: rhs, query: query)
+        if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
+        if lhs.score != rhs.score { return lhs.score > rhs.score }
+        let titleOrder = lhs.title.localizedStandardCompare(rhs.title)
+        if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+        if lhs.vaultID != rhs.vaultID { return lhs.vaultID.uuidString < rhs.vaultID.uuidString }
+        return lhs.relativePath < rhs.relativePath
+    }
+
+    private static func priority(of hit: SearchHit, query: String) -> Int {
+        guard let needle = comparableQuery(query) else { return 10 }
+        if comparable(hit.title) == needle { return 0 }
+        if hit.matchedField == .alias, comparable(hit.snippet) == needle { return 1 }
+        let filename = ((hit.relativePath as NSString).lastPathComponent as NSString)
+            .deletingPathExtension
+        if comparable(filename) == needle { return 2 }
+        if comparable(hit.relativePath) == needle { return 3 }
+        return 10
+    }
+
+    private static func comparableQuery(_ raw: String) -> String? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !value.contains(":") else { return nil }
+        if value.first == "\"", value.last == "\"", value.count >= 2 {
+            value.removeFirst()
+            value.removeLast()
+        }
+        guard !value.isEmpty, !value.hasPrefix("-") else { return nil }
+        return comparable(value)
+    }
+
+    private static func comparable(_ value: String) -> String {
+        value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
     }
 }
 

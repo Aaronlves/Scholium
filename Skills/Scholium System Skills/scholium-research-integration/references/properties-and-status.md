@@ -41,8 +41,14 @@ Dialogue has no YAML frontmatter. Its app-owned selected notes, selection, Comme
 
 ### Requiredness and authorization
 
-- A new durable Analysis requires `research_unit` even when access is partial; state the available segment and its limitations.
-- An existing Analysis without `research_unit` remains valid and is **scope not declared**, not malformed.
+- A new durable Analysis may use **Not Yet**. In that case, write no
+  `research_unit` mapping and no sentinel value; do not infer or add a
+  declaration merely because the note is new.
+- When the researcher chooses **Declare Now**, state the available segment and
+  its limitations even when access is partial. Completing Human Review requires
+  this declaration, but editing, Comments, Dialogue, Develop, and a Review draft
+  do not.
+- Any Analysis without `research_unit` remains valid and is **Not Yet**, not malformed.
 - Topic and Work Research Units are optional. Do not add YAML merely to create one.
 - Add or revise `research_unit` only when that key is in the exact write set. Otherwise preserve it and report a scope problem separately.
 - Never infer scope from a folder, filename, keyword, tag, link, nearby note, amount of prose, or previous agent task.
@@ -63,12 +69,15 @@ Do not create one Analysis per chapter by default. Create a separate Analysis on
 
 ### Analyses
 
-For a newly authorized durable Analysis, fill:
+For a newly authorized durable Analysis using **Declare Now**, fill:
 
 - `title` — verified analyzed-source title;
 - `authors` — verified source authors;
 - `year` — verified publication year;
 - `research_unit` — exact represented source scope and optional limitations.
+
+When creation uses **Not Yet**, omit `research_unit` entirely. Do not write an
+empty mapping, placeholder scope, or sentinel value.
 
 If required bibliographic identity cannot be verified, do not fabricate it: leave it unresolved under the active creation contract and report the gap. Use `type`, `tags`, `access`, `text_reliability`, `locators`, and `status` only when warranted. Project Relevance belongs in the report body when project context exists; do not add or maintain a default `relevance` property. Preserve existing `relevance` YAML as custom or legacy data.
 

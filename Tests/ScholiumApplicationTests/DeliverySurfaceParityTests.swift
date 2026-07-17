@@ -19,9 +19,20 @@ struct DeliverySurfaceParityTests {
         let original = try #require(
             try await appHandle.snapshot().document(id: fixture.analysisNoteID)
         )
+        let declared = try await appHandle.documents.save(
+            fixture.analysisNoteID,
+            changeSet: .exactContent("""
+                ---
+                research_unit:
+                  scope: "The bounded fixture source"
+                ---
+                \(original.document.rawContent)
+                """),
+            expectedRevision: original.fingerprint
+        )
         _ = try await appHandle.research.completeHumanReview(
             for: fixture.analysisNoteID,
-            expectedRevision: original.fingerprint,
+            expectedRevision: declared.document.fingerprint,
             qualification: .qualified,
             reviewNote: "Fixture review visible to every delivery surface."
         )
@@ -34,7 +45,7 @@ struct DeliverySurfaceParityTests {
                 vaultName: "Analyses",
                 title: "Agency",
                 relativePath: fixture.analysisNoteID.relativePath,
-                fingerprint: original.fingerprint
+                fingerprint: declared.document.fingerprint
             )],
             includedCommentIDs: [],
             requestedDestination: nil,

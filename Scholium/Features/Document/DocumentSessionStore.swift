@@ -31,6 +31,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var editError: String?
     @Published var isSavingEdit = false
     @Published var presentationMode: NotePresentationMode = .read
+    @Published var scrollFraction: Double = 0
     @Published var returnToReadAfterSave = false
     @Published var suppressAutosave = false
     @Published var renderedReadHTML = ""
@@ -76,6 +77,10 @@ final class DocumentSessionModel: ObservableObject {
 @MainActor
 final class DocumentSessionStore {
     private var sessions: [DocumentSessionKey: DocumentSessionModel] = [:]
+
+    var retainedSessions: [DocumentSessionKey: DocumentSessionModel] {
+        sessions
+    }
 
     func session(for key: DocumentSessionKey) -> DocumentSessionModel {
         if let existing = sessions[key] { return existing }

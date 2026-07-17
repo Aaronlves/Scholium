@@ -108,27 +108,60 @@ struct DocumentLifecycleOperationsTests {
             relativePath: "New/Analysis.md"
         )
 
-        do {
-            _ = try await handle.documents.create(DocumentCreationRequest(
-                id: analysesID,
-                title: "Analysis"
-            ))
-            Issue.record("Analysis creation accepted a missing Research Status scope.")
-        } catch let error as DocumentCreationError {
-            guard case .invalidMetadata(let issues) = error else {
-                Issue.record("Unexpected typed creation error: \(error)")
-                return
-            }
-            #expect(issues.contains {
-                $0.propertyKey == "research_unit" && $0.code == .missingRequiredProperty
-            })
+        let notYetID = VaultQualifiedNoteID(
+            vaultID: fixture.targetID.vaultID,
+            relativePath: "New/Not Yet.md"
+        )
+        let notYet = try await handle.documents.create(DocumentCreationRequest(
+            id: notYetID,
+            title: "Not Yet",
+            analysisResearchStatus: .notYet
+        ))
+        #expect(notYet.rawContent == "# Not Yet\n")
+        #expect(!notYet.rawContent.contains("research_unit"))
+
+        _ = try await handle.research.saveHumanReviewDraft(
+            for: notYetID,
+            expectedRevision: notYet.fingerprint,
+            qualification: .qualified,
+            reviewNote: "A draft remains available before scope declaration."
+        )
+        await #expect(throws: ResearchOperationError.self) {
+            _ = try await handle.research.completeHumanReview(
+                for: notYetID,
+                expectedRevision: notYet.fingerprint,
+                qualification: .qualified,
+                reviewNote: "Completion must wait for Research Status."
+            )
         }
+
+        let declared = try await handle.documents.save(
+            notYetID,
+            changeSet: .exactContent("""
+                ---
+                research_unit:
+                  scope: "One bounded source"
+                ---
+                # Not Yet
+
+                """),
+            expectedRevision: notYet.fingerprint
+        )
+        let completed = try await handle.research.completeHumanReview(
+            for: notYetID,
+            expectedRevision: declared.document.fingerprint,
+            qualification: .qualified,
+            reviewNote: "Research Status is now declared."
+        )
+        #expect(completed.review(for: declared.document.fingerprint) != nil)
 
         let created = try await handle.documents.create(DocumentCreationRequest(
             id: analysesID,
             title: "Analysis",
-            researchUnitScope: "A source with \"quoted\" language",
-            researchUnitLimitations: ["First limitation", "Second limitation"]
+            analysisResearchStatus: .declareNow(
+                scope: "A source with \"quoted\" language",
+                limitations: ["First limitation", "Second limitation"]
+            )
         ))
         #expect(created.rawContent == """
             ---

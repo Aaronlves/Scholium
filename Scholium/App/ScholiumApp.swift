@@ -60,15 +60,21 @@ struct TriptychWindowRoute: Codable, Hashable {
     let windowID: UUID
     let triptychID: UUID?
     let createsTriptych: Bool
+    let initialDocument: VaultNoteReference?
+    let tabAnchorWindowID: UUID?
 
     init(
         windowID: UUID = UUID(),
         triptychID: UUID? = nil,
-        createsTriptych: Bool = false
+        createsTriptych: Bool = false,
+        initialDocument: VaultNoteReference? = nil,
+        tabAnchorWindowID: UUID? = nil
     ) {
         self.windowID = windowID
         self.triptychID = triptychID
         self.createsTriptych = createsTriptych
+        self.initialDocument = initialDocument
+        self.tabAnchorWindowID = tabAnchorWindowID
     }
 }
 
@@ -78,9 +84,8 @@ struct ScholiumApp: App {
     @StateObject private var workspaceStore = WorkspaceStore()
 
     init() {
-        // Keep AppKit's native tab-group commands available. Each Scholium
-        // window opts out before it is shown, so Command-N remains an
-        // independent work session until the researcher explicitly merges it.
+        // Every native tab is a complete Scholium window scene. AppKit owns
+        // tab grouping, selection, cycling, detaching, and Window-menu commands.
         NSWindow.allowsAutomaticWindowTabbing = true
         // Swift Package schemes run ScholiumApp as a raw executable rather
         // than through the packaged .app. On beta macOS/Xcode that process can
@@ -108,8 +113,8 @@ struct ScholiumApp: App {
             )
         }
         .defaultSize(
-            width: ScholiumMetrics.Triptych.preferredWidth,
-            height: ScholiumMetrics.Triptych.preferredHeight
+            width: ScholiumMetrics.Workspace.preferredWidth,
+            height: ScholiumMetrics.Workspace.preferredHeight
         )
         .windowToolbarStyle(.unified)
         .commands { ScholiumCommands() }
@@ -120,25 +125,38 @@ struct ScholiumApp: App {
     }
 }
 
-private enum ScholiumWindowPresentation: Equatable {
+enum ScholiumWindowPresentation: Equatable {
+    case launching
     case setup
-    case library
-    case document
+    case workspace
+
+    static func resolve(
+        hasCompletedInitialRestore: Bool,
+        hasVaultConfiguration: Bool
+    ) -> Self {
+        guard hasCompletedInitialRestore else { return .launching }
+        return hasVaultConfiguration ? .workspace : .setup
+    }
 
     var minimumContentSize: NSSize {
         switch self {
-        case .setup, .library:
+        case .launching, .workspace:
             NSSize(
-                width: ScholiumMetrics.Triptych.minimumWidth,
-                height: ScholiumMetrics.Triptych.minimumHeight
+                width: ScholiumMetrics.Workspace.minimumWidth,
+                height: ScholiumMetrics.Workspace.minimumHeight
             )
-        case .document: NSSize(width: 760, height: 520)
+        case .setup:
+            NSSize(
+                width: ScholiumMetrics.Onboarding.minimumWidth,
+                height: ScholiumMetrics.Onboarding.minimumHeight
+            )
         }
     }
 }
 
 private struct ScholiumWindowRoot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
     @SceneStorage("scholium.windowSessionID") private var storedWindowSessionID = ""
     @Binding private var route: TriptychWindowRoute?
     @StateObject private var appState: WindowModel
@@ -149,8 +167,11 @@ private struct ScholiumWindowRoot: View {
         let requestedRoute = route.wrappedValue
         _appState = StateObject(wrappedValue: WindowModel(
             workspaceStore: workspaceStore,
+            nativeWindowID: requestedRoute?.windowID,
             requestedTriptychID: requestedRoute?.triptychID,
-            createsTriptych: requestedRoute?.createsTriptych == true
+            createsTriptych: requestedRoute?.createsTriptych == true,
+            requestedInitialDocument: requestedRoute?.initialDocument,
+            requestedTabAnchorWindowID: requestedRoute?.tabAnchorWindowID
         ))
     }
 
@@ -163,7 +184,9 @@ private struct ScholiumWindowRoot: View {
                 WindowCloseGuard(
                     appState: appState,
                     presentation: windowPresentation,
-                    reduceMotion: reduceMotion
+                    reduceMotion: reduceMotion,
+                    nativeWindowID: appState.nativeWindowID,
+                    tabAnchorWindowID: appState.requestedTabAnchorWindowID
                 )
             )
             .frame(minWidth: 320, minHeight: 520)
@@ -192,12 +215,17 @@ private struct ScholiumWindowRoot: View {
                     storedWindowSessionID = resolvedWindowSessionID.uuidString
                 }
                 await appState.restoreWindowSession(id: resolvedWindowSessionID)
+                appState.openRequestedInitialDocumentIfNeeded()
                 registerTerminationFlusher()
             }
             .onAppear {
+                appState.installWindowRouteHandler { route in
+                    openWindow(id: "scholium-main", value: route)
+                }
                 registerTerminationFlusher()
             }
             .onDisappear {
+                appState.installWindowRouteHandler(nil)
                 if let registeredTerminationID {
                     ScholiumTerminationCoordinator.shared.unregister(registeredTerminationID)
                 }
@@ -207,7 +235,11 @@ private struct ScholiumWindowRoot: View {
     }
 
     private var resolvedWindowSessionID: UUID {
-        if let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_SESSION_ID"],
+        // The deterministic ID belongs only to the initial QA scene. Native
+        // tabs are independent WindowGroup scenes and must never share its
+        // persisted session file.
+        if route == nil,
+           let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_SESSION_ID"],
            let id = UUID(uuidString: raw) {
             return id
         }
@@ -215,10 +247,10 @@ private struct ScholiumWindowRoot: View {
     }
 
     private var windowPresentation: ScholiumWindowPresentation {
-        guard appState.hasCompletedInitialRestore, appState.vaultConfig != nil else {
-            return .setup
-        }
-        return appState.currentNote == nil ? .library : .document
+        ScholiumWindowPresentation.resolve(
+            hasCompletedInitialRestore: appState.hasCompletedInitialRestore,
+            hasVaultConfiguration: appState.vaultConfig != nil
+        )
     }
 
     private func registerTerminationFlusher() {
@@ -242,16 +274,153 @@ private struct ScholiumWindowRoot: View {
     }
 }
 
+struct NativeWindowTabIdentity: Equatable, Sendable {
+    let baseTitle: String
+    let triptychName: String?
+    let relativePath: String?
+    let toolTip: String
+    let isDocumentEdited: Bool
+}
+
+@MainActor
+final class NativeWindowTabCoordinator {
+    static let shared = NativeWindowTabCoordinator()
+    static let tabbingIdentifier = "org.scholium.workspace"
+
+    private final class WeakWindow {
+        weak var value: NSWindow?
+
+        init(_ value: NSWindow) {
+            self.value = value
+        }
+    }
+
+    private var windows: [UUID: WeakWindow] = [:]
+    private var pendingAnchors: [UUID: UUID] = [:]
+    private var identities: [UUID: NativeWindowTabIdentity] = [:]
+
+    func register(
+        _ window: NSWindow,
+        id: UUID,
+        anchorWindowID: UUID?
+    ) {
+        windows = windows.filter { $0.value.value != nil }
+        identities = identities.filter { windows[$0.key] != nil }
+        windows[id] = WeakWindow(window)
+        window.tabbingMode = .automatic
+        window.tabbingIdentifier = Self.tabbingIdentifier
+
+        if let anchorWindowID, anchorWindowID != id {
+            pendingAnchors[id] = anchorWindowID
+            groupIfPossible(childID: id)
+        }
+        for childID in pendingAnchors.keys
+        where pendingAnchors[childID] == id {
+            groupIfPossible(childID: childID)
+        }
+    }
+
+    func unregister(id: UUID, window: NSWindow?) {
+        guard windows[id]?.value === window || windows[id]?.value == nil else { return }
+        let affectedWindows = window?.tabGroup?.windows ?? [window].compactMap { $0 }
+        windows[id] = nil
+        pendingAnchors[id] = nil
+        identities[id] = nil
+        refreshTitles(in: affectedWindows)
+    }
+
+    func updateIdentity(_ identity: NativeWindowTabIdentity, for id: UUID) {
+        identities[id] = identity
+        guard let window = windows[id]?.value else { return }
+        refreshTitles(in: window.tabGroup?.windows ?? [window])
+    }
+
+    private func groupIfPossible(childID: UUID) {
+        guard let anchorID = pendingAnchors[childID],
+              let child = windows[childID]?.value,
+              let anchor = windows[anchorID]?.value,
+              child !== anchor else { return }
+        pendingAnchors[childID] = nil
+        if anchor.tabGroup?.windows.contains(where: { $0 === child }) != true {
+            anchor.addTabbedWindow(child, ordered: .above)
+        }
+        anchor.tabGroup?.selectedWindow = child
+        refreshTitles(in: anchor.tabGroup?.windows ?? [anchor, child])
+        child.makeKeyAndOrderFront(nil)
+    }
+
+    private func refreshTitles(in groupedWindows: [NSWindow]) {
+        let members: [(id: UUID, window: NSWindow, identity: NativeWindowTabIdentity)] = windows
+            .compactMap { id, weakWindow in
+                guard let window = weakWindow.value,
+                      groupedWindows.contains(where: { $0 === window }),
+                      let identity = identities[id] else { return nil }
+                return (id, window, identity)
+            }
+        guard !members.isEmpty else { return }
+
+        let baseCounts = Dictionary(
+            grouping: members,
+            by: { normalizedTitle($0.identity.baseTitle) }
+        ).mapValues(\.count)
+        let triptychCandidates = Dictionary(
+            grouping: members,
+            by: { normalizedTitle(triptychCandidate(for: $0.identity)) }
+        ).mapValues(\.count)
+
+        for member in members {
+            let identity = member.identity
+            var title = identity.baseTitle
+            if identity.relativePath != nil,
+               baseCounts[normalizedTitle(identity.baseTitle), default: 0] > 1 {
+                let triptychCandidate = triptychCandidate(for: identity)
+                if triptychCandidates[normalizedTitle(triptychCandidate), default: 0] == 1 {
+                    title = triptychCandidate
+                } else if let relativePath = identity.relativePath {
+                    title = [identity.baseTitle, identity.triptychName, relativePath]
+                        .compactMap { value in
+                            guard let value, !value.isEmpty else { return nil }
+                            return value
+                        }
+                        .joined(separator: " — ")
+                }
+            }
+            member.window.title = title
+            member.window.tab.title = title
+            member.window.tab.toolTip = identity.toolTip
+            member.window.isDocumentEdited = identity.isDocumentEdited
+        }
+    }
+
+    private func triptychCandidate(for identity: NativeWindowTabIdentity) -> String {
+        guard let triptychName = identity.triptychName, !triptychName.isEmpty else {
+            return identity.baseTitle
+        }
+        return "\(identity.baseTitle) — \(triptychName)"
+    }
+
+    private func normalizedTitle(_ title: String) -> String {
+        title.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+    }
+}
+
 private struct WindowCloseGuard: NSViewRepresentable {
-    let appState: WindowModel
+    @ObservedObject var appState: WindowModel
     let presentation: ScholiumWindowPresentation
     let reduceMotion: Bool
+    let nativeWindowID: UUID
+    let tabAnchorWindowID: UUID?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             appState: appState,
             presentation: presentation,
-            reduceMotion: reduceMotion
+            reduceMotion: reduceMotion,
+            nativeWindowID: nativeWindowID,
+            tabAnchorWindowID: tabAnchorWindowID
         )
     }
 
@@ -267,7 +436,9 @@ private struct WindowCloseGuard: NSViewRepresentable {
         context.coordinator.update(
             appState: appState,
             presentation: presentation,
-            reduceMotion: reduceMotion
+            reduceMotion: reduceMotion,
+            nativeWindowID: nativeWindowID,
+            tabAnchorWindowID: tabAnchorWindowID
         )
         if let window = nsView.window { context.coordinator.attach(to: window) }
     }
@@ -291,69 +462,63 @@ private struct WindowCloseGuard: NSViewRepresentable {
         var appState: WindowModel
         private var presentation: ScholiumWindowPresentation
         private var reduceMotion: Bool
+        private let nativeWindowID: UUID
+        private let tabAnchorWindowID: UUID?
         private weak var window: NSWindow?
         nonisolated(unsafe) private weak var previousDelegate: (any NSWindowDelegate)?
         private var closeIsAuthorized = false
         private var flushInFlight = false
         private var appliedPresentation: ScholiumWindowPresentation?
-        private var preferredDocumentContentSize: NSSize?
         private var presentationGeneration: UInt64 = 0
-        private weak var observedToolbar: NSToolbar?
-        private var toolbarObserver: NSObjectProtocol?
-        private var windowUpdateObserver: NSObjectProtocol?
 
         init(
             appState: WindowModel,
             presentation: ScholiumWindowPresentation,
-            reduceMotion: Bool
+            reduceMotion: Bool,
+            nativeWindowID: UUID,
+            tabAnchorWindowID: UUID?
         ) {
             self.appState = appState
             self.presentation = presentation
             self.reduceMotion = reduceMotion
+            self.nativeWindowID = nativeWindowID
+            self.tabAnchorWindowID = tabAnchorWindowID
             super.init()
         }
 
         func update(
             appState: WindowModel,
             presentation: ScholiumWindowPresentation,
-            reduceMotion: Bool
+            reduceMotion: Bool,
+            nativeWindowID: UUID,
+            tabAnchorWindowID: UUID?
         ) {
+            precondition(nativeWindowID == self.nativeWindowID)
+            precondition(tabAnchorWindowID == self.tabAnchorWindowID)
             self.appState = appState
             self.presentation = presentation
             self.reduceMotion = reduceMotion
-            if let window {
-                installToolbarObserver(for: window)
-            }
             schedulePresentationUpdate()
         }
 
         func attach(to window: NSWindow) {
             if self.window === window, window.delegate === self {
-                installToolbarObserver(for: window)
                 schedulePresentationUpdate()
+                updateNativeDocumentIdentity()
                 return
             }
             detach()
             self.window = window
-            window.tabbingMode = .disallowed
-            window.tabbingIdentifier = "scholium-main"
+            NativeWindowTabCoordinator.shared.register(
+                window,
+                id: nativeWindowID,
+                anchorWindowID: tabAnchorWindowID
+            )
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask.insert(.fullSizeContentView)
-            ScholiumWindowGroupingState.shared.invalidate()
             previousDelegate = window.delegate
             window.delegate = self
-            windowUpdateObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didUpdateNotification,
-                object: window,
-                queue: .main
-            ) { [weak self, weak window] _ in
-                MainActor.assumeIsolated {
-                    guard let self, let window else { return }
-                    self.installToolbarObserver(for: window)
-                }
-            }
-            installToolbarObserver(for: window)
             if ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] != nil,
                let rawWidth = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_WINDOW_WIDTH"],
                let requestedWidth = Double(rawWidth),
@@ -365,26 +530,18 @@ private struct WindowCloseGuard: NSViewRepresentable {
                     )
                 )
             }
-            let attachedSize = window.contentLayoutRect.size
-            preferredDocumentContentSize = attachedSize.width >= 760
-                ? attachedSize
-                : NSSize(width: 1180, height: 760)
             applyPresentationIfNeeded()
+            updateNativeDocumentIdentity()
         }
 
         func detach() {
-            if let toolbarObserver {
-                NotificationCenter.default.removeObserver(toolbarObserver)
-            }
-            toolbarObserver = nil
-            observedToolbar = nil
-            if let windowUpdateObserver {
-                NotificationCenter.default.removeObserver(windowUpdateObserver)
-            }
-            windowUpdateObserver = nil
             if let window, window.delegate === self {
                 window.delegate = previousDelegate
             }
+            NativeWindowTabCoordinator.shared.unregister(
+                id: nativeWindowID,
+                window: window
+            )
             window = nil
             previousDelegate = nil
             appliedPresentation = nil
@@ -399,70 +556,28 @@ private struct WindowCloseGuard: NSViewRepresentable {
             }
         }
 
-        private func installToolbarObserver(for window: NSWindow) {
-            guard let toolbar = window.toolbar else {
-                if let toolbarObserver {
-                    NotificationCenter.default.removeObserver(toolbarObserver)
-                }
-                toolbarObserver = nil
-                observedToolbar = nil
-                return
-            }
-            guard observedToolbar !== toolbar else {
-                suppressSystemSidebarToggle()
-                return
-            }
-            if let toolbarObserver {
-                NotificationCenter.default.removeObserver(toolbarObserver)
-            }
-            observedToolbar = toolbar
-            toolbarObserver = NotificationCenter.default.addObserver(
-                forName: NSToolbar.willAddItemNotification,
-                object: toolbar,
-                queue: .main
-            ) { [weak self] _ in
-                DispatchQueue.main.async { [weak self] in
-                    self?.suppressSystemSidebarToggle()
-                }
-            }
-            suppressSystemSidebarToggle()
-        }
-
-        private func suppressSystemSidebarToggle() {
-            guard let toolbar = window?.toolbar else { return }
-            while let index = toolbar.items.firstIndex(where: {
-                $0.itemIdentifier == .toggleSidebar
-                    || $0.action == #selector(NSSplitViewController.toggleSidebar(_:))
-                    || $0.itemIdentifier.rawValue.localizedCaseInsensitiveContains("sidebar")
-                    || ["Hide Sidebar", "Show Sidebar", "Toggle Sidebar"].contains($0.label)
-            }) {
-                toolbar.removeItem(at: index)
-            }
-        }
-
         private func applyPresentationIfNeeded() {
-            guard let window, appliedPresentation != presentation else { return }
+            guard let window else { return }
+            updateNativeDocumentIdentity()
+            guard appliedPresentation != presentation else { return }
 
-            if appliedPresentation == .document, presentation != .document {
-                preferredDocumentContentSize = window.contentLayoutRect.size
+            if presentation == .launching {
+                // Restoration decides whether this is a configured workspace
+                // or genuine first-run setup. Preserve the scene's normal or
+                // restored frame until that decision is known.
+                appliedPresentation = .launching
+                appState.windowWidth = window.contentLayoutRect.width
+                return
             }
 
             let previousPresentation = appliedPresentation
             let targetSize = targetContentSize(for: presentation, window: window)
             window.contentMinSize = presentation.minimumContentSize
 
-            if presentation != .document {
+            if presentation == .setup {
                 appState.sidebarVisible = true
                 appState.setResearchInspectorVisible(false, animated: false)
                 appState.setNoteHistoryVisible(false, animated: false)
-            } else {
-                if targetSize.width < 1200 {
-                    appState.setResearchInspectorVisible(false, animated: false)
-                    appState.setNoteHistoryVisible(false, animated: false)
-                }
-                if targetSize.width < 980 {
-                    appState.sidebarVisible = false
-                }
             }
 
             let targetFrame = frame(
@@ -472,7 +587,9 @@ private struct WindowCloseGuard: NSViewRepresentable {
                 window: window
             )
             appliedPresentation = presentation
-            if previousPresentation != nil, !reduceMotion {
+            if previousPresentation == .setup,
+               presentation == .workspace,
+               !reduceMotion {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0.42
                     context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -496,18 +613,25 @@ private struct WindowCloseGuard: NSViewRepresentable {
 
             let preferred: NSSize
             switch presentation {
+            case .launching:
+                preferred = window.contentLayoutRect.size
             case .setup:
                 preferred = NSSize(
-                    width: ScholiumMetrics.Triptych.preferredWidth,
-                    height: ScholiumMetrics.Triptych.preferredHeight
+                    width: ScholiumMetrics.Onboarding.preferredWidth,
+                    height: ScholiumMetrics.Onboarding.preferredHeight
                 )
-            case .library:
-                preferred = NSSize(
-                    width: ScholiumMetrics.Triptych.preferredWidth,
-                    height: ScholiumMetrics.Triptych.preferredHeight
-                )
-            case .document:
-                preferred = preferredDocumentContentSize ?? NSSize(width: 1180, height: 760)
+            case .workspace:
+                let current = window.contentLayoutRect.size
+                if (appliedPresentation == nil || appliedPresentation == .launching),
+                   current.width >= presentation.minimumContentSize.width,
+                   current.height >= presentation.minimumContentSize.height {
+                    preferred = current
+                } else {
+                    preferred = NSSize(
+                        width: ScholiumMetrics.Workspace.preferredWidth,
+                        height: ScholiumMetrics.Workspace.preferredHeight
+                    )
+                }
             }
 
             return NSSize(
@@ -533,18 +657,19 @@ private struct WindowCloseGuard: NSViewRepresentable {
             }
 
             switch presentation {
-            case .setup, .library:
-                // The Triptych Interface is a stable workflow anchor: one half
-                // of its own width from the screen's leading edge and vertically
-                // centered. Documents return to this exact origin when retracted.
+            case .launching:
+                target.origin = oldFrame.origin
+            case .setup:
+                // First-run setup alone uses the narrow leading-middle frame.
                 target.origin = NSPoint(
                     x: visibleFrame.minX + target.width / 2,
                     y: visibleFrame.midY - target.height / 2
                 )
-            case .document:
-                if previousPresentation == .setup || previousPresentation == .library {
-                    // Keep the Interface fixed while the document drawer grows
-                    // to its trailing side.
+            case .workspace:
+                if previousPresentation == .setup {
+                    // Setup completion is the sole application-driven
+                    // expansion. Keep its leading edge stable as the normal
+                    // workspace appears.
                     target.origin = NSPoint(
                         x: oldFrame.minX,
                         y: oldFrame.midY - target.height / 2
@@ -570,6 +695,13 @@ private struct WindowCloseGuard: NSViewRepresentable {
                 target.origin.y = visibleFrame.maxY - target.height
             }
             return target
+        }
+
+        private func updateNativeDocumentIdentity() {
+            NativeWindowTabCoordinator.shared.updateIdentity(
+                appState.nativeTabIdentity,
+                for: nativeWindowID
+            )
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -610,9 +742,11 @@ private struct WindowCloseGuard: NSViewRepresentable {
 }
 
 private struct ScholiumSettingsRoot: View {
+    @ObservedObject private var workspaceStore: WorkspaceStore
     @StateObject private var settingsModel: WorkspaceSettingsModel
 
     init(workspaceStore: WorkspaceStore) {
+        self.workspaceStore = workspaceStore
         _settingsModel = StateObject(
             wrappedValue: WorkspaceSettingsModel(
                 capabilities: workspaceStore.settingsCapabilities(),
@@ -625,7 +759,7 @@ private struct ScholiumSettingsRoot: View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
             .frame(width: 700, height: 560)
-            .task {
+            .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
                 await settingsModel.restorePreferredWorkspaceIfNeeded()
             }
     }
@@ -636,7 +770,7 @@ private struct ScholiumWindowModelFocusedKey: FocusedValueKey {
 }
 
 struct ScholiumSearchActions {
-    let begin: (SearchPresentationScope) -> Void
+    let begin: (SearchInvocation) -> Void
 }
 
 struct ScholiumSearchActionsFocusedKey: FocusedValueKey {
@@ -654,6 +788,7 @@ struct ScholiumFocusedResearchFunctionActionsKey: FocusedValueKey {
 struct ScholiumFocusedEditorActions {
     let isComposing: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
+    let canAddComment: () -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
     let addComment: () -> Void
@@ -685,89 +820,7 @@ extension FocusedValues {
     }
 }
 
-struct RecentNoteDestination: Identifiable {
-    let id: VaultQualifiedNoteID
-    let reference: VaultNoteReference
-    let title: String
-}
-
-@MainActor
-private final class ScholiumWindowGroupingState: ObservableObject {
-    static let shared = ScholiumWindowGroupingState()
-
-    @Published private(set) var generation: UInt64 = 0
-
-    func invalidate() {
-        generation &+= 1
-    }
-}
-
-@MainActor
-private enum ScholiumWindowGrouping {
-    static var canMerge: Bool {
-        let windows = documentWindows
-        guard windows.count > 1 else { return false }
-        guard let first = windows.first else { return false }
-        return windows.contains { window in
-            guard window !== first else { return false }
-            return first.tabGroup?.windows.contains(where: { $0 === window }) != true
-        }
-    }
-
-    static var canMoveFocusedTabToNewWindow: Bool {
-        guard let focusedDocumentWindow else { return false }
-        return (focusedDocumentWindow.tabGroup?.windows.count ?? 0) > 1
-    }
-
-    static func merge() {
-        let windows = documentWindows
-        guard windows.count > 1 else { return }
-        let primary = focusedDocumentWindow ?? windows[0]
-        primary.tabbingMode = .automatic
-        for window in windows where window !== primary {
-            guard primary.tabGroup?.windows.contains(where: { $0 === window }) != true else {
-                continue
-            }
-            window.tabbingMode = .automatic
-            primary.addTabbedWindow(window, ordered: .above)
-        }
-        primary.tabGroup?.selectedWindow = primary
-        primary.makeKeyAndOrderFront(nil)
-        ScholiumWindowGroupingState.shared.invalidate()
-        DispatchQueue.main.async {
-            ScholiumWindowGroupingState.shared.invalidate()
-        }
-    }
-
-    static func moveFocusedTabToNewWindow() {
-        guard let focusedDocumentWindow,
-              (focusedDocumentWindow.tabGroup?.windows.count ?? 0) > 1 else { return }
-        focusedDocumentWindow.moveTabToNewWindow(nil)
-        focusedDocumentWindow.tabbingMode = .disallowed
-        focusedDocumentWindow.makeKeyAndOrderFront(nil)
-        ScholiumWindowGroupingState.shared.invalidate()
-        DispatchQueue.main.async {
-            ScholiumWindowGroupingState.shared.invalidate()
-        }
-    }
-
-    private static var focusedDocumentWindow: NSWindow? {
-        let key = NSApplication.shared.keyWindow
-        return isDocumentWindow(key) ? key : documentWindows.first
-    }
-
-    private static var documentWindows: [NSWindow] {
-        NSApplication.shared.windows.filter(isDocumentWindow)
-    }
-
-    private static func isDocumentWindow(_ window: NSWindow?) -> Bool {
-        guard let window else { return false }
-        return window.tabbingIdentifier == "scholium-main" && window.canBecomeKey
-    }
-}
-
 private struct ScholiumCommands: Commands {
-    @ObservedObject private var windowGroupingState = ScholiumWindowGroupingState.shared
     @FocusedValue(\.scholiumWindowModel) private var appState
     @FocusedValue(\.scholiumSearchActions) private var searchActions
     @FocusedValue(\.scholiumResearchFunctionActions) private var researchFunctionActions
@@ -812,23 +865,24 @@ private struct ScholiumCommands: Commands {
             Button("Import Markdown…") { appState?.showMarkdownImporter = true }
                 .disabled(appState?.workspaceAssignment == nil)
             Divider()
-            Button("Duplicate Note…") {
-                guard let path = appState?.currentNote?.relativePath else { return }
-                appState?.noteLifecycleRequest = .duplicate(path)
+            Button("Open in New Tab") {
+                guard let reference = appState?.currentDocumentDescriptor?.reference else { return }
+                appState?.requestOpenNote(reference, disposition: .newNativeTab)
             }
-            .disabled(appState?.canEditCurrentNote != true || appState?.noteLocationScope != .workspace)
-            Button("Move or Rename Note…") {
-                guard let path = appState?.currentNote?.relativePath else { return }
-                appState?.noteLifecycleRequest = .move(path)
-            }
-            .disabled(appState?.canEditCurrentNote != true || appState?.noteLocationScope != .workspace)
+            .disabled(appState?.currentDocumentDescriptor == nil)
             Divider()
-            Button("Close Tab") {
-                guard let appState, let path = appState.activeTab else { return }
-                appState.requestCloseTab(path)
+            Button("Duplicate Note…") {
+                guard let note = appState?.currentNote,
+                      let target = NoteLifecycleTarget(note) else { return }
+                appState?.noteLifecycleRequest = .duplicate(target)
             }
-                .keyboardShortcut("w", modifiers: [.command])
-                .disabled(appState?.activeTab == nil)
+            .disabled(appState?.canEditCurrentNote != true || appState?.currentNoteIdentityIsResolved != true)
+            Button("Move or Rename Note…") {
+                guard let note = appState?.currentNote,
+                      let target = NoteLifecycleTarget(note) else { return }
+                appState?.noteLifecycleRequest = .move(target)
+            }
+            .disabled(appState?.canEditCurrentNote != true || appState?.currentNoteIdentityIsResolved != true)
         }
         CommandGroup(after: .pasteboard) {
             Button("Paste as Markdown") {
@@ -838,10 +892,16 @@ private struct ScholiumCommands: Commands {
             .keyboardShortcut("v", modifiers: [.command, .shift])
             .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
             Divider()
-            Button("Search This Note…") {
-                searchActions?.begin(.thisNote)
+            Button("Find in This Note…") {
+                guard let appState else { return }
+                searchActions?.begin(.findInNote(previousScope: appState.ordinarySearchScope))
             }
             .keyboardShortcut("f", modifiers: [.command])
+            .disabled(searchActions == nil || appState?.currentNote == nil)
+            Button("Search…") {
+                searchActions?.begin(.general)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
             .disabled(searchActions == nil)
         }
         CommandGroup(after: .textFormatting) {
@@ -953,14 +1013,13 @@ private struct ScholiumCommands: Commands {
             }
             Divider()
             Button("Add Comment…") { editorActions?.addComment() }
-                .disabled(editorActions == nil || editorActions?.isComposing == true)
+                .disabled(
+                    editorActions?.canAddComment() != true
+                        || editorActions?.isComposing == true
+                )
         }
-        CommandGroup(replacing: .sidebar) {
-            Button("Collapse Note") {
-                appState?.requestCollapseNote()
-            }
-            .keyboardShortcut("s", modifiers: [.command, .option])
-            .disabled(appState?.currentNote == nil)
+        CommandGroup(after: .sidebar) {
+            Divider()
             Button(appState?.backlinksVisible == true ? "Hide Research Inspector" : "Show Research Inspector") {
                 guard let appState else { return }
                 appState.setResearchInspectorVisible(!appState.backlinksVisible, animated: false)
@@ -998,55 +1057,6 @@ private struct ScholiumCommands: Commands {
                 Button("Light") { appState?.colorScheme = .light }
                 Button("Dark") { appState?.colorScheme = .dark }
             }
-        }
-        CommandGroup(before: .windowList) {
-            Button("Merge Scholium Windows") {
-                ScholiumWindowGrouping.merge()
-            }
-            .disabled(!canMergeScholiumWindows)
-            Button("Move Scholium Tab to New Window") {
-                ScholiumWindowGrouping.moveFocusedTabToNewWindow()
-            }
-            .disabled(!canMoveFocusedScholiumTabToNewWindow)
-            Divider()
-        }
-        CommandMenu("Navigate") {
-            Button("Back") { appState?.requestNavigateBack() }
-                .keyboardShortcut("[", modifiers: .command)
-                .disabled((appState?.navigationIndex ?? 0) <= 0)
-            Button("Forward") { appState?.requestNavigateForward() }
-                .keyboardShortcut("]", modifiers: .command)
-                .disabled((appState?.navigationIndex ?? -1) >= (appState?.navigationStack.count ?? 0) - 1)
-            Menu("Recent Notes") {
-                if recentNotes.isEmpty {
-                    Button("No Recent Notes") {}
-                        .disabled(true)
-                } else {
-                    ForEach(recentNotes) { destination in
-                        Button(recentNoteCommandLabel(destination)) {
-                            appState?.requestOpenNote(destination.reference)
-                        }
-                    }
-                    Divider()
-                    Button("Clear Recent Notes") {
-                        appState?.clearRecentNotes()
-                    }
-                }
-            }
-            .disabled(appState == nil)
-            Divider()
-            Button("Previous Document Tab") { appState?.requestSelectPreviousTab() }
-                .keyboardShortcut(.tab, modifiers: [.control, .shift])
-                .disabled((appState?.openTabs.count ?? 0) < 2)
-            Button("Next Document Tab") { appState?.requestSelectNextTab() }
-                .keyboardShortcut(.tab, modifiers: [.control])
-                .disabled((appState?.openTabs.count ?? 0) < 2)
-            Divider()
-            Button("Go to Note…") { appState?.showQuickOpen = true }
-                .keyboardShortcut("p", modifiers: [.command])
-            Button("Search Triptych…") { searchActions?.begin(.triptych) }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-                .disabled(searchActions == nil)
         }
         CommandMenu("Research") {
             Button("Attention…") { appState?.showAttentionQueues = true }
@@ -1134,10 +1144,6 @@ private struct ScholiumCommands: Commands {
         return String(data: data, encoding: .utf8)
     }
 
-    private var recentNotes: [RecentNoteDestination] {
-        appState?.recentNoteDestinations ?? []
-    }
-
     private func researchFunctionIsAvailable(_ function: ResearchFunctionID) -> Bool {
         guard let appState,
               researchFunctionActions != nil,
@@ -1154,17 +1160,6 @@ private struct ScholiumCommands: Commands {
         case 5: .heading5
         default: .heading6
         }
-    }
-
-    private func recentNoteCommandLabel(_ destination: RecentNoteDestination) -> String {
-        let matchingTitles = recentNotes.count { candidate in
-            candidate.title.localizedCaseInsensitiveCompare(destination.title) == .orderedSame
-        }
-        let role = destination.reference.vaultRole.displayName
-        if matchingTitles > 1 {
-            return "\(destination.title) — \(role) — \(destination.reference.relativePath)"
-        }
-        return "\(destination.title) — \(role)"
     }
 
     private func triptychCommandLabel(_ assignment: TriptychAssignment) -> String {
@@ -1186,15 +1181,6 @@ private struct ScholiumCommands: Commands {
         return appState.presentationMode(for: path) == .read
     }
 
-    private var canMergeScholiumWindows: Bool {
-        _ = windowGroupingState.generation
-        return ScholiumWindowGrouping.canMerge
-    }
-
-    private var canMoveFocusedScholiumTabToNewWindow: Bool {
-        _ = windowGroupingState.generation
-        return ScholiumWindowGrouping.canMoveFocusedTabToNewWindow
-    }
 }
 
 // MARK: - App State
@@ -1244,6 +1230,7 @@ final class WindowModel: ObservableObject {
         let token: UUID
         let relativePath: String
         let flush: @MainActor () async throws -> Void
+        let captureForReconstruction: @MainActor () async throws -> Void
     }
 
     private enum DocumentTransitionError: LocalizedError {
@@ -1260,7 +1247,6 @@ final class WindowModel: ObservableObject {
     private enum WindowNavigationError: LocalizedError {
         case noteUnavailable(String)
         case vaultUnavailable(String)
-        case visitUnavailable
 
         var errorDescription: String? {
             switch self {
@@ -1268,12 +1254,12 @@ final class WindowModel: ObservableObject {
                 "The visited note '\(path)' is no longer available. Scholium kept the current document open."
             case .vaultUnavailable(let name):
                 "The \(name) vault is not available in this Triptych. Scholium kept the current document open."
-            case .visitUnavailable:
-                "That navigation visit is no longer available. Scholium kept the current document open."
             }
         }
     }
     private(set) var windowSessionID = UUID()
+    let nativeWindowID: UUID
+    let requestedTabAnchorWindowID: UUID?
 
     struct Toast: Equatable {
         enum Kind: Equatable {
@@ -1293,10 +1279,10 @@ final class WindowModel: ObservableObject {
 
             var color: Color {
                 switch self {
-                case .success: .green
-                case .information: .accentColor
-                case .warning: .orange
-                case .error: .red
+                case .success: ScholiumColorRole.confirmed.color
+                case .information: ScholiumColorRole.information.color
+                case .warning: ScholiumColorRole.attention.color
+                case .error: ScholiumColorRole.destructive.color
                 }
             }
         }
@@ -1315,10 +1301,7 @@ final class WindowModel: ObservableObject {
     @Published var currentVaultRole: VaultRole = .other
     @Published var notes: [WindowDocumentLocation] = []
     @Published private(set) var lifecycleMutationGeneration: UInt64 = 0
-    @Published var openTabs: [String] = []
-    @Published var activeTab: String?
-    @Published var documentModes: [String: String] = [:]
-    @Published var documentScrollPositions: [String: Double] = [:]
+    @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published var sidebarVisible = true
     // Keep the document primary on a fresh window. The trailing inspector is
     // always one toolbar/menu action away and restores only when a window
@@ -1342,6 +1325,7 @@ final class WindowModel: ObservableObject {
     @Published var pendingCommentSelection: MarkdownReviewSelection?
     @Published var focusedResearcherCommentID: UUID?
     @Published var humanReviewRecords: [String: HumanReviewRecord] = [:]
+    @Published private(set) var humanReviewRecordsByNoteID: [UUID: HumanReviewRecord] = [:]
     @Published var noteIdentityByPath: [String: UUID] = [:]
     @Published var identityAmbiguities: [NoteIdentityAmbiguity] = []
     @Published var pendingIdentityRebindings: [NoteIdentityPendingRebinding] = []
@@ -1359,6 +1343,7 @@ final class WindowModel: ObservableObject {
     @Published var refreshStatusText: String?
     @Published private(set) var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
     @Published var workspaceCatalogError: String?
+    @Published private(set) var workspaceVaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
     @Published var registeredVaults: [RegisteredVault] = []
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
@@ -1523,20 +1508,6 @@ final class WindowModel: ObservableObject {
         set { presentationRouter.fileImport = newValue ? .markdown : nil }
     }
 
-    var showQuickOpen: Bool {
-        get {
-            guard case .quickOpen = presentationRouter.sheet else { return false }
-            return true
-        }
-        set {
-            if newValue {
-                presentationRouter.present(.quickOpen)
-            } else {
-                presentationRouter.dismissSheet(if: "quick-open")
-            }
-        }
-    }
-
     var showSearchSurface: Bool {
         get { presentationRouter.presentsOverlay(.search) }
         set { presentationRouter.setOverlay(.search, isPresented: newValue) }
@@ -1544,12 +1515,12 @@ final class WindowModel: ObservableObject {
 
     var editingNotePath: String? {
         get {
-            guard case .frontmatter(let path) = presentationRouter.sheet else { return nil }
-            return path
+            guard case .frontmatter(let route) = presentationRouter.sheet else { return nil }
+            return route.path
         }
         set {
             if let newValue {
-                presentationRouter.present(.frontmatter(path: newValue))
+                presentationRouter.presentFrontmatter(path: newValue)
             } else if case .frontmatter = presentationRouter.sheet {
                 presentationRouter.dismissSheet()
             }
@@ -1560,7 +1531,7 @@ final class WindowModel: ObservableObject {
         get { editingNotePath != nil }
         set {
             if newValue, let path = editingNotePath ?? currentNote?.relativePath {
-                presentationRouter.present(.frontmatter(path: path))
+                presentationRouter.presentFrontmatter(path: path)
             } else if !newValue, case .frontmatter = presentationRouter.sheet {
                 presentationRouter.dismissSheet()
             }
@@ -1570,56 +1541,6 @@ final class WindowModel: ObservableObject {
     var vaultError: String? {
         get { presentationRouter.alert?.message }
         set { presentationRouter.alert = newValue.map(WindowAlertRoute.actionFailure) }
-    }
-
-    var qualityReviewPath: String? {
-        get {
-            guard case .qualityReview(let path) = presentationRouter.sheet else { return nil }
-            return path
-        }
-        set {
-            if let newValue {
-                presentationRouter.present(.qualityReview(path: newValue))
-            } else if case .qualityReview = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
-    }
-
-    var showQualityReview: Bool {
-        get { qualityReviewPath != nil }
-        set {
-            if newValue, let path = qualityReviewPath ?? currentNote?.relativePath {
-                presentationRouter.present(.qualityReview(path: path))
-            } else if !newValue, case .qualityReview = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
-    }
-
-    var researcherCommentsPath: String? {
-        get {
-            guard case .researcherComments(let path) = presentationRouter.sheet else { return nil }
-            return path
-        }
-        set {
-            if let newValue {
-                presentationRouter.present(.researcherComments(path: newValue))
-            } else if case .researcherComments = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
-    }
-
-    var showResearcherComments: Bool {
-        get { researcherCommentsPath != nil }
-        set {
-            if newValue, let path = researcherCommentsPath ?? currentNote?.relativePath {
-                presentationRouter.present(.researcherComments(path: path))
-            } else if !newValue, case .researcherComments = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
     }
 
     var selectedIdentityAmbiguity: NoteIdentityAmbiguity? {
@@ -1711,6 +1632,9 @@ final class WindowModel: ObservableObject {
     let zoteroBridge: ZoteroBridge
     private let requestedTriptychID: UUID?
     private let createsTriptych: Bool
+    private let requestedInitialDocument: VaultNoteReference?
+    private var didOpenRequestedInitialDocument = false
+    private var windowRouteHandler: ((TriptychWindowRoute) -> Void)?
     /// Published only after every shared Triptych service has been installed.
     /// Settings views use this readiness boundary instead of racing the earlier
     /// `workspaceAssignment` publication.
@@ -1722,23 +1646,34 @@ final class WindowModel: ObservableObject {
     private let workspaceStore: WorkspaceStore
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var windowSessionSaveTask: Task<Void, Never>?
+    private var isFinalizingWindowSession = false
     private var workspaceCatalogRefreshTask: Task<Void, Never>?
     private var workspaceCatalogNeedsAnotherRefresh = false
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
     private var transitionGeneration: UInt64 = 0
+    private var libraryBrowseGeneration: UInt64 = 0
     private var identityReviewRefreshGeneration: UInt64 = 0
     private var transitionTail: Task<Void, Never>?
     private var savedSearchMutationTail: Task<Void, Never>?
+    private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
 
     init(
         workspaceStore: WorkspaceStore,
+        nativeWindowID: UUID? = nil,
         requestedTriptychID: UUID? = nil,
-        createsTriptych: Bool = false
+        createsTriptych: Bool = false,
+        requestedInitialDocument: VaultNoteReference? = nil,
+        requestedTabAnchorWindowID: UUID? = nil
     ) {
+        let resolvedWindowID = nativeWindowID ?? UUID()
+        self.nativeWindowID = resolvedWindowID
+        windowSessionID = resolvedWindowID
+        self.requestedTabAnchorWindowID = requestedTabAnchorWindowID
         self.workspaceStore = workspaceStore
         self.requestedTriptychID = requestedTriptychID
         self.createsTriptych = createsTriptych
+        self.requestedInitialDocument = requestedInitialDocument
         cssSnippetStore = workspaceStore.cssSnippetStore
         zoteroBridge = workspaceStore.zoteroBridge
         presentationRouter.objectWillChange
@@ -1748,6 +1683,9 @@ final class WindowModel: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
         researchController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
+        documentController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
         workspaceStore.$latestWorkspaceActivation
@@ -1798,43 +1736,152 @@ final class WindowModel: ObservableObject {
     }
 
     // MARK: Computed Properties
+    var selectedDocumentPath: String? {
+        documentController.selectedDocumentPath
+    }
+
+    var currentDocumentDescriptor: WindowDocumentDescriptor? {
+        documentController.activeDocument
+    }
+
+    var currentDocumentVaultID: UUID? {
+        currentDocumentDescriptor?.reference.vaultID
+    }
+
+    var currentDocumentVaultRole: VaultRole {
+        currentDocumentDescriptor?.reference.vaultRole ?? .other
+    }
+
+    var currentDocumentVault: RegisteredVault? {
+        guard let vaultID = currentDocumentVaultID else { return nil }
+        return workspaceAssignment?.vaults.values.first { $0.id == vaultID }
+    }
+
+    var currentDocumentVaultSnapshot: WorkspaceVaultSnapshot? {
+        guard let vaultID = currentDocumentVaultID else { return nil }
+        return workspaceVaultSnapshotsByID[vaultID]
+    }
+
+    var currentDocumentNotes: [WindowDocumentLocation] {
+        guard let snapshot = currentDocumentVaultSnapshot else {
+            return currentNote.map { [$0] } ?? []
+        }
+        return snapshot.documents
+            .filter { $0.lifecycle == .active }
+            .map(WindowDocumentLocation.workspace)
+            .sorted(by: notesAreOrdered)
+    }
+
+    var currentDocumentIdentityByPath: [String: UUID] {
+        guard let snapshot = currentDocumentVaultSnapshot else {
+            guard let descriptor = currentDocumentDescriptor else { return [:] }
+            return [descriptor.reference.relativePath: descriptor.sessionKey.noteID]
+        }
+        return Dictionary(uniqueKeysWithValues: snapshot.documents.compactMap { note in
+            note.stableIdentity.resolvedID.map { (note.id.relativePath, $0) }
+        })
+    }
+
+    var currentDocumentRevisions: [String: DocumentFingerprint] {
+        Dictionary(uniqueKeysWithValues: currentDocumentNotes.map {
+            ($0.relativePath, $0.document.fingerprint)
+        })
+    }
+
     var currentNote: WindowDocumentLocation? {
-        guard let tab = activeTab else { return nil }
-        return notes.first { $0.relativePath == tab }
+        if let active = documentController.activeSnapshot {
+            return .workspace(active)
+        }
+        if let descriptor = currentDocumentDescriptor,
+           let snapshot = workspaceVaultSnapshotsByID[descriptor.reference.vaultID]?.documents.first(where: {
+               $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
+                   || $0.id.relativePath == descriptor.reference.relativePath
+           }) {
+            return .workspace(snapshot)
+        }
+        guard let selectedDocumentPath else { return nil }
+        return notes.first { $0.relativePath == selectedDocumentPath }
+    }
+
+    var selectedDocument: VaultQualifiedNoteID? {
+        guard let descriptor = currentDocumentDescriptor else { return nil }
+        return VaultQualifiedNoteID(
+            vaultID: descriptor.reference.vaultID,
+            relativePath: descriptor.reference.relativePath
+        )
+    }
+
+    var currentDocumentReviewRecord: HumanReviewRecord? {
+        guard let noteID = currentDocumentDescriptor?.sessionKey.noteID else { return nil }
+        return humanReviewRecordsByNoteID[noteID]
+            ?? researchController.records?.humanReviews.first { $0.id == noteID }
+    }
+
+    var currentDocumentReviewDisplayState: HumanReviewDisplayState {
+        guard let revision = currentNote?.document.fingerprint,
+              let review = currentDocumentReviewRecord?.review(for: revision) else {
+            return .notReviewed
+        }
+        return HumanReviewDisplayState(isReviewed: true, qualification: review.qualification)
+    }
+
+    var currentDocumentChangedSinceReview: Bool {
+        guard let revision = currentNote?.document.fingerprint,
+              let record = currentDocumentReviewRecord else { return false }
+        return record.latestReview != nil && record.review(for: revision) == nil
+    }
+
+    var nativeTabTitle: String {
+        currentNote?.title
+            ?? currentNote?.displayName
+            ?? workspaceAssignment?.triptych.name
+            ?? "Scholium"
+    }
+
+    var nativeTabToolTip: String {
+        guard let currentNote, let triptychName = workspaceAssignment?.triptych.name else {
+            return workspaceAssignment?.triptych.name ?? "Scholium"
+        }
+        let title = currentNote.title ?? currentNote.displayName
+        return "\(title) — \(triptychName) — \(currentNote.relativePath)"
+    }
+
+    var nativeTabIdentity: NativeWindowTabIdentity {
+        NativeWindowTabIdentity(
+            baseTitle: nativeTabTitle,
+            triptychName: workspaceAssignment?.triptych.name,
+            relativePath: currentNote?.relativePath,
+            toolTip: nativeTabToolTip,
+            isDocumentEdited: isCurrentDocumentEdited
+        )
+    }
+
+    var isCurrentDocumentEdited: Bool {
+        documentController.isActiveDocumentEdited
     }
 
     var currentResearchFunctionTarget: ResearchFunctionTarget? {
-        guard noteLocationScope == .workspace,
+        guard let descriptor = currentDocumentDescriptor,
               let note = currentNote,
               !CritiquePlacement.isManagedCritiquePath(note.relativePath),
-              let vault = currentRegisteredVault,
-              let noteID = noteIdentityByPath[note.relativePath],
-              let role = ResearchFunctionTargetRole(vaultRole: currentVaultRole) else {
+              let role = ResearchFunctionTargetRole(vaultRole: descriptor.reference.vaultRole) else {
             return nil
         }
         return ResearchFunctionTarget(
-            noteID: noteID,
+            noteID: descriptor.sessionKey.noteID,
             note: VaultQualifiedNoteID(
-                vaultID: vault.id,
+                vaultID: descriptor.reference.vaultID,
                 relativePath: note.relativePath
             ),
             role: role,
             lifecycle: note.workspaceSnapshot?.lifecycle ?? .active,
-            fingerprint: documentRevisions[note.relativePath] ?? note.document.fingerprint,
+            fingerprint: note.document.fingerprint,
             title: note.title ?? note.displayName
         )
     }
 
     var currentResearchFunctionReference: VaultNoteReference? {
-        guard let target = currentResearchFunctionTarget,
-              let vault = currentRegisteredVault else { return nil }
-        return VaultNoteReference(
-            vaultID: vault.id,
-            vaultName: vault.name,
-            vaultRole: currentVaultRole,
-            relativePath: target.note.relativePath,
-            stableNoteID: target.noteID.uuidString.lowercased()
-        )
+        currentDocumentDescriptor?.reference
     }
 
     var researchStripPresentation: ResearchStripPresentation {
@@ -1878,7 +1925,17 @@ final class WindowModel: ObservableObject {
             researchController.records?.functionRuns ?? [],
             targetNoteID: target?.noteID
         )
-        researchController.functions.invalidateIfTargetChanged(target)
+        if let target,
+           let presentationID = researchController.functions.presentationID,
+           researchController.functions.activeFunction == .review,
+           presentationRouter.suspendsResearchFunction(presentationID: presentationID) {
+            researchController.functions.resumeHumanReviewDraft(
+                presentationID: presentationID,
+                target: target
+            )
+        } else {
+            researchController.functions.invalidateIfTargetChanged(target)
+        }
         reconcileResearchFunctionPresentation()
         await researchController.functions.refreshAvailability(for: target)
     }
@@ -1898,32 +1955,26 @@ final class WindowModel: ObservableObject {
     var usesWideWindowLayout: Bool { layoutMode == .wide }
 
     var canEditCurrentNote: Bool {
-        guard let note = currentNote else { return false }
-        let isCritique = currentVaultRole.allowsCritique
+        if case .unclassified = documentController.selectedDocument {
+            return currentNote != nil
+        }
+        guard let note = currentNote, currentDocumentDescriptor != nil else { return false }
+        let isCritique = currentDocumentVaultRole.allowsCritique
             && (note.relativePath == "Critiques" || note.relativePath.hasPrefix("Critiques/"))
-        if noteLocationScope == .unclassified { return !isCritique }
-        return noteLocationScope == .workspace
-            && noteIdentityByPath[note.relativePath] != nil
-            && !isCritique
+        return !isCritique
     }
 
     var currentNoteIdentityIsResolved: Bool {
-        guard let path = currentNote?.relativePath else { return false }
-        return noteIdentityByPath[path] != nil
+        currentDocumentDescriptor != nil
     }
 
     var canHumanReviewCurrentNote: Bool {
-        guard noteLocationScope == .workspace,
-              currentVaultRole.allowsHumanReview,
-              let path = currentNote?.relativePath else { return false }
-        return noteIdentityByPath[path] != nil
+        currentDocumentVaultRole.allowsHumanReview && currentDocumentDescriptor != nil
     }
 
     var canCommentCurrentNote: Bool {
-        guard noteLocationScope == .workspace,
-              let note = currentNote,
-              noteIdentityByPath[note.relativePath] != nil else { return false }
-        switch currentVaultRole {
+        guard currentDocumentDescriptor != nil else { return false }
+        switch currentDocumentVaultRole {
         case .sourceCorpus, .topicKnowledge:
             return true
         case .dissertationControl, .draftProject:
@@ -1947,8 +1998,32 @@ final class WindowModel: ObservableObject {
         identityMigrationFailures.first { $0.rebinding.relativePath == path }
     }
 
+    var currentDocumentIdentityAmbiguity: NoteIdentityAmbiguity? {
+        guard let path = currentNote?.relativePath else { return nil }
+        return currentDocumentVaultSnapshot?.identityRecovery.ambiguities.first {
+            $0.relativePath == path
+        }
+    }
+
+    var currentDocumentPendingIdentityRebinding: NoteIdentityPendingRebinding? {
+        guard let path = currentNote?.relativePath else { return nil }
+        return currentDocumentVaultSnapshot?.identityRecovery.pendingRebindings.first {
+            $0.relativePath == path
+        }
+    }
+
+    var currentDocumentIdentityMigrationFailure: NoteIdentityMigrationFailure? {
+        guard let path = currentNote?.relativePath else { return nil }
+        return currentDocumentVaultSnapshot?.identityRecovery.failures.first {
+            $0.rebinding.relativePath == path
+        }
+    }
+
     func requestIdentityResolution(for path: String) {
-        guard let ambiguity = identityAmbiguity(for: path) else { return }
+        let ambiguity = currentNote?.relativePath == path
+            ? currentDocumentIdentityAmbiguity
+            : identityAmbiguity(for: path)
+        guard let ambiguity else { return }
         identityResolutionError = nil
         selectedIdentityAmbiguity = ambiguity
     }
@@ -1975,7 +2050,11 @@ final class WindowModel: ObservableObject {
     }
 
     func retryIdentityRecovery() async {
-        await refreshIdentityAndReviewState()
+        do {
+            try await refreshNoteLocationScope()
+        } catch {
+            identityResolutionError = error.localizedDescription
+        }
     }
 
     @discardableResult
@@ -1987,15 +2066,74 @@ final class WindowModel: ObservableObject {
         return noteID
     }
 
+    /// Resolves document-scoped commands through the selected document's
+    /// vault-qualified identity. Library browsing deliberately owns a
+    /// different vault projection, so path-only lookup is unsafe when two
+    /// Triptych roots contain the same relative path.
+    private func activeDocumentContext(
+        for path: String
+    ) -> (
+        noteID: UUID,
+        vaultID: UUID,
+        vaultRole: VaultRole,
+        fingerprint: DocumentFingerprint,
+        note: WindowDocumentLocation
+    )? {
+        guard let descriptor = currentDocumentDescriptor,
+              descriptor.reference.relativePath == path,
+              let note = currentNote,
+              note.relativePath == path else { return nil }
+        return (
+            descriptor.sessionKey.noteID,
+            descriptor.reference.vaultID,
+            descriptor.reference.vaultRole,
+            note.document.fingerprint,
+            note
+        )
+    }
+
+    /// Uses the route's exact revision unless it addresses the active editor
+    /// session, whose explicit flush may have just committed a newer revision.
+    /// In either case the vault and stable note identity remain those captured
+    /// by the lifecycle route, never those of the Library's browsed hierarchy.
+    private func lifecycleExpectedRevision(
+        for target: NoteLifecycleTarget
+    ) throws -> DocumentFingerprint {
+        guard let descriptor = currentDocumentDescriptor,
+              descriptor.reference.vaultID == target.documentID.vaultID,
+              descriptor.reference.relativePath == target.relativePath,
+              descriptor.sessionKey.noteID == target.stableNoteID else {
+            return target.revision
+        }
+        guard let currentNote,
+              currentNote.workspaceSnapshot?.stableIdentity.resolvedID == target.stableNoteID else {
+            throw NoteIdentityRecoveryError.identityUnresolved(target.relativePath)
+        }
+        return currentNote.document.fingerprint
+    }
+
+    private func storeHumanReviewRecord(
+        _ record: HumanReviewRecord,
+        path: String,
+        vaultID: UUID
+    ) {
+        humanReviewRecordsByNoteID[record.id] = record
+        if currentRegisteredVault?.id == vaultID {
+            humanReviewRecords[path] = record
+        }
+    }
+
     func registerEditorFlush(
         for relativePath: String,
         token: UUID,
-        flush: @escaping @MainActor () async throws -> Void
+        flush: @escaping @MainActor () async throws -> Void,
+        captureForReconstruction: @escaping @MainActor () async throws -> Void
     ) {
         editorFlushRegistration = EditorFlushRegistration(
             token: token,
             relativePath: relativePath,
-            flush: flush
+            flush: flush,
+            captureForReconstruction: captureForReconstruction
         )
         if let triptychID = workspaceAssignment?.id {
             workspaceStore.registerEditorFlush(
@@ -2016,18 +2154,24 @@ final class WindowModel: ObservableObject {
 
     private func flushRegisteredEditorIfNeeded() async throws {
         guard let registration = editorFlushRegistration else { return }
-        if let activeTab, activeTab != registration.relativePath {
+        if let selectedDocumentPath,
+           selectedDocumentPath != registration.relativePath {
             throw DocumentTransitionError.staleEditorRegistration(
-                expected: activeTab,
+                expected: selectedDocumentPath,
                 registered: registration.relativePath
             )
         }
         try await registration.flush()
     }
 
+    private func captureRegisteredEditorForReconstructionIfNeeded() async throws {
+        guard let registration = editorFlushRegistration else { return }
+        try await registration.captureForReconstruction()
+    }
+
     func prepareForWindowClose() async throws {
         try await flushRegisteredEditorIfNeeded()
-        persistWindowSessionNow()
+        try await persistWindowSessionBeforeClose()
     }
 
     /// Serializes every transition that can replace the active document view.
@@ -2045,6 +2189,7 @@ final class WindowModel: ObservableObject {
             guard let self, generation == self.transitionGeneration else { return }
             do {
                 try await self.flushRegisteredEditorIfNeeded()
+                try await self.captureRegisteredEditorForReconstructionIfNeeded()
                 guard generation == self.transitionGeneration else { return }
                 try await operation()
             } catch is CancellationError {
@@ -2061,12 +2206,21 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    /// Opens the single workspace Search surface with an explicit scope.
-    /// Quick Open remains a separate Triptych-wide title/path/alias command.
-    func beginSearch(mode: SearchPresentationScope) {
-        advancedSearchState.scope = mode.canonical
+    var ordinarySearchScope: SearchPresentationScope {
+        discoveryController.search.ordinaryScope
+    }
+
+    /// Opens the one shared Search surface. Standard Find temporarily uses
+    /// This Note and leaves the researcher's ordinary scope untouched.
+    func beginSearch(_ invocation: SearchInvocation) {
+        if case .findInNote = invocation, currentNote == nil { return }
+        discoveryController.presentSearch(invocation)
         showSearchSurface = true
-        Task { await refreshAdvancedSearch() }
+    }
+
+    func dismissSearch() {
+        discoveryController.dismissSearch()
+        showSearchSurface = false
     }
 
     /// The only cross-feature routing boundary. Feature controllers emit a
@@ -2074,12 +2228,15 @@ final class WindowModel: ObservableObject {
     private func handleWindowIntent(_ intent: WindowIntent) {
         switch intent {
         case .openDocument(let route):
+            if route.disposition == .newNativeTab {
+                openInNewNativeTab(route.reference)
+                return
+            }
             Task { [weak self] in
                 await self?.openWorkspaceReference(
                     route.reference,
                     line: route.sourceLocator?.line,
-                    mode: route.sourceLocator == nil ? .read : .source,
-                    inNewTab: route.opensInNewTab
+                    mode: route.sourceLocator == nil ? .read : .source
                 )
             }
         case .revealSourceLocator(let vaultID, let locator):
@@ -2108,7 +2265,7 @@ final class WindowModel: ObservableObject {
                 guard let self else { return }
                 do {
                     let vault = try await self.workspaceStore.resolveVault(vaultID.uuidString)
-                    try await self.openRegisteredVault(vault)
+                    try await self.browseRegisteredVault(vault)
                 } catch {
                     self.vaultError = error.localizedDescription
                 }
@@ -2123,17 +2280,53 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func requestOpenNote(_ path: String, inNewTab: Bool = false) {
+    func requestOpenNote(
+        _ path: String,
+        disposition: WindowOpenDisposition = .replaceCurrent
+    ) {
+        if disposition == .newNativeTab {
+            guard let reference = documentReference(for: path) else { return }
+            openInNewNativeTab(reference)
+            return
+        }
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            self.openNote(path, inNewTab: inNewTab)
+            self.openNote(path)
         }
     }
 
     func requestOpenNote(
-        _ reference: VaultNoteReference,
-        inNewTab: Bool = false
+        _ location: WindowDocumentLocation,
+        disposition: WindowOpenDisposition = .replaceCurrent
     ) {
+        guard let snapshot = location.workspaceSnapshot else {
+            requestOpenNote(location.relativePath, disposition: disposition)
+            return
+        }
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == snapshot.id.vaultID
+        }) else {
+            showToast("The selected vault is no longer available.", kind: .warning)
+            return
+        }
+        let reference = VaultNoteReference(
+            vaultID: vault.id,
+            vaultName: vault.name,
+            vaultRole: vault.role,
+            relativePath: snapshot.id.relativePath,
+            stableNoteID: snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
+        )
+        requestOpenNote(reference, disposition: disposition)
+    }
+
+    func requestOpenNote(
+        _ reference: VaultNoteReference,
+        disposition: WindowOpenDisposition = .replaceCurrent
+    ) {
+        if disposition == .newNativeTab {
+            openInNewNativeTab(reference)
+            return
+        }
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
             if self.currentRegisteredVault?.id != reference.vaultID {
@@ -2142,103 +2335,44 @@ final class WindowModel: ObservableObject {
                 }) else {
                     throw WindowNavigationError.vaultUnavailable(reference.vaultName)
                 }
-                try await self.openRegisteredVault(vault)
+                try await self.browseRegisteredVault(vault)
             }
             guard self.notes.contains(where: { $0.relativePath == reference.relativePath }) else {
                 throw WindowNavigationError.noteUnavailable(reference.relativePath)
             }
-            self.openNote(reference.relativePath, inNewTab: inNewTab)
+            self.openNote(reference.relativePath)
         }
     }
 
     func requestOpenNote(
         _ path: String,
         sourceLine: Int,
-        mode: NotePresentationMode = .source,
-        inNewTab: Bool = false
+        mode: NotePresentationMode = .source
     ) {
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
             self.pendingSourceLine = max(1, sourceLine)
-            self.openNote(path, inNewTab: inNewTab)
+            self.openNote(path)
             self.requestPresentationMode = mode
         }
     }
 
-    func requestSelectTab(_ path: String) {
-        guard path != activeTab else { return }
-        enqueueDocumentTransition { [weak self] in
-            guard let self, self.openTabs.contains(path) else { return }
-            self.activeTab = path
-            if let key = self.documentSessionKey(for: path) {
-                self.documentController.activateDocument(key)
-            }
-            self.recordNavigationVisit(path)
-        }
-    }
-
-    func requestSelectPreviousTab() {
-        requestSelectAdjacentTab(offset: -1)
-    }
-
-    func requestSelectNextTab() {
-        requestSelectAdjacentTab(offset: 1)
-    }
-
-    private func requestSelectAdjacentTab(offset: Int) {
-        guard openTabs.count > 1,
-              let activeTab,
-              let currentIndex = openTabs.firstIndex(of: activeTab) else { return }
-        let targetIndex = (currentIndex + offset + openTabs.count) % openTabs.count
-        requestSelectTab(openTabs[targetIndex])
-    }
-
-    func requestCloseTab(_ path: String) {
-        enqueueDocumentTransition { [weak self] in
-            self?.closeTab(path)
-        }
-    }
-
-    /// Retracts the active document into the Triptych Interface without
-    /// discarding its open-tab session. Selecting that note reveals it again.
-    func requestCollapseNote() {
-        guard activeTab != nil else { return }
-        enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
-            self.activeTab = nil
-            self.sidebarVisible = true
-            self.setResearchInspectorVisible(false, animated: false)
-            self.setNoteHistoryVisible(false, animated: false)
-            self.persistWindowSessionNow()
-        }
-    }
-
-    func requestNavigateBack() {
-        guard navigationIndex > 0 else { return }
-        enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
-            try await self.navigate(toHistoryIndex: self.navigationIndex - 1)
-        }
-    }
-
-    func requestNavigateForward() {
-        guard navigationIndex < navigationStack.count - 1 else { return }
-        enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
-            try await self.navigate(toHistoryIndex: self.navigationIndex + 1)
-        }
-    }
-
-    func clearRecentNotes() {
-        recentNotesHistory.removeAll()
-    }
-
     func requestWorkspaceVault(_ slot: WorkspaceVaultSlot) {
-        enqueueDocumentTransition { [weak self] in
+        libraryBrowseGeneration &+= 1
+        guard discoveryController.library.workspaceSlot != slot else { return }
+        let generation = libraryBrowseGeneration
+        Task { [weak self] in
             guard let self else { return }
-            try await self.openWorkspaceVault(slot)
-            if let activeTab = self.activeTab {
-                self.recordNavigationVisit(activeTab)
+            do {
+                try await self.browseWorkspaceVault(slot, generation: generation)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == self.libraryBrowseGeneration else { return }
+                self.showToast(
+                    "Could not browse \(slot.displayName): \(error.localizedDescription)",
+                    kind: .error
+                )
             }
         }
     }
@@ -2282,7 +2416,8 @@ final class WindowModel: ObservableObject {
         migrateAppOwnedState(
             sourcePath: path,
             destinationPath: destination,
-            noteID: noteID
+            noteID: noteID,
+            vaultID: vaultID
         )
         try await refreshNoteLocationScope()
         if noteLocationScope == .workspace { openNote(destination) }
@@ -2321,21 +2456,30 @@ final class WindowModel: ObservableObject {
             guard let self,
                   self.currentNote?.relativePath == path,
                   self.canCommentCurrentNote else { return }
-            self.researcherCommentsPath = path
             self.pendingCommentSelection = selection
             self.focusedResearcherCommentID = focusedCommentID
-            self.showResearcherComments = true
+            let function: ResearchFunctionID = self.currentDocumentVaultRole.allowsCritique
+                ? .critique
+                : .review
+            self.openResearchFunction(
+                function,
+                focusCommentComposer: focusedCommentID == nil,
+                permitsUnavailablePresentation: true
+            )
         }
     }
 
     func openResearchFunction(
         _ function: ResearchFunctionID,
-        selection: ResearcherCommentAnchor? = nil
+        selection: ResearcherCommentAnchor? = nil,
+        focusCommentComposer: Bool = false,
+        permitsUnavailablePresentation: Bool = false
     ) {
         guard let assignment = workspaceAssignment,
               let initialTarget = currentResearchFunctionTarget,
               function.allowedTargetRoles.contains(initialTarget.role),
-              researchController.functions.availability[function]?.isEnabled == true else {
+              permitsUnavailablePresentation
+                || researchController.functions.availability[function]?.isEnabled == true else {
             return
         }
         let initialNoteID = initialTarget.noteID
@@ -2351,7 +2495,7 @@ final class WindowModel: ObservableObject {
                 guard let refreshedTarget = self.currentResearchFunctionTarget,
                       refreshedTarget == target,
                       let availability = self.researchController.functions.availability[function],
-                      availability.isEnabled else {
+                      permitsUnavailablePresentation || availability.isEnabled else {
                     let reason = self.researchController.functions.availability[function]?
                         .repairReasons.first?.interfaceDescription
                         ?? "Scholium could not confirm that this function is available for the current note."
@@ -2377,10 +2521,17 @@ final class WindowModel: ObservableObject {
                     selection: capturedSelection,
                     presentationID: presentationID
                 )
+                if function == .review {
+                    self.researchController.functions.beginHumanReviewDraft(
+                        revision: target.fingerprint,
+                        record: self.currentDocumentReviewRecord
+                    )
+                }
                 self.researchController.requestPresentFunction(
                     function,
                     target: reference,
-                    presentationID: presentationID
+                    presentationID: presentationID,
+                    focusCommentComposer: focusCommentComposer
                 )
             } catch {
                 self.showToast(
@@ -2579,50 +2730,33 @@ final class WindowModel: ObservableObject {
         notes
     }
 
-    /// Chronological Back/Forward visits across all three peer vaults.
-    /// A relative path is never sufficient here because identical paths may
-    /// legitimately exist in Analyses, Topics, and Works.
-    @Published var navigationStack: [VaultQualifiedNoteID] = []
-    @Published var navigationIndex: Int = -1
-    @Published var recentNotesHistory = WindowRecentNotes()
+    // MARK: Actions
 
-    /// Menu-ready destinations remain routable from registered vault identity
-    /// and relative paths even while the derived workspace catalog refreshes.
-    var recentNoteDestinations: [RecentNoteDestination] {
-        guard let assignment = workspaceAssignment else { return [] }
-        return recentNotesHistory.references.compactMap { noteID in
-            guard let vault = assignment.vaults.values.first(where: {
-                $0.id == noteID.vaultID
-            }) else { return nil }
-            let catalogNote = workspaceCatalog?.notes.first(where: {
-                $0.reference.vaultID == noteID.vaultID
-                    && $0.reference.relativePath == noteID.relativePath
-            })
-            let pathTitle = URL(fileURLWithPath: noteID.relativePath)
-                .deletingPathExtension()
-                .lastPathComponent
-            let title: String
-            if let catalogTitle = catalogNote?.title, !catalogTitle.isEmpty {
-                title = catalogTitle
-            } else {
-                title = pathTitle.isEmpty ? noteID.relativePath : pathTitle
-            }
-            let reference = catalogNote?.reference ?? VaultNoteReference(
-                vaultID: vault.id,
-                vaultName: vault.name,
-                vaultRole: vault.role,
-                relativePath: noteID.relativePath
-            )
-            return RecentNoteDestination(id: noteID, reference: reference, title: title)
-        }
+    func installWindowRouteHandler(
+        _ handler: ((TriptychWindowRoute) -> Void)?
+    ) {
+        windowRouteHandler = handler
     }
 
-    /// Tabs, modes, and scroll positions remain independent for each vault in
-    /// this window. The published path-only properties above are the current
-    /// vault's projection used by existing views.
-    private var vaultPresentations: [UUID: WindowVaultPresentationSnapshot] = [:]
+    func openRequestedInitialDocumentIfNeeded() {
+        guard !didOpenRequestedInitialDocument,
+              workspaceAssignment != nil,
+              let requestedInitialDocument else { return }
+        didOpenRequestedInitialDocument = true
+        requestOpenNote(requestedInitialDocument, disposition: .replaceCurrent)
+    }
 
-    // MARK: Actions
+    private func openInNewNativeTab(_ reference: VaultNoteReference) {
+        guard let windowRouteHandler else {
+            showToast("Scholium could not open a new native tab.", kind: .error)
+            return
+        }
+        windowRouteHandler(TriptychWindowRoute(
+            triptychID: workspaceAssignment?.id,
+            initialDocument: reference,
+            tabAnchorWindowID: nativeWindowID
+        ))
+    }
 
     /// Updates the inspector preference. Presentation-binding callbacks and
     /// adaptive layout changes must opt out of animation because AppKit can
@@ -2679,23 +2813,29 @@ final class WindowModel: ObservableObject {
     }
 
     func presentationMode(for path: String) -> NotePresentationMode {
-        documentModes[path].flatMap(NotePresentationMode.init(rawValue:)) ?? .read
+        documentController.presentationMode(for: path, vaultID: currentDocumentVaultID)
     }
 
     func rememberPresentationMode(_ mode: NotePresentationMode, for path: String) {
-        guard documentModes[path] != mode.rawValue else { return }
-        documentModes[path] = mode.rawValue
+        documentController.rememberPresentationMode(
+            mode,
+            for: path,
+            vaultID: currentDocumentVaultID
+        )
+        documentPresentationDidChange.send()
     }
 
     func scrollPosition(for path: String) -> Double {
-        min(1, max(0, documentScrollPositions[path] ?? 0))
+        documentController.scrollPosition(for: path, vaultID: currentDocumentVaultID)
     }
 
     func rememberScrollPosition(_ fraction: Double, for path: String) {
-        guard fraction.isFinite else { return }
-        let normalized = min(1, max(0, fraction))
-        guard abs((documentScrollPositions[path] ?? 0) - normalized) > 0.002 else { return }
-        documentScrollPositions[path] = normalized
+        documentController.rememberScrollPosition(
+            fraction,
+            for: path,
+            vaultID: currentDocumentVaultID
+        )
+        documentPresentationDidChange.send()
     }
 
     /// Restores only committed presentation state. Editor buffers are absent
@@ -2723,8 +2863,6 @@ final class WindowModel: ObservableObject {
             return
         }
 
-        restoreQualifiedSessionState(from: stored)
-
         await refreshRegisteredVaults()
         await refreshWorkspaceAssignment(
             preferredTriptychID: requestedTriptychID ?? stored.triptychID
@@ -2734,10 +2872,11 @@ final class WindowModel: ObservableObject {
             showWorkspaceSetup = true
             return
         }
-        restrictSessionState(to: restoredAssignment)
-
         do {
-            if let vaultID = stored.vaultID,
+            let browsedVaultID = stored.vaultID
+                ?? requestedInitialDocument?.vaultID
+                ?? stored.selectedDocument?.vaultID
+            if let vaultID = browsedVaultID,
                let vault = restoredAssignment.vaults.values.first(where: { $0.id == vaultID }) {
                 attemptedVaultRestore = true
                 try await openRegisteredVault(vault)
@@ -2750,20 +2889,40 @@ final class WindowModel: ObservableObject {
             return
         }
 
-        inspectorModeRaw = stored.inspectorMode
+        let restoredDocumentVaultID = requestedInitialDocument?.vaultID
+            ?? stored.selectedDocument?.vaultID
+        let restoredDocumentPaths = restoredDocumentVaultID
+            .flatMap { workspaceVaultSnapshotsByID[$0] }
+            .map { Set($0.documents.map(\.id.relativePath)) }
+            ?? Set(notes.map(\.relativePath))
+        let restoredPresentation = stored.normalized(availablePaths: restoredDocumentPaths)
+        inspectorModeRaw = restoredPresentation.inspectorMode
         // A compact or medium window keeps the inspector available through its
         // toolbar/menu route, but must not restore it as an immediately blocking
         // sheet over the document. Wide windows can safely restore the trailing
         // inspector in place.
-        backlinksVisible = usesWideWindowLayout && (stored.inspectorVisible ?? false)
-        advancedSearchState = stored.searchState
-        advancedSearchState.scope = advancedSearchState.scope.canonical
-        documentTextScale = min(2.0, max(1.0, stored.documentTextScale ?? 1.0))
-        _ = stored.contentDestination
+        backlinksVisible = usesWideWindowLayout && (restoredPresentation.inspectorVisible ?? false)
+        discoveryController.replaceSearchCriteria(SearchWorkspaceState(
+            scope: restoredPresentation.searchState.scope.canonical
+        ))
+        documentTextScale = min(2.0, max(1.0, restoredPresentation.documentTextScale ?? 1.0))
+        documentController.restorePresentationState(
+            modes: restoredPresentation.documentModes,
+            scrollPositions: restoredPresentation.scrollPositions,
+            vaultID: restoredDocumentVaultID
+        )
+        if requestedInitialDocument == nil,
+           let restoredDocument = restoredPresentation.selectedDocument,
+           restoredDocumentPaths.contains(restoredDocument.relativePath) {
+            openRestoredDocument(restoredDocument)
+        }
+        _ = restoredPresentation.contentDestination
     }
 
     func persistWindowSessionNow() {
-        guard didRestoreWindowSession, !isRestoringWindowSession else { return }
+        guard didRestoreWindowSession,
+              !isRestoringWindowSession,
+              !isFinalizingWindowSession else { return }
         windowSessionSaveTask?.cancel()
         let snapshot = currentWindowSessionSnapshot()
         windowSessionSaveTask = Task { [weak self, workspaceStore] in
@@ -2782,186 +2941,67 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    /// A close or termination decision must not race the final per-window
+    /// snapshot. Cancel and await any debounced predecessor, then propagate a
+    /// final save failure so AppKit can keep the native tab open.
+    private func persistWindowSessionBeforeClose() async throws {
+        guard didRestoreWindowSession,
+              !isRestoringWindowSession,
+              !isFinalizingWindowSession else { return }
+        isFinalizingWindowSession = true
+        defer { isFinalizingWindowSession = false }
+
+        while let pending = windowSessionSaveTask {
+            windowSessionSaveTask = nil
+            pending.cancel()
+            _ = await pending.result
+        }
+        let snapshot = currentWindowSessionSnapshot()
+        do {
+            try await workspaceStore.saveWindowSession(snapshot)
+            windowSessionPersistenceError = nil
+            if refreshStatusText == "Window state not saved" {
+                refreshStatusText = nil
+            }
+        } catch {
+            windowSessionPersistenceError = error.localizedDescription
+            refreshStatusText = "Window state not saved"
+            throw error
+        }
+    }
+
     private func currentWindowSessionSnapshot() -> WindowSessionSnapshot {
-        var presentations = vaultPresentations
-        if let current = currentVaultPresentation() {
-            presentations[current.vaultID] = current
-        }
-        let currentVaultID = currentRegisteredVault?.id
-        let legacyHistory = navigationStack
-            .filter { $0.vaultID == currentVaultID }
-            .map(\.relativePath)
-        let legacyNavigationIndex: Int
-        if navigationStack.indices.contains(navigationIndex),
-           navigationStack[navigationIndex].vaultID == currentVaultID {
-            legacyNavigationIndex = navigationStack[...navigationIndex]
-                .count(where: { $0.vaultID == currentVaultID }) - 1
-        } else {
-            legacyNavigationIndex = legacyHistory.isEmpty ? -1 : legacyHistory.count - 1
-        }
+        let browsedVaultID = currentRegisteredVault?.id
+        let documentPresentation = documentController.presentationSnapshot(
+            vaultID: currentDocumentVaultID
+        )
         return WindowSessionSnapshot(
             id: windowSessionID,
             triptychID: workspaceAssignment?.id,
-            vaultID: currentVaultID,
-            openTabs: openTabs,
-            activeTab: activeTab,
-            navigationHistory: legacyHistory,
-            navigationIndex: legacyNavigationIndex,
-            documentModes: documentModes,
-            scrollPositions: documentScrollPositions,
+            vaultID: browsedVaultID,
+            selectedDocument: selectedDocument,
+            documentModes: documentPresentation.modes,
+            scrollPositions: documentPresentation.scrollPositions,
             inspectorMode: inspectorModeRaw,
             inspectorVisible: backlinksVisible,
             contentDestination: .document,
-            searchState: advancedSearchState,
-            documentTextScale: documentTextScale,
-            qualifiedNavigationHistory: navigationStack,
-            qualifiedNavigationIndex: navigationIndex,
-            recentNotes: recentNotesHistory,
-            vaultPresentations: presentations.values.sorted {
-                $0.vaultID.uuidString < $1.vaultID.uuidString
-            }
+            searchState: SearchWorkspaceState(scope: ordinarySearchScope),
+            documentTextScale: documentTextScale
         )
-    }
-
-    private func restoreQualifiedSessionState(from stored: WindowSessionSnapshot) {
-        vaultPresentations = [:]
-        for presentation in stored.vaultPresentations ?? [] {
-            // A damaged duplicate entry must not create two owners. The last
-            // complete value in the decoded file wins deterministically.
-            vaultPresentations[presentation.vaultID] = presentation
-        }
-        if let vaultID = stored.vaultID,
-           vaultPresentations[vaultID] == nil {
-            vaultPresentations[vaultID] = WindowVaultPresentationSnapshot(
-                vaultID: vaultID,
-                openTabs: stored.openTabs,
-                activeTab: stored.activeTab,
-                documentModes: stored.documentModes,
-                scrollPositions: stored.scrollPositions
-            )
-        }
-
-        if let qualified = stored.qualifiedNavigationHistory {
-            navigationStack = qualified
-        } else if let vaultID = stored.vaultID {
-            navigationStack = stored.navigationHistory.map {
-                VaultQualifiedNoteID(vaultID: vaultID, relativePath: $0)
-            }
-        } else {
-            navigationStack = []
-        }
-        let storedNavigationIndex = stored.qualifiedNavigationHistory == nil
-            ? stored.navigationIndex
-            : (stored.qualifiedNavigationIndex ?? stored.navigationIndex)
-        navigationIndex = navigationStack.isEmpty
-            ? -1
-            : min(max(0, storedNavigationIndex), navigationStack.count - 1)
-        if let storedRecentNotes = stored.recentNotes {
-            recentNotesHistory = storedRecentNotes
-        } else {
-            var migrated = WindowRecentNotes()
-            for reference in navigationStack {
-                migrated.record(reference)
-            }
-            if navigationStack.indices.contains(navigationIndex) {
-                migrated.record(navigationStack[navigationIndex])
-            }
-            recentNotesHistory = migrated
-        }
-    }
-
-    private func restrictSessionState(to assignment: TriptychAssignment) {
-        let allowedVaultIDs = Set(assignment.vaults.values.map(\.id))
-        vaultPresentations = vaultPresentations.filter { allowedVaultIDs.contains($0.key) }
-        let oldIndex = navigationIndex
-        var history: [VaultQualifiedNoteID] = []
-        var restoredIndex = -1
-        for (index, reference) in navigationStack.enumerated()
-        where allowedVaultIDs.contains(reference.vaultID) {
-            history.append(reference)
-            if index <= oldIndex { restoredIndex = history.count - 1 }
-        }
-        navigationStack = history
-        navigationIndex = history.isEmpty
-            ? -1
-            : min(max(0, restoredIndex), history.count - 1)
-        recentNotesHistory = recentNotesHistory.restricted(to: allowedVaultIDs)
-    }
-
-    private func currentVaultPresentation() -> WindowVaultPresentationSnapshot? {
-        guard let vaultID = currentRegisteredVault?.id else { return nil }
-        return WindowVaultPresentationSnapshot(
-            vaultID: vaultID,
-            openTabs: openTabs,
-            activeTab: activeTab,
-            documentModes: documentModes,
-            scrollPositions: documentScrollPositions
-        )
-    }
-
-    private func captureCurrentVaultPresentation() {
-        guard let current = currentVaultPresentation() else { return }
-        vaultPresentations[current.vaultID] = current
-    }
-
-    private func restoreVaultPresentation(vaultID: UUID, availablePaths: Set<String>) {
-        let restored = (vaultPresentations[vaultID]
-            ?? WindowVaultPresentationSnapshot(vaultID: vaultID))
-            .normalized(availablePaths: availablePaths)
-        vaultPresentations[vaultID] = restored
-        // Publish the document's presentation state before activating its tab.
-        // NoteContentView reads the restored mode in onAppear; publishing the
-        // tab first can construct the view while the mode is still `.read`.
-        openTabs = restored.openTabs
-        documentModes = restored.documentModes
-        documentScrollPositions = restored.scrollPositions
-        activeTab = restored.activeTab
-        normalizeNavigationHistory(vaultID: vaultID, availablePaths: availablePaths)
-    }
-
-    private func normalizeNavigationHistory(vaultID: UUID, availablePaths: Set<String>) {
-        let oldIndex = navigationIndex
-        var normalized: [VaultQualifiedNoteID] = []
-        var normalizedIndex = -1
-        for (index, reference) in navigationStack.enumerated() {
-            if reference.vaultID == vaultID,
-               !availablePaths.contains(reference.relativePath) {
-                continue
-            }
-            normalized.append(reference)
-            if index <= oldIndex { normalizedIndex = normalized.count - 1 }
-        }
-        navigationStack = normalized
-        recentNotesHistory = recentNotesHistory.normalized(
-            vaultID: vaultID,
-            availablePaths: availablePaths
-        )
-        guard !normalized.isEmpty else {
-            navigationIndex = -1
-            return
-        }
-        navigationIndex = oldIndex < 0
-            ? -1
-            : min(max(0, normalizedIndex), normalized.count - 1)
     }
 
     private func observeWindowSessionChanges() {
-        let changes: [AnyPublisher<Void, Never>] = [
+        let stateChanges: [AnyPublisher<Void, Never>] = [
             $workspaceAssignment.map { _ in () }.eraseToAnyPublisher(),
             $currentRegisteredVault.map { _ in () }.eraseToAnyPublisher(),
-            $openTabs.map { _ in () }.eraseToAnyPublisher(),
-            $activeTab.map { _ in () }.eraseToAnyPublisher(),
-            $navigationStack.map { _ in () }.eraseToAnyPublisher(),
-            $navigationIndex.map { _ in () }.eraseToAnyPublisher(),
-            $recentNotesHistory.map { _ in () }.eraseToAnyPublisher(),
-            $documentModes.map { _ in () }.eraseToAnyPublisher(),
-            $documentScrollPositions.map { _ in () }.eraseToAnyPublisher(),
+            documentController.$selectedDocument.map { _ in () }.eraseToAnyPublisher(),
             $documentTextScale.map { _ in () }.eraseToAnyPublisher(),
             researchController.$inspector.map { _ in () }.eraseToAnyPublisher(),
             discoveryController.$search.map { _ in () }.eraseToAnyPublisher(),
         ]
+        let changes = stateChanges.map { $0.dropFirst().eraseToAnyPublisher() }
+            + [documentPresentationDidChange.eraseToAnyPublisher()]
         Publishers.MergeMany(changes)
-            .dropFirst(changes.count)
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] in self?.persistWindowSessionNow() }
             .store(in: &workspaceCancellables)
@@ -3154,6 +3194,9 @@ final class WindowModel: ObservableObject {
                     function: function
                 )
             },
+            dialogueResponseProfile: {
+                try await capabilities.research.dialogueResponseProfile()
+            },
             prepare: { [weak self] request in
                 guard let self, let assignment = self.workspaceAssignment else {
                     throw ScholiumApplicationError.researchStoreUnavailable(
@@ -3253,16 +3296,21 @@ final class WindowModel: ObservableObject {
     }
 
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
-        guard let current = currentRegisteredVault else { return nil }
-        return WorkspaceVaultSlot.allCases.first { slot in
-            guard let assigned = workspaceAssignment?.vault(for: slot) else { return false }
-            return assigned.id == current.id || assigned.canonicalPath == current.canonicalPath
-        }
+        let selected = discoveryController.library.workspaceSlot
+        return workspaceAssignment?.vault(for: selected) == nil ? nil : selected
     }
 
     var currentPropertiesConfiguration: VaultPropertiesConfiguration? {
         guard noteLocationScope == .workspace,
               let slot = currentWorkspaceSlot else { return nil }
+        return triptychSettings.properties[slot] ?? TriptychSettings.defaultProperties[slot]
+    }
+
+    var currentDocumentPropertiesConfiguration: VaultPropertiesConfiguration? {
+        guard let vault = currentDocumentVault,
+              let slot = WorkspaceVaultSlot.allCases.first(where: {
+                  workspaceAssignment?.vault(for: $0)?.id == vault.id
+              }) else { return nil }
         return triptychSettings.properties[slot] ?? TriptychSettings.defaultProperties[slot]
     }
 
@@ -3290,41 +3338,40 @@ final class WindowModel: ObservableObject {
     }
 
     func noteCheckpoints(for path: String) async throws -> [TriptychCheckpoint] {
-        guard let vaultID = currentRegisteredVault?.id else { return [] }
+        guard let context = activeDocumentContext(for: path) else { return [] }
         return try await researchController.noteCheckpoints(for: VaultQualifiedNoteID(
-            vaultID: vaultID,
+            vaultID: context.vaultID,
             relativePath: path
         ))
     }
 
     func noteCheckpointContent(_ checkpointID: UUID, path: String) async throws -> String {
-        guard let vaultID = currentRegisteredVault?.id else {
+        guard let context = activeDocumentContext(for: path) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await researchController.checkpointNoteContent(
             checkpointID,
-            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
+            note: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
         )
     }
 
     func restoreNote(_ path: String, from checkpointID: UUID) async throws {
-        guard let vaultID = currentRegisteredVault?.id,
-              let revision = documentRevisions[path],
+        guard let context = activeDocumentContext(for: path),
               let assignment = workspaceAssignment else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         try await workspaceStore.flushEditors(in: assignment.id)
         _ = try await researchController.restoreNote(
-            VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
+            VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             from: checkpointID,
-            expectedRevision: revision
+            expectedRevision: context.fingerprint
         )
-        try await refreshNoteLocationScope()
+        await refreshWindowProjection(incrementalPaths: [path])
     }
 
     func dialogueHistory(for path: String) async -> [DialogueEntry] {
-        guard let noteID = noteIdentityByPath[path] else { return [] }
-        return (try? await researchController.dialogueHistory(noteID: noteID)) ?? []
+        guard let context = activeDocumentContext(for: path) else { return [] }
+        return (try? await researchController.dialogueHistory(noteID: context.noteID)) ?? []
     }
 
     @discardableResult
@@ -3364,13 +3411,14 @@ final class WindowModel: ObservableObject {
     }
 
     func critiqueAssociation(for path: String) async -> CritiqueAssociation? {
-        guard currentVaultRole.allowsCritique,
-              let noteID = noteIdentityByPath[path] else { return nil }
-        return try? await researchController.critique(workNoteID: noteID)
+        guard let context = activeDocumentContext(for: path),
+              context.vaultRole.allowsCritique else { return nil }
+        return try? await researchController.critique(workNoteID: context.noteID)
     }
 
     func critiqueAssociation(forCritiquePath path: String) async -> CritiqueAssociation? {
-        guard currentVaultRole.allowsCritique else { return nil }
+        guard let context = activeDocumentContext(for: path),
+              context.vaultRole.allowsCritique else { return nil }
         return try? await researchController.critique(critiqueRelativePath: path)
     }
 
@@ -3386,13 +3434,19 @@ final class WindowModel: ObservableObject {
         fallbackTargetPath: String?
     ) {
         guard let path = finding.targetRelativePath ?? fallbackTargetPath,
-              let target = notes.first(where: { $0.relativePath == path }) else { return }
+              let target = currentDocumentNotes.first(where: { $0.relativePath == path }),
+              let reference = target.workspaceSnapshot.map({ snapshot in
+                  VaultNoteReference(
+                      vaultID: snapshot.id.vaultID,
+                      vaultName: currentDocumentVault?.name ?? "Current Vault",
+                      vaultRole: snapshot.vaultRole,
+                      relativePath: snapshot.id.relativePath,
+                      stableNoteID: snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
+                  )
+              }) else { return }
         let document = NoteDocument(relativePath: path, rawContent: target.rawContent)
-        if let line = finding.resolvedTargetLine(in: document) {
-            requestOpenNote(path, sourceLine: line)
-        } else {
-            requestOpenNote(path)
-        }
+        let line = finding.resolvedTargetLine(in: document)
+        Task { await openWorkspaceReference(reference, line: line, mode: line == nil ? .read : .source) }
     }
 
     func checkpointComparison(_ checkpointID: UUID) async throws -> [TriptychCheckpointChange] {
@@ -3497,7 +3551,7 @@ final class WindowModel: ObservableObject {
     func addResearcherComment(
         to path: String,
         text: String,
-        anchor: ResearcherCommentAnchor?
+        anchor: ResearcherCommentAnchor
     ) async throws -> HumanReviewRecord {
         let context = try researcherCommentContext(for: path)
         let record = try await researchController.addComment(
@@ -3506,7 +3560,7 @@ final class WindowModel: ObservableObject {
             anchor: anchor,
             expectedRevision: context.fingerprint
         )
-        humanReviewRecords[path] = record
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
         return record
     }
 
@@ -3521,7 +3575,7 @@ final class WindowModel: ObservableObject {
             commentID: commentID,
             text: text
         )
-        humanReviewRecords[path] = record
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
     }
 
     func setResearcherCommentResolved(
@@ -3535,15 +3589,16 @@ final class WindowModel: ObservableObject {
             commentID: commentID,
             resolved: resolved
         )
-        humanReviewRecords[path] = record
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
     }
 
     func deleteResearcherComment(at path: String, commentID: UUID) async throws {
         let context = try researcherCommentContext(for: path)
-        humanReviewRecords[path] = try await researchController.deleteComment(
+        let record = try await researchController.deleteComment(
             noteID: context.noteID,
             commentID: commentID
         )
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
     }
 
     func reattachResearcherComment(
@@ -3558,7 +3613,7 @@ final class WindowModel: ObservableObject {
             anchor: anchor,
             expectedRevision: context.fingerprint
         )
-        humanReviewRecords[path] = record
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
     }
 
     @discardableResult
@@ -3568,22 +3623,18 @@ final class WindowModel: ObservableObject {
             to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             expectedRevision: context.fingerprint
         )
-        humanReviewRecords[path] = record
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
         return record
     }
 
     private func researcherCommentContext(
         for path: String
     ) throws -> (noteID: UUID, vaultID: UUID, fingerprint: DocumentFingerprint) {
-        guard noteLocationScope == .workspace,
-              currentNote?.relativePath == path,
-              canCommentCurrentNote,
-              let noteID = noteIdentityByPath[path],
-              let vaultID = currentRegisteredVault?.id,
-              let fingerprint = documentRevisions[path] else {
+        guard canCommentCurrentNote,
+              let context = activeDocumentContext(for: path) else {
             throw ResearcherCommentWorkflowError.unavailable
         }
-        return (noteID, vaultID, fingerprint)
+        return (context.noteID, context.vaultID, context.fingerprint)
     }
 
     func copyTextToClipboard(_ text: String, recovery: String? = nil) throws {
@@ -3603,6 +3654,68 @@ final class WindowModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         try await openRegisteredVault(vault)
+    }
+
+    private func browseWorkspaceVault(
+        _ slot: WorkspaceVaultSlot,
+        generation: UInt64
+    ) async throws {
+        guard let vault = workspaceAssignment?.vault(for: slot) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        try await browseRegisteredVault(vault, slot: slot, generation: generation)
+    }
+
+    /// Reprojects Library onto another Triptych vault without touching the
+    /// selected document. The target snapshot is staged completely before the
+    /// browsed-vault identity changes, so a failed browse leaves both Library
+    /// and the open editor intact.
+    private func browseRegisteredVault(
+        _ registered: RegisteredVault,
+        slot: WorkspaceVaultSlot? = nil,
+        generation: UInt64? = nil
+    ) async throws {
+        guard let vaultSnapshot = try await documentController.workspaceSnapshot(
+            vaultID: registered.id
+        ) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let targetConfig = await workspaceStore.vaultConfig(
+            rootURL: URL(
+                fileURLWithPath: registered.canonicalPath,
+                isDirectory: true
+            )
+        )
+        if let generation, generation != libraryBrowseGeneration {
+            throw CancellationError()
+        }
+
+        let resolvedSlot = slot ?? workspaceSlot(for: registered)
+        if let resolvedSlot {
+            discoveryController.selectWorkspaceSlot(resolvedSlot)
+        }
+        noteLocationScope = .workspace
+        currentRegisteredVault = registered
+        currentVaultRole = registered.role
+        vaultConfig = targetConfig
+        workspaceVaultSnapshotsByID[registered.id] = vaultSnapshot
+        notes = vaultSnapshot.documents
+            .filter { $0.lifecycle == .active }
+            .map(WindowDocumentLocation.workspace)
+            .sorted(by: notesAreOrdered)
+        refreshDocumentRevisions()
+        await refreshIdentityAndReviewState()
+        relationshipGraph = workspaceCatalog?.graph
+        allTags = notes.orderedTags
+        scheduleWorkspaceCatalogRefresh()
+        persistWindowSessionNow()
+    }
+
+    private func workspaceSlot(for vault: RegisteredVault) -> WorkspaceVaultSlot? {
+        WorkspaceVaultSlot.allCases.first { slot in
+            guard let assigned = workspaceAssignment?.vault(for: slot) else { return false }
+            return assigned.id == vault.id || assigned.canonicalPath == vault.canonicalPath
+        }
     }
 
     func openRegisteredVault(_ vault: RegisteredVault) async throws {
@@ -3646,9 +3759,10 @@ final class WindowModel: ObservableObject {
                 capabilities = try await workspaceStore.workspaceCapabilities(id: assignment.id)
                 bindApplicationCapabilities(to: capabilities)
             }
-            guard let vaultSnapshot = try await documentController.workspaceSnapshot(
-                vaultID: registered.id
-            ) else {
+            let workspaceVaultSnapshots = try await documentController.workspaceSnapshots()
+            guard let vaultSnapshot = workspaceVaultSnapshots.first(where: {
+                $0.vault.id == registered.id
+            }) else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             let researchSnapshot = try await researchController.researchSnapshot()
@@ -3668,22 +3782,22 @@ final class WindowModel: ObservableObject {
                 )
             )
 
-            captureCurrentVaultPresentation()
             resetWindowSession()
 
+            workspaceVaultSnapshotsByID = Dictionary(
+                uniqueKeysWithValues: workspaceVaultSnapshots.map { ($0.vault.id, $0) }
+            )
+            if let slot = workspaceSlot(for: registered) {
+                discoveryController.selectWorkspaceSlot(slot)
+            }
             currentRegisteredVault = registered
             currentVaultRole = registered.role
             activeTriptychServicesID = assignment.id
             activeWorkspaceCapabilities = capabilities
             vaultConfig = targetConfig
             notes = targetNotes
-            restoreVaultPresentation(
-                vaultID: registered.id,
-                availablePaths: Set(targetNotes.map(\.relativePath))
-            )
             refreshDocumentRevisions()
             await refreshIdentityAndReviewState()
-            synchronizeDocumentControllerPresentation()
             if let snapshot = workspaceStore.snapshot(for: capabilities.id) {
                 receiveWorkspaceSnapshot(
                     snapshot,
@@ -3774,7 +3888,12 @@ final class WindowModel: ObservableObject {
     }
 
     private func openRequestedTestNoteIfNeeded() {
-        guard let requested = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] else { return }
+        // A native-tab route owns its explicit initial document. The general
+        // QA launch note applies only to un-routed windows; opening it first
+        // would create a transient, incorrect tab identity before the routed
+        // document replaces it.
+        guard requestedInitialDocument == nil,
+              let requested = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] else { return }
         let path = requested == "first"
             ? notes.sorted(by: notesAreOrdered).first?.relativePath
             : requested
@@ -3841,24 +3960,12 @@ final class WindowModel: ObservableObject {
         guard scope != noteLocationScope else { return }
         do {
             let loaded = try await loadNotes(for: scope)
-            if noteLocationScope == .workspace {
-                captureCurrentVaultPresentation()
-            }
             noteLocationScope = scope
-            openTabs = []
-            activeTab = nil
-            documentModes = [:]
-            documentScrollPositions = [:]
+            documentController.removeAll(retainingSessions: true)
+            documentController.resetPresentationState()
             notes = loaded.sorted(by: notesAreOrdered)
-            if scope == .workspace, let vaultID = currentRegisteredVault?.id {
-                restoreVaultPresentation(
-                    vaultID: vaultID,
-                    availablePaths: Set(notes.map(\.relativePath))
-                )
-            }
             refreshDocumentRevisions()
             await refreshIdentityAndReviewState()
-            synchronizeDocumentControllerPresentation()
             await refreshWindowProjection()
         } catch {
             showToast("Could not open \(scope.rawValue): \(error.localizedDescription)", kind: .error)
@@ -3929,8 +4036,7 @@ final class WindowModel: ObservableObject {
     func createNote(
         relativePath requestedPath: String,
         title: String,
-        researchUnitScope: String? = nil,
-        researchUnitLimitations: [String] = []
+        analysisResearchStatus: AnalysisResearchStatusChoice = .notYet
     ) async throws -> NoteDocument {
         try await flushRegisteredEditorIfNeeded()
         guard noteLocationScope == .workspace,
@@ -3945,8 +4051,7 @@ final class WindowModel: ObservableObject {
         let document = try await documentController.create(DocumentCreationRequest(
             id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
             title: title,
-            researchUnitScope: researchUnitScope,
-            researchUnitLimitations: researchUnitLimitations
+            analysisResearchStatus: analysisResearchStatus
         ))
         try await refreshNoteLocationScope()
         openNote(document.relativePath)
@@ -3954,40 +4059,44 @@ final class WindowModel: ObservableObject {
     }
 
     @discardableResult
-    func duplicateNote(_ sourcePath: String, to requestedPath: String) async throws -> NoteDocument {
+    func duplicateNote(
+        _ target: NoteLifecycleTarget,
+        to requestedPath: String
+    ) async throws -> NoteDocument {
         try await flushRegisteredEditorIfNeeded()
-        try requireResolvedIdentity(for: sourcePath)
-        guard noteLocationScope == .workspace,
-              let vaultID = currentRegisteredVault?.id,
-              let expected = documentRevisions[sourcePath] else {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == target.documentID.vaultID
+        }) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        let expected = try lifecycleExpectedRevision(for: target)
         let destination = Self.markdownPath(requestedPath)
         let document = try await documentController.duplicate(
-            VaultQualifiedNoteID(vaultID: vaultID, relativePath: sourcePath),
+            target.documentID,
             to: destination,
             expectedRevision: expected
         )
-        try await refreshNoteLocationScope()
+        try await browseRegisteredVault(vault)
         openNote(destination)
         return document
     }
 
-    func moveNote(_ sourcePath: String, to requestedPath: String) async throws {
+    func moveNote(
+        _ target: NoteLifecycleTarget,
+        to requestedPath: String
+    ) async throws {
         try await flushRegisteredEditorIfNeeded()
-        guard let noteID = try requireResolvedIdentity(for: sourcePath) else {
-            throw NoteIdentityRecoveryError.identityUnresolved(sourcePath)
-        }
-        guard let vaultID = currentRegisteredVault?.id,
-              let expected = documentRevisions[sourcePath] else {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == target.documentID.vaultID
+        }) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        let expected = try lifecycleExpectedRevision(for: target)
         let requestedDestination = Self.markdownPath(requestedPath)
-        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: sourcePath)
         let commit: TriptychMoveCommit
         do {
             commit = try await documentController.move(
-                sourceID,
+                target.documentID,
                 to: requestedDestination,
                 expectedRevision: expected
             )
@@ -3997,12 +4106,13 @@ final class WindowModel: ObservableObject {
         }
         let destination = commit.destination.relativePath
         migrateAppOwnedState(
-            sourcePath: sourcePath,
+            sourcePath: target.relativePath,
             destinationPath: destination,
-            noteID: noteID
+            noteID: target.stableNoteID,
+            vaultID: target.documentID.vaultID
         )
-        try await refreshNoteLocationScope()
-        if noteLocationScope == .workspace { openNote(destination) }
+        try await browseRegisteredVault(vault)
+        openNote(destination)
         scheduleWorkspaceCatalogRefresh()
     }
 
@@ -4022,7 +4132,8 @@ final class WindowModel: ObservableObject {
         migrateAppOwnedState(
             sourcePath: path,
             destinationPath: commit.destination.relativePath,
-            noteID: noteID
+            noteID: noteID,
+            vaultID: vaultID
         )
         try await refreshNoteLocationScope()
     }
@@ -4043,7 +4154,8 @@ final class WindowModel: ObservableObject {
         migrateAppOwnedState(
             sourcePath: path,
             destinationPath: commit.destination.relativePath,
-            noteID: noteID
+            noteID: noteID,
+            vaultID: vaultID
         )
         try await refreshNoteLocationScope()
     }
@@ -4075,16 +4187,11 @@ final class WindowModel: ObservableObject {
             noteIdentityByPath[critiquePath] = nil
         }
         let deletedPaths = Set([path, commit.removedCritiqueDocumentPath].compactMap { $0 })
-        openTabs.removeAll { deletedPaths.contains($0) }
-        if let activeTab, deletedPaths.contains(activeTab) { self.activeTab = openTabs.first }
-        navigationStack.removeAll {
-            $0.vaultID == vaultID && deletedPaths.contains($0.relativePath)
+        if currentDocumentVaultID == vaultID,
+           let selectedDocumentPath,
+           deletedPaths.contains(selectedDocumentPath) {
+            documentController.clearSelection(forRemovedPaths: deletedPaths)
         }
-        recentNotesHistory = recentNotesHistory.removing(
-            vaultID: vaultID,
-            paths: deletedPaths
-        )
-        navigationIndex = min(navigationIndex, navigationStack.count - 1)
         try await refreshNoteLocationScope()
         lifecycleMutationGeneration &+= 1
     }
@@ -4139,7 +4246,8 @@ final class WindowModel: ObservableObject {
     private func migrateAppOwnedState(
         sourcePath: String,
         destinationPath: String,
-        noteID: UUID
+        noteID: UUID,
+        vaultID: UUID
     ) {
         // The application handle has already committed the portable identity
         // move and resumed any dependent record migrations. This method only
@@ -4148,7 +4256,8 @@ final class WindowModel: ObservableObject {
             from: sourcePath,
             to: destinationPath,
             noteID: noteID,
-            identityResolved: true
+            identityResolved: true,
+            vaultID: vaultID
         )
         if sourcePath.hasPrefix("Set Aside/")
             || sourcePath.hasPrefix("Trash/")
@@ -4162,46 +4271,43 @@ final class WindowModel: ObservableObject {
         from sourcePath: String,
         to destinationPath: String,
         noteID: UUID,
-        identityResolved: Bool
+        identityResolved: Bool,
+        vaultID: UUID
     ) {
-        noteIdentityByPath[sourcePath] = nil
-        if identityResolved {
-            noteIdentityByPath[destinationPath] = noteID
-        }
-        if identityResolved, let record = humanReviewRecords.removeValue(forKey: sourcePath) {
-            humanReviewRecords[destinationPath] = record
-        } else {
-            humanReviewRecords[sourcePath] = nil
-        }
-        openTabs = openTabs.map { $0 == sourcePath ? destinationPath : $0 }
-        if activeTab == sourcePath { activeTab = destinationPath }
-        if let vaultID = currentRegisteredVault?.id {
-            navigationStack = navigationStack.map { reference in
-                guard reference.vaultID == vaultID,
-                      reference.relativePath == sourcePath else { return reference }
-                return VaultQualifiedNoteID(vaultID: vaultID, relativePath: destinationPath)
+        if currentRegisteredVault?.id == vaultID {
+            noteIdentityByPath[sourcePath] = nil
+            if identityResolved {
+                noteIdentityByPath[destinationPath] = noteID
             }
-            recentNotesHistory = recentNotesHistory.migratingPath(
-                vaultID: vaultID,
-                from: sourcePath,
-                to: destinationPath
-            )
-            if let presentation = vaultPresentations[vaultID] {
-                vaultPresentations[vaultID] = presentation.migratingPath(
-                    from: sourcePath,
-                    to: destinationPath
+            if identityResolved, let record = humanReviewRecords.removeValue(forKey: sourcePath) {
+                humanReviewRecords[destinationPath] = record
+            } else {
+                humanReviewRecords[sourcePath] = nil
+            }
+            if changedSinceReviewPaths.remove(sourcePath) != nil {
+                changedSinceReviewPaths.insert(destinationPath)
+            }
+        }
+        if let descriptor = currentDocumentDescriptor,
+           descriptor.reference.vaultID == vaultID,
+           descriptor.reference.relativePath == sourcePath,
+           descriptor.sessionKey.noteID == noteID {
+            documentController.updateDocumentProjection(WindowDocumentDescriptor(
+                sessionKey: descriptor.sessionKey,
+                reference: VaultNoteReference(
+                    vaultID: descriptor.reference.vaultID,
+                    vaultName: descriptor.reference.vaultName,
+                    vaultRole: descriptor.reference.vaultRole,
+                    relativePath: destinationPath,
+                    stableNoteID: descriptor.reference.stableNoteID
                 )
-            }
+            ))
         }
-        if let mode = documentModes.removeValue(forKey: sourcePath) {
-            documentModes[destinationPath] = mode
-        }
-        if let scroll = documentScrollPositions.removeValue(forKey: sourcePath) {
-            documentScrollPositions[destinationPath] = scroll
-        }
-        if changedSinceReviewPaths.remove(sourcePath) != nil {
-            changedSinceReviewPaths.insert(destinationPath)
-        }
+        documentController.migratePresentationPath(
+            from: sourcePath,
+            to: destinationPath,
+            vaultID: vaultID
+        )
     }
 
     private static func markdownPath(_ requestedPath: String) -> String {
@@ -4214,17 +4320,11 @@ final class WindowModel: ObservableObject {
     func refreshAdvancedSearch() async {
         let state = advancedSearchState
         do {
-            let currentNoteID: VaultQualifiedNoteID? = if let vault = currentRegisteredVault,
-                                                          let note = currentNote {
-                VaultQualifiedNoteID(vaultID: vault.id, relativePath: note.relativePath)
-            } else {
-                nil
-            }
             try await discoveryController.executeSearch(
                 state,
                 context: DiscoverySearchExecutionContext(
                     workspaceIsAvailable: workspaceAssignment != nil,
-                    currentNote: currentNoteID,
+                    currentNote: selectedDocument,
                     currentVaultID: currentRegisteredVault?.id
                 )
             )
@@ -4306,67 +4406,55 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func openNote(_ path: String, inNewTab: Bool = false) {
-        guard notes.contains(where: { $0.relativePath == path }) else {
+    func openNote(_ path: String) {
+        guard let location = notes.first(where: { $0.relativePath == path }) else {
             showToast("Note not found: \(path)", kind: .warning)
             return
         }
         PerformanceProbe.shared.beginReadActivation(documentID: path)
-        if inNewTab {
-            if !openTabs.contains(path) { openTabs.append(path) }
-            activeTab = path
-        } else if openTabs.contains(path) {
-            activeTab = path
-        } else if let activeTab,
-                  let activeIndex = openTabs.firstIndex(of: activeTab) {
-            // Ordinary sidebar navigation replaces the current tab. New tabs
-            // are created only by the explicit Open in New Tab command.
-            openTabs[activeIndex] = path
-            self.activeTab = path
-        } else {
-            openTabs = [path]
-            activeTab = path
-        }
-        if let descriptor = documentDescriptor(for: path) {
+        if let snapshot = location.workspaceSnapshot,
+           let vault = currentRegisteredVault {
             documentController.installOpenedDocument(
-                descriptor,
-                inNewTab: inNewTab
+                snapshot,
+                vaultName: vault.name,
+                vaultRole: vault.role
             )
+        } else {
+            documentController.selectDocument(selectionDescriptor(for: path))
         }
-        recordNavigationVisit(path)
     }
 
-    private func recordNavigationVisit(_ path: String) {
-        guard noteLocationScope == .workspace,
-              let vaultID = currentRegisteredVault?.id else { return }
-        let reference = VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
-        recentNotesHistory.record(reference)
-        if navigationStack.indices.contains(navigationIndex),
-           navigationStack[navigationIndex] == reference {
-            return
-        }
-        if navigationIndex < navigationStack.count - 1 {
-            navigationStack.removeSubrange((navigationIndex + 1)...)
-        }
-        navigationStack.append(reference)
-        navigationIndex = navigationStack.count - 1
-        // Navigation history is chronological. It intentionally allows A → B → A.
+    private func openRestoredDocument(_ id: VaultQualifiedNoteID) {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == id.vaultID }),
+              let snapshot = workspaceVaultSnapshotsByID[id.vaultID]?.documents.first(where: {
+                  $0.id.relativePath == id.relativePath
+              }) else { return }
+        PerformanceProbe.shared.beginReadActivation(documentID: id.relativePath)
+        documentController.installOpenedDocument(
+            snapshot,
+            vaultName: vault.name,
+            vaultRole: vault.role
+        )
     }
 
     func openRelationshipSource(_ locator: SourceLocator) {
-        guard notes.contains(where: { $0.relativePath == locator.file }) else {
+        guard let location = currentDocumentNotes.first(where: {
+            $0.relativePath == locator.file
+        }), let snapshot = location.workspaceSnapshot,
+              let vault = workspaceAssignment?.vaults.values.first(where: {
+                  $0.id == snapshot.id.vaultID
+              }) else {
             showToast("Relationship source not found: \(locator.file)", kind: .warning)
             return
         }
-        requestOpenNote(locator.file, sourceLine: locator.line, mode: .source)
-    }
-
-    func closeTab(_ path: String) {
-        if let key = documentSessionKey(for: path) {
-            documentController.closeDocument(key)
-        }
-        openTabs.removeAll { $0 == path }
-        if activeTab == path { activeTab = openTabs.last }
+        let reference = VaultNoteReference(
+            vaultID: vault.id,
+            vaultName: vault.name,
+            vaultRole: vault.role,
+            relativePath: snapshot.id.relativePath,
+            stableNoteID: snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
+        )
+        Task { await openWorkspaceReference(reference, line: locator.line, mode: .source) }
     }
 
     private func documentSessionKey(for path: String) -> DocumentSessionKey? {
@@ -4390,54 +4478,31 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    private func synchronizeDocumentControllerPresentation() {
-        documentController.removeAll()
-        for path in openTabs {
-            guard let descriptor = documentDescriptor(for: path) else { continue }
-            documentController.installOpenedDocument(
-                descriptor,
-                inNewTab: true
-            )
-        }
-        if let activeTab,
-           let key = documentSessionKey(for: activeTab) {
-            documentController.activateDocument(key)
-        }
+    private func documentReference(for path: String) -> VaultNoteReference? {
+        documentDescriptor(for: path)?.reference
     }
 
-    func closeCurrentTab() {
-        guard let tab = activeTab else { return }
-        requestCloseTab(tab)
+    private func selectionDescriptor(for path: String) -> WindowSelectedDocument {
+        if let descriptor = documentDescriptor(for: path) {
+            return .workspace(descriptor)
+        }
+        if noteLocationScope == .unclassified {
+            return .unclassified(relativePath: path)
+        }
+        return .unavailable(relativePath: path)
     }
 
-    private func navigate(toHistoryIndex requestedIndex: Int) async throws {
-        guard navigationStack.indices.contains(requestedIndex) else { return }
-        let target = navigationStack[requestedIndex]
-        let targetOccurrence = navigationStack[...requestedIndex].count(where: { $0 == target }) - 1
-        if currentRegisteredVault?.id != target.vaultID {
-            // One window belongs to one complete Triptych. A corrupt or stale
-            // session must never use history to switch this window into an
-            // unrelated registered Triptych.
-            guard let vault = workspaceAssignment?.vaults.values.first(where: {
-                $0.id == target.vaultID
-            }) else {
-                throw WorkspaceRegistryError.vaultNotFound(target.vaultID.uuidString)
-            }
-            try await openRegisteredVault(vault)
+    private func refreshSelectedDocumentProjection() {
+        guard let selectedDocumentPath else { return }
+        // Library refreshes must never reinterpret an existing vault-qualified
+        // document through the newly browsed vault, especially when two vaults
+        // contain the same relative path.
+        guard documentController.activeDocument == nil else { return }
+        if let descriptor = documentDescriptor(for: selectedDocumentPath) {
+            documentController.selectDocument(.workspace(descriptor))
+        } else if documentController.activeDocument == nil {
+            documentController.selectDocument(selectionDescriptor(for: selectedDocumentPath))
         }
-        guard notes.contains(where: { $0.relativePath == target.relativePath }) else {
-            throw WindowNavigationError.noteUnavailable(target.relativePath)
-        }
-        let matchingIndices = navigationStack.indices.filter { navigationStack[$0] == target }
-        guard matchingIndices.indices.contains(targetOccurrence) else {
-            throw WindowNavigationError.visitUnavailable
-        }
-        navigationIndex = matchingIndices[targetOccurrence]
-        activeTab = target.relativePath
-        if !openTabs.contains(target.relativePath) {
-            openTabs.append(target.relativePath)
-        }
-        recentNotesHistory.record(target)
     }
 
     func showInFinder(_ path: String) {
@@ -4456,10 +4521,14 @@ final class WindowModel: ObservableObject {
     }
 
     func reviewNote(at path: String) {
-        guard currentVaultRole.allowsHumanReview,
-              notes.contains(where: { $0.relativePath == path }) else { return }
-        qualityReviewPath = path
-        showQualityReview = true
+        guard let context = activeDocumentContext(for: path),
+              context.vaultRole.allowsHumanReview else { return }
+        openResearchFunction(.review)
+    }
+
+    func finishJudgmentPanelDismissal() {
+        pendingCommentSelection = nil
+        focusedResearcherCommentID = nil
     }
 
     func humanReviewRecord(for path: String) -> HumanReviewRecord? {
@@ -4481,21 +4550,20 @@ final class WindowModel: ObservableObject {
         qualification: NoteQualification?,
         reviewNote: String
     ) async throws {
-        guard currentVaultRole.allowsHumanReview,
-              let vault = currentRegisteredVault,
-              noteIdentityByPath[path] != nil else {
+        guard let context = activeDocumentContext(for: path),
+              context.vaultRole.allowsHumanReview else {
             throw HumanReviewWorkflowError.unavailableForOutput
         }
-        guard documentRevisions[path] == fingerprint else {
+        guard context.fingerprint == fingerprint else {
             throw HumanReviewWorkflowError.staleRevision
         }
         let record = try await researchController.saveHumanReviewDraft(
-            for: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
+            for: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             expectedRevision: fingerprint,
             qualification: qualification,
             reviewNote: reviewNote
         )
-        humanReviewRecords[path] = record
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
     }
 
     func completeHumanReview(
@@ -4504,26 +4572,31 @@ final class WindowModel: ObservableObject {
         qualification: NoteQualification?,
         reviewNote: String
     ) async throws {
-        guard currentVaultRole.allowsHumanReview,
-              let vault = currentRegisteredVault,
-              noteIdentityByPath[path] != nil else {
+        guard let context = activeDocumentContext(for: path),
+              context.vaultRole.allowsHumanReview else {
             throw HumanReviewWorkflowError.unavailableForOutput
         }
-        guard documentRevisions[path] == fingerprint else {
+        guard context.fingerprint == fingerprint else {
             throw HumanReviewWorkflowError.staleRevision
         }
         let record = try await researchController.completeHumanReview(
-            for: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
+            for: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             expectedRevision: fingerprint,
             qualification: qualification,
             reviewNote: reviewNote
         )
-        humanReviewRecords[path] = record
-        changedSinceReviewPaths.remove(path)
+        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
+        if currentRegisteredVault?.id == context.vaultID {
+            changedSinceReviewPaths.remove(path)
+        }
         if let snapshot = try? await documentController.noteSnapshot(
-            VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
-        ), let index = notes.firstIndex(where: { $0.relativePath == path }) {
-            notes[index] = .workspace(snapshot)
+            VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
+        ) {
+            replaceCachedWorkspaceNote(snapshot)
+            if currentRegisteredVault?.id == context.vaultID,
+               let index = notes.firstIndex(where: { $0.relativePath == path }) {
+                notes[index] = .workspace(snapshot)
+            }
         }
         await refreshWorkspaceCatalog()
     }
@@ -4531,14 +4604,13 @@ final class WindowModel: ObservableObject {
     func openWorkspaceReference(
         _ reference: VaultNoteReference,
         line: Int? = nil,
-        mode: NotePresentationMode = .source,
-        inNewTab: Bool = false
+        mode: NotePresentationMode = .source
     ) async {
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
             if self.currentRegisteredVault?.id != reference.vaultID {
                 let vault = try await self.workspaceStore.resolveVault(reference.vaultID.uuidString)
-                try await self.openRegisteredVault(vault)
+                try await self.browseRegisteredVault(vault)
             }
             guard self.notes.contains(where: { $0.relativePath == reference.relativePath }) else {
                 self.showToast(
@@ -4547,7 +4619,7 @@ final class WindowModel: ObservableObject {
                 )
                 return
             }
-            self.openNote(reference.relativePath, inNewTab: inNewTab)
+            self.openNote(reference.relativePath)
             if let line {
                 self.pendingSourceLine = max(1, line)
                 self.requestPresentationMode = mode
@@ -4556,7 +4628,7 @@ final class WindowModel: ObservableObject {
     }
 
     func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
-        guard let sourceVaultID = currentRegisteredVault?.id,
+        guard let sourceContext = activeDocumentContext(for: sourcePath),
               let graph = workspaceCatalog?.graph else {
             showToast("Connections are still refreshing. Try the link again shortly.", kind: .information)
             return
@@ -4565,7 +4637,7 @@ final class WindowModel: ObservableObject {
         let target = String(parts.first ?? "").removingPercentEncoding ?? String(parts.first ?? "")
         let rawFragment = parts.count == 2 ? String(parts[1]) : nil
         let fragment = rawFragment.flatMap { $0.removingPercentEncoding ?? $0 }
-        let source = VaultQualifiedNoteID(vaultID: sourceVaultID, relativePath: sourcePath)
+        let source = VaultQualifiedNoteID(vaultID: sourceContext.vaultID, relativePath: sourcePath)
         let matching = graph.outgoing[source, default: []].filter { edge in
             let occurrenceTarget = edge.occurrence.target.removingPercentEncoding
                 ?? edge.occurrence.target
@@ -4614,13 +4686,10 @@ final class WindowModel: ObservableObject {
         expectedRevision: DocumentFingerprint,
         researchUnitEdit: ResearchUnitEdit? = nil
     ) async throws -> WindowDocumentLocation {
-        try requireResolvedIdentity(for: note.relativePath)
-        guard let vaultID = currentRegisteredVault?.id else {
+        guard let context = activeDocumentContext(for: note.relativePath) else {
             throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
         }
-        guard let original = notes.first(where: { $0.relativePath == note.relativePath }) else {
-            throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
-        }
+        let original = context.note
 
         var edits = PropertyEditorModel.frontmatterEdits(
             from: original.frontmatter,
@@ -4631,7 +4700,7 @@ final class WindowModel: ObservableObject {
         }
         do {
             let result = try await documentController.save(
-                VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath),
+                VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: note.relativePath),
                 changeSet: .frontmatter(edits),
                 expectedRevision: expectedRevision
             )
@@ -4646,14 +4715,12 @@ final class WindowModel: ObservableObject {
 
     @discardableResult
     func saveBody(_ body: String, for path: String, expectedRevision: DocumentFingerprint) async throws -> WindowDocumentLocation {
-        try requireResolvedIdentity(for: path)
-        guard notes.contains(where: { $0.relativePath == path }),
-              let vaultID = currentRegisteredVault?.id else {
+        guard let context = activeDocumentContext(for: path) else {
             throw VaultRepositoryError.fileDoesNotExist(path)
         }
         do {
             let result = try await documentController.save(
-                VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
+                VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
                 changeSet: .body(body),
                 expectedRevision: expectedRevision
             )
@@ -4669,23 +4736,19 @@ final class WindowModel: ObservableObject {
         if noteLocationScope == .unclassified {
             return try await documentController.loadUnclassified(relativePath: path)
         }
-        guard let vaultID = currentRegisteredVault?.id else {
+        guard let context = activeDocumentContext(for: path) else {
             throw VaultRepositoryError.fileDoesNotExist(path)
         }
         return try await documentController.load(
-            VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
+            VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
         )
     }
 
     func showToast(_ message: String, kind: Toast.Kind = .success) {
         let toast = Toast(message: message, kind: kind)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            toastMessage = toast
-        }
+        toastMessage = toast
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                if self?.toastMessage == toast { self?.toastMessage = nil }
-            }
+            if self?.toastMessage == toast { self?.toastMessage = nil }
         }
     }
 
@@ -4744,7 +4807,7 @@ final class WindowModel: ObservableObject {
         var changed: Set<String> = []
         var reviewStateByPath: [String: (isReviewed: Bool, reviewedAt: Date?)] = [:]
         var commentRefreshFailure: String?
-        let storedReviewRecords: [UUID: HumanReviewRecord]
+        var storedReviewRecords = humanReviewRecordsByNoteID
         do {
             let snapshot = try await researchController.researchSnapshot()
             storedReviewRecords = Dictionary(
@@ -4752,7 +4815,6 @@ final class WindowModel: ObservableObject {
                 uniquingKeysWith: { first, _ in first }
             )
         } catch {
-            storedReviewRecords = [:]
             commentRefreshFailure = error.localizedDescription
         }
         for note in noteSnapshot {
@@ -4764,15 +4826,16 @@ final class WindowModel: ObservableObject {
             let fingerprint = revisionSnapshot[path] ?? DocumentFingerprint(content: note.rawContent)
             var record = storedReviewRecords[noteID]
             if record?.comments.contains(where: {
-                   guard let anchor = $0.anchor else { return false }
-                   return anchor.fingerprint != fingerprint
+                   $0.anchor.fingerprint != fingerprint
                }) == true {
                 guard refreshGeneration == identityReviewRefreshGeneration else { return }
                 do {
-                    record = try await researchController.reattachComments(
+                    let reattached = try await researchController.reattachComments(
                         to: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
                         expectedRevision: fingerprint
                     )
+                    record = reattached
+                    storedReviewRecords[noteID] = reattached
                 } catch {
                     commentRefreshFailure = error.localizedDescription
                 }
@@ -4809,7 +4872,8 @@ final class WindowModel: ObservableObject {
                 from: rebinding.previousRelativePath,
                 to: rebinding.relativePath,
                 noteID: rebinding.id,
-                identityResolved: true
+                identityResolved: true,
+                vaultID: vault.id
             )
         }
         noteIdentityByPath = identities.mapValues(\.id)
@@ -4828,6 +4892,8 @@ final class WindowModel: ObservableObject {
                 snapshots[location.relativePath].map(WindowDocumentLocation.workspace) ?? location
             }
         }
+        refreshSelectedDocumentProjection()
+        humanReviewRecordsByNoteID = storedReviewRecords
         humanReviewRecords = records
         changedSinceReviewPaths = changed
         if let commentRefreshFailure {
@@ -4838,14 +4904,11 @@ final class WindowModel: ObservableObject {
 
     private func resetWindowSession() {
         presentationRouter.dismissAll()
-        documentController.removeAll()
+        documentController.removeAll(retainingSessions: true)
         discoveryController.reset()
         researchController.reset()
         notes = []
-        openTabs = []
-        activeTab = nil
-        documentModes = [:]
-        documentScrollPositions = [:]
+        documentController.resetPresentationState()
         pendingSourceLine = nil
         clearMetadataFilters()
         currentRegisteredVault = nil
@@ -4853,6 +4916,7 @@ final class WindowModel: ObservableObject {
         pendingCommentSelection = nil
         focusedResearcherCommentID = nil
         humanReviewRecords = [:]
+        humanReviewRecordsByNoteID = [:]
         noteIdentityByPath = [:]
         identityAmbiguities = []
         pendingIdentityRebindings = []
@@ -4861,6 +4925,7 @@ final class WindowModel: ObservableObject {
         dialogueInitialNotes = []
         documentRevisions = [:]
         relationshipGraph = nil
+        workspaceVaultSnapshotsByID = [:]
         derivedRefreshStatus = nil
     }
 
@@ -4883,7 +4948,8 @@ final class WindowModel: ObservableObject {
                 from: move.previousLocation.relativePath,
                 to: move.location.relativePath,
                 noteID: move.stableNoteID,
-                identityResolved: true
+                identityResolved: true,
+                vaultID: vaultID
             )
         }
     }
@@ -4951,6 +5017,9 @@ final class WindowModel: ObservableObject {
         vaultID: UUID
     ) async {
         workspaceCatalog = snapshot.discovery.catalog
+        workspaceVaultSnapshotsByID = Dictionary(
+            uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
+        )
         guard noteLocationScope == .workspace else {
             try? await refreshNoteLocationScope()
             return
@@ -4966,10 +5035,11 @@ final class WindowModel: ObservableObject {
             }
         let editingDocumentPath = documentController.editingDocumentPath
         let activeRecoveryNote: WindowDocumentLocation? = {
-            guard let activeTab,
-                  editingDocumentPath == activeTab,
-                  !refreshed.contains(where: { $0.relativePath == activeTab }) else { return nil }
-            return previousByPath[activeTab]
+            guard currentDocumentVaultID == vaultID,
+                  let selectedDocumentPath,
+                  editingDocumentPath == selectedDocumentPath,
+                  !refreshed.contains(where: { $0.relativePath == selectedDocumentPath }) else { return nil }
+            return previousByPath[selectedDocumentPath]
         }()
         if let activeRecoveryNote {
             refreshed.append(activeRecoveryNote)
@@ -4988,51 +5058,81 @@ final class WindowModel: ObservableObject {
         workspaceCatalogError = nil
     }
 
+    private func replaceCachedWorkspaceNote(_ note: WorkspaceNoteSnapshot) {
+        guard let vaultSnapshot = workspaceVaultSnapshotsByID[note.id.vaultID] else { return }
+        var documents = vaultSnapshot.documents
+        if let noteID = note.stableIdentity.resolvedID,
+           let index = documents.firstIndex(where: { $0.stableIdentity.resolvedID == noteID }) {
+            documents[index] = note
+        } else if let index = documents.firstIndex(where: { $0.id == note.id }) {
+            documents[index] = note
+        } else {
+            documents.append(note)
+        }
+        workspaceVaultSnapshotsByID[note.id.vaultID] = WorkspaceVaultSnapshot(
+            slot: vaultSnapshot.slot,
+            vault: vaultSnapshot.vault,
+            documents: documents,
+            identityRecovery: vaultSnapshot.identityRecovery
+        )
+        documentController.recordCommittedSnapshot(
+            note,
+            vaultName: vaultSnapshot.vault.name,
+            vaultRole: vaultSnapshot.vault.role
+        )
+    }
+
     /// Publishes authoritative document bytes before refreshing disposable
     /// projections. A parse or index failure can make derived state stale, but
     /// must never make the editor retry an already committed repository write
     /// or reject a disk revision the researcher explicitly accepted.
     private func replaceSavedDocument(_ document: NoteDocument) async -> WindowDocumentLocation {
-        let previousIndex = notes.firstIndex(where: { $0.relativePath == document.relativePath })
-        let previous = previousIndex.map { notes[$0] }
-        let applicationSnapshot: WorkspaceNoteSnapshot? = if let vaultID = currentRegisteredVault?.id {
-            try? await documentController.noteSnapshot(VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: document.relativePath
-            ))
-        } else {
-            nil
+        if case .unclassified? = documentController.selectedDocument {
+            let saved = WindowDocumentLocation.unclassified(document)
+            if noteLocationScope == .unclassified,
+               let index = notes.firstIndex(where: { $0.relativePath == document.relativePath }) {
+                notes[index] = saved
+            }
+            return saved
         }
-        let saved: WindowDocumentLocation
-        if noteLocationScope == .unclassified {
-            saved = .unclassified(document)
-        } else if let applicationSnapshot,
-                  applicationSnapshot.fingerprint == document.fingerprint {
-            saved = .workspace(applicationSnapshot)
-        } else if let prior = previous?.workspaceSnapshot {
-            saved = .workspace(WorkspaceNoteSnapshot(
-                id: prior.id,
-                vaultRole: prior.vaultRole,
-                stableIdentity: prior.stableIdentity,
+
+        guard let context = activeDocumentContext(for: document.relativePath) else {
+            return .unclassified(document)
+        }
+        let previous = workspaceVaultSnapshotsByID[context.vaultID]?.documents.first(where: {
+            $0.stableIdentity.resolvedID == context.noteID
+                || $0.id.relativePath == document.relativePath
+        })
+        let loaded = try? await documentController.noteSnapshot(VaultQualifiedNoteID(
+            vaultID: context.vaultID,
+            relativePath: document.relativePath
+        ))
+        let savedSnapshot: WorkspaceNoteSnapshot
+        if let loaded, loaded.fingerprint == document.fingerprint {
+            savedSnapshot = loaded
+        } else if let previous {
+            savedSnapshot = WorkspaceNoteSnapshot(
+                id: previous.id,
+                vaultRole: previous.vaultRole,
+                stableIdentity: previous.stableIdentity,
                 document: document,
                 fileMetadata: WorkspaceFileMetadata(
                     byteCount: document.sourceBytes.count,
-                    creationDate: prior.fileMetadata.creationDate,
-                    modificationDate: prior.fileMetadata.modificationDate
+                    creationDate: previous.fileMetadata.creationDate,
+                    modificationDate: previous.fileMetadata.modificationDate
                 ),
-                lifecycle: prior.lifecycle,
-                review: prior.review,
-                graphCounts: prior.graphCounts
-            ))
-        } else if let vaultID = currentRegisteredVault?.id {
-            saved = .workspace(WorkspaceNoteSnapshot(
+                lifecycle: previous.lifecycle,
+                review: previous.review,
+                graphCounts: previous.graphCounts
+            )
+        } else {
+            savedSnapshot = WorkspaceNoteSnapshot(
                 id: VaultQualifiedNoteID(
-                    vaultID: vaultID,
+                    vaultID: context.vaultID,
                     relativePath: document.relativePath
                 ),
-                vaultRole: currentVaultRole,
-                stableIdentity: noteIdentityByPath[document.relativePath]
-                    .map(WorkspaceNoteIdentityState.resolved) ?? .unresolved,
+                vaultRole: context.vaultRole,
+                stableIdentity: .resolved(context.noteID),
                 document: document,
                 fileMetadata: WorkspaceFileMetadata(
                     byteCount: document.sourceBytes.count,
@@ -5047,19 +5147,25 @@ final class WindowModel: ObservableObject {
                     broken: 0,
                     ambiguous: 0
                 )
-            ))
-        } else {
-            saved = .unclassified(document)
+            )
         }
-        if let previousIndex {
-            notes[previousIndex] = saved
-        } else {
-            notes.append(saved)
-            notes.sort(by: notesAreOrdered)
+
+        replaceCachedWorkspaceNote(savedSnapshot)
+        let saved = WindowDocumentLocation.workspace(savedSnapshot)
+        if currentRegisteredVault?.id == context.vaultID {
+            if let index = notes.firstIndex(where: { $0.relativePath == document.relativePath }) {
+                notes[index] = saved
+            } else {
+                notes.append(saved)
+                notes.sort(by: notesAreOrdered)
+            }
+            documentRevisions[document.relativePath] = document.fingerprint
         }
-        documentRevisions[document.relativePath] = document.fingerprint
         await refreshWindowProjection(incrementalPaths: [document.relativePath])
-        return notes.first(where: { $0.relativePath == document.relativePath }) ?? saved
+        if currentRegisteredVault?.id == context.vaultID {
+            return notes.first(where: { $0.relativePath == document.relativePath }) ?? saved
+        }
+        return saved
     }
 
     func setVaultRole(_ role: VaultRole) {
@@ -5115,7 +5221,7 @@ private enum ResearcherCommentWorkflowError: LocalizedError {
         case .unavailable:
             return "Comments are unavailable until Scholium can identify this Analysis, Topic, or Work reliably."
         case .staleRevision:
-            return "The note changed before the comment could be attached. Reopen Comments and select the current passage."
+            return "The note changed before the Comment could be attached. Reopen the Review or Critique panel and select the current passage."
         }
     }
 }

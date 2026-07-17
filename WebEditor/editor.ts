@@ -70,7 +70,12 @@ import {tableAt, tableTabAction} from "./tables";
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
 import {linkTargetAt} from "./projection";
 import {rangeKey, semanticProjectionRanges} from "./semantic-projection";
-import {frontmatterEndLine, normalizedDocumentText, replacementChange} from "./state";
+import {
+  applyNormalizedChangesToExactSource,
+  frontmatterEndLine,
+  normalizedDocumentText,
+  replacementChange,
+} from "./state";
 import {
   announceEditorMessage,
   editorAccessibilityAttributes,
@@ -108,7 +113,7 @@ let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
 let documentVersion = 0;
-let sourceLineSeparator: "\n" | "\r\n" = "\n";
+let exactSource = "";
 let linkCandidates: LinkCandidate[] = [];
 let editingDialect: MarkdownEditingDialect | null = null;
 let currentMode: "livePreview" | "source" = "livePreview";
@@ -124,8 +129,7 @@ const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
 });
 
 function exactEditorSource() {
-  const source = editor.state.doc.toString();
-  return sourceLineSeparator === "\r\n" ? source.replaceAll("\n", "\r\n") : source;
+  return exactSource;
 }
 
 const modeCompartment = new Compartment();
@@ -748,6 +752,12 @@ const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
   decorations: (value: LivePreviewPlugin) => value.decorations,
 });
 const livePreviewMode = [livePreview, EditorView.lineWrapping];
+const sourceMode = [
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  foldGutter(),
+  highlightActiveLine(),
+];
 
 let dirty = false;
 let pendingKeyStartedAt: number | null = null;
@@ -778,6 +788,17 @@ const stateReporter = EditorView.updateListener.of((update) => {
     update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
       changes.push({ from: fromA, to: toA, insert: inserted.toString() });
     });
+    const updatedExactSource = applyNormalizedChangesToExactSource(exactSource, changes);
+    if (updatedExactSource === null
+        || normalizedDocumentText(updatedExactSource)
+            !== normalizedDocumentText(update.state.doc.toString())) {
+      post({
+        type: "editorError",
+        message: "The editor could not preserve the exact source line endings.",
+      });
+      return;
+    }
+    exactSource = updatedExactSource;
     post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
   }
 
@@ -933,11 +954,8 @@ function calloutCompletionSource(context: CompletionContext) {
 }
 
 const editorExtensions = [
-      lineNumbers(),
-      highlightActiveLineGutter(),
       highlightSpecialChars(),
       history(),
-      foldGutter(),
       drawSelection(),
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
@@ -947,7 +965,6 @@ const editorExtensions = [
       closeBrackets(),
       autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
       rectangularSelection(),
-      highlightActiveLine(),
       highlightSelectionMatches(),
       markdown({base: markdownLanguage}),
       keymap.of([
@@ -1149,8 +1166,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
           {extensions: editorExtensions},
           {history: historyField},
         );
-        if (restored.doc.toString() === normalizedDocumentText(snapshot.source)) {
+        if (normalizedDocumentText(restored.doc.toString())
+            === normalizedDocumentText(snapshot.source)) {
           editor.setState(restored);
+          exactSource = snapshot.source;
           restoredHistory = true;
         }
       } catch { restoredHistory = false; }
@@ -1161,6 +1180,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
         selection: EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head))),
         annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)],
       });
+      exactSource = snapshot.source;
     }
     editorOperations.setMode(currentMode);
     dirty = snapshot.dirty;
@@ -1296,7 +1316,7 @@ const editorOperations = {
     bridgeFingerprint = startingFingerprint;
     documentVersion = 0;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
-    sourceLineSeparator = separator;
+    exactSource = text;
     editor.dispatch({
       changes: replacementChange(editor.state.doc.toString(), text),
       effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -1312,7 +1332,7 @@ const editorOperations = {
   /** @param {string} mode */
   setMode(mode: string) {
     editor.dispatch({
-      effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : []),
+      effects: modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : sourceMode),
     });
     editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
     editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
@@ -1372,11 +1392,12 @@ const editorOperations = {
   },
 
   synchronizeCommittedText(expectedText: string, committedText: string, startingFingerprint: string) {
-    if (editor.state.doc.toString() !== normalizedDocumentText(expectedText)) return false;
+    if (exactSource !== expectedText
+        || normalizedDocumentText(editor.state.doc.toString())
+            !== normalizedDocumentText(expectedText)) return false;
 
     bridgeFingerprint = startingFingerprint;
     const separator = committedText.includes("\r\n") ? "\r\n" : "\n";
-    sourceLineSeparator = separator;
     editor.dispatch({
       changes: replacementChange(editor.state.doc.toString(), committedText),
       effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -1385,6 +1406,7 @@ const editorOperations = {
         programmaticDocumentChange.of(true),
       ],
     });
+    exactSource = committedText;
     dirty = false;
     post({
       type: "stateChanged",

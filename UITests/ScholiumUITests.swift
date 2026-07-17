@@ -1,4 +1,6 @@
 @preconcurrency import XCTest
+import AppKit
+import CryptoKit
 
 /// Commits marked text without changing the user's active input source.
 /// `typeText` alone can leave Latin test queries inside a CJK IME
@@ -15,6 +17,15 @@ private func typeCommittedText(
 }
 
 final class ScholiumUITests: XCTestCase {
+    /// Mirrors `ScholiumMetrics.Workspace` in the app target. The standalone
+    /// UI-test bundle cannot import that executable module, so keep this named
+    /// acceptance contract synchronized with the source design tokens.
+    private enum QAWorkspaceMetricContract {
+        static let minimumWidth: CGFloat = 760
+        static let preferredWidth: CGFloat = 1_180
+        static let frameTolerance: CGFloat = 18
+    }
+
     private enum QAAppearance: String, CaseIterable {
         case light
         case dark
@@ -71,11 +82,9 @@ final class ScholiumUITests: XCTestCase {
         let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
 
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists || nativeDocument.exists })
-        XCTAssertTrue(
-            documentTabs.waitForExistence(timeout: 5),
-            "The document-first toolbar must keep the active note identity visible with one open note."
-        )
+        XCTAssertFalse(documentTabs.exists)
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
+        XCTAssertEqual(metadata.value as? String, "QA Autosave A")
         XCTAssertTrue(inspectorButton.exists)
         XCTAssertFalse(inspector.exists)
 
@@ -116,11 +125,11 @@ final class ScholiumUITests: XCTestCase {
             noteField.click()
             noteField.typeText("A bounded acceptance-test judgment.")
             XCTAssertFalse(complete.isEnabled)
-            app.buttons["Cancel"].click()
+            app.typeKey(.escape, modifierFlags: [])
             XCTAssertTrue(waitUntil(timeout: 3) { !complete.exists })
         }
 
-        XCTContext.runActivity(named: "Peer vaults preserve context and Back/Forward cross vaults") { _ in
+        XCTContext.runActivity(named: "Peer vaults keep explicit Library selection") { _ in
             let analyses = app.radioButtons["Analyses"]
             let topics = app.radioButtons["Topics"]
             XCTAssertTrue(analyses.exists)
@@ -129,30 +138,44 @@ final class ScholiumUITests: XCTestCase {
             topics.click()
             let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
             XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
+            XCTAssertEqual(metadata.value as? String, "QA Autosave A")
             topicRow.click()
             XCTAssertTrue(waitUntil(timeout: 8) {
                 (metadata.value as? String) == "QA Topic"
             })
 
-            app.typeKey("[", modifierFlags: [.command])
+            analyses.click()
+            let analysisRow = app.descendants(matching: .any)[
+                "scholium.noteRow.QA Autosave A.md"
+            ]
+            XCTAssertTrue(analysisRow.waitForExistence(timeout: 8))
+            XCTAssertEqual(metadata.value as? String, "QA Topic")
+            analysisRow.click()
             XCTAssertTrue(waitUntil(timeout: 8) {
                 (metadata.value as? String) == "QA Autosave A"
             })
-            XCTAssertTrue((analyses.value as? NSNumber)?.boolValue == true)
 
-            app.typeKey("]", modifierFlags: [.command])
+            topics.click()
+            XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
+            XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+            topicRow.click()
             XCTAssertTrue(waitUntil(timeout: 8) {
                 (metadata.value as? String) == "QA Topic"
-            })
-            XCTAssertTrue((topics.value as? NSNumber)?.boolValue == true)
-
-            analyses.click()
-            XCTAssertTrue(waitUntil(timeout: 8) {
-                (metadata.value as? String) == "QA Autosave A"
             })
         }
 
         XCTContext.runActivity(named: "Zotero reports a precise unavailable state") { _ in
+            let analyses = app.radioButtons["Analyses"]
+            analyses.click()
+            let analysisRow = app.descendants(matching: .any)[
+                "scholium.noteRow.QA Autosave A.md"
+            ]
+            XCTAssertTrue(analysisRow.waitForExistence(timeout: 8))
+            analysisRow.click()
+            XCTAssertTrue(waitUntil(timeout: 8) {
+                (metadata.value as? String) == "QA Autosave A"
+            })
+
             if !inspector.exists {
                 inspectorButton.click()
                 XCTAssertTrue(inspector.waitForExistence(timeout: 3))
@@ -218,21 +241,19 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testQuickOpenMatchesAnAliasAcrossTheTriptych() throws {
+    func testSharedSearchMatchesAnAliasAcrossTheTriptych() throws {
         let metadata = app.descendants(matching: .any)["scholium.metadataDisclosure"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
 
-        app.typeKey("p", modifierFlags: [.command])
-        let quickOpen = app.descendants(matching: .any)["scholium.quickOpen"]
-        XCTAssertTrue(quickOpen.waitForExistence(timeout: 5))
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
 
-        let field = app.searchFields.firstMatch
+        let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         typeCommittedText("Normative QA Nexus", into: field, in: app)
 
-        let result = app.descendants(matching: .any)[
-            "scholium.quickOpenResult.topic_knowledge.QA Topic.md"
-        ]
+        let result = app.descendants(matching: .any)["scholium.searchResult.QA Topic.md"]
         XCTAssertTrue(result.waitForExistence(timeout: 5))
         result.click()
 
@@ -240,14 +261,19 @@ final class ScholiumUITests: XCTestCase {
             (metadata.value as? String) == "QA Topic"
         })
         XCTAssertTrue((app.radioButtons["Topics"].value as? NSNumber)?.boolValue == true)
-        XCTAssertFalse(quickOpen.exists)
+        XCTAssertFalse(search.exists)
     }
 
     @MainActor
-    func testNewAnalysisRequiresAndPersistsResearchStatus() throws {
+    func testNewAnalysisCanDeclareAndPersistsResearchStatus() throws {
         let newNote = app.descendants(matching: .any)["scholium.newNote"]
         XCTAssertTrue(newNote.waitForExistence(timeout: 10))
         newNote.click()
+
+        let declareNow = app.buttons["Declare Now"].firstMatch
+        let declareNowRadio = app.radioButtons["Declare Now"].firstMatch
+        XCTAssertTrue(declareNow.waitForExistence(timeout: 3) || declareNowRadio.exists)
+        (declareNow.exists ? declareNow : declareNowRadio).click()
 
         let scope = app.descendants(matching: .any)["scholium.newNote.researchUnitScope"]
         let limitations = app.descendants(matching: .any)["scholium.newNote.researchUnitLimitations"]
@@ -273,51 +299,54 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testRecentNotesReturnsToCrossVaultWorkWithoutSearch() throws {
-        let metadata = app.descendants(matching: .any)["scholium.metadataDisclosure"]
-        XCTAssertTrue(metadata.waitForExistence(timeout: 10))
+    func testNewAnalysisNotYetPreservesYAMLFreeSourceAndGatesReview() throws {
+        let newNote = app.descendants(matching: .any)["scholium.newNote"]
+        XCTAssertTrue(newNote.waitForExistence(timeout: 10))
+        newNote.click()
 
-        app.radioButtons["Topics"].click()
-        let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
-        XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
-        topicRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            metadata.value as? String == "QA Topic"
+        let notYet = app.radioButtons["Not Yet"]
+        XCTAssertTrue(notYet.waitForExistence(timeout: 3))
+        XCTAssertEqual((notYet.value as? NSNumber)?.boolValue, true)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.newNote.researchUnitScope"
+        ].exists)
+        let create = app.buttons["Create"].firstMatch
+        XCTAssertTrue(create.isEnabled)
+        create.click()
+
+        let createdURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Untitled.md"
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: createdURL.path)
         })
+        let createdSource = try source(at: createdURL)
+        XCTAssertEqual(createdSource, "")
+        XCTAssertFalse(createdSource.contains("research_unit"))
 
-        // Back/Forward is chronological, while Recent Notes is actual MRU.
-        app.typeKey("[", modifierFlags: [.command])
+        let review = app.descendants(matching: .any)[
+            "scholium.researchFunction.review"
+        ]
         XCTAssertTrue(waitUntil(timeout: 8) {
-            metadata.value as? String == "QA Autosave A"
+            review.exists && review.isEnabled && review.isHittable
         })
+        review.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchFunctionPanel"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.reviewResearchStatusGate"
+        ].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Complete Review"].isEnabled)
+        XCTAssertTrue(app.buttons["Declare Research Status…"].exists)
+    }
 
-        app.menuBars.menuBarItems["Navigate"].click()
-        let recentNotes = app.menuItems["Recent Notes"]
-        XCTAssertTrue(recentNotes.waitForExistence(timeout: 3))
-        recentNotes.hover()
-
-        let topicRecentItem = app.menuItems["QA Topic — Topics"]
-        XCTAssertTrue(topicRecentItem.waitForExistence(timeout: 3))
-        XCTAssertTrue(topicRecentItem.isEnabled)
-        topicRecentItem.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            metadata.value as? String == "QA Topic"
-        })
-
-        app.menuBars.menuBarItems["Navigate"].click()
-        XCTAssertTrue(recentNotes.waitForExistence(timeout: 3))
-        recentNotes.hover()
-        let clear = app.menuItems["Clear Recent Notes"]
-        XCTAssertTrue(clear.waitForExistence(timeout: 3))
-        clear.click()
-
-        app.menuBars.menuBarItems["Navigate"].click()
-        XCTAssertTrue(recentNotes.waitForExistence(timeout: 3))
-        recentNotes.hover()
-        let empty = app.menuItems["No Recent Notes"]
-        XCTAssertTrue(empty.waitForExistence(timeout: 3))
-        XCTAssertFalse(empty.isEnabled)
-        app.typeKey(.escape, modifierFlags: [])
+    @MainActor
+    func testRetiredNavigationMenuIsAbsent() {
+        XCTAssertFalse(app.menuBars.menuBarItems["Navigate"].exists)
+        XCTAssertFalse(app.menuItems["Back"].exists)
+        XCTAssertFalse(app.menuItems["Forward"].exists)
+        XCTAssertFalse(app.menuItems["Recent Notes"].exists)
     }
 
     @MainActor
@@ -350,7 +379,7 @@ final class ScholiumUITests: XCTestCase {
             app.windows.firstMatch.frame.width,
             360,
             accuracy: 18,
-            "First-run setup should use the same narrow measure as the Triptych Interface."
+            "First-run setup should use the narrow Onboarding measure."
         )
         XCTAssertFalse(app.scrollViews.firstMatch.exists)
 
@@ -381,18 +410,37 @@ final class ScholiumUITests: XCTestCase {
         complete.click()
 
         XCTAssertTrue(app.radioButtons["Analyses"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.triptychInterface"].waitForExistence(timeout: 10))
-        XCTAssertTrue(waitUntil(timeout: 5) { self.app.windows.firstMatch.frame.width <= 390 })
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 10))
+        let workspaceWindow = app.windows.firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            workspaceWindow.frame.width >= QAWorkspaceMetricContract.minimumWidth
+        })
+        if let visibleScreenWidth = NSScreen.main?.visibleFrame.width,
+           visibleScreenWidth >= QAWorkspaceMetricContract.preferredWidth {
+            XCTAssertTrue(waitUntil(timeout: 5) {
+                abs(
+                    workspaceWindow.frame.width
+                        - QAWorkspaceMetricContract.preferredWidth
+                ) <= QAWorkspaceMetricContract.frameTolerance
+            })
+        }
         RunLoop.current.run(until: Date().addingTimeInterval(0.75))
+        let workspaceFrame = workspaceWindow.frame
+        XCTAssertGreaterThanOrEqual(
+            workspaceFrame.width,
+            QAWorkspaceMetricContract.minimumWidth
+        )
         XCTAssertFalse(
             app.descendants(matching: .any)["scholium.triptychSetup"].exists,
-            "Completing first-run setup must not re-present the same guide over the Triptych Interface."
+            "Completing first-run setup must not re-present the same guide over the stable workspace."
         )
         let analysisRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
         XCTAssertTrue(analysisRow.waitForExistence(timeout: 15))
         analysisRow.click()
         waitForDocumentSurface()
-        XCTAssertTrue(waitUntil(timeout: 5) { self.app.windows.firstMatch.frame.width >= 760 })
+        XCTAssertEqual(workspaceWindow.frame, workspaceFrame)
+
+        XCTAssertEqual(workspaceWindow.frame, workspaceFrame)
 
         let manifest = triptychDirectory.appendingPathComponent(".scholium/manifest.json")
         XCTAssertTrue(
@@ -416,6 +464,9 @@ final class ScholiumUITests: XCTestCase {
         )
 
         app.typeKey(",", modifierFlags: [.command])
+        let vaultsPane = app.buttons["Vaults"].firstMatch
+        XCTAssertTrue(vaultsPane.waitForExistence(timeout: 10))
+        vaultsPane.click()
         let nameField = app.descendants(matching: .any)["scholium.triptychName"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
         nameField.click()
@@ -483,11 +534,24 @@ final class ScholiumUITests: XCTestCase {
 
         let editor = app.descendants(matching: .any)["scholium.researchGuidance.skillEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Duplicate"].exists)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.researchGuidance.skillRouting"].exists
+        )
+        XCTAssertFalse(app.buttons["Reveal Skills Folder"].exists)
+
+        let advanced = app.descendants(matching: .any)[
+            "scholium.researchGuidance.advanced"
+        ]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        advanced.click()
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            (advanced.value as? String) == "Expanded"
+        })
         XCTAssertTrue(
             app.descendants(matching: .any)["scholium.researchGuidance.skillRouting"]
                 .waitForExistence(timeout: 5)
         )
-        XCTAssertTrue(app.buttons["Duplicate into Triptych"].exists)
         XCTAssertTrue(app.buttons["Reveal Skills Folder"].exists)
         XCTAssertFalse(app.buttons["Save Skill"].exists)
 
@@ -495,6 +559,7 @@ final class ScholiumUITests: XCTestCase {
             "scholium.researchGuidance.skill.triptych.scholium-development"
         ].firstMatch
         XCTAssertTrue(collision.waitForExistence(timeout: 5))
+        scrollUntilHittable(collision, in: skillSidebar)
         collision.click()
         let validation = app.descendants(matching: .any)[
             "scholium.researchGuidance.skillValidation"
@@ -504,13 +569,253 @@ final class ScholiumUITests: XCTestCase {
             .contains("protected Scholium package"))
 
         app.buttons["Delete Triptych Skill"].click()
-        app.buttons["Delete Skill"].click()
+        let confirmDeletion = app.sheets.firstMatch.buttons["Delete Skill"]
+        XCTAssertTrue(confirmDeletion.waitForExistence(timeout: 3))
+        confirmDeletion.click()
         XCTAssertTrue(waitUntil(timeout: 8) { !collision.exists })
+        let duplicateBundled = app.buttons["Duplicate"]
+        XCTAssertTrue(duplicateBundled.waitForExistence(timeout: 5))
+        duplicateBundled.click()
+        let duplicatedSkill = triptychDirectory.appendingPathComponent(
+            ".scholium/skills/development-copy/SKILL.md"
+        )
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                FileManager.default.fileExists(atPath: duplicatedSkill.path)
+            },
+            "Duplicate must create the independent Triptych-owned skill even when its lazy sidebar row is offscreen."
+        )
+    }
+
+    @MainActor
+    func testGuidedEvolutionAppliesAndRestoresACompleteResearcherSkill() throws {
+        XCTAssertTrue(app.radioButtons["Works"].waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        app.terminate()
+        let package = triptychDirectory.appendingPathComponent(
+            ".scholium/skills/guided-evolution-fixture",
+            isDirectory: true
+        )
+        let evals = package.appendingPathComponent("evals", isDirectory: true)
+        try FileManager.default.createDirectory(at: evals, withIntermediateDirectories: true)
+        let originalSkill = """
+        ---
+        name: Guided Evolution Fixture
+        description: Disposable Researcher Skill for transport and gating verification.
+        scholium:
+          role: specialist
+          supported_functions: [fidelity]
+          capabilities: []
+          citation_styles: []
+          allow_evolution: true
+          supported_modes: [audit]
+          required_skills: [scholium-core-protocol]
+        ---
+        Preserve the researcher's explicit boundaries in this disposable fixture.
+        """ + "\n"
+        let originalEvaluation = "# Synthetic fixture cases\n\nNo philosophical judgment is claimed.\n"
+        try write(originalSkill, to: package.appendingPathComponent("SKILL.md"))
+        try write(originalEvaluation, to: evals.appendingPathComponent("cases.md"))
+        relaunchApplication(windowWidth: 1380)
+
+        openResearchGuidanceSkills(expandAdvanced: true)
+        let settingsWindow = app.windows["Research Guidance"]
+        let bundled = app.descendants(matching: .any)[
+            "scholium.researchGuidance.skill.bundled.scholium-development"
+        ].firstMatch
+        XCTAssertTrue(bundled.waitForExistence(timeout: 10))
         bundled.click()
-        app.buttons["Duplicate into Triptych"].click()
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.researchGuidance.maintenance"].exists,
+            "Bundled Workflow Skills must expose no evolution action."
+        )
+
+        let skill = app.descendants(matching: .any)[
+            "scholium.researchGuidance.skill.triptych.guided-evolution-fixture"
+        ].firstMatch
+        XCTAssertTrue(skill.waitForExistence(timeout: 10))
+        let sidebar = settingsWindow.outlines["Sidebar"].firstMatch
+        let skillRow = sidebar.cells.containing(
+            .any,
+            identifier: "scholium.researchGuidance.skill.triptych.guided-evolution-fixture"
+        ).firstMatch
+        scrollUntilHittable(skillRow, in: sidebar)
+        skillRow.click()
+        let selectedSkillTitle = app.descendants(matching: .any)[
+            "scholium.researchGuidance.skillTitle"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            selectedSkillTitle.exists
+                && (selectedSkillTitle.value as? String) == "Guided Evolution Fixture"
+        })
+        let maintenance = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenance"
+        ]
+        let skillEditor = app.descendants(matching: .any)[
+            "scholium.researchGuidance.skillEditor"
+        ]
+        XCTAssertTrue(skillEditor.waitForExistence(timeout: 10))
+        let detailScroll = skillEditor
+        let openMaintenance = app.descendants(matching: .any)[
+            "scholium.researchGuidance.openMaintenance"
+        ]
+        XCTAssertTrue(openMaintenance.waitForExistence(timeout: 5))
+        openMaintenance.click()
+        let instruction = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceInstruction"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 5) { instruction.exists && instruction.isHittable })
+        XCTAssertTrue(maintenance.exists)
+        instruction.click()
+        instruction.typeText("Refine the synthetic workflow without expanding its authority.")
+
+        let proposedSkill = originalSkill.replacingOccurrences(
+            of: "Preserve the researcher's explicit boundaries in this disposable fixture.",
+            with: "Preserve explicit boundaries and report uncertainty in this disposable fixture."
+        )
+        let proposedEvaluation = "# Synthetic fixture cases\n\nTransport, boundary, and rollback gates only.\n"
+        let files = [
+            ("SKILL.md", proposedSkill),
+            ("evals/cases.md", proposedEvaluation),
+        ]
+        let proposal = try JSONSerialization.data(withJSONObject: [
+            "files": files.map { ["relativePath": $0.0, "source": $0.1] },
+        ], options: [.prettyPrinted, .sortedKeys])
+        let proposalEditor = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceProposalJSON"
+        ]
+        if !proposalEditor.isHittable {
+            scrollUntilHittable(proposalEditor, in: detailScroll)
+        }
+        try paste(String(decoding: proposal, as: UTF8.self), into: proposalEditor)
+        let importProposal = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceImportProposal"
+        ]
+        if !importProposal.isHittable {
+            scrollUntilHittable(importProposal, in: detailScroll)
+        }
+        importProposal.click()
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchGuidance.skill.triptych.development-copy"
-        ].firstMatch.waitForExistence(timeout: 8))
+            "scholium.researchGuidance.maintenanceDiff"
+        ].waitForExistence(timeout: 8))
+
+        let validate = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceEvaluate"
+        ]
+        if !validate.isHittable { scrollUntilHittable(validate, in: detailScroll) }
+        validate.click()
+        let evaluation = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceEvaluation"
+        ]
+        XCTAssertTrue(evaluation.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceApply"
+        ].exists)
+
+        let evidenceEditor = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceEvidence"
+        ]
+        if !evidenceEditor.isHittable {
+            scrollUntilHittable(evidenceEditor, in: detailScroll)
+        }
+        let mismatchedEvidence = try maintenanceEvidence(
+            revision: (String(repeating: "0", count: 64), 0)
+        )
+        try paste(mismatchedEvidence, into: evidenceEditor)
+        if !validate.isHittable { scrollUntilHittable(validate, in: detailScroll) }
+        validate.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            !self.app.descendants(matching: .any)[
+                "scholium.researchGuidance.maintenanceApply"
+            ].exists
+        })
+
+        let proposedRevision = packageRevision(files)
+        if !evidenceEditor.isHittable {
+            scrollUntilHittable(evidenceEditor, in: detailScroll)
+        }
+        try paste(try maintenanceEvidence(revision: proposedRevision), into: evidenceEditor)
+        if !validate.isHittable { scrollUntilHittable(validate, in: detailScroll) }
+        validate.click()
+        let apply = app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceApply"
+        ]
+        XCTAssertTrue(apply.waitForExistence(timeout: 10))
+        if !apply.isHittable { scrollUntilHittable(apply, in: detailScroll) }
+        apply.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.maintenanceApplied"
+        ].waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (try? self.source(at: package.appendingPathComponent("SKILL.md"))) == proposedSkill
+                && (try? self.source(at: evals.appendingPathComponent("cases.md")))
+                    == proposedEvaluation
+        })
+
+        closeFrontmostWindow()
+        relaunchApplication(windowWidth: 1380)
+        openResearchGuidanceSkills(expandAdvanced: true)
+        let recovery = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.researchGuidance.recovery."
+            )
+        ).firstMatch
+        XCTAssertTrue(recovery.waitForExistence(timeout: 10))
+        let relaunchedSidebar = app.windows["Research Guidance"].outlines["Sidebar"].firstMatch
+        scrollUntilHittable(recovery, in: relaunchedSidebar)
+        recovery.click()
+        let restore = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.researchGuidance.recoveryRestore."
+            )
+        ).firstMatch
+        XCTAssertTrue(restore.waitForExistence(timeout: 8))
+        restore.click()
+        let confirm = app.sheets.firstMatch.buttons["Restore Complete Package"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (try? self.source(at: package.appendingPathComponent("SKILL.md"))) == originalSkill
+                && (try? self.source(at: evals.appendingPathComponent("cases.md")))
+                    == originalEvaluation
+        })
+        XCTAssertGreaterThanOrEqual(
+            app.descendants(matching: .any).matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@",
+                    "scholium.researchGuidance.recovery."
+                )
+            ).count,
+            2,
+            "Restore must leave the original snapshot and a new undo snapshot."
+        )
+    }
+
+    @MainActor
+    func testResearchGuidanceWaitsForTriptychActivationWithoutIncompleteAlert() throws {
+        openResearchGuidanceSkills()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.skill.bundled.scholium-development"
+        ].firstMatch.waitForExistence(timeout: 12))
+        XCTAssertFalse(app.alerts["Could Not Manage Skills"].exists)
+        XCTAssertFalse(app.staticTexts[
+            "The Triptych is incomplete. Choose Analyses, Topics, and Works again."
+        ].exists)
+
+        closeFrontmostWindow()
+        relaunchApplication(windowWidth: 1380)
+        XCTAssertTrue(app.radioButtons["Works"].waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        openResearchGuidanceSkills()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.skill.bundled.scholium-development"
+        ].firstMatch.waitForExistence(timeout: 12))
+        XCTAssertFalse(app.alerts["Could Not Manage Skills"].exists)
+        XCTAssertFalse(app.staticTexts[
+            "The Triptych is incomplete. Choose Analyses, Topics, and Works again."
+        ].exists)
     }
 
     @MainActor
@@ -776,14 +1081,21 @@ final class ScholiumUITests: XCTestCase {
         let reviewTarget = app.descendants(matching: .any)[
             "scholium.researchFunctionTarget"
         ]
-        let reviewComments = app.descendants(matching: .any)[
-            "scholium.researchFunctionComments"
+        let reviewCommentComposer = app.descendants(matching: .any)[
+            "scholium.newResearcherComment"
+        ]
+        let selectionRequired = app.descendants(matching: .any)[
+            "scholium.commentSelectionRequired"
         ]
         XCTAssertTrue(reviewTarget.exists)
-        XCTAssertTrue(reviewComments.exists)
+        XCTAssertFalse(
+            reviewCommentComposer.exists,
+            "Review must not expose a whole-note Comment textbox."
+        )
+        XCTAssertTrue(selectionRequired.exists)
         XCTAssertLessThan(
             reviewTarget.frame.minY,
-            reviewComments.frame.minY,
+            selectionRequired.frame.minY,
             "Review must present its immutable Target before Comments."
         )
         app.typeKey(.escape, modifierFlags: [])
@@ -866,6 +1178,7 @@ final class ScholiumUITests: XCTestCase {
         }
 
         let functionUtterances: [String]
+        let workFunctionUtterances: [String]
         do {
             spoken.append("VoiceOver service: \(voiceOver.debugDescription)")
             let focusedDialogue = try currentUtterance()
@@ -902,6 +1215,60 @@ final class ScholiumUITests: XCTestCase {
                 return
             }
             functionUtterances = traversed
+
+            app.radioButtons["Works"].click()
+            let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+            XCTAssertTrue(workRow.waitForExistence(timeout: 8))
+            workRow.click()
+            waitForDocumentSurface()
+
+            let critiqueControl = app.descendants(matching: .any)[
+                "scholium.researchFunction.critique"
+            ]
+            critiqueControl.click()
+            XCTAssertTrue(panel.waitForExistence(timeout: 8))
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 3) { !panel.exists })
+            app.typeKey(.F4, modifierFlags: [.control, .option, .shift])
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+
+            let expectedWorkFunctions = [
+                "Critique", "Revise", "Dialogue", "Fidelity", "Manuscript",
+            ]
+            let focusedCritique = try currentUtterance()
+            spoken.append("Focused Critique: \(focusedCritique)")
+            guard focusedCritique.localizedCaseInsensitiveContains("Critique") else {
+                attachTranscript()
+                XCTFail("VoiceOver did not follow accessibility focus to Critique.")
+                return
+            }
+
+            var traversedWork = [focusedCritique]
+            var nextWorkIndex = 1
+            for step in 1...20 where nextWorkIndex < expectedWorkFunctions.count {
+                app.typeKey(.tab, modifierFlags: [])
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+
+                let utterance = try currentUtterance()
+                spoken.append("Work Tab \(step): \(utterance)")
+                let mentionedIndices = expectedWorkFunctions.indices.filter { index in
+                    utterance.localizedCaseInsensitiveContains(expectedWorkFunctions[index])
+                }
+                if mentionedIndices.contains(nextWorkIndex) {
+                    traversedWork.append(utterance)
+                    nextWorkIndex += 1
+                } else if mentionedIndices.contains(where: { $0 > nextWorkIndex }) {
+                    attachTranscript()
+                    XCTFail("VoiceOver announced a Work function out of order.")
+                    return
+                }
+            }
+            guard nextWorkIndex == expectedWorkFunctions.count else {
+                attachTranscript()
+                XCTFail("VoiceOver did not announce every Work function in order.")
+                return
+            }
+            workFunctionUtterances = traversedWork
         } catch {
             attachTranscript(error)
             throw error
@@ -916,6 +1283,15 @@ final class ScholiumUITests: XCTestCase {
         add(attachment)
 
         for (expected, actual) in zip(expectedFunctions, functionUtterances) {
+            XCTAssertTrue(
+                actual.localizedCaseInsensitiveContains(expected),
+                "Expected VoiceOver to announce \(expected), but heard \(actual).\n\(transcript)"
+            )
+        }
+        for (expected, actual) in zip(
+            ["Critique", "Revise", "Dialogue", "Fidelity", "Manuscript"],
+            workFunctionUtterances
+        ) {
             XCTAssertTrue(
                 actual.localizedCaseInsensitiveContains(expected),
                 "Expected VoiceOver to announce \(expected), but heard \(actual).\n\(transcript)"
@@ -972,6 +1348,9 @@ final class ScholiumUITests: XCTestCase {
             XCTAssertTrue(sheet.descendants(matching: .any)[
                 "scholium.researchFunctionInstruction"
             ].exists)
+            XCTAssertTrue(sheet.descendants(matching: .any)[
+                "scholium.researchFunctionResponseModules"
+            ].exists)
             XCTAssertTrue(sheet.buttons["Cancel"].exists)
             XCTAssertTrue(sheet.descendants(matching: .any)[
                 "scholium.prepareResearchFunction"
@@ -1012,7 +1391,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["scholium.researchFunctionTarget"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["scholium.researchFunctionMaterials"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["scholium.researchFunctionScope"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.researchFunctionComments"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.researcherCommentsPanel"].exists)
         XCTAssertTrue(app.radioButtons["Whole"].exists)
         XCTAssertTrue(app.radioButtons["Passage"].exists)
 
@@ -1030,6 +1409,195 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(panel.exists)
         app.buttons["Done"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 3) { !panel.exists })
+    }
+
+    @MainActor
+    func testWorkStripFunctionsMaterialsCommentsModulesAndShortcuts() throws {
+        let works = app.radioButtons["Works"]
+        XCTAssertTrue(works.waitForExistence(timeout: 8))
+        works.click()
+        let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+        XCTAssertTrue(workRow.waitForExistence(timeout: 8))
+        workRow.click()
+        waitForDocumentSurface()
+
+        let orderedIDs = ["critique", "revise", "dialogue", "fidelity", "manuscript"]
+        let controls = orderedIDs.map {
+            app.descendants(matching: .any)["scholium.researchFunction.\($0)"]
+        }
+        for control in controls {
+            XCTAssertTrue(waitUntil(timeout: 8) {
+                control.exists && control.isEnabled && control.isHittable
+            })
+        }
+        for pair in zip(controls, controls.dropFirst()) {
+            XCTAssertLessThan(
+                pair.0.frame.minX,
+                pair.1.frame.minX,
+                "The Work Strip must expose Critique, Revise, Dialogue, Fidelity, Manuscript in VoiceOver and visual order."
+            )
+        }
+
+        app.menuBars.menuBarItems["Research"].click()
+        for title in ["Critique", "Revise", "Dialogue", "Fidelity", "Manuscript"] {
+            XCTAssertTrue(app.menuItems[title].firstMatch.exists)
+        }
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.typeKey("r", modifierFlags: [.command])
+        var panel = app.descendants(matching: .any)["scholium.researchFunctionPanel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 8))
+        XCTAssertEqual(panel.label, "Critique function")
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.researchFunctionScope"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.researcherCommentsPanel"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        mode.click()
+        let sourceMode = app.menuItems
+            .matching(identifier: "chevron.left.forwardslash.chevron.right")
+            .firstMatch
+        XCTAssertTrue(sourceMode.waitForExistence(timeout: 3))
+        sourceMode.click()
+        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
+        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
+        sourceEditor.click()
+        app.menuBars.menuBarItems["Insert"].click()
+        var addComment = app.menuItems["Add Comment…"].firstMatch
+        XCTAssertTrue(addComment.waitForExistence(timeout: 5))
+        XCTAssertFalse(addComment.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.typeKey(.end, modifierFlags: [.command])
+        app.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        app.menuBars.menuBarItems["Insert"].click()
+        addComment = app.menuItems["Add Comment…"].firstMatch
+        XCTAssertTrue(addComment.waitForExistence(timeout: 5))
+        XCTAssertTrue(addComment.isEnabled)
+        addComment.click()
+        let commentJudgmentPanel = app.descendants(matching: .any)[
+            "scholium.researchFunctionPanel"
+        ]
+        XCTAssertTrue(commentJudgmentPanel.waitForExistence(timeout: 8))
+        XCTAssertEqual(commentJudgmentPanel.label, "Critique function")
+        let commentsPanel = app.descendants(matching: .any)[
+            "scholium.researcherCommentsPanel"
+        ]
+        XCTAssertTrue(commentsPanel.waitForExistence(timeout: 8))
+        let newComment = app.descendants(matching: .any)["scholium.newResearcherComment"]
+        newComment.click()
+        newComment.typeText("Synthetic Work boundary Comment.")
+        let addCommentButton = app.descendants(matching: .any)[
+            "scholium.addResearcherComment"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 5) { addCommentButton.isHittable })
+        addCommentButton.click()
+        XCTAssertTrue(commentsPanel.staticTexts[
+            "Synthetic Work boundary Comment."
+        ].waitForExistence(timeout: 8))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !commentJudgmentPanel.exists })
+
+        app.typeKey("d", modifierFlags: [.command, .shift])
+        panel = app.descendants(matching: .any)["scholium.researchFunctionPanel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 8))
+        XCTAssertEqual(panel.label, "Dialogue function")
+        let target = panel.descendants(matching: .any)["scholium.researchFunctionTarget"]
+        XCTAssertTrue(target.exists)
+        XCTAssertTrue(target.staticTexts["QA Work"].exists)
+        XCTAssertTrue(target.staticTexts["QA Work.md"].exists)
+
+        let material = panel.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.researchFunctionMaterial."
+            )
+        ).firstMatch
+        XCTAssertTrue(material.waitForExistence(timeout: 8))
+        let panelScroll = app.sheets.firstMatch.scrollViews.firstMatch
+        if !material.isHittable { scrollUntilHittable(material, in: panelScroll) }
+        material.click()
+        XCTAssertTrue(checkboxIsSelected(material))
+        let selectedTray = panel.descendants(matching: .any)[
+            "scholium.researchFunctionMaterials.selectedTray"
+        ]
+        XCTAssertTrue(selectedTray.waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.descendants(matching: .any)[
+            "scholium.researchFunctionMaterials.search"
+        ].exists)
+        XCTAssertTrue(panel.descendants(matching: .any)[
+            "scholium.researchFunctionMaterials.suggestedOnly"
+        ].exists)
+        selectedTray.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Remove ")
+        ).firstMatch.click()
+        XCTAssertFalse(checkboxIsSelected(material))
+        XCTAssertTrue(waitUntil(timeout: 3) { !selectedTray.exists })
+
+        let modules = panel.descendants(matching: .any)[
+            "scholium.researchFunctionResponseModules"
+        ]
+        XCTAssertTrue(modules.exists)
+        for module in [
+            "critical-reflection",
+            "remaining-questions",
+            "philosophical-significance",
+            "debate-context",
+            "research-directions",
+        ] {
+            XCTAssertTrue(panel.descendants(matching: .any)[
+                "scholium.researchFunctionResponseModule.\(module)"
+            ].exists)
+        }
+        XCTAssertTrue(panel.descendants(matching: .any)[
+            "scholium.researchFunctionAcademicOutcome"
+        ].exists)
+
+        let selectableComment = panel.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.researchFunctionComment."
+            )
+        ).firstMatch
+        XCTAssertTrue(selectableComment.waitForExistence(timeout: 8))
+        if !selectableComment.isHittable {
+            scrollUntilHittable(selectableComment, in: panelScroll)
+        }
+        selectableComment.click()
+        XCTAssertTrue(checkboxIsSelected(selectableComment))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+
+        controls[1].click()
+        panel = app.descendants(matching: .any)["scholium.researchFunctionPanel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 8))
+        XCTAssertEqual(panel.label, "Revise function")
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.prepareResearchFunction"].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+
+        controls[3].click()
+        panel = app.descendants(matching: .any)["scholium.researchFunctionPanel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.researchFunctionFidelity"].exists)
+        XCTAssertTrue(panel.checkBoxes["Content"].exists)
+        XCTAssertTrue(panel.checkBoxes.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Citations")
+        ).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchFunction.repairCitationMethod"
+        ].exists)
+        app.typeKey(.escape, modifierFlags: [])
+
+        controls[4].click()
+        panel = app.descendants(matching: .any)["scholium.researchFunctionPanel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 8))
+        XCTAssertEqual(panel.label, "Manuscript function")
+        XCTAssertFalse(panel.staticTexts["Phases"].exists)
+        XCTAssertFalse(panel.staticTexts["Packages"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        XCTAssertTrue(controls[4].isHittable, "Escape must restore focus to the editor context and its Strip.")
     }
 
     @MainActor
@@ -1116,12 +1684,22 @@ final class ScholiumUITests: XCTestCase {
         insert.click()
         XCTAssertTrue(app.menuItems["Footnote"].firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.menuItems["Table"].firstMatch.exists)
-        XCTAssertTrue(app.menuItems["Add Comment…"].firstMatch.exists)
+        let addComment = app.menuItems["Add Comment…"].firstMatch
+        XCTAssertTrue(addComment.exists)
+        XCTAssertFalse(addComment.isEnabled)
         app.typeKey(.escape, modifierFlags: [])
 
         editor.rightClick()
-        XCTAssertTrue(app.menuItems["Bold"].firstMatch.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.menuItems["Add Comment…"].firstMatch.exists)
+        let editorContextMenu = app.menus["scholium.editor.contextMenu"]
+        XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
+        XCTAssertTrue(editorContextMenu.menuItems["Bold"].waitForExistence(timeout: 3))
+        XCTAssertFalse(editorContextMenu.menuItems["Add Comment…"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.typeKey(.end, modifierFlags: [.command])
+        app.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        insert.click()
+        XCTAssertTrue(app.menuItems["Add Comment…"].firstMatch.isEnabled)
         app.typeKey(.escape, modifierFlags: [])
     }
 
@@ -1137,15 +1715,24 @@ final class ScholiumUITests: XCTestCase {
         let result = app.descendants(matching: .any)["scholium.searchResult.QA Autosave A.md"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         let searchMode = app.descendants(matching: .any)["scholium.searchMode"]
-        XCTAssertFalse(searchMode.exists)
-
-        typeCommittedText("analysis", into: field, in: app)
+        let closeSearch = app.descendants(matching: .any)["scholium.closeSearchButton"]
         XCTAssertTrue(searchMode.waitForExistence(timeout: 5))
+        XCTAssertTrue(closeSearch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.radioButtons["This Note"].exists)
         XCTAssertTrue(app.radioButtons["This Vault"].exists)
         XCTAssertTrue(app.radioButtons["Triptych"].exists)
+        let collapsedControls = field.frame
+            .union(searchMode.frame)
+            .union(closeSearch.frame)
+        XCTAssertLessThanOrEqual(collapsedControls.width, 644)
+        XCTAssertLessThanOrEqual(collapsedControls.height, 80)
+
+        typeCommittedText("analysis", into: field, in: app)
         app.radioButtons["This Note"].click()
         XCTAssertTrue(result.waitForExistence(timeout: 8))
+        let expandedContentHeight = result.frame.maxY - field.frame.minY
+        XCTAssertGreaterThan(expandedContentHeight, collapsedControls.height)
+        XCTAssertLessThanOrEqual(expandedContentHeight, 524)
 
         field.click()
         field.typeKey("a", modifierFlags: [.command])
@@ -1153,8 +1740,12 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 5) {
             !result.exists
         })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { closeSearch.exists },
+            "A new query must not dismiss Search by opening a stale result."
+        )
 
-        app.buttons["Close"].click()
+        closeSearch.click()
         XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
         XCTAssertTrue(renderedDocument.exists || nativeDocument.exists)
     }
@@ -1295,12 +1886,12 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["scholium.researchInspector"].exists)
         openAndCloseAdaptiveInspector()
 
-        app.menuBars.menuBarItems["View"].click()
-        let collapseNote = app.menuItems["Collapse Note"]
-        XCTAssertTrue(collapseNote.waitForExistence(timeout: 3))
-        XCTAssertTrue(collapseNote.isEnabled)
-        collapseNote.click()
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.triptychInterface"].waitForExistence(timeout: 5))
+        let sidebarToggle = app.buttons["Show Sidebar"].exists
+            ? app.buttons["Show Sidebar"]
+            : app.buttons["Hide Sidebar"]
+        XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 3))
+        sidebarToggle.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 5))
         let note = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         note.click()
@@ -1332,6 +1923,31 @@ final class ScholiumUITests: XCTestCase {
             maximumWidth: 720,
             window: compactWindow
         )
+        app.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !self.app.sheets.firstMatch.exists })
+
+        let compactWorks = app.radioButtons["Works"]
+        if !compactWorks.exists {
+            let sidebarToggle = app.buttons["Show Sidebar"].exists
+                ? app.buttons["Show Sidebar"]
+                : app.buttons["Hide Sidebar"]
+            XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 3))
+            sidebarToggle.click()
+            XCTAssertTrue(app.descendants(matching: .any)[
+                "scholium.librarySurface"
+            ].waitForExistence(timeout: 5))
+        }
+        XCTAssertTrue(compactWorks.waitForExistence(timeout: 5))
+        compactWorks.click()
+        let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+        XCTAssertTrue(workRow.waitForExistence(timeout: 8))
+        workRow.click()
+        waitForDocumentSurface()
+        openResearchFunctionAndVerifyPanel(
+            minimumWidth: 540,
+            maximumWidth: 720,
+            window: compactWindow
+        )
     }
 
     @MainActor
@@ -1356,59 +1972,54 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testClosingLastNoteContractsToLibraryAndSelectionExpandsDocument() throws {
+    func testNativeSidebarToggleAndTriptychManagementShareLeadingToolbar() throws {
         waitForDocumentSurface()
         let window = app.windows.firstMatch
-        XCTAssertGreaterThanOrEqual(window.frame.width, 760)
+        let originalFrame = window.frame
+        XCTAssertGreaterThanOrEqual(originalFrame.width, 760)
 
-        app.typeKey("w", modifierFlags: [.command])
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.triptychInterface"].waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 5) { window.frame.width <= 390 })
-        XCTAssertFalse(app.buttons["Triptych Home"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["scholium.researchStrip"].exists)
         let triptychManagement = app.menuButtons["Triptych management"]
-        XCTAssertTrue(triptychManagement.exists)
-        let collapsedManagementFrame = triptychManagement.frame
-        let libraryFilters = app.menuButtons["Library filters"]
-        XCTAssertTrue(libraryFilters.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.menuButtons["Research filters"].exists)
-        XCTAssertFalse(app.menuButtons["Tag filter"].exists)
-        XCTAssertFalse(app.menuButtons["Metadata filters"].exists)
-        XCTAssertFalse(app.menuButtons["Sort notes"].exists)
-        libraryFilters.click()
-        XCTAssertTrue(app.menuItems["Research State"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.menuItems["Tag"].exists)
-        XCTAssertTrue(app.menuItems["Status"].exists)
-        XCTAssertTrue(app.menuItems["Sort"].exists)
-        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(triptychManagement.waitForExistence(timeout: 5))
+        let hideSidebar = app.buttons["Hide Sidebar"]
+        XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(triptychManagement.frame.minX, hideSidebar.frame.maxX)
+        XCTAssertLessThanOrEqual(
+            abs(triptychManagement.frame.midY - hideSidebar.frame.midY),
+            4
+        )
+        let folderRow = app.descendants(matching: .any)[
+            "scholium.folderRow.Level 1 - Philosophy of Emotion"
+        ]
+        let noteRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(folderRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(noteRow.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(
+            noteRow.frame.minX,
+            folderRow.frame.minX + 30,
+            "Top-level note rows must remain aligned with the Library outline."
+        )
         XCTAssertFalse(app.buttons["Collapse Note"].exists)
+        app.menuBars.menuBarItems["View"].click()
+        XCTAssertFalse(app.menuItems["Collapse Note"].exists)
+        app.typeKey(.escape, modifierFlags: [])
 
-        let note = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-        XCTAssertTrue(note.waitForExistence(timeout: 5))
-        note.click()
-        waitForDocumentSurface()
-        XCTAssertTrue(waitUntil(timeout: 5) { window.frame.width >= 760 })
-        let collapseNote = app.buttons["Collapse Note"]
-        XCTAssertTrue(collapseNote.waitForExistence(timeout: 5))
-        let expandedTriptychManagement = app.menuButtons["Triptych management"]
-        XCTAssertTrue(expandedTriptychManagement.exists)
-        XCTAssertEqual(
-            expandedTriptychManagement.frame.size,
-            collapsedManagementFrame.size,
-            "Triptych management must not resize when Collapse Note joins its control group."
-        )
-        XCTAssertFalse(
-            app.buttons["Hide Sidebar"].exists,
-            "Triptych Interface owns retraction; the duplicate system sidebar toggle must stay absent."
-        )
+        hideSidebar.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            !self.app.descendants(matching: .any)["scholium.librarySurface"].exists
+        })
+        XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         let metadata = app.descendants(matching: .any)["scholium.metadataDisclosure"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 5))
         XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+        hideSidebar.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 5))
+        XCTAssertEqual(window.frame.width, originalFrame.width, accuracy: 1)
+        XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
 
-        collapseNote.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { window.frame.width <= 390 })
-        XCTAssertTrue(note.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Collapse Note"].exists)
+        let shellScreenshot = XCTAttachment(screenshot: window.screenshot())
+        shellScreenshot.name = "Full-height vibrant Library with native sidebar controls"
+        shellScreenshot.lifetime = .keepAlways
+        add(shellScreenshot)
     }
 
     @MainActor
@@ -1826,13 +2437,13 @@ final class ScholiumUITests: XCTestCase {
 
         restoredB.click()
         app.menuBars.menuBarItems["Window"].click()
-        let mergeWindows = app.menuItems["Merge Scholium Windows"]
+        let mergeWindows = app.menuItems["Merge All Windows"]
         XCTAssertTrue(mergeWindows.waitForExistence(timeout: 3))
         XCTAssertTrue(mergeWindows.isEnabled)
         mergeWindows.click()
 
         app.menuBars.menuBarItems["Window"].click()
-        let moveTabToNewWindow = app.menuItems["Move Scholium Tab to New Window"]
+        let moveTabToNewWindow = app.menuItems["Move Tab to New Window"]
         XCTAssertTrue(
             moveTabToNewWindow.waitForExistence(timeout: 5),
             "The restored windows must participate in the native macOS window tab group."
@@ -2752,45 +3363,85 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testDocumentTabsExposeEditedAndConflictState() throws {
+    func testOpenInNewTabUsesNativeWindowTabsAndStandardClose() throws {
         let secondPath = "QA Autosave B.md"
-        let firstPath = "QA Autosave A.md"
         let secondRow = app.descendants(matching: .any)["scholium.noteRow.\(secondPath)"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 10))
         secondRow.rightClick()
-        let openInNewTab = app.menuItems["Open in New Tab"]
+        let noteContextMenu = app.menus["scholium.noteRow.\(secondPath)"]
+        XCTAssertTrue(noteContextMenu.waitForExistence(timeout: 3))
+        let openInNewTab = noteContextMenu.menuItems["Open in New Tab"]
         XCTAssertTrue(openInNewTab.waitForExistence(timeout: 3))
         openInNewTab.click()
 
-        let activeTab = app.descendants(matching: .any)["scholium.documentTab.\(secondPath)"]
-        let firstTab = app.descendants(matching: .any)["scholium.documentTab.\(firstPath)"]
-        XCTAssertTrue(activeTab.waitForExistence(timeout: 5))
-        XCTAssertTrue(firstTab.exists)
-
-        let localToken = " TAB-STATE-\(UUID().uuidString)"
-        try enterLivePreviewAndAppend(localToken)
+        let nativeTabGroup = app.tabGroups.firstMatch
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            nativeTabGroup.exists && nativeTabGroup.tabs.count == 2
+        })
+        XCTAssertTrue(nativeTabGroup.tabs["QA Autosave A"].exists)
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            nativeTabGroup.tabs["QA Autosave B"].exists
+        })
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.documentTabs"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.documentTab.\(secondPath)"].exists)
+        let sessionsDirectory = homeDirectory
+            .appendingPathComponent("ApplicationSupport/Window Sessions", isDirectory: true)
         XCTAssertTrue(
-            waitUntil(timeout: 3) { self.accessibilityText(of: activeTab).contains("Edited") },
-            "The active document tab must expose its uncommitted editor state."
+            waitUntil(timeout: 8) {
+                ((try? FileManager.default.contentsOfDirectory(
+                    at: sessionsDirectory,
+                    includingPropertiesForKeys: nil
+                ).count) ?? 0) >= 2
+            },
+            "The deterministic QA root and its child native tab must persist under distinct window-session IDs."
         )
 
-        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/\(secondPath)")
-        let originalDisk = try source(at: noteURL)
-        try write(originalDisk + "\n\n## External Tab Revision\n", to: noteURL)
+        let windowMenuItem = app.menuBars.menuBarItems["Window"]
+        windowMenuItem.click()
+        let windowMenu = windowMenuItem.menus.firstMatch
+        XCTAssertTrue(windowMenu.menuItems["Show Previous Tab"].waitForExistence(timeout: 3))
+        XCTAssertTrue(windowMenu.menuItems["Show Next Tab"].exists)
+        app.typeKey(.escape, modifierFlags: [])
 
-        firstTab.click()
-        let compare = app.windows.firstMatch.buttons["Compare Changes"]
-        XCTAssertTrue(compare.waitForExistence(timeout: 12))
+        let metadata = app.descendants(matching: .any)["scholium.metadataDisclosure"]
+        app.typeKey("w", modifierFlags: [.command])
         XCTAssertTrue(
-            waitUntil(timeout: 3) { self.accessibilityText(of: activeTab).contains("Conflict") },
-            "A rejected tab transition must replace Edited with the exact Conflict state."
+            waitUntil(timeout: 8) {
+                self.app.windows.firstMatch.exists
+                    && !self.app.tabs["QA Autosave B"].exists
+                    && (metadata.value as? String) == "QA Autosave A"
+            },
+            "Standard Command-W must close only the selected native tab session."
         )
-        XCTAssertTrue((try source(at: noteURL)).contains("External Tab Revision"))
-        XCTAssertFalse((try source(at: noteURL)).contains(localToken))
+        XCTAssertTrue(app.windows.firstMatch.exists)
+    }
 
-        app.windows.firstMatch.buttons["Keep Editing"].click()
-        XCTAssertTrue(activeTab.waitForExistence(timeout: 3))
-        XCTAssertTrue(accessibilityText(of: activeTab).contains("Conflict"))
+    @MainActor
+    func testFileMenuOpensTheCurrentDocumentInANativeTab() throws {
+        let metadata = app.descendants(matching: .any)["scholium.metadataDisclosure"]
+        XCTAssertTrue(metadata.waitForExistence(timeout: 10))
+        XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+
+        let fileMenuItem = app.menuBars.menuBarItems["File"]
+        fileMenuItem.click()
+        let fileMenu = fileMenuItem.menus.firstMatch
+        let openInNewTab = fileMenu.menuItems["Open in New Tab"]
+        XCTAssertTrue(
+            openInNewTab.waitForExistence(timeout: 3),
+            "The File menu must expose Open in New Tab."
+        )
+        XCTAssertTrue(openInNewTab.isEnabled)
+        openInNewTab.click()
+
+        let nativeTabGroup = app.tabGroups.firstMatch
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            nativeTabGroup.exists && nativeTabGroup.tabs.count == 2
+        })
+        app.typeKey("w", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            self.app.windows.firstMatch.exists
+                && (!nativeTabGroup.exists || nativeTabGroup.tabs.count == 1)
+        })
     }
 
     @MainActor
@@ -2860,12 +3511,17 @@ final class ScholiumUITests: XCTestCase {
         _ element: XCUIElement,
         in scrollView: XCUIElement
     ) {
-        // macOS can report a control as reachable before its containing list
-        // or scroll view has exposed an interactive frame. Move once before
-        // trusting hit testing, then keep the retries bounded.
-        scrollView.swipeUp()
-        for _ in 0..<3 where !element.isHittable {
-            scrollView.swipeUp()
+        guard !element.isHittable else { return }
+
+        // XCUITest exposes offscreen SwiftUI list rows with their actual frame.
+        // Scroll toward that frame rather than always moving down the list;
+        // an unconditional upward swipe can move a near-top row offscreen.
+        for _ in 0..<6 where !element.isHittable {
+            if element.frame.midY < scrollView.frame.midY {
+                scrollView.swipeDown()
+            } else {
+                scrollView.swipeUp()
+            }
         }
         XCTAssertTrue(element.isHittable, "Expected the control to become visible after scrolling.")
     }
@@ -2974,6 +3630,9 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchFunctionMaterials"
         ].exists)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchFunctionResponseModules"
+        ].exists)
         XCTAssertFalse(app.staticTexts["Supported modes"].exists)
         XCTAssertFalse(app.staticTexts["Required packages"].exists)
     }
@@ -3069,6 +3728,92 @@ final class ScholiumUITests: XCTestCase {
         }
         return String(
             decoding: output.fileHandleForReading.readDataToEndOfFile(),
+            as: UTF8.self
+        )
+    }
+
+    private func setPasteboardText(_ text: String) throws {
+        let process = Process()
+        let input = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+        process.standardInput = input
+        try process.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+    }
+
+    @MainActor
+    private func paste(_ text: String, into element: XCUIElement) throws {
+        try setPasteboardText(text)
+        element.click()
+        element.typeKey("a", modifierFlags: [.command])
+        element.typeKey("v", modifierFlags: [.command])
+    }
+
+    @MainActor
+    private func openResearchGuidanceSkills(expandAdvanced: Bool = false) {
+        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+        appMenu.click()
+        let settings = app.menuItems["Settings…"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 3))
+        settings.click()
+        let collection = app.descendants(matching: .any)[
+            "scholium.researchGuidance.collection"
+        ]
+        XCTAssertTrue(collection.waitForExistence(timeout: 10))
+        let skills = app.radioButtons["Skills"]
+        XCTAssertTrue(skills.waitForExistence(timeout: 5))
+        skills.click()
+        if expandAdvanced {
+            let advanced = app.descendants(matching: .any)[
+                "scholium.researchGuidance.advanced"
+            ]
+            XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+            advanced.click()
+        }
+    }
+
+    private func packageRevision(_ files: [(String, String)]) -> (String, Int) {
+        var bytes = Data()
+        for (path, source) in files.sorted(by: { $0.0 < $1.0 }) {
+            let sourceData = Data(source.utf8)
+            bytes.append(Data(path.utf8))
+            bytes.append(0)
+            bytes.append(Data(String(sourceData.count).utf8))
+            bytes.append(0)
+            bytes.append(sourceData)
+            bytes.append(0)
+        }
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        return (digest, bytes.count)
+    }
+
+    private func maintenanceEvidence(revision: (String, Int)) throws -> String {
+        let payload: [String: Any] = [
+            "proposedPackageRevision": [
+                "sha256": revision.0,
+                "byteCount": revision.1,
+            ],
+            "evaluator": "Synthetic UI transport fixture",
+            "method": "Structural, boundary, and rollback gating only",
+            "status": "passed",
+            "cases": [[
+                "id": "synthetic-transport-gate",
+                "status": "passed",
+                "summary": "Fixture evidence exercises transport and gating; it makes no philosophical-quality claim.",
+            ]],
+            "evaluatedAt": ISO8601DateFormatter().string(from: Date()),
+        ]
+        return String(
+            decoding: try JSONSerialization.data(
+                withJSONObject: payload,
+                options: [.prettyPrinted, .sortedKeys]
+            ),
             as: UTF8.self
         )
     }

@@ -56,8 +56,83 @@ enum ScholiumFontRegistry {
 /// The document typography contract shared by SwiftUI and the AppKit-backed
 /// Markdown reader/editor.
 enum ScholiumTypography {
-    static let readingBodySize: CGFloat = 17
-    static let sourceBodySize: CGFloat = 14
+    enum HeadingLevel: Int, CaseIterable, Sendable {
+        case h1 = 1
+        case h2
+        case h3
+        case h4
+        case h5
+        case h6
+
+        fileprivate var scale: CGFloat {
+            switch self {
+            case .h1: 1.50
+            case .h2: 1.30
+            case .h3: 1.15
+            case .h4, .h5, .h6: 1.00
+            }
+        }
+    }
+
+    private static let bodyPointSize: CGFloat = 12
+    static let exactSourcePointSize: CGFloat = 14
+    static let codePointSize: CGFloat = 13
+    static let diffPointSize: CGFloat = 13
+    static let revisionIdentityPointSize: CGFloat = 11
+
+    static func body(
+        scale: CGFloat = 1,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> NSFont {
+        readingFont(
+            size: bodyPointSize * scale,
+            bold: bold,
+            italic: italic
+        )
+    }
+
+    static func heading(
+        level: HeadingLevel,
+        scale: CGFloat = 1
+    ) -> NSFont {
+        readingFont(
+            size: bodyPointSize * level.scale * scale,
+            bold: true
+        )
+    }
+
+    static func exactSource(
+        scale: CGFloat = 1,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> NSFont {
+        monospaceFont(
+            size: exactSourcePointSize * scale,
+            bold: bold,
+            italic: italic
+        )
+    }
+
+    static func code(scale: CGFloat = 1) -> NSFont {
+        monospaceFont(size: codePointSize * scale)
+    }
+
+    static func diff(
+        scale: CGFloat = 1,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> NSFont {
+        monospaceFont(
+            size: diffPointSize * scale,
+            bold: bold,
+            italic: italic
+        )
+    }
+
+    static func revisionIdentity(scale: CGFloat = 1) -> NSFont {
+        monospaceFont(size: revisionIdentityPointSize * scale)
+    }
 
     static func readingFont(
         size: CGFloat,
@@ -110,6 +185,33 @@ enum ScholiumTypography {
         }
         return .custom(name, size: size, relativeTo: textStyle)
     }
+
+    static func swiftUICode(scale: CGFloat = 1) -> Font {
+        swiftUIMonospaceFont(
+            size: codePointSize * scale,
+            relativeTo: .body
+        )
+    }
+
+    static func swiftUIDiff(
+        scale: CGFloat = 1,
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> Font {
+        swiftUIMonospaceFont(
+            size: diffPointSize * scale,
+            relativeTo: .body,
+            bold: bold,
+            italic: italic
+        )
+    }
+
+    static func swiftUIRevisionIdentity(scale: CGFloat = 1) -> Font {
+        swiftUIMonospaceFont(
+            size: revisionIdentityPointSize * scale,
+            relativeTo: .caption
+        )
+    }
 }
 
 /// A restrained system-font hierarchy for persistent app chrome. Document
@@ -117,6 +219,6 @@ enum ScholiumTypography {
 enum ScholiumInterfaceTypography {
     static let identity = Font.title3.weight(.medium)
     static let sectionTitle = Font.headline.weight(.medium)
-    static let compactEmphasis = Font.callout.weight(.medium)
-    static let overline = Font.caption.weight(.medium)
+    static let rowTitle = Font.callout.weight(.medium)
+    static let metadata = Font.caption.weight(.medium)
 }

@@ -3,9 +3,9 @@ import SwiftUI
 
 struct NoteLifecycleActions {
     let putBackDestination: @MainActor (String) -> String?
-    let create: @MainActor (String, String, String?, [String]) async throws -> Void
-    let duplicate: @MainActor (String, String) async throws -> Void
-    let move: @MainActor (String, String) async throws -> Void
+    let create: @MainActor (String, String, AnalysisResearchStatusChoice) async throws -> Void
+    let duplicate: @MainActor (NoteLifecycleTarget, String) async throws -> Void
+    let move: @MainActor (NoteLifecycleTarget, String) async throws -> Void
     let putBack: @MainActor (String) async throws -> Void
     let classify: @MainActor (String, WorkspaceVaultSlot, String) async throws -> Void
 }
@@ -19,6 +19,7 @@ struct NoteLifecycleView: View {
 
     @State private var title = ""
     @State private var destination = ""
+    @State private var researchStatusChoice: AnalysisResearchStatusChoiceKind = .notYet
     @State private var researchUnitScope = ""
     @State private var researchUnitLimitationsText = ""
     @State private var classificationSlot: WorkspaceVaultSlot = .paperAnalysis
@@ -64,31 +65,46 @@ struct NoteLifecycleView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("Research Status", systemImage: "scope")
                                 .font(.headline)
-                            Text("Declare the source material this Analysis will represent. Limitations are optional and should describe material boundaries.")
+                            Text("Declare the source material this Analysis will represent now, or begin the Analysis without a declaration.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            adaptiveField(
-                                "Scope",
-                                wide: {
-                                    TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
-                                        .frame(minWidth: 300)
-                                        .accessibilityLabel("Research Status Scope")
-                                        .accessibilityIdentifier("scholium.newNote.researchUnitScope")
-                                },
-                                compact: {
-                                    TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
-                                        .accessibilityLabel("Research Status Scope")
-                                        .accessibilityIdentifier("scholium.newNote.researchUnitScope")
-                                }
-                            )
+                            Picker("Research Status", selection: $researchStatusChoice) {
+                                Text("Declare Now").tag(AnalysisResearchStatusChoiceKind.declareNow)
+                                Text("Not Yet").tag(AnalysisResearchStatusChoiceKind.notYet)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .accessibilityIdentifier("scholium.newNote.researchStatusChoice")
 
-                            adaptiveField(
-                                "Limitations",
-                                wide: { limitationsEditor(minWidth: 300) },
-                                compact: { limitationsEditor(minWidth: 0) }
-                            )
+                            if researchStatusChoice == .declareNow {
+                                adaptiveField(
+                                    "Scope",
+                                    wide: {
+                                        TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
+                                            .frame(minWidth: 300)
+                                            .accessibilityLabel("Research Status Scope")
+                                            .accessibilityIdentifier("scholium.newNote.researchUnitScope")
+                                    },
+                                    compact: {
+                                        TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
+                                            .accessibilityLabel("Research Status Scope")
+                                            .accessibilityIdentifier("scholium.newNote.researchUnitScope")
+                                    }
+                                )
+
+                                adaptiveField(
+                                    "Limitations",
+                                    wide: { limitationsEditor(minWidth: 300) },
+                                    compact: { limitationsEditor(minWidth: 0) }
+                                )
+                            } else {
+                                Text("No Research Status is written. You can edit, comment, use Dialogue or Develop, and save a Review draft; completing Review waits until you declare it.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("scholium.newNote.researchStatus")
@@ -154,7 +170,9 @@ struct NoteLifecycleView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(
                             destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                || (isAnalysisCreation && researchUnitScope.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                || (isAnalysisCreation
+                                    && researchStatusChoice == .declareNow
+                                    && researchUnitScope.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                 || isWorking
                         )
                         .keyboardShortcut(.defaultAction)
@@ -267,16 +285,17 @@ struct NoteLifecycleView: View {
     }
 
     private func configureDefaults() {
+        researchStatusChoice = .notYet
         researchUnitScope = ""
         researchUnitLimitationsText = ""
         switch request {
         case .create:
             destination = "Untitled.md"
-        case .duplicate(let path):
-            let base = (path as NSString).deletingPathExtension
+        case .duplicate(let target):
+            let base = (target.relativePath as NSString).deletingPathExtension
             destination = base + " Copy.md"
-        case .move(let path):
-            destination = path
+        case .move(let target):
+            destination = target.relativePath
         case .putBack(let path):
             destination = actions.putBackDestination(path) ?? ""
         case .classify(let path):
@@ -293,8 +312,7 @@ struct NoteLifecycleView: View {
                     try await actions.create(
                         destination,
                         title,
-                        isAnalysisCreation ? researchUnitScope : nil,
-                        isAnalysisCreation ? researchUnitLimitations : []
+                        analysisResearchStatus
                     )
                 case .duplicate(let source):
                     try await actions.duplicate(source, destination)
@@ -312,4 +330,19 @@ struct NoteLifecycleView: View {
             }
         }
     }
+
+    private var analysisResearchStatus: AnalysisResearchStatusChoice {
+        guard isAnalysisCreation, researchStatusChoice == .declareNow else {
+            return .notYet
+        }
+        return .declareNow(
+            scope: researchUnitScope,
+            limitations: researchUnitLimitations
+        )
+    }
+}
+
+private enum AnalysisResearchStatusChoiceKind: Hashable {
+    case declareNow
+    case notYet
 }

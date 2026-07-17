@@ -10,6 +10,7 @@ struct FrontmatterEditorView: View {
     let note: WindowDocumentLocation
     let configuredEditableFields: Set<String>?
     let initialExpectedRevision: DocumentFingerprint?
+    let onClose: (@MainActor () -> Void)?
     let save: @MainActor (
         [String: YAMLValue],
         ResearchUnitEdit?,
@@ -36,6 +37,7 @@ struct FrontmatterEditorView: View {
         note: WindowDocumentLocation,
         configuredEditableFields: Set<String>? = nil,
         expectedRevision: DocumentFingerprint? = nil,
+        onClose: (@MainActor () -> Void)? = nil,
         save: @escaping @MainActor (
             [String: YAMLValue],
             ResearchUnitEdit?,
@@ -45,6 +47,7 @@ struct FrontmatterEditorView: View {
         self.note = note
         self.configuredEditableFields = configuredEditableFields
         self.initialExpectedRevision = expectedRevision
+        self.onClose = onClose
         self.save = save
     }
 
@@ -81,7 +84,7 @@ struct FrontmatterEditorView: View {
                 }
                 Spacer()
                 HStack(spacing: 8) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { closeEditor() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .keyboardShortcut(.escape)
@@ -274,6 +277,7 @@ struct FrontmatterEditorView: View {
 
                 Toggle("Declare Research Status", isOn: $researchUnitEnabled)
                     .toggleStyle(.switch)
+                    .accessibilityIdentifier("scholium.properties.researchStatusDeclared")
 
                 if researchUnitEnabled {
                     VStack(alignment: .leading, spacing: 5) {
@@ -282,6 +286,7 @@ struct FrontmatterEditorView: View {
                         TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Research Status Scope")
+                            .accessibilityIdentifier("scholium.properties.researchStatusScope")
                         if let error = fieldErrors["research_unit.scope"] {
                             Label(error, systemImage: "exclamationmark.circle.fill")
                                 .font(.caption)
@@ -318,9 +323,10 @@ struct FrontmatterEditorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 } else {
-                    Text("Scope not declared. Enable this section to add a Research Status mapping.")
+                    Text("Not Yet")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityLabel("Research Status: Not Yet")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -402,7 +408,7 @@ struct FrontmatterEditorView: View {
         case .multilineText:
             TextEditor(text: binding)
                 .font(ScholiumTypography.swiftUIMonospaceFont(
-                    size: ScholiumTypography.sourceBodySize,
+                    size: ScholiumTypography.exactSourcePointSize,
                     relativeTo: .body
                 ))
                 .frame(minHeight: 80)
@@ -501,6 +507,10 @@ struct FrontmatterEditorView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
+                            .frame(minWidth: 28, minHeight: 28)
+                            .contentShape(Rectangle())
+                            .help("Remove tag \(tag)")
+                            .accessibilityLabel("Remove tag \(tag)")
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -531,7 +541,11 @@ struct FrontmatterEditorView: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
                 .disabled(tagInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                .help("Add tag")
+                .accessibilityLabel("Add tag")
             }
         }
         .disabled(field.isReadOnly)
@@ -565,6 +579,10 @@ struct FrontmatterEditorView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .frame(minWidth: 28, minHeight: 28)
+                    .contentShape(Rectangle())
+                    .help("Remove item \(idx + 1)")
+                    .accessibilityLabel("Remove item \(idx + 1)")
                 }
             }
 
@@ -603,7 +621,7 @@ struct FrontmatterEditorView: View {
         let hasResearchUnitChanges = researchUnitHasChanges
 
         guard !changedFields.isEmpty || hasResearchUnitChanges else {
-            dismiss()
+            closeEditor()
             return
         }
 
@@ -657,11 +675,19 @@ struct FrontmatterEditorView: View {
             do {
                 try await save(proposedFrontmatter, researchUnitEdit, revision)
                 isSaving = false
-                dismiss()
+                closeEditor()
             } catch {
                 saveError = error.localizedDescription
                 isSaving = false
             }
+        }
+    }
+
+    private func closeEditor() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
         }
     }
 

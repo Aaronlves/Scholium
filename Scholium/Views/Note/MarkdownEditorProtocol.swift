@@ -21,6 +21,8 @@ enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
 struct MarkdownEditorSelectionRange: Codable, Hashable, Sendable {
     let anchor: Int
     let head: Int
+
+    var isNonempty: Bool { anchor != head }
 }
 
 struct MarkdownEditorSelectionSnapshot: Codable, Hashable, Sendable {

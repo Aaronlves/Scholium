@@ -71,8 +71,8 @@ Before creating the tag or uploading assets:
    and checksum.
 5. Smoke-test the exact expanded ZIP in a clean macOS account without existing
    Scholium state. Exercise first launch, Triptych selection, read/edit/save,
-   conflicts, Search, Scholia, checkpoints, restoration, and unavailable
-   optional integrations.
+   conflicts, Search, the Research Strip and a representative Research
+   Function, checkpoints, restoration, and unavailable optional integrations.
 6. Complete the applicable PRD quality gates and record every waiver or known
    limitation. An ad-hoc signature must never be reported as Developer ID
    signing, notarization, or Gatekeeper acceptance.

@@ -86,6 +86,8 @@ The initial module vocabulary is intentionally small:
 
 These modules are response perspectives, not Workflow Skills or researcher-owned Philosophical Practices. Selecting one changes what the closing Response foregrounds; it does not activate a new workflow or expand retrieval.
 
+The selected modules divide a literal 100% optional-module attention budget equally. Thus all five receive 20% each. This allocation governs the agent's examination, not section length: Dialogue remains concise, an unwarranted section may be omitted, and the agent must not manufacture content to fill a percentage. Academic Outcome and mandatory integrity notices are outside the optional-module budget.
+
 ## 6. Comment preservation
 
 `commentPreservation` controls how researcher Comments are presented in the concise scholarly record:

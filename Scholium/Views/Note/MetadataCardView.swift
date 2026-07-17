@@ -202,26 +202,10 @@ struct MetadataCardView<LeadingControls: View>: View {
                 .buttonStyle(.plain)
                 .frame(maxWidth: ScholiumMetrics.ContextSurface.metadataMeasure)
                 .frame(height: ScholiumMetrics.ContextSurface.controlHeight)
-                .background(
-                    reduceTransparency ? Color(nsColor: .controlBackgroundColor) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
-                .glassEffect(
-                    .regular.interactive(),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            Color(nsColor: .separatorColor).opacity(reduceTransparency ? 0.72 : 0.28),
-                            lineWidth: 0.75
-                        )
-                        .allowsHitTesting(false)
-                }
-                .shadow(
-                    color: Color(nsColor: .shadowColor).opacity(reduceTransparency ? 0.05 : 0.10),
-                    radius: 10,
-                    y: 4
+                .scholiumGlassSurface(
+                    .floatingControl,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                    interactive: true
                 )
                 .accessibilityLabel(isExpanded ? "Hide note properties" : "Show note properties")
                 .accessibilityValue(note.title ?? note.displayName)
@@ -329,7 +313,7 @@ private struct MetadataSummaryRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(role)
-                .font(ScholiumInterfaceTypography.compactEmphasis)
+                .font(ScholiumInterfaceTypography.rowTitle)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
@@ -416,26 +400,7 @@ private struct MetadataDetailsPanel: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if reduceTransparency {
-                shape.fill(Color(nsColor: .controlBackgroundColor))
-            } else {
-                shape.fill(.regularMaterial)
-            }
-        }
-        .overlay {
-            shape
-                .stroke(
-                    Color(nsColor: .separatorColor).opacity(reduceTransparency ? 0.78 : 0.34),
-                    lineWidth: 0.75
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: Color(nsColor: .shadowColor).opacity(reduceTransparency ? 0.04 : 0.08),
-            radius: 12,
-            y: 4
-        )
+        .scholiumMaterialSurface(.boundedPanel, in: shape)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.metadataPanel")
     }
@@ -447,7 +412,7 @@ private struct MetadataPropertyGroupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(group.name)
-                .font(ScholiumInterfaceTypography.overline)
+                .font(ScholiumInterfaceTypography.metadata)
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
 
@@ -474,16 +439,16 @@ private struct ResearchStatusPropertiesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("RESEARCH STATUS")
-                .font(ScholiumInterfaceTypography.overline)
+                .font(ScholiumInterfaceTypography.metadata)
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
 
             switch researchUnit.state {
             case .absent:
-                Label("Scope not declared", systemImage: "circle.dashed")
+                Label("Not Yet", systemImage: "circle.dashed")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Research Status: Scope not declared")
+                    .accessibilityLabel("Research Status: Not Yet")
             case .declared:
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 180), alignment: .topLeading)],

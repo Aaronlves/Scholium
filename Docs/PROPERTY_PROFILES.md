@@ -58,8 +58,14 @@ Dialogue does not receive YAML frontmatter. Its app-owned selected-note, selecti
 
 ### Requiredness and migration
 
-- A new durable **Analysis** requires a Research Unit because source coverage is epistemically load-bearing.
-- An existing Analysis without `research_unit` remains valid and is treated as **scope not declared**, not malformed.
+- A new durable **Analysis** may use **Not Yet**. In that case Scholium writes no
+  `research_unit` mapping and no sentinel value. Editing, Comments, Dialogue,
+  Develop, and a Review draft remain available.
+- **Complete Review** requires a declared Research Unit. The Review panel
+  explains the gate and offers **Declare Research Status…** without treating the
+  absent mapping as malformed.
+- Any Analysis without `research_unit` remains valid and is presented as **Not
+  Yet**. Existing notes receive no migration or automatic YAML rewrite.
 - A **Topic** or **Work** may declare a Research Unit when a durable boundary adds information not already clear from its title, prose, and links. Scholium does not add YAML merely to create this field.
 - An agent may add or change `research_unit` only when the exact write set authorizes that property change. Missing scope is reported separately when permission is absent.
 - Scholium performs no automatic bulk migration and does not infer scope from folder names, keywords, link proximity, or the amount of text in a note.
@@ -91,7 +97,7 @@ A shared key names the same broad kind of fact, while its allowed values and pre
 
 ## Analyses
 
-Analyses describe a source-facing reconstruction or assessment. Bibliographic identity and epistemic scope are the required researcher-facing properties for a new durable Analysis.
+Analyses describe a source-facing reconstruction or assessment. Bibliographic identity is required for a new durable Analysis; epistemic scope may be declared at creation or remain **Not Yet** until Complete Review.
 
 | Group | Property | YAML key | Shape | Purpose |
 | --- | --- | --- | --- | --- |
@@ -100,7 +106,7 @@ Analyses describe a source-facing reconstruction or assessment. Bibliographic id
 | About | Year | `year` | number, required | Publication year. |
 | About | Type | `type` | controlled text | Publication form, not philosophical role. |
 | About | Tags | `tags` | list | Lightweight retrieval terms. |
-| Research Status | Research Unit | `research_unit` | mapping, required for new durable Analyses | Exact represented source scope plus optional material limitations. |
+| Research Status | Research Unit | `research_unit` | optional mapping at creation; required before Complete Review | Exact represented source scope plus optional material limitations. **Not Yet** writes no mapping or sentinel. |
 | Source | Access | `access` | controlled text | How much source material was available. |
 | Source | Text Reliability | `text_reliability` | controlled text | Reliability of the consulted text. |
 | Source | Locators | `locators` | controlled text | Whether citations have stable, checkable locations. |

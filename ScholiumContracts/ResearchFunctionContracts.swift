@@ -283,8 +283,46 @@ public struct ResearchFunctionAvailability: Codable, Hashable, Identifiable, Sen
     }
 }
 
+/// A deterministic, explicitly sourced reason that one read-only note may be
+/// useful as Material. Suggestions are navigation aids only: they never imply
+/// evidential support, authorize retrieval, or select the note automatically.
+public struct ResearchFunctionMaterialSuggestionReason: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Hashable, Sendable {
+        case linkedFromSelectedPassage = "linked_from_selected_passage"
+        case linkedFromTarget = "linked_from_target"
+        case linksDirectlyToTarget = "links_directly_to_target"
+
+        public var precedence: Int {
+            switch self {
+            case .linkedFromSelectedPassage: 0
+            case .linkedFromTarget: 1
+            case .linksDirectlyToTarget: 2
+            }
+        }
+    }
+
+    public let kind: Kind
+    /// The note containing the exact, resolved one-hop link occurrence.
+    public let sourceNote: VaultQualifiedNoteID
+    public let sourceSpan: SourceSpan
+
+    public init(
+        kind: Kind,
+        sourceNote: VaultQualifiedNoteID,
+        sourceSpan: SourceSpan
+    ) {
+        self.kind = kind
+        self.sourceNote = sourceNote
+        self.sourceSpan = sourceSpan
+    }
+}
+
 public struct ResearchFunctionMaterialCandidate: Codable, Hashable, Identifiable, Sendable {
     public let material: ResearchFunctionMaterial
+    /// Search-only aliases projected from the current catalog. They do not
+    /// enter a prepared request or become authoritative Material identity.
+    public let aliases: [String]
+    public let suggestionReasons: [ResearchFunctionMaterialSuggestionReason]
     public let isSelectable: Bool
     public let repairReasons: [ResearchFunctionRepairReason]
 
@@ -292,12 +330,68 @@ public struct ResearchFunctionMaterialCandidate: Codable, Hashable, Identifiable
 
     public init(
         material: ResearchFunctionMaterial,
+        aliases: [String] = [],
+        suggestionReasons: [ResearchFunctionMaterialSuggestionReason] = [],
         isSelectable: Bool = true,
         repairReasons: [ResearchFunctionRepairReason] = []
     ) {
         self.material = material
+        self.aliases = Array(Set(aliases.compactMap { alias in
+            let normalized = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.isEmpty ? nil : normalized
+        })).sorted {
+            let comparison = $0.localizedStandardCompare($1)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
+            return $0 < $1
+        }
+        self.suggestionReasons = Array(Set(suggestionReasons)).sorted {
+            if $0.kind.precedence != $1.kind.precedence {
+                return $0.kind.precedence < $1.kind.precedence
+            }
+            if $0.sourceNote != $1.sourceNote {
+                return $0.sourceNote < $1.sourceNote
+            }
+            if $0.sourceSpan.utf16LowerBound != $1.sourceSpan.utf16LowerBound {
+                return $0.sourceSpan.utf16LowerBound < $1.sourceSpan.utf16LowerBound
+            }
+            return $0.sourceSpan.utf16UpperBound < $1.sourceSpan.utf16UpperBound
+        }
         self.isSelectable = isSelectable
         self.repairReasons = repairReasons
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case material, aliases, suggestionReasons, isSelectable, repairReasons
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            material: try container.decode(ResearchFunctionMaterial.self, forKey: .material),
+            aliases: try container.decodeIfPresent([String].self, forKey: .aliases) ?? [],
+            suggestionReasons: try container.decodeIfPresent(
+                [ResearchFunctionMaterialSuggestionReason].self,
+                forKey: .suggestionReasons
+            ) ?? [],
+            isSelectable: try container.decodeIfPresent(Bool.self, forKey: .isSelectable) ?? true,
+            repairReasons: try container.decodeIfPresent(
+                [ResearchFunctionRepairReason].self,
+                forKey: .repairReasons
+            ) ?? []
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(material, forKey: .material)
+        if !aliases.isEmpty { try container.encode(aliases, forKey: .aliases) }
+        if !suggestionReasons.isEmpty {
+            try container.encode(suggestionReasons, forKey: .suggestionReasons)
+        }
+        try container.encode(isSelectable, forKey: .isSelectable)
+        if !repairReasons.isEmpty {
+            try container.encode(repairReasons, forKey: .repairReasons)
+        }
     }
 }
 
@@ -310,6 +404,13 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     public let checks: Set<FidelityCheck>
     public let commentIDs: [UUID]
     public let methods: Set<ResearchFunctionMethod>?
+    /// Optional request-scoped presentation modules for Dialogue.
+    ///
+    /// Nil inherits the current Triptych default at preparation time. An
+    /// explicit empty array requests only the required Academic Outcome.
+    /// Values remain ordered by `DialogueResponseModule.allCases` so App and
+    /// CLI encoders produce one stable wire representation.
+    public let dialogueResponseModules: [DialogueResponseModule]?
 
     public init(
         function: ResearchFunctionID,
@@ -319,7 +420,8 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         scope: ResearchFunctionScope? = nil,
         checks: Set<FidelityCheck> = [],
         commentIDs: [UUID] = [],
-        methods: Set<ResearchFunctionMethod>? = nil
+        methods: Set<ResearchFunctionMethod>? = nil,
+        dialogueResponseModules: [DialogueResponseModule]? = nil
     ) {
         self.function = function
         self.target = target
@@ -330,6 +432,13 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         self.checks = checks
         self.commentIDs = commentIDs
         self.methods = methods
+        self.dialogueResponseModules = dialogueResponseModules.map { modules in
+            modules.sorted { lhs, rhs in
+                let lhsIndex = DialogueResponseModule.allCases.firstIndex(of: lhs) ?? 0
+                let rhsIndex = DialogueResponseModule.allCases.firstIndex(of: rhs) ?? 0
+                return lhsIndex < rhsIndex
+            }
+        }
     }
 
     /// Nil is a deliberate preflight state for functions with conditional
@@ -350,7 +459,8 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             scope: scope,
             checks: checks,
             commentIDs: commentIDs,
-            methods: methods
+            methods: methods,
+            dialogueResponseModules: dialogueResponseModules
         )
         try selected.validate()
         return selected
@@ -386,6 +496,14 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         }
         guard (methods ?? []).allSatisfy({ $0.function == function }) else {
             throw ResearchFunctionContractError.invalidMethodSelection
+        }
+        if function == .dialogue {
+            if let dialogueResponseModules,
+               Set(dialogueResponseModules).count != dialogueResponseModules.count {
+                throw ResearchFunctionContractError.duplicateDialogueResponseModule
+            }
+        } else if dialogueResponseModules != nil {
+            throw ResearchFunctionContractError.unexpectedDialogueResponseModules
         }
         if let scope {
             switch scope.kind {
@@ -519,6 +637,14 @@ public enum ResearchFunctionRunState: String, Codable, Hashable, Sendable {
     case cancelled
 }
 
+/// Provenance for a Fidelity run. Manual and automatic invocations use the
+/// same exact-revision audit contract and evidence key; this value records how
+/// the run was initiated, not whether an audit actually completed.
+public enum FidelityInvocationKind: Codable, Hashable, Sendable {
+    case manual
+    case automatic(parentRunID: UUID)
+}
+
 public struct ResearchFunctionFidelityHandoff: Codable, Hashable, Sendable {
     public let required: Bool
     public let checks: Set<FidelityCheck>
@@ -572,6 +698,9 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// edited.
     public let evidenceRevisions: [DocumentFingerprint]
     public let fidelityHandoff: ResearchFunctionFidelityHandoff?
+    /// Present only for Fidelity runs. Legacy Fidelity snapshots decode nil
+    /// and are interpreted as researcher-requested manual invocations.
+    public let fidelityInvocation: FidelityInvocationKind?
     public let confirmationToken: UUID
     public let preparedAt: Date
 
@@ -587,6 +716,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         preparedOutput: ResearchFunctionOutputSnapshot? = nil,
         evidenceRevisions: [DocumentFingerprint] = [],
         fidelityHandoff: ResearchFunctionFidelityHandoff? = nil,
+        fidelityInvocation: FidelityInvocationKind? = nil,
         confirmationToken: UUID = UUID(),
         preparedAt: Date = Date()
     ) {
@@ -603,8 +733,16 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.preparedOutput = preparedOutput
         self.evidenceRevisions = evidenceRevisions
         self.fidelityHandoff = fidelityHandoff
+        self.fidelityInvocation = request.function == .fidelity
+            ? (fidelityInvocation ?? .manual)
+            : nil
         self.confirmationToken = confirmationToken
         self.preparedAt = preparedAt
+    }
+
+    public var resolvedFidelityInvocation: FidelityInvocationKind? {
+        guard request.function == .fidelity else { return nil }
+        return fidelityInvocation ?? .manual
     }
 }
 
@@ -633,6 +771,28 @@ public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
         self.state = state
         self.reusedCompletion = reusedCompletion
         self.derivedRefreshWarning = derivedRefreshWarning
+    }
+}
+
+/// Explicit orchestration state returned when Application prepares the
+/// required post-edit Fidelity child for a Develop or Revise run. A prepared
+/// child is still pending agent work; only `state == .complete` with a durable
+/// completion records finished audit evidence.
+public struct AutomaticFidelityPreparation: Codable, Hashable, Sendable {
+    public let parentRunID: UUID
+    public let preparation: ResearchFunctionPreparation
+
+    public init(parentRunID: UUID, preparation: ResearchFunctionPreparation) {
+        self.parentRunID = parentRunID
+        self.preparation = preparation
+    }
+
+    public var state: ResearchFunctionRunState { preparation.state }
+    public var effectiveFidelityRunID: UUID {
+        preparation.reusedCompletion?.runID ?? preparation.runID
+    }
+    public var reusedExistingEvidence: Bool {
+        preparation.reusedCompletion != nil
     }
 }
 
@@ -907,6 +1067,8 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case missingFidelityCheck
     case unexpectedFidelityCheck
     case invalidMethodSelection
+    case duplicateDialogueResponseModule
+    case unexpectedDialogueResponseModules
     case methodSelectionNotRequired(ResearchFunctionID)
     case methodSelectionAlreadyResolved(UUID)
     case methodSelectionRequired(UUID)
@@ -951,6 +1113,10 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "Fidelity checks belong only to the Fidelity function."
         case .invalidMethodSelection:
             "A selected internal method does not belong to this Research Function."
+        case .duplicateDialogueResponseModule:
+            "Each optional Dialogue response module may be selected only once."
+        case .unexpectedDialogueResponseModules:
+            "Dialogue response modules belong only to the Dialogue function."
         case .methodSelectionNotRequired(let function):
             "The \(function.rawValue) function has no pending conditional method selection."
         case .methodSelectionAlreadyResolved(let id):

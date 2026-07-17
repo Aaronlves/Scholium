@@ -187,7 +187,10 @@ struct ResearchRecordsTests {
                 noteID: UUID(),
                 vaultID: UUID(),
                 relativePath: "Note.md",
-                comment: ResearcherComment(text: "Do not overwrite the corrupt store.")
+                comment: ResearcherComment(
+                    text: "Do not overwrite the corrupt store.",
+                    anchor: testCommentAnchor()
+                )
             )
         }
         await #expect(throws: ResearchRecordStoreError.self) {
@@ -261,7 +264,10 @@ struct ResearchRecordsTests {
                 noteID: noteID,
                 vaultID: UUID(),
                 relativePath: "Note.md",
-                comment: ResearcherComment(text: "Must not appear in memory.")
+                comment: ResearcherComment(
+                    text: "Must not appear in memory.",
+                    anchor: testCommentAnchor()
+                )
             )
         }
         #expect(await reviewStore.record(noteID: noteID) == nil)
@@ -319,7 +325,10 @@ struct ResearchRecordsTests {
             noteID: noteID,
             vaultID: vaultID,
             relativePath: "Trash/Work.md",
-            comment: ResearcherComment(text: "Private comment")
+            comment: ResearcherComment(
+                text: "Private comment",
+                anchor: testCommentAnchor()
+            )
         )
 
         let deletedReference = DialogueNoteReference(
@@ -405,8 +414,8 @@ struct ResearchRecordsTests {
         let moved = NoteDocument(relativePath: "Note.md", rawContent: "New preface\nIntro\nThe claim matters.\nEnd\n")
         try await store.reattachComments(noteID: noteID, to: moved)
         var record = try #require(await store.record(noteID: noteID))
-        #expect(record.comments[0].anchor?.state == .attached)
-        #expect(record.comments[0].anchor?.line == 3)
+        #expect(record.comments[0].anchor.state == .attached)
+        #expect(record.comments[0].anchor.line == 3)
 
         let ambiguous = NoteDocument(
             relativePath: "Note.md",
@@ -414,7 +423,7 @@ struct ResearchRecordsTests {
         )
         try await store.reattachComments(noteID: noteID, to: ambiguous)
         record = try #require(await store.record(noteID: noteID))
-        #expect(record.comments[0].anchor?.state == .needsReattachment)
+        #expect(record.comments[0].anchor.state == .needsReattachment)
     }
 
     @Test("Comment anchors preserve full-file Unicode ranges and visible selection")
@@ -555,8 +564,8 @@ struct ResearchRecordsTests {
         )
         record = try #require(await store.record(noteID: noteID))
         #expect(record.comments[0].resolvedAt == nil)
-        #expect(record.comments[0].anchor?.quotation == "revised claim")
-        #expect(record.comments[0].anchor?.fingerprint == replacement.fingerprint)
+        #expect(record.comments[0].anchor.quotation == "revised claim")
+        #expect(record.comments[0].anchor.fingerprint == replacement.fingerprint)
 
         try await store.removeComment(noteID: noteID, commentID: comment.id)
         #expect((await store.record(noteID: noteID))?.comments.isEmpty == true)
@@ -573,7 +582,10 @@ struct ResearchRecordsTests {
             noteID: noteID,
             vaultID: vaultID,
             relativePath: "Old.md",
-            comment: ResearcherComment(text: "Keep this comment.")
+            comment: ResearcherComment(
+                text: "Keep this comment.",
+                anchor: testCommentAnchor()
+            )
         )
         #expect(try await reviewStore.migratePathIfPresent(
             noteID: noteID,
@@ -598,7 +610,10 @@ struct ResearchRecordsTests {
         )
         let included = DialogueIncludedComment(
             note: reference,
-            comment: ResearcherComment(text: "Revise this.")
+            comment: ResearcherComment(
+                text: "Revise this.",
+                anchor: testCommentAnchor(fingerprint: reference.fingerprint)
+            )
         )
         let dialogueStore = DialogueStore(storageURL: fixture.support.appendingPathComponent("dialogue"))
         let followUp = DialogueFollowUpComment(
@@ -639,7 +654,7 @@ struct ResearchRecordsTests {
         ) == 0)
         let migrated = try await dialogueStore.entry(id: entry.id)
         #expect(migrated.selectedNotes[0].relativePath == "Folder/New.md")
-        #expect(migrated.includedComments[0].note?.relativePath == "Folder/New.md")
+        #expect(migrated.includedComments[0].note.relativePath == "Folder/New.md")
         #expect(migrated.generatedPrompt == "Historical path: Old.md")
         #expect(migrated.followUpComments == [followUp])
         #expect(migrated.replies == [response])
@@ -792,7 +807,10 @@ struct ResearchRecordsTests {
         )
         let included = DialogueIncludedComment(
             note: note,
-            comment: ResearcherComment(text: "Separate textual support from reconstruction.")
+            comment: ResearcherComment(
+                text: "Separate textual support from reconstruction.",
+                anchor: testCommentAnchor(fingerprint: note.fingerprint)
+            )
         )
         let entry = DialogueEntry(
             triptychID: UUID(),
@@ -857,71 +875,64 @@ struct ResearchRecordsTests {
         }
     }
 
-    @Test("Dialogue entries written before source-bound comments still decode")
-    func legacyDialogueCommentsDecode() throws {
-        let note = DialogueNoteReference(
-            noteID: UUID(),
-            vaultID: UUID(),
-            vaultName: "Analyses",
-            title: "Legacy Analysis",
-            relativePath: "Legacy Analysis.md",
-            fingerprint: DocumentFingerprint(content: "legacy")
+    @Test("Every Comment record decoder requires a source anchor")
+    func commentRecordDecodersRequireAnchor() throws {
+        let comment = ResearcherComment(
+            text: "This Comment is bound to an exact passage.",
+            anchor: testCommentAnchor()
         )
-        let comment = ResearcherComment(text: "Legacy comment without an owning-note field.")
-        let entry = DialogueEntry(
-            triptychID: UUID(),
-            instruction: "Revisit this note.",
-            selectedNotes: [note],
-            includedComments: [DialogueIncludedComment(note: note, comment: comment)],
-            generatedPrompt: "Legacy prompt",
-            checkpointID: UUID()
-        )
-
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
         var object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(entry)) as? [String: Any]
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(comment)) as? [String: Any]
         )
-        object.removeValue(forKey: "followUpComments")
-        object["includedComments"] = [
-            try JSONSerialization.jsonObject(with: encoder.encode(comment)),
-        ]
-        let legacyData = try JSONSerialization.data(withJSONObject: object)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode(DialogueEntry.self, from: legacyData)
-        #expect(decoded.followUpComments.isEmpty)
+        object.removeValue(forKey: "anchor")
+        let data = try JSONSerialization.data(withJSONObject: object)
 
-        #expect(decoded.includedComments.count == 1)
-        #expect(decoded.includedComments[0].comment.id == comment.id)
-        #expect(decoded.includedComments[0].comment.text == comment.text)
-        #expect(decoded.includedComments[0].note == note)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(ResearcherComment.self, from: data)
+        }
 
-        let secondNote = DialogueNoteReference(
+        let reviewRecord = HumanReviewRecord(
             noteID: UUID(),
             vaultID: UUID(),
-            vaultName: "Topics",
-            title: "Legacy Topic",
-            relativePath: "Legacy Topic.md",
-            fingerprint: DocumentFingerprint(content: "topic")
+            relativePath: "Analysis.md",
+            comments: [comment]
         )
-        let multiEntry = DialogueEntry(
-            triptychID: entry.triptychID,
-            instruction: entry.instruction,
-            selectedNotes: [note, secondNote],
-            includedComments: [DialogueIncludedComment(note: note, comment: comment)],
-            generatedPrompt: entry.generatedPrompt,
-            checkpointID: entry.checkpointID
+        var reviewObject = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(reviewRecord)
+            ) as? [String: Any]
         )
-        object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(multiEntry)) as? [String: Any]
+        var reviewComments = try #require(reviewObject["comments"] as? [[String: Any]])
+        reviewComments[0].removeValue(forKey: "anchor")
+        reviewObject["comments"] = reviewComments
+        let reviewData = try JSONSerialization.data(withJSONObject: reviewObject)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(HumanReviewRecord.self, from: reviewData)
+        }
+
+        let note = DialogueNoteReference(
+            noteID: reviewRecord.id,
+            vaultID: reviewRecord.vaultID,
+            vaultName: "Analyses",
+            title: "Analysis",
+            relativePath: reviewRecord.relativePath,
+            fingerprint: comment.anchor.fingerprint
         )
-        object["includedComments"] = [
-            try JSONSerialization.jsonObject(with: encoder.encode(comment)),
-        ]
-        let legacyMultiData = try JSONSerialization.data(withJSONObject: object)
-        let decodedMulti = try decoder.decode(DialogueEntry.self, from: legacyMultiData)
-        #expect(decodedMulti.includedComments[0].note == nil)
+        let included = DialogueIncludedComment(note: note, comment: comment)
+        var includedObject = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(included)
+            ) as? [String: Any]
+        )
+        var includedComment = try #require(
+            includedObject["comment"] as? [String: Any]
+        )
+        includedComment.removeValue(forKey: "anchor")
+        includedObject["comment"] = includedComment
+        let includedData = try JSONSerialization.data(withJSONObject: includedObject)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(DialogueIncludedComment.self, from: includedData)
+        }
     }
 
     @Test("Critique association is portable and remains bound to the Work revision")
@@ -1397,6 +1408,20 @@ struct ResearchRecordsTests {
                 to: "Critiques/Paper.md"
             )
         }
+    }
+
+    private func testCommentAnchor(
+        fingerprint: DocumentFingerprint = DocumentFingerprint(content: "Test passage"),
+        quotation: String = "Test passage"
+    ) -> ResearcherCommentAnchor {
+        ResearcherCommentAnchor(
+            fingerprint: fingerprint,
+            utf8Range: 0..<quotation.utf8.count,
+            utf16Range: 0..<quotation.utf16.count,
+            line: 1,
+            endLine: 1,
+            quotation: quotation
+        )
     }
 
     private struct Fixture {

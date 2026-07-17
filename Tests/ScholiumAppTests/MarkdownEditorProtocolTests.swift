@@ -47,4 +47,11 @@ struct MarkdownEditorProtocolTests {
         )
         #expect(decoded == request)
     }
+
+    @Test("Comment commands require a nonempty editor selection")
+    func commentSelectionRequiresNonemptyRange() {
+        #expect(!MarkdownEditorSelectionRange(anchor: 4, head: 4).isNonempty)
+        #expect(MarkdownEditorSelectionRange(anchor: 4, head: 9).isNonempty)
+        #expect(MarkdownEditorSelectionRange(anchor: 9, head: 4).isNonempty)
+    }
 }

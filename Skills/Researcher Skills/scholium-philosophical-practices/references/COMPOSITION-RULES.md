@@ -23,7 +23,18 @@ Replacement applies only to the named editable point. The Core Protocol, evidenc
 
 If the researcher wants to replace the whole executable workflow, use an independent Researcher Skill rather than disguising the replacement as a Practice overlay.
 
-## 3. Allocate distinct jobs
+## 3. Allocate the complete attention budget
+
+Treat the selected Practices as dividing a literal 100% methodological-attention budget. This budget governs how much of the agent's checking and deliberative work is devoted to each selected lens. It is not a priority ranking, a word-count target, or an instruction to expose private chain-of-thought.
+
+- If the active method declares Practice weights, retain only the selected Practices and normalize their declared weights to total exactly 100%.
+- If the active method declares no weights, divide 100% equally among the selected Practices.
+- Give every selected Practice its complete normalized share even when its examination yields no warranted addition to the output.
+- Do not manufacture prose, criticism, distinctions, or arguments merely to make the visible response resemble the allocation.
+
+Record a compact execution ledger containing the selected Practice IDs, the normalized percentages, and whether each lens materially affected the result. The ledger reports coverage, not hidden reasoning.
+
+## 4. Allocate distinct jobs
 
 Before composing Practices, assign each one a non-duplicative responsibility. For example:
 
@@ -36,7 +47,7 @@ Before composing Practices, assign each one a non-duplicative responsibility. Fo
 
 When two Practices ask the same question, combine the evidence once and preserve any difference in standards or conclusions.
 
-## 4. Resolve conflict transparently
+## 5. Resolve conflict transparently
 
 Apply this order:
 
@@ -48,6 +59,6 @@ Apply this order:
 
 Do not average incompatible criteria, silently choose the more permissive method, or let the last-loaded Practice win by accident.
 
-## 5. Report only material influence
+## 6. Report only material influence
 
 Name a Practice in the completion report only when it materially changed the procedure, evaluation, or result. Include a conflict note when choosing among Practice recommendations would change a philosophical commitment, evidential judgment, or durable edit.

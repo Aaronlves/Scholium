@@ -209,6 +209,22 @@ struct ResearchSkillStoreTests {
             id: duplicated.id,
             relativePath: "references/method.md"
         ).contains("Choose the intellectual operation"))
+        let analyzer = try await store.duplicateBundled(
+            id: "scholium-source-analyzer",
+            as: "my-source-analyzer"
+        )
+        #expect(analyzer.origin == .triptych)
+        #expect(analyzer.skillClass == .researcher)
+        #expect(analyzer.role == "workflow")
+        #expect(analyzer.supportedFunctions.isEmpty)
+        #expect(analyzer.supportedModes == [.analyze])
+        #expect(try await store.resourcePaths(id: analyzer.id).contains(
+            "references/method.md"
+        ))
+        #expect(try await store.instructionAssembly(
+            mode: .analyze,
+            requestedSkillIDs: [analyzer.id]
+        ).contains("<skill id=\"my-source-analyzer\">"))
         let citation = try await store.duplicateBundled(
             id: "scholium-citation-verification",
             as: "apa-citation-method"

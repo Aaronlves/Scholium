@@ -35,43 +35,9 @@ struct RelationshipView: View {
         self.context = context
     }
 
-    private enum WorkspaceConnectionKind: Int, CaseIterable {
-        case supports
-        case supportedBy
-        case incompatible
-        case neutral
-
-        var title: String {
-            switch self {
-            case .supports: "Supports"
-            case .supportedBy: "Supported By"
-            case .incompatible: "Incompatible"
-            case .neutral: "Connections"
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .supports: "arrow.up.right.circle"
-            case .supportedBy: "arrow.down.left.circle"
-            case .incompatible: "xmark.circle"
-            case .neutral: "link.circle"
-            }
-        }
-
-        var color: Color {
-            switch self {
-            case .supports: .green
-            case .supportedBy: .blue
-            case .incompatible: .purple
-            case .neutral: .secondary
-            }
-        }
-    }
-
     private struct WorkspaceConnectionRow: Identifiable {
         let note: WorkspaceCatalogNote
-        let kind: WorkspaceConnectionKind
+        let kind: ScholiumConnectionPresentation
 
         var id: String { "\(kind.rawValue):\(note.reference.id)" }
     }
@@ -234,7 +200,7 @@ struct RelationshipView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(WorkspaceConnectionKind.allCases, id: \.rawValue) { kind in
+                    ForEach(ScholiumConnectionPresentation.allCases) { kind in
                         let rows = workspaceConnectionRows.filter { $0.kind == kind }
                         if !rows.isEmpty {
                             workspaceConnectionGroup(kind: kind, rows: rows)
@@ -259,14 +225,20 @@ struct RelationshipView: View {
             guard let otherID = edge.destination?.note, let other = catalogByID[otherID] else { continue }
             rows.append(WorkspaceConnectionRow(
                 note: other,
-                kind: connectionKind(vector: edge.occurrence.vectorKind, currentIsSource: true)
+                kind: ScholiumConnectionPresentation(
+                    vectorKind: edge.occurrence.vectorKind,
+                    currentIsSource: true
+                )
             ))
         }
         for edge in graph.incoming[current] ?? [] {
             guard let other = catalogByID[edge.source] else { continue }
             rows.append(WorkspaceConnectionRow(
                 note: other,
-                kind: connectionKind(vector: edge.occurrence.vectorKind, currentIsSource: false)
+                kind: ScholiumConnectionPresentation(
+                    vectorKind: edge.occurrence.vectorKind,
+                    currentIsSource: false
+                )
             ))
         }
 
@@ -279,30 +251,14 @@ struct RelationshipView: View {
         }
     }
 
-    private func connectionKind(
-        vector: VectorLinkKind?,
-        currentIsSource: Bool
-    ) -> WorkspaceConnectionKind {
-        switch vector {
-        case .supportsTarget:
-            currentIsSource ? .supports : .supportedBy
-        case .supportedByTarget:
-            currentIsSource ? .supportedBy : .supports
-        case .incompatible:
-            .incompatible
-        case .neutral, .none:
-            .neutral
-        }
-    }
-
     private func workspaceConnectionGroup(
-        kind: WorkspaceConnectionKind,
+        kind: ScholiumConnectionPresentation,
         rows: [WorkspaceConnectionRow]
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
-                Image(systemName: kind.symbol)
-                    .foregroundStyle(kind.color)
+                Image(systemName: kind.symbolName)
+                    .scholiumForeground(kind.colorRole)
                     .font(.caption)
                 Text(kind.title)
                     .font(.caption.weight(.semibold))

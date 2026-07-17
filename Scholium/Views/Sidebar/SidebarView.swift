@@ -12,9 +12,8 @@ struct SidebarContext {
     let filteredNotes: [WindowDocumentLocation]
     let allNotes: [WindowDocumentLocation]
     let currentVaultID: UUID?
-    let activeTab: String?
-    let hasCurrentNote: Bool
-    let hasVaultConfiguration: Bool
+    let selectedDocumentPath: String?
+    let libraryFocusRequestGeneration: UInt64
     let currentVaultRole: VaultRole
     let currentWorkspaceSlot: WorkspaceVaultSlot?
     let noteLifecycleRequest: NoteLifecycleRequest?
@@ -33,10 +32,8 @@ struct SidebarContext {
     let reviewDisplayState: (String) -> HumanReviewDisplayState
     let notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
     let presentAttention: () -> Void
-    let revealCurrentVault: () -> Void
-    let collapseNote: () -> Void
     let selectLocationScope: (NoteLocationScope) -> Void
-    let openNote: (String, Bool) -> Void
+    let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let openLifecycleNote: (String, NoteLocationScope) -> Void
     let selectWorkspaceVault: (WorkspaceVaultSlot) -> Void
     let lifecycleItems: (NoteLocationScope) async throws -> [LifecycleLocationItem]
@@ -53,11 +50,11 @@ struct SidebarContext {
 
 struct SidebarView: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let context: SidebarContext
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
+    @FocusState private var libraryFocused: Bool
 
     init(controller: DiscoveryController, context: SidebarContext) {
         self.controller = controller
@@ -140,7 +137,7 @@ struct SidebarView: View {
                     Image(systemName: "tray.full")
                         .foregroundStyle(hasVisibleAttention ? Color.orange : Color.secondary)
                     Text("Attention")
-                        .font(ScholiumInterfaceTypography.compactEmphasis)
+                        .font(ScholiumInterfaceTypography.rowTitle)
                     Spacer()
                     if let count = visibleAttentionCount {
                         Text(count.formatted())
@@ -153,8 +150,8 @@ struct SidebarView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 9)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 9)
             .help("Review derived warnings and recoverable research issues")
             .accessibilityValue(
                 visibleAttentionCount.map { "\($0) items" } ?? "Loading"
@@ -174,9 +171,9 @@ struct SidebarView: View {
                                 TreeNodeView(
                                     node: node,
                                     expandedFolders: expandedFolders,
-                                    activeTab: context.activeTab,
+                                    selectedDocumentPath: context.selectedDocumentPath,
                                     context: treeContext,
-                                    onSelect: { context.openNote($0, false) }
+                                    onSelect: { context.openNote($0, .replaceCurrent) }
                                 )
                             }
                         }
@@ -184,6 +181,8 @@ struct SidebarView: View {
                         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     .scrollContentBackground(.hidden)
+                    .focusable()
+                    .focused($libraryFocused)
                     .accessibilityIdentifier("scholium.noteList")
                 }
                 .opacity(lifecycleOverlayScope == nil ? 1 : 0.48)
@@ -231,7 +230,9 @@ struct SidebarView: View {
             reduceMotion ? nil : .snappy(duration: 0.2),
             value: lifecycleOverlayScope
         )
-        .accessibilityIdentifier("scholium.sidebar")
+        .onChange(of: context.libraryFocusRequestGeneration) { _, _ in
+            libraryFocused = true
+        }
         .background {
             if context.catalogIsAvailable, !context.allNotes.isEmpty {
                 PerformanceReadyBoundary(
@@ -281,64 +282,6 @@ struct SidebarView: View {
                     .lineLimit(1)
             }
             Spacer()
-            HStack(spacing: 0) {
-                Menu {
-                    Button {
-                        openSettings()
-                    } label: {
-                        Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
-                    }
-                    Button {
-                        context.revealCurrentVault()
-                    } label: {
-                        Label("Reveal Current Vault in Finder", systemImage: "folder")
-                    }
-                    .disabled(!context.hasVaultConfiguration)
-                } label: {
-                    Label("Triptych management", systemImage: "ellipsis")
-                        .labelStyle(.iconOnly)
-                        .frame(
-                            width: ScholiumMetrics.Triptych.headerControlSize,
-                            height: ScholiumMetrics.Triptych.headerControlSize
-                        )
-                        .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .frame(
-                    width: ScholiumMetrics.Triptych.headerControlSize,
-                    height: ScholiumMetrics.Triptych.headerControlSize
-                )
-                .accessibilityLabel("Triptych management")
-                .accessibilityIdentifier("scholium.triptychManagement")
-
-                if context.hasCurrentNote {
-                    Divider()
-                        .frame(height: 16)
-
-                    Button {
-                        context.collapseNote()
-                    } label: {
-                        Image(systemName: "chevron.left.2")
-                            .frame(
-                                width: ScholiumMetrics.Triptych.headerControlSize,
-                                height: ScholiumMetrics.Triptych.headerControlSize
-                            )
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Collapse Note")
-                    .accessibilityLabel("Collapse Note")
-                    .accessibilityHint("Retracts the document into the Triptych Interface")
-                    .accessibilityIdentifier("scholium.collapseNote")
-                }
-            }
-            .padding(2)
-            .glassEffect(.regular.interactive(), in: Capsule())
-            .animation(
-                reduceMotion ? nil : .easeInOut(duration: 0.20),
-                value: context.hasCurrentNote
-            )
         }
     }
 
@@ -348,7 +291,7 @@ struct SidebarView: View {
                 context.selectLocationScope(.workspace)
             } label: {
                 Label("Library", systemImage: "books.vertical")
-                    .font(ScholiumInterfaceTypography.compactEmphasis)
+                    .font(ScholiumInterfaceTypography.rowTitle)
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(
@@ -910,7 +853,7 @@ private struct SidebarLifecycleCard: View {
 
             HStack {
                 Text(scope.rawValue)
-                    .font(ScholiumInterfaceTypography.compactEmphasis)
+                    .font(ScholiumInterfaceTypography.rowTitle)
                 Spacer()
                 if !isLoading {
                     Text(items.count.formatted())
@@ -1000,21 +943,12 @@ private struct SidebarLifecycleCard: View {
                 }
             }
         }
-        .background {
-            if reduceTransparency {
-                Rectangle()
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            } else {
-                ZStack {
-                    Rectangle().fill(.regularMaterial)
-                    Rectangle()
-                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.84))
-                }
-            }
-        }
         .frame(minHeight: 170, idealHeight: 280, maxHeight: 360)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .scholiumMaterialSurface(
+            .boundedPanel,
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             scope == .setAside ? "scholium.lifecycleCard.setAside" : "scholium.lifecycleCard.trash"
@@ -1102,7 +1036,7 @@ private struct UnclassifiedClassificationSheet: View {
             }
         }
         .frame(minWidth: 0, idealWidth: 600, minHeight: 300, idealHeight: 460)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scholiumSurface(.denseEvidence)
         .accessibilityIdentifier("scholium.unclassifiedPanel")
     }
 }
@@ -1327,7 +1261,7 @@ private struct SidebarTreeContext {
     let locationScope: NoteLocationScope
     let resolvedIdentityPaths: Set<String>
     let reviewDisplayState: (String) -> HumanReviewDisplayState
-    let openNote: (String, Bool) -> Void
+    let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let requestLifecycle: (NoteLifecycleRequest) -> Void
     let revealNote: (String) -> Void
     let setAside: (String) async throws -> Void
@@ -1340,9 +1274,9 @@ private struct TreeNodeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let node: TreeNode
     @Binding var expandedFolders: Set<String>
-    let activeTab: String?
+    let selectedDocumentPath: String?
     let context: SidebarTreeContext
-    let onSelect: (String) -> Void
+    let onSelect: (WindowDocumentLocation) -> Void
 
     @State private var pendingDestructiveAction: DestructiveAction?
 
@@ -1362,16 +1296,16 @@ private struct TreeNodeView: View {
                 Button(action: toggleFolder) {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.caption.weight(.medium))
                             .foregroundStyle(.tertiary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .frame(width: 12)
                         Image(systemName: isExpanded ? "folder.fill" : "folder")
-                            .font(.system(size: 11))
+                            .font(.callout)
                             .foregroundStyle(.tertiary)
                         Text(node.name)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .font(ScholiumInterfaceTypography.rowTitle)
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer()
                     }
@@ -1390,7 +1324,7 @@ private struct TreeNodeView: View {
                         TreeNodeView(
                             node: child,
                             expandedFolders: $expandedFolders,
-                            activeTab: activeTab,
+                            selectedDocumentPath: selectedDocumentPath,
                             context: context,
                             onSelect: onSelect
                         )
@@ -1405,14 +1339,15 @@ private struct TreeNodeView: View {
         } else if let note = node.note {
             // Note file row
             Button {
-                onSelect(note.relativePath)
+                onSelect(note)
             } label: {
                 NoteCardRow(
                     note: note,
-                    isActive: activeTab == note.relativePath,
+                    isActive: selectedDocumentPath == note.relativePath,
                     vaultRole: context.currentVaultRole,
                     reviewDisplayState: context.reviewDisplayState(note.relativePath)
                 )
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }
                 .buttonStyle(.plain)
@@ -1428,26 +1363,29 @@ private struct TreeNodeView: View {
                 )
                 .contextMenu {
                     Button {
-                        context.openNote(note.relativePath, true)
+                        context.openNote(note, .newNativeTab)
                     } label: {
                         Label("Open in New Tab", systemImage: "plus.square")
                     }
                     Divider()
                     if context.locationScope == .workspace {
+                        let lifecycleTarget = NoteLifecycleTarget(note)
                         if !CritiquePlacement.isManagedCritiquePath(note.relativePath) {
                             Button {
-                                context.requestLifecycle(.duplicate(note.relativePath))
+                                guard let lifecycleTarget else { return }
+                                context.requestLifecycle(.duplicate(lifecycleTarget))
                             } label: {
                                 Label("Duplicate…", systemImage: "plus.square.on.square")
                             }
-                            .disabled(!hasResolvedIdentity(note))
+                            .disabled(!hasResolvedIdentity(note) || lifecycleTarget == nil)
                         }
                         Button {
-                            context.requestLifecycle(.move(note.relativePath))
+                            guard let lifecycleTarget else { return }
+                            context.requestLifecycle(.move(lifecycleTarget))
                         } label: {
                             Label("Move or Rename…", systemImage: "folder")
                         }
-                        .disabled(!hasResolvedIdentity(note))
+                        .disabled(!hasResolvedIdentity(note) || lifecycleTarget == nil)
                         Divider()
                         Button {
                             pendingDestructiveAction = .setAside
@@ -1586,7 +1524,8 @@ struct NoteCardRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(note.title ?? note.displayName)
-                        .font(.system(size: 13, weight: isActive ? .semibold : .regular))
+                        .font(.body)
+                        .fontWeight(isActive ? .semibold : .regular)
                         .lineLimit(1)
                         .foregroundStyle(.primary)
                     if vaultRole.allowsHumanReview {
@@ -1598,7 +1537,7 @@ struct NoteCardRow: View {
                     }
                 }
                 Text(secondaryMetadata)
-                    .font(.caption)
+                    .font(ScholiumInterfaceTypography.metadata)
                     .foregroundStyle(.secondary)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -1612,7 +1551,7 @@ struct NoteCardRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(isActive ? Color.accentColor.opacity(0.14) : Color.clear)
+        .background(isActive ? ScholiumColorRole.accent.color.opacity(0.14) : Color.clear)
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
@@ -1665,10 +1604,10 @@ private extension HumanReviewDisplayState {
 
     var badgeColor: Color {
         switch self {
-        case .notReviewed: .secondary.opacity(0.4)
-        case .reviewed: .secondary
-        case .qualified: .green
-        case .unqualified: .red
+        case .notReviewed: ScholiumColorRole.mutedText.color.opacity(0.4)
+        case .reviewed: ScholiumColorRole.secondaryText.color
+        case .qualified: ScholiumColorRole.confirmed.color
+        case .unqualified: ScholiumColorRole.destructive.color
         }
     }
 

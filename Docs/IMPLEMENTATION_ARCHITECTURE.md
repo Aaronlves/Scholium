@@ -45,14 +45,15 @@ ScholiumCore ← ScholiumApplication
 
 WorkspaceRuntime (one live runtime for the app delivery)
 └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
-    └── WindowModel (one per window)
-        ├── DiscoveryController
-        ├── DocumentController
-        │   └── DocumentSessionStore
-        ├── ResearchController
-        │   └── ResearchFunctionController
-        ├── WindowPresentationRouter
-        └── typed WindowIntent routing
+    ├── WindowModel (one per complete window scene/native tab)
+    │   ├── DiscoveryController
+    │   ├── DocumentController
+    │   │   └── DocumentSessionStore
+    │   ├── ResearchController
+    │   │   └── ResearchFunctionController
+    │   ├── WindowPresentationRouter
+    │   └── typed WindowIntent routing
+    └── NativeWindowTabCoordinator (AppKit grouping by stable window ID)
 ```
 
 `WorkspaceRuntime` has live and snapshot configurations. Live activation
@@ -78,12 +79,27 @@ cannot mix capability actors from different generations. It owns no Core
 repository, index, watcher, or research store.
 
 Each `WindowModel` is the per-window composition and focused-command root. It
-owns Triptych assignment, navigation, tabs, Recent Notes, session restoration,
-presentation routing, and closed cross-feature intent routing. Discovery,
+owns Triptych assignment, the ordinary Search scope and temporary Find
+invocation, session restoration, presentation routing, and closed cross-feature
+intent routing. `DocumentController` alone owns the selected document, including
+path-only Unclassified and identity-recovery selections. `WindowModel` exposes
+only a computed projection for composition and focused commands. It owns no
+custom document tabs, navigation history, or Recent Notes state. Discovery,
 Document, and Research controllers own their independent window state and
 borrow only their matching Application capability. Controllers never mutate
 one another. Settings uses the separate `WorkspaceSettingsModel` and does not
 construct a document window.
+
+Each native macOS tab is a complete `WindowGroup` scene with its own stable
+window ID, `WindowModel`, presentation router, and `DocumentSessionStore`.
+`TriptychWindowRoute` carries an optional initial document and source-window
+anchor ID. `NativeWindowTabCoordinator` assigns one AppKit tabbing identifier,
+registers weak `NSWindow` references by stable ID, and groups an **Open in New
+Tab** scene with its source window when both are available. AppKit owns tab
+selection, cycling, detaching, merging, and standard Window-menu commands.
+`WindowSessionSnapshot.selectedDocument` is the sole restored document;
+historical tab, Back/Forward, and Recent Notes fields exist only in the bounded
+decoder and disappear on the next encode.
 
 ## Research Function boundary
 
@@ -127,13 +143,16 @@ entry points remain compatibility wrappers while callers migrate.
 
 Write-capable preparation records only a pending Fidelity handoff. Its first
 post-edit completion persists the exact final Target fingerprint as
-`awaitingFidelity`. The external agent then prepares and completes an
-independent read-only Fidelity run against that final revision with the same
-Materials, scope kind, Comments, and checks; a later parent submission links
-the child run ID. Completion rejects direct Fidelity outcomes on the write run
-and validates the child's identity, final fingerprints, evidence, checks, and
-completion before monotonically advancing the parent. Exact evidence keys
-reuse completed evidence instead of storing or scheduling a duplicate audit.
+`awaitingFidelity`, then Application creates or reuses an independent read-only
+automatic Fidelity child against that final revision with the same Materials,
+scope kind, Comments, and checks. This orchestration records no audit outcome:
+an agent must still submit the child's actual evidence. A later parent
+submission links the completed child, and Application can perform that link
+automatically when identical completed evidence is already available.
+Completion rejects direct Fidelity outcomes on the write run and validates the
+child's identity, final fingerprints, evidence, checks, and completion before
+monotonically advancing the parent. Exact evidence keys reuse completed
+evidence instead of storing or scheduling a duplicate audit.
 
 `ScholiumCore` keeps authorities separate: `ResearchSkillStore` owns package
 discovery, metadata, bindings, and fingerprints; `ResearchWorkflowAssembler`
@@ -276,6 +295,7 @@ Each retained `DocumentSessionModel` owns:
 - its persistent `MarkdownEditorSession` and flush token;
 - the exact editor mirror and committed revision;
 - Read, Live Preview, or Source mode;
+- retained scroll position;
 - autosave and in-flight save tasks with stale tokens;
 - rendered Read projection state; and
 - save error, conflict, retry, and comparison presentation state.
@@ -308,7 +328,10 @@ this document a second palette authority.
 
 Stable geometry is named by meaning rather than number:
 
+- `ScholiumMetrics.Onboarding` owns the narrow first-run setup measures;
 - `ScholiumMetrics.Triptych` owns the exact interface measures;
+- `ScholiumMetrics.Workspace` owns configured-window preferred and minimum
+  measures;
 - `ScholiumMetrics.Document` owns the readable document measure; and
 - `ScholiumMetrics.ContextSurface` owns the shared document-control geometry.
 
@@ -334,7 +357,7 @@ runtime, window, document, presentation, and design-system boundaries.
 `Tools/Scripts/verify.sh` adds package-graph, source-import, I/O, and public
 symbol-graph guards so delivery targets cannot reacquire Core-owned authority.
 
-See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for dated pass records,
+See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for dated evidence,
 reachable behavior, and remaining acceptance work. This document intentionally
 does not duplicate test counts or claim that a historical pass proves the
 current checkout.

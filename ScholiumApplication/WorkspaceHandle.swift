@@ -433,15 +433,25 @@ public actor WorkspaceHandle {
         try requireActive()
         let registeredVault = try vault(id: request.id.vaultID)
         let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let scope = request.researchUnitScope?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let limitations = request.researchUnitLimitations
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let researchStatus: AnalysisResearchStatusChoice = request.analysisResearchStatus
+
+        let scope: String?
+        let limitations: [String]
+        switch researchStatus {
+        case .declareNow(let proposedScope, let proposedLimitations):
+            scope = proposedScope.trimmingCharacters(in: .whitespacesAndNewlines)
+            limitations = proposedLimitations
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case .notYet:
+            scope = nil
+            limitations = []
+        }
 
         var frontmatter: [String: YAMLValue] = [:]
-        if registeredVault.role == .sourceCorpus, let scope, !scope.isEmpty {
-            var researchUnit: [String: YAMLValue] = ["scope": .string(scope)]
+        if registeredVault.role == .sourceCorpus,
+           case .declareNow = researchStatus {
+            var researchUnit: [String: YAMLValue] = ["scope": .string(scope ?? "")]
             if !limitations.isEmpty {
                 researchUnit["limitations"] = .array(limitations.map(YAMLValue.string))
             }
@@ -1286,11 +1296,6 @@ public actor WorkspaceHandle {
                 limit: boundedLimit
             )
         }
-    }
-
-    func quickOpen(query: String, limit: Int) throws -> [WorkspaceCatalogNote] {
-        try requireActive()
-        return currentSnapshot.discovery.catalog.quickOpenResults(for: query, limit: limit)
     }
 
     func related(

@@ -247,10 +247,10 @@ private struct RuntimeMembershipFixture: Sendable {
             id: UUID(),
             triptychID: assignment.id,
             vaultID: analysesIdentity.id,
-            openTabs: ["Agency.md"],
-            activeTab: "Agency.md",
-            navigationHistory: ["Agency.md"],
-            navigationIndex: 0,
+            selectedDocument: VaultQualifiedNoteID(
+                vaultID: analysesIdentity.id,
+                relativePath: "Agency.md"
+            ),
             documentModes: ["Agency.md": "source"],
             scrollPositions: ["Agency.md": 0.25],
             inspectorMode: "outgoing",

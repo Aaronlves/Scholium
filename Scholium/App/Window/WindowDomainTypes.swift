@@ -33,18 +33,53 @@ struct LifecycleLocationItem: Identifiable, Hashable {
     var id: String { note.relativePath }
 }
 
+/// Immutable authority for a document-scoped lifecycle request. Library
+/// browsing can point at a different vault while a document remains open, so
+/// a path alone is never sufficient to identify Duplicate or Move targets.
+struct NoteLifecycleTarget: Identifiable, Equatable, Sendable {
+    let documentID: VaultQualifiedNoteID
+    let stableNoteID: UUID
+    let revision: DocumentFingerprint
+
+    var id: String {
+        "\(documentID.vaultID.uuidString.lowercased()):\(documentID.relativePath)"
+    }
+
+    var relativePath: String { documentID.relativePath }
+
+    init(
+        documentID: VaultQualifiedNoteID,
+        stableNoteID: UUID,
+        revision: DocumentFingerprint
+    ) {
+        self.documentID = documentID
+        self.stableNoteID = stableNoteID
+        self.revision = revision
+    }
+
+    init?(_ location: WindowDocumentLocation) {
+        guard let snapshot = location.workspaceSnapshot,
+              let stableNoteID = snapshot.stableIdentity.resolvedID else {
+            return nil
+        }
+        documentID = snapshot.id
+        self.stableNoteID = stableNoteID
+        revision = snapshot.fingerprint
+    }
+}
+
 enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
     case create
-    case duplicate(String)
-    case move(String)
+    case duplicate(NoteLifecycleTarget)
+    case move(NoteLifecycleTarget)
     case putBack(String)
     case classify(String)
 
     var id: String {
         switch self {
         case .create: "create"
-        case .duplicate(let path): "duplicate:\(path)"
-        case .move(let path): "move:\(path)"
+        case .duplicate(let target): "duplicate:\(target.id)"
+        case .move(let target): "move:\(target.id)"
         case .putBack(let path): "put-back:\(path)"
         case .classify(let path): "classify:\(path)"
         }
@@ -81,22 +116,32 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How a document destination should enter the workspace.
+///
+/// Replacing the current document never creates hidden in-window navigation
+/// state. A new native tab is a complete, independent window scene that AppKit
+/// groups with the source window.
+enum WindowOpenDisposition: String, Codable, Hashable, Sendable {
+    case replaceCurrent
+    case newNativeTab
+}
+
 /// A resolved document destination emitted by a feature controller and routed
 /// by the owning `WindowModel`. It carries no repository or presentation
 /// service and therefore remains safe to pass across feature boundaries.
 struct WindowDocumentRoute: Hashable, Sendable {
     let reference: VaultNoteReference
     let sourceLocator: SourceLocator?
-    let opensInNewTab: Bool
+    let disposition: WindowOpenDisposition
 
     init(
         reference: VaultNoteReference,
         sourceLocator: SourceLocator? = nil,
-        opensInNewTab: Bool = false
+        disposition: WindowOpenDisposition = .replaceCurrent
     ) {
         self.reference = reference
         self.sourceLocator = sourceLocator
-        self.opensInNewTab = opensInNewTab
+        self.disposition = disposition
     }
 }
 
@@ -104,6 +149,42 @@ struct ResearchFunctionPanelRoute: Hashable, Sendable {
     let target: VaultNoteReference
     let function: ResearchFunctionID
     let presentationID: UUID
+    let focusCommentComposer: Bool
+
+    init(
+        target: VaultNoteReference,
+        function: ResearchFunctionID,
+        presentationID: UUID,
+        focusCommentComposer: Bool = false
+    ) {
+        self.target = target
+        self.function = function
+        self.presentationID = presentationID
+        self.focusCommentComposer = focusCommentComposer
+    }
+}
+
+/// Typed Properties presentation. A Research Function may temporarily hand
+/// off to Properties without dismissing its scoped draft; the return route
+/// makes that continuation explicit instead of relying on unrelated booleans.
+struct FrontmatterPanelRoute: Hashable, Sendable {
+    let presentationID: UUID
+    let path: String
+    let returnToResearchFunction: ResearchFunctionPanelRoute?
+
+    var id: String {
+        "frontmatter:\(presentationID.uuidString.lowercased())"
+    }
+
+    init(
+        presentationID: UUID = UUID(),
+        path: String,
+        returnToResearchFunction: ResearchFunctionPanelRoute? = nil
+    ) {
+        self.presentationID = presentationID
+        self.path = path
+        self.returnToResearchFunction = returnToResearchFunction
+    }
 }
 
 /// The complete set of cross-feature requests understood by one window.

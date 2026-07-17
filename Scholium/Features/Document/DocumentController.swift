@@ -9,6 +9,31 @@ struct WindowDocumentDescriptor: Hashable, Sendable {
     let reference: VaultNoteReference
 }
 
+/// The one selected document projection owned by a window. Workspace notes
+/// carry stable session identity; Unclassified and identity-recovery notes
+/// remain explicitly path-addressed without inventing a vault identity.
+enum WindowSelectedDocument: Hashable, Sendable {
+    case workspace(WindowDocumentDescriptor)
+    case unclassified(relativePath: String)
+    case unavailable(relativePath: String)
+
+    var relativePath: String {
+        switch self {
+        case .workspace(let descriptor): descriptor.reference.relativePath
+        case .unclassified(let relativePath), .unavailable(let relativePath): relativePath
+        }
+    }
+
+    var workspaceDescriptor: WindowDocumentDescriptor? {
+        guard case .workspace(let descriptor) = self else { return nil }
+        return descriptor
+    }
+
+    var sessionKey: DocumentSessionKey? {
+        workspaceDescriptor?.sessionKey
+    }
+}
+
 /// Immutable delivery-layer address for one editor session. Workspace notes
 /// follow stable identity through renames; portable Unclassified documents
 /// remain path-addressed because they intentionally have no vault identity.
@@ -18,7 +43,22 @@ enum DocumentEditingTarget: Hashable, Sendable {
     case unavailable(relativePath: String)
 }
 
-/// Per-window owner for tabs and document/editor sessions. Repository writes,
+private extension WindowSelectedDocument {
+    var editingTarget: DocumentEditingTarget {
+        switch self {
+        case .workspace(let descriptor): .workspace(descriptor.sessionKey)
+        case .unclassified(let relativePath): .unclassified(relativePath: relativePath)
+        case .unavailable(let relativePath): .unavailable(relativePath: relativePath)
+        }
+    }
+}
+
+struct DocumentPresentationSnapshot: Equatable, Sendable {
+    let modes: [String: String]
+    let scrollPositions: [String: Double]
+}
+
+/// Per-window owner for the selected document and retained editor sessions. Repository writes,
 /// lifecycle transactions, and conflict recovery remain Application calls;
 /// this controller owns only window and editor-session state.
 @MainActor
@@ -27,13 +67,17 @@ final class DocumentController: ObservableObject {
     typealias DocumentCommitHandler = @MainActor (NoteDocument) async -> Void
     typealias SaveErrorHandler = @MainActor (String?) -> Void
 
-    @Published private(set) var openDocuments: [WindowDocumentDescriptor] = []
-    @Published private(set) var activeDocumentKey: DocumentSessionKey?
+    @Published private(set) var selectedDocument: WindowSelectedDocument?
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
 
     private let sessions = DocumentSessionStore()
+    private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
+    private var fallbackSessions: [DocumentEditingTarget: DocumentSessionModel] = [:]
+    private var restoredModes: [String: String] = [:]
+    private var restoredScrollPositions: [String: Double] = [:]
+    private var restoredPresentationVaultID: UUID?
     private let intentHandler: IntentHandler
     private var operations: (any DocumentUseCases)?
     private var sessionCancellables: [ObjectIdentifier: AnyCancellable] = [:]
@@ -45,13 +89,22 @@ final class DocumentController: ObservableObject {
     }
 
     var activeDocument: WindowDocumentDescriptor? {
-        guard let activeDocumentKey else { return nil }
-        return openDocuments.first(where: { $0.sessionKey == activeDocumentKey })
+        selectedDocument?.workspaceDescriptor
+    }
+
+    var selectedDocumentPath: String? {
+        selectedDocument?.relativePath
     }
 
     var activeSnapshot: WorkspaceNoteSnapshot? {
-        guard let activeDocumentKey else { return nil }
-        return snapshots[activeDocumentKey]
+        guard let key = selectedDocument?.sessionKey else { return nil }
+        return snapshots[key]
+    }
+
+    var isActiveDocumentEdited: Bool {
+        guard let key = selectedDocument?.sessionKey,
+              let session = sessions.retainedSession(for: key) else { return false }
+        return session.hasUnsavedChanges
     }
 
     /// Binds this window-local controller to capabilities selected by the one
@@ -255,6 +308,23 @@ final class DocumentController: ObservableObject {
         return session
     }
 
+    func session(for target: DocumentEditingTarget) -> DocumentSessionModel {
+        switch target {
+        case .workspace(let key):
+            return session(for: key)
+        case .unclassified, .unavailable:
+            if let retained = fallbackSessions[target] {
+                observe(retained)
+                return retained
+            }
+            let created = DocumentSessionModel(key: nil)
+            fallbackSessions[target] = created
+            observe(created)
+            hydratePresentation(of: created, path: relativePath(for: target))
+            return created
+        }
+    }
+
     func retainedSession(for key: DocumentSessionKey) -> DocumentSessionModel? {
         guard let session = sessions.retainedSession(for: key) else { return nil }
         observe(session)
@@ -274,29 +344,42 @@ final class DocumentController: ObservableObject {
     /// Installs a document after the owning WindowModel has resolved an
     /// `openDocument` intent through Application and obtained its stable ID.
     func installOpenedDocument(
-        _ descriptor: WindowDocumentDescriptor,
-        inNewTab: Bool
+        _ descriptor: WindowDocumentDescriptor
     ) {
-        if let existingIndex = openDocuments.firstIndex(where: {
-            $0.sessionKey == descriptor.sessionKey
-        }) {
-            openDocuments[existingIndex] = descriptor
-            activeDocumentKey = descriptor.sessionKey
+        selectDocument(.workspace(descriptor))
+    }
+
+    func selectDocument(_ document: WindowSelectedDocument) {
+        if selectedDocument != document {
+            selectedDocument = document
+        }
+        switch document {
+        case .workspace(let descriptor):
+            retainedReferences[descriptor.sessionKey] = descriptor.reference
+            hydratePresentation(
+                of: session(for: descriptor.sessionKey),
+                path: descriptor.reference.relativePath
+            )
+        case .unclassified, .unavailable:
+            _ = session(for: document.editingTarget)
+        }
+    }
+
+    func selectUnclassifiedDocument(relativePath: String) {
+        selectDocument(.unclassified(relativePath: relativePath))
+    }
+
+    func selectUnavailableDocument(relativePath: String) {
+        selectDocument(.unavailable(relativePath: relativePath))
+    }
+
+    /// Clears a selection only when its authoritative document was removed.
+    /// Ordinary navigation never uses this as a presentation command.
+    func clearSelection(forRemovedPaths removedPaths: Set<String>) {
+        guard let selectedDocumentPath, removedPaths.contains(selectedDocumentPath) else {
             return
         }
-
-        if inNewTab || openDocuments.isEmpty {
-            openDocuments.append(descriptor)
-        } else if let activeDocumentKey,
-                  let activeIndex = openDocuments.firstIndex(where: {
-                      $0.sessionKey == activeDocumentKey
-                  }) {
-            openDocuments[activeIndex] = descriptor
-        } else {
-            openDocuments = [descriptor]
-        }
-        activeDocumentKey = descriptor.sessionKey
-        _ = session(for: descriptor.sessionKey)
+        selectedDocument = nil
     }
 
     /// Installs the immutable Application read model and initializes this
@@ -304,8 +387,7 @@ final class DocumentController: ObservableObject {
     func installOpenedDocument(
         _ snapshot: WorkspaceNoteSnapshot,
         vaultName: String,
-        vaultRole: VaultRole,
-        inNewTab: Bool
+        vaultRole: VaultRole
     ) {
         guard let stableID = snapshot.stableIdentity.resolvedID else { return }
         let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
@@ -319,39 +401,162 @@ final class DocumentController: ObservableObject {
                 stableNoteID: stableID.uuidString
             )
         )
-        installOpenedDocument(descriptor, inNewTab: inNewTab)
+        installOpenedDocument(descriptor)
         snapshots[key] = snapshot
         reconcile(session: session(for: key), with: snapshot)
     }
 
-    func activateDocument(_ key: DocumentSessionKey) {
-        guard openDocuments.contains(where: { $0.sessionKey == key }) else { return }
-        activeDocumentKey = key
+    /// Publishes an authoritative commit into an already retained document
+    /// session without changing this window's selection. The active save path
+    /// remains responsible for synchronizing CodeMirror's exact buffer.
+    func recordCommittedSnapshot(
+        _ snapshot: WorkspaceNoteSnapshot,
+        vaultName: String,
+        vaultRole: VaultRole
+    ) {
+        guard let stableID = snapshot.stableIdentity.resolvedID else { return }
+        let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
+        snapshots[key] = snapshot
+        let reference = VaultNoteReference(
+            vaultID: snapshot.id.vaultID,
+            vaultName: vaultName,
+            vaultRole: vaultRole,
+            relativePath: snapshot.id.relativePath,
+            stableNoteID: stableID.uuidString
+        )
+        retainedReferences[key] = reference
+        guard activeDocument?.sessionKey == key else { return }
+        updateDocumentProjection(WindowDocumentDescriptor(
+            sessionKey: key,
+            reference: reference
+        ))
+        reconcile(session: session(for: key), with: snapshot)
     }
 
     /// Updates mutable path and title projections without replacing the
     /// document session, editor buffer, undo bridge, or conflict state.
     func updateDocumentProjection(_ descriptor: WindowDocumentDescriptor) {
-        guard let index = openDocuments.firstIndex(where: {
-            $0.sessionKey == descriptor.sessionKey
-        }) else { return }
-        openDocuments[index] = descriptor
+        retainedReferences[descriptor.sessionKey] = descriptor.reference
+        guard selectedDocument?.sessionKey == descriptor.sessionKey else { return }
+        selectedDocument = .workspace(descriptor)
     }
 
-    func closeDocument(_ key: DocumentSessionKey) {
-        guard let index = openDocuments.firstIndex(where: { $0.sessionKey == key }) else { return }
-        let wasActive = activeDocumentKey == key
-        openDocuments.remove(at: index)
-        snapshots[key] = nil
-        if let session = sessions.retainedSession(for: key) {
-            sessionCancellables[ObjectIdentifier(session)] = nil
+    func presentationMode(for path: String, vaultID: UUID?) -> NotePresentationMode {
+        presentationSession(for: path, vaultID: vaultID)?.presentationMode
+            ?? restoredModes[path].flatMap(NotePresentationMode.init(rawValue:))
+            ?? .read
+    }
+
+    func rememberPresentationMode(
+        _ mode: NotePresentationMode,
+        for path: String,
+        vaultID: UUID?
+    ) {
+        if let session = presentationSession(for: path, vaultID: vaultID) {
+            session.presentationMode = mode
+        } else {
+            restoredPresentationVaultID = vaultID
+            restoredModes[path] = mode.rawValue
         }
-        sessions.removeSession(for: key)
-        if wasActive {
-            let replacementIndex = min(index, openDocuments.count - 1)
-            activeDocumentKey = replacementIndex >= 0
-                ? openDocuments[replacementIndex].sessionKey
-                : nil
+    }
+
+    func scrollPosition(for path: String, vaultID: UUID?) -> Double {
+        let value = presentationSession(for: path, vaultID: vaultID)?.scrollFraction
+            ?? restoredScrollPositions[path]
+            ?? 0
+        return min(1, max(0, value))
+    }
+
+    func rememberScrollPosition(_ fraction: Double, for path: String, vaultID: UUID?) {
+        guard fraction.isFinite else { return }
+        let normalized = min(1, max(0, fraction))
+        if let session = presentationSession(for: path, vaultID: vaultID) {
+            guard abs(session.scrollFraction - normalized) > 0.002 else { return }
+            session.scrollFraction = normalized
+        } else {
+            guard abs((restoredScrollPositions[path] ?? 0) - normalized) > 0.002 else { return }
+            restoredPresentationVaultID = vaultID
+            restoredScrollPositions[path] = normalized
+        }
+    }
+
+    func restorePresentationState(
+        modes: [String: String],
+        scrollPositions: [String: Double],
+        vaultID: UUID?
+    ) {
+        restoredModes = modes
+        restoredScrollPositions = scrollPositions.filter { $0.value.isFinite }
+        restoredPresentationVaultID = vaultID
+        if let selectedDocument {
+            hydratePresentation(
+                of: session(for: selectedDocument.editingTarget),
+                path: selectedDocument.relativePath
+            )
+        }
+    }
+
+    func presentationSnapshot(vaultID: UUID?) -> DocumentPresentationSnapshot {
+        var modes = restoredPresentationVaultID == vaultID ? restoredModes : [:]
+        var scrollPositions = restoredPresentationVaultID == vaultID
+            ? restoredScrollPositions
+            : [:]
+
+        for (key, reference) in retainedReferences where reference.vaultID == vaultID {
+            guard let session = sessions.retainedSession(for: key) else { continue }
+            modes[reference.relativePath] = session.presentationMode.rawValue
+            scrollPositions[reference.relativePath] = min(1, max(0, session.scrollFraction))
+        }
+        for (target, session) in fallbackSessions {
+            let path = relativePath(for: target)
+            modes[path] = session.presentationMode.rawValue
+            scrollPositions[path] = min(1, max(0, session.scrollFraction))
+        }
+        return DocumentPresentationSnapshot(
+            modes: modes,
+            scrollPositions: scrollPositions
+        )
+    }
+
+    func migratePresentationPath(
+        from sourcePath: String,
+        to destinationPath: String,
+        vaultID: UUID?
+    ) {
+        if restoredPresentationVaultID == vaultID {
+            if let mode = restoredModes.removeValue(forKey: sourcePath) {
+                restoredModes[destinationPath] = mode
+            }
+            if let scroll = restoredScrollPositions.removeValue(forKey: sourcePath) {
+                restoredScrollPositions[destinationPath] = scroll
+            }
+        }
+        let migratedKeys = retainedReferences.compactMap { key, reference in
+            reference.vaultID == vaultID && reference.relativePath == sourcePath ? key : nil
+        }
+        for key in migratedKeys {
+            guard let reference = retainedReferences[key] else { continue }
+            retainedReferences[key] = VaultNoteReference(
+                vaultID: reference.vaultID,
+                vaultName: reference.vaultName,
+                vaultRole: reference.vaultRole,
+                relativePath: destinationPath,
+                stableNoteID: reference.stableNoteID
+            )
+        }
+    }
+
+    func resetPresentationState() {
+        restoredModes = [:]
+        restoredScrollPositions = [:]
+        restoredPresentationVaultID = nil
+        for session in sessions.retainedSessions.values {
+            session.presentationMode = .read
+            session.scrollFraction = 0
+        }
+        for session in fallbackSessions.values {
+            session.presentationMode = .read
+            session.scrollFraction = 0
         }
     }
 
@@ -363,20 +568,58 @@ final class DocumentController: ObservableObject {
         intentHandler(.presentLifecycle(request))
     }
 
-    func removeAll() {
-        sessions.removeAll()
-        sessionCancellables.removeAll()
-        openDocuments = []
-        activeDocumentKey = nil
+    func removeAll(retainingSessions: Bool = false) {
+        if !retainingSessions {
+            sessions.removeAll()
+            retainedReferences.removeAll()
+            fallbackSessions.values.forEach { $0.cancelScheduledWork() }
+            fallbackSessions.removeAll()
+            restoredModes = [:]
+            restoredScrollPositions = [:]
+            restoredPresentationVaultID = nil
+            sessionCancellables.removeAll()
+        }
+        selectedDocument = nil
         snapshots = [:]
         editingDocumentPath = nil
         lastSaveError = nil
     }
 
+    private func presentationSession(
+        for path: String,
+        vaultID: UUID?
+    ) -> DocumentSessionModel? {
+        if let selectedDocument, selectedDocument.relativePath == path {
+            return session(for: selectedDocument.editingTarget)
+        }
+        if let key = retainedReferences.first(where: {
+            $0.value.vaultID == vaultID && $0.value.relativePath == path
+        })?.key {
+            return retainedSession(for: key)
+        }
+        if let target = fallbackSessions.keys.first(where: {
+            relativePath(for: $0) == path
+        }) {
+            return fallbackSessions[target]
+        }
+        return nil
+    }
+
+    private func hydratePresentation(of session: DocumentSessionModel, path: String) {
+        if let rawMode = restoredModes.removeValue(forKey: path),
+           let mode = NotePresentationMode(rawValue: rawMode) {
+            session.presentationMode = mode
+        }
+        if let restoredScroll = restoredScrollPositions.removeValue(forKey: path),
+           restoredScroll.isFinite {
+            session.scrollFraction = min(1, max(0, restoredScroll))
+        }
+    }
+
     func relativePath(for target: DocumentEditingTarget) -> String {
         switch target {
         case .workspace(let key):
-            openDocuments.first(where: { $0.sessionKey == key })?.reference.relativePath
+            (selectedDocument?.sessionKey == key ? selectedDocument?.relativePath : nil)
                 ?? snapshots[key]?.id.relativePath
                 ?? ""
         case .unclassified(let relativePath), .unavailable(let relativePath):
@@ -771,42 +1014,41 @@ final class DocumentController: ObservableObject {
     }
 
     private func apply(_ workspace: WorkspaceSnapshot) {
-        for descriptor in openDocuments {
-            let key = descriptor.sessionKey
-            let session = session(for: key)
-            guard let located = workspace.vaults.lazy.compactMap({ vault -> (WorkspaceVaultSnapshot, WorkspaceNoteSnapshot)? in
-                guard vault.vault.id == key.vaultID,
-                      let note = vault.documents.first(where: {
-                          $0.stableIdentity.resolvedID == key.noteID
-                      }) else { return nil }
-                return (vault, note)
-            }).first else {
-                if session.isEditing || session.hasUnsavedChanges {
-                    session.autosaveTask?.cancel()
-                    session.autosaveTask = nil
-                    session.conflict = nil
-                    session.canRetrySave = false
-                    let message = "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery."
-                    session.editError = message
-                    setSaveError(message)
-                }
-                continue
+        guard let descriptor = activeDocument else { return }
+        let key = descriptor.sessionKey
+        let session = session(for: key)
+        guard let located = workspace.vaults.lazy.compactMap({ vault -> (WorkspaceVaultSnapshot, WorkspaceNoteSnapshot)? in
+            guard vault.vault.id == key.vaultID,
+                  let note = vault.documents.first(where: {
+                      $0.stableIdentity.resolvedID == key.noteID
+                  }) else { return nil }
+            return (vault, note)
+        }).first else {
+            if session.isEditing || session.hasUnsavedChanges {
+                session.autosaveTask?.cancel()
+                session.autosaveTask = nil
+                session.conflict = nil
+                session.canRetrySave = false
+                let message = "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery."
+                session.editError = message
+                setSaveError(message)
             }
-
-            let (vault, note) = located
-            snapshots[key] = note
-            updateDocumentProjection(WindowDocumentDescriptor(
-                sessionKey: key,
-                reference: VaultNoteReference(
-                    vaultID: vault.vault.id,
-                    vaultName: vault.vault.name,
-                    vaultRole: vault.vault.role,
-                    relativePath: note.id.relativePath,
-                    stableNoteID: key.noteID.uuidString
-                )
-            ))
-            reconcile(session: session, with: note)
+            return
         }
+
+        let (vault, note) = located
+        snapshots[key] = note
+        updateDocumentProjection(WindowDocumentDescriptor(
+            sessionKey: key,
+            reference: VaultNoteReference(
+                vaultID: vault.vault.id,
+                vaultName: vault.vault.name,
+                vaultRole: vault.vault.role,
+                relativePath: note.id.relativePath,
+                stableNoteID: key.noteID.uuidString
+            )
+        ))
+        reconcile(session: session, with: note)
     }
 
     private func reconcile(

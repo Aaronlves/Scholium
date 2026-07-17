@@ -248,7 +248,7 @@ public enum PropertyContractCatalog {
     }
 
     private static let analysisProfile = CachedProfile(contracts:
-        analysisContracts(researchUnitRequirement: .required)
+        analysisContracts(researchUnitRequirement: .optional)
     )
     // Historical analyses remain readable without a Research Unit.
     private static let paperAnalysisProfile = CachedProfile(contracts:

@@ -16,9 +16,17 @@ struct WindowControllerArchitectureTests {
         let document = DocumentController { documentIntents.append($0) }
         let research = ResearchController { researchIntents.append($0) }
         let presentationID = UUID()
+        let lifecycleTarget = NoteLifecycleTarget(
+            documentID: VaultQualifiedNoteID(
+                vaultID: reference.vaultID,
+                relativePath: reference.relativePath
+            ),
+            stableNoteID: UUID(),
+            revision: DocumentFingerprint(content: "# Agency\n")
+        )
 
-        discovery.requestOpen(reference, inNewTab: true)
-        document.requestLifecycle(.move(reference.relativePath))
+        discovery.requestOpen(reference, disposition: .newNativeTab)
+        document.requestLifecycle(.move(lifecycleTarget))
         research.setActiveDocument(reference)
         research.requestPresentFunction(
             .dialogue,
@@ -29,10 +37,10 @@ struct WindowControllerArchitectureTests {
         #expect(discoveryIntents == [
             .openDocument(WindowDocumentRoute(
                 reference: reference,
-                opensInNewTab: true
+                disposition: .newNativeTab
             )),
         ])
-        #expect(documentIntents == [.presentLifecycle(.move("Topics/Agency.md"))])
+        #expect(documentIntents == [.presentLifecycle(.move(lifecycleTarget))])
         #expect(researchIntents == [
             .presentResearchFunction(ResearchFunctionPanelRoute(
                 target: reference,
@@ -40,7 +48,7 @@ struct WindowControllerArchitectureTests {
                 presentationID: presentationID
             )),
         ])
-        #expect(document.openDocuments.isEmpty)
+        #expect(document.selectedDocument == nil)
         #expect(discovery.library.locationScope == .workspace)
     }
 
@@ -52,16 +60,131 @@ struct WindowControllerArchitectureTests {
         let first = DocumentController()
         let second = DocumentController()
 
-        first.installOpenedDocument(descriptor, inNewTab: false)
-        second.installOpenedDocument(descriptor, inNewTab: false)
+        first.installOpenedDocument(descriptor)
+        second.installOpenedDocument(descriptor)
         let firstSession = first.session(for: descriptor)
         let secondSession = second.session(for: descriptor)
         firstSession.editingSource = "window one exact bytes\n"
 
         #expect(firstSession !== secondSession)
         #expect(secondSession.editingSource.isEmpty)
-        #expect(first.openDocuments == [descriptor])
-        #expect(second.openDocuments == [descriptor])
+        #expect(first.selectedDocument == .workspace(descriptor))
+        #expect(second.selectedDocument == .workspace(descriptor))
+    }
+
+    @Test("One controller selection covers stable and path-only documents")
+    func documentControllerOwnsTheCompleteSelection() {
+        let controller = DocumentController()
+
+        controller.selectUnclassifiedDocument(relativePath: "Inbox/Imported.md")
+        #expect(controller.selectedDocument == .unclassified(relativePath: "Inbox/Imported.md"))
+        #expect(controller.selectedDocumentPath == "Inbox/Imported.md")
+        #expect(controller.activeDocument == nil)
+
+        controller.selectUnavailableDocument(relativePath: "Topics/Ambiguous.md")
+        #expect(controller.selectedDocument == .unavailable(relativePath: "Topics/Ambiguous.md"))
+        #expect(controller.selectedDocumentPath == "Topics/Ambiguous.md")
+
+        let reference = fixtureReference(path: "Topics/Stable.md")
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
+            reference: reference
+        )
+        controller.installOpenedDocument(descriptor)
+        let retained = controller.session(for: descriptor)
+        controller.clearSelection(forRemovedPaths: [reference.relativePath])
+
+        #expect(controller.selectedDocument == nil)
+        #expect(controller.selectedDocumentPath == nil)
+        #expect(controller.retainedSession(for: descriptor.sessionKey) === retained)
+    }
+
+    @Test("Window model derives selection from the document controller")
+    func windowModelDerivesDocumentSelection() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let windowSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let controllerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/Document/DocumentController.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!windowSource.contains("@Published private(set) var selectedDocumentPath"))
+        #expect(!windowSource.contains("@Published var documentModes"))
+        #expect(!windowSource.contains("@Published var documentScrollPositions"))
+        #expect(windowSource.contains("documentController.selectedDocumentPath"))
+        #expect(!controllerSource.contains("openDocuments"))
+        #expect(!controllerSource.contains("activeDocumentKey"))
+        #expect(controllerSource.contains("@Published private(set) var selectedDocument"))
+    }
+
+    @Test("Retained document sessions solely own mode and scroll state")
+    func documentSessionOwnsPresentationState() {
+        let reference = fixtureReference(path: "Topics/Presentation.md")
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
+            reference: reference
+        )
+        let controller = DocumentController()
+        controller.restorePresentationState(
+            modes: [reference.relativePath: NotePresentationMode.source.rawValue],
+            scrollPositions: [reference.relativePath: 0.64],
+            vaultID: reference.vaultID
+        )
+
+        controller.installOpenedDocument(descriptor)
+        let session = controller.session(for: descriptor)
+        #expect(session.presentationMode == .source)
+        #expect(session.scrollFraction == 0.64)
+
+        controller.rememberPresentationMode(
+            .livePreview,
+            for: reference.relativePath,
+            vaultID: reference.vaultID
+        )
+        controller.rememberScrollPosition(
+            0.31,
+            for: reference.relativePath,
+            vaultID: reference.vaultID
+        )
+        controller.clearSelection(forRemovedPaths: [reference.relativePath])
+        controller.installOpenedDocument(descriptor)
+
+        #expect(controller.session(for: descriptor) === session)
+        #expect(session.presentationMode == .livePreview)
+        #expect(session.scrollFraction == 0.31)
+        #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
+            DocumentPresentationSnapshot(
+                modes: [reference.relativePath: NotePresentationMode.livePreview.rawValue],
+                scrollPositions: [reference.relativePath: 0.31]
+            ))
+    }
+
+    @Test("Path-only fallback presentation state is retained by the controller")
+    func fallbackPresentationStateIsControllerOwned() {
+        let path = "Inbox/Imported.md"
+        let target = DocumentEditingTarget.unclassified(relativePath: path)
+        let controller = DocumentController()
+        controller.restorePresentationState(
+            modes: [path: NotePresentationMode.source.rawValue],
+            scrollPositions: [path: 0.42],
+            vaultID: nil
+        )
+        controller.selectUnclassifiedDocument(relativePath: path)
+
+        let session = controller.session(for: target)
+        #expect(session.presentationMode == .source)
+        #expect(session.scrollFraction == 0.42)
+        controller.clearSelection(forRemovedPaths: [path])
+        controller.selectUnclassifiedDocument(relativePath: path)
+        #expect(controller.session(for: target) === session)
     }
 
     @Test("A rename updates projection without replacing the editor session")
@@ -77,7 +200,7 @@ struct WindowControllerArchitectureTests {
             reference: fixtureReference(vaultID: vaultID, path: "Topics/New.md")
         )
         let controller = DocumentController()
-        controller.installOpenedDocument(original, inNewTab: false)
+        controller.installOpenedDocument(original)
         let session = controller.session(for: original)
         session.editingSource = "dirty exact buffer"
 
@@ -174,7 +297,6 @@ struct WindowControllerArchitectureTests {
 
         for legacyOwner in [
             "SearchFeatureModel",
-            "QuickOpenFeatureModel",
             "LibraryFeatureModel",
         ] {
             #expect(!source.contains(legacyOwner))
@@ -268,7 +390,7 @@ struct WindowControllerArchitectureTests {
         }
     }
 
-    @Test("The typed Research Function route is the only Critique and Dialogue entry panel")
+    @Test("The typed Research Function route is the only judgment and agent entry panel")
     func legacyResearchPanelsStayRetired() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -289,7 +411,11 @@ struct WindowControllerArchitectureTests {
 
         #expect(router.contains("case researchFunction(ResearchFunctionPanelRoute)"))
         #expect(!router.contains("case critique(path:"))
+        #expect(!router.contains("case qualityReview"))
+        #expect(!router.contains("case researcherComments"))
         #expect(!app.contains("pendingCritiquePath"))
+        #expect(!app.contains("qualityReviewPath"))
+        #expect(!app.contains("researcherCommentsPath"))
         #expect(!app.contains("copyCritiqueInstructions"))
         #expect(!FileManager.default.fileExists(atPath: repositoryRoot
             .appendingPathComponent("Scholium/Views/CritiqueRequestView.swift").path))

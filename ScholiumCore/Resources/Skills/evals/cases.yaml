@@ -1,6 +1,30 @@
 schema_version: 2
 status: forward-test-specification
 cases:
+  - id: source-analyzer-complete-paper
+    request: Analyze this accessible philosophical paper and reconstruct its central argument.
+    expected_mode: analyze
+    expected_primary: scholium-source-analyzer
+    expected_researcher: [scholium-source-analyzer]
+    expected_result: three-pass-source-analysis
+    invariants: [no-research-function, exact-source-unit, three-distinct-source-passes, evidential-layers-separated, locator-backed-load-bearing-claims, no-note-write]
+
+  - id: source-analyzer-partial-access
+    request: Analyze this paper, but only its abstract and introduction are available.
+    expected_mode: analyze
+    expected_primary: scholium-source-analyzer
+    expected_researcher: [scholium-source-analyzer]
+    expected_result: provisional-partial-source-analysis
+    invariants: [no-research-function, available-unit-explicit, three-passes-over-available-unit, no-whole-paper-claim, missing-evidence-visible]
+
+  - id: source-analyzer-practice-attention
+    request: Analyze this argument-driven paper using Historical Interpreter, Conceptual Analyst, and Argument Reconstructionist.
+    expected_mode: analyze
+    expected_primary: scholium-source-analyzer
+    expected_researcher: [scholium-source-analyzer, scholium-philosophical-practices]
+    expected_result: argument-driven-normalized-attention
+    invariants: [literal-100-percent-attention-budget, argument-profile-20-30-50, every-selected-practice-applied, allocation-not-output-length, no-manufactured-findings]
+
   - id: develop-analysis-question
     request: Develop the question in this Analysis and identify the strongest next philosophical pressure.
     expected_function: develop
@@ -209,6 +233,13 @@ cases:
     expected_result: attributed-dialogue-response
     invariants: [read-only-default, no-note-write, response-not-settled-knowledge]
 
+  - id: dialogue-five-module-attention
+    request: Respond to this Dialogue using all five optional response modules.
+    expected_function: dialogue
+    expected_primary: scholium-dialogue-response
+    expected_result: concise-five-module-response
+    invariants: [literal-100-percent-attention-budget, each-selected-module-receives-20-percent, academic-outcome-outside-budget, integrity-notices-outside-budget, allocation-not-output-length, no-manufactured-section]
+
   - id: dialogue-promotes-analysis-edit
     request: In Dialogue, change the current Analysis to adopt this formulation.
     expected_function: dialogue
@@ -275,4 +306,4 @@ cases:
     expected_primary: scholium-critique
     expected_researcher: [scholium-philosophical-practices]
     expected_result: methodological-conflict-preserved
-    invariants: [no-last-loaded-wins, no-false-consensus, researcher-decision]
+    invariants: [literal-100-percent-attention-budget, normalized-selected-practice-weights, no-last-loaded-wins, no-false-consensus, researcher-decision]

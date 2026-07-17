@@ -6,7 +6,7 @@ import Testing
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
-    @Test("Bridge v2 initializes CodeMirror and reconciles one exact command")
+    @Test("Bridge v2 preserves exact commands, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         let harness = EditorHarness(source: "Thesis\r\nSecond\r\n")
         defer { harness.close() }
@@ -32,6 +32,47 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.multiline == "true")
         #expect(!accessibility.hasValueText)
         #expect(accessibility.spellcheck == "true")
+
+        let initialSelection = try #require(harness.session.context?.selections)
+        let expectedPadding = "\(Int(ScholiumMetrics.ContextSurface.initialOverlayClearance))px"
+        harness.session.setUserCSS("""
+        .scholium-live-mode .cm-content { padding-top: 0; }
+        .scholium-live-mode .cm-content,
+        .scholium-source-mode .cm-content {
+          padding-top: \(ScholiumMetrics.ContextSurface.initialOverlayClearance)px;
+        }
+        """)
+
+        let live = try await harness.waitUntilPresentation {
+            $0.label == "Markdown live preview editor"
+                && $0.contentPaddingTop == expectedPadding
+        }
+        #expect(live.gutterCount == 0)
+        #expect(live.lineNumberCount == 0)
+        #expect(live.activeLineCount == 0)
+        #expect(["24px", "54px"].contains(live.contentPaddingInlineStart))
+        #expect(live.isFocused)
+
+        harness.session.setMode(.source)
+        let sourceMode = try await harness.waitUntilPresentation {
+            $0.label == "Markdown source editor"
+                && $0.gutterCount > 0
+                && $0.lineNumberCount > 0
+        }
+        #expect(sourceMode.activeLineCount > 0)
+        #expect(sourceMode.contentPaddingTop == expectedPadding)
+        #expect(sourceMode.isFocused)
+
+        harness.session.setMode(.livePreview)
+        let restoredLive = try await harness.waitUntilPresentation {
+            $0.label == "Markdown live preview editor" && $0.gutterCount == 0
+        }
+        #expect(restoredLive.lineNumberCount == 0)
+        #expect(restoredLive.activeLineCount == 0)
+        #expect(restoredLive.contentPaddingTop == expectedPadding)
+        #expect(restoredLive.isFocused)
+        #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+        #expect(harness.session.context?.selections == initialSelection)
 
         do {
             try await harness.session.perform(.bold)
@@ -80,6 +121,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         let expectedAfterSelectionRestore = try inserting("!", atUTF16: insertionOffset, in: recovered)
         #expect(Data(afterSelectionRestore.utf8) == Data(expectedAfterSelectionRestore.utf8))
         #expect(Array(afterSelectionRestore.utf16) == Array(expectedAfterSelectionRestore.utf16))
+
+        // Collapse/reopen uses the same explicit recovery capture before
+        // SwiftUI dismantles the WKWebView. The retained session must restore
+        // exact bytes, selection, bounded undo history, focus, and scroll.
+        let selectionBeforeReconstruction = try #require(harness.session.context?.selections.first)
+        _ = try #require(harness.session.context?.undoLabel)
+        harness.session.setScrollFraction(0.65)
+        #expect(harness.session.testingRetainedScrollFraction == 0.65)
+
+        try await harness.session.captureStateForViewReconstruction()
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+
+        let afterReopen = try await harness.session.currentText(for: harness.documentID)
+        #expect(Data(afterReopen.utf8) == Data(afterSelectionRestore.utf8))
+        #expect(harness.session.context?.selections.first == selectionBeforeReconstruction)
+        #expect(harness.session.context?.undoLabel != nil)
+        try await harness.waitUntilFocused()
+        #expect(harness.session.testingRetainedScrollFraction == 0.65)
+        let restoredAccessibility = try await harness.session.testingAccessibilitySnapshot()
+        #expect(restoredAccessibility.isFocused)
+
+        try await harness.session.perform(.pastePlain, argument: "?")
+        let afterInsertion = try await harness.session.currentText(for: harness.documentID)
+        let expectedAfterInsertion = try inserting(
+            "?",
+            atUTF16: selectionBeforeReconstruction.head,
+            in: afterSelectionRestore
+        )
+        #expect(afterInsertion == expectedAfterInsertion)
     }
 
     private func inserting(_ insertion: String, atUTF16 offset: Int, in source: String) throws -> String {
@@ -131,6 +202,49 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
+        func reconstructEditorView() async throws {
+            sourceBox.showsEditor = false
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while session.hasAttachedWebView {
+                if clock.now >= deadline {
+                    Issue.record("SwiftUI did not dismantle the editor view during reconstruction.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            sourceBox.showsEditor = true
+        }
+
+        func waitUntilFocused() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                if try await session.testingAccessibilitySnapshot().isFocused { return }
+                if clock.now >= deadline {
+                    Issue.record("The reconstructed editor did not regain focus.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilPresentation(
+            _ predicate: (MarkdownEditorSession.TestingAccessibilitySnapshot) -> Bool
+        ) async throws -> MarkdownEditorSession.TestingAccessibilitySnapshot {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                let snapshot = try await session.testingAccessibilitySnapshot()
+                if predicate(snapshot) { return snapshot }
+                if clock.now >= deadline {
+                    Issue.record("The editor did not apply the requested presentation mode.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
         func close() {
             window.orderOut(nil)
             window.contentViewController = nil
@@ -142,6 +256,7 @@ struct MarkdownEditorWebViewIntegrationTests {
     @MainActor
     private final class SourceBox: ObservableObject {
         @Published var source: String
+        @Published var showsEditor = true
         init(_ source: String) { self.source = source }
     }
 
@@ -157,23 +272,25 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         var body: some View {
-            MarkdownEditorWebView(
-                session: session,
-                documentID: documentID,
-                source: sourceBox.source,
-                mode: .livePreview,
-                userCSS: "",
-                linkCompletions: [],
-                researcherComments: [],
-                initialScrollFraction: 0,
-                onDocumentChange: { sourceBox.source = $0 },
-                onRequestSave: {},
-                onRequestSearch: {},
-                onRequestComment: {},
-                onLinkActivation: { _ in },
-                onCommentActivation: nil,
-                onScrollFractionChange: { _ in }
-            )
+            if sourceBox.showsEditor {
+                MarkdownEditorWebView(
+                    session: session,
+                    documentID: documentID,
+                    source: sourceBox.source,
+                    mode: .livePreview,
+                    userCSS: "",
+                    linkCompletions: [],
+                    researcherComments: [],
+                    initialScrollFraction: 0,
+                    onDocumentChange: { sourceBox.source = $0 },
+                    onRequestSave: {},
+                    onRequestSearch: {},
+                    onRequestComment: {},
+                    onLinkActivation: { _ in },
+                    onCommentActivation: nil,
+                    onScrollFractionChange: { _ in }
+                )
+            }
         }
     }
 }

@@ -32,10 +32,11 @@ Workflow — exactly five:
 Researcher:
 
 - scholium-philosophical-practices: optional editable Practice overlays;
+- scholium-source-analyzer: complete optional method for an external agent to analyze papers, books, chapters, and other philosophically relevant sources without invoking a Scholium Research Function;
 - scholium-prose-control: optional meaning-preserving method for Revise;
 - scholium-citation-verification: optional APA 7 verification and formatting starter for Fidelity.
 
-Dialogue is System transport and record infrastructure. Human Review is a researcher action and has no skill. Source Analysis and skill self-evolution are not Workflow packages or Research Strip functions.
+Dialogue is System transport and record infrastructure. Human Review is a researcher action and has no skill. Source Analyzer is a shipped Researcher Skill, but Source Analysis and skill self-evolution are not Workflow packages or Research Strip functions. The agent may analyze a source supplied through Zotero, a local file, or another available channel; Scholium need not store or control the source. Persisting or developing the result in a Scholium note is a separate researcher-authorized action.
 
 ## Function routing
 

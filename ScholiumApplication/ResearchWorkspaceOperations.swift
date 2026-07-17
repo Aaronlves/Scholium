@@ -14,7 +14,7 @@ extension WorkspaceHandle {
     func addComment(
         to noteID: VaultQualifiedNoteID,
         text: String,
-        anchor: ResearcherCommentAnchor?,
+        anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
     ) async throws -> HumanReviewRecord {
         let context = try await researchContext(
@@ -23,7 +23,7 @@ extension WorkspaceHandle {
             permits: { $0 != .other },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        if let anchor, anchor.fingerprint != expectedRevision {
+        if anchor.fingerprint != expectedRevision {
             throw ResearchOperationError.staleCommentRevision
         }
         let record = try await services.humanReviewStore.addComment(
@@ -167,6 +167,12 @@ extension WorkspaceHandle {
             permits: { $0.allowsHumanReview },
             unavailable: { ResearchOperationError.humanReviewUnavailable($0) }
         )
+        if context.vault.role == .sourceCorpus,
+           ResearchUnitDeclaration(
+                frontmatter: context.document.parsedFrontmatter
+           ).state != .declared {
+            throw ResearchOperationError.researchStatusRequiredForReview
+        }
         let record = try await services.humanReviewStore.completeReview(
             noteID: context.identity.id,
             vaultID: noteID.vaultID,

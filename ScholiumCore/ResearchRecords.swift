@@ -281,7 +281,7 @@ public actor HumanReviewStore {
         guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
         var changed = false
         record.comments = record.comments.map { comment in
-            guard var anchor = comment.anchor else { return comment }
+            var anchor = comment.anchor
             guard anchor.fingerprint != document.fingerprint || anchor.state == .needsReattachment else {
                 return comment
             }
@@ -652,8 +652,7 @@ public actor DialogueStore {
             throw DialogueError.invalidCommentOwner
         }
         guard entry.includedComments.allSatisfy({ included in
-            guard let note = included.note else { return false }
-            return selectedNoteReferences.contains(note)
+            selectedNoteReferences.contains(included.note)
         }) else {
             throw DialogueError.invalidCommentOwner
         }
@@ -813,7 +812,7 @@ public actor DialogueStore {
         }
         if let noteID, let commentID,
            !entry.includedComments.contains(where: {
-               $0.comment.id == commentID && $0.note?.noteID == noteID
+               $0.comment.id == commentID && $0.note.noteID == noteID
            }) {
             throw DialogueError.invalidReplyTarget
         }
@@ -864,8 +863,8 @@ public actor DialogueStore {
                 $0.noteID == noteID && $0.vaultID == vaultID
             }
             let migratedComments = entry.includedComments.map { included -> DialogueIncludedComment in
-                guard let note = included.note,
-                      note.noteID == noteID,
+                let note = included.note
+                guard note.noteID == noteID,
                       note.vaultID == vaultID,
                       note.relativePath == sourcePath,
                       let migratedReference else { return included }

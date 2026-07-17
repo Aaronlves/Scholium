@@ -37,9 +37,9 @@ struct WorkspaceSetupView: View {
                 : "Use This Triptych"
         )
         .frame(
-            minWidth: ScholiumMetrics.Triptych.minimumWidth,
+            minWidth: ScholiumMetrics.Onboarding.minimumWidth,
             maxWidth: .infinity,
-            minHeight: ScholiumMetrics.Triptych.minimumHeight,
+            minHeight: ScholiumMetrics.Onboarding.minimumHeight,
             maxHeight: .infinity
         )
         .interactiveDismissDisabled()
@@ -221,7 +221,7 @@ private struct GuidedWorkspaceSetupView: View {
         if context.isInitialConfiguration {
             // `vaultConfig` becomes valid before the async setup callback
             // returns. Clear the sheet route first so that root-level setup
-            // cannot briefly re-present itself over the new Triptych Interface.
+            // cannot briefly re-present itself over the new stable workspace.
             context.dismiss()
         }
         Task {

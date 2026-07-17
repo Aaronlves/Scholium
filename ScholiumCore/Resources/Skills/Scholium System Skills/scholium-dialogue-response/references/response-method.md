@@ -11,7 +11,13 @@ Begin with one compact statement that answers what the work achieved academicall
 
 Do not use routine operations as the subject of the outcome. “Clarified the distinction between X and Y” is appropriate; “updated three files” is not sufficient.
 
-## 2. Add selected modules
+## 2. Allocate response-module attention
+
+Treat the selected optional modules as dividing a literal 100% response-module attention budget. With five selected modules, each receives 20%; with four, each receives 25%; with three, each receives one third; with two, each receives 50%; with one, it receives 100%. Academic Outcome and mandatory integrity notices sit outside this optional-module budget.
+
+Give every selected module its full share of checking and deliberative attention. The allocation is not a priority ranking and does not prescribe output length. A module may receive its complete share yet produce no visible section when the evidence warrants nothing distinct. Never invent content to fill a share, and do not expose private chain-of-thought; the observable requirement is faithful coverage of every selected scholarly question.
+
+## 3. Add selected modules
 
 Use the stored order unless two modules would repeat the same content. In that case, retain distinct headings but avoid restating the same point.
 
@@ -35,7 +41,7 @@ Locate the result within the relevant problem, positions, motivations, commitmen
 
 Suggest a small number of bounded next investigations tied to a specific unresolved question, evidential gap, objection, or conceptual pressure. Do not expand the active task or present a suggestion as already authorized work.
 
-## 3. Preserve mandatory integrity notices
+## 4. Preserve mandatory integrity notices
 
 Add a compact limitation or researcher-decision statement whenever needed, regardless of selected modules. Always disclose:
 
@@ -47,7 +53,7 @@ Add a compact limitation or researcher-decision statement whenever needed, regar
 
 Do not create a separate heading when one sentence in the relevant module is clearer.
 
-## 4. Keep the Response concise
+## 5. Keep the Response concise
 
 - Use one or two sentences for the base outcome.
 - Use at most one short paragraph or three items for each selected module.
@@ -55,7 +61,7 @@ Do not create a separate heading when one sentence in the relevant module is cle
 - Omit empty headings.
 - Avoid repeating note titles and source lists already visible in Dialogue unless identification prevents ambiguity.
 
-## 5. Example
+## 6. Example
 
 ```markdown
 **Academic Outcome**

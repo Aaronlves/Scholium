@@ -5,8 +5,32 @@ import SwiftUI
 struct QualityReviewContext {
     let revision: DocumentFingerprint?
     let record: HumanReviewRecord?
+    let qualification: Binding<NoteQualification?>
+    let reviewNote: Binding<String>
+    let researchStatusDeclared: Bool
+    let declareResearchStatus: () -> Void
     let saveDraft: (DocumentFingerprint, NoteQualification?, String) async throws -> Void
     let completeReview: (DocumentFingerprint, NoteQualification?, String) async throws -> Void
+
+    init(
+        revision: DocumentFingerprint?,
+        record: HumanReviewRecord?,
+        qualification: Binding<NoteQualification?>,
+        reviewNote: Binding<String>,
+        researchStatusDeclared: Bool = true,
+        declareResearchStatus: @escaping () -> Void = {},
+        saveDraft: @escaping (DocumentFingerprint, NoteQualification?, String) async throws -> Void,
+        completeReview: @escaping (DocumentFingerprint, NoteQualification?, String) async throws -> Void
+    ) {
+        self.revision = revision
+        self.record = record
+        self.qualification = qualification
+        self.reviewNote = reviewNote
+        self.researchStatusDeclared = researchStatusDeclared
+        self.declareResearchStatus = declareResearchStatus
+        self.saveDraft = saveDraft
+        self.completeReview = completeReview
+    }
 }
 
 struct QualityReviewView: View {
@@ -16,9 +40,6 @@ struct QualityReviewView: View {
     let context: QualityReviewContext
     let showsHeader: Bool
 
-    @State private var qualification: NoteQualification?
-    @State private var reviewNote = ""
-    @State private var reviewRevision: DocumentFingerprint?
     @State private var errorMessage: String?
     @State private var isSaving = false
 
@@ -39,9 +60,10 @@ struct QualityReviewView: View {
     }
 
     private var canComplete: Bool {
-        qualification != nil &&
-        !reviewNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        reviewNote.count <= 500 &&
+        context.researchStatusDeclared &&
+        context.qualification.wrappedValue != nil &&
+        !context.reviewNote.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        context.reviewNote.wrappedValue.count <= 500 &&
         !isSaving
     }
 
@@ -54,6 +76,9 @@ struct QualityReviewView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if !context.researchStatusDeclared {
+                        researchStatusGate
+                    }
                     reviewNoteSection
                     qualificationSection
                     storageExplanation
@@ -70,9 +95,8 @@ struct QualityReviewView: View {
             minHeight: showsHeader ? 540 : 340,
             idealHeight: showsHeader ? 680 : 500
         )
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scholiumSurface(.denseEvidence)
         .accessibilityIdentifier("scholium.humanReviewSheet")
-        .onAppear(perform: loadReview)
         .alert("Could Not Save Human Review", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -102,7 +126,7 @@ struct QualityReviewView: View {
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .scholiumForeground(.attention)
                 }
             }
             Spacer()
@@ -116,21 +140,33 @@ struct QualityReviewView: View {
                 Text("Summarize the main strength, problem, or next step in a few sentences.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextEditor(text: $reviewNote)
+                TextEditor(text: context.reviewNote)
                     .font(.body)
                     .frame(minHeight: 100, maxHeight: 140)
                     .padding(5)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                    .background(
+                        ScholiumColorRole.documentBackground.color,
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
                     .overlay {
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(reviewNote.count > 500 ? Color.red : Color(nsColor: .separatorColor), lineWidth: 0.5)
+                            .stroke(
+                                context.reviewNote.wrappedValue.count > 500
+                                    ? ScholiumColorRole.destructive.color
+                                    : ScholiumColorRole.separator.color,
+                                lineWidth: 0.5
+                            )
                     }
                     .accessibilityLabel("Review Note")
                     .accessibilityIdentifier("scholium.reviewNoteField")
 
-                Text("\(reviewNote.count)/500")
+                Text("\(context.reviewNote.wrappedValue.count)/500")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(reviewNote.count > 500 ? .red : .secondary)
+                    .foregroundStyle(
+                        context.reviewNote.wrappedValue.count > 500
+                            ? ScholiumColorRole.destructive.color
+                            : ScholiumColorRole.secondaryText.color
+                    )
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         } label: {
@@ -141,7 +177,7 @@ struct QualityReviewView: View {
 
     private var qualificationSection: some View {
         GroupBox {
-            Picker("Qualification", selection: $qualification) {
+            Picker("Qualification", selection: context.qualification) {
                 Text("Choose…").tag(NoteQualification?.none)
                 Label("Qualified", systemImage: "checkmark.seal").tag(NoteQualification?.some(.qualified))
                 Label("Unqualified", systemImage: "xmark.seal").tag(NoteQualification?.some(.unqualified))
@@ -159,12 +195,31 @@ struct QualityReviewView: View {
 
     private var storageExplanation: some View {
         Label(
-            "Human Review stays in Scholium’s Application Support folder and does not alter this Markdown file. Researcher comments are managed separately from Review.",
+            "Human Review and Comments remain separate app-owned records even though this panel presents them together. Neither alters the Markdown file.",
             systemImage: "externaldrive.badge.checkmark"
         )
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var researchStatusGate: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("You can keep editing this Review and save it as a draft. Complete Review becomes available after this Analysis has a declared Research Status.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Declare Research Status…", action: context.declareResearchStatus)
+                    .accessibilityHint("Opens Properties for this Analysis")
+                    .accessibilityIdentifier("scholium.reviewDeclareResearchStatus")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Research Status: Not Yet", systemImage: "circle.dashed")
+                .font(.headline)
+        }
+        .accessibilityIdentifier("scholium.reviewResearchStatusGate")
     }
 
     private var footer: some View {
@@ -174,7 +229,7 @@ struct QualityReviewView: View {
                 .accessibilityIdentifier("scholium.reviewCancel")
             Spacer()
             Button("Save as Draft") { save(asDraft: true) }
-                .disabled(isSaving || reviewNote.count > 500)
+                .disabled(isSaving || context.reviewNote.wrappedValue.count > 500)
                 .accessibilityIdentifier("scholium.reviewSaveDraft")
             Button("Complete Review") { save(asDraft: false) }
                 .buttonStyle(.borderedProminent)
@@ -185,20 +240,8 @@ struct QualityReviewView: View {
         .padding(16)
     }
 
-    private func loadReview() {
-        reviewRevision = context.revision
-        guard let record = context.record else { return }
-        if let draft = record.draft, draft.fingerprint == reviewRevision {
-            qualification = draft.qualification
-            reviewNote = draft.reviewNote
-        } else if let revision = reviewRevision, let completed = record.review(for: revision) {
-            qualification = completed.qualification
-            reviewNote = completed.reviewNote
-        }
-    }
-
     private func save(asDraft: Bool) {
-        guard let revision = reviewRevision else {
+        guard let revision = context.revision else {
             errorMessage = "The reviewed revision is unavailable. Close Review and reopen the note."
             return
         }
@@ -207,9 +250,17 @@ struct QualityReviewView: View {
             defer { isSaving = false }
             do {
                 if asDraft {
-                    try await context.saveDraft(revision, qualification, reviewNote)
+                    try await context.saveDraft(
+                        revision,
+                        context.qualification.wrappedValue,
+                        context.reviewNote.wrappedValue
+                    )
                 } else {
-                    try await context.completeReview(revision, qualification, reviewNote)
+                    try await context.completeReview(
+                        revision,
+                        context.qualification.wrappedValue,
+                        context.reviewNote.wrappedValue
+                    )
                 }
                 dismiss()
             } catch {

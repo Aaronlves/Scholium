@@ -1,4 +1,5 @@
 import ScholiumContracts
+import Combine
 import Darwin
 import Foundation
 @testable import ScholiumApplication
@@ -66,8 +67,8 @@ struct AppCompositionRootTests {
         #expect(first.documentController !== second.documentController)
         #expect(first.researchController !== second.researchController)
 
-        first.presentationRouter.present(.quickOpen)
-        #expect(first.presentationRouter.sheet?.id == "quick-open")
+        first.presentationRouter.present(.createCheckpoint)
+        #expect(first.presentationRouter.sheet?.id == "create-checkpoint")
         #expect(second.presentationRouter.sheet == nil)
         first.presentationRouter.dismissAll()
 
@@ -76,9 +77,15 @@ struct AppCompositionRootTests {
         let sessionKey = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         let firstSession = first.documentController.session(for: sessionKey)
         let secondSession = second.documentController.session(for: sessionKey)
+        var firstWindowChangeCount = 0
+        let firstWindowObservation = first.objectWillChange.sink {
+            firstWindowChangeCount += 1
+        }
         firstSession.editingSource = "first window exact bytes\n"
+        #expect(firstWindowChangeCount > 0)
         #expect(firstSession !== secondSession)
         #expect(secondSession.editingSource.isEmpty)
+        _ = firstWindowObservation
 
         let reference = VaultNoteReference(
             vaultID: vaultID,
@@ -124,9 +131,17 @@ struct AppCompositionRootTests {
         #expect(first.researchController.inspector.showsNoteHistory)
         #expect(!second.researchController.inspector.showsNoteHistory)
 
-        first.documentController.requestLifecycle(.move(reference.relativePath))
-        #expect(first.noteLifecycleRequest == .move("Topics/Agency.md"))
-        #expect(first.presentationRouter.sheet?.id == "lifecycle:move:Topics/Agency.md")
+        let lifecycleTarget = NoteLifecycleTarget(
+            documentID: VaultQualifiedNoteID(
+                vaultID: reference.vaultID,
+                relativePath: reference.relativePath
+            ),
+            stableNoteID: noteID,
+            revision: DocumentFingerprint(content: "# Agency\n")
+        )
+        first.documentController.requestLifecycle(.move(lifecycleTarget))
+        #expect(first.noteLifecycleRequest == .move(lifecycleTarget))
+        #expect(first.presentationRouter.sheet?.id == "lifecycle:move:\(lifecycleTarget.id)")
         #expect(second.noteLifecycleRequest == nil)
         #expect(second.presentationRouter.sheet == nil)
 
@@ -138,6 +153,35 @@ struct AppCompositionRootTests {
         first.documentController.removeAll()
         second.documentController.removeAll()
         await Task.yield()
+    }
+
+    @Test("Window close awaits its final session snapshot")
+    func windowCloseAwaitsFinalSessionSnapshot() async throws {
+        let fileManager = FileManager.default
+        let isolatedHome = fileManager.temporaryDirectory
+            .appendingPathComponent("Scholium-CloseSession-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: isolatedHome, withIntermediateDirectories: true)
+        let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
+        setenv("SCHOLIUM_HOME", isolatedHome.path, 1)
+        defer {
+            if let previousHome {
+                setenv("SCHOLIUM_HOME", previousHome, 1)
+            } else {
+                unsetenv("SCHOLIUM_HOME")
+            }
+            try? fileManager.removeItem(at: isolatedHome)
+        }
+
+        let store = WorkspaceStore()
+        let window = WindowModel(workspaceStore: store)
+        let sessionID = UUID()
+        await window.restoreWindowSession(id: sessionID)
+        window.setDocumentTextScale(1.7)
+
+        try await window.prepareForWindowClose()
+
+        let saved = try #require(try await store.windowSession(id: sessionID))
+        #expect(saved.documentTextScale == 1.7)
     }
 
     @Test("Removing one window does not shut down the shared Application runtime")
@@ -187,8 +231,8 @@ struct AppCompositionRootTests {
         // window. Removing one borrower therefore leaves it usable by the
         // surviving window and any later window.
         #expect(try await workspaceStore.applicationRuntime.availableWorkspaces().isEmpty)
-        secondWindow.presentationRouter.present(.quickOpen)
-        #expect(secondWindow.presentationRouter.sheet?.id == "quick-open")
+        secondWindow.presentationRouter.present(.createCheckpoint)
+        #expect(secondWindow.presentationRouter.sheet?.id == "create-checkpoint")
 
         await workspaceStore.shutdownApplicationRuntime()
         do {
@@ -265,7 +309,7 @@ struct AppCompositionRootTests {
         #expect(secondInitial.runtimeIdentity == initiallyConfigured.runtimeIdentity)
         #expect(await initiallyConfigured.events.subscriberCount == 1)
 
-        first.presentationRouter.present(.quickOpen)
+        first.presentationRouter.present(.createCheckpoint)
         first.discoveryController.beginSearch(SearchWorkspaceState(
             query: "first-window",
             scope: .triptych
@@ -292,7 +336,7 @@ struct AppCompositionRootTests {
         #expect(secondReplacement.runtimeIdentity == replacement.runtimeIdentity)
         #expect(firstReplacement.runtimeIdentity == secondReplacement.runtimeIdentity)
 
-        #expect(first.presentationRouter.sheet?.id == "quick-open")
+        #expect(first.presentationRouter.sheet?.id == "create-checkpoint")
         #expect(second.presentationRouter.sheet == nil)
         #expect(first.discoveryController.search.criteria.query == "first-window")
         #expect(second.discoveryController.search.criteria.query == "second-window")
@@ -334,6 +378,10 @@ struct AppCompositionRootTests {
         try Data("# Topic\n\nA related topic.\n".utf8).write(
             to: topics.appendingPathComponent("Topic.md")
         )
+        let duplicateTopicSource = "# Topic Shared\n\nA different note at the same relative path.\n"
+        try Data(duplicateTopicSource.utf8).write(
+            to: topics.appendingPathComponent("Shared.md")
+        )
         try Data("# Work\n\nA draft work.\n".utf8).write(
             to: works.appendingPathComponent("Work.md")
         )
@@ -372,12 +420,19 @@ struct AppCompositionRootTests {
         try await secondWindow.openWorkspaceVault(.paperAnalysis)
 
         let analysesVault = try #require(configured.assignment.vault(for: .paperAnalysis))
+        let topicsVault = try #require(configured.assignment.vault(for: .topicKnowledge))
         try await waitUntil("both windows loaded the Analysis vault") {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
                 && secondWindow.currentRegisteredVault?.id == analysesVault.id
                 && firstWindow?.noteIdentityByPath["Shared.md"] != nil
                 && secondWindow.noteIdentityByPath["Shared.md"] != nil
         }
+
+        firstWindow!.requestWorkspaceVault(.topicKnowledge)
+        firstWindow!.requestWorkspaceVault(.paperAnalysis)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(firstWindow!.currentRegisteredVault?.id == analysesVault.id)
+        #expect(firstWindow!.discoveryController.library.workspaceSlot == .paperAnalysis)
 
         let firstHandle: WindowWorkspaceCapabilities = try storedOptionalValue(
             named: "activeWorkspaceCapabilities",
@@ -407,12 +462,12 @@ struct AppCompositionRootTests {
         // These are the exact command-facing WindowModel properties used by
         // `ScholiumCommands` after SwiftUI resolves its focused scene value.
         // `FocusedValues` itself has no public initializer on the test SDK.
-        firstWindow!.showQuickOpen = true
-        #expect(firstWindow!.presentationRouter.sheet?.id == "quick-open")
+        firstWindow!.showCreateCheckpoint = true
+        #expect(firstWindow!.presentationRouter.sheet?.id == "create-checkpoint")
         #expect(secondWindow.presentationRouter.sheet == nil)
         secondWindow.showCreateCheckpoint = true
         #expect(secondWindow.presentationRouter.sheet?.id == "create-checkpoint")
-        #expect(firstWindow!.presentationRouter.sheet?.id == "quick-open")
+        #expect(firstWindow!.presentationRouter.sheet?.id == "create-checkpoint")
         firstWindow!.presentationRouter.dismissAll()
         secondWindow.presentationRouter.dismissAll()
 
@@ -448,14 +503,12 @@ struct AppCompositionRootTests {
         firstWindow!.documentController.installOpenedDocument(
             original,
             vaultName: analysesVault.name,
-            vaultRole: analysesVault.role,
-            inNewTab: false
+            vaultRole: analysesVault.role
         )
         secondWindow.documentController.installOpenedDocument(
             original,
             vaultName: analysesVault.name,
-            vaultRole: analysesVault.role,
-            inNewTab: false
+            vaultRole: analysesVault.role
         )
         let firstSession = try #require(
             firstWindow!.documentController.retainedSession(for: sessionKey)
@@ -467,7 +520,70 @@ struct AppCompositionRootTests {
         #expect(firstSession.editingSource == originalSource)
         #expect(secondSession.editingSource == originalSource)
 
-        let cleanSource = "# Shared\n\nCommitted from the first window.\n"
+        firstSession.presentationMode = .livePreview
+        firstSession.scrollFraction = 0.42
+        firstWindow!.requestWorkspaceVault(.topicKnowledge)
+        try await waitUntil("the first Library browsed Topics without replacing its document") {
+            firstWindow?.currentRegisteredVault?.id == topicsVault.id
+                && firstWindow?.notes.contains(where: {
+                    $0.relativePath == "Shared.md" && $0.rawContent == duplicateTopicSource
+                }) == true
+        }
+        #expect(firstWindow!.currentDocumentVaultID == analysesVault.id)
+        #expect(firstWindow!.currentNote?.rawContent == originalSource)
+        #expect(firstWindow!.selectedDocument == originalID)
+        #expect(firstWindow!.documentRevisions["Shared.md"] != original.fingerprint)
+        #expect(firstWindow!.currentDocumentRevisions["Shared.md"] == original.fingerprint)
+        #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
+        #expect(firstSession.presentationMode == .livePreview)
+        #expect(firstSession.scrollFraction == 0.42)
+
+        var nativeTabRoute: TriptychWindowRoute?
+        firstWindow!.installWindowRouteHandler { nativeTabRoute = $0 }
+        let visibleReference = try #require(firstWindow!.currentDocumentDescriptor?.reference)
+        firstWindow!.requestOpenNote(visibleReference, disposition: .newNativeTab)
+        #expect(nativeTabRoute?.initialDocument?.vaultID == analysesVault.id)
+        #expect(nativeTabRoute?.initialDocument?.relativePath == "Shared.md")
+
+        let visibleTarget = try #require(NoteLifecycleTarget(firstWindow!.currentNote!))
+        #expect(visibleTarget.documentID.vaultID == analysesVault.id)
+        let duplicatePath = "Duplicated Analysis.md"
+        _ = try await firstWindow!.duplicateNote(visibleTarget, to: duplicatePath)
+        #expect(fileManager.fileExists(atPath: analyses.appendingPathComponent(duplicatePath).path))
+        #expect(!fileManager.fileExists(atPath: topics.appendingPathComponent(duplicatePath).path))
+        #expect(firstWindow!.currentDocumentVaultID == analysesVault.id)
+        #expect(firstWindow!.selectedDocumentPath == duplicatePath)
+
+        firstWindow!.openNote("Shared.md")
+        #expect(firstWindow!.selectedDocument == originalID)
+        #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
+
+        firstWindow!.requestWorkspaceVault(.paperAnalysis)
+        try await waitUntil("the first Library returned to Analyses") {
+            firstWindow?.currentRegisteredVault?.id == analysesVault.id
+        }
+
+        let headingRange = try #require(originalSource.range(of: "Shared"))
+        let headingUTF16Range = headingRange.lowerBound.utf16Offset(in: originalSource)
+            ..< headingRange.upperBound.utf16Offset(in: originalSource)
+        let headingAnchor = try #require(ResearcherCommentAnchorBuilder.anchor(
+            in: originalSource,
+            fingerprint: original.fingerprint,
+            utf16Range: headingUTF16Range
+        ))
+        let addedCommentRecord = try await configured.research.addComment(
+            to: originalID,
+            text: "Keep this heading anchored.",
+            anchor: headingAnchor,
+            expectedRevision: original.fingerprint
+        )
+        let commentID = try #require(addedCommentRecord.comments.first?.id)
+        await firstWindow!.retryIdentityRecovery()
+        #expect(firstWindow!.currentDocumentReviewRecord?.comments.contains {
+            $0.id == commentID && $0.anchor.fingerprint == original.fingerprint
+        } == true)
+
+        let cleanSource = originalSource + "\nCommitted from the first window.\n"
         let cleanCommit = try await firstWindow!.documentController.save(
             originalID,
             changeSet: .source(cleanSource),
@@ -481,6 +597,10 @@ struct AppCompositionRootTests {
         }
         #expect(firstSession.conflict == nil)
         #expect(secondSession.conflict == nil)
+        await firstWindow!.retryIdentityRecovery()
+        #expect(firstWindow!.currentDocumentReviewRecord?.comments.contains {
+            $0.id == commentID && $0.anchor.fingerprint == cleanCommit.document.fingerprint
+        } == true)
 
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
         firstSession.suppressAutosave = true
@@ -533,9 +653,15 @@ struct AppCompositionRootTests {
             firstWindow?.documentController.activeDocument?.reference.relativePath == renamedPath
                 && secondWindow.documentController.activeDocument?.reference.relativePath == renamedPath
         }
-        try await waitUntil("both window shells migrated their independent tab projections") {
-            firstWindow?.openTabs == [renamedPath]
-                && secondWindow.openTabs == [renamedPath]
+        try await waitUntil("both window shells migrated their selected document projections") {
+            firstWindow?.selectedDocumentPath == renamedPath
+                && secondWindow.selectedDocumentPath == renamedPath
+        }
+        try await waitUntil("both window shells migrated their stable identity projections") {
+            firstWindow?.noteIdentityByPath[renamedPath] == stableNoteID
+                && secondWindow.noteIdentityByPath[renamedPath] == stableNoteID
+                && firstWindow?.noteIdentityByPath["Shared.md"] == nil
+                && secondWindow.noteIdentityByPath["Shared.md"] == nil
         }
         #expect(ObjectIdentifier(firstWindow!.documentController.session(for: sessionKey)) == firstSessionIdentity)
         #expect(ObjectIdentifier(secondWindow.documentController.session(for: sessionKey)) == secondSessionIdentity)

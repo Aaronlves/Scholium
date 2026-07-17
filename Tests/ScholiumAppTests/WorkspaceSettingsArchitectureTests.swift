@@ -1,4 +1,5 @@
 import Foundation
+import ScholiumContracts
 import Testing
 @testable import ScholiumApp
 
@@ -100,5 +101,276 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("WorkspaceHandle"))
         #expect(!source.contains("WorkspaceStore"))
         #expect(!source.contains("import ScholiumApplication"))
+    }
+
+    @Test("Skill summary uses exact ownership and actual binding status")
+    func skillSummaryPresentation() {
+        let builtIn = makeSkill(
+            id: "scholium-development",
+            origin: .bundled,
+            skillClass: .workflow,
+            updatePolicy: "release-managed-duplicable",
+            supportedFunctions: [.develop]
+        )
+        let triptych = makeSkill(
+            id: "researcher-development",
+            origin: .triptych,
+            skillClass: .researcher,
+            supportedFunctions: [.develop]
+        )
+        let defaultStatus = ResearchFunctionSkillBindingStatus(
+            function: .develop,
+            candidates: [],
+            selection: ResearchFunctionSkillSelection(function: .develop),
+            bindingRevision: nil,
+            issue: nil
+        )
+
+        #expect(ResearchGuidancePresentation.ownershipLabel(for: builtIn) == "Built-in")
+        #expect(ResearchGuidancePresentation.ownershipLabel(for: triptych) == "Triptych")
+        #expect(ResearchGuidancePresentation.statusLabel(
+            for: builtIn,
+            allSkills: [builtIn, triptych],
+            methodStatuses: [.develop: defaultStatus],
+            citationStatus: nil,
+            loadState: .loaded
+        ) == "Active — Develop")
+        #expect(ResearchGuidancePresentation.statusLabel(
+            for: triptych,
+            allSkills: [builtIn, triptych],
+            methodStatuses: [.develop: defaultStatus],
+            citationStatus: nil,
+            loadState: .loaded
+        ) == "Not active")
+
+        let boundStatus = ResearchFunctionSkillBindingStatus(
+            function: .develop,
+            candidates: [],
+            selection: ResearchFunctionSkillSelection(
+                function: .develop,
+                primaryPackageID: triptych.id
+            ),
+            bindingRevision: nil,
+            issue: nil
+        )
+        #expect(ResearchGuidancePresentation.statusLabel(
+            for: triptych,
+            allSkills: [builtIn, triptych],
+            methodStatuses: [.develop: boundStatus],
+            citationStatus: nil,
+            loadState: .loaded
+        ) == "Bound — Primary for Develop")
+    }
+
+    @Test("Missing and malformed guidance route to exact Advanced repair destinations")
+    func repairDestinations() {
+        let methodStatus = ResearchFunctionSkillBindingStatus(
+            function: .revise,
+            candidates: [],
+            selection: ResearchFunctionSkillSelection(function: .revise),
+            bindingRevision: nil,
+            issue: ResearchFunctionSkillBindingIssue(code: .malformedBinding)
+        )
+        let citationStatus = ResearchCitationMethodStatus(
+            bundledTemplateAvailable: true,
+            candidates: [],
+            activePackageID: nil,
+            bindingRevision: nil,
+            issue: ResearchCitationMethodIssue(code: .missing)
+        )
+
+        let prompts = ResearchGuidancePresentation.repairPrompts(
+            methodStatuses: [.revise: methodStatus],
+            citationStatus: citationStatus
+        )
+        #expect(prompts.map(\.destination) == [
+            .citationMethod,
+            .researchMethod(.revise),
+        ])
+        #expect(prompts.allSatisfy { $0.destination.anchorID.hasPrefix(
+            "scholium.researchGuidance.advanced."
+        ) })
+    }
+
+    @Test("Ownership labels do not weaken System and Workflow duplication rules")
+    func duplicationRulesRemainClassSpecific() {
+        let system = makeSkill(
+            id: "scholium-core-protocol",
+            origin: .bundled,
+            skillClass: .system,
+            updatePolicy: "release-managed-protected"
+        )
+        let workflow = makeSkill(
+            id: "scholium-revision",
+            origin: .bundled,
+            skillClass: .workflow,
+            updatePolicy: "release-managed-duplicable",
+            supportedFunctions: [.revise]
+        )
+
+        #expect(ResearchGuidancePresentation.ownershipLabel(for: system) == "Built-in")
+        #expect(ResearchGuidancePresentation.ownershipLabel(for: workflow) == "Built-in")
+        #expect(!system.canDuplicate)
+        #expect(workflow.canDuplicate)
+    }
+
+    @Test("Concurrent Settings restoration does not drop the visible Vaults refresh")
+    func concurrentRestorationKeepsLatestSnapshot() async {
+        let entered = SettingsTestSignal()
+        let releaseFirstLoad = SettingsTestSignal()
+        let assignment = makeAssignment(name: "Restored Triptych")
+        let restored = WorkspaceSettingsSnapshot(
+            registeredVaults: Array(assignment.vaults.values),
+            registeredTriptychs: [assignment],
+            activeTriptychID: assignment.id
+        )
+        var loadCount = 0
+        let model = WorkspaceSettingsModel(loadSnapshot: {
+            loadCount += 1
+            let call = loadCount
+            await entered.signal()
+            if call == 1 {
+                await releaseFirstLoad.wait()
+                return WorkspaceSettingsSnapshot()
+            }
+            return restored
+        })
+
+        let rootRestoration = Task { @MainActor in
+            await model.restorePreferredWorkspaceIfNeeded()
+        }
+        await entered.wait()
+
+        let vaultsPresentation = Task { @MainActor in
+            await model.refreshRegisteredVaults()
+        }
+        await entered.wait()
+        await vaultsPresentation.value
+
+        #expect(model.registeredTriptychs.map(\.id) == [assignment.id])
+        #expect(model.workspaceAssignment?.id == assignment.id)
+
+        await releaseFirstLoad.signal()
+        await rootRestoration.value
+
+        #expect(model.registeredTriptychs.map(\.id) == [assignment.id])
+        #expect(model.workspaceAssignment?.id == assignment.id)
+        #expect(!model.isRefreshing)
+    }
+
+    @Test("Explicit Triptych activation supersedes an older Settings refresh")
+    func activationSupersedesInFlightRefresh() async {
+        let refreshEntered = SettingsTestSignal()
+        let releaseRefresh = SettingsTestSignal()
+        let first = makeAssignment(name: "First Triptych")
+        let second = makeAssignment(name: "Second Triptych")
+        let initial = WorkspaceSettingsSnapshot(
+            registeredVaults: Array(first.vaults.values) + Array(second.vaults.values),
+            registeredTriptychs: [first, second],
+            activeTriptychID: first.id
+        )
+        let selected = WorkspaceSettingsSnapshot(
+            registeredVaults: initial.registeredVaults,
+            registeredTriptychs: initial.registeredTriptychs,
+            activeTriptychID: second.id
+        )
+        let model = WorkspaceSettingsModel(
+            snapshot: initial,
+            loadSnapshot: {
+                await refreshEntered.signal()
+                await releaseRefresh.wait()
+                return initial
+            },
+            activateTriptych: { id in
+                #expect(id == second.id)
+                return selected
+            }
+        )
+
+        let staleRefresh = Task { @MainActor in await model.refresh() }
+        await refreshEntered.wait()
+        await model.activateRegisteredTriptych(id: second.id)
+
+        #expect(model.workspaceAssignment?.id == second.id)
+
+        await releaseRefresh.signal()
+        await staleRefresh.value
+
+        #expect(model.workspaceAssignment?.id == second.id)
+        #expect(!model.isRefreshing)
+    }
+
+    private func makeSkill(
+        id: String,
+        origin: ResearchSkillOrigin,
+        skillClass: ResearchSkillClass,
+        updatePolicy: String = "researcher-owned",
+        supportedFunctions: [ResearchFunctionID] = []
+    ) -> ResearchSkillPackage {
+        ResearchSkillPackage(
+            id: id,
+            name: id,
+            description: "Purpose",
+            source: "---\nname: \(id)\ndescription: Purpose\n---\nInstructions.",
+            origin: origin,
+            skillClass: skillClass,
+            updatePolicy: updatePolicy,
+            supportedFunctions: supportedFunctions
+        )
+    }
+
+    private func makeAssignment(name: String) -> TriptychAssignment {
+        let analyses = RegisteredVault(
+            name: "Analyses",
+            role: .sourceCorpus,
+            canonicalPath: "/tmp/\(name)/Analyses"
+        )
+        let topics = RegisteredVault(
+            name: "Topics",
+            role: .topicKnowledge,
+            canonicalPath: "/tmp/\(name)/Topics"
+        )
+        let works = RegisteredVault(
+            name: "Works",
+            role: .draftProject,
+            canonicalPath: "/tmp/\(name)/Works"
+        )
+        return TriptychAssignment(
+            triptych: ScholiumTriptych(
+                name: name,
+                paperAnalysisVaultID: analyses.id,
+                topicKnowledgeVaultID: topics.id,
+                outputVaultID: works.id
+            ),
+            vaults: [
+                .paperAnalysis: analyses,
+                .topicKnowledge: topics,
+                .output: works,
+            ],
+            hasCommonParent: true
+        )
+    }
+}
+
+private actor SettingsTestSignal {
+    private var permits = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if permits > 0 {
+            permits -= 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func signal() {
+        if waiters.isEmpty {
+            permits += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }
