@@ -17,11 +17,6 @@ Use the smallest authority set that answers the question:
 4. This README, live construction call sites, executable tests, and scripts:
    setup plus current reachability evidence.
 
-`AGENTS.md` enforces this hierarchy and provides repository rules; it does not
-redefine the product or interface contract. Repository-specific development
-skills are maintained in the tracked `.agents/skills/` tree; bundled product
-skills remain separately governed under `Skills/`.
-
 Target rules are not implementation claims. Live construction call sites, executable tests, and scripts remain the final evidence for current reachability.
 
 Additional operational references include
@@ -243,8 +238,6 @@ Docs/IMPLEMENTATION_ARCHITECTURE.md
 Docs/CSS_SNIPPETS.md       Supported document-style customization contract
 Skills/README.md           Bundled product-skill architecture and evidence boundary
 Docs/BETA_RELEASE.md       Source-first beta policy and release gates
-AGENTS.md                  Repository design/build rules and authority routing
-.agents/skills/            Repository-specific development-agent skills
 Tools/Scripts/             Build, verification, QA, and release scripts
 Docs/PERFORMANCE_BENCHMARK.md
                            RDF-1 fixture and packaged-app G7 protocol

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scholium Performance Audit"
-  short_description: "Diagnose and verify Scholium performance"
-  default_prompt: "Use $scholium-performance-audit to diagnose and verify this Scholium performance issue."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scholium Markdown Editor"
-  short_description: "Keep CodeMirror and Read projections source-exact"
-  default_prompt: "Use $scholium-markdown-editor-integration to implement or review this Scholium editor change."

@@ -16,3 +16,9 @@ dist/
 *.profdata
 *.xcuserstate
 xcuserdata/
+
+# Local agent guidance and development skills; never publish these files.
+/AGENTS.md
+/.agents/
+/Tools/Scripts/sync-scholium-toolkit.sh
+/Tools/Scripts/validate-scholium-toolkit-catalog.py

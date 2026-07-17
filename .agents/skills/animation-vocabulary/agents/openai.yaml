@@ -1,4 +1,0 @@
-interface:
-  display_name: "Animation Vocabulary"
-  short_description: "Find the conventional name for a motion effect"
-  default_prompt: "Use $animation-vocabulary to identify the motion term I am describing."

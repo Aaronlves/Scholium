@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scholium SwiftUI Implementation"
-  short_description: "Implement Scholium’s modern macOS SwiftUI application layer"
-  default_prompt: "Use $scholium-swiftui-implementation to implement this Scholium SwiftUI change against the current Apple SDK and project design authorities."

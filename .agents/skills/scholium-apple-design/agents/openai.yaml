@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scholium Apple Design"
-  short_description: "Apply Scholium's binding macOS design rules"
-  default_prompt: "Use $scholium-apple-design with $apple-hig to apply Scholium's product-specific design rules and verify implementation-facing APIs in the selected Xcode installation."

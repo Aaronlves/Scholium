@@ -1,4 +1,0 @@
-interface:
-  display_name: "Review Animations"
-  short_description: "Review a bounded motion diff with platform authority"
-  default_prompt: "Use $review-animations to review this motion diff for confirmed, platform-specific regressions."

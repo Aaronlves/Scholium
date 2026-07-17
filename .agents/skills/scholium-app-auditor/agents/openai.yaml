@@ -1,6 +1,0 @@
-interface:
-  display_name: "Scholium App Auditor"
-  short_description: "Audit Scholium code for actionable defects"
-  default_prompt: "Use $scholium-app-auditor to audit the Scholium app and report prioritized, evidence-backed findings."
-policy:
-  allow_implicit_invocation: false

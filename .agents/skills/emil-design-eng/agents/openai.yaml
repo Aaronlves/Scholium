@@ -1,6 +1,0 @@
-interface:
-  display_name: "Emil Design Craft Lens"
-  short_description: "Apply an optional attributed design-craft lens"
-  default_prompt: "Use $emil-design-eng to evaluate this web-interface detail through the named design-craft lens."
-policy:
-  allow_implicit_invocation: false
