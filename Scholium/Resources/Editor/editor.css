@@ -80,7 +80,7 @@ body,
   box-sizing: border-box;
   min-width: 0;
   width: 100%;
-  max-width: 920px;
+  max-width: 510.667px;
   margin: 0 auto;
   padding: 28px var(--scholium-rhythm-inline-source) var(--scholium-rhythm-trailing-scroll);
   caret-color: var(--scholium-color-accent);
@@ -146,7 +146,14 @@ body,
   padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after);
 }
 
-.cm-live-h1 { font-size: 150%; }
+.cm-live-h1 {
+  font-size: 187.5%;
+  font-weight: 400;
+  padding-top: 0;
+  padding-bottom: 28px;
+  margin-bottom: 40px;
+  border-bottom: 1px solid var(--scholium-color-separator);
+}
 .cm-live-h2 { font-size: 130%; }
 .cm-live-h3 { font-size: 115%; }
 .cm-live-h4 { font-size: 100%; }

@@ -20,21 +20,6 @@ public struct IncomingLinkRewrite: Hashable, Sendable {
         self.rewrittenOccurrences = rewrittenOccurrences
     }
 
-    /// Compatibility initializer for the former single-vault planner.
-    public init(
-        vaultID: UUID,
-        relativePath: String,
-        expectedRevision: DocumentFingerprint,
-        updatedSource: String,
-        rewrittenOccurrences: Int
-    ) {
-        self.init(
-            source: VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath),
-            expectedRevision: expectedRevision,
-            updatedSource: updatedSource,
-            rewrittenOccurrences: rewrittenOccurrences
-        )
-    }
 }
 
 public struct IncomingLinkRewritePlan: Hashable, Sendable {
@@ -142,13 +127,13 @@ public enum IncomingLinkRewriter {
         let futureCatalog = futureDocuments.map { id, document in
             LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: futureSemantics[id])
         }
+        let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(catalog: futureCatalog)
         var blocked: [IncomingLinkRewriteBlock] = []
         let safelyRewritable = incoming.filter { edge in
             let futureSource = edge.source == source ? destination : edge.source
-            let resolution = LinkGraphBuilder.resolve(
+            let resolution = futureResolutionIndex.resolve(
                 destination.relativePath,
                 from: futureSource,
-                catalog: futureCatalog,
                 scope: .workspace
             )
             guard resolution == .resolved(destination) else {
@@ -201,35 +186,6 @@ public enum IncomingLinkRewriter {
                 return $0.span.utf16LowerBound < $1.span.utf16LowerBound
             }
         )
-    }
-
-    /// Compatibility planner for a standalone vault. New Triptych callers
-    /// must pass the workspace graph so cross-vault incoming links participate.
-    public static func plan(
-        vaultID: UUID,
-        documents: [NoteDocument],
-        moving oldRelativePath: String,
-        to newRelativePath: String
-    ) -> [IncomingLinkRewrite] {
-        let qualified = Dictionary(uniqueKeysWithValues: documents.map { document in
-            (VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath), document)
-        })
-        let semantics = qualified.mapValues(MarkdownSemanticDocument.init(parsing:))
-        let catalog = qualified.map { id, document in
-            LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantics[id])
-        }
-        let graph = LinkGraphBuilder.build(
-            generation: 0,
-            catalog: catalog,
-            documents: semantics,
-            resolutionScope: .sourceVault
-        )
-        return plan(
-            documents: qualified,
-            graph: graph,
-            moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: oldRelativePath),
-            to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: newRelativePath)
-        ).rewrites
     }
 
     private struct Replacement {

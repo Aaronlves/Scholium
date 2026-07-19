@@ -183,14 +183,11 @@ public struct SearchIndexDocument: Sendable {
         year = document.parsedFrontmatter["year"]?.displayScalar
         tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
         status = document.parsedFrontmatter["status"]?.displayScalar
-            ?? document.parsedFrontmatter["analysis_status"]?.displayScalar
-            ?? document.parsedFrontmatter["lifecycle_status"]?.displayScalar
         self.review = review
         self.hasBrokenLink = hasBrokenLink
         evidentialLayer = switch vaultRole {
         case .sourceCorpus: .paperAnalysis
         case .topicKnowledge: .topicNote
-        case .dissertationControl: .dissertationRecord
         case .draftProject: .draftProse
         case .other: .topicNote
         }

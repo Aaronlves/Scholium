@@ -25,7 +25,7 @@ struct WindowControllerArchitectureTests {
             revision: DocumentFingerprint(content: "# Agency\n")
         )
 
-        discovery.requestOpen(reference, disposition: .newNativeTab)
+        discovery.requestOpen(reference, disposition: .newTab)
         document.requestLifecycle(.move(lifecycleTarget))
         research.setActiveDocument(reference)
         research.requestPresentFunction(
@@ -37,7 +37,7 @@ struct WindowControllerArchitectureTests {
         #expect(discoveryIntents == [
             .openDocument(WindowDocumentRoute(
                 reference: reference,
-                disposition: .newNativeTab
+                disposition: .newTab
             )),
         ])
         #expect(documentIntents == [.presentLifecycle(.move(lifecycleTarget))])
@@ -70,6 +70,54 @@ struct WindowControllerArchitectureTests {
         #expect(secondSession.editingSource.isEmpty)
         #expect(first.selectedDocument == .workspace(descriptor))
         #expect(second.selectedDocument == .workspace(descriptor))
+    }
+
+    @Test("Document tabs borrow one window peripheral presentation")
+    func documentTabsBorrowWindowPeripheralPresentation() {
+        let presentation = WindowPeripheralPresentationState()
+        let firstDiscovery = DiscoveryController(peripheralPresentation: presentation)
+        let secondDiscovery = DiscoveryController(peripheralPresentation: presentation)
+        let scope = LibraryDisclosureScope(
+            vaultID: UUID(),
+            locationScope: .workspace
+        )
+
+        firstDiscovery.setExpandedFolders(["Ethics", "Ethics/Agency"], in: scope)
+        #expect(secondDiscovery.expandedFolders(in: scope) == ["Ethics", "Ethics/Agency"])
+
+        let firstResearch = ResearchController(peripheralPresentation: presentation)
+        let secondResearch = ResearchController(peripheralPresentation: presentation)
+        firstResearch.selectInspectorMode("research")
+        firstResearch.showResearchInspector(true)
+        #expect(secondResearch.inspector.modeRawValue == "research")
+        #expect(secondResearch.inspector.showsResearchInspector)
+
+        let firstDocument = DocumentController()
+        let secondDocument = DocumentController()
+        let reference = fixtureReference(path: "Topics/Shared Chrome.md")
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
+            reference: reference
+        )
+        firstDocument.installOpenedDocument(descriptor)
+        #expect(secondDocument.selectedDocument == nil)
+    }
+
+    @Test("Separate windows do not share peripheral presentation")
+    func separateWindowPeripheralPresentationIsolation() {
+        let first = DiscoveryController(
+            peripheralPresentation: WindowPeripheralPresentationState()
+        )
+        let second = DiscoveryController(
+            peripheralPresentation: WindowPeripheralPresentationState()
+        )
+        let scope = LibraryDisclosureScope(
+            vaultID: UUID(),
+            locationScope: .workspace
+        )
+
+        first.setExpandedFolders(["Ethics"], in: scope)
+        #expect(second.expandedFolders(in: scope).isEmpty)
     }
 
     @Test("One controller selection covers stable and path-only documents")
@@ -338,21 +386,17 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         #expect(contentView.contains("context: spotlightSearchContext"))
-        #expect(contentView.contains("context: attentionQueueContext"))
-        #expect(contentView.contains("WorkspaceSetupView(context: workspaceSetupContext)"))
+        #expect(contentView.contains("attentionQueueContext: attentionQueueContext"))
+        #expect(!contentView.contains("WorkspaceSetupView"))
         #expect(contentView.contains("context: sidebarContext"))
     }
 
-    @Test("Research controller keeps inspector and History mutually exclusive")
+    @Test("Research controller owns Inspector independently from Research Record")
     func researchPresentationIsolation() {
         let controller = ResearchController()
+        #expect(!controller.inspector.showsResearchInspector)
         controller.showResearchInspector(true)
         #expect(controller.inspector.showsResearchInspector)
-        #expect(!controller.inspector.showsNoteHistory)
-
-        controller.showNoteHistory(true)
-        #expect(controller.inspector.showsNoteHistory)
-        #expect(!controller.inspector.showsResearchInspector)
 
         let current = UUID()
         controller.functions.begin(
@@ -534,6 +578,12 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let researchControllerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/ResearchController.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(appSource.range(
             of: "private enum HumanReviewWorkflowError",
@@ -548,6 +598,29 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("putBackDestination"))
         #expect(windowModelSource.contains("documentController.putBack("))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
+
+        for documentOwnedState in [
+            "@Published private(set) var lifecycleMutationGeneration",
+            "@Published var pendingSourceLine",
+            "@Published var changedSinceReviewPaths",
+            "@Published var requestPresentationMode",
+            "@Published var humanReviewRecords",
+            "@Published var noteIdentityByPath",
+            "@Published var identityAmbiguities",
+        ] {
+            #expect(!windowModelSource.contains(documentOwnedState))
+        }
+        #expect(controllerSource.contains("@Published var lifecycleMutationGeneration"))
+        #expect(controllerSource.contains("@Published var humanReviewRecords"))
+        #expect(controllerSource.contains("@Published var noteIdentityByPath"))
+
+        #expect(!windowModelSource.contains("@Published private(set) var researchRecordRequestGeneration"))
+        #expect(!windowModelSource.contains("@Published var dialogueInitialNotes"))
+        #expect(!windowModelSource.contains("@Published var checkpointListingError"))
+        #expect(!windowModelSource.contains("@Published var transactionRecoveryRecords"))
+        #expect(researchControllerSource.contains("@Published var researchRecordRequestGeneration"))
+        #expect(researchControllerSource.contains("@Published var dialogueInitialNotes"))
+        #expect(researchControllerSource.contains("@Published var transactionRecoveryRecords"))
 
         #expect(controllerSource.contains("private let sessions = DocumentSessionStore()"))
         #expect(!controllerSource.contains("sessions: DocumentSessionStore"))

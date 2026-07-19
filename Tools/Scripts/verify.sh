@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-SCRATCH="${TMPDIR:-/tmp}/scholium-verification"
+SCRATCH="${ROOT}/.build/verification"
+RELEASE_SCRATCH="${ROOT}/.build/verification-release"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export DEVELOPER_DIR
-rm -rf "${SCRATCH}"
+rm -rf "${SCRATCH}" "${RELEASE_SCRATCH}"
 
 # The repository copy is the reviewable source of the protected Skill
 # packages. SwiftPM embeds the generated mirror; release verification must
@@ -98,7 +99,7 @@ fi
 # their already-established ResearchController adapters, so inspect only the
 # NoteContentView declaration rather than matching the entire file.
 if sed -n \
-  '/^struct NoteContentView: View/,/^\/\/ MARK: - Note History/p' \
+  '/^struct NoteContentView: View/,/^\/\/ MARK: - Research Record/p' \
   "${ROOT}/Scholium/Views/Note/NoteContentView.swift" \
   | rg -n '\b(ResearchController|WindowModel)\b'; then
   echo "Research Strip ownership guard failed: NoteContentView received a window or Research feature root." >&2
@@ -192,9 +193,22 @@ if rg -n --glob '*.swift' '\b(struct[[:space:]]+Note|enum[[:space:]]+Frontmatter
   exit 1
 fi
 
-zsh -n "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh"
-zsh -n "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"
-zsh -n "${ROOT}/Tools/Scripts/package-app.sh"
+for shell_script in \
+  "${ROOT}/Tools/Scripts/build-qa-app.sh" \
+  "${ROOT}/Tools/Scripts/install-cli.sh" \
+  "${ROOT}/Tools/Scripts/manage-development-storage.sh" \
+  "${ROOT}/Tools/Scripts/package-app.sh" \
+  "${ROOT}/Tools/Scripts/run-editor-toolchain.sh" \
+  "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh" \
+  "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
+  "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
+  "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
+  "${ROOT}/Tools/Scripts/verify-function-cli.sh" \
+  "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh" \
+  "${ROOT}/Tools/Scripts/verify-workflow-cli.sh"; do
+  zsh -n "${shell_script}"
+done
+zsh -n "${ROOT}/Manage Scholium Development Storage.command"
 PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
@@ -219,4 +233,4 @@ fi
 "${ROOT}/Tools/Scripts/verify-function-cli.sh" \
   "${SCRATCH}/debug/scholium" \
   "${SCRATCH}"
-swift build --package-path "${ROOT}" -c release --scratch-path "${SCRATCH}-release"
+swift build --package-path "${ROOT}" -c release --scratch-path "${RELEASE_SCRATCH}"

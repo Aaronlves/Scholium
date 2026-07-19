@@ -38,15 +38,8 @@ struct ResearchStripView: View {
     let select: (ResearchFunctionID) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Text("RESEARCH STRIP")
-                    .font(ScholiumInterfaceTypography.editorialLabel)
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
-                ScholiumStructuralRule()
-            }
-
+        VStack(alignment: .leading, spacing: 0) {
+            ScholiumStructuralRule()
             ViewThatFits(in: .horizontal) {
                 ResearchStripButtonRow(
                     presentation: presentation,
@@ -63,18 +56,13 @@ struct ResearchStripView: View {
                     select: select
                 )
             }
+            .frame(maxWidth: ScholiumMetrics.Document.researchStripMaximumWidth)
+            .frame(maxWidth: .infinity)
+            .frame(height: ScholiumMetrics.Workspace.bottomCommandBarHeight)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .scholiumEditorialSurface(
-            .apparatus,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
-        )
+        .scholiumSurface(.document)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Research functions")
+        .accessibilityLabel(ScholiumL10n.ResearchFunction.groupAccessibilityLabel)
         .accessibilityIdentifier("scholium.researchStrip")
         .task(id: presentation.activeFunction) {
             if presentation.activeFunction != nil {
@@ -108,13 +96,15 @@ private struct ResearchStripButtonRow: View {
                     originatingControl: $originatingControl,
                     select: select
                 )
+                .frame(maxWidth: .infinity)
             }
         }
-        .padding(4)
+        .frame(maxWidth: .infinity)
     }
 }
 
 private struct ResearchStripButton: View {
+    @State private var isHovering = false
     let item: ResearchStripItem
     let isActive: Bool
     let isCompact: Bool
@@ -135,50 +125,55 @@ private struct ResearchStripButton: View {
     var body: some View {
         Button(action: activate) {
             if isCompact {
-                Text(item.id.interfaceTitle)
-                    .font(.caption.weight(isActive ? .semibold : .medium))
+                Text(item.id.interfaceTitleResource)
+                    .font(.caption.weight(isActive ? .medium : .regular))
                     .lineLimit(1)
                     .padding(.horizontal, 6)
-                    .frame(minHeight: 36)
+                    .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
                     .contentShape(Rectangle())
             } else {
-                Label(item.id.interfaceTitle, systemImage: item.id.interfaceSymbol)
-                    .font(.callout.weight(isActive ? .semibold : .medium))
+                Label(item.id.interfaceTitleResource, systemImage: item.id.interfaceSymbol)
+                    .font(.callout.weight(isActive ? .medium : .regular))
                     .lineLimit(1)
                     .padding(.horizontal, 9)
-                    .frame(minHeight: 36)
+                    .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
                     .contentShape(Rectangle())
             }
         }
         .buttonStyle(.borderless)
         .focusable(interactions: .activate)
         .focused(focusedControl, equals: focusIdentity)
-        .background(
-            isActive ? ScholiumColorRole.accent.color.opacity(0.12) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        .contentShape(Rectangle())
+        .foregroundStyle(
+            isActive || isHovering
+                ? ScholiumColorRole.primaryText.color
+                : ScholiumColorRole.secondaryText.color
         )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(
+                    isActive
+                        ? ScholiumColorRole.accent.color
+                        : ScholiumColorRole.secondaryText.color.opacity(isHovering ? 0.45 : 0)
+                )
+                .frame(height: 1)
+                .padding(.horizontal, 10)
+        }
+        .onHover { isHovering = $0 }
         .disabled(!item.isEnabled)
         .help(item.disabledReason ?? item.id.interfaceHelp)
-        .accessibilityLabel(item.id.interfaceTitle)
+        .accessibilityLabel(item.id.interfaceTitleResource)
         .accessibilityHint(item.disabledReason ?? item.id.interfaceHelp)
-        .accessibilityValue(isActive ? "Open" : "Closed")
+        .accessibilityValue(
+            isActive
+                ? ScholiumL10n.ResearchFunction.openAccessibilityValue
+                : ScholiumL10n.ResearchFunction.closedAccessibilityValue
+        )
         .accessibilityIdentifier("scholium.researchFunction.\(item.id.interfaceIdentifier)")
     }
 }
 
 extension ResearchFunctionID {
-    var interfaceTitle: String {
-        switch self {
-        case .dialogue: "Dialogue"
-        case .develop: "Develop"
-        case .review: "Review"
-        case .fidelity: "Fidelity"
-        case .critique: "Critique"
-        case .revise: "Revise"
-        case .manuscript: "Manuscript"
-        }
-    }
-
     var interfaceSymbol: String {
         switch self {
         case .dialogue: "text.bubble"
@@ -188,18 +183,6 @@ extension ResearchFunctionID {
         case .critique: "doc.text.magnifyingglass"
         case .revise: "pencil"
         case .manuscript: "doc.text"
-        }
-    }
-
-    var interfaceHelp: String {
-        switch self {
-        case .dialogue: "Open a scholarly Dialogue for this note"
-        case .develop: "Develop this Analysis or Topic"
-        case .review: "Review and qualify this Analysis or Topic"
-        case .fidelity: "Check philosophical content and citations"
-        case .critique: "Request an attributed Critique of this Work"
-        case .revise: "Prepare a substantive revision of this Work"
-        case .manuscript: "Coordinate work on this manuscript"
         }
     }
 

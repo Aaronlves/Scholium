@@ -99,7 +99,7 @@ struct ResearchFunctionContractsTests {
         ).validate()
     }
 
-    @Test("Conditional resources encode new names and decode legacy methods")
+    @Test("Conditional resources use the current resource vocabulary")
     func resourceSelectionCodable() throws {
         let target = target(role: .analysis)
         let inherited = ResearchFunctionRequest(function: .develop, target: target)
@@ -119,7 +119,6 @@ struct ResearchFunctionContractsTests {
         #expect(ResearchFunctionConditionalResource.developmentSynthesis.kind == .method)
         #expect(ResearchFunctionConditionalResource.revisionOutputContracts.kind == .template)
         #expect(ResearchFunctionConditionalResource.manuscriptGates.kind == .checklist)
-        #expect(!ResearchFunctionConditionalResource.critiqueReportTemplate.isAvailableForNewSelection)
 
         let finalized = try inherited.selectingResources([.developmentSynthesis])
         #expect(finalized.conditionalResources == [.developmentSynthesis])
@@ -158,26 +157,9 @@ struct ResearchFunctionContractsTests {
         #expect(encodedSubmission.contains("\"resources\""))
         #expect(!encodedSubmission.contains("\"methods\""))
 
-        let legacyRequest = encodedRequest.replacingOccurrences(
-            of: "conditional_resources",
-            with: "methods"
-        )
-        #expect(try decoder.decode(
-            ResearchFunctionRequest.self,
-            from: Data(legacyRequest.utf8)
-        ).conditionalResources == [.developmentSynthesis])
-
-        let legacySubmission = encodedSubmission.replacingOccurrences(
-            of: "resources",
-            with: "methods"
-        )
-        #expect(try decoder.decode(
-            ResearchFunctionResourceSelectionSubmission.self,
-            from: Data(legacySubmission.utf8)
-        ) == submission)
     }
 
-    @Test("Dialogue module selection is ordered, request scoped, and legacy compatible")
+    @Test("Dialogue module selection is ordered and request scoped")
     func dialogueResponseModuleSelection() throws {
         let analysis = target(role: .analysis)
         let selected = ResearchFunctionRequest(
@@ -233,7 +215,7 @@ struct ResearchFunctionContractsTests {
         )
         #expect(roundTrip.dialogueResponseModules == selected.dialogueResponseModules)
 
-        let legacyData = try JSONSerialization.data(withJSONObject: [
+        let defaultData = try JSONSerialization.data(withJSONObject: [
             "function": "dialogue",
             "target": try JSONSerialization.jsonObject(with: encoder.encode(analysis)),
             "materials": [],
@@ -241,19 +223,12 @@ struct ResearchFunctionContractsTests {
             "checks": [],
             "commentIDs": [],
         ])
-        let legacy = try decoder.decode(ResearchFunctionRequest.self, from: legacyData)
-        #expect(legacy.dialogueResponseModules == nil)
+        let defaults = try decoder.decode(ResearchFunctionRequest.self, from: defaultData)
+        #expect(defaults.dialogueResponseModules == nil)
     }
 
-    @Test("Citation style selection is explicit while legacy package-only input remains decodable")
-    func citationStyleSelectionCompatibility() throws {
-        let legacy = try JSONDecoder().decode(
-            ResearchCitationMethodSelection.self,
-            from: Data(#"{"packageID":"legacy-citations"}"#.utf8)
-        )
-        #expect(legacy.packageID == "legacy-citations")
-        #expect(legacy.citationStyle == nil)
-
+    @Test("Citation style selection is explicit")
+    func citationStyleSelection() throws {
         let selected = ResearchCitationMethodSelection(
             packageID: "local-citations",
             citationStyle: " APA-7 "
@@ -266,8 +241,8 @@ struct ResearchFunctionContractsTests {
         #expect(roundTrip == selected)
     }
 
-    @Test("Material candidate metadata is deterministic and legacy compatible")
-    func materialCandidateMetadataCompatibility() throws {
+    @Test("Material candidate metadata is deterministic")
+    func materialCandidateMetadata() throws {
         let vaultID = UUID()
         let material = ResearchFunctionMaterial(
             noteID: UUID(),
@@ -318,18 +293,6 @@ struct ResearchFunctionContractsTests {
             from: encoder.encode(candidate)
         ) == candidate)
 
-        let legacyData = try JSONSerialization.data(withJSONObject: [
-            "material": try JSONSerialization.jsonObject(with: encoder.encode(material)),
-            "isSelectable": true,
-            "repairReasons": [],
-        ])
-        let legacy = try decoder.decode(
-            ResearchFunctionMaterialCandidate.self,
-            from: legacyData
-        )
-        #expect(legacy.aliases.isEmpty)
-        #expect(legacy.suggestionReasons.isEmpty)
-        #expect(legacy.material == material)
     }
 
     @Test("Fidelity invocation provenance round trips without changing evidence identity")
@@ -371,17 +334,6 @@ struct ResearchFunctionContractsTests {
         }
         #expect(makeKey(manual) == makeKey(automatic))
 
-        var legacyObject = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(manual))
-                as? [String: Any]
-        )
-        legacyObject.removeValue(forKey: "fidelityInvocation")
-        let legacy = try decoder.decode(
-            ResearchFunctionSnapshot.self,
-            from: JSONSerialization.data(withJSONObject: legacyObject)
-        )
-        #expect(legacy.fidelityInvocation == nil)
-        #expect(legacy.resolvedFidelityInvocation == .manual)
     }
 
     @Test("Fidelity evidence identity changes with revision, scope, comments, and loaded audit resources")

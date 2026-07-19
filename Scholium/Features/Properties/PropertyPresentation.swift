@@ -16,14 +16,14 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
 
     var label: String {
         switch self {
-        case .researchStatus: "Research Status"
-        case .about: "About"
-        case .source: "Source"
-        case .progress: "Progress"
-        case .assessment: "Assessment"
-        case .use: "Use"
-        case .history: "History"
-        case .other: "Other"
+        case .researchStatus: ScholiumL10n.dynamicString("Research Status")
+        case .about: ScholiumL10n.dynamicString("About")
+        case .source: ScholiumL10n.dynamicString("Source")
+        case .progress: ScholiumL10n.dynamicString("Progress")
+        case .assessment: ScholiumL10n.dynamicString("Assessment")
+        case .use: ScholiumL10n.dynamicString("Use")
+        case .history: ScholiumL10n.dynamicString("History")
+        case .other: ScholiumL10n.dynamicString("Other")
         }
     }
 
@@ -75,16 +75,12 @@ enum PropertyPresentationCatalog {
 
     static func presentations(for profile: SchemaProfileID) -> [PropertyPresentation] {
         let presentations: [PropertyPresentation] = switch profile {
-        case .analysis, .paperAnalysisV1:
+        case .analysis:
             analysis
         case .topicMarkdown:
             topic
         case .draftProject:
             work
-        case .dissertationControlV3:
-            dissertationV3
-        case .dissertationControlV4:
-            dissertationV4
         case .genericMarkdown:
             []
         }
@@ -157,116 +153,6 @@ enum PropertyPresentationCatalog {
         item("deadline", "Deadline", nil, .use, 1, .dateField),
     ]
 
-    private static let dissertationV3: [PropertyPresentation] = descriptors(
-        profile: .dissertationControlV3,
-        entries: [
-            ("note_type", "Note Type", .about),
-            ("project_role", "Project Role", .about),
-            ("claim_type", "Claim Type", .about),
-            ("status", "Working Status", .progress),
-            ("settlement_dimensions", "Settlement Dimensions", .progress),
-            ("settlement_degree", "Settlement Degree", .progress),
-            ("review_status", "Governance Review", .progress),
-            ("confidence", "Working Confidence", .progress),
-            ("prose_permission", "Prose Permission", .use),
-            ("reopen_condition", "Reopen Condition", .use),
-            ("privacy", "Privacy", .use),
-            ("last_reviewed", "Last Substantive Review", .history),
-            ("version", "Version", .history),
-            ("design_decisions", "Design Decisions", .history),
-        ]
-    )
-
-    private static let dissertationV4: [PropertyPresentation] = descriptors(
-        profile: .dissertationControlV4,
-        entries: [
-            ("title", "Title", .about),
-            ("note_type", "Note Type", .about),
-            ("project_role", "Project Role", .about),
-            ("origin", "Origin", .about),
-            ("evidential_layer", "Evidential Layer", .about),
-            ("question_kind", "Question Kind", .about),
-            ("claim_kind", "Claim Kind", .about),
-            ("inference_type", "Inference Type", .about),
-            ("inference_force", "Inference Force", .about),
-            ("position_kind", "Position Kind", .about),
-            ("concept_kind", "Concept Kind", .about),
-            ("case_kind", "Case Kind", .about),
-            ("evidence_kind", "Evidence Kind", .source),
-            ("verification_state", "Verification State", .source),
-            ("source_locator", "Source Locator", .source),
-            ("predicate", "Predicate", .about),
-            ("semantic_direction", "Semantic Direction", .about),
-            ("assembly_kind", "Assembly Kind", .about),
-            ("chapter_id", "Chapter ID", .about),
-            ("workflow_stage", "Workflow Stage", .progress),
-            ("draft_target", "Draft Target", .use),
-            ("registry_kind", "Registry Kind", .about),
-            ("indexed_note_types", "Indexed Note Types", .about),
-            ("control_kind", "Control Kind", .about),
-            ("status", "Working Status", .progress),
-            ("settlement_dimensions", "Settlement Dimensions", .progress),
-            ("settlement_degree", "Settlement Degree", .progress),
-            ("review_status", "Governance Review", .progress),
-            ("confidence", "Working Confidence", .progress),
-            ("evidence_state", "Evidence State", .progress),
-            ("prose_permission", "Prose Permission", .use),
-            ("reopen_condition", "Reopen Condition", .use),
-            ("privacy", "Privacy", .use),
-            ("provenance", "Provenance", .use),
-            ("created_at", "Created", .history),
-            ("updated_at", "Updated", .history),
-            ("last_reviewed", "Last Substantive Review", .history),
-            ("migration_state", "Migration State", .history),
-        ]
-    )
-
-    private static func descriptors(
-        profile: SchemaProfileID,
-        entries: [(String, String, PropertyPresentationGroup)]
-    ) -> [PropertyPresentation] {
-        var groupPositions: [PropertyPresentationGroup: Int] = [:]
-        return entries.compactMap { key, label, group in
-            guard let contract = PropertyContractCatalog.contract(for: key, profile: profile),
-                  contract.canonicalKey == key else { return nil }
-            let order = groupPositions[group, default: 0]
-            groupPositions[group] = order + 1
-            return item(key, label, help(for: key), group, order, control(for: contract.valueKind))
-        }
-    }
-
-    private static func control(for kind: PropertyValueKind) -> PropertyControlStyle {
-        switch kind {
-        case .text: .textField
-        case .multilineText: .multilineText
-        case .number: .numberField
-        case .date: .dateField
-        case .boolean: .toggle
-        case .tags: .tagEditor
-        case .textList: .textListEditor
-        case .choice: .choicePicker
-        case .mapping: .multilineText
-        }
-    }
-
-    private static func help(for key: String) -> String? {
-        switch key {
-        case "project_role": "Structural role, not premise, conclusion, target, objection, or reply."
-        case "origin": "Whose content or reconstruction the record represents."
-        case "evidential_layer": "The represented content's evidential space."
-        case "status": "Workflow state, not truth or publication status."
-        case "review_status": "Human/agent review condition, separate from Scholium file review."
-        case "confidence": "Qualitative only."
-        case "evidence_state": "Source-check condition; not a truth verdict."
-        case "prose_permission": "Whether and how draft prose may use this record."
-        case "reopen_condition": "Condition requiring reconsideration."
-        case "provenance": "Origins and authorizations; does not confer authority automatically."
-        case "updated_at": "Mechanical edit date; carries no review meaning."
-        case "last_reviewed": "Changed only by explicit substantive review."
-        default: nil
-        }
-    }
-
     private static func item(
         _ key: String,
         _ label: String,
@@ -277,8 +163,8 @@ enum PropertyPresentationCatalog {
     ) -> PropertyPresentation {
         PropertyPresentation(
             key: key,
-            label: label,
-            help: help,
+            label: ScholiumL10n.dynamicString(label),
+            help: help.map(ScholiumL10n.dynamicString),
             group: group,
             order: order,
             controlStyle: controlStyle

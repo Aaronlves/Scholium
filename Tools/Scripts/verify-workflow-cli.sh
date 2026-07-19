@@ -2,12 +2,29 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-BINARY="${1:-${ROOT}/.build/debug/scholium}"
+DEVELOPER_DIR="${DEVELOPER_DIR:-$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")}"
+export DEVELOPER_DIR
+BUILD_SCRATCH="${ROOT}/.build/workflow-cli-verification"
 FIXTURE="${ROOT}/Tests/Fixtures/ResearchWorkflow/bundled-analysis.json"
 AUDIT_FIXTURE="${ROOT}/Tests/Fixtures/ResearchWorkflow/audit-input.json"
-SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/scholium-workflow-cli.XXXXXX")"
+SCRATCH="${ROOT}/.build/workflow-cli-run-$$"
+rm -rf "${SCRATCH}"
+mkdir -p "${SCRATCH}"
 trap 'rm -rf "${SCRATCH}"' EXIT
 export SCHOLIUM_HOME="${SCRATCH}/home"
+
+if (( $# >= 1 )); then
+  BINARY="$1"
+else
+  swift build \
+    --package-path "${ROOT}" \
+    --scratch-path "${BUILD_SCRATCH}" \
+    --product scholium
+  BINARY="$(swift build \
+    --package-path "${ROOT}" \
+    --scratch-path "${BUILD_SCRATCH}" \
+    --show-bin-path)/scholium"
+fi
 
 if [[ ! -x "${BINARY}" ]]; then
   print -u2 "Workflow CLI verifier cannot execute ${BINARY}."
@@ -22,8 +39,6 @@ fi
   > "${SCRATCH}/assembly.md"
 "${BINARY}" workflow audit-plan --from "${AUDIT_FIXTURE}" --format json \
   > "${SCRATCH}/audit-plan.json"
-"${BINARY}" skills assemble --mode develop --skill scholium-development \
-  > "${SCRATCH}/legacy-assembly.md"
 
 python3 - "${FIXTURE}" "${SCRATCH}" <<'PY'
 from pathlib import Path
@@ -71,7 +86,6 @@ validation = json.loads((scratch / "validation.json").read_text())
 assembly = json.loads((scratch / "assembly.json").read_text())
 audit = json.loads((scratch / "audit-plan.json").read_text())
 markdown = (scratch / "assembly.md").read_text()
-legacy = (scratch / "legacy-assembly.md").read_text()
 
 assert validation["structurally_valid"] is True
 assert validation["executable"] is True
@@ -86,10 +100,9 @@ assert "# Scholium Workflow Contract" in assembly["rendered_instructions"]
 assert "# Scholium Workflow Contract" in markdown
 assert len(audit["scheduled"]) == 1
 assert not audit["reused"]
-assert "scholium-development" in legacy
 
 persisted = [path for path in (scratch / "home").rglob("*") if path.is_file()]
 assert not any("workflow" in path.name.lower() for path in persisted)
 PY
 
-print "Workflow CLI: file input, stdin, JSON, Markdown, audit planning, Triptych requirements, and legacy assembly verified"
+print "Workflow CLI: file input, stdin, JSON, Markdown, audit planning, and Triptych requirements verified"

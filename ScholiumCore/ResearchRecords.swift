@@ -576,7 +576,7 @@ public actor DialogueStore {
         return ResearchFunctionRecordProjection(
             snapshot: snapshot,
             completion: entry.functionCompletion,
-            preparedInstructions: entry.generatedPrompt
+            preparedInstructions: entry.preparedInstructions
         )
     }
 
@@ -590,7 +590,7 @@ public actor DialogueStore {
                 ResearchFunctionRecordProjection(
                     snapshot: $0,
                     completion: entry.functionCompletion,
-                    preparedInstructions: entry.generatedPrompt
+                    preparedInstructions: entry.preparedInstructions
                 )
             }
         }
@@ -723,7 +723,7 @@ public actor DialogueStore {
         guard current.functionCompletion == nil else {
             throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
         }
-        if snapshot == replacement, current.generatedPrompt == instructions {
+        if snapshot == replacement, current.preparedInstructions == instructions {
             return current
         }
         guard canFinalizeFunctionPreflight(snapshot, as: replacement) else {
@@ -879,7 +879,7 @@ public actor DialogueStore {
                 instruction: entry.instruction,
                 selectedNotes: migratedNotes,
                 includedComments: migratedComments,
-                generatedPrompt: entry.generatedPrompt,
+                preparedInstructions: entry.preparedInstructions,
                 checkpointID: entry.checkpointID,
                 functionSnapshot: entry.functionSnapshot,
                 functionCompletion: entry.functionCompletion,
@@ -909,7 +909,7 @@ public actor DialogueStore {
             instruction: entry.instruction,
             selectedNotes: entry.selectedNotes,
             includedComments: entry.includedComments,
-            generatedPrompt: entry.generatedPrompt,
+            preparedInstructions: entry.preparedInstructions,
             checkpointID: entry.checkpointID,
             functionSnapshot: snapshot,
             functionCompletion: completion,
@@ -933,7 +933,7 @@ public actor DialogueStore {
             instruction: entry.instruction,
             selectedNotes: entry.selectedNotes,
             includedComments: entry.includedComments,
-            generatedPrompt: instructions,
+            preparedInstructions: instructions,
             checkpointID: entry.checkpointID,
             functionSnapshot: snapshot,
             functionCompletion: nil,
@@ -1263,10 +1263,9 @@ public actor CritiqueRegistry {
         return round
     }
 
-    /// Legacy Critique preparation may persist its round before the new
-    /// function snapshot is attached. This rollback key is therefore the
-    /// immutable round identity rather than a run identity. Only an
-    /// uncompleted round can be removed.
+    /// Critique preparation may persist its round before the function snapshot
+    /// is attached. This rollback key is therefore the immutable round identity
+    /// rather than a run identity. Only an uncompleted round can be removed.
     @discardableResult
     public func discardPreparedRound(roundID: UUID) throws -> CritiqueRound {
         let locations = associations.values.flatMap { association in

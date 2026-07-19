@@ -5,7 +5,7 @@ ROOT="${0:A:h:h:h}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")}"
 export DEVELOPER_DIR
 PREFIX="${SCHOLIUM_CLI_PREFIX:-${HOME}/.local}"
-SCRATCH="${TMPDIR:-/tmp}/scholium-cli-release"
+SCRATCH="${ROOT}/.build/cli-release"
 DESTINATION="${PREFIX}/bin/scholium"
 TEMPORARY="${PREFIX}/bin/.scholium-install.$$"
 RESOURCE_BUNDLE="${PREFIX}/bin/Scholium_ScholiumCore.bundle"

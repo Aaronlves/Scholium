@@ -2,11 +2,8 @@ import ScholiumContracts
 import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
-    case adaptiveContext
-    case workspaceSetup
     case frontmatter(FrontmatterPanelRoute)
     case researchFunction(ResearchFunctionPanelRoute)
-    case attention
     case createCheckpoint
     case restoreCheckpoint
     case lifecycle(NoteLifecycleRequest)
@@ -15,12 +12,9 @@ enum WindowSheetRoute: Identifiable {
 
     var id: String {
         switch self {
-        case .adaptiveContext: "adaptive-context"
-        case .workspaceSetup: "workspace-setup"
         case .frontmatter(let route): route.id
         case .researchFunction(let route):
             "research-function:\(route.presentationID.uuidString.lowercased())"
-        case .attention: "attention"
         case .createCheckpoint: "create-checkpoint"
         case .restoreCheckpoint: "restore-checkpoint"
         case .lifecycle(let request): "lifecycle:\(request.id)"
@@ -101,21 +95,6 @@ final class WindowPresentationRouter: ObservableObject {
     func suspendsResearchFunction(presentationID: UUID) -> Bool {
         guard case .frontmatter(let route) = sheet else { return false }
         return route.returnToResearchFunction?.presentationID == presentationID
-    }
-
-    func setWorkspaceSetupPresented(
-        _ isPresented: Bool,
-        rootSetupOwnsPresentation: Bool
-    ) {
-        guard isPresented else {
-            dismissSheet(if: "workspace-setup")
-            return
-        }
-        guard !rootSetupOwnsPresentation else {
-            dismissSheet(if: "workspace-setup")
-            return
-        }
-        present(.workspaceSetup)
     }
 
     func setOverlay(_ route: WindowOverlayRoute, isPresented: Bool) {

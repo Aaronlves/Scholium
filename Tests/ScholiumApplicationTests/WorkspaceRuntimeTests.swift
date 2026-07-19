@@ -185,8 +185,7 @@ struct WorkspaceRuntimeTests {
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .milliseconds(20)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         #expect(await handle.ownedBackgroundTaskCount > 0)
@@ -234,8 +233,7 @@ struct WorkspaceRuntimeTests {
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .milliseconds(20)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
         let firstWindow = try await runtime.openWorkspace(id: fixture.assignment.id)
         let secondWindow = try await runtime.openWorkspace(id: fixture.assignment.id)
@@ -321,8 +319,7 @@ struct WorkspaceRuntimeTests {
         let secondAssignment = try await fixture.makeSecondLiveAssignmentSharingAnalyses()
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .milliseconds(20)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
         async let firstOpen = runtime.openWorkspace(id: fixture.assignment.id)
         async let secondOpen = runtime.openWorkspace(id: secondAssignment.id)
@@ -386,8 +383,7 @@ struct WorkspaceRuntimeTests {
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .milliseconds(20)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)

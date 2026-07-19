@@ -5,12 +5,10 @@ import ScholiumContracts
 
 @Suite("Scholium workspace registration")
 struct WorkspaceTests {
-    @Test("Both current and legacy Works roles expose Works capabilities")
+    @Test("The Works role exposes Works capabilities")
     func worksRoleCapabilities() {
         #expect(VaultRole.draftProject.displayName == "Works")
-        #expect(VaultRole.dissertationControl.displayName == "Works")
         #expect(VaultRole.draftProject.allowsCritique)
-        #expect(VaultRole.dissertationControl.allowsCritique)
         #expect(!VaultRole.sourceCorpus.allowsCritique)
         #expect(!VaultRole.topicKnowledge.allowsCritique)
     }
@@ -51,7 +49,7 @@ struct WorkspaceTests {
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
 
         await #expect(throws: WorkspaceRegistryError.self) {
-            try await registry.configureThreeVaultWorkspace(
+            try await registry.configureDefaultTriptych(
                 paperAnalysis: (papers, UUID()),
                 topicKnowledge: (nestedTopics, UUID()),
                 output: (output, UUID())
@@ -75,12 +73,12 @@ struct WorkspaceTests {
         let topicID = UUID()
         let outputID = UUID()
 
-        let assignment = try await registry.configureThreeVaultWorkspace(
+        let assignment = try await registry.configureDefaultTriptych(
             paperAnalysis: (papers, paperID),
             topicKnowledge: (topics, topicID),
             output: (output, outputID)
         )
-        let restored = await WorkspaceRegistry(storageURL: storage).threeVaultWorkspace()
+        let restored = await WorkspaceRegistry(storageURL: storage).defaultTriptych()
 
         #expect(assignment.hasCommonParent)
         #expect(assignment.vault(for: .paperAnalysis)?.role == .sourceCorpus)
@@ -263,51 +261,7 @@ struct WorkspaceTests {
         #expect(repaired.vault(for: .topicKnowledge)?.id == topicsID)
         #expect(repaired.vault(for: .output)?.id == worksID)
         #expect(await registry.triptych(id: oldTriptychID) == nil)
-        #expect(await registry.threeVaultWorkspace()?.id == stableTriptychID)
-    }
-
-    @Test("Legacy one-workspace files migrate additively and remain unchanged")
-    func legacyWorkspaceMigrationIsAdditive() async throws {
-        struct LegacyVaultFile: Codable { let vaults: [RegisteredVault] }
-        struct LegacyWorkspace: Codable {
-            let paperAnalysisVaultID: UUID
-            let topicKnowledgeVaultID: UUID
-            let outputVaultID: UUID
-            let updatedAt: Date
-        }
-
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let urls = try makeTriptychFolders(in: base.appendingPathComponent("Legacy Domain", isDirectory: true))
-        let storage = base.appendingPathComponent("registry", isDirectory: true)
-        try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
-        let analyses = RegisteredVault(name: "Analyses", role: .sourceCorpus, canonicalPath: urls.analyses.path)
-        let topics = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: urls.topics.path)
-        let works = RegisteredVault(name: "Works", role: .draftProject, canonicalPath: urls.works.path)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        let legacyVaultURL = storage.appendingPathComponent("vaults.json")
-        let legacyWorkspaceURL = storage.appendingPathComponent("three-vault-workspace.json")
-        try encoder.encode(LegacyVaultFile(vaults: [analyses, topics, works])).write(to: legacyVaultURL)
-        try encoder.encode(LegacyWorkspace(
-            paperAnalysisVaultID: analyses.id,
-            topicKnowledgeVaultID: topics.id,
-            outputVaultID: works.id,
-            updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
-        )).write(to: legacyWorkspaceURL)
-        let oldVaultBytes = try Data(contentsOf: legacyVaultURL)
-        let oldWorkspaceBytes = try Data(contentsOf: legacyWorkspaceURL)
-
-        let migrated = await WorkspaceRegistry(storageURL: storage).allTriptychs()
-
-        #expect(migrated.count == 1)
-        #expect(migrated.first?.id == works.id)
-        #expect(migrated.first?.triptych.name == "Legacy Domain")
-        #expect(FileManager.default.fileExists(atPath: storage
-            .appendingPathComponent("workspace-registry-v2.json").path))
-        #expect(try Data(contentsOf: legacyVaultURL) == oldVaultBytes)
-        #expect(try Data(contentsOf: legacyWorkspaceURL) == oldWorkspaceBytes)
+        #expect(await registry.defaultTriptych()?.id == stableTriptychID)
     }
 
     @Test("A damaged v2 registry is preserved and rejects mutation")
@@ -344,13 +298,13 @@ struct WorkspaceTests {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
-        _ = try await registry.configureThreeVaultWorkspace(
+        _ = try await registry.configureDefaultTriptych(
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (topics, UUID()),
             output: (output, UUID())
         )
 
-        let changed = try await registry.configureThreeVaultWorkspace(
+        let changed = try await registry.configureDefaultTriptych(
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (newTopics, UUID()),
             output: (output, UUID())
@@ -383,7 +337,7 @@ struct WorkspaceTests {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
-        _ = try await registry.configureThreeVaultWorkspace(
+        _ = try await registry.configureDefaultTriptych(
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (topics, UUID()),
             output: (output, UUID())
@@ -392,7 +346,7 @@ struct WorkspaceTests {
         let repairedTopicID = UUID()
         let repairedOutputID = UUID()
 
-        let repaired = try await registry.configureThreeVaultWorkspace(
+        let repaired = try await registry.configureDefaultTriptych(
             paperAnalysis: (papers, repairedPaperID),
             topicKnowledge: (topics, repairedTopicID),
             output: (output, repairedOutputID)

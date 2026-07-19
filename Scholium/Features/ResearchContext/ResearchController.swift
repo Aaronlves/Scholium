@@ -3,38 +3,54 @@ import Combine
 import Foundation
 
 struct ResearchInspectorState: Equatable, Sendable {
-    var modeRawValue = "incoming"
+    var modeRawValue = "connections"
     var showsResearchInspector = false
-    var showsNoteHistory = false
 }
 
-/// Per-window owner for research-context presentation. Research records and
-/// checkpoints are loaded and persisted through Application operations; this
-/// controller never owns a repository or another feature controller.
+/// Per-window owner for research-context data and function presentation.
+/// Inspector visibility and mode belong to the surrounding workspace window,
+/// so changing the selected document tab doesn't change the shell.
+/// Research records and checkpoints remain borrowed from Application.
 @MainActor
 final class ResearchController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
 
     @Published private(set) var activeDocument: VaultNoteReference?
-    @Published private(set) var inspector = ResearchInspectorState()
     @Published private(set) var records: WorkspaceResearchSnapshot?
     @Published private(set) var errorMessage: String?
+    @Published var researchRecordRequestGeneration: UInt64 = 0
+    @Published var dialogueInitialNotes: Set<VaultQualifiedNoteID> = []
+    @Published var checkpointListingError: String?
+    @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
+    @Published var transactionRecoveryError: String?
 
     let functions = ResearchFunctionController()
     let bibliography = RecommendedBibliographyController()
 
     private let intentHandler: IntentHandler
+    private let peripheralPresentation: WindowPeripheralPresentationState
     private var operations: (any ResearchUseCases)?
     private var cancellables: Set<AnyCancellable> = []
 
-    init(intentHandler: @escaping IntentHandler = { _ in }) {
+    init(
+        peripheralPresentation: WindowPeripheralPresentationState = WindowPeripheralPresentationState(),
+        intentHandler: @escaping IntentHandler = { _ in }
+    ) {
+        self.peripheralPresentation = peripheralPresentation
         self.intentHandler = intentHandler
+        peripheralPresentation.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         functions.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
         bibliography.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+    }
+
+    var inspector: ResearchInspectorState {
+        peripheralPresentation.inspector
     }
 
     /// Borrows the capabilities selected by WorkspaceStore while retaining
@@ -51,18 +67,6 @@ final class ResearchController: ObservableObject {
         bibliography.unbind()
         records = nil
         errorMessage = nil
-    }
-
-    func refreshRecords() async {
-        guard let operations else { return }
-        do {
-            records = try await operations.snapshot()
-            errorMessage = nil
-        } catch is CancellationError {
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     func researchSnapshot() async throws -> WorkspaceResearchSnapshot {
@@ -393,17 +397,18 @@ final class ResearchController: ObservableObject {
     }
 
     func selectInspectorMode(_ rawValue: String) {
-        inspector.modeRawValue = rawValue
+        peripheralPresentation.selectInspectorMode(rawValue)
     }
 
     func showResearchInspector(_ isVisible: Bool) {
-        inspector.showsResearchInspector = isVisible
-        if isVisible { inspector.showsNoteHistory = false }
+        peripheralPresentation.showResearchInspector(isVisible)
     }
 
-    func showNoteHistory(_ isVisible: Bool) {
-        inspector.showsNoteHistory = isVisible
-        if isVisible { inspector.showsResearchInspector = false }
+    func restoreInspector(modeRawValue: String?, isVisible: Bool?) {
+        peripheralPresentation.restoreInspector(
+            modeRawValue: modeRawValue,
+            isVisible: isVisible
+        )
     }
 
     func requestPresentFunction(
@@ -418,14 +423,6 @@ final class ResearchController: ObservableObject {
             presentationID: presentationID,
             focusCommentComposer: focusCommentComposer
         )))
-    }
-
-    func requestRevealSource(_ locator: SourceLocator) {
-        guard let activeDocument else { return }
-        intentHandler(.revealSourceLocator(
-            vaultID: activeDocument.vaultID,
-            locator: locator
-        ))
     }
 
     func requestOpen(
@@ -446,7 +443,6 @@ final class ResearchController: ObservableObject {
 
     func reset() {
         activeDocument = nil
-        inspector = ResearchInspectorState()
         functions.dismiss()
         bibliography.unbind()
     }

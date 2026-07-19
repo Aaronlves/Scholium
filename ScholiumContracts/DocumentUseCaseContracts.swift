@@ -34,26 +34,6 @@ public struct DocumentCreationRequest: Hashable, Sendable {
         self.analysisResearchStatus = analysisResearchStatus
     }
 
-    /// Compatibility initializer for callers that already provide a declared
-    /// Research Unit. Omitting a scope now means the explicit `.notYet`
-    /// choice; it never writes a sentinel value into Markdown.
-    public init(
-        id: VaultQualifiedNoteID,
-        title: String,
-        researchUnitScope: String?,
-        researchUnitLimitations: [String] = []
-    ) {
-        self.id = id
-        self.title = title
-        if let researchUnitScope {
-            self.analysisResearchStatus = .declareNow(
-                scope: researchUnitScope,
-                limitations: researchUnitLimitations
-            )
-        } else {
-            self.analysisResearchStatus = .notYet
-        }
-    }
 }
 
 public enum DocumentCreationError: LocalizedError, Equatable, Sendable {

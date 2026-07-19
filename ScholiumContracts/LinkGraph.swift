@@ -5,7 +5,6 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
     public let title: String?
     public let aliases: [String]
     public let noteType: String?
-    public let isDissertationControlV4: Bool
     public let headings: [HeadingNode]
     public let blockAnchors: [String: SourceSpan]
 
@@ -14,7 +13,6 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         title: String? = nil,
         aliases: [String] = [],
         noteType: String? = nil,
-        isDissertationControlV4: Bool = false,
         headings: [HeadingNode] = [],
         blockAnchors: [String: SourceSpan] = [:]
     ) {
@@ -22,7 +20,6 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         self.title = title
         self.aliases = aliases
         self.noteType = noteType
-        self.isDissertationControlV4 = isDissertationControlV4
         self.headings = headings
         self.blockAnchors = blockAnchors
     }
@@ -33,8 +30,6 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         title = document.parsedFrontmatter["title"]?.nonemptyString
         aliases = Self.aliases(from: document.parsedFrontmatter["aliases"])
         noteType = document.parsedFrontmatter["note_type"]?.nonemptyString
-        isDissertationControlV4 = document.parsedFrontmatter["schema_version"]?.nonemptyString
-            == DissertationControlV4.schemaVersion
         headings = semantic.headings
         blockAnchors = Self.blockAnchors(in: document, blocks: semantic.blocks)
     }
@@ -137,39 +132,9 @@ public struct GraphSnapshot: Codable, Sendable {
     public let relationships: [RelationshipEdge]
 }
 
-/// Reserves graph-build generations before any asynchronous publication work
-/// begins. A canceled build deliberately consumes its generation so a later
-/// build can never be mistaken for the partially applied one.
-public struct GraphGenerationLedger<ID: Hashable & Sendable>: Sendable {
-    private var latestByID: [ID: Int] = [:]
-
-    public init() {}
-
-    public mutating func reserveNext(for id: ID) -> Int {
-        let generation = (latestByID[id] ?? 0) + 1
-        latestByID[id] = generation
-        return generation
-    }
-
-    @discardableResult
-    public mutating func accept(_ generation: Int, for id: ID) -> Bool {
-        guard generation > (latestByID[id] ?? 0) else { return false }
-        latestByID[id] = generation
-        return true
-    }
-
-    public func latest(for id: ID) -> Int? {
-        latestByID[id]
-    }
-
-    public func isCurrent(_ generation: Int, for id: ID) -> Bool {
-        latestByID[id] == generation
-    }
-}
-
 public enum LinkResolutionScope: String, Codable, Hashable, Sendable {
     /// Resolve only inside the source vault. Use this for a standalone vault
-    /// projection and for compatibility with pre-Triptych callers.
+    /// projection.
     case sourceVault
 
     /// Prefer the source vault, then resolve only a unique match elsewhere in
@@ -184,22 +149,61 @@ public enum LinkGraphBuilder {
         documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
         resolutionScope: LinkResolutionScope = .sourceVault
     ) -> GraphSnapshot {
+        build(
+            generation: generation,
+            catalog: catalog,
+            documents: documents,
+            resolutionScope: resolutionScope,
+            cancellationCheck: {}
+        )
+    }
+
+    /// Builds the same deterministic graph as ``build``, while allowing an
+    /// asynchronous workspace activation to stop superseded derived work.
+    public static func buildCancellable(
+        generation: Int,
+        catalog: [LinkCatalogNote],
+        documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
+        resolutionScope: LinkResolutionScope = .sourceVault
+    ) throws -> GraphSnapshot {
+        try build(
+            generation: generation,
+            catalog: catalog,
+            documents: documents,
+            resolutionScope: resolutionScope,
+            cancellationCheck: { try Task.checkCancellation() }
+        )
+    }
+
+    private static func build(
+        generation: Int,
+        catalog: [LinkCatalogNote],
+        documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
+        resolutionScope: LinkResolutionScope,
+        cancellationCheck: () throws -> Void
+    ) rethrows -> GraphSnapshot {
         let notesByID = Dictionary(uniqueKeysWithValues: catalog.map { ($0.id, $0) })
+        let resolutionIndex = ResolutionIndex(catalog: catalog)
         var outgoing: [VaultQualifiedNoteID: [LinkGraphEdge]] = [:]
         var incoming: [VaultQualifiedNoteID: [LinkGraphEdge]] = [:]
         var diagnostics: [LinkGraphDiagnostic] = []
         var relationships: [RelationshipEdge] = []
         var vectorSources: [UUID: [(VaultQualifiedNoteID, LinkOccurrence)]] = [:]
+        var processedLinkCount = 0
 
         for source in documents.keys.sorted() {
+            try cancellationCheck()
             guard let semantic = documents[source] else { continue }
             var edges: [LinkGraphEdge] = []
             for original in semantic.links where !original.isExternal {
+                if processedLinkCount.isMultiple(of: 256) {
+                    try cancellationCheck()
+                }
+                processedLinkCount += 1
                 var occurrence = original
-                let resolution = resolve(
+                let resolution = resolutionIndex.resolve(
                     original.target,
                     from: source,
-                    catalog: catalog,
                     scope: resolutionScope
                 )
                 occurrence.resolution = resolution
@@ -288,77 +292,152 @@ public enum LinkGraphBuilder {
         catalog: [LinkCatalogNote],
         scope: LinkResolutionScope = .sourceVault
     ) -> LinkOccurrenceResolution {
-        let target = normalizedMarkdownPath(rawTarget)
-        // Markdown and Obsidian both permit a fragment-only link such as
-        // `[section](#Argument)` or `[[#Argument]]`. Its note destination is
-        // the containing note; the fragment is resolved separately below.
-        if rawTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return catalog.contains(where: { $0.id == source })
-                ? .resolved(source)
-                : .broken(rawTarget)
-        }
-        guard !target.isEmpty else { return .broken(rawTarget) }
-        let sameVault = catalog.filter { $0.id.vaultID == source.vaultID }
+        ResolutionIndex(catalog: catalog).resolve(
+            rawTarget,
+            from: source,
+            scope: scope
+        )
+    }
 
-        let exactRoot = sameVault.filter { normalizedMarkdownPath($0.id.relativePath) == target }
-        if exactRoot.count == 1 { return .resolved(exactRoot[0].id) }
-        if exactRoot.count > 1 { return .ambiguous(exactRoot.map(\.id).sorted()) }
-
-        let sourceFolder = (source.relativePath as NSString).deletingLastPathComponent
-        let relative = normalizedMarkdownPath((sourceFolder as NSString).appendingPathComponent(rawTarget))
-        if !relative.hasPrefix("../") {
-            let exactRelative = sameVault.filter { normalizedMarkdownPath($0.id.relativePath) == relative }
-            if exactRelative.count == 1 { return .resolved(exactRelative[0].id) }
-            if exactRelative.count > 1 { return .ambiguous(exactRelative.map(\.id).sorted()) }
+    struct ResolutionIndex {
+        private struct FolderStem: Hashable {
+            let folder: String
+            let stem: String
         }
 
-        let stem = ((target as NSString).lastPathComponent as NSString).deletingPathExtension
-        let sameFolder = sameVault.filter {
-            ($0.id.relativePath as NSString).deletingLastPathComponent == sourceFolder
-                && (($0.id.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension == stem
-        }
-        if sameFolder.count == 1 { return .resolved(sameFolder[0].id) }
-        if sameFolder.count > 1 { return .ambiguous(sameFolder.map(\.id).sorted()) }
+        private let noteIDs: Set<VaultQualifiedNoteID>
+        private let exactPathsByVault: [UUID: [String: [VaultQualifiedNoteID]]]
+        private let folderStemsByVault: [UUID: [FolderStem: [VaultQualifiedNoteID]]]
+        private let stemsByVault: [UUID: [String: [VaultQualifiedNoteID]]]
+        private let declaredNamesByVault: [UUID: [String: [VaultQualifiedNoteID]]]
+        private let workspaceExactPaths: [String: [VaultQualifiedNoteID]]
+        private let workspaceStems: [String: [VaultQualifiedNoteID]]
+        private let workspaceDeclaredNames: [String: [VaultQualifiedNoteID]]
 
-        let vaultWide = sameVault.filter {
-            (($0.id.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension == stem
-        }
-        if vaultWide.count == 1 { return .resolved(vaultWide[0].id) }
-        if vaultWide.count > 1 { return .ambiguous(vaultWide.map(\.id).sorted()) }
+        init(catalog: [LinkCatalogNote]) {
+            var exactPathsByVault: [UUID: [String: [VaultQualifiedNoteID]]] = [:]
+            var folderStemsByVault: [UUID: [FolderStem: [VaultQualifiedNoteID]]] = [:]
+            var stemsByVault: [UUID: [String: [VaultQualifiedNoteID]]] = [:]
+            var declaredNamesByVault: [UUID: [String: [VaultQualifiedNoteID]]] = [:]
+            var workspaceExactPaths: [String: [VaultQualifiedNoteID]] = [:]
+            var workspaceStems: [String: [VaultQualifiedNoteID]] = [:]
+            var workspaceDeclaredNames: [String: [VaultQualifiedNoteID]] = [:]
 
-        let normalizedName = normalizedLookupName(stem)
-        let declared = sameVault.filter { note in
-            if let title = note.title, normalizedLookupName(title) == normalizedName { return true }
-            return note.aliases.contains { normalizedLookupName($0) == normalizedName }
-        }
-        if declared.count == 1 { return .resolved(declared[0].id) }
-        if declared.count > 1 { return .ambiguous(declared.map(\.id).sorted()) }
+            for note in catalog {
+                let id = note.id
+                let path = id.relativePath as NSString
+                let normalizedPath = LinkGraphBuilder.normalizedMarkdownPath(id.relativePath)
+                let folder = path.deletingLastPathComponent
+                let stem = (path.lastPathComponent as NSString).deletingPathExtension
+                let folderStem = FolderStem(folder: folder, stem: stem)
 
-        guard scope == .workspace else { return .broken(rawTarget) }
+                exactPathsByVault[id.vaultID, default: [:]][normalizedPath, default: []].append(id)
+                folderStemsByVault[id.vaultID, default: [:]][folderStem, default: []].append(id)
+                stemsByVault[id.vaultID, default: [:]][stem, default: []].append(id)
+                workspaceExactPaths[normalizedPath, default: []].append(id)
+                workspaceStems[stem, default: []].append(id)
 
-        // Cross-vault lookup is intentionally narrower than same-vault lookup.
-        // A unique exact path wins, followed by a unique stem, then a unique
-        // declared title or alias. Any collision remains ambiguous.
-        let otherVaults = catalog.filter { $0.id.vaultID != source.vaultID }
-        let workspaceExact = otherVaults.filter {
-            normalizedMarkdownPath($0.id.relativePath) == target
-        }
-        if workspaceExact.count == 1 { return .resolved(workspaceExact[0].id) }
-        if workspaceExact.count > 1 { return .ambiguous(workspaceExact.map(\.id).sorted()) }
+                var declaredNames: Set<String> = []
+                if let title = note.title {
+                    declaredNames.insert(LinkGraphBuilder.normalizedLookupName(title))
+                }
+                for alias in note.aliases {
+                    declaredNames.insert(LinkGraphBuilder.normalizedLookupName(alias))
+                }
+                for declaredName in declaredNames {
+                    declaredNamesByVault[id.vaultID, default: [:]][declaredName, default: []].append(id)
+                    workspaceDeclaredNames[declaredName, default: []].append(id)
+                }
+            }
 
-        let workspaceStem = otherVaults.filter {
-            (($0.id.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension == stem
+            noteIDs = Set(catalog.map(\.id))
+            self.exactPathsByVault = exactPathsByVault
+            self.folderStemsByVault = folderStemsByVault
+            self.stemsByVault = stemsByVault
+            self.declaredNamesByVault = declaredNamesByVault
+            self.workspaceExactPaths = workspaceExactPaths
+            self.workspaceStems = workspaceStems
+            self.workspaceDeclaredNames = workspaceDeclaredNames
         }
-        if workspaceStem.count == 1 { return .resolved(workspaceStem[0].id) }
-        if workspaceStem.count > 1 { return .ambiguous(workspaceStem.map(\.id).sorted()) }
 
-        let workspaceDeclared = otherVaults.filter { note in
-            if let title = note.title, normalizedLookupName(title) == normalizedName { return true }
-            return note.aliases.contains { normalizedLookupName($0) == normalizedName }
+        func resolve(
+            _ rawTarget: String,
+            from source: VaultQualifiedNoteID,
+            scope: LinkResolutionScope
+        ) -> LinkOccurrenceResolution {
+            let target = normalizedMarkdownPath(rawTarget)
+            // Markdown and Obsidian both permit a fragment-only link such as
+            // `[section](#Argument)` or `[[#Argument]]`. Its note destination is
+            // the containing note; the fragment is resolved separately below.
+            if rawTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return noteIDs.contains(source)
+                    ? .resolved(source)
+                    : .broken(rawTarget)
+            }
+            guard !target.isEmpty else { return .broken(rawTarget) }
+
+            if let result = resolution(exactPathsByVault[source.vaultID]?[target]) {
+                return result
+            }
+
+            let sourceFolder = (source.relativePath as NSString).deletingLastPathComponent
+            let relative = normalizedMarkdownPath((sourceFolder as NSString).appendingPathComponent(rawTarget))
+            if !relative.hasPrefix("../") {
+                if let result = resolution(exactPathsByVault[source.vaultID]?[relative]) {
+                    return result
+                }
+            }
+
+            let stem = ((target as NSString).lastPathComponent as NSString).deletingPathExtension
+            if let result = resolution(
+                folderStemsByVault[source.vaultID]?[FolderStem(folder: sourceFolder, stem: stem)]
+            ) {
+                return result
+            }
+
+            if let result = resolution(stemsByVault[source.vaultID]?[stem]) {
+                return result
+            }
+
+            let normalizedName = normalizedLookupName(stem)
+            if let result = resolution(declaredNamesByVault[source.vaultID]?[normalizedName]) {
+                return result
+            }
+
+            guard scope == .workspace else { return .broken(rawTarget) }
+
+            // Cross-vault lookup is intentionally narrower than same-vault lookup.
+            // A unique exact path wins, followed by a unique stem, then a unique
+            // declared title or alias. Any collision remains ambiguous.
+            if let result = resolution(
+                workspaceExactPaths[target]?.filter { $0.vaultID != source.vaultID }
+            ) {
+                return result
+            }
+
+            if let result = resolution(
+                workspaceStems[stem]?.filter { $0.vaultID != source.vaultID }
+            ) {
+                return result
+            }
+
+            if let result = resolution(
+                workspaceDeclaredNames[normalizedName]?.filter { $0.vaultID != source.vaultID }
+            ) {
+                return result
+            }
+            return .broken(rawTarget)
         }
-        if workspaceDeclared.count == 1 { return .resolved(workspaceDeclared[0].id) }
-        if workspaceDeclared.count > 1 { return .ambiguous(workspaceDeclared.map(\.id).sorted()) }
-        return .broken(rawTarget)
+
+        private func resolution(
+            _ candidates: [VaultQualifiedNoteID]?
+        ) -> LinkOccurrenceResolution? {
+            guard let candidates, !candidates.isEmpty else { return nil }
+            if candidates.count == 1, let candidate = candidates.first {
+                return .resolved(candidate)
+            }
+            return .ambiguous(candidates.sorted())
+        }
     }
 
     private static func destination(

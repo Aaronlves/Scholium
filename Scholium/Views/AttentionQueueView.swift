@@ -9,11 +9,11 @@ struct AttentionQueueContext {
     let isRefreshing: Bool
     let dismissalDays: Int
     let refresh: () async -> Void
+    let close: () -> Void
 }
 
 struct AttentionQueueView: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.dismiss) private var dismiss
     let context: AttentionQueueContext
     @State private var filter = AttentionQueueFilter()
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
@@ -49,7 +49,7 @@ struct AttentionQueueView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Library") { context.close() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(20)
@@ -128,7 +128,7 @@ struct AttentionQueueView: View {
             }
         }
         .searchable(text: queryBinding, placement: .toolbar, prompt: "Search Attention")
-        .frame(minWidth: 0, idealWidth: 820, minHeight: 520, idealHeight: 620)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .task {
             pruneExpiredDismissals()
             await context.refresh()
@@ -188,7 +188,7 @@ struct AttentionQueueView: View {
 
     private func open(_ item: AttentionQueueItem) {
         controller.requestOpen(item.note, sourceLocator: item.locator)
-        dismiss()
+        context.close()
     }
 
     private func dismissAttention(_ item: AttentionQueueItem) {

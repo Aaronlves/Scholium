@@ -120,9 +120,9 @@ When a Dialogue ID is supplied, retrieve its exact record:
 scholium dialogue show <dialogue-id> --triptych <triptych> --format json
 ```
 
-Treat the initial instruction, included Comments, follow-up Comments, and agent Responses as the scholarly exchange. A legacy `generatedPrompt` field is transport history, not a methodological authority or a required research record. A selected note fingerprint stored in Dialogue is advisory request-time context; reread the live note before every mutation.
+Treat the initial instruction, Prepared Instructions, included Comments, follow-up Comments, and agent Responses as the scholarly exchange. Prepared Instructions are transport history, not a methodological authority or a required research record. A selected note fingerprint stored in Dialogue is advisory request-time context; reread the live note before every mutation.
 
-For the Dialogue-response architecture, the JSON record also contains the request-scoped `responseContract` snapshot. Use that snapshot through `scholium-dialogue-response`; do not replace it with newer Dialogue Defaults. Older records may lack the field and must use the explicit compatibility fallback. Copied instructions must identify the Dialogue ID and Triptych selector so the agent can retrieve the exact record without guessing.
+For the Dialogue-response architecture, the JSON record contains the required request-scoped `responseContract` snapshot. Use that snapshot through `scholium-dialogue-response`; do not replace it with newer Dialogue Defaults. A missing snapshot is invalid current state and must fail closed. Copied instructions must identify the Dialogue ID and Triptych selector so the agent can retrieve the exact record without guessing.
 
 Use `dialogue list` only when discovery is necessary. Filter by Triptych and note whenever possible.
 

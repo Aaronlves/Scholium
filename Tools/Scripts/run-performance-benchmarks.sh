@@ -98,7 +98,7 @@ if pgrep -f '/Contents/MacOS/Scholium( |$)' >/dev/null 2>&1; then
   exit 65
 fi
 ARTIFACT_KIND=debug_qa
-if [[ "${BUNDLE_ID}" == com.kbmanager.app ]]; then
+if [[ "${BUNDLE_ID}" == com.scholium.app ]]; then
   ARTIFACT_KIND=packaged_release
 fi
 
@@ -132,12 +132,12 @@ if [[ "${MODE}" == product_gate ]]; then
 fi
 
 RUN_ID="rdf1_$(date -u +%Y%m%dT%H%M%SZ)_$$"
-SCRATCH="/tmp/scholium-performance-${RUN_ID}"
+SCRATCH="${ROOT}/.build/performance-${RUN_ID}"
 APP_CONTAINER_TMP="${HOME}/Library/Containers/${BUNDLE_ID}/Data/tmp"
 APP_SCRATCH="${APP_CONTAINER_TMP}/scholium-performance-${RUN_ID}"
 FIXTURE_COPY="${APP_SCRATCH}/rdf1"
 RAW="${APP_SCRATCH}/raw"
-DERIVED="${SCRATCH}/derived"
+DERIVED="${SCRATCH}/derived-data"
 
 cleanup() {
   local exit_code=$?

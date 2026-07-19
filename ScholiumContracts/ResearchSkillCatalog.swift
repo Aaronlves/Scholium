@@ -228,22 +228,6 @@ public struct ResearchSkillAssemblyPhase: Hashable, Sendable {
     }
 }
 
-public struct ResearchSkillAssemblyRequest: Hashable, Sendable {
-    public let mode: ResearchSkillMode
-    public let skillIDs: [String]
-    public let phases: [ResearchSkillAssemblyPhase]
-
-    public init(
-        mode: ResearchSkillMode,
-        skillIDs: [String] = [],
-        phases: [ResearchSkillAssemblyPhase] = []
-    ) {
-        self.mode = mode
-        self.skillIDs = skillIDs
-        self.phases = phases
-    }
-}
-
 public enum ResearchSkillCatalogError: LocalizedError, Sendable {
     case resourceMissing(String)
     case malformedCatalog(String)

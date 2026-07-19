@@ -8,7 +8,6 @@ public enum EvidentialLayer: String, Codable, CaseIterable, Sendable {
     case primarySource = "primary_source"
     case paperAnalysis = "paper_analysis"
     case topicNote = "topic_note"
-    case dissertationRecord = "dissertation_record"
     case draftProse = "draft_prose"
     case agentReconstruction = "agent_reconstruction"
 }
@@ -16,7 +15,7 @@ public enum EvidentialLayer: String, Codable, CaseIterable, Sendable {
 /// A vault-qualified reference used by catalog, Attention, and navigation.
 ///
 /// This is an identity and routing value, not an evidence assertion.
-/// `stableNoteID` is optional because legacy and malformed notes may
+/// `stableNoteID` is optional because unclassified and malformed notes may
 /// not yet have a reconciled portable identity.
 public struct VaultNoteReference: Codable, Hashable, Identifiable, Sendable {
     public var id: String { "\(vaultID.uuidString):\(relativePath)" }

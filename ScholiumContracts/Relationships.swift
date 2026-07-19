@@ -347,7 +347,7 @@ public struct RelationshipEdge: Codable, Hashable, Identifiable, Sendable {
         )
     }
 
-    /// Normalizes legacy typed-wikilink shorthand into a philosophical proposition.
+    /// Projects one already-resolved explicit relationship into graph direction.
     /// Vector-Link v1 uses ``vector(vaultID:containingPath:targetPath:kind:locator:syntax:resolution:)``.
     public static func explicit(
         containingPath: String,

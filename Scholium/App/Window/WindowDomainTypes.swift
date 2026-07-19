@@ -5,7 +5,7 @@ import Foundation
 ///
 /// This is presentation and navigation state. The corresponding lifecycle
 /// operations remain fingerprint-gated application operations.
-enum NoteLocationScope: String, CaseIterable, Identifiable, Sendable {
+enum NoteLocationScope: String, CaseIterable, Identifiable, Hashable, Sendable {
     case workspace = "Workspace"
     case unclassified = "Unclassified"
     case setAside = "Set Aside"
@@ -20,6 +20,20 @@ enum NoteLocationScope: String, CaseIterable, Identifiable, Sendable {
         case .trash: "Trash/"
         }
     }
+}
+
+enum WorkspaceAccessKind: String, Hashable, Sendable {
+    case vault
+    case portableControl
+}
+
+/// One narrowly scoped authorization repair for an already configured
+/// Triptych. This is window presentation state, not a second setup workflow.
+struct WorkspaceAccessRecovery: Identifiable, Hashable, Sendable {
+    let kind: WorkspaceAccessKind
+    let expectedPath: String
+
+    var id: String { "\(kind.rawValue):\(expectedPath)" }
 }
 
 /// A lifecycle listing projection. `revision` is the authority used by the
@@ -97,11 +111,11 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .modifiedNewest: "Recently Modified"
-        case .modifiedOldest: "Least Recently Modified"
-        case .titleAscending: "Title, A to Z"
-        case .titleDescending: "Title, Z to A"
-        case .debateImportanceDescending: "Debate Importance, High to Low"
+        case .modifiedNewest: ScholiumL10n.dynamicString("Recently Modified")
+        case .modifiedOldest: ScholiumL10n.dynamicString("Least Recently Modified")
+        case .titleAscending: ScholiumL10n.dynamicString("Title, A to Z")
+        case .titleDescending: ScholiumL10n.dynamicString("Title, Z to A")
+        case .debateImportanceDescending: ScholiumL10n.dynamicString("Debate Importance, High to Low")
         }
     }
 
@@ -118,12 +132,12 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
 
 /// How a document destination should enter the workspace.
 ///
-/// Replacing the current document never creates hidden in-window navigation
-/// state. A new native tab is a complete, independent window scene that AppKit
-/// groups with the source window.
+/// Replacing the current document never creates hidden navigation state inside
+/// a session. A new tab is another document page inside the current window's
+/// central Document region; it does not create or reload a workspace window.
 enum WindowOpenDisposition: String, Codable, Hashable, Sendable {
     case replaceCurrent
-    case newNativeTab
+    case newTab
 }
 
 /// A resolved document destination emitted by a feature controller and routed

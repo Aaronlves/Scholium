@@ -12,6 +12,7 @@ struct SidebarContext {
     let filteredNotes: [WindowDocumentLocation]
     let allNotes: [WindowDocumentLocation]
     let currentVaultID: UUID?
+    let disclosureScope: LibraryDisclosureScope?
     let selectedDocumentPath: String?
     let libraryFocusRequestGeneration: UInt64
     let currentVaultRole: VaultRole
@@ -29,9 +30,10 @@ struct SidebarContext {
     let propertyKeys: [String]
     let propertyValues: [String: [String]]
     let resolvedIdentityPaths: Set<String>
+    let bibliographyController: RecommendedBibliographyController
+    let attentionQueueContext: AttentionQueueContext
     let reviewDisplayState: (String) -> HumanReviewDisplayState
     let notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
-    let presentAttention: () -> Void
     let selectLocationScope: (NoteLocationScope) -> Void
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let openLifecycleNote: (String, NoteLocationScope) -> Void
@@ -44,6 +46,13 @@ struct SidebarContext {
     let moveToTrash: (String) async throws -> Void
     let deletePermanently: (String) async throws -> Void
     let classify: (String, WorkspaceVaultSlot, String) async throws -> Void
+    let openRecommendedAnalysis: (VaultQualifiedNoteID) -> Void
+    let openRecommendedZoteroItem: (String) async -> Void
+    let copyRecommendedBibliographyText: (String) -> Void
+    let repairRecommendedBibliographyMethod: () -> Void
+    let revealCurrentVault: () -> Void
+    let setSidebarVisible: (Bool) -> Void
+    let openSettings: () -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
     let showError: (String) -> Void
 }
@@ -88,8 +97,8 @@ struct SidebarView: View {
 
     private var expandedFolders: Binding<Set<String>> {
         Binding(
-            get: { controller.library.expandedFolders },
-            set: { controller.setExpandedFolders($0) }
+            get: { controller.expandedFolders(in: context.disclosureScope) },
+            set: { controller.setExpandedFolders($0, in: context.disclosureScope) }
         )
     }
 
@@ -121,69 +130,51 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            brandHeader
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 9)
+            triptychIdentity
 
             workspaceVaultPicker
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
+                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                .padding(.top, ScholiumMetrics.Library.scopeTopSpacing)
 
-            Button {
-                context.presentAttention()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "tray.full")
-                        .foregroundStyle(hasVisibleAttention ? Color.orange : Color.secondary)
-                    Text("Attention")
-                        .font(ScholiumInterfaceTypography.rowTitle)
-                    Spacer()
-                    if let count = visibleAttentionCount {
-                        Text(count.formatted())
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(count > 0 ? Color.orange : Color.secondary)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 9)
-            .help("Review derived warnings and recoverable research issues")
-            .accessibilityValue(
-                visibleAttentionCount.map { "\($0) items" } ?? "Loading"
-            )
+            attentionNavigation
+                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                .padding(.top, ScholiumMetrics.Library.sectionSpacing)
 
-            ScholiumStructuralRule()
+            libraryHeader
+                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                .padding(.top, ScholiumMetrics.Library.sectionSpacing)
 
             ZStack(alignment: .bottom) {
-                VStack(spacing: 0) {
-                    libraryHeader
-
-                    filtersSection
-
-                    ScrollView(.vertical) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(displayedFolderTree) { node in
-                                TreeNodeView(
-                                    node: node,
-                                    expandedFolders: expandedFolders,
-                                    selectedDocumentPath: context.selectedDocumentPath,
-                                    context: treeContext,
-                                    onSelect: { context.openNote($0, .replaceCurrent) }
-                                )
+                Group {
+                    if controller.library.showsAttentionQueue {
+                        AttentionQueueView(
+                            controller: controller,
+                            context: context.attentionQueueContext
+                        )
+                        .accessibilityIdentifier("scholium.libraryAttentionQueue")
+                    } else {
+                        ScrollView(.vertical) {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(displayedFolderTree) { node in
+                                    TreeNodeView(
+                                        node: node,
+                                        expandedFolders: expandedFolders,
+                                        selectedDocumentPath: context.selectedDocumentPath,
+                                        context: treeContext,
+                                        onSelect: { context.openNote($0, .replaceCurrent) }
+                                    )
+                                }
                             }
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(.vertical, 2)
-                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                        .scrollContentBackground(.hidden)
+                        .focusable()
+                        .focusEffectDisabled()
+                        .focused($libraryFocused)
+                        .accessibilityIdentifier("scholium.noteList")
                     }
-                    .scrollContentBackground(.hidden)
-                    .focusable()
-                    .focused($libraryFocused)
-                    .accessibilityIdentifier("scholium.noteList")
                 }
                 .opacity(lifecycleOverlayScope == nil ? 1 : 0.48)
                 .allowsHitTesting(lifecycleOverlayScope == nil)
@@ -204,7 +195,7 @@ struct SidebarView: View {
                         onDeletePermanently: deleteLifecycleItemPermanently,
                         onClose: closeLifecycleOverlay
                     )
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                     .padding(.bottom, 8)
                     .transition(
                         reduceMotion
@@ -213,17 +204,14 @@ struct SidebarView: View {
                     )
                 }
             }
+            .padding(.top, 4)
+            .frame(maxHeight: .infinity)
 
-            ScholiumStructuralRule()
-
-            unclassifiedNavigation
-
-            Divider()
-                .padding(.horizontal, 12)
-
-            lifecycleNavigation
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            sidebarBottomRegion
+        }
         .clipped()
         .animation(
             reduceMotion ? nil : .snappy(duration: 0.2),
@@ -268,20 +256,67 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Header and Search
+    // MARK: - Search
 
-    private var brandHeader: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Scholium")
-                    .font(ScholiumInterfaceTypography.identity)
-                Text("Triptych — \(context.triptychName)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+    private var triptychIdentity: some View {
+        Menu {
+            Button(action: context.openSettings) {
+                Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
             }
-            Spacer()
+            Button(action: context.revealCurrentVault) {
+                Label("Reveal Current Vault in Finder", systemImage: "folder")
+            }
+        } label: {
+            Text("Scholium")
+                .font(ScholiumInterfaceTypography.identity)
+                .padding(.trailing, 13)
+                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                .fixedSize()
+                .contentShape(Rectangle())
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .overlay(alignment: .trailing) {
+            Text("⌄")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                .allowsHitTesting(false)
+        }
+        .fixedSize()
+        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ScholiumMetrics.Workspace.regionHeaderHeight,
+            maxHeight: ScholiumMetrics.Workspace.regionHeaderHeight,
+            alignment: .leading
+        )
+        .help("Triptych management")
+        .accessibilityLabel("Triptych management — \(context.triptychName)")
+        .accessibilityIdentifier("scholium.triptychManagement")
+    }
+
+    @ViewBuilder
+    private var sidebarBottomRegion: some View {
+        VStack(spacing: 0) {
+            ScholiumStructuralRule()
+                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                .padding(.vertical, 8)
+
+            SidebarRecommendedBibliographySection(
+                controller: context.bibliographyController,
+                openAnalysis: context.openRecommendedAnalysis,
+                openZoteroItem: context.openRecommendedZoteroItem,
+                copyText: context.copyRecommendedBibliographyText,
+                repairMethod: context.repairRecommendedBibliographyMethod
+            )
+            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+            .padding(.bottom, 8)
+
+            ScholiumStructuralRule()
+                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+            lifecycleNavigation
+        }
+        .scholiumSurface(.navigation)
     }
 
     private var libraryHeader: some View {
@@ -289,8 +324,9 @@ struct SidebarView: View {
             Button {
                 context.selectLocationScope(.workspace)
             } label: {
-                Label("Library", systemImage: "books.vertical")
-                    .font(ScholiumInterfaceTypography.rowTitle)
+                Text("LIBRARY")
+                    .font(ScholiumInterfaceTypography.editorialLabel)
+                    .tracking(0.7)
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(
@@ -299,63 +335,89 @@ struct SidebarView: View {
 
             Spacer()
 
-            Text("\(filteredNotes.count)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            libraryFilterMenu
 
             Button {
                 controller.requestLifecycle(.create)
             } label: {
                 Label("New Note", systemImage: "plus")
                     .labelStyle(.iconOnly)
+                    .frame(
+                        width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                        height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                    )
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .help("New Note")
             .accessibilityIdentifier("scholium.newNote")
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 9)
     }
 
-    private var unclassifiedNavigation: some View {
+    private var attentionNavigation: some View {
         Button {
-            captureWorkspaceSnapshotIfNeeded()
-            controller.showUnclassified(true)
-            context.selectLocationScope(.unclassified)
+            controller.showAttentionQueue(!controller.library.showsAttentionQueue)
         } label: {
-            Label("Unclassified", systemImage: "tray.and.arrow.down")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 5)
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                Image(systemName: "tray.full")
+                    .foregroundStyle(hasVisibleAttention ? Color.orange : Color.secondary)
+                    .frame(width: ScholiumMetrics.Library.navigationIconWidth)
+                Text("ATTENTION")
+                    .font(ScholiumInterfaceTypography.editorialLabel)
+                    .tracking(0.7)
+                Spacer()
+                if let count = visibleAttentionCount {
+                    Text(count.formatted())
+                        .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                        .foregroundStyle(count > 0 ? Color.orange : Color.secondary)
+                }
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .help("Classify imported Markdown")
-        .accessibilityIdentifier("scholium.location.unclassified")
+        .accessibilityAddTraits(controller.library.showsAttentionQueue ? .isSelected : [])
+        .help("Review derived warnings and recoverable research issues")
+        .accessibilityValue(visibleAttentionCount.map { "\($0) items" } ?? "Loading")
     }
 
     private var lifecycleNavigation: some View {
-        VStack(spacing: 1) {
+        HStack(spacing: 24) {
             locationButton(.setAside, symbol: "archivebox")
             locationButton(.trash, symbol: "trash")
+            Button(action: context.openSettings) {
+                Image(systemName: "gearshape")
+                    .frame(
+                        width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                        height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .help("Settings")
+            .accessibilityLabel("Settings")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 61)
+        .frame(height: ScholiumMetrics.Workspace.bottomCommandBarHeight)
     }
 
     private func locationButton(_ scope: NoteLocationScope, symbol: String) -> some View {
         Button {
             openLifecycleOverlay(scope)
         } label: {
-            Label(scope.rawValue, systemImage: symbol)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 5)
+            Image(systemName: symbol)
+                .frame(
+                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .background(
             lifecycleOverlayScope == scope
                 ? ScholiumColorRole.raisedSurfaceBackground.color
@@ -366,6 +428,8 @@ struct SidebarView: View {
             )
         )
         .accessibilityAddTraits(lifecycleOverlayScope == scope ? .isSelected : [])
+        .help(scope.rawValue)
+        .accessibilityLabel(scope.rawValue)
         .accessibilityIdentifier(
             scope == .setAside ? "scholium.location.setAside" : "scholium.location.trash"
         )
@@ -432,24 +496,41 @@ struct SidebarView: View {
     // MARK: - Knowledge Base Picker
 
     private var workspaceVaultPicker: some View {
-        Picker("Triptych", selection: currentWorkspaceSlotBinding) {
+        HStack(spacing: 2) {
             ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Text(slot.displayName).tag(slot)
+                Button {
+                    guard !isCurrent(slot) else { return }
+                    context.selectWorkspaceVault(slot)
+                } label: {
+                    Text(ScholiumL10n.dynamicString(slot.displayName))
+                        .font(.callout)
+                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background(
+                    isCurrent(slot)
+                        ? ScholiumColorRole.surfaceBackground.color
+                        : Color.clear,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .accessibilityAddTraits(isCurrent(slot) ? .isSelected : [])
+                .accessibilityLabel(ScholiumL10n.dynamicString(slot.displayName))
+                .accessibilityIdentifier("scholium.vault.\(slot.rawValue)")
             }
         }
-        .pickerStyle(.segmented)
-        .controlSize(.small)
-        .labelsHidden()
-        .accessibilityLabel("Triptych vault")
-    }
-
-    private var currentWorkspaceSlotBinding: Binding<WorkspaceVaultSlot> {
-        Binding(
-            get: { currentWorkspaceSlot ?? .paperAnalysis },
-            set: { slot in
-                guard !isCurrent(slot) else { return }
-                context.selectWorkspaceVault(slot)
-            }
+        .padding(2)
+        .background(
+            ScholiumColorRole.raisedSurfaceBackground.color.opacity(0.35),
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
         )
     }
 
@@ -461,58 +542,38 @@ struct SidebarView: View {
         context.currentWorkspaceSlot
     }
 
-    // MARK: - Filters Section
+    // MARK: - Filter Menu
 
-    private var filtersSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                if context.currentVaultRole.allowsHumanReview {
-                    Toggle(isOn: filterBinding(\.isReviewed)) {
-                        Text("Unreviewed")
-                            .font(.caption)
+    private var libraryFilterMenu: some View {
+        Menu {
+            Section("Review") {
+                Menu("Review State") {
+                    if context.currentVaultRole.allowsHumanReview {
+                        Toggle("Unreviewed", isOn: filterBinding(\.isReviewed))
+                        if context.hasUnqualifiedReview {
+                            Toggle("Unqualified", isOn: filterBinding(\.isUnqualified))
+                        }
                     }
-                    .toggleStyle(.checkbox)
-                }
-
-                Spacer()
-
-                Text("\(filteredNotes.count) notes")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            if context.currentVaultRole.allowsHumanReview,
-               context.hasUnqualifiedReview {
-                Toggle(isOn: filterBinding(\.isUnqualified)) {
-                    Label("Unqualified", systemImage: "xmark.seal")
-                        .font(.caption)
-                        .foregroundStyle(
-                            controller.library.filters.isUnqualified ? .red : .primary
-                        )
-                }
-                .toggleStyle(.checkbox)
-            }
-
-            Menu {
-                Menu("Research State") {
-                    Toggle("Changed since review", isOn: filterBinding(\.isChangedSinceReview))
+                    Toggle("Changed Since Review", isOn: filterBinding(\.isChangedSinceReview))
                         .accessibilityIdentifier("scholium.researchFilter.changedSinceReview")
-                    Toggle("Needs attention", isOn: filterBinding(\.needsAttention))
+                }
+            }
+
+            Section("Integrity") {
+                Menu("Integrity Checks") {
+                    Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
                         .disabled(!context.catalogIsAvailable)
                         .accessibilityIdentifier("scholium.researchFilter.needsAttention")
-                    Toggle("Explicit connections", isOn: filterBinding(\.hasExplicitConnections))
+                    Toggle("Explicit Connections", isOn: filterBinding(\.hasExplicitConnections))
                         .disabled(!context.graphIsAvailable)
                         .accessibilityIdentifier("scholium.researchFilter.explicitConnections")
-                    Toggle("Malformed metadata", isOn: filterBinding(\.hasMalformedMetadata))
+                    Toggle("Malformed Metadata", isOn: filterBinding(\.hasMalformedMetadata))
                         .disabled(!context.catalogIsAvailable)
                         .accessibilityIdentifier("scholium.researchFilter.malformedMetadata")
-
-                    if activeResearchFilterCount > 0 {
-                        Divider()
-                        Button("Clear Research Filters", action: clearResearchFilters)
-                    }
                 }
+            }
 
+            Section("Metadata") {
                 Menu("Tag") {
                     Button {
                         updateFilters { $0.tag = nil }
@@ -589,8 +650,10 @@ struct SidebarView: View {
                         }
                     }
                 }
+            }
 
-                if !context.propertyKeys.isEmpty {
+            if !context.propertyKeys.isEmpty {
+                Section("Properties") {
                     Button("Any Property") {
                         updateFilters {
                             $0.propertyKey = nil
@@ -624,12 +687,9 @@ struct SidebarView: View {
                         }
                     }
                 }
+            }
 
-                if activeMetadataFilterCount > 0 {
-                    Divider()
-                    Button("Clear Metadata Filters", action: clearMetadataFilters)
-                }
-
+            Section("Order") {
                 Menu("Sort") {
                     ForEach(NoteSortOrder.allCases) { order in
                         Button {
@@ -651,39 +711,49 @@ struct SidebarView: View {
                         Text("Select one Debate Scope before comparing importance")
                     }
                 }
+            }
 
+            Section("Actions") {
+                if activeResearchFilterCount > 0 {
+                    Button("Clear Review and Integrity Filters", action: clearResearchFilters)
+                }
+                if activeMetadataFilterCount > 0 {
+                    Button("Clear Metadata Filters", action: clearMetadataFilters)
+                }
                 if activeLibraryMenuFilterCount > 0 {
-                    Divider()
-                    Button("Clear Library Filters") {
+                    Button("Clear All Filters") {
                         clearResearchFilters()
                         updateFilters { $0.tag = nil }
                         clearMetadataFilters()
                     }
                 }
-            } label: {
-                Label(
-                    "Filter",
-                    systemImage: activeLibraryMenuFilterCount == 0
-                        ? "line.3.horizontal.decrease"
-                        : "line.3.horizontal.decrease.circle.fill"
-                )
-            }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help(libraryFilterHelp)
-            .accessibilityLabel("Library filters")
-            .accessibilityValue(libraryFilterAccessibilityValue)
-            .accessibilityIdentifier("scholium.libraryFilters")
 
-            if context.changedSinceReviewCount > 0 {
-                Label("\(context.changedSinceReviewCount) changed since review", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Button("Classify Imported Notes…") {
+                    captureWorkspaceSnapshotIfNeeded()
+                    controller.showUnclassified(true)
+                    context.selectLocationScope(.unclassified)
+                }
             }
+        } label: {
+            Label(
+                "Filter",
+                systemImage: activeLibraryMenuFilterCount == 0
+                    ? "line.3.horizontal.decrease"
+                    : "line.3.horizontal.decrease.circle.fill"
+            )
+            .labelStyle(.iconOnly)
+            .frame(
+                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                height: ScholiumMetrics.Accessibility.preferredCustomTarget
+            )
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(libraryFilterHelp)
+        .accessibilityLabel("Library filters")
+        .accessibilityValue(libraryFilterAccessibilityValue)
+        .accessibilityIdentifier("scholium.libraryFilters")
     }
 
     private var activeLibraryMenuFilterCount: Int {
@@ -695,6 +765,8 @@ struct SidebarView: View {
     private var activeResearchFilterCount: Int {
         let filters = controller.library.filters
         return [
+            filters.isReviewed,
+            filters.isUnqualified,
             filters.isChangedSinceReview,
             filters.needsAttention,
             filters.hasExplicitConnections,
@@ -737,6 +809,8 @@ struct SidebarView: View {
 
     private func clearResearchFilters() {
         updateFilters {
+            $0.isReviewed = false
+            $0.isUnqualified = false
             $0.isChangedSinceReview = false
             $0.needsAttention = false
             $0.hasExplicitConnections = false
@@ -978,7 +1052,7 @@ private struct SidebarLifecycleCard: View {
             }
             Button("Cancel", role: .cancel) { pendingPermanentDeletion = nil }
         } message: {
-            Text("This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Note History, and every Triptych checkpoint containing it.")
+            Text("This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it.")
         }
     }
 
@@ -1097,7 +1171,7 @@ private struct UnclassifiedClassificationRow: View {
     private var destinationPicker: some View {
         Picker("Destination", selection: $destinationSlot) {
             ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Text(slot.displayName).tag(slot)
+                Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
             }
         }
         .labelsHidden()
@@ -1124,58 +1198,6 @@ private struct UnclassifiedClassificationRow: View {
                 showError("Could not classify this note. \(error.localizedDescription)")
             }
         }
-    }
-}
-
-struct SearchResultRow: View {
-    let result: SearchResult
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(result.displayName)
-                        .font(.callout.weight(.medium))
-                        .lineLimit(1)
-                    Spacer(minLength: 6)
-                    Text("Line \(result.sourceLine)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Text(highlightedSnippet)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                Text(result.matchField.capitalized)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(result.displayName), match on line \(result.sourceLine)")
-        .accessibilityHint("Open the exact source line")
-    }
-
-    private var highlightedSnippet: AttributedString {
-        var attributed = AttributedString(result.snippet)
-        let ns = result.snippet as NSString
-        for highlight in result.highlights {
-            let range = NSRange(
-                location: highlight.utf16LowerBound,
-                length: highlight.utf16UpperBound - highlight.utf16LowerBound
-            )
-            guard range.location >= 0, NSMaxRange(range) <= ns.length,
-                  let stringRange = Range(range, in: result.snippet),
-                  let attributedRange = Range(stringRange, in: attributed) else { continue }
-            attributed[attributedRange].backgroundColor = .accentColor.opacity(0.18)
-            attributed[attributedRange].foregroundColor = .primary
-        }
-        return attributed
     }
 }
 
@@ -1314,19 +1336,21 @@ private struct TreeNodeView: View {
                             .font(.callout)
                             .foregroundStyle(.tertiary)
                         Text(node.name)
-                            .font(ScholiumInterfaceTypography.rowTitle)
+                            .font(ScholiumInterfaceTypography.libraryHierarchy)
+                            .fontWeight(.semibold)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer()
                     }
                     .padding(.leading, CGFloat(node.depth * 12 + 8))
                     .padding(.trailing, 8)
-                    .padding(.vertical, 3)
+                    .frame(height: ScholiumMetrics.Library.hierarchyRowHeight)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("scholium.folderRow.\(node.id)")
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
                 // Children
                 if isExpanded {
@@ -1373,7 +1397,7 @@ private struct TreeNodeView: View {
                 )
                 .contextMenu {
                     Button {
-                        context.openNote(note, .newNativeTab)
+                        context.openNote(note, .newTab)
                     } label: {
                         Label("Open in New Tab", systemImage: "plus.square")
                     }
@@ -1446,8 +1470,6 @@ private struct TreeNodeView: View {
                     }
                 }
                 .padding(.leading, CGFloat(node.depth * 12))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
                 .confirmationDialog(
                     pendingDestructiveAction?.rawValue ?? "Confirm",
                     isPresented: Binding(
@@ -1487,7 +1509,7 @@ private struct TreeNodeView: View {
         switch action {
         case .setAside: "Move ‘\(note.title ?? note.displayName)’ out of the active Workspace?"
         case .trash: "Move ‘\(note.title ?? note.displayName)’ to Trash?"
-        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes its comments, Human Review, Dialogue records, Critique association, stable identity, Note History, and every Triptych checkpoint containing it. This cannot be undone."
+        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes its comments, Human Review, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it. This cannot be undone."
         case nil: ""
         }
     }
@@ -1523,44 +1545,34 @@ struct NoteCardRow: View {
     let vaultRole: VaultRole
     let reviewDisplayState: HumanReviewDisplayState
 
-    private var modifiedString: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: note.fileModifiedAt, relativeTo: Date())
-    }
-
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(note.title ?? note.displayName)
-                        .font(ScholiumInterfaceTypography.noteTitle)
-                        .fontWeight(isActive ? .semibold : .regular)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
-                    if vaultRole.allowsHumanReview {
-                        Image(systemName: reviewBadgeSymbol)
-                            .font(.system(size: 10))
-                            .foregroundStyle(reviewBadgeColor)
-                            .help(reviewBadgeLabel)
-                            .accessibilityLabel(reviewBadgeLabel)
-                    }
-                }
-                Text(secondaryMetadata)
-                    .font(ScholiumInterfaceTypography.metadata)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+            if vaultRole.allowsHumanReview {
+                Image(systemName: reviewBadgeSymbol)
+                    .font(.system(size: 10))
+                    .foregroundStyle(reviewBadgeColor)
+                    .help(reviewBadgeLabel)
+                    .accessibilityLabel(reviewBadgeLabel)
+            } else if let status = note.status,
+                      !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 6))
+                    .foregroundStyle(ScholiumColorRole.information.color)
+                    .help(status.capitalized)
+                    .accessibilityLabel(status.capitalized)
             }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            if let status = note.status {
-                Text(status.capitalized)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-            }
+            Text(note.title ?? note.displayName)
+                .font(ScholiumInterfaceTypography.libraryNoteTitle)
+                .fontWeight(isActive ? .semibold : .regular)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(isActive ? Color.primary : Color.secondary)
+
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .frame(height: ScholiumMetrics.Library.hierarchyRowHeight)
         .background(
             isActive ? ScholiumColorRole.raisedSurfaceBackground.color : Color.clear,
             in: RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -1574,7 +1586,9 @@ struct NoteCardRow: View {
                     .accessibilityHidden(true)
             }
         }
+        .focusEffectDisabled()
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .help(note.title ?? note.displayName)
     }
 
     private var reviewBadgeSymbol: String {
@@ -1587,29 +1601,6 @@ struct NoteCardRow: View {
 
     private var reviewBadgeLabel: String {
         reviewDisplayState.badgeLabel
-    }
-
-    private var secondaryMetadata: String {
-        switch vaultRole {
-        case .sourceCorpus:
-            let author = note.authors.first?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let year = note.year.map { $0.formatted(.number.grouping(.never)) }
-            let sourceMetadata = [author, year].compactMap { $0 }.filter { !$0.isEmpty }
-            return sourceMetadata.isEmpty ? modifiedString : sourceMetadata.joined(separator: ", ")
-        case .topicKnowledge:
-            return modifiedString
-        case .dissertationControl, .draftProject:
-            let kind = ["kind", "note_type", "document_type"].compactMap {
-                note.property(at: $0)?.scalarString?.trimmingCharacters(in: .whitespacesAndNewlines)
-            }.first { !$0.isEmpty }
-            let lifecycle = note.status.map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
-            }
-            let workMetadata = [kind, lifecycle].compactMap { $0 }.filter { !$0.isEmpty }
-            return workMetadata.isEmpty ? modifiedString : workMetadata.joined(separator: ", ")
-        case .other:
-            return modifiedString
-        }
     }
 
 }

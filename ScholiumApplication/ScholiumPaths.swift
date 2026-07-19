@@ -3,12 +3,10 @@ import Foundation
 
 public enum ScholiumPaths {
     public static let applicationSupportDirectoryName = "Scholium"
-    public static let legacyApplicationSupportDirectoryName = "KBManager"
-    public static let applicationBundleIdentifier = "com.kbmanager.app"
+    public static let applicationBundleIdentifier = "com.scholium.app"
 
-    /// Returns Scholium's app-support directory and performs a non-destructive
-    /// one-time copy of legacy KB Manager state when the new directory does not
-    /// yet exist. The legacy directory is retained for rollback.
+    /// Returns Scholium's own app-support directory. Pre-release application
+    /// state from other product identities is never imported automatically.
     public static func applicationSupportURL(
         baseURL: URL? = nil,
         fileManager: FileManager = .default
@@ -26,12 +24,6 @@ public enum ScholiumPaths {
         }
 
         let current = base.appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
-        let legacy = base.appendingPathComponent(legacyApplicationSupportDirectoryName, isDirectory: true)
-        if !fileManager.fileExists(atPath: current.path),
-           fileManager.fileExists(atPath: legacy.path) {
-            try fileManager.createDirectory(at: base, withIntermediateDirectories: true)
-            try fileManager.copyItem(at: legacy, to: current)
-        }
         try fileManager.createDirectory(at: current, withIntermediateDirectories: true)
         return current
     }

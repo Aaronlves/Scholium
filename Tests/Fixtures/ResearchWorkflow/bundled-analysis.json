@@ -29,8 +29,7 @@
       "selected_practices": [
         {
           "package_id": "scholium-philosophical-practices",
-          "practice_id": "historical-interpreter",
-          "application": "supplement"
+          "practice_id": "historical-interpreter"
         }
       ],
       "read_set": [

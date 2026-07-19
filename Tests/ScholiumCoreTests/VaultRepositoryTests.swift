@@ -95,7 +95,7 @@ struct VaultRepositoryTests {
         #expect((await second.versions(relativePath: "topics/note.md")).isEmpty)
     }
 
-    @Test("A corrupt Note History index blocks snapshot-dependent writes without replacing history")
+    @Test("A corrupt repository-history index blocks snapshot-dependent writes without replacing history")
     func corruptVersionIndexIsPreserved() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
@@ -265,7 +265,7 @@ struct VaultRepositoryTests {
         #expect(try await repository.load(relativePath: trashed.relativePath).rawContent == original.rawContent)
     }
 
-    @Test("Confirmed moves preserve Note History at the destination path")
+    @Test("Confirmed moves preserve repository history at the destination path")
     func movedVersionHistory() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
@@ -451,7 +451,7 @@ struct VaultRepositoryTests {
         #expect(content.contains("\nupdated:") == false)
     }
 
-    @Test("Topic and dissertation saves do not inject workflow review metadata")
+    @Test("Topic and Work saves do not inject workflow review metadata")
     func nonSyntheticWorkflowMetadata() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -478,14 +478,14 @@ struct VaultRepositoryTests {
         let dossier = root.appendingPathComponent("ARG-001.md")
         let original = "---\nnote_type: argument_dossier\nlast_reviewed: 2026-07-01\nreview_status: needs_researcher_review\n---\nOpen\n"
         try original.write(to: dossier, atomically: true, encoding: .utf8)
-        let dissertationRepository = try VaultRepository(
+        let workRepository = try VaultRepository(
             vaultURL: root,
             identity: identity,
             applicationSupportURL: support,
-            vaultRole: .dissertationControl
+            vaultRole: .draftProject
         )
-        let dossierDocument = try await dissertationRepository.load(relativePath: "ARG-001.md")
-        _ = try await dissertationRepository.save(
+        let dossierDocument = try await workRepository.load(relativePath: "ARG-001.md")
+        _ = try await workRepository.save(
             relativePath: "ARG-001.md",
             changeSet: .body("Revised\n"),
             expectedRevision: dossierDocument.fingerprint

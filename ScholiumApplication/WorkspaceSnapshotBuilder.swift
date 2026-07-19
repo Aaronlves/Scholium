@@ -116,7 +116,7 @@ enum WorkspaceSnapshotBuilder {
             )
         }
 
-        let graph = LinkGraphBuilder.build(
+        let graph = try LinkGraphBuilder.buildCancellable(
             generation: graphGeneration,
             catalog: linkCatalog,
             documents: semanticDocuments,
@@ -302,7 +302,7 @@ enum WorkspaceSnapshotBuilder {
                     ResearchFunctionRecordProjection(
                         snapshot: $0,
                         completion: entry.functionCompletion,
-                        preparedInstructions: entry.generatedPrompt
+                        preparedInstructions: entry.preparedInstructions
                     )
                 }
             }

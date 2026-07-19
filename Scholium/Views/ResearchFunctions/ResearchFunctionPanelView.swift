@@ -5,7 +5,8 @@ struct ResearchFunctionPanelContext {
     let comments: [ResearcherComment]
     let repairCitationMethod: () -> Void
     let repairDialogueResponseDefaults: () -> Void
-    let copyInstructions: (String) -> Void
+    let agentApplicationHandoff: AgentApplicationHandoffController
+    let copyInstructions: (String) throws -> Void
     let dismiss: () -> Void
     let note: WindowDocumentLocation?
     let commentsContext: ResearcherCommentsContext?
@@ -15,7 +16,8 @@ struct ResearchFunctionPanelContext {
         comments: [ResearcherComment],
         repairCitationMethod: @escaping () -> Void,
         repairDialogueResponseDefaults: @escaping () -> Void,
-        copyInstructions: @escaping (String) -> Void,
+        agentApplicationHandoff: AgentApplicationHandoffController,
+        copyInstructions: @escaping (String) throws -> Void,
         dismiss: @escaping () -> Void,
         note: WindowDocumentLocation? = nil,
         commentsContext: ResearcherCommentsContext? = nil,
@@ -24,6 +26,7 @@ struct ResearchFunctionPanelContext {
         self.comments = comments
         self.repairCitationMethod = repairCitationMethod
         self.repairDialogueResponseDefaults = repairDialogueResponseDefaults
+        self.agentApplicationHandoff = agentApplicationHandoff
         self.copyInstructions = copyInstructions
         self.dismiss = dismiss
         self.note = note
@@ -134,12 +137,8 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                                 judgmentComments(permitsEvidenceSelection: true)
                                     .onAppear { focusJudgmentContent(in: proxy) }
                             } else if controller.activeFunction == .dialogue {
-                                ResearchFunctionCommentsSection(
-                                    comments: context.comments,
-                                    selection: controller.selectedCommentIDs,
-                                    permitsSelection: true,
-                                    setSelected: controller.setCommentSelected
-                                )
+                                judgmentComments(permitsEvidenceSelection: true)
+                                    .onAppear { focusJudgmentContent(in: proxy) }
                             }
 
                             if controller.activeFunction == .fidelity {
@@ -175,6 +174,14 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            }
+
+            if controller.activeFunction == .dialogue,
+               let role = controller.target?.role,
+               role == .analysis || role == .topic {
+                Divider()
+                reviewContent
+                    .frame(maxHeight: 470)
             }
 
             Divider()
@@ -326,10 +333,11 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                                 "scholium.researchFunctionDerivedRefreshWarning"
                             )
                     }
-                    Button("Copy Instructions for Agent") {
-                        context.copyInstructions(preparation.instructions)
-                    }
-                    .accessibilityIdentifier("scholium.copyResearchFunctionInstructions")
+                    ResearchFunctionAgentHandoffView(
+                        controller: context.agentApplicationHandoff,
+                        instructions: preparation.instructions,
+                        copyInstructions: context.copyInstructions
+                    )
                 }
             }
         }
@@ -360,6 +368,85 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
         .padding(16)
     }
 
+}
+
+private struct ResearchFunctionAgentHandoffView: View {
+    @ObservedObject var controller: AgentApplicationHandoffController
+    let instructions: String
+    let copyInstructions: (String) throws -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Button(controller.primaryActionTitle) {
+                    controller.copyAndOpen(
+                        instructions: instructions,
+                        copy: copyInstructions
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(controller.isOpening)
+                .lineLimit(1)
+                .accessibilityHint(controller.primaryActionAccessibilityHint)
+                .accessibilityIdentifier("scholium.copyAndOpenAgentApplication")
+
+                Menu {
+                    Button("Copy Only") {
+                        controller.copyOnly(
+                            instructions: instructions,
+                            copy: copyInstructions
+                        )
+                    }
+                    .accessibilityIdentifier("scholium.copyResearchFunctionInstructions")
+
+                    if controller.rememberedApplication == nil {
+                        Button("Choose Agent App…") {
+                            controller.chooseApplication()
+                        }
+                    } else {
+                        Button("Choose Another Agent App…") {
+                            controller.chooseApplication()
+                        }
+                        Divider()
+                        Button("Forget Agent App") {
+                            controller.forgetApplication()
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                        )
+                        .contentShape(Rectangle())
+                }
+                .menuIndicator(.hidden)
+                .disabled(controller.isOpening)
+                .help("Agent application handoff options")
+                .accessibilityLabel("Agent Application Handoff Options")
+                .accessibilityIdentifier("scholium.agentApplicationHandoffOptions")
+
+                if controller.isOpening {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Opening agent application")
+                }
+            }
+
+            Text("Scholium copies the prepared instructions and opens the application only. Paste and submit them yourself.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let errorMessage = controller.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("scholium.agentApplicationHandoffError")
+            }
+        }
+    }
 }
 
 /// Read-only status projection for a Function-run envelope. It deliberately
@@ -981,7 +1068,7 @@ struct ResearchFunctionSection<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-            Label(title, systemImage: symbol)
+            Label(ScholiumL10n.dynamicString(title), systemImage: symbol)
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
         }

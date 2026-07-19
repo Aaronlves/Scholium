@@ -160,22 +160,9 @@ public protocol ResearchFunctionUseCases: Sendable {
         runID: UUID
     ) async throws
 
-    /// Compatibility wrappers retained while app and external integrations
-    /// migrate to the delivery-neutral function boundary.
-    func createDialogue(instruction: String, selectedNotes: [DialogueNoteReference], includedCommentIDs: Set<UUID>, requestedDestination: String?, responseProfile: DialogueResponseProfile?) async throws -> DialoguePreparation
-    func requestCritique(for work: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint, scope: CritiqueRequestScope, lens: String, selectedRanges: String, additionalInstructions: String) async throws -> CritiquePreparation
 }
 
-public extension ResearchFunctionUseCases {
-    @available(*, deprecated, renamed: "selectFunctionResources(_:)")
-    func selectFunctionMethods(
-        _ submission: ResearchFunctionResourceSelectionSubmission
-    ) async throws -> ResearchFunctionPreparation {
-        try await selectFunctionResources(submission)
-    }
-}
-
-/// Compatibility composite used by one per-window workspace activation.
+/// Workspace-level research capabilities used by one window activation.
 /// Feature leaves should prefer the smallest component protocol they need.
 public protocol ResearchUseCases:
     ResearchRecordUseCases,

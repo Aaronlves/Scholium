@@ -74,41 +74,6 @@ public actor ResearchFunctionCoordinator {
         try await handle.cancelResearchFunction(runID: runID)
     }
 
-    func createLegacyDialogue(
-        instruction: String,
-        selectedNotes: [DialogueNoteReference],
-        includedCommentIDs: Set<UUID>,
-        requestedDestination: String?,
-        responseProfile: DialogueResponseProfile?
-    ) async throws -> DialoguePreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareLegacyDialogueFunction(
-            instruction: instruction,
-            selectedNotes: selectedNotes,
-            includedCommentIDs: includedCommentIDs,
-            requestedDestination: requestedDestination,
-            responseProfile: responseProfile
-        )
-    }
-
-    func requestLegacyCritique(
-        for work: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope: CritiqueRequestScope,
-        lens: String,
-        selectedRanges: String,
-        additionalInstructions: String
-    ) async throws -> CritiquePreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareLegacyCritiqueFunction(
-            for: work,
-            expectedRevision: expectedRevision,
-            scope: scope,
-            lens: lens,
-            selectedRanges: selectedRanges,
-            additionalInstructions: additionalInstructions
-        )
-    }
 }
 
 private struct ValidatedFunctionObject: Sendable {
@@ -120,20 +85,6 @@ private struct ResolvedFunctionPhase: Sendable {
     let function: ResearchFunctionID
     let envelope: ResolvedResearchWorkflowEnvelope
     let citationStyle: String?
-
-    var skillSnapshot: ResearchFunctionPhaseSnapshot {
-        ResearchFunctionPhaseSnapshot(
-            phase: envelope.contract.phases.first?.phase ?? 1,
-            function: function,
-            skills: envelope.phases.flatMap(\.packages).map(ResearchFunctionSkillSnapshot.init),
-            citationStyle: citationStyle
-        )
-    }
-}
-
-private struct DialogueFunctionOptions: Sendable {
-    let requestedDestination: String?
-    let responseProfile: DialogueResponseProfile?
 }
 
 private enum StoredFunctionRecord: Sendable {
@@ -329,7 +280,6 @@ extension WorkspaceHandle {
     ) async throws -> ResearchFunctionPreparation {
         try await prepareResearchFunction(
             request,
-            dialogueOptions: nil,
             fidelityInvocation: request.function == .fidelity ? .manual : nil
         )
     }
@@ -416,7 +366,6 @@ extension WorkspaceHandle {
         )
         let preparation = try await prepareResearchFunction(
             request,
-            dialogueOptions: nil,
             fidelityInvocation: .automatic(parentRunID: parentRunID)
         )
         return AutomaticFidelityPreparation(
@@ -442,7 +391,6 @@ extension WorkspaceHandle {
 
     private func prepareResearchFunction(
         _ request: ResearchFunctionRequest,
-        dialogueOptions: DialogueFunctionOptions?,
         fidelityInvocation: FidelityInvocationKind? = nil
     ) async throws -> ResearchFunctionPreparation {
         try requireActive()
@@ -583,9 +531,7 @@ extension WorkspaceHandle {
         )
         if request.function == .dialogue {
             let responseProfile: DialogueResponseProfile?
-            if let legacyProfile = dialogueOptions?.responseProfile {
-                responseProfile = legacyProfile
-            } else if let modules = request.dialogueResponseModules {
+            if let modules = request.dialogueResponseModules {
                 let storedProfile = try await services.controlStore
                     .dialogueResponseProfile()
                 responseProfile = storedProfile.updated(
@@ -601,7 +547,7 @@ extension WorkspaceHandle {
                     instruction: request.instruction!,
                     selectedNotes: ([target] + materials).map(\.reference),
                     includedCommentIDs: Set(request.commentIDs),
-                    requestedDestination: dialogueOptions?.requestedDestination,
+                    requestedDestination: nil,
                     responseProfile: responseProfile,
                     dialogueID: runID,
                     functionSnapshot: snapshot,
@@ -618,11 +564,7 @@ extension WorkspaceHandle {
                     checkpoint: nil
                 )
             }
-            guard let responseContract = preparation.entry.responseContract else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Dialogue preparation did not persist its response contract."
-                )
-            }
+            let responseContract = preparation.entry.responseContract
             let locator = DialogueResponseTransport.locator(
                 dialogueID: runID,
                 triptychID: services.manifest.id,
@@ -630,8 +572,6 @@ extension WorkspaceHandle {
             )
             return ResearchFunctionPreparation(
                 snapshot: snapshot,
-                // Do not return the legacy Dialogue prompt here: its broad
-                // editing language predates intent-bound function promotion.
                 // The Function packet is the complete permission authority;
                 // only its immutable response locator is appended.
                 instructions: functionInstructions + "\n\n" + locator,
@@ -644,7 +584,7 @@ extension WorkspaceHandle {
             instruction: request.instruction ?? defaultFunctionInstruction(request.function),
             selectedNotes: ([target] + materials).map(\.reference),
             includedComments: evidence,
-            generatedPrompt: functionInstructions,
+            preparedInstructions: functionInstructions,
             checkpointID: checkpoint?.id,
             functionSnapshot: snapshot
         )
@@ -818,133 +758,6 @@ extension WorkspaceHandle {
         )
     }
 
-    fileprivate func prepareLegacyDialogueFunction(
-        instruction: String,
-        selectedNotes: [DialogueNoteReference],
-        includedCommentIDs: Set<UUID>,
-        requestedDestination: String?,
-        responseProfile: DialogueResponseProfile?
-    ) async throws -> DialoguePreparation {
-        guard let first = selectedNotes.first else {
-            throw DialogueError.noSelectedNotes
-        }
-        func targetRole(for reference: DialogueNoteReference) throws -> ResearchFunctionTargetRole {
-            let id = VaultQualifiedNoteID(
-                vaultID: reference.vaultID,
-                relativePath: reference.relativePath
-            )
-            guard let note = currentSnapshot.document(id: id),
-                  case .resolved(let stableID) = note.stableIdentity,
-                  stableID == reference.noteID,
-                  let role = ResearchFunctionTargetRole(vaultRole: note.vaultRole) else {
-                throw ResearchFunctionContractError.targetIdentityChanged
-            }
-            return role
-        }
-        let target = ResearchFunctionTarget(
-            noteID: first.noteID,
-            note: VaultQualifiedNoteID(
-                vaultID: first.vaultID,
-                relativePath: first.relativePath
-            ),
-            role: try targetRole(for: first),
-            fingerprint: first.fingerprint,
-            title: first.title
-        )
-        let materials = try selectedNotes.dropFirst().map { reference in
-            ResearchFunctionMaterial(
-                noteID: reference.noteID,
-                note: VaultQualifiedNoteID(
-                    vaultID: reference.vaultID,
-                    relativePath: reference.relativePath
-                ),
-                role: try targetRole(for: reference),
-                fingerprint: reference.fingerprint,
-                title: reference.title
-            )
-        }
-        let preparation = try await prepareResearchFunction(
-            ResearchFunctionRequest(
-                function: .dialogue,
-                target: target,
-                materials: materials,
-                instruction: instruction,
-                commentIDs: Array(includedCommentIDs).sorted {
-                    $0.uuidString < $1.uuidString
-                }
-            ),
-            dialogueOptions: DialogueFunctionOptions(
-                requestedDestination: requestedDestination,
-                responseProfile: responseProfile
-            )
-        )
-        let entry = try await services.dialogueStore.entry(id: preparation.runID)
-        return DialoguePreparation(
-            entry: entry,
-            instructions: preparation.instructions,
-            checkpoint: nil
-        )
-    }
-
-    fileprivate func prepareLegacyCritiqueFunction(
-        for work: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope legacyScope: CritiqueRequestScope,
-        lens: String,
-        selectedRanges: String,
-        additionalInstructions: String
-    ) async throws -> CritiquePreparation {
-        guard let note = currentSnapshot.document(id: work),
-              case .resolved(let noteID) = note.stableIdentity,
-              let role = ResearchFunctionTargetRole(vaultRole: note.vaultRole) else {
-            throw ResearchFunctionContractError.targetUnavailable
-        }
-        let document = try await repository(vaultID: work.vaultID).load(
-            relativePath: work.relativePath
-        )
-        guard document.fingerprint == expectedRevision else {
-            throw ResearchFunctionContractError.targetChanged
-        }
-        let target = ResearchFunctionTarget(
-            noteID: noteID,
-            note: work,
-            role: role,
-            lifecycle: note.lifecycle,
-            fingerprint: document.fingerprint,
-            title: researchFunctionTitle(for: note)
-        )
-        let passage = legacyScope == .overall ? nil : ResearcherCommentAnchorBuilder.anchor(
-            forRenderedQuotation: selectedRanges,
-            in: document
-        )
-        let normalizedInstruction = [
-            lens.isEmpty ? nil : "Lens: \(lens)",
-            selectedRanges.isEmpty ? nil : "Requested focus: \(selectedRanges)",
-            additionalInstructions.isEmpty ? nil : additionalInstructions,
-        ].compactMap { $0 }.joined(separator: "\n")
-        let preparation = try await prepareResearchFunction(
-            ResearchFunctionRequest(
-                function: .critique,
-                target: target,
-                instruction: normalizedInstruction.isEmpty ? nil : normalizedInstruction,
-                scope: passage.map(ResearchFunctionScope.passage) ?? .whole,
-                conditionalResources: []
-            )
-        )
-        guard let association = await services.critiqueRegistry.association(
-            workNoteID: noteID
-        ),
-              let checkpointID = preparation.snapshot.checkpointID else {
-            throw ResearchFunctionContractError.preparationNotFound(preparation.runID)
-        }
-        let checkpoint = try await services.checkpointStore.checkpoint(id: checkpointID)
-        return CritiquePreparation(
-            association: association,
-            instructions: preparation.instructions,
-            checkpoint: checkpoint
-        )
-    }
-
     private func prepareCritiqueFunction(
         _ request: ResearchFunctionRequest,
         phases: [ResolvedFunctionPhase],
@@ -1034,9 +847,8 @@ extension WorkspaceHandle {
         let outputBinding = researchFunctionCritiqueOutputBinding(output)
         return ResearchFunctionPreparation(
             snapshot: snapshot,
-            // The legacy Critique prompt may invite undeclared vault-wide
-            // context. The function packet and exact prepared output are the
-            // complete read/write authority for Strip and compatibility calls.
+            // The function packet and exact prepared output are the complete
+            // read/write authority for the Research Strip.
             instructions: exactInstructions + "\n\n" + outputBinding,
             derivedRefreshWarning: refreshWarning
         )
@@ -1075,8 +887,7 @@ extension WorkspaceHandle {
         switch snapshot.request.function {
         case .dialogue:
             guard case .dialogue(let entry, _) = stored,
-                  let responseContract = entry.responseContract,
-                  responseContract.validationIssues.isEmpty,
+                  entry.responseContract.validationIssues.isEmpty,
                   entry.replies.contains(where: { reply in
                       reply.createdAt >= snapshot.preparedAt
                           && !reply.agentName.isEmpty
@@ -1533,7 +1344,7 @@ extension WorkspaceHandle {
         let materials = request.materials.map(workflowReference)
         let writes = (phaseFunction == .develop || phaseFunction == .revise)
             && !request.awaitsResourceSelection
-        let mode = legacyMode(for: phaseFunction)
+        let mode = skillMode(for: phaseFunction)
         let purpose = phasePurpose(function: phaseFunction, request: request)
         let phaseContract = ResearchWorkflowPhaseContract(
             phase: 1,
@@ -2609,11 +2420,12 @@ extension WorkspaceHandle {
         expectedBindingRevision: DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus {
         try requireActive()
-        guard let citationStyle = selection.citationStyle else {
+        guard !selection.citationStyle.isEmpty else {
             throw ResearchSkillBindingError.invalidBindingDocument(
                 "Choose an explicit citation style before activating this method."
             )
         }
+        let citationStyle = selection.citationStyle
         _ = try await services.researchSkillStore.activateCitationBinding(
             packageID: selection.packageID,
             citationStyle: citationStyle,
@@ -2691,7 +2503,7 @@ private func workflowReference(
     )
 }
 
-private func legacyMode(for function: ResearchFunctionID) -> ResearchSkillMode {
+private func skillMode(for function: ResearchFunctionID) -> ResearchSkillMode {
     switch function {
     case .dialogue: .dialogue
     case .develop: .develop
@@ -2741,8 +2553,8 @@ private func defaultFunctionInstruction(_ function: ResearchFunctionID) -> Strin
     }
 }
 
-/// Research records use ISO-8601 persistence, whose current compatibility
-/// format has whole-second precision. Normalize the first returned packet to
+/// Research records use ISO-8601 persistence with whole-second precision.
+/// Normalize the first returned packet to
 /// that same precision so a later same-run method finalization preserves the
 /// exact public preparation timestamp instead of merely its persisted second.
 private func researchFunctionRecordTimestamp(_ date: Date = Date()) -> Date {
@@ -2760,7 +2572,6 @@ private func researchFunctionResourcePaths(
         case .developmentDefinitionImpact: "references/definition-impact.md"
         case .revisionFeedback: "references/feedback.md"
         case .revisionOutputContracts: "references/output-contracts.md"
-        case .critiqueReportTemplate: "references/report-template.md"
         case .manuscriptGates: "references/gates.md"
         }
     })

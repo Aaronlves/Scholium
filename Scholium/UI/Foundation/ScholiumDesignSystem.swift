@@ -290,10 +290,10 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .supports: "Supports"
-        case .supportedBy: "Supported By"
-        case .incompatible: "Incompatible With"
-        case .neutral: "Related"
+        case .supports: ScholiumL10n.dynamicString("Supports")
+        case .supportedBy: ScholiumL10n.dynamicString("Supported By")
+        case .incompatible: ScholiumL10n.dynamicString("Incompatible With")
+        case .neutral: ScholiumL10n.dynamicString("Related")
         }
     }
 
@@ -484,26 +484,92 @@ enum ScholiumMetrics {
     }
 
     enum Onboarding {
-        static let minimumWidth: CGFloat = 320
+        static let minimumWidth: CGFloat = 640
         static let minimumHeight: CGFloat = 560
-        static let preferredWidth: CGFloat = 360
+        static let preferredWidth: CGFloat = 720
         static let preferredHeight: CGFloat = 720
     }
 
-    enum Triptych {
-        static let minimumWidth: CGFloat = 300
-        static let preferredWidth: CGFloat = 360
-    }
-
     enum Workspace {
-        static let minimumWidth: CGFloat = 760
-        static let minimumHeight: CGFloat = 520
         static let preferredWidth: CGFloat = 1_180
         static let preferredHeight: CGFloat = 760
+        static let wideLayoutThreshold = preferredWidth
+        /// Spacing between Scholium-owned controls hosted by the native
+        /// toolbar. Toolbar height and window-control geometry remain owned by
+        /// macOS and therefore are not Scholium metrics.
+        static let headerControlSpacing: CGFloat = 12
+        /// A region-owned row beneath the native titlebar. Unlike toolbar
+        /// height, this is a Scholium component metric used by the Library
+        /// identity and Apparatus mode row. Document identity and commands
+        /// belong to the native toolbar and do not create a second row.
+        static let regionHeaderHeight: CGFloat = 48
+        /// The footer actions and embedded Research Strip share one bottom-
+        /// anchored command height so their upper rules remain aligned.
+        static let bottomCommandBarHeight: CGFloat = 52
+    }
+
+    /// Shared alignment and spacing for the two permanent peripheral regions.
+    /// Library- or Apparatus-specific hierarchy may add semantic indentation,
+    /// but ordinary sections and controls must begin from this common contract.
+    enum Peripheral {
+        static let contentInset: CGFloat = 18
+        static let sectionSpacing: CGFloat = 15
+        static let sectionContentSpacing: CGFloat = 8
+        static let sectionContentInset: CGFloat = 12
+        static let iconColumnWidth: CGFloat = 16
+        static let iconToTextSpacing: CGFloat = 8
+    }
+
+    enum Library {
+        /// Ordinary Library content uses its own stable inset. It deliberately
+        /// does not derive geometry from the traffic-light group, whose
+        /// position and spacing remain owned by macOS.
+        static let contentInset = Peripheral.contentInset
+        /// Fixed symbol track for ordinary top-level Library navigation rows.
+        static let navigationIconWidth = Peripheral.iconColumnWidth
+        /// A compact but still auditable custom row height shared by folders
+        /// and notes. It remains above Scholium's 20-point absolute minimum.
+        static let hierarchyRowHeight: CGFloat = 21
+        static let scopeTopSpacing = Peripheral.sectionSpacing
+        static let sectionSpacing = Peripheral.sectionSpacing
     }
 
     enum Document {
-        static let readableMeasure: CGFloat = 920
+        /// The approved 383 CSS-typographic-point browser proof translated to
+        /// macOS layout points (CSS uses 4/3 pixels per typographic point).
+        static let readableMeasure: CGFloat = 510.666_666_7
+        /// Document-local breathing room below the system-owned toolbar. The
+        /// toolbar safe area is not added again by document layout.
+        static let contentTopInset: CGFloat = 32.333_333_3
+        static let researchStripHorizontalInset: CGFloat = 28
+        /// The Strip may breathe 30 points beyond each side of the approved
+        /// reading measure without spanning the complete Document region.
+        static let researchStripMaximumWidth: CGFloat = readableMeasure + 60
+    }
+
+    enum Apparatus {
+        /// Component-owned height for the Connections/Research mode row and
+        /// the trailing Research Inspector header. It does not size the window
+        /// toolbar or the standard window controls.
+        static let headerHeight = Workspace.regionHeaderHeight
+        /// Connections and Research share one outer content edge. Individual
+        /// sections must not invent their own horizontal padding.
+        static let contentInset = Peripheral.contentInset
+        static let firstSectionSpacing = Peripheral.sectionSpacing
+        static let sectionSpacing = Peripheral.sectionSpacing
+        /// Internal section rhythm is deliberately separate from the spacing
+        /// between complete sections.
+        static let sectionContentSpacing = Peripheral.sectionContentSpacing
+        /// Concrete note links, statuses, and other section content begin one
+        /// level inside their section heading while retaining the outer
+        /// trailing alignment edge.
+        static let sectionContentInset = Peripheral.sectionContentInset
+        static let rowSpacing: CGFloat = 2
+        /// A fixed symbol track keeps every row's text on the same scan line,
+        /// regardless of the optical width of its SF Symbol.
+        static let iconColumnWidth = Peripheral.iconColumnWidth
+        static let iconToTextSpacing = Peripheral.iconToTextSpacing
+        static let bottomInset: CGFloat = 20
     }
 
     enum Search {
@@ -518,11 +584,6 @@ enum ScholiumMetrics {
     }
 
     enum ContextSurface {
-        static let controlHeight: CGFloat = 40
-        static let leadingControlsWidth: CGFloat = 78
-        static let columnSpacing: CGFloat = 10
-        static let metadataMeasure = Document.readableMeasure - leadingControlsWidth - columnSpacing
-        static let clusterMeasure = Document.readableMeasure
         /// Scrolling document content begins below the floating context cluster.
         /// Because this is content padding rather than a safe-area inset, the
         /// clearance moves away and later prose can travel beneath the cluster.
@@ -554,10 +615,6 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
         case .denseEvidence: .documentBackground
         }
     }
-
-    /// Scholium-owned surfaces use opaque paper planes. System-owned controls
-    /// keep their native material treatment at their own call sites.
-    var isOpaque: Bool { true }
 
     var defaultBoundaryRole: ScholiumBoundaryRole {
         switch self {
@@ -712,9 +769,9 @@ struct ScholiumDocumentContentInsets: Equatable, Sendable {
 /// Provisional values shared by Read and editor renderers. They remain
 /// renderer-aware until the visual comparison freezes the rhythm contract.
 enum ScholiumDocumentRhythm {
-    static let proseLineHeight = 1.58
+    static let proseLineHeight = 1.5
     static let sourceLineHeight = 1.5
-    static let paragraphGapEm = 0.7
+    static let paragraphGapEm = 2.0 / 3.0
     static let headingLineHeight = 1.18
     static let headingGapBeforeEm = 1.45
     static let headingGapAfterEm = 0.55
@@ -723,17 +780,13 @@ enum ScholiumDocumentRhythm {
     static let livePreviewCodeInlineInsetEm = 0.8
     static let livePreviewQuoteInlineInset: CGFloat = 12
 
-    static func lineHeight(for renderer: ScholiumDocumentRenderer) -> Double {
-        renderer == .source ? sourceLineHeight : proseLineHeight
-    }
-
     static func contentInsets(
         for renderer: ScholiumDocumentRenderer,
         widthClass: ScholiumDocumentWidthClass
     ) -> ScholiumDocumentContentInsets {
         let inline: CGFloat = switch (renderer, widthClass) {
         case (.source, .regular): 42
-        case (.read, .regular), (.livePreview, .regular): 54
+        case (.read, .regular), (.livePreview, .regular): 0
         case (_, .narrow): 24
         }
         let blockStart: CGFloat = switch renderer {
@@ -845,6 +898,51 @@ private struct ScholiumForegroundModifier: ViewModifier {
         content.foregroundStyle(role.color(
             increasedContrast: increasedContrast
         ))
+    }
+}
+
+/// A borderless Scholium icon control for permanent workspace commands,
+/// including custom content hosted by the native macOS toolbar. It retains
+/// pointer, keyboard, focus, help, and accessibility activation while
+/// expressing hover/focus with ink alone.
+struct ScholiumInkIconControl: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @FocusState private var isFocused: Bool
+    @State private var isHovering = false
+    let title: String
+    let systemImage: String
+    let identifier: String
+    var isActive = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .frame(
+                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                )
+                .contentShape(Rectangle())
+                .foregroundStyle(
+                    isActive || isHovering || isFocused
+                        ? ScholiumColorRole.primaryText.color
+                        : ScholiumColorRole.secondaryText.color
+                )
+                .opacity(isEnabled ? 1 : 0.42)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(ScholiumColorRole.accent.color)
+                        .frame(height: 1)
+                        .opacity(isEnabled && (isHovering || isFocused) ? 0.72 : 0)
+                }
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .focused($isFocused)
+        .onHover { isHovering = $0 }
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier(identifier)
     }
 }
 

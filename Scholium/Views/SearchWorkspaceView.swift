@@ -338,7 +338,7 @@ struct SpotlightSearchPanelView: View {
 
     private var scope: Binding<SearchPresentationScope> {
         Binding(
-            get: { controller.search.criteria.scope.canonical },
+            get: { controller.search.criteria.scope },
             set: { value in
                 controller.selectSearchScope(value)
                 scheduleSearch(immediate: true)
@@ -431,7 +431,7 @@ struct SpotlightSearchPanelView: View {
     private static let triptychRoles: [(roles: Set<VaultRole>, label: String)] = [
         ([.sourceCorpus], "Analyses"),
         ([.topicKnowledge], "Topics"),
-        ([.dissertationControl, .draftProject], "Works"),
+        ([.draftProject], "Works"),
     ]
 
     private static func triptychLabel(for role: VaultRole) -> String {

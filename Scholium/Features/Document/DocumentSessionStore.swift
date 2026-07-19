@@ -93,10 +93,6 @@ final class DocumentSessionStore {
         sessions[key]
     }
 
-    func removeSession(for key: DocumentSessionKey) {
-        sessions.removeValue(forKey: key)?.cancelScheduledWork()
-    }
-
     func removeAll() {
         sessions.values.forEach { $0.cancelScheduledWork() }
         sessions.removeAll()

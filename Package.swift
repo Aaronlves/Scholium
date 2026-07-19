@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Scholium",
+    defaultLocalization: "en",
     platforms: [.macOS(.v26)],
     products: [
         .executable(name: "ScholiumApp", targets: ["ScholiumApp"]),
@@ -37,17 +38,13 @@ let package = Package(
         .target(
             name: "ScholiumApplication",
             dependencies: ["ScholiumContracts", "ScholiumCore"],
-            path: "ScholiumApplication",
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            path: "ScholiumApplication"
         ),
         .executableTarget(
             name: "ScholiumApp",
             dependencies: ["ScholiumContracts", "ScholiumApplication"],
             path: "Scholium",
-            resources: [.process("Resources")],
-            linkerSettings: [
-                .linkedLibrary("sqlite3")
-            ]
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "ScholiumCLI",

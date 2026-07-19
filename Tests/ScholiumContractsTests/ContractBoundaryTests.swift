@@ -3,7 +3,7 @@ import ScholiumContracts
 import Testing
 
 @Suite("Compiler boundary contracts")
-struct ContractsCompatibilityTests {
+struct ContractBoundaryTests {
     @Test("Exact source preserves BOM, CRLF, YAML spelling, and final newline")
     func exactSourceFidelity() throws {
         let source = "\u{FEFF}---\r\ntitle: 'Exact'\r\nunknown: >-\r\n  keep me\r\n---\r\n# Body 😀\r\n"
@@ -17,7 +17,7 @@ struct ContractsCompatibilityTests {
     }
 
     @Test("Stable identifiers and fingerprints retain their Codable representation")
-    func codableCompatibility() throws {
+    func codableRoundTrip() throws {
         let id = VaultQualifiedNoteID(
             vaultID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
             relativePath: "Unicode/理由.md"
@@ -56,8 +56,10 @@ struct ContractsCompatibilityTests {
         let request = DocumentCreationRequest(
             id: id,
             title: "New",
-            researchUnitScope: "One source",
-            researchUnitLimitations: ["No comparative claim"]
+            analysisResearchStatus: .declareNow(
+                scope: "One source",
+                limitations: ["No comparative claim"]
+            )
         )
 
         #expect(request.id == id)

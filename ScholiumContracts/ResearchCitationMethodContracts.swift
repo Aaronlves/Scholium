@@ -77,15 +77,11 @@ public struct ResearchCitationMethodStatus: Codable, Hashable, Sendable {
 
 public struct ResearchCitationMethodSelection: Codable, Hashable, Sendable {
     public let packageID: String
-    /// Optional only for decoding requests produced before style selection
-    /// became explicit. Application rejects a missing value when activating a
-    /// binding, so legacy data cannot silently choose a style.
-    public let citationStyle: String?
+    public let citationStyle: String
 
-    public init(packageID: String, citationStyle: String? = nil) {
+    public init(packageID: String, citationStyle: String) {
         self.packageID = packageID
-        let normalized = citationStyle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.citationStyle = citationStyle.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        self.citationStyle = normalized?.isEmpty == false ? normalized : nil
     }
 }

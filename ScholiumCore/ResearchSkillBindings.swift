@@ -19,7 +19,8 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
     public let functionPracticeBindings: [String: [ResearchPracticeSelection]]
     public let citationBinding: String?
     /// Explicit semantic style identifier selected with `citationBinding`.
-    /// Optional for compatibility decoding of pre-style binding documents.
+    /// Nil only when no citation package is selected; a selected package
+    /// without a style is invalid current state and is exposed for repair.
     public let citationStyle: String?
     /// Optional Triptych-local complete method for Analysis bibliography
     /// screening. Absence resolves to the bundled Source Analyzer.
@@ -62,22 +63,19 @@ public struct ResearchSkillBindingDocument: Codable, Hashable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
-            schemaVersion: try container.decodeIfPresent(
-                Int.self,
-                forKey: .schemaVersion
-            ) ?? Self.currentSchemaVersion,
-            functionBindings: try container.decodeIfPresent(
+            schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
+            functionBindings: try container.decode(
                 [String: String].self,
                 forKey: .functionBindings
-            ) ?? [:],
-            functionSkillBindings: try container.decodeIfPresent(
+            ),
+            functionSkillBindings: try container.decode(
                 [String: [String]].self,
                 forKey: .functionSkillBindings
-            ) ?? [:],
-            functionPracticeBindings: try container.decodeIfPresent(
+            ),
+            functionPracticeBindings: try container.decode(
                 [String: [ResearchPracticeSelection]].self,
                 forKey: .functionPracticeBindings
-            ) ?? [:],
+            ),
             citationBinding: try container.decodeIfPresent(
                 String.self,
                 forKey: .citationBinding

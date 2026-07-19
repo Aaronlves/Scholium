@@ -172,7 +172,7 @@ final class PerformanceProbe {
         runID: String,
         bundleID: String
     ) -> URL? {
-        guard bundleID == "com.kbmanager.app" || bundleID == "com.kbmanager.qa" else {
+        guard bundleID == "com.scholium.app" || bundleID == "com.scholium.qa" else {
             return nil
         }
         let candidate = URL(fileURLWithPath: rawPath).standardizedFileURL

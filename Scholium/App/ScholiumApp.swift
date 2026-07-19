@@ -59,22 +59,38 @@ private final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate
 struct TriptychWindowRoute: Codable, Hashable {
     let windowID: UUID
     let triptychID: UUID?
-    let createsTriptych: Bool
     let initialDocument: VaultNoteReference?
-    let tabAnchorWindowID: UUID?
 
     init(
         windowID: UUID = UUID(),
         triptychID: UUID? = nil,
-        createsTriptych: Bool = false,
-        initialDocument: VaultNoteReference? = nil,
-        tabAnchorWindowID: UUID? = nil
+        initialDocument: VaultNoteReference? = nil
     ) {
         self.windowID = windowID
         self.triptychID = triptychID
-        self.createsTriptych = createsTriptych
         self.initialDocument = initialDocument
-        self.tabAnchorWindowID = tabAnchorWindowID
+    }
+}
+
+enum BootstrapPurpose: String, Codable, Hashable {
+    case firstConfiguration
+    case newTriptych
+    case missingRegistration
+}
+
+struct BootstrapWindowRoute: Codable, Hashable {
+    let windowID: UUID
+    let purpose: BootstrapPurpose
+    let targetTriptychID: UUID?
+
+    init(
+        windowID: UUID = UUID(),
+        purpose: BootstrapPurpose,
+        targetTriptychID: UUID? = nil
+    ) {
+        self.windowID = windowID
+        self.purpose = purpose
+        self.targetTriptychID = targetTriptychID
     }
 }
 
@@ -82,11 +98,13 @@ struct TriptychWindowRoute: Codable, Hashable {
 struct ScholiumApp: App {
     @NSApplicationDelegateAdaptor(ScholiumApplicationDelegate.self) private var applicationDelegate
     @StateObject private var workspaceStore = WorkspaceStore()
+    @StateObject private var researchRecordWindowCoordinator = ResearchRecordWindowCoordinator()
 
     init() {
-        // Every native tab is a complete Scholium window scene. AppKit owns
-        // tab grouping, selection, cycling, detaching, and Window-menu commands.
-        NSWindow.allowsAutomaticWindowTabbing = true
+        // Document tabs live inside the central split item. Native window
+        // tabbing would create a second, whole-window tab system with different
+        // state ownership, so it remains disabled.
+        NSWindow.allowsAutomaticWindowTabbing = false
         // Swift Package schemes run ScholiumApp as a raw executable rather
         // than through the packaged .app. On beta macOS/Xcode that process can
         // otherwise remain background-only even though SwiftUI created a scene.
@@ -106,18 +124,39 @@ struct ScholiumApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "scholium-main", for: TriptychWindowRoute.self) { route in
-            ScholiumWindowRoot(
+        WindowGroup(id: "scholium-bootstrap", for: BootstrapWindowRoute.self) { route in
+            ScholiumBootstrapRoot(
                 workspaceStore: workspaceStore,
                 route: route
             )
         }
         .defaultSize(
+            width: ScholiumMetrics.Onboarding.preferredWidth,
+            height: ScholiumMetrics.Onboarding.preferredHeight
+        )
+        .windowResizability(.contentSize)
+
+        WindowGroup(id: "scholium-main", for: TriptychWindowRoute.self) { route in
+            ScholiumWindowRoot(
+                workspaceStore: workspaceStore,
+                route: route
+            )
+            .environmentObject(researchRecordWindowCoordinator)
+        }
+        .defaultSize(
             width: ScholiumMetrics.Workspace.preferredWidth,
             height: ScholiumMetrics.Workspace.preferredHeight
         )
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ScholiumCommands() }
+
+        UtilityWindow("Research Record", id: "scholium-research-record") {
+            ScholiumResearchRecordUtilityRoot(
+                coordinator: researchRecordWindowCoordinator
+            )
+        }
+        .defaultSize(width: 760, height: 680)
+        .commandsRemoved()
 
         Settings {
             ScholiumSettingsRoot(workspaceStore: workspaceStore)
@@ -125,38 +164,269 @@ struct ScholiumApp: App {
     }
 }
 
-enum ScholiumWindowPresentation: Equatable {
-    case launching
-    case setup
-    case workspace
+/// A secondary scholarly-record window that follows the focused workspace.
+/// It consumes the focused window model but owns no document or editor state.
+private struct ScholiumResearchRecordUtilityRoot: View {
+    @ObservedObject var coordinator: ResearchRecordWindowCoordinator
 
-    static func resolve(
-        hasCompletedInitialRestore: Bool,
-        hasVaultConfiguration: Bool
-    ) -> Self {
-        guard hasCompletedInitialRestore else { return .launching }
-        return hasVaultConfiguration ? .workspace : .setup
+    var body: some View {
+        Group {
+            if let appState = coordinator.activeWindowModel {
+                ScholiumResearchRecordFocusedContent(appState: appState)
+            } else {
+                ContentUnavailableView(
+                    "No Active Document",
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text("Focus a Scholium workspace and open a note to view its Research Record.")
+                )
+            }
+        }
+        .scholiumSurface(.denseEvidence)
+        .id(coordinator.presentationGeneration)
     }
+}
 
-    var minimumContentSize: NSSize {
-        switch self {
-        case .launching, .workspace:
-            NSSize(
-                width: ScholiumMetrics.Workspace.minimumWidth,
-                height: ScholiumMetrics.Workspace.minimumHeight
-            )
-        case .setup:
-            NSSize(
-                width: ScholiumMetrics.Onboarding.minimumWidth,
-                height: ScholiumMetrics.Onboarding.minimumHeight
+/// Connects the secondary Research Record window to the workspace that
+/// explicitly opened it. The weak reference preserves one owner for all
+/// document state and never keeps a closed workspace alive.
+@MainActor
+final class ResearchRecordWindowCoordinator: ObservableObject {
+    @Published private(set) var presentationGeneration = 0
+    private weak var windowModel: WindowModel?
+
+    var activeWindowModel: WindowModel? { windowModel }
+
+    func present(for windowModel: WindowModel) {
+        self.windowModel = windowModel
+        presentationGeneration &+= 1
+    }
+}
+
+private struct ScholiumResearchRecordFocusedContent: View {
+    @ObservedObject var appState: WindowModel
+
+    var body: some View {
+        if let note = appState.currentNote,
+           appState.documentController.editingDocumentPath == nil,
+           appState.currentDocumentIdentityByPath[note.relativePath] != nil {
+            ResearchRecordView(note: note, context: researchRecordContext)
+                .id(appState.currentDocumentDescriptor?.sessionKey.noteID)
+        } else {
+            ContentUnavailableView(
+                "No Research Record",
+                systemImage: "clock.arrow.circlepath",
+                description: Text("Open a note with a resolved identity to view its scholarly record.")
             )
         }
+    }
+
+    private var researchRecordContext: ResearchRecordContext {
+        ResearchRecordContext(
+            controller: appState.researchController,
+            vaultRole: appState.currentDocumentVaultRole,
+            documentRevisions: appState.currentDocumentRevisions,
+            currentReview: { _ in appState.currentDocumentReviewRecord },
+            loadDialogue: { await appState.dialogueHistory(for: $0) },
+            loadCritique: { await appState.critiqueAssociationRelated(to: $0) },
+            copyText: { try appState.copyTextToClipboard($0) },
+            openNote: { appState.requestOpenNote($0) },
+            notify: { appState.showToast($0) }
+        )
+    }
+}
+
+/// The launch and first-run boundary. Bootstrap deliberately does not create
+/// the workspace split controller or install the workspace toolbar. Once a
+/// Triptych is available it opens a configured workspace window and closes.
+private struct ScholiumBootstrapRoot: View {
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+    @Binding private var route: BootstrapWindowRoute?
+    @StateObject private var model: ScholiumBootstrapModel
+    @State private var isResolvingWorkspace = true
+    @State private var didRouteToWorkspace = false
+
+    init(
+        workspaceStore: WorkspaceStore,
+        route: Binding<BootstrapWindowRoute?>
+    ) {
+        _route = route
+        let resolvedRoute = route.wrappedValue
+            ?? BootstrapWindowRoute(purpose: .firstConfiguration)
+        _model = StateObject(wrappedValue: ScholiumBootstrapModel(
+            workspaceStore: workspaceStore,
+            route: resolvedRoute
+        ))
+    }
+
+    var body: some View {
+        Group {
+            if isResolvingWorkspace {
+                ScholiumLaunchPlaceholderView()
+                    .frame(
+                        minWidth: ScholiumMetrics.Onboarding.minimumWidth,
+                        minHeight: ScholiumMetrics.Onboarding.minimumHeight
+                    )
+            } else {
+                WorkspaceSetupView(context: workspaceSetupContext)
+            }
+        }
+        .tint(ScholiumColorRole.accent.color)
+        .task {
+            if openFixtureWorkspaceIfRequested() {
+                return
+            }
+            await model.refresh()
+            isResolvingWorkspace = false
+            openConfiguredWorkspaceIfAvailable()
+        }
+        .onChange(of: model.workspaceAssignment?.id) { _, _ in
+            openConfiguredWorkspaceIfAvailable()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: ScholiumWorkspaceSplitRegistry.didChangeNotification
+            )
+        ) { notification in
+            guard didRouteToWorkspace,
+                  let workspaceWindow = notification.object as? NSWindow,
+                  ScholiumWorkspaceSplitRegistry.shared
+                    .splitView(for: workspaceWindow) != nil
+            else { return }
+            // Keep Bootstrap alive until the destination workspace has its
+            // real split controller. Closing it immediately after openWindow
+            // can briefly leave no usable scene and let SwiftUI recreate the
+            // default Bootstrap window on a configured relaunch.
+            dismissWindow()
+        }
+    }
+
+    private var workspaceSetupContext: WorkspaceSetupContext {
+        WorkspaceSetupContext(
+            isCreatingNewTriptych: model.isCreatingNewTriptych,
+            targetTriptychID: model.targetTriptychID,
+            workspaceAssignment: model.workspaceAssignment,
+            registeredTriptychs: model.registeredTriptychs,
+            recoveryMessage: model.recoveryMessage,
+            refreshAssignment: { await model.refresh() },
+            portableContainerURL: { await model.portableContainerURL(for: $0) },
+            configure: { selection in
+                try await model.configure(selection)
+            },
+            dismiss: { openConfiguredWorkspaceIfAvailable() }
+        )
+    }
+
+    private func openConfiguredWorkspaceIfAvailable() {
+        guard !didRouteToWorkspace,
+              let triptychID = model.workspaceAssignment?.id,
+              model.isReadyToOpenWorkspace
+        else { return }
+        didRouteToWorkspace = true
+        openWindow(
+            id: "scholium-main",
+            value: TriptychWindowRoute(triptychID: triptychID)
+        )
+    }
+
+    /// UI automation supplies an explicit disposable fixture root. Bootstrap
+    /// remains the default scene, so it must hand that isolated launch to the
+    /// workspace scene before a WindowModel exists to consume the fixture.
+    /// Real launches never take this path and continue through setup or the
+    /// registered-Triptych restore flow above.
+    private func openFixtureWorkspaceIfRequested() -> Bool {
+        guard ScholiumRuntimeIsolation.fixtureRootURL() != nil,
+              !didRouteToWorkspace
+        else { return false }
+        didRouteToWorkspace = true
+        openWindow(
+            id: "scholium-main",
+            value: TriptychWindowRoute()
+        )
+        return true
+    }
+}
+
+/// Bootstrap owns only registration and folder selection. It deliberately has
+/// no Document, Discovery, Research, presentation-router, or window-session
+/// state; the configured workspace creates those owners after this window
+/// completes.
+@MainActor
+private final class ScholiumBootstrapModel: ObservableObject {
+    @Published private(set) var workspaceAssignment: TriptychAssignment?
+    @Published private(set) var registeredTriptychs: [TriptychAssignment] = []
+    @Published private(set) var recoveryMessage: String?
+    @Published private(set) var isReadyToOpenWorkspace = false
+
+    private let workspaceStore: WorkspaceStore
+    private let route: BootstrapWindowRoute
+
+    init(workspaceStore: WorkspaceStore, route: BootstrapWindowRoute) {
+        self.workspaceStore = workspaceStore
+        self.route = route
+    }
+
+    var isCreatingNewTriptych: Bool {
+        route.purpose == .newTriptych
+    }
+
+    var targetTriptychID: UUID? {
+        switch route.purpose {
+        case .firstConfiguration, .newTriptych: nil
+        case .missingRegistration: route.targetTriptychID
+        }
+    }
+
+    func refresh() async {
+        do {
+            registeredTriptychs = try await workspaceStore.registeredTriptychs()
+            switch route.purpose {
+            case .firstConfiguration:
+                workspaceAssignment = try? await workspaceStore.defaultTriptych()
+                isReadyToOpenWorkspace = workspaceAssignment != nil
+            case .newTriptych:
+                workspaceAssignment = nil
+                isReadyToOpenWorkspace = false
+            case .missingRegistration:
+                workspaceAssignment = route.targetTriptychID.flatMap { requestedID in
+                    registeredTriptychs.first(where: { $0.id == requestedID })
+                }
+                isReadyToOpenWorkspace = workspaceAssignment != nil
+                if workspaceAssignment == nil {
+                    recoveryMessage = "This Triptych is no longer registered on this Mac. Choose its three folders again."
+                }
+            }
+        } catch {
+            workspaceAssignment = nil
+            isReadyToOpenWorkspace = false
+            recoveryMessage = error.localizedDescription
+        }
+    }
+
+    func portableContainerURL(for worksURL: URL) async -> URL? {
+        await workspaceStore.portableContainerURL(forWorksURL: worksURL)
+    }
+
+    func configure(_ selection: WorkspaceSetupSelection) async throws {
+        let capabilities = try await workspaceStore.configureTriptychCapabilities(
+            paperAnalysisURL: selection.paperAnalysisURL,
+            topicKnowledgeURL: selection.topicKnowledgeURL,
+            outputURL: selection.outputURL,
+            portableContainerURL: selection.portableContainerURL,
+            triptychID: selection.triptychID ?? targetTriptychID,
+            triptychName: selection.triptychName
+        )
+        workspaceAssignment = capabilities.assignment
+        registeredTriptychs = try await workspaceStore.registeredTriptychs()
+        recoveryMessage = nil
+        isReadyToOpenWorkspace = true
     }
 }
 
 private struct ScholiumWindowRoot: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @SceneStorage("scholium.windowSessionID") private var storedWindowSessionID = ""
     @Binding private var route: TriptychWindowRoute?
     @StateObject private var appState: WindowModel
@@ -169,27 +439,35 @@ private struct ScholiumWindowRoot: View {
             workspaceStore: workspaceStore,
             nativeWindowID: requestedRoute?.windowID,
             requestedTriptychID: requestedRoute?.triptychID,
-            createsTriptych: requestedRoute?.createsTriptych == true,
-            requestedInitialDocument: requestedRoute?.initialDocument,
-            requestedTabAnchorWindowID: requestedRoute?.tabAnchorWindowID
+            requestedInitialDocument: requestedRoute?.initialDocument
         ))
     }
 
     var body: some View {
-        ContentView()
+        Group {
+            if appState.hasCompletedInitialRestore, appState.vaultConfig != nil {
+                ContentView()
+            } else {
+                ScholiumLaunchPlaceholderView()
+            }
+        }
             .environmentObject(appState)
+            .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
             .focusedSceneValue(\.scholiumWindowModel, appState)
             .background(
                 WindowCloseGuard(
                     appState: appState,
-                    presentation: windowPresentation,
                     reduceMotion: reduceMotion,
-                    nativeWindowID: appState.nativeWindowID,
-                    tabAnchorWindowID: appState.requestedTabAnchorWindowID
+                    nativeWindowID: appState.nativeWindowID
                 )
             )
-            .frame(minWidth: 320, minHeight: 520)
+            .frame(
+                minWidth: 320,
+                maxWidth: .infinity,
+                minHeight: 520,
+                maxHeight: .infinity
+            )
             .fileImporter(
                 isPresented: $appState.showMarkdownImporter,
                 allowedContentTypes: [UTType(filenameExtension: "md") ?? .plainText],
@@ -200,7 +478,7 @@ private struct ScholiumWindowRoot: View {
                     Task {
                         do {
                             let imported = try await appState.importMarkdownFiles(urls)
-                            appState.showToast("Imported \(imported.count) Markdown file\(imported.count == 1 ? "" : "s") into Unclassified.")
+                            appState.showToast(String(localized: "Imported \(imported.count) Markdown file\(imported.count == 1 ? "" : "s") into Unclassified.", table: "Localizable", bundle: .module))
                         } catch {
                             appState.vaultError = error.localizedDescription
                         }
@@ -209,23 +487,27 @@ private struct ScholiumWindowRoot: View {
                     appState.vaultError = error.localizedDescription
                 }
             }
+            .sheet(item: $appState.workspaceAccessRecovery) { recovery in
+                RestoreWorkspaceAccessView(
+                    recovery: recovery,
+                    restore: { try await appState.restoreWorkspaceAccess(using: $0) },
+                    closeWindow: { dismissWindow() }
+                )
+            }
             .preferredColorScheme(colorScheme)
             .task(id: resolvedWindowSessionID) {
                 if storedWindowSessionID.isEmpty {
                     storedWindowSessionID = resolvedWindowSessionID.uuidString
                 }
                 await appState.restoreWindowSession(id: resolvedWindowSessionID)
+                redirectUnconfiguredWindowToBootstrapIfNeeded()
                 appState.openRequestedInitialDocumentIfNeeded()
                 registerTerminationFlusher()
             }
             .onAppear {
-                appState.installWindowRouteHandler { route in
-                    openWindow(id: "scholium-main", value: route)
-                }
                 registerTerminationFlusher()
             }
             .onDisappear {
-                appState.installWindowRouteHandler(nil)
                 if let registeredTerminationID {
                     ScholiumTerminationCoordinator.shared.unregister(registeredTerminationID)
                 }
@@ -234,23 +516,34 @@ private struct ScholiumWindowRoot: View {
             }
     }
 
+    private func redirectUnconfiguredWindowToBootstrapIfNeeded() {
+        guard appState.hasCompletedInitialRestore,
+              appState.vaultConfig == nil,
+              appState.workspaceAccessRecovery == nil
+        else { return }
+        openWindow(
+            id: "scholium-bootstrap",
+            value: BootstrapWindowRoute(
+                purpose: appState.requestedTriptychIDForRecovery == nil
+                    ? .firstConfiguration
+                    : .missingRegistration,
+                targetTriptychID: appState.requestedTriptychIDForRecovery
+            )
+        )
+        DispatchQueue.main.async {
+            dismissWindow()
+        }
+    }
+
     private var resolvedWindowSessionID: UUID {
-        // The deterministic ID belongs only to the initial QA scene. Native
-        // tabs are independent WindowGroup scenes and must never share its
-        // persisted session file.
+        // The deterministic ID belongs only to the initial QA window. Document
+        // tabs are children of this window and share its peripheral state.
         if route == nil,
            let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_SESSION_ID"],
            let id = UUID(uuidString: raw) {
             return id
         }
         return UUID(uuidString: storedWindowSessionID) ?? appState.windowSessionID
-    }
-
-    private var windowPresentation: ScholiumWindowPresentation {
-        ScholiumWindowPresentation.resolve(
-            hasCompletedInitialRestore: appState.hasCompletedInitialRestore,
-            hasVaultConfiguration: appState.vaultConfig != nil
-        )
     }
 
     private func registerTerminationFlusher() {
@@ -274,153 +567,16 @@ private struct ScholiumWindowRoot: View {
     }
 }
 
-struct NativeWindowTabIdentity: Equatable, Sendable {
-    let baseTitle: String
-    let triptychName: String?
-    let relativePath: String?
-    let toolTip: String
-    let isDocumentEdited: Bool
-}
-
-@MainActor
-final class NativeWindowTabCoordinator {
-    static let shared = NativeWindowTabCoordinator()
-    static let tabbingIdentifier = "org.scholium.workspace"
-
-    private final class WeakWindow {
-        weak var value: NSWindow?
-
-        init(_ value: NSWindow) {
-            self.value = value
-        }
-    }
-
-    private var windows: [UUID: WeakWindow] = [:]
-    private var pendingAnchors: [UUID: UUID] = [:]
-    private var identities: [UUID: NativeWindowTabIdentity] = [:]
-
-    func register(
-        _ window: NSWindow,
-        id: UUID,
-        anchorWindowID: UUID?
-    ) {
-        windows = windows.filter { $0.value.value != nil }
-        identities = identities.filter { windows[$0.key] != nil }
-        windows[id] = WeakWindow(window)
-        window.tabbingMode = .automatic
-        window.tabbingIdentifier = Self.tabbingIdentifier
-
-        if let anchorWindowID, anchorWindowID != id {
-            pendingAnchors[id] = anchorWindowID
-            groupIfPossible(childID: id)
-        }
-        for childID in pendingAnchors.keys
-        where pendingAnchors[childID] == id {
-            groupIfPossible(childID: childID)
-        }
-    }
-
-    func unregister(id: UUID, window: NSWindow?) {
-        guard windows[id]?.value === window || windows[id]?.value == nil else { return }
-        let affectedWindows = window?.tabGroup?.windows ?? [window].compactMap { $0 }
-        windows[id] = nil
-        pendingAnchors[id] = nil
-        identities[id] = nil
-        refreshTitles(in: affectedWindows)
-    }
-
-    func updateIdentity(_ identity: NativeWindowTabIdentity, for id: UUID) {
-        identities[id] = identity
-        guard let window = windows[id]?.value else { return }
-        refreshTitles(in: window.tabGroup?.windows ?? [window])
-    }
-
-    private func groupIfPossible(childID: UUID) {
-        guard let anchorID = pendingAnchors[childID],
-              let child = windows[childID]?.value,
-              let anchor = windows[anchorID]?.value,
-              child !== anchor else { return }
-        pendingAnchors[childID] = nil
-        if anchor.tabGroup?.windows.contains(where: { $0 === child }) != true {
-            anchor.addTabbedWindow(child, ordered: .above)
-        }
-        anchor.tabGroup?.selectedWindow = child
-        refreshTitles(in: anchor.tabGroup?.windows ?? [anchor, child])
-        child.makeKeyAndOrderFront(nil)
-    }
-
-    private func refreshTitles(in groupedWindows: [NSWindow]) {
-        let members: [(id: UUID, window: NSWindow, identity: NativeWindowTabIdentity)] = windows
-            .compactMap { id, weakWindow in
-                guard let window = weakWindow.value,
-                      groupedWindows.contains(where: { $0 === window }),
-                      let identity = identities[id] else { return nil }
-                return (id, window, identity)
-            }
-        guard !members.isEmpty else { return }
-
-        let baseCounts = Dictionary(
-            grouping: members,
-            by: { normalizedTitle($0.identity.baseTitle) }
-        ).mapValues(\.count)
-        let triptychCandidates = Dictionary(
-            grouping: members,
-            by: { normalizedTitle(triptychCandidate(for: $0.identity)) }
-        ).mapValues(\.count)
-
-        for member in members {
-            let identity = member.identity
-            var title = identity.baseTitle
-            if identity.relativePath != nil,
-               baseCounts[normalizedTitle(identity.baseTitle), default: 0] > 1 {
-                let triptychCandidate = triptychCandidate(for: identity)
-                if triptychCandidates[normalizedTitle(triptychCandidate), default: 0] == 1 {
-                    title = triptychCandidate
-                } else if let relativePath = identity.relativePath {
-                    title = [identity.baseTitle, identity.triptychName, relativePath]
-                        .compactMap { value in
-                            guard let value, !value.isEmpty else { return nil }
-                            return value
-                        }
-                        .joined(separator: " — ")
-                }
-            }
-            member.window.title = title
-            member.window.tab.title = title
-            member.window.tab.toolTip = identity.toolTip
-            member.window.isDocumentEdited = identity.isDocumentEdited
-        }
-    }
-
-    private func triptychCandidate(for identity: NativeWindowTabIdentity) -> String {
-        guard let triptychName = identity.triptychName, !triptychName.isEmpty else {
-            return identity.baseTitle
-        }
-        return "\(identity.baseTitle) — \(triptychName)"
-    }
-
-    private func normalizedTitle(_ title: String) -> String {
-        title.folding(
-            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-            locale: .current
-        )
-    }
-}
-
 private struct WindowCloseGuard: NSViewRepresentable {
     @ObservedObject var appState: WindowModel
-    let presentation: ScholiumWindowPresentation
     let reduceMotion: Bool
     let nativeWindowID: UUID
-    let tabAnchorWindowID: UUID?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             appState: appState,
-            presentation: presentation,
             reduceMotion: reduceMotion,
-            nativeWindowID: nativeWindowID,
-            tabAnchorWindowID: tabAnchorWindowID
+            nativeWindowID: nativeWindowID
         )
     }
 
@@ -435,10 +591,8 @@ private struct WindowCloseGuard: NSViewRepresentable {
     func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
         context.coordinator.update(
             appState: appState,
-            presentation: presentation,
             reduceMotion: reduceMotion,
-            nativeWindowID: nativeWindowID,
-            tabAnchorWindowID: tabAnchorWindowID
+            nativeWindowID: nativeWindowID
         )
         if let window = nsView.window { context.coordinator.attach(to: window) }
     }
@@ -460,43 +614,33 @@ private struct WindowCloseGuard: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSWindowDelegate {
         var appState: WindowModel
-        private var presentation: ScholiumWindowPresentation
         private var reduceMotion: Bool
         private let nativeWindowID: UUID
-        private let tabAnchorWindowID: UUID?
         private weak var window: NSWindow?
         nonisolated(unsafe) private weak var previousDelegate: (any NSWindowDelegate)?
         private var closeIsAuthorized = false
         private var flushInFlight = false
-        private var appliedPresentation: ScholiumWindowPresentation?
         private var presentationGeneration: UInt64 = 0
+        private var workspaceToolbarController: ScholiumWorkspaceToolbarController?
 
         init(
             appState: WindowModel,
-            presentation: ScholiumWindowPresentation,
             reduceMotion: Bool,
-            nativeWindowID: UUID,
-            tabAnchorWindowID: UUID?
+            nativeWindowID: UUID
         ) {
             self.appState = appState
-            self.presentation = presentation
             self.reduceMotion = reduceMotion
             self.nativeWindowID = nativeWindowID
-            self.tabAnchorWindowID = tabAnchorWindowID
             super.init()
         }
 
         func update(
             appState: WindowModel,
-            presentation: ScholiumWindowPresentation,
             reduceMotion: Bool,
-            nativeWindowID: UUID,
-            tabAnchorWindowID: UUID?
+            nativeWindowID: UUID
         ) {
             precondition(nativeWindowID == self.nativeWindowID)
-            precondition(tabAnchorWindowID == self.tabAnchorWindowID)
             self.appState = appState
-            self.presentation = presentation
             self.reduceMotion = reduceMotion
             schedulePresentationUpdate()
         }
@@ -504,25 +648,23 @@ private struct WindowCloseGuard: NSViewRepresentable {
         func attach(to window: NSWindow) {
             if self.window === window, window.delegate === self {
                 schedulePresentationUpdate()
-                updateNativeDocumentIdentity()
+                installWorkspaceToolbarIfPossible()
                 return
             }
             detach()
             self.window = window
-            NativeWindowTabCoordinator.shared.register(
-                window,
-                id: nativeWindowID,
-                anchorWindowID: tabAnchorWindowID
-            )
             window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.styleMask.insert(.fullSizeContentView)
+            window.tabbingMode = .disallowed
+            applyWindowChrome(to: window)
             previousDelegate = window.delegate
             window.delegate = self
-            if ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] != nil,
-               let rawWidth = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_WINDOW_WIDTH"],
-               let requestedWidth = Double(rawWidth),
-               requestedWidth > 0 {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(workspaceSplitRegistryDidChange(_:)),
+                name: ScholiumWorkspaceSplitRegistry.didChangeNotification,
+                object: window
+            )
+            if let requestedWidth = ScholiumRuntimeIsolation.windowWidth() {
                 window.setContentSize(
                     NSSize(
                         width: requestedWidth,
@@ -531,20 +673,28 @@ private struct WindowCloseGuard: NSViewRepresentable {
                 )
             }
             applyPresentationIfNeeded()
-            updateNativeDocumentIdentity()
+            updateWindowWidth(from: window)
+            installWorkspaceToolbarIfPossible()
         }
 
         func detach() {
+            if let window {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: ScholiumWorkspaceSplitRegistry.didChangeNotification,
+                    object: window
+                )
+                if window.toolbar?.identifier
+                    == ScholiumWorkspaceToolbarController.toolbarIdentifier {
+                    window.toolbar = nil
+                }
+            }
+            workspaceToolbarController = nil
             if let window, window.delegate === self {
                 window.delegate = previousDelegate
             }
-            NativeWindowTabCoordinator.shared.unregister(
-                id: nativeWindowID,
-                window: window
-            )
             window = nil
             previousDelegate = nil
-            appliedPresentation = nil
         }
 
         private func schedulePresentationUpdate() {
@@ -558,150 +708,60 @@ private struct WindowCloseGuard: NSViewRepresentable {
 
         private func applyPresentationIfNeeded() {
             guard let window else { return }
-            updateNativeDocumentIdentity()
-            guard appliedPresentation != presentation else { return }
+            applyWindowChrome(to: window)
+            installWorkspaceToolbarIfPossible()
+            updateWindowWidth(from: window)
+        }
 
-            if presentation == .launching {
-                // Restoration decides whether this is a configured workspace
-                // or genuine first-run setup. Preserve the scene's normal or
-                // restored frame until that decision is known.
-                appliedPresentation = .launching
-                appState.windowWidth = window.contentLayoutRect.width
+        private func applyWindowChrome(to window: NSWindow) {
+            // AppKit keeps ownership of the standard window controls and
+            // content-layout guide. The stable opaque region backgrounds extend
+            // beneath the transparent titlebar in every root content state.
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
+        }
+
+        private func installWorkspaceToolbarIfPossible() {
+            guard let window else { return }
+            guard let splitViewController = ScholiumWorkspaceSplitRegistry.shared
+                .splitViewController(for: window)
+            else {
+                if window.toolbar?.identifier
+                    == ScholiumWorkspaceToolbarController.toolbarIdentifier {
+                    window.toolbar = nil
+                }
+                workspaceToolbarController = nil
                 return
             }
 
-            let previousPresentation = appliedPresentation
-            let targetSize = targetContentSize(for: presentation, window: window)
-            window.contentMinSize = presentation.minimumContentSize
-
-            if presentation == .setup {
-                appState.sidebarVisible = true
-                appState.setResearchInspectorVisible(false, animated: false)
-                appState.setNoteHistoryVisible(false, animated: false)
+            if let workspaceToolbarController,
+               workspaceToolbarController.controls(splitViewController) {
+                workspaceToolbarController.install(in: window)
+                return
             }
 
-            let targetFrame = frame(
-                forContentSize: targetSize,
-                presentation: presentation,
-                previousPresentation: previousPresentation,
-                window: window
+            let controller = ScholiumWorkspaceToolbarController(
+                appState: appState,
+                splitViewController: splitViewController
             )
-            appliedPresentation = presentation
-            if previousPresentation == .setup,
-               presentation == .workspace,
-               !reduceMotion {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.42
-                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    context.allowsImplicitAnimation = true
-                    window.animator().setFrame(targetFrame, display: true)
-                }
-            } else {
-                window.setFrame(targetFrame, display: true)
-            }
-            appState.windowWidth = targetSize.width
+            workspaceToolbarController = controller
+            controller.install(in: window)
         }
 
-        private func targetContentSize(
-            for presentation: ScholiumWindowPresentation,
-            window: NSWindow
-        ) -> NSSize {
-            let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
-                ?? NSSize(width: 1440, height: 900)
-            let maximumWidth = max(presentation.minimumContentSize.width, visibleSize.width)
-            let maximumHeight = max(presentation.minimumContentSize.height, visibleSize.height)
-
-            let preferred: NSSize
-            switch presentation {
-            case .launching:
-                preferred = window.contentLayoutRect.size
-            case .setup:
-                preferred = NSSize(
-                    width: ScholiumMetrics.Onboarding.preferredWidth,
-                    height: ScholiumMetrics.Onboarding.preferredHeight
-                )
-            case .workspace:
-                let current = window.contentLayoutRect.size
-                if (appliedPresentation == nil || appliedPresentation == .launching),
-                   current.width >= presentation.minimumContentSize.width,
-                   current.height >= presentation.minimumContentSize.height {
-                    preferred = current
-                } else {
-                    preferred = NSSize(
-                        width: ScholiumMetrics.Workspace.preferredWidth,
-                        height: ScholiumMetrics.Workspace.preferredHeight
-                    )
-                }
-            }
-
-            return NSSize(
-                width: min(maximumWidth, max(presentation.minimumContentSize.width, preferred.width)),
-                height: min(maximumHeight, max(presentation.minimumContentSize.height, preferred.height))
-            )
+        @objc
+        private func workspaceSplitRegistryDidChange(_ notification: Notification) {
+            guard let changedWindow = notification.object as? NSWindow,
+                  changedWindow === window
+            else { return }
+            installWorkspaceToolbarIfPossible()
         }
 
-        private func frame(
-            forContentSize contentSize: NSSize,
-            presentation: ScholiumWindowPresentation,
-            previousPresentation: ScholiumWindowPresentation?,
-            window: NSWindow
-        ) -> NSRect {
-            let oldFrame = window.frame
-            var target = window.frameRect(
-                forContentRect: NSRect(origin: .zero, size: contentSize)
-            )
-
-            guard let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame else {
-                target.origin = oldFrame.origin
-                return target
-            }
-
-            switch presentation {
-            case .launching:
-                target.origin = oldFrame.origin
-            case .setup:
-                // First-run setup alone uses the narrow leading-middle frame.
-                target.origin = NSPoint(
-                    x: visibleFrame.minX + target.width / 2,
-                    y: visibleFrame.midY - target.height / 2
-                )
-            case .workspace:
-                if previousPresentation == .setup {
-                    // Setup completion is the sole application-driven
-                    // expansion. Keep its leading edge stable as the normal
-                    // workspace appears.
-                    target.origin = NSPoint(
-                        x: oldFrame.minX,
-                        y: oldFrame.midY - target.height / 2
-                    )
-                } else {
-                    target.origin = NSPoint(
-                        x: oldFrame.minX,
-                        y: oldFrame.maxY - target.height
-                    )
-                }
-            }
-
-            if target.maxX > visibleFrame.maxX {
-                target.origin.x = visibleFrame.maxX - target.width
-            }
-            if target.minX < visibleFrame.minX {
-                target.origin.x = visibleFrame.minX
-            }
-            if target.minY < visibleFrame.minY {
-                target.origin.y = visibleFrame.minY
-            }
-            if target.maxY > visibleFrame.maxY {
-                target.origin.y = visibleFrame.maxY - target.height
-            }
-            return target
-        }
-
-        private func updateNativeDocumentIdentity() {
-            NativeWindowTabCoordinator.shared.updateIdentity(
-                appState.nativeTabIdentity,
-                for: nativeWindowID
-            )
+        private func updateWindowWidth(from window: NSWindow) {
+            let width = window.contentLayoutRect.width
+            guard abs(appState.windowWidth - width) > 0.5 else { return }
+            appState.windowWidth = width
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -729,6 +789,15 @@ private struct WindowCloseGuard: NSViewRepresentable {
             }
             return false
         }
+
+        func windowDidResize(_ notification: Notification) {
+            if let resizedWindow = notification.object as? NSWindow,
+               resizedWindow === window {
+                updateWindowWidth(from: resizedWindow)
+            }
+            previousDelegate?.windowDidResize?(notification)
+        }
+
 
         override func responds(to selector: Selector!) -> Bool {
             super.responds(to: selector) || previousDelegate?.responds(to: selector) == true
@@ -842,11 +911,8 @@ private struct ScholiumCommands: Commands {
         CommandGroup(after: .newItem) {
             Button("New Triptych…") {
                 openWindow(
-                    id: "scholium-main",
-                    value: TriptychWindowRoute(
-                        triptychID: UUID(),
-                        createsTriptych: true
-                    )
+                    id: "scholium-bootstrap",
+                    value: BootstrapWindowRoute(purpose: .newTriptych)
                 )
             }
             Menu("Open Triptych") {
@@ -869,7 +935,7 @@ private struct ScholiumCommands: Commands {
             Divider()
             Button("Open in New Tab") {
                 guard let reference = appState?.currentDocumentDescriptor?.reference else { return }
-                appState?.requestOpenNote(reference, disposition: .newNativeTab)
+                appState?.requestOpenNote(reference, disposition: .newTab)
             }
             .disabled(appState?.currentDocumentDescriptor == nil)
             Divider()
@@ -885,6 +951,15 @@ private struct ScholiumCommands: Commands {
                 appState?.noteLifecycleRequest = .move(target)
             }
             .disabled(appState?.canEditCurrentNote != true || appState?.currentNoteIdentityIsResolved != true)
+            Divider()
+            Button("Create Checkpoint…") { appState?.showCreateCheckpoint = true }
+                .disabled(appState?.workspaceAssignment == nil)
+            Button("Restore from Checkpoint…") { appState?.showCheckpointBrowser = true }
+                .disabled(appState?.workspaceAssignment == nil)
+            Button("Reveal Checkpoints in Finder") { appState?.revealCheckpointsInFinder() }
+                .disabled(appState?.workspaceAssignment == nil)
+            Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
+                .disabled(appState?.vaultConfig == nil)
         }
         CommandGroup(after: .pasteboard) {
             Button("Paste as Markdown") {
@@ -900,11 +975,8 @@ private struct ScholiumCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: [.command])
             .disabled(searchActions == nil || appState?.currentNote == nil)
-            Button("Search…") {
-                searchActions?.begin(.general)
-            }
-            .keyboardShortcut("f", modifiers: [.command, .shift])
-            .disabled(searchActions == nil)
+            Button("Edit Properties…") { appState?.showFrontmatterEditor = true }
+                .disabled(appState?.canEditCurrentNote != true)
         }
         CommandGroup(after: .textFormatting) {
             Divider()
@@ -1022,9 +1094,20 @@ private struct ScholiumCommands: Commands {
         }
         CommandGroup(after: .sidebar) {
             Divider()
-            Button(appState?.backlinksVisible == true ? "Hide Research Inspector" : "Show Research Inspector") {
+            Button("Search…") {
+                searchActions?.begin(.general)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .disabled(searchActions == nil)
+            Button(
+                ScholiumL10n.dynamicString(
+                    appState?.backlinksVisible == true
+                        ? "Hide Research Inspector"
+                        : "Show Research Inspector"
+                )
+            ) {
                 guard let appState else { return }
-                appState.setResearchInspectorVisible(!appState.backlinksVisible, animated: false)
+                appState.setResearchInspectorVisible(!appState.backlinksVisible)
             }
             .keyboardShortcut("b", modifiers: [.command, .option])
             .disabled(appState?.currentNote == nil)
@@ -1061,19 +1144,13 @@ private struct ScholiumCommands: Commands {
             }
         }
         CommandMenu("Research") {
-            Button("Attention…") { appState?.showAttentionQueues = true }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-            Divider()
             if let role = appState?.currentResearchFunctionTarget?.role {
                 if role == .analysis || role == .topic {
                     Button("Dialogue") { researchFunctionActions?.open(.dialogue) }
-                        .keyboardShortcut("d", modifiers: [.command, .shift])
+                        .keyboardShortcut("r", modifiers: [.command])
                         .disabled(!researchFunctionIsAvailable(.dialogue))
                     Button("Develop") { researchFunctionActions?.open(.develop) }
                         .disabled(!researchFunctionIsAvailable(.develop))
-                    Button("Review") { researchFunctionActions?.open(.review) }
-                        .keyboardShortcut("r", modifiers: [.command])
-                        .disabled(!researchFunctionIsAvailable(.review))
                     Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
                         .disabled(!researchFunctionIsAvailable(.fidelity))
                 } else {
@@ -1092,21 +1169,10 @@ private struct ScholiumCommands: Commands {
                 }
             }
             Divider()
-            Button("Create Checkpoint…") { appState?.showCreateCheckpoint = true }
-            Button("Restore from Checkpoint…") { appState?.showCheckpointBrowser = true }
-            Button("Reveal Checkpoints in Finder") { appState?.revealCheckpointsInFinder() }
-            Divider()
-            SettingsLink { Label("Manage Triptychs…", systemImage: "folder.badge.gearshape") }
-            Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
-                .disabled(appState?.vaultConfig == nil)
-            Divider()
-            Button(isCurrentDocumentInReadMode ? "Edit in Live Preview" : "Read") {
-                appState?.requestDocumentMode(isCurrentDocumentInReadMode ? .livePreview : .read)
+            Button("Show Research Record") {
+                openWindow(id: "scholium-research-record")
             }
-                .keyboardShortcut("e", modifiers: [.command])
-                .disabled(appState?.canEditCurrentNote != true)
-            Button("Edit Properties…") { appState?.showFrontmatterEditor = true }
-                .disabled(appState?.canEditCurrentNote != true)
+            .disabled(appState?.currentNote == nil)
         }
         #if DEBUG
         if qaEditorFaultsAreEnabled {
@@ -1114,7 +1180,7 @@ private struct ScholiumCommands: Commands {
                 Button("Simulate Editor Process Termination") {
                     guard let documentID = appState?.currentNote?.relativePath else { return }
                     DistributedNotificationCenter.default().postNotificationName(
-                        Notification.Name("com.kbmanager.qa.simulate-editor-process-termination"),
+                        Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
                         object: nil,
                         userInfo: ["documentID": documentID],
                         deliverImmediately: true
@@ -1129,7 +1195,7 @@ private struct ScholiumCommands: Commands {
 
     #if DEBUG
     private var qaEditorFaultsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.kbmanager.qa"
+        Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
     }
     #endif
@@ -1178,11 +1244,6 @@ private struct ScholiumCommands: Commands {
         return "\(assignment.triptych.name) — \(parent)"
     }
 
-    private var isCurrentDocumentInReadMode: Bool {
-        guard let appState, let path = appState.currentNote?.relativePath else { return true }
-        return appState.presentationMode(for: path) == .read
-    }
-
 }
 
 // MARK: - App State
@@ -1193,7 +1254,7 @@ enum LayoutMode: String, Equatable, Sendable {
     case compact
 
     init(windowWidth: CGFloat) {
-        if windowWidth >= 1200 {
+        if windowWidth >= ScholiumMetrics.Workspace.wideLayoutThreshold {
             self = .wide
         } else if windowWidth >= 980 {
             self = .medium
@@ -1241,7 +1302,7 @@ final class WindowModel: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .staleEditorRegistration(let expected, let registered):
-                "Scholium kept the document open because the active editor changed from \(registered) to \(expected) before it could be saved."
+                String(localized: "Scholium kept the document open because the active editor changed from \(registered) to \(expected) before it could be saved.", table: "Localizable", bundle: .module)
             }
         }
     }
@@ -1253,15 +1314,20 @@ final class WindowModel: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .noteUnavailable(let path):
-                "The visited note '\(path)' is no longer available. Scholium kept the current document open."
+                String(localized: "The visited note '\(path)' is no longer available. Scholium kept the current document open.", table: "Localizable", bundle: .module)
             case .vaultUnavailable(let name):
-                "The \(name) vault is not available in this Triptych. Scholium kept the current document open."
+                String(localized: "The \(name) vault is not available in this Triptych. Scholium kept the current document open.", table: "Localizable", bundle: .module)
             }
         }
     }
+
+    enum DocumentTabActivation {
+        case replaceSelectedTab
+        case appendTab
+        case preserveTabMembership
+    }
     private(set) var windowSessionID = UUID()
     let nativeWindowID: UUID
-    let requestedTabAnchorWindowID: UUID?
 
     struct Toast: Equatable {
         enum Kind: Equatable {
@@ -1301,13 +1367,14 @@ final class WindowModel: ObservableObject {
     @Published var vaultConfig: VaultConfig?
     @Published var currentRegisteredVault: RegisteredVault?
     @Published var currentVaultRole: VaultRole = .other
-    @Published var notes: [WindowDocumentLocation] = []
-    @Published private(set) var lifecycleMutationGeneration: UInt64 = 0
+    @Published var notes: [WindowDocumentLocation] = [] {
+        didSet {
+            availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: notes)
+        }
+    }
+    private(set) var availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: [])
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published var sidebarVisible = true
-    // Keep the document primary on a fresh window. The trailing inspector is
-    // always one toolbar/menu action away and restores only when a window
-    // explicitly persisted it as visible.
     @Published var windowWidth: CGFloat = 1380
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var toastMessage: Toast?
@@ -1319,27 +1386,12 @@ final class WindowModel: ObservableObject {
     @Published var allTags: [String] = []
     @Published var savedSearches: [SavedSearch] = []
     @Published var documentTextScale: Double = 1.0
-    @Published var pendingSourceLine: Int?
     @Published var documentRevisions: [String: DocumentFingerprint] = [:]
-    @Published var lastSaveError: String?
-    @Published var changedSinceReviewPaths: Set<String> = []
-    @Published var requestPresentationMode: NotePresentationMode?
-    @Published var pendingCommentSelection: MarkdownReviewSelection?
-    @Published var focusedResearcherCommentID: UUID?
-    @Published var humanReviewRecords: [String: HumanReviewRecord] = [:]
-    @Published private(set) var humanReviewRecordsByNoteID: [UUID: HumanReviewRecord] = [:]
-    @Published var noteIdentityByPath: [String: UUID] = [:]
-    @Published var identityAmbiguities: [NoteIdentityAmbiguity] = []
-    @Published var pendingIdentityRebindings: [NoteIdentityPendingRebinding] = []
-    @Published var identityMigrationFailures: [NoteIdentityMigrationFailure] = []
-    @Published var isResolvingIdentity = false
-    @Published var identityResolutionError: String?
     @Published var triptychSettings = TriptychSettings()
-    @Published var dialogueInitialNotes: Set<VaultQualifiedNoteID> = []
-    @Published var checkpointListingError: String?
-    @Published var workspaceAssignment: ThreeVaultWorkspaceAssignment?
+    @Published var workspaceAssignment: TriptychAssignment?
     @Published var registeredTriptychs: [TriptychAssignment] = []
     @Published var workspaceRecoveryMessage: String?
+    @Published var workspaceAccessRecovery: WorkspaceAccessRecovery?
     @Published var workspaceCatalog: WorkspaceCatalogSnapshot?
     @Published var isRefreshingWorkspaceCatalog = false
     @Published var refreshStatusText: String?
@@ -1347,22 +1399,26 @@ final class WindowModel: ObservableObject {
     @Published var workspaceCatalogError: String?
     @Published private(set) var workspaceVaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
     @Published var registeredVaults: [RegisteredVault] = []
-    @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
-    @Published var transactionRecoveryError: String?
     @Published var windowSessionPersistenceError: String?
     let presentationRouter = WindowPresentationRouter()
-    lazy var discoveryController = DiscoveryController { [weak self] intent in
+    private let peripheralPresentation = WindowPeripheralPresentationState()
+    lazy var discoveryController = DiscoveryController(
+        peripheralPresentation: peripheralPresentation
+    ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
     lazy var documentController = DocumentController { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
-    lazy var researchController = ResearchController { [weak self] intent in
+    let documentTabController = DocumentTabController()
+    lazy var researchController = ResearchController(
+        peripheralPresentation: peripheralPresentation
+    ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
 
-    // Compatibility projections while Library leaves still consume WindowModel
-    // values. DiscoveryController is the sole mutable owner.
+    // Window-level projections for Library leaves. DiscoveryController remains
+    // the sole mutable owner.
     var noteLocationScope: NoteLocationScope {
         get { discoveryController.library.locationScope }
         set { discoveryController.selectLocationScope(newValue) }
@@ -1460,30 +1516,9 @@ final class WindowModel: ObservableObject {
         set { researchController.showResearchInspector(newValue) }
     }
 
-    var noteHistoryVisible: Bool {
-        get { researchController.inspector.showsNoteHistory }
-        set { researchController.showNoteHistory(newValue) }
-    }
-
     var advancedSearchState: SearchWorkspaceState {
         get { discoveryController.search.criteria }
         set { discoveryController.replaceSearchCriteria(newValue) }
-    }
-
-    var advancedSearchHits: [SearchHit] {
-        discoveryController.search.hits
-    }
-
-    var relatedSearchItems: [RelatedSearchItem] {
-        discoveryController.search.relatedItems
-    }
-
-    var advancedSearchError: String? {
-        discoveryController.search.errorMessage
-    }
-
-    var isSearchRunning: Bool {
-        discoveryController.search.isRunning
     }
 
     var noteLifecycleRequest: NoteLifecycleRequest? {
@@ -1587,33 +1622,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    var showWorkspaceSetup: Bool {
-        get {
-            guard case .workspaceSetup = presentationRouter.sheet else { return false }
-            return true
-        }
-        set {
-            presentationRouter.setWorkspaceSetupPresented(
-                newValue,
-                rootSetupOwnsPresentation: vaultConfig == nil
-            )
-        }
-    }
-
-    var showAttentionQueues: Bool {
-        get {
-            guard case .attention = presentationRouter.sheet else { return false }
-            return true
-        }
-        set {
-            if newValue {
-                presentationRouter.present(.attention)
-            } else {
-                presentationRouter.dismissSheet(if: "attention")
-            }
-        }
-    }
-
     var showTransactionRecovery: Bool {
         get {
             guard case .transactionRecovery = presentationRouter.sheet else { return false }
@@ -1632,11 +1640,10 @@ final class WindowModel: ObservableObject {
     private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities?
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
+    let agentApplicationHandoff: AgentApplicationHandoffController
     private let requestedTriptychID: UUID?
-    private let createsTriptych: Bool
     private let requestedInitialDocument: VaultNoteReference?
     private var didOpenRequestedInitialDocument = false
-    private var windowRouteHandler: ((TriptychWindowRoute) -> Void)?
     /// Published only after every shared Triptych service has been installed.
     /// Settings views use this readiness boundary instead of racing the earlier
     /// `workspaceAssignment` publication.
@@ -1664,20 +1671,17 @@ final class WindowModel: ObservableObject {
         workspaceStore: WorkspaceStore,
         nativeWindowID: UUID? = nil,
         requestedTriptychID: UUID? = nil,
-        createsTriptych: Bool = false,
-        requestedInitialDocument: VaultNoteReference? = nil,
-        requestedTabAnchorWindowID: UUID? = nil
+        requestedInitialDocument: VaultNoteReference? = nil
     ) {
         let resolvedWindowID = nativeWindowID ?? UUID()
         self.nativeWindowID = resolvedWindowID
         windowSessionID = resolvedWindowID
-        self.requestedTabAnchorWindowID = requestedTabAnchorWindowID
         self.workspaceStore = workspaceStore
         self.requestedTriptychID = requestedTriptychID
-        self.createsTriptych = createsTriptych
         self.requestedInitialDocument = requestedInitialDocument
         cssSnippetStore = workspaceStore.cssSnippetStore
         zoteroBridge = workspaceStore.zoteroBridge
+        agentApplicationHandoff = workspaceStore.agentApplicationHandoff
         presentationRouter.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
@@ -1688,6 +1692,9 @@ final class WindowModel: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
         documentController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
+        documentTabController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
         workspaceStore.$latestWorkspaceActivation
@@ -1738,6 +1745,106 @@ final class WindowModel: ObservableObject {
     }
 
     // MARK: Computed Properties
+    private(set) var lifecycleMutationGeneration: UInt64 {
+        get { documentController.lifecycleMutationGeneration }
+        set { documentController.lifecycleMutationGeneration = newValue }
+    }
+
+    private(set) var researchRecordRequestGeneration: UInt64 {
+        get { researchController.researchRecordRequestGeneration }
+        set { researchController.researchRecordRequestGeneration = newValue }
+    }
+
+    var pendingSourceLine: Int? {
+        get { documentController.pendingSourceLine }
+        set { documentController.pendingSourceLine = newValue }
+    }
+
+    var lastSaveError: String? {
+        get { documentController.lastSaveError }
+        set { documentController.setSaveError(newValue) }
+    }
+
+    var changedSinceReviewPaths: Set<String> {
+        get { documentController.changedSinceReviewPaths }
+        set { documentController.changedSinceReviewPaths = newValue }
+    }
+
+    var requestPresentationMode: NotePresentationMode? {
+        get { documentController.requestedPresentationMode }
+        set { documentController.requestedPresentationMode = newValue }
+    }
+
+    var pendingCommentSelection: MarkdownReviewSelection? {
+        get { documentController.pendingCommentSelection }
+        set { documentController.pendingCommentSelection = newValue }
+    }
+
+    var focusedResearcherCommentID: UUID? {
+        get { documentController.focusedResearcherCommentID }
+        set { documentController.focusedResearcherCommentID = newValue }
+    }
+
+    var humanReviewRecords: [String: HumanReviewRecord] {
+        get { documentController.humanReviewRecords }
+        set { documentController.humanReviewRecords = newValue }
+    }
+
+    private(set) var humanReviewRecordsByNoteID: [UUID: HumanReviewRecord] {
+        get { documentController.humanReviewRecordsByNoteID }
+        set { documentController.humanReviewRecordsByNoteID = newValue }
+    }
+
+    var noteIdentityByPath: [String: UUID] {
+        get { documentController.noteIdentityByPath }
+        set { documentController.noteIdentityByPath = newValue }
+    }
+
+    var identityAmbiguities: [NoteIdentityAmbiguity] {
+        get { documentController.identityAmbiguities }
+        set { documentController.identityAmbiguities = newValue }
+    }
+
+    var pendingIdentityRebindings: [NoteIdentityPendingRebinding] {
+        get { documentController.pendingIdentityRebindings }
+        set { documentController.pendingIdentityRebindings = newValue }
+    }
+
+    var identityMigrationFailures: [NoteIdentityMigrationFailure] {
+        get { documentController.identityMigrationFailures }
+        set { documentController.identityMigrationFailures = newValue }
+    }
+
+    var isResolvingIdentity: Bool {
+        get { documentController.isResolvingIdentity }
+        set { documentController.isResolvingIdentity = newValue }
+    }
+
+    var identityResolutionError: String? {
+        get { documentController.identityResolutionError }
+        set { documentController.identityResolutionError = newValue }
+    }
+
+    var dialogueInitialNotes: Set<VaultQualifiedNoteID> {
+        get { researchController.dialogueInitialNotes }
+        set { researchController.dialogueInitialNotes = newValue }
+    }
+
+    var checkpointListingError: String? {
+        get { researchController.checkpointListingError }
+        set { researchController.checkpointListingError = newValue }
+    }
+
+    var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] {
+        get { researchController.transactionRecoveryRecords }
+        set { researchController.transactionRecoveryRecords = newValue }
+    }
+
+    var transactionRecoveryError: String? {
+        get { researchController.transactionRecoveryError }
+        set { researchController.transactionRecoveryError = newValue }
+    }
+
     var selectedDocumentPath: String? {
         documentController.selectedDocumentPath
     }
@@ -1833,35 +1940,6 @@ final class WindowModel: ObservableObject {
         return record.latestReview != nil && record.review(for: revision) == nil
     }
 
-    var nativeTabTitle: String {
-        currentNote?.title
-            ?? currentNote?.displayName
-            ?? workspaceAssignment?.triptych.name
-            ?? "Scholium"
-    }
-
-    var nativeTabToolTip: String {
-        guard let currentNote, let triptychName = workspaceAssignment?.triptych.name else {
-            return workspaceAssignment?.triptych.name ?? "Scholium"
-        }
-        let title = currentNote.title ?? currentNote.displayName
-        return "\(title) — \(triptychName) — \(currentNote.relativePath)"
-    }
-
-    var nativeTabIdentity: NativeWindowTabIdentity {
-        NativeWindowTabIdentity(
-            baseTitle: nativeTabTitle,
-            triptychName: workspaceAssignment?.triptych.name,
-            relativePath: currentNote?.relativePath,
-            toolTip: nativeTabToolTip,
-            isDocumentEdited: isCurrentDocumentEdited
-        )
-    }
-
-    var isCurrentDocumentEdited: Bool {
-        documentController.isActiveDocumentEdited
-    }
-
     var currentResearchFunctionTarget: ResearchFunctionTarget? {
         guard let descriptor = currentDocumentDescriptor,
               let note = currentNote,
@@ -1904,7 +1982,7 @@ final class WindowModel: ObservableObject {
         let functions: [ResearchFunctionID]
         switch target.role {
         case .analysis, .topic:
-            functions = [.dialogue, .develop, .review, .fidelity]
+            functions = [.dialogue, .develop, .fidelity]
         case .work:
             functions = [.critique, .revise, .dialogue, .fidelity, .manuscript]
         }
@@ -1940,7 +2018,7 @@ final class WindowModel: ObservableObject {
         )
         if let target,
            let presentationID = researchController.functions.presentationID,
-           researchController.functions.activeFunction == .review,
+           researchController.functions.activeFunction == .dialogue,
            presentationRouter.suspendsResearchFunction(presentationID: presentationID) {
             researchController.functions.resumeHumanReviewDraft(
                 presentationID: presentationID,
@@ -1967,9 +2045,6 @@ final class WindowModel: ObservableObject {
     }
 
     var layoutMode: LayoutMode { LayoutMode(windowWidth: windowWidth) }
-    var usesCompactWindowLayout: Bool { layoutMode == .compact }
-    var usesWideWindowLayout: Bool { layoutMode == .wide }
-
     var canEditCurrentNote: Bool {
         if case .unclassified = documentController.selectedDocument {
             return currentNote != nil
@@ -1984,16 +2059,12 @@ final class WindowModel: ObservableObject {
         currentDocumentDescriptor != nil
     }
 
-    var canHumanReviewCurrentNote: Bool {
-        currentDocumentVaultRole.allowsHumanReview && currentDocumentDescriptor != nil
-    }
-
     var canCommentCurrentNote: Bool {
         guard currentDocumentDescriptor != nil else { return false }
         switch currentDocumentVaultRole {
         case .sourceCorpus, .topicKnowledge:
             return true
-        case .dissertationControl, .draftProject:
+        case .draftProject:
             // Critique source remains read-only in Scholium, but the
             // researcher may attach app-owned comments to its rendered text.
             return true
@@ -2261,8 +2332,8 @@ final class WindowModel: ObservableObject {
     private func handleWindowIntent(_ intent: WindowIntent) {
         switch intent {
         case .openDocument(let route):
-            if route.disposition == .newNativeTab {
-                openInNewNativeTab(route.reference)
+            if route.disposition == .newTab {
+                requestOpenNote(route.reference, disposition: .newTab)
                 return
             }
             Task { [weak self] in
@@ -2317,9 +2388,9 @@ final class WindowModel: ObservableObject {
         _ path: String,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
-        if disposition == .newNativeTab {
+        if disposition == .newTab {
             guard let reference = documentReference(for: path) else { return }
-            openInNewNativeTab(reference)
+            requestOpenNote(reference, disposition: .newTab)
             return
         }
         enqueueDocumentTransition { [weak self] in
@@ -2339,7 +2410,7 @@ final class WindowModel: ObservableObject {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == snapshot.id.vaultID
         }) else {
-            showToast("The selected vault is no longer available.", kind: .warning)
+            showToast(String(localized: "The selected vault is no longer available.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         let reference = VaultNoteReference(
@@ -2356,24 +2427,16 @@ final class WindowModel: ObservableObject {
         _ reference: VaultNoteReference,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
-        if disposition == .newNativeTab {
-            openInNewNativeTab(reference)
+        if disposition == .newTab {
+            openInNewTab(reference)
             return
         }
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            if self.currentRegisteredVault?.id != reference.vaultID {
-                guard let vault = self.workspaceAssignment?.vaults.values.first(where: {
-                    $0.id == reference.vaultID
-                }) else {
-                    throw WindowNavigationError.vaultUnavailable(reference.vaultName)
-                }
-                try await self.browseRegisteredVault(vault)
-            }
-            guard self.notes.contains(where: { $0.relativePath == reference.relativePath }) else {
-                throw WindowNavigationError.noteUnavailable(reference.relativePath)
-            }
-            self.openNote(reference.relativePath)
+            try self.activateWorkspaceReference(
+                reference,
+                tabActivation: .replaceSelectedTab
+            )
         }
     }
 
@@ -2459,7 +2522,7 @@ final class WindowModel: ObservableObject {
 
     func requestDocumentMode(_ mode: NotePresentationMode) {
         guard mode == .read || canEditCurrentNote else {
-            showToast("This note is read-only in Scholium.", kind: .information)
+            showToast(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         if mode == .read {
@@ -2468,13 +2531,6 @@ final class WindowModel: ObservableObject {
             }
         } else {
             requestPresentationMode = mode
-        }
-    }
-
-    func requestHumanReview() {
-        guard canHumanReviewCurrentNote, let path = currentNote?.relativePath else { return }
-        enqueueDocumentTransition { [weak self] in
-            self?.reviewNote(at: path)
         }
     }
 
@@ -2493,7 +2549,7 @@ final class WindowModel: ObservableObject {
             self.focusedResearcherCommentID = focusedCommentID
             let function: ResearchFunctionID = self.currentDocumentVaultRole.allowsCritique
                 ? .critique
-                : .review
+                : .dialogue
             self.openResearchFunction(
                 function,
                 focusCommentComposer: focusedCommentID == nil,
@@ -2554,7 +2610,9 @@ final class WindowModel: ObservableObject {
                     selection: capturedSelection,
                     presentationID: presentationID
                 )
-                if function == .review {
+                if function == .review
+                    || (function == .dialogue
+                        && (target.role == .analysis || target.role == .topic)) {
                     self.researchController.functions.beginHumanReviewDraft(
                         revision: target.fingerprint,
                         record: self.currentDocumentReviewRecord
@@ -2727,18 +2785,6 @@ final class WindowModel: ObservableObject {
         Set(notesInCurrentScope.compactMap(\.year)).sorted(by: >)
     }
 
-    var availablePropertyKeys: [String] {
-        availablePropertyFilterOptions.keys
-    }
-
-    func availablePropertyValues(for key: String) -> [String] {
-        availablePropertyFilterOptions.valuesByKey[key] ?? []
-    }
-
-    var availablePropertyFilterOptions: WindowPropertyFilterOptions {
-        WindowPropertyFilterOptions(notes: notesInCurrentScope)
-    }
-
     var activeMetadataFilterCount: Int {
         [
             selectedStatus != nil,
@@ -2765,10 +2811,11 @@ final class WindowModel: ObservableObject {
 
     // MARK: Actions
 
-    func installWindowRouteHandler(
-        _ handler: ((TriptychWindowRoute) -> Void)?
-    ) {
-        windowRouteHandler = handler
+    /// Changes the per-window Library presentation only in response to an
+    /// explicit researcher action or restoration of that earlier choice.
+    func setLibraryVisible(_ visible: Bool) {
+        guard sidebarVisible != visible else { return }
+        sidebarVisible = visible
     }
 
     func openRequestedInitialDocumentIfNeeded() {
@@ -2779,70 +2826,62 @@ final class WindowModel: ObservableObject {
         requestOpenNote(requestedInitialDocument, disposition: .replaceCurrent)
     }
 
-    private func openInNewNativeTab(_ reference: VaultNoteReference) {
-        guard let windowRouteHandler else {
-            showToast("Scholium could not open a new native tab.", kind: .error)
+    private func openInNewTab(_ reference: VaultNoteReference) {
+        enqueueDocumentTransition { [weak self] in
+            guard let self else { return }
+            try self.activateWorkspaceReference(
+                reference,
+                tabActivation: .appendTab
+            )
+        }
+    }
+
+    func selectDocumentTab(withID id: UUID) {
+        guard documentTabController.selectedTabID != id,
+              let tab = documentTabController.tabs.first(where: { $0.id == id }) else {
             return
         }
-        windowRouteHandler(TriptychWindowRoute(
-            triptychID: workspaceAssignment?.id,
-            initialDocument: reference,
-            tabAnchorWindowID: nativeWindowID
-        ))
-    }
-
-    /// Updates the inspector preference. Presentation-binding callbacks and
-    /// adaptive layout changes must opt out of animation because AppKit can
-    /// invoke them while an NSWindow constraint pass is already active.
-    func setResearchInspectorVisible(_ visible: Bool, animated: Bool = true) {
-        guard visible != backlinksVisible || (visible && noteHistoryVisible) else { return }
-        let update = {
-            if visible { self.noteHistoryVisible = false }
-            if visible != self.backlinksVisible {
-                self.backlinksVisible = visible
-            }
-            if visible, !self.usesWideWindowLayout, self.currentNote != nil {
-                self.presentationRouter.present(.adaptiveContext)
-            } else if !visible,
-                      case .adaptiveContext = self.presentationRouter.sheet,
-                      !self.noteHistoryVisible {
-                self.presentationRouter.dismissSheet()
-            }
-        }
-        if !animated || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction, update)
-        } else {
-            withAnimation(.easeInOut(duration: 0.22), update)
+        enqueueDocumentTransition { [weak self] in
+            guard let self else { return }
+            try self.activateDocument(
+                tab.document,
+                tabActivation: .preserveTabMembership
+            )
+            self.documentTabController.selectTab(withID: id)
         }
     }
 
-    /// Note History and the Research inspector share one trailing region.
-    /// Keeping the switch here preserves per-window ownership and prevents
-    /// two contextual panels from competing for the same document width.
-    func setNoteHistoryVisible(_ visible: Bool, animated: Bool = true) {
-        guard visible != noteHistoryVisible || (visible && backlinksVisible) else { return }
-        let update = {
-            if visible { self.backlinksVisible = false }
-            if visible != self.noteHistoryVisible {
-                self.noteHistoryVisible = visible
-            }
-            if visible, !self.usesWideWindowLayout, self.currentNote != nil {
-                self.presentationRouter.present(.adaptiveContext)
-            } else if !visible,
-                      case .adaptiveContext = self.presentationRouter.sheet,
-                      !self.backlinksVisible {
-                self.presentationRouter.dismissSheet()
-            }
+    func closeDocumentTab(withID id: UUID) {
+        guard let plan = documentTabController.closePlan(forTabWithID: id) else {
+            return
         }
-        if !animated || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction, update)
-        } else {
-            withAnimation(.easeInOut(duration: 0.22), update)
+        guard documentTabController.selectedTabID == id else {
+            documentTabController.apply(plan)
+            return
         }
+        enqueueDocumentTransition { [weak self] in
+            guard let self else { return }
+            if let documentToActivate = plan.documentToActivate {
+                try self.activateDocument(
+                    documentToActivate,
+                    tabActivation: .preserveTabMembership
+                )
+            } else {
+                self.documentController.clearSelectionAfterClosingLastTab()
+            }
+            self.documentTabController.apply(plan)
+        }
+    }
+
+    /// Updates the researcher-requested Inspector visibility. The native split
+    /// controller owns the resulting collapse animation and geometry.
+    func setResearchInspectorVisible(_ visible: Bool) {
+        guard visible != backlinksVisible else { return }
+        backlinksVisible = visible
+    }
+
+    func requestResearchRecord() {
+        researchRecordRequestGeneration &+= 1
     }
 
     func presentationMode(for path: String) -> NotePresentationMode {
@@ -2888,10 +2927,17 @@ final class WindowModel: ObservableObject {
         do {
             stored = try await workspaceStore.windowSession(id: id)
         } catch {
-            showToast("The saved window layout could not be restored. Scholium opened a clean window instead.", kind: .warning)
+            showToast(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
             stored = nil
         }
         guard let stored else {
+            // New configured windows keep the stable three-region shell.
+            // Visibility changes only after a direct researcher action.
+            sidebarVisible = true
+            researchController.restoreInspector(
+                modeRawValue: nil,
+                isVisible: nil
+            )
             await restoreWorkspaceIfNeeded()
             return
         }
@@ -2902,7 +2948,6 @@ final class WindowModel: ObservableObject {
         )
         guard let restoredAssignment = workspaceAssignment else {
             attemptedVaultRestore = true
-            showWorkspaceSetup = true
             return
         }
         do {
@@ -2918,7 +2963,6 @@ final class WindowModel: ObservableObject {
             }
         } catch {
             vaultError = error.localizedDescription
-            showWorkspaceSetup = true
             return
         }
 
@@ -2929,14 +2973,19 @@ final class WindowModel: ObservableObject {
             .map { Set($0.documents.map(\.id.relativePath)) }
             ?? Set(notes.map(\.relativePath))
         let restoredPresentation = stored.normalized(availablePaths: restoredDocumentPaths)
-        inspectorModeRaw = restoredPresentation.inspectorMode
-        // A compact or medium window keeps the inspector available through its
-        // toolbar/menu route, but must not restore it as an immediately blocking
-        // sheet over the document. Wide windows can safely restore the trailing
-        // inspector in place.
-        backlinksVisible = usesWideWindowLayout && (restoredPresentation.inspectorVisible ?? false)
+        let hasRestorableDocument = requestedInitialDocument != nil
+            || restoredPresentation.selectedDocument.map {
+                restoredDocumentPaths.contains($0.relativePath)
+            } == true
+        sidebarVisible = hasRestorableDocument
+            ? (restoredPresentation.libraryVisible ?? true)
+            : true
+        researchController.restoreInspector(
+            modeRawValue: restoredPresentation.inspectorMode,
+            isVisible: restoredPresentation.inspectorVisible
+        )
         discoveryController.replaceSearchCriteria(SearchWorkspaceState(
-            scope: restoredPresentation.searchState.scope.canonical
+            scope: restoredPresentation.searchState.scope
         ))
         documentTextScale = min(2.0, max(1.0, restoredPresentation.documentTextScale ?? 1.0))
         documentController.restorePresentationState(
@@ -3015,6 +3064,7 @@ final class WindowModel: ObservableObject {
             selectedDocument: selectedDocument,
             documentModes: documentPresentation.modes,
             scrollPositions: documentPresentation.scrollPositions,
+            libraryVisible: sidebarVisible,
             inspectorMode: inspectorModeRaw,
             inspectorVisible: backlinksVisible,
             contentDestination: .document,
@@ -3028,8 +3078,9 @@ final class WindowModel: ObservableObject {
             $workspaceAssignment.map { _ in () }.eraseToAnyPublisher(),
             $currentRegisteredVault.map { _ in () }.eraseToAnyPublisher(),
             documentController.$selectedDocument.map { _ in () }.eraseToAnyPublisher(),
+            $sidebarVisible.map { _ in () }.eraseToAnyPublisher(),
             $documentTextScale.map { _ in () }.eraseToAnyPublisher(),
-            researchController.$inspector.map { _ in () }.eraseToAnyPublisher(),
+            peripheralPresentation.$inspector.map { _ in () }.eraseToAnyPublisher(),
             discoveryController.$search.map { _ in () }.eraseToAnyPublisher(),
         ]
         let changes = stateChanges.map { $0.dropFirst().eraseToAnyPublisher() }
@@ -3071,13 +3122,9 @@ final class WindowModel: ObservableObject {
             stored = assignments.first(where: { $0.id == selectedID })
             if stored == nil {
                 workspaceAssignment = nil
-                if !createsTriptych {
-                    workspaceRecoveryMessage = "This Triptych is no longer registered on this Mac. Open an existing Triptych or choose its three folders again."
-                }
+                workspaceRecoveryMessage = "This Triptych is no longer registered on this Mac. Open an existing Triptych or choose its three folders again."
                 return
             }
-        } else if createsTriptych {
-            stored = nil
         } else {
             stored = try? await workspaceStore.defaultTriptych()
         }
@@ -3111,8 +3158,9 @@ final class WindowModel: ObservableObject {
             try await activateTriptychServices(assignment: assignment)
             return true
         } catch {
-            if let recovery = workspaceAccessRecoveryMessage(for: error) {
-                workspaceRecoveryMessage = recovery
+            if let recovery = workspaceAccessRecoveryRoute(for: error) {
+                workspaceAccessRecovery = recovery
+                workspaceRecoveryMessage = workspaceAccessRecoveryMessage(for: recovery)
                 vaultError = nil
                 return false
             }
@@ -3123,7 +3171,7 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func configureThreeVaultWorkspace(
+    func configureTriptych(
         paperAnalysisURL: URL,
         topicKnowledgeURL: URL,
         outputURL: URL,
@@ -3145,6 +3193,7 @@ final class WindowModel: ObservableObject {
         )
         let assignment = capabilities.assignment
         workspaceAssignment = assignment
+        workspaceAccessRecovery = nil
         registeredVaults = await workspaceStore.registeredVaults()
         registeredTriptychs = (try? await workspaceStore.registeredTriptychs()) ?? []
         try await activateTriptychServices(assignment: assignment)
@@ -3167,12 +3216,10 @@ final class WindowModel: ObservableObject {
         await workspaceStore.portableContainerURL(forWorksURL: worksURL)
     }
 
-    var isCreatingNewTriptych: Bool {
-        createsTriptych && workspaceAssignment == nil
-    }
+    var requestedTriptychIDForRecovery: UUID? { requestedTriptychID }
 
     private func activateTriptychServices(
-        assignment: ThreeVaultWorkspaceAssignment
+        assignment: TriptychAssignment
     ) async throws {
         let capabilities = try await workspaceStore.workspaceCapabilities(id: assignment.id)
         bindApplicationCapabilities(to: capabilities)
@@ -3211,9 +3258,6 @@ final class WindowModel: ObservableObject {
             documentDidCommit: { [weak self] document in
                 guard let self else { return }
                 _ = await self.replaceSavedDocument(document)
-            },
-            saveErrorDidChange: { [weak self] message in
-                self?.lastSaveError = message
             }
         )
         researchController.bind(to: capabilities.research, snapshot: snapshot)
@@ -3356,12 +3400,6 @@ final class WindowModel: ObservableObject {
         return workspaceAssignment?.vault(for: selected) == nil ? nil : selected
     }
 
-    var currentPropertiesConfiguration: VaultPropertiesConfiguration? {
-        guard noteLocationScope == .workspace,
-              let slot = currentWorkspaceSlot else { return nil }
-        return triptychSettings.properties[slot] ?? TriptychSettings.defaultProperties[slot]
-    }
-
     var currentDocumentPropertiesConfiguration: VaultPropertiesConfiguration? {
         guard let vault = currentDocumentVault,
               let slot = WorkspaceVaultSlot.allCases.first(where: {
@@ -3401,16 +3439,6 @@ final class WindowModel: ObservableObject {
         ))
     }
 
-    func noteCheckpointContent(_ checkpointID: UUID, path: String) async throws -> String {
-        guard let context = activeDocumentContext(for: path) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await researchController.checkpointNoteContent(
-            checkpointID,
-            note: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
-        )
-    }
-
     func restoreNote(_ path: String, from checkpointID: UUID) async throws {
         guard let context = activeDocumentContext(for: path),
               let assignment = workspaceAssignment else {
@@ -3422,48 +3450,12 @@ final class WindowModel: ObservableObject {
             from: checkpointID,
             expectedRevision: context.fingerprint
         )
-        await refreshWindowProjection(incrementalPaths: [path])
+        await refreshWindowProjection()
     }
 
     func dialogueHistory(for path: String) async -> [DialogueEntry] {
         guard let context = activeDocumentContext(for: path) else { return [] }
         return (try? await researchController.dialogueHistory(noteID: context.noteID)) ?? []
-    }
-
-    @discardableResult
-    func recordDialogueReply(
-        entryID: UUID,
-        agentName: String,
-        text: String,
-        noteID: UUID? = nil,
-        commentID: UUID? = nil
-    ) async throws -> DialogueEntry {
-        try await researchController.appendDialogueReply(
-            DialogueReply(
-                agentName: agentName,
-                text: text,
-                noteID: noteID,
-                commentID: commentID
-            ),
-            to: entryID
-        )
-    }
-
-    @discardableResult
-    func recordDialogueFollowUpComment(
-        entryID: UUID,
-        text: String,
-        noteID: UUID? = nil,
-        commentID: UUID? = nil
-    ) async throws -> DialogueEntry {
-        try await researchController.appendDialogueFollowUpComment(
-            DialogueFollowUpComment(
-                text: text,
-                noteID: noteID,
-                commentID: commentID
-            ),
-            to: entryID
-        )
     }
 
     func critiqueAssociation(for path: String) async -> CritiqueAssociation? {
@@ -3877,10 +3869,9 @@ final class WindowModel: ObservableObject {
     func restoreWorkspaceIfNeeded() async {
         guard !attemptedVaultRestore, vaultConfig == nil else { return }
         attemptedVaultRestore = true
-        if let fixtureRoot = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] {
-            let root = URL(fileURLWithPath: fixtureRoot, isDirectory: true)
+        if let root = ScholiumRuntimeIsolation.fixtureRootURL() {
             do {
-                try await configureThreeVaultWorkspace(
+                try await configureTriptych(
                     paperAnalysisURL: root.appendingPathComponent("01-analyses", isDirectory: true),
                     topicKnowledgeURL: root.appendingPathComponent("02-topics", isDirectory: true),
                     outputURL: root.appendingPathComponent("03-works", isDirectory: true),
@@ -3913,7 +3904,6 @@ final class WindowModel: ObservableObject {
         await refreshRegisteredVaults()
         await refreshWorkspaceAssignment()
         guard workspaceAssignment != nil else {
-            showWorkspaceSetup = true
             return
         }
 
@@ -3921,26 +3911,80 @@ final class WindowModel: ObservableObject {
             try await openWorkspaceVault(.paperAnalysis)
             openRequestedTestNoteIfNeeded()
         } catch {
-            if let recovery = workspaceAccessRecoveryMessage(for: error) {
-                workspaceRecoveryMessage = recovery
+            if let recovery = workspaceAccessRecoveryRoute(for: error) {
+                workspaceAccessRecovery = recovery
+                workspaceRecoveryMessage = workspaceAccessRecoveryMessage(for: recovery)
                 vaultError = nil
             } else {
                 vaultError = error.localizedDescription
             }
-            showWorkspaceSetup = true
         }
     }
 
-    private func workspaceAccessRecoveryMessage(for error: Error) -> String? {
+    private func workspaceAccessRecoveryRoute(for error: Error) -> WorkspaceAccessRecovery? {
         guard let workspaceError = error as? WorkspaceRegistryError else { return nil }
         switch workspaceError {
         case .vaultAccessUnavailable(let path):
-            return "Scholium needs renewed access to '\(path)'. Choose that folder again, then use these vaults."
+            return WorkspaceAccessRecovery(kind: .vault, expectedPath: path)
         case .portableControlAccessUnavailable(let path):
-            return "Scholium needs access to '\(path)' so it can use the portable .scholium folder beside Works. Authorize that folder, then save the Triptych."
+            return WorkspaceAccessRecovery(kind: .portableControl, expectedPath: path)
         default:
             return nil
         }
+    }
+
+    private func workspaceAccessRecoveryMessage(
+        for recovery: WorkspaceAccessRecovery
+    ) -> String {
+        switch recovery.kind {
+        case .vault:
+            "Scholium needs renewed access to '\(recovery.expectedPath)'. Choose that folder again."
+        case .portableControl:
+            "Scholium needs renewed access to '\(recovery.expectedPath)' so it can use the portable .scholium folder beside Works."
+        }
+    }
+
+    func restoreWorkspaceAccess(using selectedURL: URL) async throws {
+        guard let recovery = workspaceAccessRecovery,
+              let assignment = workspaceAssignment,
+              let analyses = assignment.vault(for: .paperAnalysis),
+              let topics = assignment.vault(for: .topicKnowledge),
+              let works = assignment.vault(for: .output)
+        else { throw WorkspaceRegistryError.incompleteWorkspace }
+
+        let selected = selectedURL.resolvingSymlinksInPath().standardizedFileURL
+        let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
+        let topicsURL = URL(fileURLWithPath: topics.canonicalPath, isDirectory: true)
+        let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
+        let expected = URL(
+            fileURLWithPath: recovery.expectedPath,
+            isDirectory: true
+        ).resolvingSymlinksInPath().standardizedFileURL.path
+
+        let replacementAnalyses = analysesURL.resolvingSymlinksInPath().standardizedFileURL.path
+            == expected ? selected : analysesURL
+        let replacementTopics = topicsURL.resolvingSymlinksInPath().standardizedFileURL.path
+            == expected ? selected : topicsURL
+        let replacementWorks = worksURL.resolvingSymlinksInPath().standardizedFileURL.path
+            == expected ? selected : worksURL
+        let portableURL: URL
+        if recovery.kind == .portableControl {
+            portableURL = selected
+        } else {
+            portableURL = await workspaceStore.portableContainerURL(forWorksURL: replacementWorks)
+                ?? replacementWorks.deletingLastPathComponent()
+        }
+
+        try await configureTriptych(
+            paperAnalysisURL: replacementAnalyses,
+            topicKnowledgeURL: replacementTopics,
+            outputURL: replacementWorks,
+            portableContainerURL: portableURL,
+            triptychID: assignment.id,
+            triptychName: assignment.triptych.name
+        )
+        workspaceAccessRecovery = nil
+        workspaceRecoveryMessage = nil
     }
 
     private func openRequestedTestNoteIfNeeded() {
@@ -3956,15 +4000,10 @@ final class WindowModel: ObservableObject {
         if let path { openNote(path) }
     }
 
-    func refreshWindowProjection(
-        incrementalPaths: Set<String>? = nil,
-        deletedPaths: Set<String> = []
-    ) async {
+    func refreshWindowProjection() async {
         // `WorkspaceStore` publishes the authoritative per-vault index and
         // Triptych graph. Keep this method as a window projection refresh for
         // existing callers; it must not create a second graph or index.
-        _ = incrementalPaths
-        _ = deletedPaths
         projectionRefreshToken &+= 1
         let refreshToken = projectionRefreshToken
         let startingVaultID = currentRegisteredVault?.id
@@ -4024,7 +4063,7 @@ final class WindowModel: ObservableObject {
             await refreshIdentityAndReviewState()
             await refreshWindowProjection()
         } catch {
-            showToast("Could not open \(scope.rawValue): \(error.localizedDescription)", kind: .error)
+            showToast(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
         }
     }
 
@@ -4243,11 +4282,7 @@ final class WindowModel: ObservableObject {
             noteIdentityByPath[critiquePath] = nil
         }
         let deletedPaths = Set([path, commit.removedCritiqueDocumentPath].compactMap { $0 })
-        if currentDocumentVaultID == vaultID,
-           let selectedDocumentPath,
-           deletedPaths.contains(selectedDocumentPath) {
-            documentController.clearSelection(forRemovedPaths: deletedPaths)
-        }
+        try removeDocumentTabs(vaultID: vaultID, removedPaths: deletedPaths)
         try await refreshNoteLocationScope()
         lifecycleMutationGeneration &+= 1
     }
@@ -4276,7 +4311,7 @@ final class WindowModel: ObservableObject {
         }
         try await refreshNoteLocationScope()
         scheduleWorkspaceCatalogRefresh()
-        showToast("Classified as \(slot.displayName): \(destination)")
+        showToast(String(localized: "Classified as \(slot.displayName): \(destination)", table: "Localizable", bundle: .module))
     }
 
     func refreshTransactionRecoveryRecords() async {
@@ -4359,6 +4394,33 @@ final class WindowModel: ObservableObject {
                 )
             ))
         }
+        if let tab = documentTabController.tabs.first(where: {
+            $0.document.sessionKey == DocumentSessionKey(vaultID: vaultID, noteID: noteID)
+        }), let descriptor = tab.document.workspaceDescriptor {
+            let updatedReference = VaultNoteReference(
+                vaultID: descriptor.reference.vaultID,
+                vaultName: descriptor.reference.vaultName,
+                vaultRole: descriptor.reference.vaultRole,
+                relativePath: destinationPath,
+                stableNoteID: descriptor.reference.stableNoteID
+            )
+            let updatedDocument = WindowSelectedDocument.workspace(
+                WindowDocumentDescriptor(
+                    sessionKey: descriptor.sessionKey,
+                    reference: updatedReference
+                )
+            )
+            let fallbackTitle = URL(fileURLWithPath: destinationPath)
+                .deletingPathExtension()
+                .lastPathComponent
+            documentTabController.updateDocumentProjection(
+                updatedDocument,
+                title: fallbackTitle,
+                toolTip: [fallbackTitle, descriptor.reference.vaultName, destinationPath]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " — ")
+            )
+        }
         documentController.migratePresentationPath(
             from: sourcePath,
             to: destinationPath,
@@ -4397,8 +4459,7 @@ final class WindowModel: ObservableObject {
         let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty,
               !advancedSearchState.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        var state = advancedSearchState
-        state.scope = state.scope.canonical
+        let state = advancedSearchState
         enqueueSavedSearchMutation { searches in
             var searches = searches
             searches.insert(SavedSearch(name: name, state: state), at: 0)
@@ -4408,7 +4469,6 @@ final class WindowModel: ObservableObject {
 
     func runSavedSearch(_ search: SavedSearch) {
         advancedSearchState = search.state
-        advancedSearchState.scope = advancedSearchState.scope.canonical
         showSearchSurface = true
         Task { await refreshAdvancedSearch() }
     }
@@ -4457,14 +4517,17 @@ final class WindowModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 self.savedSearches = proposed
             } catch {
-                self.showToast("Could not save search: \(error.localizedDescription)", kind: .error)
+                self.showToast(String(localized: "Could not save search: \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
             }
         }
     }
 
-    func openNote(_ path: String) {
+    func openNote(
+        _ path: String,
+        tabActivation: DocumentTabActivation = .replaceSelectedTab
+    ) {
         guard let location = notes.first(where: { $0.relativePath == path }) else {
-            showToast("Note not found: \(path)", kind: .warning)
+            showToast(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         PerformanceProbe.shared.beginReadActivation(documentID: path)
@@ -4479,6 +4542,7 @@ final class WindowModel: ObservableObject {
         } else {
             documentController.selectDocument(selectionDescriptor(for: path))
         }
+        synchronizeDocumentTabs(after: tabActivation)
     }
 
     private func openRestoredDocument(_ id: VaultQualifiedNoteID) {
@@ -4492,26 +4556,185 @@ final class WindowModel: ObservableObject {
             vaultName: vault.name,
             vaultRole: vault.role
         )
+        synchronizeDocumentTabs(after: .replaceSelectedTab)
     }
 
-    func openRelationshipSource(_ locator: SourceLocator) {
-        guard let location = currentDocumentNotes.first(where: {
-            $0.relativePath == locator.file
-        }), let snapshot = location.workspaceSnapshot,
-              let vault = workspaceAssignment?.vaults.values.first(where: {
-                  $0.id == snapshot.id.vaultID
-              }) else {
-            showToast("Relationship source not found: \(locator.file)", kind: .warning)
+    private func activateDocument(
+        _ document: WindowSelectedDocument,
+        tabActivation: DocumentTabActivation
+    ) throws {
+        switch document {
+        case .workspace(let descriptor):
+            try activateWorkspaceReference(
+                descriptor.reference,
+                tabActivation: tabActivation
+            )
+        case .unclassified(let relativePath):
+            guard let location = notes.first(where: { $0.relativePath == relativePath }) else {
+                throw WindowNavigationError.noteUnavailable(relativePath)
+            }
+            PerformanceProbe.shared.beginReadActivation(documentID: relativePath)
+            documentController.selectUnclassifiedDocument(relativePath: relativePath)
+            if location.workspaceSnapshot != nil {
+                documentController.selectDocument(document)
+            }
+            synchronizeDocumentTabs(after: tabActivation)
+        case .unavailable(let relativePath):
+            guard notes.contains(where: { $0.relativePath == relativePath }) else {
+                throw WindowNavigationError.noteUnavailable(relativePath)
+            }
+            PerformanceProbe.shared.beginReadActivation(documentID: relativePath)
+            documentController.selectUnavailableDocument(relativePath: relativePath)
+            synchronizeDocumentTabs(after: tabActivation)
+        }
+    }
+
+    private func activateWorkspaceReference(
+        _ reference: VaultNoteReference,
+        tabActivation: DocumentTabActivation
+    ) throws {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == reference.vaultID
+        }) else {
+            throw WindowNavigationError.vaultUnavailable(reference.vaultName)
+        }
+        let requestedStableID = reference.stableNoteID.flatMap(UUID.init(uuidString:))
+        guard let snapshot = workspaceVaultSnapshotsByID[reference.vaultID]?.documents.first(where: {
+            if let requestedStableID,
+               $0.stableIdentity.resolvedID == requestedStableID {
+                return true
+            }
+            return $0.id.relativePath == reference.relativePath
+        }) else {
+            throw WindowNavigationError.noteUnavailable(reference.relativePath)
+        }
+        PerformanceProbe.shared.beginReadActivation(documentID: snapshot.id.relativePath)
+        documentController.installOpenedDocument(
+            snapshot,
+            vaultName: vault.name,
+            vaultRole: vault.role
+        )
+        synchronizeDocumentTabs(after: tabActivation)
+    }
+
+    private func synchronizeDocumentTabs(after activation: DocumentTabActivation) {
+        guard let document = documentController.selectedDocument else { return }
+        let presentation = documentTabPresentation(for: document)
+        switch activation {
+        case .replaceSelectedTab:
+            documentTabController.replaceSelectedTab(
+                with: document,
+                title: presentation.title,
+                toolTip: presentation.toolTip
+            )
+        case .appendTab:
+            documentTabController.appendTab(
+                for: document,
+                title: presentation.title,
+                toolTip: presentation.toolTip
+            )
+        case .preserveTabMembership:
+            documentTabController.updateDocumentProjection(
+                document,
+                title: presentation.title,
+                toolTip: presentation.toolTip
+            )
+        }
+    }
+
+    private func removeDocumentTabs(
+        vaultID: UUID,
+        removedPaths: Set<String>
+    ) throws {
+        let matchingIDs = documentTabController.tabs.compactMap { tab -> UUID? in
+            guard let descriptor = tab.document.workspaceDescriptor,
+                  descriptor.reference.vaultID == vaultID,
+                  removedPaths.contains(descriptor.reference.relativePath) else {
+                return nil
+            }
+            return tab.id
+        }
+        guard !matchingIDs.isEmpty else {
+            if currentDocumentVaultID == vaultID {
+                documentController.clearSelection(forRemovedPaths: removedPaths)
+            }
             return
         }
-        let reference = VaultNoteReference(
-            vaultID: vault.id,
-            vaultName: vault.name,
-            vaultRole: vault.role,
-            relativePath: snapshot.id.relativePath,
-            stableNoteID: snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
-        )
-        Task { await openWorkspaceReference(reference, line: locator.line, mode: .source) }
+
+        // Remove inactive pages first so the selected page's close plan can
+        // never choose another document that was deleted in the same commit.
+        for id in matchingIDs where id != documentTabController.selectedTabID {
+            if let plan = documentTabController.closePlan(forTabWithID: id) {
+                documentTabController.apply(plan)
+            }
+        }
+        guard let selectedID = documentTabController.selectedTabID,
+              matchingIDs.contains(selectedID),
+              let plan = documentTabController.closePlan(forTabWithID: selectedID) else {
+            return
+        }
+        if let documentToActivate = plan.documentToActivate {
+            try activateDocument(
+                documentToActivate,
+                tabActivation: .preserveTabMembership
+            )
+        } else {
+            documentController.clearSelectionAfterClosingLastTab()
+        }
+        documentTabController.apply(plan)
+    }
+
+    private func refreshDocumentTabProjections() {
+        for tab in documentTabController.tabs {
+            guard case .workspace(let descriptor) = tab.document,
+                  let snapshot = workspaceVaultSnapshotsByID[descriptor.reference.vaultID]?
+                    .documents.first(where: {
+                        $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
+                    }),
+                  let vault = workspaceAssignment?.vaults.values.first(where: {
+                      $0.id == descriptor.reference.vaultID
+                  }) else { continue }
+            let updated = WindowSelectedDocument.workspace(WindowDocumentDescriptor(
+                sessionKey: descriptor.sessionKey,
+                reference: VaultNoteReference(
+                    vaultID: vault.id,
+                    vaultName: vault.name,
+                    vaultRole: vault.role,
+                    relativePath: snapshot.id.relativePath,
+                    stableNoteID: descriptor.reference.stableNoteID
+                )
+            ))
+            let presentation = documentTabPresentation(for: updated)
+            documentTabController.updateDocumentProjection(
+                updated,
+                title: presentation.title,
+                toolTip: presentation.toolTip
+            )
+        }
+    }
+
+    private func documentTabPresentation(
+        for document: WindowSelectedDocument
+    ) -> (title: String, toolTip: String) {
+        let location: WindowDocumentLocation? = if let sessionKey = document.sessionKey {
+            workspaceVaultSnapshotsByID[sessionKey.vaultID]?.documents
+                .first(where: { $0.stableIdentity.resolvedID == sessionKey.noteID })
+                .map(WindowDocumentLocation.workspace)
+        } else {
+            notes.first(where: { $0.relativePath == document.relativePath })
+        }
+        let fallbackTitle = URL(fileURLWithPath: document.relativePath)
+            .deletingPathExtension()
+            .lastPathComponent
+        let title = location?.title ?? location?.displayName ?? fallbackTitle
+        let vaultName = document.workspaceDescriptor?.reference.vaultName
+        let toolTip = [title, vaultName, document.relativePath]
+            .compactMap { value in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+            .joined(separator: " — ")
+        return (title, toolTip)
     }
 
     private func documentSessionKey(for path: String) -> DocumentSessionKey? {
@@ -4560,6 +4783,7 @@ final class WindowModel: ObservableObject {
         } else if documentController.activeDocument == nil {
             documentController.selectDocument(selectionDescriptor(for: selectedDocumentPath))
         }
+        synchronizeDocumentTabs(after: .preserveTabMembership)
     }
 
     func showInFinder(_ path: String) {
@@ -4580,16 +4804,12 @@ final class WindowModel: ObservableObject {
     func reviewNote(at path: String) {
         guard let context = activeDocumentContext(for: path),
               context.vaultRole.allowsHumanReview else { return }
-        openResearchFunction(.review)
+        openResearchFunction(.dialogue, permitsUnavailablePresentation: true)
     }
 
     func finishJudgmentPanelDismissal() {
         pendingCommentSelection = nil
         focusedResearcherCommentID = nil
-    }
-
-    func humanReviewRecord(for path: String) -> HumanReviewRecord? {
-        humanReviewRecords[path]
     }
 
     func reviewDisplayState(for path: String) -> HumanReviewDisplayState {
@@ -4665,18 +4885,10 @@ final class WindowModel: ObservableObject {
     ) async {
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            if self.currentRegisteredVault?.id != reference.vaultID {
-                let vault = try await self.workspaceStore.resolveVault(reference.vaultID.uuidString)
-                try await self.browseRegisteredVault(vault)
-            }
-            guard self.notes.contains(where: { $0.relativePath == reference.relativePath }) else {
-                self.showToast(
-                    "The linked note is no longer present at \(reference.relativePath).",
-                    kind: .warning
-                )
-                return
-            }
-            self.openNote(reference.relativePath)
+            try self.activateWorkspaceReference(
+                reference,
+                tabActivation: .replaceSelectedTab
+            )
             if let line {
                 self.pendingSourceLine = max(1, line)
                 self.requestPresentationMode = mode
@@ -4687,7 +4899,7 @@ final class WindowModel: ObservableObject {
     func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
         guard let sourceContext = activeDocumentContext(for: sourcePath),
               let graph = workspaceCatalog?.graph else {
-            showToast("Connections are still refreshing. Try the link again shortly.", kind: .information)
+            showToast(String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         let parts = targetWithFragment.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
@@ -4730,7 +4942,7 @@ final class WindowModel: ObservableObject {
             $0.reference.vaultID == destination.note.vaultID
                 && $0.reference.relativePath == destination.note.relativePath
         })?.reference else {
-            showToast("The resolved note is not available in the current Triptych catalog.", kind: .warning)
+            showToast(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         Task { await openWorkspaceReference(reference, line: destination.line, mode: .read) }
@@ -4764,25 +4976,6 @@ final class WindowModel: ObservableObject {
             let saved = await replaceSavedDocument(result.document)
             lastSaveError = nil
             return saved
-        } catch {
-            lastSaveError = error.localizedDescription
-            throw error
-        }
-    }
-
-    @discardableResult
-    func saveBody(_ body: String, for path: String, expectedRevision: DocumentFingerprint) async throws -> WindowDocumentLocation {
-        guard let context = activeDocumentContext(for: path) else {
-            throw VaultRepositoryError.fileDoesNotExist(path)
-        }
-        do {
-            let result = try await documentController.save(
-                VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-                changeSet: .body(body),
-                expectedRevision: expectedRevision
-            )
-            lastSaveError = nil
-            return await replaceSavedDocument(result.document)
         } catch {
             lastSaveError = error.localizedDescription
             throw error
@@ -5077,6 +5270,7 @@ final class WindowModel: ObservableObject {
         workspaceVaultSnapshotsByID = Dictionary(
             uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
         )
+        refreshDocumentTabProjections()
         guard noteLocationScope == .workspace else {
             try? await refreshNoteLocationScope()
             return
@@ -5132,6 +5326,7 @@ final class WindowModel: ObservableObject {
             documents: documents,
             identityRecovery: vaultSnapshot.identityRecovery
         )
+        refreshDocumentTabProjections()
         documentController.recordCommittedSnapshot(
             note,
             vaultName: vaultSnapshot.vault.name,
@@ -5218,38 +5413,18 @@ final class WindowModel: ObservableObject {
             }
             documentRevisions[document.relativePath] = document.fingerprint
         }
-        await refreshWindowProjection(incrementalPaths: [document.relativePath])
+        await refreshWindowProjection()
         if currentRegisteredVault?.id == context.vaultID {
             return notes.first(where: { $0.relativePath == document.relativePath }) ?? saved
         }
         return saved
     }
 
-    func setVaultRole(_ role: VaultRole) {
-        guard let config = vaultConfig,
-              let registered = currentRegisteredVault,
-              role != currentVaultRole else { return }
-        Task {
-            do {
-                let updated = try await workspaceStore.registerVault(
-                    path: config.path,
-                    name: registered.name,
-                    role: role
-                )
-                await refreshWorkspaceAssignment(preferredTriptychID: workspaceAssignment?.id)
-                try await openRegisteredVault(updated)
-                showToast("Vault role changed to \(role.displayName)")
-            } catch {
-                showToast("Could not change vault role: \(error.localizedDescription)", kind: .error)
-            }
-        }
-    }
-
     private func knowledgeBase(for role: VaultRole) -> KnowledgeBase {
         switch role {
         case .sourceCorpus: .papers
         case .topicKnowledge: .topics
-        case .dissertationControl, .draftProject, .other: .output
+        case .draftProject, .other: .output
         }
     }
 
@@ -5262,9 +5437,9 @@ private enum HumanReviewWorkflowError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .staleRevision:
-            return "The note changed while this review was open. Reopen Review and check the current text before saving."
+            return String(localized: "The note changed while this review was open. Reopen Review and check the current text before saving.", table: "Localizable", bundle: .module)
         case .unavailableForOutput:
-            return "Human Review is unavailable in Works. Request a Critique for an ordinary Work note instead."
+            return String(localized: "Human Review is unavailable in Works. Request a Critique for an ordinary Work note instead.", table: "Localizable", bundle: .module)
         }
     }
 }
@@ -5276,9 +5451,9 @@ private enum ResearcherCommentWorkflowError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "Comments are unavailable until Scholium can identify this Analysis, Topic, or Work reliably."
+            return String(localized: "Comments are unavailable until Scholium can identify this Analysis, Topic, or Work reliably.", table: "Localizable", bundle: .module)
         case .staleRevision:
-            return "The note changed before the Comment could be attached. Reopen the Review or Critique panel and select the current passage."
+            return String(localized: "The note changed before the Comment could be attached. Reopen the Review or Critique panel and select the current passage.", table: "Localizable", bundle: .module)
         }
     }
 }
@@ -5290,58 +5465,9 @@ private enum ClipboardWorkflowError: LocalizedError {
         switch self {
         case .copyFailed(let recovery):
             if let recovery {
-                return "macOS did not accept the text on the clipboard. \(recovery)"
+                return String(localized: "macOS did not accept the text on the clipboard. \(recovery)", table: "Localizable", bundle: .module)
             }
-            return "macOS did not accept the text on the clipboard. Try copying again."
+            return String(localized: "macOS did not accept the text on the clipboard. Try copying again.", table: "Localizable", bundle: .module)
         }
-    }
-}
-
-private enum DialogueWorkflowError: LocalizedError {
-    case contextChanged(String)
-    case invalidResponseContract([String])
-
-    var errorDescription: String? {
-        switch self {
-        case .contextChanged(let title):
-            return "\(title) changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again."
-        case .invalidResponseContract(let issues):
-            return "The selected Dialogue response contract is unavailable. \(issues.joined(separator: " "))"
-        }
-    }
-}
-
-private enum CritiqueRequestWorkflowError: LocalizedError {
-    case registryUnavailable(String)
-    case rollbackFailed(requestError: String, rollbackError: String)
-    case targetChanged
-
-    var errorDescription: String? {
-        switch self {
-        case .registryUnavailable(let reason):
-            return reason
-        case .rollbackFailed(let requestError, let rollbackError):
-            return "Scholium could not record the Critique request and could not restore the Critique file automatically. \(requestError) Recovery also failed: \(rollbackError) Use Before Agent Work in Note History before continuing."
-        case .targetChanged:
-            return "The Work changed while Scholium was creating Before Agent Work. Review the current Work and request its Critique again."
-        }
-    }
-}
-
-// MARK: - KB Color Helpers
-
-func kbColor(_ kb: KnowledgeBase) -> Color {
-    switch kb {
-    case .papers: return .blue
-    case .topics: return .green
-    case .output: return .orange
-    }
-}
-
-func kbBorderColor(_ kb: KnowledgeBase) -> Color {
-    switch kb {
-    case .papers: return .blue.opacity(0.6)
-    case .topics: return .green.opacity(0.6)
-    case .output: return .orange.opacity(0.6)
     }
 }

@@ -54,7 +54,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         webView.setAccessibilityElement(true)
-        webView.setAccessibilityLabel("Rendered Markdown")
+        webView.setAccessibilityLabel(ScholiumL10n.string("Rendered Markdown"))
         webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
         context.coordinator.loadIfNeeded(
             htmlBody,
@@ -832,9 +832,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         :root { color-scheme: light dark; \(ScholiumWebDesignTokens.rootCSSDeclarations) \(ScholiumWebDesignTokens.rhythmCSSDeclarations) }
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
         body { font-family: Alegreya, Georgia, serif; font-size: 12pt; line-height: var(--scholium-rhythm-prose-line-height); }
-        .scholium-document { box-sizing: border-box; min-width: 0; max-width: 920px; margin: 0 auto; padding: var(--scholium-rhythm-read-block-start) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll); overflow-wrap: anywhere; }
+        .scholium-document { box-sizing: border-box; min-width: 0; max-width: 510.667px; margin: 0 auto; padding: var(--scholium-rhythm-read-block-start) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll); overflow-wrap: anywhere; }
         h1, h2, h3, h4, h5, h6 { line-height: var(--scholium-rhythm-heading-line-height); margin: var(--scholium-rhythm-heading-before) 0 var(--scholium-rhythm-heading-after); text-wrap: balance; }
-        h1 { font-size: 150%; } h2 { font-size: 130%; } h3 { font-size: 115%; } h4, h5, h6 { font-size: 100%; }
+        .scholium-document > h1:first-child { margin-top: 0; margin-bottom: 40px; padding-bottom: 28px; border-bottom: 1px solid var(--scholium-color-separator); }
+        h1 { font-size: 187.5%; font-weight: 400; } h2 { font-size: 130%; } h3 { font-size: 115%; } h4, h5, h6 { font-size: 100%; }
         p { margin: var(--scholium-rhythm-paragraph-gap) 0; } a { color: LinkText; text-underline-offset: .12em; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }

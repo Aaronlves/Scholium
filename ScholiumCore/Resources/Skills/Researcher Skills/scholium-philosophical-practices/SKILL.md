@@ -20,23 +20,15 @@ Every named Practice declares its primary and supporting capacities. Those decla
 
 ## Select Practices narrowly
 
-Read this package entry, then only the exact Practice files selected for the run:
+Application supplies the exact selected stable Practice IDs and resources for an ordinary run. Read this package entry, then only those exact Practice files. Do not enumerate or load unselected Practices merely because they belong to this library.
 
-- `research-explorer` — [Research Explorer](references/Research-Explorer.md): questions, stakes, research gaps, and bounded directions;
-- `historical-interpreter` — [Historical Interpreter](references/Historical-Interpreter.md): textual and historical context;
-- `conceptual-analyst` — [Conceptual Analyst](references/Conceptual-Analyst.md): concepts, distinctions, uses, and relations;
-- `argument-reconstructionist` — [Argument Reconstructionist](references/Argument-Reconstructionist.md): reasons and inference with textual repair kept separate;
-- `dialectical-partner` — [Dialectical Partner](references/Dialectical-Partner.md): objections, replies, revisions, and costs;
-- `systematizer` — [Systematizer](references/Systematizer.md): dependencies, structures, and tensions;
-- `thesis-architect` — [Thesis Architect](references/Thesis-Architect.md): thesis, contribution, burdens, and work architecture;
-- `philosophical-expositor` — [Philosophical Expositor](references/Philosophical-Expositor.md): clear realization of philosophical structure in prose;
-- `reviewer` — [Reviewer](references/Reviewer.md): Critique-only calibration of genre, audience, stage, thresholds, and strengths to preserve.
+When explicitly maintaining, extending, or comparing the Practice library rather than performing philosophical work, read [references/practice-catalog.md](references/practice-catalog.md). The maintenance catalog is not execution context.
 
 Do not load the whole library by default. Record the selected stable IDs and exact package and resource revisions. A later Practice edit does not alter an earlier result.
 
 ## Compose as supplements
 
-A selected Practice supplements one complete primary method. It may sharpen questions, add criteria, reorder examination, or request a bounded additional output. It cannot replace the primary method, even at one editable point. Legacy `replace` bindings require explicit repair: convert them to supplemental application or select a complete Researcher Skill as the primary method.
+A selected Practice supplements one complete primary method. It may sharpen questions, add criteria, reorder examination, or request a bounded additional output. It cannot replace the primary method, even at one editable point; the current binding contract contains no replacement application.
 
 Before composing multiple Practices, give each a distinct job. Consider every selected Practice genuinely and allocate methodological effort flexibly according to the task and evidence. Central lenses may require extensive examination; secondary lenses may supply a safeguard check. A valid Practice can yield no warranted finding.
 

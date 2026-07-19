@@ -11,8 +11,7 @@ struct DerivedRefreshStatusTests {
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .milliseconds(20)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let stream = await handle.events.events()

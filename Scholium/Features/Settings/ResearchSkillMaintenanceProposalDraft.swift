@@ -8,9 +8,9 @@ enum ResearchSkillMaintenanceProposalDraftError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidJSON(let detail):
-            "The returned proposal is not a complete Researcher Skill package: \(detail)"
+            String(localized: "The returned proposal is not a complete Researcher Skill package: \(detail)", table: "Localizable", bundle: .module)
         case .staleCurrentPackage:
-            "The complete Researcher Skill package changed. Reload it before requesting a proposal."
+            String(localized: "The complete Researcher Skill package changed. Reload it before requesting a proposal.", table: "Localizable", bundle: .module)
         }
     }
 }

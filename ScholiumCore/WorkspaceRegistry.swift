@@ -4,10 +4,6 @@ import Foundation
 public actor WorkspaceRegistry {
     private static let currentSchemaVersion = 2
 
-    private struct LegacyRegistryFile: Codable {
-        var vaults: [RegisteredVault]
-    }
-
     private struct RegistryFile: Codable {
         var schemaVersion: Int
         var vaults: [RegisteredVault]
@@ -23,15 +19,11 @@ public actor WorkspaceRegistry {
 
     public let storageURL: URL
     private let registryURL: URL
-    private let legacyVaultRegistryURL: URL
-    private let legacyThreeVaultWorkspaceURL: URL
     private let fileManager: FileManager
 
     public init(storageURL: URL, fileManager: FileManager = .default) {
         self.storageURL = storageURL
         registryURL = storageURL.appendingPathComponent("workspace-registry-v2.json")
-        legacyVaultRegistryURL = storageURL.appendingPathComponent("vaults.json")
-        legacyThreeVaultWorkspaceURL = storageURL.appendingPathComponent("three-vault-workspace.json")
         self.fileManager = fileManager
     }
 
@@ -171,13 +163,12 @@ public actor WorkspaceRegistry {
         return result
     }
 
-    /// Compatibility API for callers that still manage one Triptych. It
-    /// updates the default Triptych instead of creating a second assignment.
-    public func configureThreeVaultWorkspace(
+    /// Updates the default Triptych instead of creating a second assignment.
+    public func configureDefaultTriptych(
         paperAnalysis: (url: URL, identityID: UUID),
         topicKnowledge: (url: URL, identityID: UUID),
         output: (url: URL, identityID: UUID)
-    ) throws -> ThreeVaultWorkspaceAssignment {
+    ) throws -> TriptychAssignment {
         let registry = load()
         let defaultID = registry.defaultTriptychID
             ?? sortedTriptychs(registry.triptychs).first?.id
@@ -219,8 +210,7 @@ public actor WorkspaceRegistry {
         return matches[0]
     }
 
-    /// Compatibility default for one-Triptych callers and the first CLI.
-    public func threeVaultWorkspace() -> ThreeVaultWorkspaceAssignment? {
+    public func defaultTriptych() -> TriptychAssignment? {
         let registry = load()
         let selected = registry.defaultTriptychID.flatMap { id in
             registry.triptychs.first(where: { $0.id == id })
@@ -407,8 +397,8 @@ public actor WorkspaceRegistry {
             guard let data = try? Data(contentsOf: registryURL),
                   let decoded = try? decoder.decode(RegistryFile.self, from: data),
                   decoded.schemaVersion == Self.currentSchemaVersion else {
-                // Never overwrite a damaged or newer registry with legacy or
-                // empty state. Mutating callers fail closed through
+                // Never overwrite a damaged or newer registry with empty
+                // state. Mutating callers fail closed through
                 // `writableRegistry()`; read-only callers see no assignments.
                 return RegistryFile(
                     schemaVersion: -1,
@@ -420,29 +410,12 @@ public actor WorkspaceRegistry {
             return decoded
         }
 
-        let legacyVaults: [RegisteredVault]
-        if let data = try? Data(contentsOf: legacyVaultRegistryURL),
-           let decoded = try? decoder.decode(LegacyRegistryFile.self, from: data) {
-            legacyVaults = decoded.vaults
-        } else {
-            legacyVaults = []
-        }
-
-        var triptychs: [ScholiumTriptych] = []
-        if let data = try? Data(contentsOf: legacyThreeVaultWorkspaceURL),
-           var legacy = try? decoder.decode(ScholiumTriptych.self, from: data) {
-            legacy.name = inferredTriptychName(legacy, vaults: legacyVaults)
-            triptychs = [legacy]
-        }
-        let migrated = RegistryFile(
+        return RegistryFile(
             schemaVersion: Self.currentSchemaVersion,
-            vaults: legacyVaults,
-            triptychs: triptychs,
-            defaultTriptychID: triptychs.first?.id
+            vaults: [],
+            triptychs: [],
+            defaultTriptychID: nil
         )
-        // Migration is additive. The legacy files remain byte-for-byte intact.
-        try? persist(migrated)
-        return migrated
     }
 
     private func writableRegistry() throws -> RegistryFile {

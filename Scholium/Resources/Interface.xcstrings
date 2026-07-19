@@ -1,0 +1,420 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "researchFunction.critique.help" : {
+      "comment" : "Help and accessibility hint for the Critique Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Request an attributed Critique of this Work"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求对这篇写作进行署名评析"
+          }
+        }
+      }
+    },
+    "researchFunction.critique.title" : {
+      "comment" : "Research Function name for attributed critique of a Work.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Critique"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评析"
+          }
+        }
+      }
+    },
+    "researchFunction.develop.help" : {
+      "comment" : "Help and accessibility hint for the Develop Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Develop this Analysis or Topic"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续发展这篇分析或议题"
+          }
+        }
+      }
+    },
+    "researchFunction.develop.title" : {
+      "comment" : "Research Function name for developing an Analysis or Topic.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Develop"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发展"
+          }
+        }
+      }
+    },
+    "researchFunction.dialogue.help" : {
+      "comment" : "Help and accessibility hint for the Dialogue Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open a scholarly Dialogue for this note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为此笔记打开学术对话"
+          }
+        }
+      }
+    },
+    "researchFunction.dialogue.title" : {
+      "comment" : "Research Function name for scholarly conversation about a note.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dialogue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话"
+          }
+        }
+      }
+    },
+    "researchFunction.fidelity.help" : {
+      "comment" : "Help and accessibility hint for the Fidelity Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Check philosophical content and citations"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核查哲学内容和引文"
+          }
+        }
+      }
+    },
+    "researchFunction.fidelity.title" : {
+      "comment" : "Research Function name for checking source and citation fidelity.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fidelity"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核查"
+          }
+        }
+      }
+    },
+    "researchFunction.group.accessibilityLabel" : {
+      "comment" : "VoiceOver label for the complete Research Function strip.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Research functions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究功能"
+          }
+        }
+      }
+    },
+    "researchFunction.manuscript.help" : {
+      "comment" : "Help and accessibility hint for the Manuscript Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Coordinate work on this manuscript"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "协调此稿件的工作"
+          }
+        }
+      }
+    },
+    "researchFunction.manuscript.title" : {
+      "comment" : "Research Function name for coordinating manuscript work.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Manuscript"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稿件"
+          }
+        }
+      }
+    },
+    "researchFunction.review.help" : {
+      "comment" : "Help and accessibility hint for the Review Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review and qualify this Analysis or Topic"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审阅这篇分析或议题并作出结论"
+          }
+        }
+      }
+    },
+    "researchFunction.review.title" : {
+      "comment" : "Research Function name for human review and qualification.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审阅"
+          }
+        }
+      }
+    },
+    "researchFunction.revise.help" : {
+      "comment" : "Help and accessibility hint for the Revise Research Function.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Prepare a substantive revision of this Work"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实质性修订这篇写作"
+          }
+        }
+      }
+    },
+    "researchFunction.revise.title" : {
+      "comment" : "Research Function name for substantive revision of a Work.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Revise"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修订"
+          }
+        }
+      }
+    },
+    "researchFunction.state.closed" : {
+      "comment" : "VoiceOver value when a Research Function panel is closed.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Closed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关闭"
+          }
+        }
+      }
+    },
+    "researchFunction.state.open" : {
+      "comment" : "VoiceOver value when a Research Function panel is open.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已打开"
+          }
+        }
+      }
+    },
+    "settings.tab.attention" : {
+      "comment" : "Settings tab for derived attention reminders.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attention"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关注"
+          }
+        }
+      }
+    },
+    "settings.tab.documentStyles" : {
+      "comment" : "Settings tab for document appearance and CSS snippets.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Document Styles"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文稿样式"
+          }
+        }
+      }
+    },
+    "settings.tab.properties" : {
+      "comment" : "Settings tab for configured note properties.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Properties"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "属性"
+          }
+        }
+      }
+    },
+    "settings.tab.researchGuidance" : {
+      "comment" : "Settings tab for prompts, skills, and research methods.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Research Guidance"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究指导"
+          }
+        }
+      }
+    },
+    "settings.tab.vaults" : {
+      "comment" : "Settings tab for configuring the three research vaults.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Vaults"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究库"
+          }
+        }
+      }
+    },
+    "settings.tab.zotero" : {
+      "comment" : "Settings tab for the Zotero integration. Do not translate the brand name.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Zotero"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.3"
+}

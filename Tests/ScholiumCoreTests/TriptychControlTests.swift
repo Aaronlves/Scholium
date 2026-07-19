@@ -5,39 +5,6 @@ import ScholiumContracts
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
-    @Test("Legacy Critique prompt migrates into the Research Guidance collection")
-    func legacyCritiquePromptMigration() throws {
-        let data = Data(#"{"critiquePromptTemplate":"Legacy {{critique_scope}} {{critique_lens}} {{selected_ranges}} {{additional_instructions}}"}"#.utf8)
-        let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
-
-        #expect(settings.critiquePromptTemplate.hasPrefix("Legacy"))
-        #expect(settings.activePromptTemplate(for: .dialogue).source == TriptychSettings.defaultDialoguePromptTemplate)
-        #expect(settings.promptTemplates.count == 3)
-        #expect(settings.promptTemplates.first { $0.id == ResearchPromptTemplate.defaultCritique.id } == .defaultCritique)
-
-        var reset = settings
-        reset.resetPromptTemplate(for: .critique)
-        #expect(reset.critiquePromptTemplate == TriptychSettings.defaultCritiquePromptTemplate)
-    }
-
-    @Test("An early mutated bundled identifier migrates to a separate researcher template")
-    func mutatedBundledIdentifierMigration() throws {
-        var mutated = ResearchPromptTemplate.defaultCritique
-        mutated.source = "Early {{critique_scope}} {{critique_lens}} {{selected_ranges}} {{additional_instructions}}"
-        mutated.origin = .researcher
-        let data = try JSONEncoder().encode(TriptychSettings(
-            promptTemplates: [.defaultDialogue, mutated],
-            activePromptTemplateIDs: [.dialogue: ResearchPromptTemplate.defaultDialogue.id, .critique: mutated.id]
-        ))
-
-        var settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
-
-        #expect(settings.critiquePromptTemplate.hasPrefix("Early"))
-        #expect(settings.activePromptTemplate(for: .critique).id != ResearchPromptTemplate.defaultCritique.id)
-        settings.resetPromptTemplate(for: .critique)
-        #expect(settings.activePromptTemplate(for: .critique) == .defaultCritique)
-    }
-
     @Test("Stored Scholium templates adopt the current bundled response contract")
     func bundledTemplateUpdateDoesNotBecomeResearcherCustomization() throws {
         let encoder = JSONEncoder()
@@ -102,22 +69,6 @@ struct TriptychControlTests {
 
         #expect(configuration.visibleFields == ["authors", "status", "year"])
         #expect(configuration.editableFields == ["title", "tags"])
-    }
-
-    @Test("Legacy Properties configuration decodes with a collapsed disclosure default")
-    func legacyPropertiesConfigurationDecoding() throws {
-        let data = Data(#"""
-        {
-          "visibleFields": ["year", "title", "year"],
-          "editableFields": ["title", "tags"]
-        }
-        """#.utf8)
-
-        let configuration = try JSONDecoder().decode(VaultPropertiesConfiguration.self, from: data)
-
-        #expect(configuration.visibleFields == ["year", "title"])
-        #expect(configuration.editableFields == ["title", "tags"])
-        #expect(configuration.isExpanded == false)
     }
 
     @Test("Vault-wide Properties settings persist independently for all three vaults")
@@ -216,21 +167,21 @@ struct TriptychControlTests {
         #expect(try await store.manifest().id == preferredID)
     }
 
-    @Test("Bootstrap leaves obsolete project records untouched")
-    func bootstrapPreservesLegacyProjectFile() async throws {
+    @Test("Bootstrap preserves unrecognized researcher control files")
+    func bootstrapPreservesUnrecognizedControlFile() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let control = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
         try FileManager.default.createDirectory(at: control, withIntermediateDirectories: true)
-        let legacy = Data(#"{"projects":[{"name":"Researcher data"}]}"#.utf8)
-        let legacyURL = control.appendingPathComponent("projects.json")
-        try legacy.write(to: legacyURL)
+        let unrecognizedData = Data(#"{"custom_records":[{"name":"Researcher data"}]}"#.utf8)
+        let unrecognizedURL = control.appendingPathComponent("researcher-custom.json")
+        try unrecognizedData.write(to: unrecognizedURL)
 
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
         _ = try await store.bootstrap(vaultIDs: ids)
 
-        #expect(try Data(contentsOf: legacyURL) == legacy)
+        #expect(try Data(contentsOf: unrecognizedURL) == unrecognizedData)
     }
 
     @Test("Import preserves originals and resolves name collisions")

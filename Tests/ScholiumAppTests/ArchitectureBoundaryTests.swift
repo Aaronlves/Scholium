@@ -65,6 +65,42 @@ struct ArchitectureBoundaryTests {
         #expect(applicationImports.isEmpty, Comment(rawValue: applicationImports.joined(separator: "\n")))
     }
 
+    @Test("WorkspaceStore completes event readiness before publishing capability activation")
+    func workspaceActivationBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("private func workspaceHandle(id: UUID)"))
+        #expect(source.contains("private func configureTriptych("))
+        #expect(source.contains("private func reloadTriptych(id: UUID)"))
+        #expect(source.contains("func reloadTriptychCapabilities("))
+
+        let installStart = try #require(source.range(of: "private func install("))
+        let installEnd = try #require(source.range(
+            of: "private func capabilities(from handle:",
+            range: installStart.upperBound..<source.endIndex
+        ))
+        let install = String(source[installStart.lowerBound..<installEnd.lowerBound])
+        let subscription = try #require(install.range(of: "let stream = await handle.events.events()"))
+        let retainedTask = try #require(install.range(
+            of: "eventTasks[handle.id] = Task",
+            range: subscription.upperBound..<install.endIndex
+        ))
+        let publication = try #require(install.range(
+            of: "workspaceActivations[handle.id] = activation",
+            range: retainedTask.upperBound..<install.endIndex
+        ))
+        #expect(publication.lowerBound > retainedTask.lowerBound)
+    }
+
     @Test("Frontend authoritative I/O is confined to delivery allowlists")
     func frontendIOWall() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -241,7 +277,6 @@ struct ArchitectureBoundaryTests {
             "Scholium/Views/Frontmatter/FrontmatterEditorView.swift",
             "Scholium/Views/Note/NoteLifecycleView.swift",
             "Scholium/Views/Note/TransactionRecoveryView.swift",
-            "Scholium/Views/Note/MetadataCardView.swift",
             "Scholium/Views/Note/NoteContentView.swift",
         ]
 

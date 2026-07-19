@@ -84,12 +84,6 @@ public struct ResearchWorkflowResearchUnit: Codable, Hashable, Sendable {
 public enum ResearchWorkflowResponseContractSource: String, Codable, Hashable, Sendable {
     case none
     case requestSnapshot = "request-snapshot"
-    case legacyFallback = "legacy-fallback"
-}
-
-public enum ResearchPracticeApplication: String, Codable, Hashable, Sendable {
-    case supplement
-    case replace
 }
 
 /// An explicit researcher-owned Practice selection. Compatibility remains a
@@ -97,31 +91,13 @@ public enum ResearchPracticeApplication: String, Codable, Hashable, Sendable {
 public struct ResearchPracticeSelection: Codable, Hashable, Sendable {
     public let packageID: String
     public let practiceID: String
-    public let application: ResearchPracticeApplication
-    public let officialSkillID: String?
-    public let editablePoint: String?
-    public let scope: String?
-    public let reason: String?
-    public let precedence: Int?
 
     public init(
         packageID: String,
-        practiceID: String,
-        application: ResearchPracticeApplication = .supplement,
-        officialSkillID: String? = nil,
-        editablePoint: String? = nil,
-        scope: String? = nil,
-        reason: String? = nil,
-        precedence: Int? = nil
+        practiceID: String
     ) {
         self.packageID = packageID
         self.practiceID = practiceID
-        self.application = application
-        self.officialSkillID = officialSkillID
-        self.editablePoint = editablePoint
-        self.scope = scope
-        self.reason = reason
-        self.precedence = precedence
     }
 
     public var selectionID: String { "\(packageID):\(practiceID)" }
@@ -129,12 +105,40 @@ public struct ResearchPracticeSelection: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case packageID = "package_id"
         case practiceID = "practice_id"
+        // Retired pre-release keys remain listed only so decoding can reject
+        // that state instead of silently treating a replacement as a supplement.
         case application
         case officialSkillID = "official_skill_id"
         case editablePoint = "editable_point"
         case scope
         case reason
         case precedence
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for retiredKey in [
+            CodingKeys.application,
+            .officialSkillID,
+            .editablePoint,
+            .scope,
+            .reason,
+            .precedence,
+        ] where container.contains(retiredKey) {
+            throw DecodingError.dataCorruptedError(
+                forKey: retiredKey,
+                in: container,
+                debugDescription: "Replacement Practice state is unsupported."
+            )
+        }
+        packageID = try container.decode(String.self, forKey: .packageID)
+        practiceID = try container.decode(String.self, forKey: .practiceID)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(packageID, forKey: .packageID)
+        try container.encode(practiceID, forKey: .practiceID)
     }
 }
 
@@ -494,25 +498,6 @@ public struct ResearchWorkflowContract: Codable, Hashable, Sendable {
             throw ResearchWorkflowContractError.invalid(
                 "Practice selections require stable lowercase package and Practice identifiers."
             )
-        }
-        if selection.application == .replace {
-            for (value, field) in [
-                (selection.officialSkillID, "official_skill_id"),
-                (selection.editablePoint, "editable_point"),
-                (selection.scope, "scope"),
-                (selection.reason, "reason"),
-            ] {
-                guard value?.trimmedNonempty != nil else {
-                    throw ResearchWorkflowContractError.invalid(
-                        "A replacement Practice requires \(field)."
-                    )
-                }
-            }
-            guard selection.officialSkillID.map(isIdentifier) == true else {
-                throw ResearchWorkflowContractError.invalid(
-                    "A replacement Practice requires a stable official Skill identifier."
-                )
-            }
         }
     }
 

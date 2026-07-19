@@ -17,7 +17,7 @@ struct IncomingLinkRewriterTests {
             """
         )
 
-        let plan = IncomingLinkRewriter.plan(
+        let plan = standalonePlan(
             vaultID: vaultID,
             documents: [source, target],
             moving: "Topics/B.md",
@@ -39,7 +39,7 @@ struct IncomingLinkRewriterTests {
         let first = NoteDocument(relativePath: "One/B.md", rawContent: "# First\n")
         let second = NoteDocument(relativePath: "Two/B.md", rawContent: "# Second\n")
 
-        let plan = IncomingLinkRewriter.plan(
+        let plan = standalonePlan(
             vaultID: vaultID,
             documents: [source, first, second],
             moving: "One/B.md",
@@ -186,5 +186,32 @@ struct IncomingLinkRewriterTests {
             documents: semantics,
             resolutionScope: .workspace
         )
+    }
+
+    private func standalonePlan(
+        vaultID: UUID,
+        documents: [NoteDocument],
+        moving oldRelativePath: String,
+        to newRelativePath: String
+    ) -> [IncomingLinkRewrite] {
+        let qualified = Dictionary(uniqueKeysWithValues: documents.map { document in
+            (VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath), document)
+        })
+        let semantics = qualified.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let catalog = qualified.map { id, document in
+            LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantics[id])
+        }
+        let graph = LinkGraphBuilder.build(
+            generation: 0,
+            catalog: catalog,
+            documents: semantics,
+            resolutionScope: .sourceVault
+        )
+        return IncomingLinkRewriter.plan(
+            documents: qualified,
+            graph: graph,
+            moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: oldRelativePath),
+            to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: newRelativePath)
+        ).rewrites
     }
 }

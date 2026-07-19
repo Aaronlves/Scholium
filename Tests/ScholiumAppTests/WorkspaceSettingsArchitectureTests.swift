@@ -20,6 +20,21 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(model.snapshot.propertyKeysBySlot.isEmpty)
     }
 
+    @Test("Settings success feedback replaces stale messages and dismisses by identity")
+    func settingsSuccessFeedback() {
+        let model = WorkspaceSettingsModel()
+
+        model.showToast("First")
+        #expect(model.toastMessage == "First")
+
+        model.showToast("Second")
+        model.dismissToast("First")
+        #expect(model.toastMessage == "Second")
+
+        model.dismissToast("Second")
+        #expect(model.toastMessage == nil)
+    }
+
     @Test("Settings root and model cannot construct window-local owners")
     func sourceBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -75,6 +90,60 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(declarations.allSatisfy { $0.contains("WorkspaceSettingsModel") })
     }
 
+    @Test("Research Guidance local editors cannot register a window sidebar")
+    func researchGuidanceUsesPageLocalSplits() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!source.contains("NavigationSplitView {"))
+        #expect(source.contains("HSplitView"))
+        #expect(source.contains("scholium.researchGuidance.promptTemplateList"))
+        #expect(source.contains("scholium.researchGuidance.skillList"))
+    }
+
+    @Test("Skills owns package editing while Advanced owns only global guidance configuration")
+    func researchGuidancePagesHaveSeparateOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let skillsStart = try #require(source.range(of: "if collection == .skills {"))
+        let advancedStart = try #require(source.range(
+            of: "} else if collection == .advanced {",
+            range: skillsStart.upperBound..<source.endIndex
+        ))
+        let promptStart = try #require(source.range(
+            of: "} else {",
+            range: advancedStart.upperBound..<source.endIndex
+        ))
+        let skillsPage = String(source[skillsStart.lowerBound..<advancedStart.lowerBound])
+        let advancedPage = String(source[advancedStart.lowerBound..<promptStart.lowerBound])
+
+        #expect(skillsPage.contains("ResearchSkillsSettingsView("))
+        #expect(!skillsPage.contains("ResearchGuidanceAdvancedSettingsView("))
+        #expect(advancedPage.contains("ResearchGuidanceAdvancedSettingsView("))
+        #expect(!advancedPage.contains("ResearchSkillsSettingsView("))
+        #expect(source.contains("Button(\"Reveal Skills Folder\", action: revealSkillsFolder)"))
+        #expect(source.contains("AgentCLISettingsView()"))
+        #expect(source.contains("ResearchCitationMethodSettingsView"))
+        #expect(source.contains("RecommendedBibliographyMethodSettingsView()"))
+        #expect(source.contains("ResearchFunctionMethodSettingsView("))
+    }
+
     @Test("Settings model retains only delivery-neutral capabilities")
     func noCompatibilityStoreDependencies() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -101,6 +170,22 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("WorkspaceHandle"))
         #expect(!source.contains("WorkspaceStore"))
         #expect(!source.contains("import ScholiumApplication"))
+
+        let boundaryStart = try #require(source.range(
+            of: "struct WorkspaceSettingsCapabilities {"
+        ))
+        let boundaryEnd = try #require(source.range(
+            of: "extension ResearchSkillMaintenancePreparation",
+            range: boundaryStart.upperBound..<source.endIndex
+        ))
+        let boundary = String(source[boundaryStart.lowerBound..<boundaryEnd.lowerBound])
+        #expect(boundary.contains("let workspace: WorkspaceSettingsWorkspaceCapabilities"))
+        #expect(boundary.contains("let machine: WorkspaceSettingsMachineCapabilities"))
+        #expect(boundary.contains("let zotero: WorkspaceSettingsZoteroCapabilities"))
+        #expect(boundary.contains("let researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities"))
+        #expect(boundary.components(separatedBy: "\n").filter {
+            $0.trimmingCharacters(in: .whitespaces).hasPrefix("let ")
+        }.count == 4)
     }
 
     @Test("Skill summary uses exact ownership and actual binding status")

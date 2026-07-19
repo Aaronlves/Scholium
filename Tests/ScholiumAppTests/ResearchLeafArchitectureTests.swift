@@ -12,10 +12,10 @@ struct ResearchLeafArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let relativePaths = [
-            "Scholium/Views/Backlinks/BacklinksPanelView.swift",
+            "Scholium/Views/Backlinks/ConnectionsInspectorView.swift",
             "Scholium/Views/CheckpointView.swift",
             "Scholium/Views/Note/CritiqueProvenanceView.swift",
-            "Scholium/Views/Sidebar/RelationshipView.swift",
+            "Scholium/Views/Sidebar/ResearchInspectorContentView.swift",
         ]
         let sources = try Dictionary(uniqueKeysWithValues: relativePaths.map { path in
             (
@@ -63,19 +63,17 @@ struct ResearchLeafArchitectureTests {
         #expect(!critique.contains("let controller:"))
 
         let relationship = try #require(sources[relativePaths[3]])
-        #expect(relationship.contains("struct RelationshipViewContext"))
-        #expect(relationship.contains("@ObservedObject private var controller: ResearchController"))
+        #expect(relationship.contains("struct ResearchInspectorContentContext"))
+        #expect(!relationship.contains("ResearchController"))
         #expect(relationship.contains("let catalog: WorkspaceCatalogSnapshot?"))
         #expect(relationship.contains("let resolveZoteroSource:"))
         #expect(relationship.contains("let openZoteroItem:"))
         #expect(relationship.contains("let confirmZoteroItem:"))
-        #expect(relationship.contains("controller.requestOpen(item.note, sourceLine:"))
-        #expect(relationship.contains("controller.requestOpen(row.note.reference)"))
         #expect(relationship.contains("private struct ZoteroSourceSection: View"))
         #expect(relationship.contains("let resolveSource:"))
         #expect(relationship.contains("let openItem:"))
         #expect(relationship.contains("let confirmItem:"))
-        #expect(!relationship.contains("let context: RelationshipViewContext\n\n    private struct SourceRequest"))
+        #expect(!relationship.contains("let context: ResearchInspectorContentContext\n\n    private struct SourceRequest"))
     }
 
     @Test("Relationships navigation emits a typed document route with its source locator")
@@ -130,14 +128,14 @@ struct ResearchLeafArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(noteContent.contains("BacklinksPanelView(context: relationshipContext)"))
+        #expect(noteContent.contains("ConnectionsInspectorView(context: relationshipContext)"))
         #expect(noteContent.contains("CritiqueProvenanceView("))
         #expect(noteContent.contains("context: critiqueProvenanceContext"))
-        #expect(noteContent.contains("RelationshipView("))
-        #expect(noteContent.contains("context: relationshipViewContext"))
+        #expect(noteContent.contains("ResearchInspectorContentView("))
+        #expect(noteContent.contains("context: researchInspectorContentContext"))
         #expect(content.contains("controller: appState.researchController"))
         #expect(content.contains("graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph"))
-        #expect(content.contains("private var relationshipViewContext: RelationshipViewContext"))
+        #expect(content.contains("private var researchInspectorContentContext: ResearchInspectorContentContext"))
         #expect(content.contains("private var critiqueProvenanceContext: CritiqueProvenanceContext"))
         #expect(content.contains("loadAssociation: { path in"))
         #expect(content.contains("openFinding: { finding, fallbackTargetPath in"))

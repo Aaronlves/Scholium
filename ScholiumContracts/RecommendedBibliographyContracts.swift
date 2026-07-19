@@ -127,10 +127,10 @@ public struct RecommendedBibliographyMethodSnapshot: Codable, Hashable, Sendable
                 [ResearchFunctionResourceSnapshot].self,
                 forKey: .loadedResources
             ),
-            renderedResources: try container.decodeIfPresent(
+            renderedResources: try container.decode(
                 [RecommendedBibliographyMethodResourceSnapshot].self,
                 forKey: .renderedResources
-            ) ?? []
+            )
         )
     }
 }
@@ -232,7 +232,7 @@ public struct BibliographyCandidateIdentity: Codable, Hashable, Sendable {
         self.init(
             rawCitation: try container.decode(String.self, forKey: .rawCitation),
             title: try container.decodeIfPresent(String.self, forKey: .title),
-            authors: try container.decodeIfPresent([String].self, forKey: .authors) ?? [],
+            authors: try container.decode([String].self, forKey: .authors),
             year: try container.decodeIfPresent(Int.self, forKey: .year),
             doi: try container.decodeIfPresent(String.self, forKey: .doi),
             isbn: try container.decodeIfPresent(String.self, forKey: .isbn),
@@ -240,9 +240,9 @@ public struct BibliographyCandidateIdentity: Codable, Hashable, Sendable {
             zoteroItemKey: try container.decodeIfPresent(String.self, forKey: .zoteroItemKey),
             isChapter: try container.decodeIfPresent(Bool.self, forKey: .isChapter),
             containerTitle: try container.decodeIfPresent(String.self, forKey: .containerTitle),
-            editors: try container.decodeIfPresent([String].self, forKey: .editors) ?? [],
+            editors: try container.decode([String].self, forKey: .editors),
             edition: try container.decodeIfPresent(String.self, forKey: .edition),
-            translators: try container.decodeIfPresent([String].self, forKey: .translators) ?? []
+            translators: try container.decode([String].self, forKey: .translators)
         )
     }
 

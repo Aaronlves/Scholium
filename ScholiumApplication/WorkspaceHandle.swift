@@ -4,8 +4,7 @@ import ScholiumCore
 
 enum WorkspaceAccessConfiguration: Sendable {
     case live(
-        portableControlAccessRegistry: PortableControlAccessRegistry,
-        refreshInterval: Duration
+        portableControlAccessRegistry: PortableControlAccessRegistry
     )
     case snapshot
 }
@@ -174,7 +173,7 @@ public actor WorkspaceHandle {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
 
-            if case .live(let portableRegistry, _) = access {
+            if case .live(let portableRegistry) = access {
                 let portable = try await resolvePortableControlAccess(
                     worksVault: worksVault,
                     registry: portableRegistry
@@ -314,9 +313,8 @@ public actor WorkspaceHandle {
                 research: researchOperations
             )
             await reference.bind(handle)
-            if case .live(_, let refreshInterval) = access {
+            if case .live = access {
                 await handle.startLiveTasks(
-                    refreshInterval: refreshInterval,
                     streams: watcherStreams,
                     preOpenInventory: preOpenInventory ?? [:]
                 )
@@ -467,7 +465,7 @@ public actor WorkspaceHandle {
         let profile: SchemaProfileID = switch registeredVault.role {
         case .sourceCorpus: .analysis
         case .topicKnowledge: .topicMarkdown
-        case .dissertationControl, .draftProject: .draftProject
+        case .draftProject: .draftProject
         case .other: .genericMarkdown
         }
         let issues = PropertyContractCatalog.validate(
@@ -958,15 +956,6 @@ public actor WorkspaceHandle {
         }
     }
 
-    func announceRuntimeReloaded() async throws {
-        _ = try await refresh(
-            publication: .runtimeReloaded,
-            failureDisposition: .failed(
-                affectedVaultIDs: Set(assignment.vaults.values.map(\.id))
-            )
-        )
-    }
-
     /// Publishes the one typed handoff from this activation to a fully opened
     /// replacement. Subscribers can adopt the replacement identity and its
     /// complete snapshot before this handle finishes its stream.
@@ -1050,12 +1039,10 @@ public actor WorkspaceHandle {
     }
 
     private func startLiveTasks(
-        refreshInterval: Duration,
         streams: [UUID: AsyncStream<VaultWatchEvent>],
         preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]
     ) async {
         guard mode == .live, !isShutDown, liveWatcherTask == nil else { return }
-        _ = refreshInterval // retained as a bounded fallback-policy input
         liveWatcherTask = Task { [weak self] in
             await withTaskGroup(of: Void.self) { group in
                 for (vaultID, stream) in streams {

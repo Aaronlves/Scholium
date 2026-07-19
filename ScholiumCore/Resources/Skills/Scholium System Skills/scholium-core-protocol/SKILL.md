@@ -72,7 +72,7 @@ Output:
 Stop condition:
 Durability: ephemeral | handoff | durable update
 Dialogue target: none | dialogue-id
-Response contract: none | request-snapshot | legacy-fallback
+Response contract: none | request-snapshot
 Audit state: not-needed | needed | satisfied-for-exact-version
 ```
 
@@ -109,40 +109,11 @@ Never copy the Scholium repository's development `AGENTS.md` into a researcher w
 
 Load this protocol, exactly one complete primary method when the intellectual operation requires one, and only explicitly selected supplemental Practices or adapters. A System Skill is transport or integration infrastructure, never the philosophical method. Do not load the whole skill library merely because it is available.
 
-For a prepared Research Function, use the exact official Workflow or compatible complete Researcher Skill resolved by Scholium. Outside a Research Function, classify the intellectual operation and retrieve exactly one complete matching method only when interpretation, analysis, development, assessment, or revision requires it:
+For a prepared Research Function, use the exact official Workflow or compatible complete Researcher Skill, task facts, permissions, typed `nextActions`, and conditional resources resolved by Scholium. Do not retrieve an unattached conditional reference or reconstruct a continuation command from memory. A successful transport command is never philosophical evidence.
 
-```sh
-scholium skills catalog --triptych <triptych> --format json
-scholium skills show <workflow-skill-id> --triptych <triptych> --format json
-```
+For an unprepared direct-agent task that must discover packages, retrieve a declared reference, recover without a required typed action, or establish a cold CLI session, read [references/agent-transport.md](references/agent-transport.md) completely. That conditional transport reference changes no philosophical method, evidence threshold, permission, or durability rule.
 
-Direct paper analysis may use the complete Source Analyzer without creating a Research Function. Raw Zotero status, search, or item retrieval normally needs only this protocol and Zotero Integration; add Source Analyzer or Citation Verification only when interpretation or verification is requested. Choose the intellectual mode independently of permission. Use Mixed mode only for genuinely sequential operations. If the catalog or selected package cannot be retrieved, state that limitation and do not claim to have applied its method.
-
-Outside a prepared Research Function run, when a selected package instructs
-you to read one of its references or templates, retrieve that declared
-resource through Scholium rather than guessing an app-bundle or repository
-path:
-
-```sh
-scholium skills resources <skill-id> --triptych <triptych> --format json
-scholium skills show <skill-id> --triptych <triptych> --resource <relative-path> --format json
-```
-
-The Triptych selector is optional for a protected bundled package and required
-for a Triptych-local package. Use the returned package revision when a
-researcher-owned Practice or specialist method must be recorded. Do not treat
-a Markdown link as evidence that a resource was actually retrieved. Within a
-method-unresolved Research Function preflight, select conditional Workflow
-references only through `scholium function select-resources`; generic skill
-retrieval is not attached to the run and must not be reported as loaded-run
-evidence.
-
-At the start of a cold CLI session, use `scholium version --format json` and
-`scholium doctor --format json`; use hierarchical help instead of remembered
-syntax. For prepared runs, prefer the typed `nextActions` argument vectors
-returned by Scholium. Never execute them through shell interpolation, submit
-an unchanged replacement-marker template, or treat a successful transport
-command as philosophical evidence.
+Direct paper analysis may use the complete Source Analyzer without creating a Research Function. Raw Zotero status, search, or item retrieval normally needs only this protocol and Zotero Integration; add Source Analyzer or Citation Verification only when interpretation or verification is requested. Choose the intellectual mode independently of permission. If a required catalog, package, or resource cannot be retrieved, state that limitation and do not claim to have applied it.
 
 When the workflow changes mode, rebuild the read set, write set, permission, method instructions, assumptions, stop condition, and durability expectation. The preceding result becomes a labeled input or handoff, not an accepted commitment.
 

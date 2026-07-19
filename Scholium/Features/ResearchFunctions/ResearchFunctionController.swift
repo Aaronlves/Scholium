@@ -298,9 +298,9 @@ struct ResearchFunctionMaterialsState: Equatable, Sendable {
 
     private static func roleTitle(_ role: ResearchFunctionTargetRole) -> String {
         switch role {
-        case .analysis: "Analyses"
-        case .topic: "Topics"
-        case .work: "Works"
+        case .analysis: ScholiumL10n.dynamicString("Analyses")
+        case .topic: ScholiumL10n.dynamicString("Topics")
+        case .work: ScholiumL10n.dynamicString("Works")
         }
     }
 
@@ -616,7 +616,10 @@ final class ResearchFunctionController: ObservableObject {
         revision: DocumentFingerprint,
         record: HumanReviewRecord?
     ) {
-        guard activeFunction == .review else { return }
+        guard activeFunction == .review
+                || (activeFunction == .dialogue
+                    && (target?.role == .analysis || target?.role == .topic))
+        else { return }
         humanReviewRevision = revision
         if let draft = record?.draft, draft.fingerprint == revision {
             humanReviewQualification = draft.qualification
@@ -638,7 +641,7 @@ final class ResearchFunctionController: ObservableObject {
         target: ResearchFunctionTarget
     ) {
         guard self.presentationID == presentationID,
-              activeFunction == .review,
+              (activeFunction == .review || activeFunction == .dialogue),
               let previousTarget = self.target,
               previousTarget.noteID == target.noteID,
               previousTarget.note == target.note else { return }
@@ -649,10 +652,6 @@ final class ResearchFunctionController: ObservableObject {
     func setScope(_ kind: ResearchFunctionScopeKind) {
         guard kind == .whole || passageSelection != nil else { return }
         scopeKind = kind
-    }
-
-    func setMaterialSelected(_ id: UUID, isSelected: Bool) {
-        sendMaterials(.setSelected(id, isSelected))
     }
 
     func sendMaterials(_ action: ResearchFunctionMaterialsAction) {

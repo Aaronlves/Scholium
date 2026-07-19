@@ -3,103 +3,25 @@ import Foundation
 /// Versioned semantic profiles understood by Scholium. A profile describes how
 /// metadata participates in workflow views; it never replaces exact Markdown.
 public enum SchemaProfileID: String, Codable, CaseIterable, Sendable {
-    /// Current project-neutral Analysis profile selected by the registered
-    /// Analyses vault role. It does not require a schema marker in YAML.
     case analysis = "analysis"
-    /// Read-only compatibility profile for older paper-analysis vaults.
-    case paperAnalysisV1 = "paper-analysis-yaml-v1"
     case topicMarkdown = "topic-markdown"
-    case dissertationControlV3 = "dissertation-control-v3"
-    case dissertationControlV4 = "dissertation-control-v4"
     case draftProject = "draft-project"
     case genericMarkdown = "generic-markdown"
-
-    /// Timestamp properties are retained as exact legacy YAML, but Scholium
-    /// records new creation and modification time in app-owned History. A
-    /// save therefore never injects or refreshes a frontmatter timestamp.
-    /// The argument remains for source-compatibility with older callers.
-    public func automaticSaveTimestampKey(in frontmatter: [String: YAMLValue]) -> String? {
-        nil
-    }
-}
-
-/// Canonical researcher-facing YAML vocabulary shared by the Analyses,
-/// Topics, and Works triptych. Legacy aliases are read-only compatibility
-/// inputs until a researcher deliberately edits that property.
-public enum TriptychProperty {
-    public static let legacyAliases: [String: [String]] = [
-        "type": ["source_kind", "work_type"],
-        "status": ["analysis_status", "lifecycle_status"],
-        "created": ["analysis_created_at"],
-        "updated": ["analysis_updated_at", "modified"],
-        "access": ["source_access"],
-        "locators": ["locator_status"],
-        "relevance": ["relevance_rating"],
-        "main_topic": ["primary_cluster"],
-        "related_topics": ["secondary_clusters"],
-        "follow_up": ["follow_up_leads"],
-    ]
-
-    public static func value(
-        for canonicalKey: String,
-        in frontmatter: [String: YAMLValue]
-    ) -> YAMLValue? {
-        if let value = frontmatter[canonicalKey] { return value }
-        for alias in legacyAliases[canonicalKey] ?? [] {
-            if let value = frontmatter[alias] { return value }
-        }
-        return nil
-    }
-
-    public static func legacyKey(
-        for canonicalKey: String,
-        in frontmatter: [String: YAMLValue]
-    ) -> String? {
-        (legacyAliases[canonicalKey] ?? []).first { frontmatter[$0] != nil }
-    }
 }
 
 public enum WorkflowProfileResolver {
-    /// Resolution order is registered vault role, explicit schema metadata,
-    /// configurable legacy folder convention, then generic Markdown.
+    /// Registered vault role is the only semantic profile authority.
     public static func resolve(
         vaultRole: VaultRole,
-        frontmatter: [String: YAMLValue],
-        relativePath: String
+        frontmatter _: [String: YAMLValue],
+        relativePath _: String
     ) -> SchemaProfileID {
         switch vaultRole {
-        case .sourceCorpus:
-            if frontmatter["schema_version"] == .string(SchemaProfileID.paperAnalysisV1.rawValue)
-                || frontmatter["record_type"] == .string("paper_analysis") {
-                return .paperAnalysisV1
-            }
-            return .analysis
+        case .sourceCorpus: return .analysis
         case .topicKnowledge: return .topicMarkdown
-        case .dissertationControl:
-            return frontmatter["schema_version"] == .string(SchemaProfileID.dissertationControlV4.rawValue)
-                ? .dissertationControlV4
-                : .dissertationControlV3
         case .draftProject: return .draftProject
-        case .other: break
+        case .other: return .genericMarkdown
         }
-
-        if frontmatter["schema_version"] == .string(SchemaProfileID.paperAnalysisV1.rawValue)
-            || frontmatter["record_type"] == .string("paper_analysis") {
-            return .paperAnalysisV1
-        }
-        if frontmatter["schema_version"] == .string(SchemaProfileID.dissertationControlV4.rawValue) {
-            return .dissertationControlV4
-        }
-        if frontmatter["schema_version"] == .string(SchemaProfileID.dissertationControlV3.rawValue)
-            || frontmatter["note_type"] != nil {
-            return .dissertationControlV3
-        }
-
-        let components = relativePath.lowercased().split(separator: "/")
-        if components.contains("papers") { return .paperAnalysisV1 }
-        if components.contains("topics") { return .topicMarkdown }
-        if components.contains("output") { return .draftProject }
-        return .genericMarkdown
     }
 }
 

@@ -6,7 +6,7 @@ ROOT="${0:A:h:h:h}"
 # release job with SCHOLIUM_PACKAGE_OUTPUT, but keep the default external.
 OUTPUT="${SCHOLIUM_PACKAGE_OUTPUT:-${HOME}/Applications/Scholium Builds}"
 APP="${OUTPUT}/Scholium.app"
-SCRATCH="${TMPDIR:-/tmp}/scholium-release"
+SCRATCH="${ROOT}/.build/release"
 STAGING_APP="${SCRATCH}/Scholium.app"
 IDENTITY="${CODE_SIGN_IDENTITY:--}"
 DEPLOYMENT_TARGET="26.0"
@@ -36,7 +36,6 @@ fi
 
 rm -rf \
   "${APP}" \
-  "${OUTPUT}/KB Manager.app" \
   "${OUTPUT}/scholium" \
   "${OUTPUT}/Scholium_ScholiumCore.bundle" \
   "${SCRATCH}"
@@ -48,6 +47,9 @@ cp "${SCRATCH}/release/scholium" "${STAGING_APP}/Contents/Helpers/scholium"
 chmod +x "${STAGING_APP}/Contents/Helpers/scholium"
 if [[ -d "${SCRATCH}/release/Scholium_ScholiumApp.bundle" ]]; then
   cp -R "${SCRATCH}/release/Scholium_ScholiumApp.bundle" "${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
+  find "${SCRATCH}/release/Scholium_ScholiumApp.bundle" -type d -name '*.lproj' | while IFS= read -r localization; do
+    cp -R "${localization}" "${STAGING_APP}/Contents/Resources/"
+  done
 fi
 CORE_RESOURCE_BUNDLE="${SCRATCH}/release/Scholium_ScholiumCore.bundle"
 [[ -d "${CORE_RESOURCE_BUNDLE}" ]] || {

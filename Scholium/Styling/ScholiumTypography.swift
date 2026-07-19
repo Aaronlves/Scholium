@@ -119,22 +119,6 @@ enum ScholiumTypography {
         monospaceFont(size: codePointSize * scale)
     }
 
-    static func diff(
-        scale: CGFloat = 1,
-        bold: Bool = false,
-        italic: Bool = false
-    ) -> NSFont {
-        monospaceFont(
-            size: diffPointSize * scale,
-            bold: bold,
-            italic: italic
-        )
-    }
-
-    static func revisionIdentity(scale: CGFloat = 1) -> NSFont {
-        monospaceFont(size: revisionIdentityPointSize * scale)
-    }
-
     static func readingFont(
         size: CGFloat,
         bold: Bool = false,
@@ -203,13 +187,6 @@ enum ScholiumTypography {
         return .custom(name, size: size, relativeTo: textStyle)
     }
 
-    static func swiftUICode(scale: CGFloat = 1) -> Font {
-        swiftUIMonospaceFont(
-            size: codePointSize * scale,
-            relativeTo: .body
-        )
-    }
-
     static func swiftUIDiff(
         scale: CGFloat = 1,
         bold: Bool = false,
@@ -234,20 +211,28 @@ enum ScholiumTypography {
 /// Scholarly Editorialism pairs an Alegreya publication hierarchy with system
 /// typography for operational chrome, metadata, and native controls.
 enum ScholiumInterfaceTypography {
+    /// Scholium's wordmark is the sole editorial exception inside window
+    /// chrome. Commands and all other operational labels remain system sans.
     static let identity = ScholiumTypography.swiftUIReadingFont(
         size: 22,
-        relativeTo: .title3,
+        relativeTo: .title2,
         bold: true
     )
     static let documentTitle = ScholiumTypography.swiftUIReadingFont(
-        size: 31,
+        size: 22.5,
         relativeTo: .title,
-        bold: true
-    )
-    static let noteTitle = ScholiumTypography.swiftUIReadingFont(
-        size: 15,
-        relativeTo: .body,
         bold: false
+    )
+    /// One scan rhythm for both folders and notes. Hierarchy is expressed by
+    /// weight, color, indentation, and symbols rather than a size change.
+    static let libraryHierarchy = Font.callout
+    /// Library note names and the compact document identity are navigation
+    /// language. The scrolling document title remains editorial serif.
+    static let libraryNoteTitle = libraryHierarchy
+    static let noteTitle = Font.body
+    static let literatureCitation = ScholiumTypography.swiftUIReadingFont(
+        size: 12,
+        relativeTo: .body
     )
     static let apparatusTitle = ScholiumTypography.swiftUIReadingFont(
         size: 17,
@@ -255,7 +240,28 @@ enum ScholiumInterfaceTypography {
         bold: true
     )
     static let sectionTitle = Font.headline.weight(.medium)
-    static let rowTitle = Font.callout.weight(.medium)
+    static let rowTitle = libraryHierarchy.weight(.medium)
     static let metadata = Font.caption.weight(.medium)
     static let editorialLabel = Font.caption2.weight(.semibold)
+
+    /// Inspector section labels use the same system size as the Library's
+    /// editorial label but a lighter weight, keeping the Apparatus subordinate.
+    static let apparatusLabel = Font.caption2.weight(.medium)
+
+    /// Operational Inspector text remains system sans-serif. Research-object
+    /// names and researcher-authored judgments use the editorial serif roles.
+    static let apparatusBody = Font.caption
+    static let apparatusMetadata = Font.caption2.weight(.medium)
+    static let apparatusResearchContent = ScholiumTypography.swiftUIReadingFont(
+        size: 11,
+        relativeTo: .caption
+    )
+    static let reviewValue = ScholiumTypography.swiftUIReadingFont(
+        size: 18,
+        relativeTo: .title3
+    )
+    static let reviewSummary = ScholiumTypography.swiftUIReadingFont(
+        size: 12,
+        relativeTo: .body
+    )
 }

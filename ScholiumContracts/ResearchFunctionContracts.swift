@@ -62,7 +62,7 @@ public enum ResearchFunctionTargetRole: String, Codable, CaseIterable, Hashable,
         switch vaultRole {
         case .sourceCorpus: self = .analysis
         case .topicKnowledge: self = .topic
-        case .dissertationControl, .draftProject: self = .work
+        case .draftProject: self = .work
         case .other: return nil
         }
     }
@@ -71,7 +71,7 @@ public enum ResearchFunctionTargetRole: String, Codable, CaseIterable, Hashable,
         switch self {
         case .analysis: [.sourceCorpus]
         case .topic: [.topicKnowledge]
-        case .work: [.dissertationControl, .draftProject]
+        case .work: [.draftProject]
         }
     }
 }
@@ -166,10 +166,6 @@ public enum FidelityCheck: String, Codable, CaseIterable, Hashable, Sendable {
 
 /// Agent-selected conditional package resources. These values are semantic
 /// choices in the function API, never Strip buttons or package identifiers.
-///
-/// `critiqueReportTemplate` remains decodable for immutable legacy records,
-/// but is not offered for new runs because presentation belongs to the active
-/// Prompt Template rather than the Critique Workflow.
 public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, Hashable, Sendable {
     case developmentExploration = "development_exploration"
     case developmentSynthesis = "development_synthesis"
@@ -177,7 +173,6 @@ public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, 
     case developmentDefinitionImpact = "development_definition_impact"
     case revisionFeedback = "revision_feedback"
     case revisionOutputContracts = "revision_output_contracts"
-    case critiqueReportTemplate = "critique_report_template"
     case manuscriptGates = "manuscript_gates"
 
     public var kind: ResearchFunctionConditionalResourceKind {
@@ -187,15 +182,11 @@ public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, 
             .method
         case .revisionFeedback:
             .method
-        case .revisionOutputContracts, .critiqueReportTemplate:
+        case .revisionOutputContracts:
             .template
         case .manuscriptGates:
             .checklist
         }
-    }
-
-    public var isAvailableForNewSelection: Bool {
-        self != .critiqueReportTemplate
     }
 
     public var function: ResearchFunctionID {
@@ -205,8 +196,6 @@ public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, 
             .develop
         case .revisionFeedback, .revisionOutputContracts:
             .revise
-        case .critiqueReportTemplate:
-            .critique
         case .manuscriptGates:
             .manuscript
         }
@@ -219,9 +208,6 @@ public enum ResearchFunctionConditionalResourceKind: String, Codable, Hashable, 
     case checklist
 }
 
-@available(*, deprecated, renamed: "ResearchFunctionConditionalResource")
-public typealias ResearchFunctionMethod = ResearchFunctionConditionalResource
-
 public extension ResearchFunctionID {
     /// Conditional method references available to an external agent after it
     /// has inspected the fixed Target and read-only Materials. An empty
@@ -229,14 +215,10 @@ public extension ResearchFunctionID {
     /// not an exhaustive taxonomy of philosophical activity.
     var conditionalResources: [ResearchFunctionConditionalResource] {
         ResearchFunctionConditionalResource.allCases.filter {
-            $0.function == self && $0.isAvailableForNewSelection
+            $0.function == self
         }
     }
 
-    @available(*, deprecated, renamed: "conditionalResources")
-    var conditionalMethods: [ResearchFunctionConditionalResource] {
-        conditionalResources
-    }
 }
 
 public enum ResearchSkillCapability: String, Codable, CaseIterable, Hashable, Sendable {
@@ -399,39 +381,6 @@ public struct ResearchFunctionMaterialCandidate: Codable, Hashable, Identifiable
         self.repairReasons = repairReasons
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case material, aliases, suggestionReasons, isSelectable, repairReasons
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            material: try container.decode(ResearchFunctionMaterial.self, forKey: .material),
-            aliases: try container.decodeIfPresent([String].self, forKey: .aliases) ?? [],
-            suggestionReasons: try container.decodeIfPresent(
-                [ResearchFunctionMaterialSuggestionReason].self,
-                forKey: .suggestionReasons
-            ) ?? [],
-            isSelectable: try container.decodeIfPresent(Bool.self, forKey: .isSelectable) ?? true,
-            repairReasons: try container.decodeIfPresent(
-                [ResearchFunctionRepairReason].self,
-                forKey: .repairReasons
-            ) ?? []
-        )
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(material, forKey: .material)
-        if !aliases.isEmpty { try container.encode(aliases, forKey: .aliases) }
-        if !suggestionReasons.isEmpty {
-            try container.encode(suggestionReasons, forKey: .suggestionReasons)
-        }
-        try container.encode(isSelectable, forKey: .isSelectable)
-        if !repairReasons.isEmpty {
-            try container.encode(repairReasons, forKey: .repairReasons)
-        }
-    }
 }
 
 public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
@@ -478,31 +427,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
                 return lhsIndex < rhsIndex
             }
         }
-    }
-
-    @available(*, deprecated, message: "Use conditionalResources instead of methods.")
-    public init(
-        function: ResearchFunctionID,
-        target: ResearchFunctionTarget,
-        materials: [ResearchFunctionMaterial] = [],
-        instruction: String? = nil,
-        scope: ResearchFunctionScope? = nil,
-        checks: Set<FidelityCheck> = [],
-        commentIDs: [UUID] = [],
-        methods: Set<ResearchFunctionConditionalResource>?,
-        dialogueResponseModules: [DialogueResponseModule]? = nil
-    ) {
-        self.init(
-            function: function,
-            target: target,
-            materials: materials,
-            instruction: instruction,
-            scope: scope,
-            checks: checks,
-            commentIDs: commentIDs,
-            conditionalResources: methods,
-            dialogueResponseModules: dialogueResponseModules
-        )
     }
 
     /// Nil is a deliberate preflight state for functions with conditional
@@ -559,7 +483,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             throw ResearchFunctionContractError.duplicateComment
         }
         guard (conditionalResources ?? []).allSatisfy({
-            $0.function == function && $0.isAvailableForNewSelection
+            $0.function == function
         }) else {
             throw ResearchFunctionContractError.invalidMethodSelection
         }
@@ -596,37 +520,14 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         }
     }
 
-    @available(*, deprecated, renamed: "conditionalResources")
-    public var methods: Set<ResearchFunctionConditionalResource>? {
-        conditionalResources
-    }
-
-    @available(*, deprecated, renamed: "awaitsResourceSelection")
-    public var awaitsMethodSelection: Bool { awaitsResourceSelection }
-
-    @available(*, deprecated, renamed: "selectingResources(_:)")
-    public func selectingMethods(
-        _ methods: Set<ResearchFunctionConditionalResource>
-    ) throws -> ResearchFunctionRequest {
-        try selectingResources(methods)
-    }
-
     private enum CodingKeys: String, CodingKey {
         case function, target, materials, instruction, scope, checks, commentIDs
         case conditionalResources = "conditional_resources"
-        case legacyMethods = "methods"
         case dialogueResponseModules
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let resources = try container.decodeIfPresent(
-            Set<ResearchFunctionConditionalResource>.self,
-            forKey: .conditionalResources
-        ) ?? container.decodeIfPresent(
-            Set<ResearchFunctionConditionalResource>.self,
-            forKey: .legacyMethods
-        )
         self.init(
             function: try container.decode(ResearchFunctionID.self, forKey: .function),
             target: try container.decode(ResearchFunctionTarget.self, forKey: .target),
@@ -638,7 +539,10 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             scope: try container.decodeIfPresent(ResearchFunctionScope.self, forKey: .scope),
             checks: try container.decodeIfPresent(Set<FidelityCheck>.self, forKey: .checks) ?? [],
             commentIDs: try container.decodeIfPresent([UUID].self, forKey: .commentIDs) ?? [],
-            conditionalResources: resources,
+            conditionalResources: try container.decodeIfPresent(
+                Set<ResearchFunctionConditionalResource>.self,
+                forKey: .conditionalResources
+            ),
             dialogueResponseModules: try container.decodeIfPresent(
                 [DialogueResponseModule].self,
                 forKey: .dialogueResponseModules
@@ -678,25 +582,8 @@ public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Se
         self.resources = resources
     }
 
-    @available(*, deprecated, message: "Use resources instead of methods.")
-    public init(
-        runID: UUID,
-        confirmationToken: UUID,
-        methods: Set<ResearchFunctionConditionalResource>
-    ) {
-        self.init(
-            runID: runID,
-            confirmationToken: confirmationToken,
-            resources: methods
-        )
-    }
-
-    @available(*, deprecated, renamed: "resources")
-    public var methods: Set<ResearchFunctionConditionalResource> { resources }
-
     private enum CodingKeys: String, CodingKey {
         case runID, confirmationToken, resources
-        case legacyMethods = "methods"
     }
 
     public init(from decoder: Decoder) throws {
@@ -704,10 +591,10 @@ public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Se
         self.init(
             runID: try container.decode(UUID.self, forKey: .runID),
             confirmationToken: try container.decode(UUID.self, forKey: .confirmationToken),
-            resources: try container.decodeIfPresent(
+            resources: try container.decode(
                 Set<ResearchFunctionConditionalResource>.self,
                 forKey: .resources
-            ) ?? container.decode(Set<ResearchFunctionConditionalResource>.self, forKey: .legacyMethods)
+            )
         )
     }
 
@@ -718,9 +605,6 @@ public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Se
         try container.encode(resources, forKey: .resources)
     }
 }
-
-@available(*, deprecated, renamed: "ResearchFunctionResourceSelectionSubmission")
-public typealias ResearchFunctionMethodSelectionSubmission = ResearchFunctionResourceSelectionSubmission
 
 public struct ResearchFunctionResourceSnapshot: Codable, Hashable, Sendable {
     public let relativePath: String
@@ -777,7 +661,7 @@ public struct ResearchFunctionPhaseSnapshot: Codable, Hashable, Sendable {
     public let function: ResearchFunctionID
     public let skills: [ResearchFunctionSkillSnapshot]
     /// The explicit Triptych citation-style binding applied to this isolated
-    /// Fidelity phase. Nil for non-citation phases and legacy snapshots.
+    /// Fidelity phase. Nil for non-citation phases.
     public let citationStyle: String?
 
     public init(
@@ -870,8 +754,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// edited.
     public let evidenceRevisions: [DocumentFingerprint]
     public let fidelityHandoff: ResearchFunctionFidelityHandoff?
-    /// Present only for Fidelity runs. Legacy Fidelity snapshots decode nil
-    /// and are interpreted as researcher-requested manual invocations.
+    /// Present only for Fidelity runs.
     public let fidelityInvocation: FidelityInvocationKind?
     public let confirmationToken: UUID
     public let preparedAt: Date
@@ -914,7 +797,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
 
     public var resolvedFidelityInvocation: FidelityInvocationKind? {
         guard request.function == .fidelity else { return nil }
-        return fidelityInvocation ?? .manual
+        return fidelityInvocation
     }
 }
 
@@ -931,9 +814,6 @@ public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
 
     public var runID: UUID { snapshot.runID }
     public var awaitsResourceSelection: Bool { snapshot.request.awaitsResourceSelection }
-
-    @available(*, deprecated, renamed: "awaitsResourceSelection")
-    public var awaitsMethodSelection: Bool { awaitsResourceSelection }
 
     public init(
         snapshot: ResearchFunctionSnapshot,
@@ -1219,7 +1099,7 @@ public struct ResearchFunctionRecordProjection: Codable, Hashable, Identifiable,
     public let completion: ResearchFunctionCompletion?
     /// Exact agent handoff persisted for the run. A method-unresolved
     /// preflight may be replaced once by its finalized immutable execution
-    /// packet; legacy records may omit it.
+    /// packet; unresolved preflight records may omit it.
     public let preparedInstructions: String?
 
     public var id: UUID { snapshot.runID }

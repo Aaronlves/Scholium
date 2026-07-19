@@ -42,7 +42,7 @@ Dialogue is System transport and record infrastructure. Human Review is a resear
 
 Catalog supported_functions binds packages to semantic Research Function IDs. The visible function selects a function, never a package ID or internal method. When an intellectual task needs a complete philosophical method, Application resolves exactly one eligible official Workflow or explicitly compatible complete Researcher Skill, its dependency closure, explicit Triptych bindings, and only the conditional resources needed for the run. System Skills are transport and integrity authorities, not philosophical methods; Practices only supplement the primary method. Direct Source Analysis may use Source Analyzer without a Research Function.
 
-Legacy supported_modes remains for older records and internal compatibility. It is not interface language or write permission. A one-click run with conditional resources first produces a read-only preflight containing the complete primary method. After inspecting the real work, the external agent finalizes an explicit semantic selection—including an empty selection when the primary method is sufficient—through the function API. The same run then records whole-package revisions and the exact conditional resources attached to its immutable execution packet.
+`supported_modes` is internal package-routing metadata. It is not interface language or write permission. A one-click run with conditional resources first produces a read-only preflight containing the complete primary method. After inspecting the real work, the external agent finalizes an explicit semantic selection—including an empty selection when the primary method is sufficient—through the function API. The same run then records whole-package revisions and the exact conditional resources attached to its immutable execution packet.
 
 Function boundaries:
 
@@ -82,6 +82,8 @@ An ordinary run contains:
 4. only explicitly selected Researcher Skills or Practices;
 5. only conditional resources actually needed.
 
+The protected Core entry keeps universal philosophical integrity, researcher-authority, privacy, permission, and exact-version audit rules in every run. Generic cold-session Skill discovery and resource-retrieval syntax is a conditional transport reference rather than ordinary prepared-function context. A selected Practice still loads the shared philosophical and composition foundation plus its exact resource; the directory of unselected Practices is maintenance context only.
+
 Manuscript is an orchestrator. It declares only the role-valid Work phases actually warranted from Revise, Fidelity, and optional Critique; it does not impose one universal sequence, depend on, or concatenate every Workflow package. Application resolves each needed phase independently, resets Target and Material fingerprints, evidence, permission, and write scope, and preserves a labeled handoff. Conceptual or argumentative development of the Work occurs inside Revise; Develop remains Analysis/Topic-only and never creates a second Target.
 
 ## Recommended Bibliography
@@ -96,7 +98,7 @@ A maintenance transaction requires the expected whole-package revision, a bounde
 
 ## Evidence and evaluation
 
-catalog.yaml owns IDs, ownership, function compatibility, legacy modes, capabilities, citation styles, dependencies, and update policy. Each package owns its method and conditional resources. evals/cases.yaml covers positive, boundary, and adversarial function behavior; evals/REAL_WORKFLOW_ASSESSMENT.md defines field acceptance.
+catalog.yaml owns IDs, ownership, routing modes, function compatibility, capabilities, citation styles, dependencies, and update policy. Each package owns its method and conditional resources. evals/cases.yaml covers positive, boundary, and adversarial function behavior; evals/REAL_WORKFLOW_ASSESSMENT.md defines field acceptance.
 
 Repository and catalog tests prove packaging, routing, containment, revisions, and transaction behavior. They do not prove philosophical truth or that an external agent complied with every method. Field trials must inspect the actual output, evidence use, write set, and reported uncertainty.
 

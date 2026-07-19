@@ -347,7 +347,7 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
         linkedFrom reference: VaultNoteReference,
         analysesVaultID: UUID
     ) -> [WorkspaceCatalogNote] {
-        guard [.topicKnowledge, .dissertationControl, .draftProject].contains(reference.vaultRole),
+        guard [.topicKnowledge, .draftProject].contains(reference.vaultRole),
               let graph else { return [] }
         let current = VaultQualifiedNoteID(
             vaultID: reference.vaultID,
@@ -422,7 +422,7 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
         switch role {
         case .sourceCorpus: 0
         case .topicKnowledge: 1
-        case .dissertationControl, .draftProject: 2
+        case .draftProject: 2
         case .other: 3
         }
     }
@@ -621,7 +621,7 @@ public enum WorkspaceCatalogBuilder {
                 relativePath: note.reference.relativePath
             )
         })
-        for note in notes where [.topicKnowledge, .dissertationControl, .draftProject].contains(note.reference.vaultRole)
+        for note in notes where [.topicKnowledge, .draftProject].contains(note.reference.vaultRole)
             && isActiveResearchPath(note.reference.relativePath) {
             let sourceID = VaultQualifiedNoteID(
                 vaultID: note.reference.vaultID,

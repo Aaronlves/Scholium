@@ -228,19 +228,3 @@ struct ScholiumNoteRow: View {
         .accessibilityElement(children: .combine)
     }
 }
-
-struct ScholiumRoleScopeControl<Value: Hashable, Label: View>: View {
-    let title: String
-    @Binding var selection: Value
-    let values: [Value]
-    @ViewBuilder let label: (Value) -> Label
-
-    var body: some View {
-        Picker(title, selection: $selection) {
-            ForEach(values, id: \.self) { value in
-                label(value).tag(value)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-}

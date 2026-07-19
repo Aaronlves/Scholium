@@ -128,7 +128,6 @@ export function transformTableCommand(
   const rawRow = table.position.row === 0 ? 0 : table.position.row + 1;
   const row = table.rows[rawRow];
   const column = table.position.column;
-  const cell = row.cells[column];
 
   if (command === "tableInsertRowBefore" || command === "tableInsertRowAfter") {
     const before = command === "tableInsertRowBefore";

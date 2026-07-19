@@ -75,6 +75,29 @@ DEVELOPER_DIR="$developer_dir" swift test
 DEVELOPER_DIR="$developer_dir" swift run ScholiumApp
 ```
 
+All SwiftPM and Xcode-derived build state lives under the ignored repository
+`.build/` directory. This is safe because the checkout itself lives outside
+Desktop, Documents, CloudStorage, and other File Provider-managed locations.
+Do not redirect build caches or indexes to `/tmp`.
+
+To inspect or clean development storage, double-click
+`Manage Scholium Development Storage.command` in Finder. Its native menu can
+show current usage; open the configured build root, a repository-local
+`.build`, temporary files, Xcode DerivedData, or packaged builds; delete stale
+artifacts; or delete all rebuildable artifacts. It detects whether the current
+scripts use local or external scratch and also finds obsolete data from the
+other layout. The same operations are available from the command line:
+
+```bash
+./Tools/Scripts/manage-development-storage.sh report
+./Tools/Scripts/manage-development-storage.sh clean-stale
+./Tools/Scripts/manage-development-storage.sh clean-all
+```
+
+The clean commands are dry runs unless `--delete` is added. Application state,
+packaged builds, Triptych files, and portable `.scholium/` data are never
+cleanup candidates.
+
 The optional external-agent Zotero transport is provided by the separately
 built `scholium` CLI. See [Zotero MCP](Docs/ZOTERO_MCP.md) for its supported
 source installation path, agent configuration, and guarded import contract.
@@ -98,7 +121,7 @@ For deterministic interface work, use only the isolated QA app and disposable fi
 ```
 
 These commands use `/tmp/Scholium-QA.app` with bundle identifier
-`com.kbmanager.qa` and a disposable copy of the directory selected by
+`com.scholium.qa` and a disposable copy of the directory selected by
 `SCHOLIUM_TEST_VAULTS` (default: `~/Desktop/TestVaults`). They do not package a
 release or open a real research vault.
 
@@ -147,7 +170,9 @@ Use **File → New Triptych…** to configure another complete research domain, 
 
 Each Triptych needs its own Works parent because its portable `.scholium/` control directory sits beside Works. Scholium rejects two Triptychs whose Works folders would share that control directory.
 
-The researcher-facing workspace always uses the three Triptych vaults. Stored legacy role aliases and the one-release legacy CLI search syntax remain read/command compatibility; the CLI no longer registers arbitrary vaults outside a complete Triptych.
+The researcher-facing workspace and CLI use only the current three-vault
+Triptych contract. Pre-release role aliases and positional Search syntax are
+not accepted.
 
 ## Scholium CLI
 
@@ -188,7 +213,8 @@ current SHA-256 returned by `scholium read --format json`.
 For isolated CLI testing:
 
 ```bash
-SCHOLIUM_HOME=/tmp/scholium-cli-check swift run scholium --help
+SCHOLIUM_HOME=/tmp/scholium-cli-check swift run \
+  scholium --help
 ```
 
 ## Storage and safety
@@ -224,7 +250,7 @@ Scholium/                  macOS app and human-facing interaction
 ScholiumCLI/               CLI parsing, formatting, and Contracts handlers
 WebEditor/                 TypeScript and CodeMirror sources
 Tests/ScholiumContractsTests/
-                           Boundary fidelity and compatibility tests
+                           Contract and boundary tests
 Tests/ScholiumCoreTests/   Core unit and integration tests
 Tests/ScholiumApplicationTests/
                            Runtime, operation, event, and delivery-parity tests

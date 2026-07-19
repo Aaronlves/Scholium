@@ -33,7 +33,7 @@ public enum ResearchWorkflowAssembler {
             let practicePackageIDs = phase.selectedPractices.map(\.packageID)
             let additionalIDs = unique(phase.requiredSkillIDs + practicePackageIDs)
             var selectedPaths = conditionalResourcePaths
-            var blocking = replacementConflicts(in: phase.selectedPractices)
+            var blocking: [String] = []
             var warnings: [String] = []
 
             for selection in phase.selectedPractices {
@@ -68,8 +68,7 @@ public enum ResearchWorkflowAssembler {
                     .flatMap(\.compatiblePracticeIDs)
             )
             for selection in phase.selectedPractices
-            where selection.application == .supplement
-                && !compatible.contains(selection.practiceID) {
+            where !compatible.contains(selection.practiceID) {
                 blocking.append(
                     "Practice \(selection.selectionID) is incompatible with the complete primary method for this phase and requires Research Guidance repair."
                 )
@@ -190,7 +189,7 @@ public enum ResearchWorkflowAssembler {
             )
             let packagesByID = Dictionary(uniqueKeysWithValues: packages.map { ($0.id, $0) })
             var warnings: [String] = []
-            var blocking = replacementConflicts(in: phase.selectedPractices)
+            var blocking: [String] = []
             var selectedPaths: [String: Set<String>] = [:]
 
             for package in packages {
@@ -217,8 +216,7 @@ public enum ResearchWorkflowAssembler {
                     )
                 }
                 selectedPaths[package.id, default: []].insert(reference)
-                if selection.application == .supplement,
-                   !compatible.contains(selection.practiceID) {
+                if !compatible.contains(selection.practiceID) {
                     blocking.append(
                         "Practice \(selection.selectionID) is incompatible with the complete primary method for this phase and requires Research Guidance repair."
                     )
@@ -291,18 +289,6 @@ public enum ResearchWorkflowAssembler {
             blockingConflicts: conflicts,
             renderedInstructions: rendered
         )
-    }
-
-    private static func replacementConflicts(
-        in selections: [ResearchPracticeSelection]
-    ) -> [String] {
-        let replacements = selections.filter { $0.application == .replace }
-        guard replacements.isEmpty else {
-            return [
-                "Legacy replacement Practices require repair. Practices may supplement a complete method only; use a complete independent Researcher Skill when replacing the primary method."
-            ]
-        }
-        return []
     }
 
     private static func render(

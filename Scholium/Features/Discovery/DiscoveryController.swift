@@ -26,10 +26,10 @@ struct DiscoveryLibraryState: Equatable {
     var locationScope: NoteLocationScope = .workspace
     var filters = DiscoveryFilterState()
     var sortOrder: NoteSortOrder = .modifiedNewest
-    var expandedFolders: Set<String> = []
     var capturedWorkspaceNotes: [WindowDocumentLocation] = []
     var preparedLifecyclePath: String?
     var showsUnclassified = false
+    var showsAttentionQueue = false
     var lifecycleScope: NoteLocationScope?
     var lifecycleItems: [LifecycleLocationItem] = []
     var lifecycleIsLoading = false
@@ -70,7 +70,7 @@ enum DiscoverySearchExecutionError: LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .workspaceUnavailable:
-            "Open a complete Triptych before searching."
+            String(localized: "Open a complete Triptych before searching.", table: "Localizable", bundle: .module)
         }
     }
 }
@@ -80,7 +80,9 @@ struct DiscoveryLifecycleRequest: Equatable, Sendable {
     let scope: NoteLocationScope
 }
 
-/// Per-window owner for Library and Search presentation state.
+/// Per-window owner for Library and Search presentation state. Document tabs
+/// borrow one window-owned peripheral presentation so switching documents
+/// never appears to rebuild the Library tree.
 /// It accepts immutable results from Application operations and emits only
 /// closed `WindowIntent` values for cross-feature routing.
 @MainActor
@@ -93,14 +95,21 @@ final class DiscoveryController: ObservableObject {
     private var activeLifecycleRequestID: UUID?
     private var activeSearchRequestID: UUID?
     private let intentHandler: IntentHandler
+    private let peripheralPresentation: WindowPeripheralPresentationState
     private var operations: (any DiscoveryUseCases)?
+    private var cancellables: Set<AnyCancellable> = []
 
     init(
         initialLibraryState: DiscoveryLibraryState = DiscoveryLibraryState(),
+        peripheralPresentation: WindowPeripheralPresentationState = WindowPeripheralPresentationState(),
         intentHandler: @escaping IntentHandler = { _ in }
     ) {
         library = initialLibraryState
+        self.peripheralPresentation = peripheralPresentation
         self.intentHandler = intentHandler
+        peripheralPresentation.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     func bind(to operations: any DiscoveryUseCases) {
@@ -162,7 +171,7 @@ final class DiscoveryController: ObservableObject {
             throw error
         }
 
-        let scope = request.criteria.scope.canonical
+        let scope = request.criteria.scope
         let applicationScope: SearchScope = switch scope {
         case .thisNote:
             context.currentNote.map(SearchScope.currentNote) ?? .roles([])
@@ -170,8 +179,6 @@ final class DiscoveryController: ObservableObject {
             context.currentVaultID.map(SearchScope.currentVault) ?? .roles([])
         case .triptych:
             .workspace
-        default:
-            .roles([])
         }
         let limit = scope == .thisNote ? 50 : 100
 
@@ -219,8 +226,15 @@ final class DiscoveryController: ObservableObject {
         library.sortOrder = order
     }
 
-    func setExpandedFolders(_ folders: Set<String>) {
-        library.expandedFolders = folders
+    func expandedFolders(in scope: LibraryDisclosureScope?) -> Set<String> {
+        peripheralPresentation.expandedFolders(in: scope)
+    }
+
+    func setExpandedFolders(
+        _ folders: Set<String>,
+        in scope: LibraryDisclosureScope?
+    ) {
+        peripheralPresentation.setExpandedFolders(folders, in: scope)
     }
 
     func captureWorkspaceNotes(_ notes: [WindowDocumentLocation]) {
@@ -233,6 +247,11 @@ final class DiscoveryController: ObservableObject {
 
     func showUnclassified(_ isPresented: Bool) {
         library.showsUnclassified = isPresented
+    }
+
+    func showAttentionQueue(_ isPresented: Bool) {
+        library.showsAttentionQueue = isPresented
+        if isPresented { dismissLifecycleListing() }
     }
 
     func presentLifecycleListing(_ scope: NoteLocationScope) {
@@ -280,7 +299,7 @@ final class DiscoveryController: ObservableObject {
     }
 
     func replaceSearchCriteria(_ criteria: SearchWorkspaceState) {
-        let scope = criteria.scope.canonical
+        let scope = criteria.scope
         search.criteria = SearchWorkspaceState(
             query: criteria.query,
             scope: scope,
@@ -305,9 +324,9 @@ final class DiscoveryController: ObservableObject {
         search.isRunning = false
         switch invocation {
         case .general:
-            search.criteria.scope = search.ordinaryScope.canonical
+            search.criteria.scope = search.ordinaryScope
         case .findInNote(let previousScope):
-            search.ordinaryScope = previousScope.canonical
+            search.ordinaryScope = previousScope
             search.criteria.scope = .thisNote
         }
     }
@@ -318,9 +337,9 @@ final class DiscoveryController: ObservableObject {
         activeSearchRequestID = nil
         let ordinaryScope: SearchPresentationScope = switch search.invocation {
         case .general:
-            search.ordinaryScope.canonical
+            search.ordinaryScope
         case .findInNote(let previousScope):
-            previousScope.canonical
+            previousScope
         }
         search = DiscoverySearchState(
             criteria: SearchWorkspaceState(scope: ordinaryScope),
@@ -335,16 +354,15 @@ final class DiscoveryController: ObservableObject {
     }
 
     func selectSearchScope(_ scope: SearchPresentationScope) {
-        let canonical = scope.canonical
-        search.criteria.scope = canonical
+        search.criteria.scope = scope
         search.criteria.selectedResultID = nil
         switch search.invocation {
         case .general:
-            search.ordinaryScope = canonical
+            search.ordinaryScope = scope
         case .findInNote:
             // An explicit scope choice converts temporary Find into ordinary
             // Search so closing it must not restore an older scope.
-            search.ordinaryScope = canonical
+            search.ordinaryScope = scope
             search.invocation = .general
         }
         invalidateSearchProjection()
@@ -368,7 +386,7 @@ final class DiscoveryController: ObservableObject {
     func beginSearch(_ criteria: SearchWorkspaceState) -> DiscoverySearchRequest {
         let canonicalCriteria = SearchWorkspaceState(
             query: criteria.query,
-            scope: criteria.scope.canonical,
+            scope: criteria.scope,
             selectedRoles: criteria.selectedRoles,
             selectedResultID: nil
         )
@@ -460,10 +478,6 @@ final class DiscoveryController: ObservableObject {
         intentHandler(.openDocument(route))
     }
 
-    func requestSwitchVault(id: UUID) {
-        intentHandler(.switchVault(id))
-    }
-
     func requestLifecycle(_ request: NoteLifecycleRequest) {
         intentHandler(.presentLifecycle(request))
     }
@@ -471,7 +485,7 @@ final class DiscoveryController: ObservableObject {
     private func isCurrent(_ request: DiscoverySearchRequest) -> Bool {
         activeSearchRequestID == request.id
             && search.criteria.query == request.criteria.query
-            && search.criteria.scope.canonical == request.criteria.scope.canonical
+            && search.criteria.scope == request.criteria.scope
     }
 
     private func isCurrent(_ request: DiscoveryLifecycleRequest) -> Bool {

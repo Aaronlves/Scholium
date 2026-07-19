@@ -21,6 +21,7 @@ struct WindowSessionStateTests {
             selectedDocument: selected,
             documentModes: ["B.md": "livePreview"],
             scrollPositions: ["B.md": 0.25],
+            libraryVisible: false,
             inspectorMode: "outgoing",
             inspectorVisible: true,
             contentDestination: .document,
@@ -30,74 +31,6 @@ struct WindowSessionStateTests {
 
         try await store.save(snapshot)
         #expect(try await store.load(id: id) == snapshot)
-    }
-
-    @Test("Legacy activeTab becomes the sole selected document")
-    func legacyActiveTabMigration() throws {
-        let id = UUID()
-        let vaultID = UUID()
-        let source = Data("""
-        {
-          "id": "\(id.uuidString)",
-          "vaultID": "\(vaultID.uuidString)",
-          "openTabs": ["A.md", "B.md"],
-          "activeTab": "A.md"
-        }
-        """.utf8)
-
-        let decoded = try JSONDecoder().decode(WindowSessionSnapshot.self, from: source)
-        #expect(decoded.selectedDocument == VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "A.md"
-        ))
-        #expect(decoded.normalized(availablePaths: ["B.md"]).selectedDocument == VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "B.md"
-        ))
-    }
-
-    @Test("Legacy openTabs restores only its last valid candidate when activeTab is absent")
-    func legacyLastOpenTabMigration() throws {
-        let id = UUID()
-        let vaultID = UUID()
-        let source = Data("""
-        {
-          "id": "\(id.uuidString)",
-          "vaultID": "\(vaultID.uuidString)",
-          "openTabs": ["A.md", "B.md"]
-        }
-        """.utf8)
-
-        let decoded = try JSONDecoder().decode(WindowSessionSnapshot.self, from: source)
-        #expect(decoded.selectedDocument?.relativePath == "B.md")
-    }
-
-    @Test("Legacy custom-tab and history fields disappear on the next save")
-    func legacyFieldsAreDecodeOnly() throws {
-        let id = UUID()
-        let vaultID = UUID()
-        let source = Data("""
-        {
-          "id": "\(id.uuidString)",
-          "vaultID": "\(vaultID.uuidString)",
-          "openTabs": ["A.md"],
-          "activeTab": "A.md",
-          "navigationHistory": ["A.md"],
-          "navigationIndex": 0,
-          "recentNotes": {"references": []}
-        }
-        """.utf8)
-
-        let decoded = try JSONDecoder().decode(WindowSessionSnapshot.self, from: source)
-        let encoded = try JSONEncoder().encode(decoded)
-        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["selectedDocument"] != nil)
-        #expect(object["openTabs"] == nil)
-        #expect(object["activeTab"] == nil)
-        #expect(object["navigationHistory"] == nil)
-        #expect(object["navigationIndex"] == nil)
-        #expect(object["recentNotes"] == nil)
-        #expect(object["vaultPresentations"] == nil)
     }
 
     @Test("Normalization never invents a replacement for a missing selection")
@@ -167,49 +100,6 @@ struct WindowSessionStateTests {
         #expect(try await store.load(id: peer.id) == peer)
     }
 
-    @Test("A confirmed move promotes and migrates a decode-only legacy fallback")
-    func legacyFallbackPathMigration() throws {
-        let id = UUID()
-        let vaultID = UUID()
-        let source = Data("""
-        {
-          "id": "\(id.uuidString)",
-          "vaultID": "\(vaultID.uuidString)",
-          "openTabs": ["Old.md"],
-          "activeTab": "Missing.md"
-        }
-        """.utf8)
-
-        let decoded = try JSONDecoder().decode(WindowSessionSnapshot.self, from: source)
-        let migrated = decoded.migratingPath(
-            vaultID: vaultID,
-            from: "Old.md",
-            to: "New.md"
-        )
-
-        #expect(migrated.selectedDocument == VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "New.md"
-        ))
-        #expect(migrated.normalized(availablePaths: ["New.md"]).selectedDocument == migrated.selectedDocument)
-
-        let modernRoundTrip = try JSONDecoder().decode(
-            WindowSessionSnapshot.self,
-            from: JSONEncoder().encode(migrated)
-        )
-        #expect(modernRoundTrip.selectedDocument == migrated.selectedDocument)
-    }
-
-    @Test("Retired Home, Search, and Canvas destinations restore to the document")
-    func retiredContentDestinationCompatibility() throws {
-        for value in ["home", "search", "canvas"] {
-            let decoded = try JSONDecoder().decode(
-                WindowContentDestination.self,
-                from: Data("\"\(value)\"".utf8)
-            )
-            #expect(decoded == .document)
-        }
-    }
 
     @Test("Removing a session is idempotent")
     func remove() async throws {

@@ -4,7 +4,7 @@ import ScholiumApplication
 
 /// One immutable-membership Application runtime for a CLI invocation.
 ///
-/// The context resolves legacy selectors against the runtime's frozen
+/// The context resolves current selectors against the runtime's frozen
 /// Triptych assignments. It never constructs repositories, indexes, stores,
 /// or watchers in the delivery target.
 struct CLIContext: Sendable {

@@ -11,8 +11,8 @@ struct WorkbenchModelsTests {
             name: "Open objections",
             state: SearchWorkspaceState(
                 query: #"status:open callout:objection"#,
-                scope: .selectedRoles,
-                selectedRoles: [.topicKnowledge, .dissertationControl]
+                scope: .triptych,
+                selectedRoles: [.topicKnowledge, .draftProject]
             )
         )
         let encoded = try JSONEncoder().encode(saved)
@@ -28,7 +28,7 @@ struct WorkbenchModelsTests {
         let store = SavedSearchStore(workspaceStorageURL: base)
         let expected = SavedSearch(
             name: "Unsettled control records",
-            state: SearchWorkspaceState(query: "status:unsettled", scope: .allWorkspace),
+            state: SearchWorkspaceState(query: "status:unsettled", scope: .triptych),
             createdAt: Date(timeIntervalSince1970: 10)
         )
         let olderButFirst = SavedSearch(
@@ -62,7 +62,7 @@ struct WorkbenchModelsTests {
             try await store.save([
                 SavedSearch(
                     name: "Must not replace",
-                    state: SearchWorkspaceState(query: "test", scope: .allWorkspace)
+                    state: SearchWorkspaceState(query: "test", scope: .triptych)
                 ),
             ])
         }

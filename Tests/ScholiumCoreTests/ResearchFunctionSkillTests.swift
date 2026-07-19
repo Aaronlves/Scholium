@@ -88,27 +88,29 @@ struct ResearchFunctionSkillTests {
         ])
     }
 
-    @Test("Legacy package-only citation bindings decode but require explicit style repair")
-    func legacyCitationBindingNeedsStyleRepair() async throws {
+    @Test("Incomplete package-only citation bindings require explicit style repair")
+    func incompleteCitationBindingNeedsStyleRepair() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
         let local = try await store.duplicateBundled(
             id: "scholium-citation-verification",
-            as: "legacy-citations"
+            as: "incomplete-citations"
         )
         try FileManager.default.createDirectory(
             at: fixture.control,
             withIntermediateDirectories: true
         )
-        let legacy = """
+        let incomplete = """
         {
           "schema_version" : 1,
           "function_bindings" : {},
+          "function_skill_bindings" : {},
+          "function_practice_bindings" : {},
           "citation_binding" : "\(local.id)"
         }
         """
-        try Data(legacy.utf8).write(to: store.bindingsURL, options: .atomic)
+        try Data(incomplete.utf8).write(to: store.bindingsURL, options: .atomic)
 
         let snapshot = try #require(try await store.bindingSnapshot())
         #expect(snapshot.document.citationStyle == nil)
@@ -160,6 +162,13 @@ struct ResearchFunctionSkillTests {
             for: .develop,
             primaryResourcePaths: ["references/synthesis.md"]
         )
+        let core = try #require(selections.first {
+            $0.id == "scholium-core-protocol"
+        })
+        #expect(core.loadedResources.map(\.relativePath) == ["SKILL.md"])
+        #expect(!core.loadedResources.map(\.relativePath).contains(
+            "references/agent-transport.md"
+        ))
         let development = try #require(selections.first {
             $0.id == "scholium-development"
         })
@@ -343,23 +352,6 @@ struct ResearchFunctionSkillTests {
                 expectedBindingRevision: saved.revision
             )
         }
-    }
-
-    @Test("Legacy binding JSON defaults new function refinement collections to empty")
-    func legacyBindingDocumentDefaultsNewCollections() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
-        try FileManager.default.createDirectory(
-            at: fixture.control,
-            withIntermediateDirectories: true
-        )
-        try Data("{\"schema_version\":1,\"function_bindings\":{}}".utf8)
-            .write(to: store.bindingsURL, options: .atomic)
-
-        let snapshot = try #require(try await store.bindingSnapshot())
-        #expect(snapshot.document.functionSkillBindings.isEmpty)
-        #expect(snapshot.document.functionPracticeBindings.isEmpty)
     }
 
     @Test("Whole-package revisions bind every retained resource")

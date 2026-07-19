@@ -30,7 +30,7 @@ struct DocumentFeatureState {
     let requestedPresentationMode: NotePresentationMode?
     let pendingSourceLine: Int?
     let isCompactLayout: Bool
-    let noteHistoryVisible: Bool
+    let sidebarVisible: Bool
     let researchInspectorVisible: Bool
     let identityAmbiguity: NoteIdentityAmbiguity?
     let pendingIdentityRebinding: NoteIdentityPendingRebinding?
@@ -59,12 +59,12 @@ struct DocumentFeatureActions {
     let enterCSSSafeMode: @MainActor (String) -> Void
     let rememberPresentationMode: @MainActor (NotePresentationMode) -> Void
     let setPendingSourceLine: @MainActor (Int?) -> Void
+    let setSidebarVisible: @MainActor (Bool) -> Void
     let editProperties: @MainActor () -> Void
     let openResearchFunction: @MainActor (
         ResearchFunctionID,
         ResearcherCommentAnchor?
     ) -> Void
-    let setNoteHistoryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
@@ -172,9 +172,8 @@ struct ResearchInspectorView: View {
     @ObservedObject private var controller: ResearchController
 
     enum Mode: String, CaseIterable, Identifiable {
-        case incoming = "Incoming"
-        case outgoing = "Outgoing"
-        case relationships = "Research"
+        case connections = "Connections"
+        case research = "Research"
         var id: String { rawValue }
     }
 
@@ -182,7 +181,7 @@ struct ResearchInspectorView: View {
     let graph: GraphSnapshot?
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
-    let relationshipViewContext: RelationshipViewContext
+    let researchInspectorContentContext: ResearchInspectorContentContext
 
     init(
         note: WindowDocumentLocation,
@@ -190,48 +189,28 @@ struct ResearchInspectorView: View {
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
-        relationshipViewContext: RelationshipViewContext
+        researchInspectorContentContext: ResearchInspectorContentContext
     ) {
         self.note = note
         self.controller = controller
         self.graph = graph
         self.catalog = catalog
         self.currentVaultID = currentVaultID
-        self.relationshipViewContext = relationshipViewContext
+        self.researchInspectorContentContext = researchInspectorContentContext
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Picker("Research Inspector", selection: inspectorMode) {
-                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .scholiumEditorialSurface(
-                .floatingControl,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-            .padding(.horizontal, 8)
-            .padding(.top, 8)
-
-            ScholiumStructuralRule()
+            inspectorTabs
 
             Group {
                 switch inspectorMode.wrappedValue {
-                case .incoming: BacklinksPanelView(context: relationshipContext)
-                case .outgoing: OutgoingLinksPanelView(context: relationshipContext)
-                case .relationships:
-                    RelationshipView(
+                case .connections:
+                    ConnectionsInspectorView(context: relationshipContext)
+                case .research:
+                    ResearchInspectorContentView(
                         note: note,
-                        controller: controller,
-                        context: relationshipViewContext
+                        context: researchInspectorContentContext
                     )
                 }
             }
@@ -242,9 +221,36 @@ struct ResearchInspectorView: View {
         .accessibilityIdentifier("scholium.researchInspector")
     }
 
+    private var inspectorTabs: some View {
+        ZStack(alignment: .bottom) {
+            ScholiumStructuralRule()
+
+            HStack(spacing: 0) {
+                ForEach(Mode.allCases) { mode in
+                    InspectorModeButton(
+                        title: mode.rawValue,
+                        isSelected: inspectorMode.wrappedValue == mode
+                    ) {
+                        inspectorMode.wrappedValue = mode
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
+        }
+        .frame(height: ScholiumMetrics.Apparatus.headerHeight)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Research Inspector")
+    }
+
     private var inspectorMode: Binding<Mode> {
         Binding(
-            get: { Mode(rawValue: controller.inspector.modeRawValue.capitalized) ?? .incoming },
+            get: {
+                switch controller.inspector.modeRawValue.lowercased() {
+                case "research", "relationships": .research
+                default: .connections
+                }
+            },
             set: { controller.selectInspectorMode($0.rawValue.lowercased()) }
         )
     }
@@ -260,6 +266,45 @@ struct ResearchInspectorView: View {
                 controller.requestOpen(reference, sourceLine: line)
             }
         )
+    }
+}
+
+private struct InspectorModeButton: View {
+    @State private var isHovering = false
+    let title: String
+    let isSelected: Bool
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: select) {
+            Text(ScholiumL10n.dynamicString(title))
+                .font(.body)
+                .lineLimit(1)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: ScholiumMetrics.Apparatus.headerHeight
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(
+            isSelected || isHovering
+                ? ScholiumColorRole.primaryText.color
+                : ScholiumColorRole.secondaryText.color
+        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(
+                    isSelected
+                        ? ScholiumColorRole.accent.color
+                        : ScholiumColorRole.secondaryText.color.opacity(isHovering ? 0.45 : 0)
+                )
+                .frame(height: isSelected ? 2 : 1)
+                .padding(.horizontal, 14)
+        }
+        .onHover { isHovering = $0 }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("scholium.inspectorMode.\(title.lowercased())")
     }
 }
 // MARK: - Note Content View
@@ -365,27 +410,20 @@ struct NoteContentView: View {
                 )
             }
 
-            ZStack(alignment: .top) {
-                documentBodySurface
-
-                documentContextRow
-                    .zIndex(2)
-            }
+            documentBodySurface
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if !state.researchStrip.items.isEmpty {
                     ResearchStripView(
                         presentation: state.researchStrip,
                         select: openResearchFunction
                     )
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, ScholiumMetrics.Document.researchStripHorizontalInset)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
         .scholiumSurface(.document)
-        .toolbar { noteToolbar }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
             actions.beginSearch(invocation)
         })
@@ -602,7 +640,7 @@ struct NoteContentView: View {
                 NativeMarkdownReadView(
                     source: note.rawContent,
                     textScale: state.documentTextScale,
-                    topContentInset: ScholiumMetrics.ContextSurface.initialOverlayClearance,
+                    topContentInset: ScholiumMetrics.Document.contentTopInset,
                     onLinkClick: {
                         actions.openInternalLink($0)
                     },
@@ -665,7 +703,7 @@ struct NoteContentView: View {
 
     private var scaledReadCSS: String {
         state.readCSS
-            + "\n.scholium-document { font-size: \(state.documentTextScale)em; padding-top: \(ScholiumMetrics.ContextSurface.initialOverlayClearance)px; }"
+            + "\n.scholium-document { font-size: \(state.documentTextScale)em; padding-top: \(ScholiumMetrics.Document.contentTopInset)px; }"
     }
 
     private var scaledEditorCSS: String {
@@ -675,7 +713,7 @@ struct NoteContentView: View {
             .cm-content { font-size: \(state.documentTextScale)em; }
             .scholium-live-mode .cm-content,
             .scholium-source-mode .cm-content {
-              padding-top: \(ScholiumMetrics.ContextSurface.initialOverlayClearance)px;
+              padding-top: \(ScholiumMetrics.Document.contentTopInset)px;
             }
             """
     }
@@ -779,13 +817,6 @@ struct NoteContentView: View {
         }
     }
 
-    private var editorStatusText: String {
-        if editError != nil { return "Not saved" }
-        if isSavingEdit { return "Saving…" }
-        if hasUnsavedChanges { return "Waiting to save…" }
-        return "Saved automatically"
-    }
-
     private var hasUnsavedChanges: Bool {
         documentSession.hasUnsavedChanges
     }
@@ -872,144 +903,6 @@ struct NoteContentView: View {
                 )
                 actions.rememberPresentationMode(.read)
             } catch { /* Controller published the recoverable error state. */ }
-        }
-    }
-
-    // MARK: - Toolbar
-
-    private var documentContextRow: some View {
-        DocumentMeasureAlignedLayout {
-            MetadataCardView(
-                note: note,
-                propertiesConfiguration: state.propertiesConfiguration,
-                canEdit: state.canEdit,
-                changedSinceReview: state.changedSinceReview,
-                editProperties: actions.editProperties
-            ) {
-                documentContextControls
-            }
-        }
-        // The controls, Properties strip, expanded panel, and document share
-        // one centered 920-point measure. The paper apparatus initially clears
-        // the prose, while later scrolling content can travel beneath it.
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var documentContextControls: some View {
-        HStack(spacing: 0) {
-            Menu {
-                ForEach(NotePresentationMode.allCases) { mode in
-                    Button {
-                        selectPresentationMode(mode)
-                    } label: {
-                        if mode == presentationMode {
-                            Label(mode.title, systemImage: "checkmark")
-                        } else {
-                            Label(mode.title, systemImage: mode.symbol)
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: presentationMode.symbol)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .disabled(!editingIsAvailable || editorIsComposing)
-            .help(editorIsComposing
-                ? "Finish text composition to change document mode."
-                : "Document mode: \(presentationMode.title)")
-            .accessibilityLabel("Document mode")
-            .accessibilityValue(presentationMode.title)
-            .accessibilityIdentifier("scholium.documentModeMenu")
-
-            Divider()
-                .frame(height: 18)
-                .padding(.horizontal, 2)
-
-            Menu {
-                if documentHeadings.isEmpty {
-                    Text("No Headings")
-                } else {
-                    ForEach(Array(documentHeadings.enumerated()), id: \.offset) { _, heading in
-                        Button {
-                            actions.setPendingSourceLine(heading.span.start.line)
-                            if isEditing { editorSession.goToLine(heading.span.start.line) }
-                        } label: {
-                            Text(String(repeating: "  ", count: max(0, heading.level - 1)) + heading.text)
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "list.bullet.indent")
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Heading Outline")
-            .accessibilityLabel("Heading Outline")
-            .accessibilityIdentifier("scholium.headingOutline")
-        }
-        .frame(
-            width: ScholiumMetrics.ContextSurface.leadingControlsWidth,
-            height: ScholiumMetrics.ContextSurface.controlHeight
-        )
-        .scholiumEditorialSurface(
-            .floatingControl,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.documentContextControls")
-    }
-
-    @ToolbarContentBuilder
-    var noteToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                actions.beginSearch(.general)
-            } label: {
-                if state.isCompactLayout {
-                    Image(systemName: "magnifyingglass")
-                } else {
-                    Label("Search", systemImage: "magnifyingglass")
-                }
-            }
-            .help("Search the Triptych")
-            .accessibilityLabel("Search")
-            .accessibilityIdentifier("scholium.searchToolbarButton")
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            ControlGroup {
-                Button {
-                    actions.setNoteHistoryVisible(!state.noteHistoryVisible)
-                } label: {
-                    Label(
-                        state.noteHistoryVisible ? "Hide Note History" : "Show Note History",
-                        systemImage: "clock.arrow.circlepath"
-                    )
-                }
-                .disabled(isEditing || state.noteIdentityByPath[note.relativePath] == nil)
-                .help(state.noteHistoryVisible ? "Hide Note History" : "Show Note History")
-                .accessibilityIdentifier("scholium.noteHistoryButton")
-
-                Button {
-                    actions.setResearchInspectorVisible(!state.researchInspectorVisible)
-                } label: {
-                    Label(
-                        state.researchInspectorVisible ? "Hide Research Inspector" : "Show Research Inspector",
-                        systemImage: "sidebar.trailing"
-                    )
-                }
-                .help(state.researchInspectorVisible ? "Hide Research Inspector" : "Show Research Inspector")
-                .accessibilityIdentifier("scholium.researchInspectorButton")
-            }
         }
     }
 
@@ -1104,15 +997,9 @@ struct NoteContentView: View {
         }
     }
 
-    private var documentHeadings: [HeadingNode] {
-        MarkdownSemanticDocument(
-            parsing: NoteDocument(relativePath: note.relativePath, rawContent: note.rawContent)
-        ).headings
-    }
-
 }
 
-// MARK: - Note History
+// MARK: - Research Record
 
 private struct ConflictComparisonSheet: View {
     let conflict: DocumentConflictSnapshot
@@ -1245,26 +1132,15 @@ private struct ConflictComparisonSheet: View {
     private var diffLines: [DocumentConflictLine] { conflict.comparisonLines }
 }
 
-enum NoteHistoryPresentation {
-    case sheet
-    case trailing
-}
-
-struct NoteHistoryContext {
+struct ResearchRecordContext {
     let controller: ResearchController
     let vaultRole: VaultRole
     let documentRevisions: [String: DocumentFingerprint]
     let currentReview: @MainActor (String) -> HumanReviewRecord?
     let loadDialogue: @MainActor (String) async -> [DialogueEntry]
     let loadCritique: @MainActor (String) async -> CritiqueAssociation?
-    let loadCheckpoints: @MainActor (String) async throws -> [TriptychCheckpoint]
-    let checkpointContent: @MainActor (UUID, String) async throws -> String
-    let createCheckpoint: @MainActor (String) async throws -> Void
-    let restoreNote: @MainActor (String, UUID) async throws -> Void
-    let revealCheckpoints: @MainActor () -> Void
     let copyText: @MainActor (String) throws -> Void
     let openNote: @MainActor (String) -> Void
-    let closeTrailing: @MainActor () -> Void
     let notify: @MainActor (String) -> Void
 }
 
@@ -1280,86 +1156,36 @@ private enum DialogueHistorySheetRoute: Identifiable {
     }
 }
 
-struct NoteHistorySheet: View {
-    @Environment(\.dismiss) var dismiss
+struct ResearchRecordView: View {
     @ObservedObject private var researchController: ResearchController
     let note: WindowDocumentLocation
-    let presentation: NoteHistoryPresentation
-    let context: NoteHistoryContext
+    let context: ResearchRecordContext
 
     @State private var review: HumanReviewRecord?
     @State private var dialogue: [DialogueEntry] = []
     @State private var critique: CritiqueAssociation?
-    @State private var checkpoints: [TriptychCheckpoint] = []
-    @State private var selectedCheckpoint: TriptychCheckpoint?
-    @State private var checkpointSource: String?
-    @State private var checkpointPresentation: CheckpointPresentation = .compare
     @State private var pendingDialogueSheet: DialogueHistorySheetRoute?
     @State private var expandedDialogueEntryIDs: Set<UUID> = []
     @State private var isLoading = true
-    @State private var isRestoring = false
-    @State private var showCreateCheckpoint = false
     @State private var errorMessage: String?
 
     init(
         note: WindowDocumentLocation,
-        presentation: NoteHistoryPresentation = .sheet,
-        context: NoteHistoryContext
+        context: ResearchRecordContext
     ) {
         self.note = note
-        self.presentation = presentation
         self.context = context
         _researchController = ObservedObject(wrappedValue: context.controller)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Note History")
-                        .font(.title2.weight(.semibold))
-                    Text(note.title ?? note.displayName)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Menu {
-                    Button("Create Checkpoint…") {
-                        showCreateCheckpoint = true
-                    }
-                    Divider()
-                    Button("Reveal Checkpoints in Finder") {
-                        context.revealCheckpoints()
-                    }
-                } label: {
-                    Label("Checkpoint Actions", systemImage: "ellipsis.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .menuStyle(.borderlessButton)
-                .help("Checkpoint Actions")
-                .accessibilityLabel("Checkpoint Actions")
-                .accessibilityIdentifier("scholium.noteHistory.checkpointActions")
-                if presentation == .sheet {
-                    Button("Done") { dismiss() }
-                        .keyboardShortcut(.cancelAction)
-                } else {
-                    Button {
-                        context.closeTrailing()
-                    } label: {
-                        Label("Hide Note History", systemImage: "xmark")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Hide Note History")
-                }
-            }
-            .padding(18)
-
-            Divider()
+            researchRecordHeader
+            ScholiumStructuralRule()
 
             if isLoading {
                 Spacer()
-                ProgressView("Loading Note History…")
+                ProgressView("Loading Research Record…")
                 Spacer()
             } else {
                 ScrollView {
@@ -1369,60 +1195,23 @@ struct NoteHistorySheet: View {
                         functionRunSection
                         dialogueSection
                         if context.vaultRole.allowsCritique { critiqueSection }
-                        checkpointSection
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
-            if let selectedCheckpoint {
-                Divider()
-
-                HStack {
-                    Spacer()
-                    Button("Restore This Version", role: .destructive) {
-                        restore(selectedCheckpoint)
-                    }
-                    .disabled(isRestoring)
-                }
-                .padding(16)
-            }
         }
         .frame(
-            minWidth: presentation == .sheet ? 0 : 280,
-            idealWidth: presentation == .sheet ? 880 : 340,
-            maxWidth: presentation == .trailing ? .infinity : nil,
-            minHeight: presentation == .sheet ? 560 : 0,
-            idealHeight: presentation == .sheet ? 700 : nil,
-            maxHeight: presentation == .trailing ? .infinity : nil
+            minWidth: 620,
+            idealWidth: 760,
+            minHeight: 520,
+            idealHeight: 680
         )
         .background(Color(nsColor: .windowBackgroundColor))
-        .accessibilityIdentifier("scholium.noteHistoryPanel")
+        .accessibilityIdentifier("scholium.researchRecord")
         .task { await reload() }
-        .onChange(of: selectedCheckpoint) { _, checkpoint in
-            guard let checkpoint else {
-                checkpointSource = nil
-                return
-            }
-            Task {
-                do {
-                    checkpointSource = try await context.checkpointContent(
-                        checkpoint.id,
-                        note.relativePath
-                    )
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
-        .sheet(isPresented: $showCreateCheckpoint) {
-            CreateCheckpointView { name in
-                try await context.createCheckpoint(name)
-                context.notify("Checkpoint created.")
-            }
-        }
-        .alert("Note History Unavailable", isPresented: Binding(
+        .alert("Research Record Unavailable", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -1454,6 +1243,20 @@ struct NoteHistorySheet: View {
                 }
             }
         }
+    }
+
+    private var researchRecordHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Research Record")
+                    .font(.title2.weight(.semibold))
+                Text(note.title ?? note.displayName)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(18)
     }
 
     private var reviewSection: some View {
@@ -1549,7 +1352,7 @@ struct NoteHistorySheet: View {
                                 }
                             }
                             .accessibilityIdentifier(
-                                "scholium.noteHistory.copyResearchFunctionInstructions"
+                                "scholium.researchRecord.copyResearchFunctionInstructions"
                             )
                         }
                     }
@@ -1557,7 +1360,7 @@ struct NoteHistorySheet: View {
                 }
             }
         }
-        .accessibilityIdentifier("scholium.noteHistory.functionRuns")
+        .accessibilityIdentifier("scholium.researchRecord.functionRuns")
     }
 
     private var currentFunctionRuns: [ResearchFunctionRecordProjection] {
@@ -1618,12 +1421,6 @@ struct NoteHistorySheet: View {
                             createdAt: entry.createdAt,
                             systemImage: "person"
                         )
-                        if let checkpointID = entry.checkpointID {
-                            Text("Checkpoint: Before Agent Work — \(checkpointID.uuidString.prefix(8))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
                         if let destination = entry.requestedDestination {
                             LabeledContent("Requested Destination") {
                                 Text(destination)
@@ -1729,10 +1526,10 @@ struct NoteHistorySheet: View {
                                 )
                             }
                         }
-                        if !entry.generatedPrompt.isEmpty {
-                            DisclosureGroup("Legacy Copied Prompt") {
+                        if !entry.preparedInstructions.isEmpty {
+                            DisclosureGroup("Prepared Instructions") {
                             VStack(alignment: .leading, spacing: 7) {
-                                Text(entry.generatedPrompt)
+                                Text(entry.preparedInstructions)
                                     .font(ScholiumTypography.swiftUIMonospaceFont(
                                         size: 11,
                                         relativeTo: .caption
@@ -1740,13 +1537,13 @@ struct NoteHistorySheet: View {
                                     .textSelection(.enabled)
                                 Button {
                                     do {
-                                        try context.copyText(entry.generatedPrompt)
+                                        try context.copyText(entry.preparedInstructions)
                                         context.notify("Instructions copied")
                                     } catch {
                                         errorMessage = error.localizedDescription
                                     }
                                 } label: {
-                                    Label("Copy Legacy Instructions", systemImage: "doc.on.doc")
+                                    Label("Copy Instructions", systemImage: "doc.on.doc")
                                 }
                                 .controlSize(.small)
                             }
@@ -1776,7 +1573,7 @@ struct NoteHistorySheet: View {
                 }
             }
         }
-        .accessibilityIdentifier("scholium.noteHistory.dialogueSection")
+        .accessibilityIdentifier("scholium.researchRecord.dialogueSection")
     }
 
     private func dialogueScope(
@@ -1837,9 +1634,6 @@ struct NoteHistorySheet: View {
                                         .font(.subheadline)
                                     HStack(spacing: 5) {
                                         Text("SHA-256 \(round.targetFingerprint.sha256.prefix(12))…")
-                                        if let checkpointID = round.checkpointID {
-                                            Text("— Before Agent Work \(checkpointID.uuidString.prefix(8))")
-                                        }
                                     }
                                     .font(.caption.monospaced())
                                     .foregroundStyle(.secondary)
@@ -1852,52 +1646,6 @@ struct NoteHistorySheet: View {
                 }
             } else {
                 emptyText("No Critique is associated with this Work.")
-            }
-        }
-    }
-
-    private var checkpointSection: some View {
-        historySection("Checkpoint Versions", systemImage: "externaldrive.badge.timemachine") {
-            if checkpoints.isEmpty {
-                emptyText("No retained Triptych checkpoint contains this note.")
-            } else {
-                Picker("Checkpoint", selection: $selectedCheckpoint) {
-                    Text("Select a checkpoint").tag(Optional<TriptychCheckpoint>.none)
-                    ForEach(checkpoints) { checkpoint in
-                        Text("\(checkpoint.name) — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                            .tag(Optional(checkpoint))
-                    }
-                }
-                if let checkpointSource {
-                    Picker("Checkpoint View", selection: $checkpointPresentation) {
-                        Text("Compare").tag(CheckpointPresentation.compare)
-                        Text("Captured Source").tag(CheckpointPresentation.capturedSource)
-                    }
-                    .pickerStyle(.segmented)
-
-                    switch checkpointPresentation {
-                    case .compare:
-                        CheckpointSourceComparison(
-                            currentSource: note.rawContent,
-                            checkpointSource: checkpointSource,
-                            isCompact: presentation == .trailing
-                        )
-                    case .capturedSource:
-                        GroupBox("Captured Source") {
-                            ScrollView([.vertical, .horizontal]) {
-                                Text(checkpointSource)
-                                    .font(ScholiumTypography.swiftUIMonospaceFont(
-                                        size: ScholiumTypography.exactSourcePointSize,
-                                        relativeTo: .body
-                                    ))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(8)
-                            }
-                            .frame(minHeight: 160, maxHeight: 260)
-                        }
-                    }
-                }
             }
         }
     }
@@ -1926,85 +1674,11 @@ struct NoteHistorySheet: View {
     private func reload() async {
         isLoading = true
         review = context.currentReview(note.relativePath)
-        do {
-            async let loadedDialogue = context.loadDialogue(note.relativePath)
-            async let loadedCritique = context.loadCritique(note.relativePath)
-            async let loadedCheckpoints = context.loadCheckpoints(note.relativePath)
-            dialogue = await loadedDialogue
-            critique = await loadedCritique
-            checkpoints = try await loadedCheckpoints
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        async let loadedDialogue = context.loadDialogue(note.relativePath)
+        async let loadedCritique = context.loadCritique(note.relativePath)
+        dialogue = await loadedDialogue
+        critique = await loadedCritique
         isLoading = false
-    }
-
-    private func restore(_ checkpoint: TriptychCheckpoint) {
-        isRestoring = true
-        Task {
-            do {
-                try await context.restoreNote(note.relativePath, checkpoint.id)
-                context.notify("Restored \(note.displayName) from \(checkpoint.name)")
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isRestoring = false
-            }
-        }
-    }
-}
-
-private enum CheckpointPresentation: Hashable {
-    case compare
-    case capturedSource
-}
-
-private struct CheckpointSourceComparison: View {
-    let currentSource: String
-    let checkpointSource: String
-    let isCompact: Bool
-
-    var body: some View {
-        if currentSource == checkpointSource {
-            ContentUnavailableView(
-                "No Changes",
-                systemImage: "equal.circle",
-                description: Text("The current note matches the selected checkpoint.")
-            )
-            .frame(minHeight: 150)
-        } else {
-            Group {
-                if isCompact {
-                    VStack(spacing: 10) {
-                        sourceColumn("Checkpoint", source: checkpointSource)
-                        sourceColumn("Current", source: currentSource)
-                    }
-                } else {
-                    HSplitView {
-                        sourceColumn("Checkpoint", source: checkpointSource)
-                        sourceColumn("Current", source: currentSource)
-                    }
-                }
-            }
-            .frame(minHeight: 220, maxHeight: 320)
-            .accessibilityLabel("Checkpoint and current source comparison")
-        }
-    }
-
-    private func sourceColumn(_ title: String, source: String) -> some View {
-        GroupBox(title) {
-            ScrollView([.vertical, .horizontal]) {
-                Text(source)
-                    .font(ScholiumTypography.swiftUIMonospaceFont(
-                        size: 11,
-                        relativeTo: .caption
-                    ))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(6)
-            }
-        }
-        .frame(minWidth: isCompact ? 0 : 300, maxWidth: .infinity)
     }
 }
 
@@ -2356,7 +2030,7 @@ private func dialogueTargetIDs(
         requestedPresentationMode: nil,
         pendingSourceLine: nil,
         isCompactLayout: false,
-        noteHistoryVisible: false,
+        sidebarVisible: true,
         researchInspectorVisible: false,
         identityAmbiguity: nil,
         pendingIdentityRebinding: nil,
@@ -2379,9 +2053,9 @@ private func dialogueTargetIDs(
         enterCSSSafeMode: { _ in },
         rememberPresentationMode: { _ in },
         setPendingSourceLine: { _ in },
+        setSidebarVisible: { _ in },
         editProperties: {},
         openResearchFunction: { _, _ in },
-        setNoteHistoryVisible: { _ in },
         setResearchInspectorVisible: { _ in },
         notify: { _, _ in }
     )
@@ -2413,8 +2087,6 @@ struct RoundedCorner: Shape {
         let rawValue: Int
         static let topLeft = RectCorner(rawValue: 1 << 0)
         static let topRight = RectCorner(rawValue: 1 << 1)
-        static let bottomLeft = RectCorner(rawValue: 1 << 2)
-        static let bottomRight = RectCorner(rawValue: 1 << 3)
     }
 
     func path(in rect: CGRect) -> Path {

@@ -42,43 +42,6 @@ struct PropertyContractTests {
             for: "research_unit",
             profile: .topicMarkdown
         )?.creationRequirement == .optional)
-        #expect(PropertyContractCatalog.contract(
-            for: "research_unit",
-            profile: .paperAnalysisV1
-        )?.creationRequirement == .optional)
-    }
-
-    @Test("Legacy aliases resolve to one canonical contract with canonical precedence")
-    func aliasesAndCanonicalPrecedence() {
-        #expect(PropertyContractCatalog.canonicalKey(
-            for: "source_kind",
-            profile: .analysis
-        ) == "type")
-        #expect(PropertyContractCatalog.canonicalKey(
-            for: "analysis_status",
-            profile: .analysis
-        ) == "status")
-        #expect(PropertyContractCatalog.canonicalKey(
-            for: "analysis_status",
-            profile: .topicMarkdown
-        ) == "status")
-
-        let canonicalWins = PropertyContractCatalog.validate(
-            frontmatter: [
-                "status": .string("reviewed"),
-                "analysis_status": .string("not-current"),
-            ],
-            profile: .analysis
-        )
-        #expect(!canonicalWins.contains { $0.propertyKey == "status" })
-
-        let legacyValueIsValidated = PropertyContractCatalog.validate(
-            frontmatter: ["analysis_status": .string("not-current")],
-            profile: .analysis
-        )
-        #expect(legacyValueIsValidated.contains {
-            $0.propertyKey == "status" && $0.code == .valueNotAllowed
-        })
     }
 
     @Test("Every profile has unique canonical keys and stable indexed lookup")
@@ -93,17 +56,11 @@ struct PropertyContractTests {
                     for: contract.canonicalKey,
                     profile: profile
                 ) == contract)
-                for alias in contract.legacyAliases {
-                    #expect(PropertyContractCatalog.canonicalKey(
-                        for: alias,
-                        profile: profile
-                    ) == contract.canonicalKey)
-                }
             }
         }
     }
 
-    @Test("Creation requirements do not invalidate existing legacy notes")
+    @Test("Creation requirements remain contextual")
     func creationRequirementsAreContextual() {
         let existing = PropertyContractCatalog.validate(
             frontmatter: [:],
@@ -226,57 +183,6 @@ struct PropertyContractTests {
         }
     }
 
-    @Test("Dissertation v4 contracts derive controlled values and conditional creation fields")
-    func dissertationV4Contracts() throws {
-        let status = try #require(PropertyContractCatalog.contract(
-            for: "status",
-            profile: .dissertationControlV4
-        ))
-        #expect(status.allowedValues == DissertationControlV4.statuses.sorted())
-        #expect(PropertyContractCatalog.contract(
-            for: "schema_version",
-            profile: .dissertationControlV4
-        )?.creationRequirement == .required)
-        #expect(PropertyContractCatalog.contract(
-            for: "claim_kind",
-            profile: .dissertationControlV4
-        )?.constraints.contains(
-            .requiredWhen(canonicalKey: "note_type", equals: "claim")
-        ) == true)
-
-        var frontmatter = Dictionary(
-            uniqueKeysWithValues: PropertyContractCatalog.contracts(
-                for: .dissertationControlV4
-            ).compactMap { contract -> (String, YAMLValue)? in
-                guard contract.creationRequirement == .required else { return nil }
-                let value: YAMLValue = switch contract.valueKind {
-                case .text, .multilineText, .date:
-                    .string("value")
-                case .choice:
-                    .string(contract.allowedValues?.first ?? "value")
-                case .number:
-                    .integer(1)
-                case .boolean:
-                    .boolean(true)
-                case .tags, .textList:
-                    .array([.string(contract.allowedValues?.first ?? "value")])
-                case .mapping:
-                    .object(["value": .string("value")])
-                }
-                return (contract.canonicalKey, value)
-            }
-        )
-        frontmatter["note_type"] = .string("claim")
-        let issues = PropertyContractCatalog.validate(
-            frontmatter: frontmatter,
-            profile: .dissertationControlV4,
-            context: .creation
-        )
-        #expect(issues.contains {
-            $0.propertyKey == "claim_kind" && $0.code == .missingRequiredProperty
-        })
-    }
-
     @Test("Contract profiles and key lookups remain immutable cached data")
     func catalogHasCachedStorageAndLookups() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -292,8 +198,8 @@ struct PropertyContractTests {
 
         #expect(source.contains("private struct CachedProfile"))
         #expect(source.contains("let canonicalByKey: [String: PropertyContract]"))
-        #expect(source.contains("let aliasByKey: [String: PropertyContract]"))
-        #expect(source.contains("private static let dissertationV4Contracts"))
-        #expect(!source.contains("private static var dissertationV4Contracts"))
+        #expect(!source.contains("aliasByKey"))
+        #expect(source.contains("private static let workProfile"))
+        #expect(!source.contains("private static var workProfile"))
     }
 }

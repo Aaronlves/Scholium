@@ -104,21 +104,16 @@ struct RecommendedBibliographyContractsTests {
         }
     }
 
-    @Test("Legacy candidate identities default newly added bibliographic distinctions")
-    func legacyIdentityDefaults() throws {
+    @Test("Incomplete candidate identity arrays fail closed")
+    func incompleteIdentityFailsClosed() {
         let data = Data(#"{"rawCitation":"A. Author, A Work, 2020","authors":["A. Author"],"year":2020}"#.utf8)
-        let identity = try JSONDecoder().decode(BibliographyCandidateIdentity.self, from: data)
-
-        #expect(identity.rawCitation == "A. Author, A Work, 2020")
-        #expect(identity.authors == ["A. Author"])
-        #expect(identity.editors.isEmpty)
-        #expect(identity.translators.isEmpty)
-        #expect(identity.containerTitle == nil)
-        #expect(identity.edition == nil)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(BibliographyCandidateIdentity.self, from: data)
+        }
     }
 
-    @Test("Legacy method snapshots decode without embedded resource sources")
-    func legacyMethodSnapshotDefaultsRenderedResources() throws {
+    @Test("Method snapshots require embedded resource sources")
+    func methodSnapshotRequiresRenderedResources() throws {
         let snapshot = RecommendedBibliographyMethodSnapshot(
             packageID: "scholium-source-analyzer",
             origin: .bundled,
@@ -139,14 +134,13 @@ struct RecommendedBibliographyContractsTests {
                 as? [String: Any]
         )
         object.removeValue(forKey: "renderedResources")
-        let legacy = try JSONSerialization.data(withJSONObject: object)
-        let decoded = try JSONDecoder().decode(
-            RecommendedBibliographyMethodSnapshot.self,
-            from: legacy
-        )
-
-        #expect(decoded.loadedResources == snapshot.loadedResources)
-        #expect(decoded.renderedResources.isEmpty)
+        let incomplete = try JSONSerialization.data(withJSONObject: object)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                RecommendedBibliographyMethodSnapshot.self,
+                from: incomplete
+            )
+        }
     }
 
     private func target() -> RecommendedBibliographyTarget {

@@ -469,13 +469,6 @@ public actor ResearchSkillStore {
         guard observed == expectedBindingRevision else {
             throw ResearchSkillBindingError.staleBindingFile
         }
-        guard selection.selectedPractices.allSatisfy({
-            $0.application == .supplement
-        }) else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "New Practice bindings may supplement a complete method only. Replace bindings require repair."
-            )
-        }
         let compatiblePractices = try compatiblePracticeIDs(
             for: selection.function,
             primaryPackageID: selection.primaryPackageID
@@ -538,7 +531,7 @@ public actor ResearchSkillStore {
 
     /// Resolves the exact Practice IDs declared compatible by the complete
     /// primary method without consulting global Skill directories or inferring
-    /// compatibility from filenames.
+    /// applicability from filenames.
     public func compatiblePracticeIDs(
         for function: ResearchFunctionID,
         primaryPackageID: String? = nil
@@ -900,7 +893,7 @@ public actor ResearchSkillStore {
         }
 
         let packages = try resolvedPackages(
-            for: Self.legacyMode(for: function),
+            for: Self.skillMode(for: function),
             requestedSkillIDs: Self.unique(requestedIDs)
         )
         var selections: [ResolvedResearchSkillSelection] = []
@@ -998,7 +991,10 @@ public actor ResearchSkillStore {
             return rendered.joined(separator: "\n\n")
         }
         guard renderedPhases.contains(where: { !$0.isEmpty }) else { return "" }
-        return (["Reusable research guidance (apply only when relevant):"] + renderedPhases)
+        return ([
+            "Reusable package entries only (apply only when relevant).",
+            "Follow each selected entry's declared resource conditions; prepared workflows attach exact resources.",
+        ] + renderedPhases)
             .joined(separator: "\n\n")
     }
 
@@ -1391,16 +1387,6 @@ public actor ResearchSkillStore {
                     "Practice \(practice.selectionID) is not declared by a compatible Triptych-local Practice package."
                 )
             }
-            if practice.application == .replace {
-                guard practice.officialSkillID.map(Self.isValidIdentifier) == true,
-                      Self.hasText(practice.editablePoint),
-                      Self.hasText(practice.scope),
-                      Self.hasText(practice.reason) else {
-                    throw ResearchSkillBindingError.invalidBindingDocument(
-                        "A replacement Practice requires its official Skill, editable point, scope, and reason."
-                    )
-                }
-            }
         }
     }
 
@@ -1445,10 +1431,6 @@ public actor ResearchSkillStore {
         package.requiredSkillIDs.contains { dependencyID in
             (try? self.package(id: dependencyID))?.supports(function) == true
         }
-    }
-
-    private static func hasText(_ value: String?) -> Bool {
-        value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     private func safePackageURL(id: String) throws -> URL {
@@ -1673,7 +1655,7 @@ public actor ResearchSkillStore {
         id.range(of: #"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"#, options: .regularExpression) != nil
     }
 
-    private static func legacyMode(for function: ResearchFunctionID) -> ResearchSkillMode {
+    private static func skillMode(for function: ResearchFunctionID) -> ResearchSkillMode {
         switch function {
         case .dialogue: .dialogue
         case .develop: .develop

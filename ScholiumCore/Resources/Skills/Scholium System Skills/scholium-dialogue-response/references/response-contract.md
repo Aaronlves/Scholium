@@ -26,7 +26,7 @@ Example:
 /Research/Ethics/.scholium/dialogue-response.json
 ```
 
-Scholium creates and updates this file. Agents may inspect it only as a compatibility fallback or when the researcher explicitly asks about current Dialogue Defaults. Agents never write it directly.
+Scholium creates and updates this file. Agents may inspect it only when the researcher explicitly asks about current Dialogue Defaults. Agents never write it directly, and never use it to replace a Dialogue's immutable request snapshot.
 
 ## 3. Portable profile shape
 
@@ -102,13 +102,10 @@ The original app-owned Comments remain unchanged unless the adopted product desi
 
 ## 7. Resolution precedence
 
-Resolve the contract in this order:
-
-1. the `responseContract` snapshot in the exact Dialogue record;
-2. the portable Triptych Dialogue Defaults only when the record predates snapshots;
-3. the compatibility fallback: one concise Academic Outcome plus any material unresolved question or required researcher review.
-
-When using level 2 or 3, report `Contract source: dialogue-defaults` or `compatibility-fallback`. Do not claim to know the exact request-time selection.
+Resolve the contract only from the `responseContract` snapshot in the exact
+Dialogue record. The portable Triptych Dialogue Defaults create future request
+snapshots; they never answer an existing Dialogue. A record without a snapshot
+is invalid current state and must fail closed rather than inventing a contract.
 
 ## 8. Invalid or future values
 
@@ -128,7 +125,6 @@ Triptych selector in the copied transport instructions. Agents retrieve the
 exact request snapshot through the supported `scholium dialogue show` command;
 they do not read or edit the raw Application Support Dialogue store.
 
-Older Dialogue entries without a snapshot remain readable and are reported as
-`compatibility-fallback (request-time selection unavailable)`. The external agent still
-must not claim that a researcher-selected contract was retrieved for those
-entries.
+Dialogue entries without a snapshot are unsupported pre-release state. Scholium
+does not expose them as current Dialogue requests, and an external agent must not
+infer or manufacture the missing researcher selection.

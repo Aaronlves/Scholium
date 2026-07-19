@@ -241,8 +241,8 @@ public enum LinkSyntax: String, Codable, Hashable, Sendable {
     case vectorWikilink
     case markdown
     case embed
-    /// Retired typed-arrow syntax retained only for source-preserving diagnostics
-    /// and compatibility with previously decoded semantic data.
+    /// Retired typed-arrow syntax represented only for source-preserving,
+    /// semantically neutral diagnostics.
     case relationArrow
 }
 

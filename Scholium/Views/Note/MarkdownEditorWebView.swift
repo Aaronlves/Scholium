@@ -66,10 +66,10 @@ private final class WindowAttachedWebView: WKWebView {
         let available = Set(editorSession.context?.availableCommands ?? [])
         var addedAction = false
         for (title, command) in [
-            ("Bold", MarkdownEditorCommand.bold),
-            ("Emphasis", .emphasis),
-            ("Link", .standardLink),
-            ("Toggle Task", .toggleTask),
+            (ScholiumL10n.string("Bold"), MarkdownEditorCommand.bold),
+            (ScholiumL10n.string("Emphasis"), .emphasis),
+            (ScholiumL10n.string("Link"), .standardLink),
+            (ScholiumL10n.string("Toggle Task"), .toggleTask),
         ] where available.contains(command) {
             if !addedAction { menu.addItem(.separator()) }
             menu.addItem(editorMenuItem(title, command: command))
@@ -77,21 +77,21 @@ private final class WindowAttachedWebView: WKWebView {
         }
 
         let tableCommands: [(String, MarkdownEditorCommand)] = [
-            ("Insert Row Before", .tableInsertRowBefore),
-            ("Insert Row After", .tableInsertRowAfter),
-            ("Delete Row", .tableDeleteRow),
-            ("Insert Column Before", .tableInsertColumnBefore),
-            ("Insert Column After", .tableInsertColumnAfter),
-            ("Delete Column", .tableDeleteColumn),
-            ("Align Left", .tableAlignLeft),
-            ("Align Center", .tableAlignCenter),
-            ("Align Right", .tableAlignRight),
+            (ScholiumL10n.string("Insert Row Before"), .tableInsertRowBefore),
+            (ScholiumL10n.string("Insert Row After"), .tableInsertRowAfter),
+            (ScholiumL10n.string("Delete Row"), .tableDeleteRow),
+            (ScholiumL10n.string("Insert Column Before"), .tableInsertColumnBefore),
+            (ScholiumL10n.string("Insert Column After"), .tableInsertColumnAfter),
+            (ScholiumL10n.string("Delete Column"), .tableDeleteColumn),
+            (ScholiumL10n.string("Align Left"), .tableAlignLeft),
+            (ScholiumL10n.string("Align Center"), .tableAlignCenter),
+            (ScholiumL10n.string("Align Right"), .tableAlignRight),
         ].filter { available.contains($0.1) }
         if !tableCommands.isEmpty {
             if !addedAction { menu.addItem(.separator()) }
-            let submenu = NSMenu(title: "Table")
+            let submenu = NSMenu(title: ScholiumL10n.string("Table"))
             tableCommands.forEach { submenu.addItem(editorMenuItem($0.0, command: $0.1)) }
-            let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: ScholiumL10n.string("Table"), action: nil, keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.table")
             item.submenu = submenu
             menu.addItem(item)
@@ -101,7 +101,7 @@ private final class WindowAttachedWebView: WKWebView {
            editorSession.context?.composing != true,
            editorSession.context?.selections.contains(where: \.isNonempty) == true {
             if !addedAction { menu.addItem(.separator()) }
-            let item = NSMenuItem(title: "Add Comment…", action: #selector(requestComment(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: ScholiumL10n.string("Add Comment…"), action: #selector(requestComment(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.comment")
             item.target = self
             menu.addItem(item)
@@ -144,9 +144,9 @@ enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable
 
     var title: String {
         switch self {
-        case .read: "Read"
-        case .livePreview: "Live Preview"
-        case .source: "Source"
+        case .read: ScholiumL10n.string("Read")
+        case .livePreview: ScholiumL10n.string("Live Preview")
+        case .source: ScholiumL10n.string("Source")
         }
     }
 
@@ -253,7 +253,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var lastKnownSelections: [MarkdownEditorSelectionRange] = []
     #if DEBUG
     private static let qaTerminationNotification = Notification.Name(
-        "com.kbmanager.qa.simulate-editor-process-termination"
+        "com.scholium.qa.simulate-editor-process-termination"
     )
     private var qaTerminationObserverInstalled = false
     #endif
@@ -340,7 +340,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startupTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, !self.isReady else { return }
-            self.reportError("Live Preview did not finish starting.")
+            self.reportError(String(localized: "Live Preview did not finish starting.", table: "Localizable", bundle: .module))
         }
     }
 
@@ -719,7 +719,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     generation = recovered.resultingGeneration
                     isDirty = snapshot.dirty
                     if recovered.recovery?.undoHistoryPreserved == false {
-                        errorMessage = "The exact editor buffer was recovered, but its pre-crash undo history was unavailable."
+                        errorMessage = String(localized: "The exact editor buffer was recovered, but its pre-crash undo history was unavailable.", table: "Localizable", bundle: .module)
                         _ = try await send(
                             .announceStatus(
                                 "The exact editor buffer was recovered. Pre-crash undo history is unavailable."
@@ -827,7 +827,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     #if DEBUG
     private func installQATerminationObserverIfEnabled() {
         guard !qaTerminationObserverInstalled,
-              Bundle.main.bundleIdentifier == "com.kbmanager.qa",
+              Bundle.main.bundleIdentifier == "com.scholium.qa",
               ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults") else {
             return
         }
@@ -1006,7 +1006,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         guard let editorHTML = Self.editorHTML,
               Self.editorScript != nil else {
-            session.reportError("The bundled Markdown editor resources could not be found.")
+            session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
             return webView
         }
         context.coordinator.awaitingEditorLoad = true
@@ -1186,7 +1186,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 if payload.editorReady == true {
                     signalReady()
                 } else {
-                    session.reportError("The Markdown editor script did not initialize.")
+                    session.reportError(String(localized: "The Markdown editor script did not initialize.", table: "Localizable", bundle: .module))
                 }
             case "editorError":
                 session.reportError(payload.message ?? "The Markdown editor could not start.")
@@ -1253,7 +1253,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             hasSignaledReady = false
             awaitingEditorLoad = true
             guard let editorHTML = MarkdownEditorWebView.editorHTML else {
-                session.reportError("The Markdown editor resources could not be reloaded.")
+                session.reportError(String(localized: "The Markdown editor resources could not be reloaded.", table: "Localizable", bundle: .module))
                 return
             }
             webView.loadHTMLString(editorHTML, baseURL: nil)

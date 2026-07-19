@@ -8,15 +8,6 @@ extension ScholiumCLI {
         return arguments[index + 1]
     }
 
-    static func allOptions(_ name: String, in arguments: [String]) -> [String] {
-        arguments.indices.compactMap { index in
-            guard arguments[index] == name, arguments.indices.contains(index + 1) else {
-                return nil
-            }
-            return arguments[index + 1]
-        }
-    }
-
     static func printHelp() {
         printHelp(path: [], format: .text)
     }
@@ -80,10 +71,6 @@ extension ScholiumCLI {
               [--resource <relative-path>] [--format text|json]
           scholium skills resources <skill-id> [--triptych <uuid-or-unique-name>]
               [--format text|json]
-          scholium skills assemble --mode <mode> [--skill <id> ...]
-              [--triptych <uuid-or-unique-name>]
-          scholium skills assemble --mode mixed
-              --phase <mode>[:skill-id,skill-id] ...
           scholium workflow validate --from <file|-> [--triptych <selector>] --format json
           scholium workflow assemble --from <file|-> [--triptych <selector>]
               --format markdown|json
@@ -114,19 +101,18 @@ extension ScholiumCLI {
           scholium zotero mcp config [--format text|json]
           scholium zotero mcp status [--probe] [--format text|json]
           scholium zotero mcp serve
-        Omitting --triptych uses the compatibility default Triptych.
+        Omitting --triptych requires exactly one configured Triptych.
         Triptych roles: analyses, topics, works
-        `skills assemble` is a compact package-assembly compatibility interface.
         Workflow contracts add exact task boundaries, phase isolation, Practice
-        resources, fingerprints, and audit planning. Neither interface scans
+        resources, fingerprints, and audit planning. The CLI never scans
         global Skill folders or grants edit permission.
         Workspace bootstrap is candidate-only: it never writes or overwrites AGENTS.md.
         Zotero MCP status locates Scholium's first-party CLI transport by default.
         Add --probe to perform only the MCP initialize lifecycle check; it does
         not read Zotero data or perform an import.
-        Legacy registry spellings and aliases remain accepted for compatibility:
-        source_corpus, topic_knowledge, dissertation_control, draft_project,
-        other, unclassified, sources, knowledge, dissertation, and project.
+        Registry roles and accepted aliases:
+        source_corpus, topic_knowledge, draft_project, other, unclassified,
+        sources, knowledge, project, and works.
 
         Existing-note mutations require the exact SHA-256 reported by
         `scholium read --format json`. Fingerprints prevent stale overwrites;
@@ -179,17 +165,14 @@ private extension ScholiumCLI {
             "skills catalog": "Usage: scholium skills catalog [--triptych <selector>] [--format text|json]",
             "skills show": "Usage: scholium skills show <skill-id> [--triptych <selector>] [--resource <relative-path>] [--format text|json]",
             "skills resources": "Usage: scholium skills resources <skill-id> [--triptych <selector>] [--format text|json]",
-            "skills assemble": "Usage: scholium skills assemble --mode <mode> [--skill <id> ...] [--phase <mode>[:id,id] ...] [--triptych <selector>]",
             "workflow validate": "Usage: scholium workflow validate --from <json|-> [--triptych <selector>] --format json",
             "workflow assemble": "Usage: scholium workflow assemble --from <json|-> [--triptych <selector>] --format markdown|json",
             "workflow audit-plan": "Usage: scholium workflow audit-plan --from <json|-> --format json",
-            "function available": "Usage: scholium function available --from <target-json|-> --format json\n\nCompatibility alias: function availability.",
-            "function availability": "Usage: scholium function available --from <target-json|-> --format json\n\nDeprecated spelling; prefer `available`.",
+            "function available": "Usage: scholium function available --from <target-json|-> --format json",
             "function prepare": "Usage: scholium function prepare --from <request-json|-> --format json|markdown",
             "function show": "Usage: scholium function show <run-id> [--triptych <selector>] --format json|markdown",
             "function prepare-fidelity": "Usage: scholium function prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Develop or Revise run.",
             "function select-resources": "Usage: scholium function select-resources --from <selection-json|-> [--triptych <selector>] --format json|markdown",
-            "function select-methods": "Deprecated alias for `scholium function select-resources`.",
             "function complete": "Usage: scholium function complete --from <completion-json|-> [--triptych <selector>] --format json",
             "function cancel": "Usage: scholium function cancel <run-id> [--triptych <selector>] [--format json]",
             "bibliography prepare": "Usage: scholium bibliography prepare --from <request-json|-> --format json|markdown",

@@ -85,9 +85,9 @@ private struct ScholiumMonoComparison: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Monospace A/B Proof")
+                Text(verbatim: "Monospace A/B Proof")
                     .font(.title2.weight(.semibold))
-                Text("Production Victor Mono beside the macOS system monospace. Review at normal and 200% document text sizes.")
+                Text(verbatim: "Production Victor Mono beside the macOS system monospace. Review at normal and 200% document text sizes.")
                     .foregroundStyle(.secondary)
 
                 MonoComparisonScaleSection(title: "100%", scale: 1)
@@ -178,9 +178,9 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
 
     private var editorialSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Scholium")
+            Text(verbatim: "Scholium")
                 .font(ScholiumInterfaceTypography.identity)
-            Text("Triptych — Immediate Results")
+            Text(verbatim: "Triptych — Immediate Results")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
@@ -214,7 +214,7 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
             Spacer()
 
             editorialLabel("TAGS")
-            Text("attention  ·  learning  ·  uncertainty")
+            Text(verbatim: "attention  ·  learning  ·  uncertainty")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
@@ -231,8 +231,8 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
                 Label("Analyses", systemImage: "book")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                Text("/").foregroundStyle(.tertiary)
-                Text("I. The Seduction of Immediate Results")
+                Text(verbatim: "/").foregroundStyle(.tertiary)
+                Text(verbatim: "I. The Seduction of Immediate Results")
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
                 Spacer()
@@ -246,15 +246,15 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack(spacing: 8) {
-                        Text("Analysis")
+                        Text(verbatim: "Analysis")
                             .font(ScholiumInterfaceTypography.editorialLabel)
                             .tracking(0.7)
                             .foregroundStyle(.secondary)
-                        Text("Properties")
+                        Text(verbatim: "Properties")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text("In Progress")
+                        Text(verbatim: "In Progress")
                             .font(.caption.weight(.medium))
                     }
                     .padding(.horizontal, 12)
@@ -267,15 +267,15 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
                         )
                     )
 
-                    Text("I. The Seduction of Immediate Results")
+                    Text(verbatim: "I. The Seduction of Immediate Results")
                         .font(ScholiumInterfaceTypography.documentTitle)
                         .fixedSize(horizontal: false, vertical: true)
 
                     ScholiumStructuralRule()
 
-                    Text("Modern life trains us to expect visible results almost immediately. A message is delivered in seconds, but this speed quietly changes our sense of how long worthwhile work should take.")
-                    Text("Serious learning does not obey this logic. Research advances through failed specifications, incomplete drafts, and conversations whose value becomes clear only months later.")
-                    Text("哲学研究的进展并不总能立即显现。概念之间的张力、反例与修订，需要在缓慢而持续的阅读中逐渐成形。")
+                    Text(verbatim: "Modern life trains us to expect visible results almost immediately. A message is delivered in seconds, but this speed quietly changes our sense of how long worthwhile work should take.")
+                    Text(verbatim: "Serious learning does not obey this logic. Research advances through failed specifications, incomplete drafts, and conversations whose value becomes clear only months later.")
+                    Text(verbatim: "哲学研究的进展并不总能立即显现。概念之间的张力、反例与修订，需要在缓慢而持续的阅读中逐渐成形。")
                 }
                 .font(ScholiumTypography.swiftUIReadingFont(size: 12, relativeTo: .body))
                 .lineSpacing(5)
@@ -305,9 +305,9 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
     private var editorialInspector: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 16) {
-                Text("Connections")
+                Text(verbatim: "Connections")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
-                Text("Research")
+                Text(verbatim: "Research")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
                     .foregroundStyle(.secondary)
             }
@@ -328,7 +328,7 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
                     inspectorFact("Type", "Analysis")
 
                     inspectorSection("TAGS", count: "5")
-                    Text("motivation  progress  feedback\nlearning  uncertainty")
+                    Text(verbatim: "motivation  progress  feedback\nlearning  uncertainty")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

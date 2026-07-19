@@ -25,7 +25,7 @@ Operation:
 Active Workflow Skill:
 Triptych selector:
 Dialogue ID: none | UUID
-Response contract source: none | request-snapshot | dialogue-defaults | compatibility-fallback
+Response contract source: none | request-snapshot
 Input and evidential status:
 Exact read set:
 Exact write set:

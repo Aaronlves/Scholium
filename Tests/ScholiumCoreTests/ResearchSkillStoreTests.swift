@@ -62,6 +62,25 @@ struct ResearchSkillStoreTests {
         #expect(!assembly.contains("scholium-source-fidelity"))
     }
 
+    @Test("Package entry assembly discloses its resource boundary")
+    func packageEntryAssemblyDisclosesResourceBoundary() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+
+        let assembly = try await store.instructionAssembly(
+            mode: .review,
+            requestedSkillIDs: ["scholium-critique"]
+        )
+
+        #expect(assembly.contains("Reusable package entries only"))
+        #expect(assembly.contains(
+            "prepared workflows attach exact resources"
+        ))
+        #expect(assembly.contains("Read references/method.md completely"))
+        #expect(!assembly.contains("# Critique Method"))
+    }
+
     @Test("Non-UTF-8 skill source remains visible as a recoverable structural error")
     func nonUTF8SkillIsVisible() async throws {
         let fixture = try Fixture()

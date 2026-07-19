@@ -48,9 +48,9 @@ enum KnowledgeBase: String, Codable, CaseIterable, Hashable {
 
   var displayName: String {
     switch self {
-    case .papers: return "Analyses"
-    case .topics: return "Topics"
-    case .output: return "Works"
+    case .papers: return ScholiumL10n.dynamicString("Analyses")
+    case .topics: return ScholiumL10n.dynamicString("Topics")
+    case .output: return ScholiumL10n.dynamicString("Works")
     }
   }
 
@@ -72,12 +72,10 @@ enum KnowledgeBase: String, Codable, CaseIterable, Hashable {
 
 // MARK: - Workflow Profile
 
-/// A note's semantic role is derived from the registered vault first, then
-/// from explicit schema metadata, and only then from legacy folder names.
+/// A note's semantic role is derived from the registered vault.
 enum NoteProfile: String, Codable, Hashable {
   case paperAnalysis
   case topicKnowledge
-  case dissertationControl
   case draftProject
   case generic
 
@@ -92,9 +90,8 @@ enum NoteProfile: String, Codable, Hashable {
       relativePath: relativePath
     )
     switch resolved {
-    case .analysis, .paperAnalysisV1: return .paperAnalysis
+    case .analysis: return .paperAnalysis
     case .topicMarkdown: return .topicKnowledge
-    case .dissertationControlV3, .dissertationControlV4: return .dissertationControl
     case .draftProject: return .draftProject
     case .genericMarkdown: return .generic
     }
@@ -104,16 +101,15 @@ enum NoteProfile: String, Codable, Hashable {
     switch self {
     case .paperAnalysis: .papers
     case .topicKnowledge: .topics
-    case .dissertationControl, .draftProject, .generic: .output
+    case .draftProject, .generic: .output
     }
   }
 
   var displayName: String {
     switch self {
-    case .paperAnalysis: "Analysis"
-    case .topicKnowledge: "Topic"
-    case .dissertationControl: "Dissertation Control"
-    case .draftProject: "Work"
+    case .paperAnalysis: ScholiumL10n.dynamicString("Analysis")
+    case .topicKnowledge: ScholiumL10n.dynamicString("Topic")
+    case .draftProject: ScholiumL10n.dynamicString("Work")
     case .generic: "Markdown"
     }
   }
@@ -242,8 +238,6 @@ extension WindowDocumentLocation {
       relativePath: relativePath
     )
   }
-  var kb: KnowledgeBase { profile.knowledgeBase }
-
   /// Malformed frontmatter remains readable as exact source. Structured
   /// properties use only Core's parsed projection and never reconstruct bytes.
   var frontmatter: [String: YAMLValue] { document.parsedFrontmatter }
@@ -258,8 +252,6 @@ extension WindowDocumentLocation {
   }
   var tags: [String] { frontmatter["tags"]?.appArrayValue ?? [] }
   var status: String? { property(at: "status")?.scalarString }
-  var governanceReviewStatus: String? { frontmatter["review_status"]?.scalarString }
-  var prosePermission: String? { frontmatter["prose_permission"]?.scalarString }
   var year: Int? { frontmatter["year"]?.appIntValue }
   var authors: [String] { frontmatter["authors"]?.appArrayValue ?? [] }
   var debateImportance: Int? {
@@ -308,10 +300,6 @@ extension WindowDocumentLocation {
           let reviewed = snapshot.review?.reviewedFingerprint else { return false }
     return reviewed == snapshot.fingerprint
   }
-  var reviewedAt: Date? { nil }
-  var wordCount: Int { body.split(whereSeparator: \.isWhitespace).count }
-  var linkCount: Int { workspaceSnapshot?.graphCounts.outgoing ?? 0 }
-  var backlinkCount: Int { workspaceSnapshot?.graphCounts.incoming ?? 0 }
   var fileModifiedAt: Date {
     workspaceSnapshot?.fileMetadata.modificationDate ?? .distantPast
   }
@@ -331,7 +319,6 @@ extension WindowDocumentLocation {
     let contract = propertyContract(for: rootKey)
     let canonicalKey = contract?.canonicalKey ?? rootKey
     let root = frontmatter[canonicalKey]
-      ?? contract?.legacyAliases.lazy.compactMap { frontmatter[$0] }.first
     guard let root else { return nil }
     guard parts.count == 2 else { return root }
     guard case .object(let values) = root else { return nil }
@@ -339,9 +326,8 @@ extension WindowDocumentLocation {
   }
 
   /// Prefer the note's resolved profile, then consult the complete Core
-  /// catalog for compatibility projections whose semantic home is another
-  /// profile. This preserves legacy readability without restating aliases or
-  /// constraints in the app target.
+  /// catalog for recognized canonical properties whose semantic home is
+  /// another current profile.
   private func propertyContract(for key: String) -> PropertyContract? {
     if let contract = PropertyContractCatalog.contract(for: key, profile: schemaProfile) {
       return contract
@@ -358,8 +344,8 @@ extension WindowDocumentLocation {
     var result: [String: [String]] = [:]
     let inactiveAnalysisKeys: Set<String>
     switch schemaProfile {
-    case .analysis, .paperAnalysisV1:
-      inactiveAnalysisKeys = ["relevance", "relevance_rating"]
+    case .analysis:
+      inactiveAnalysisKeys = ["relevance"]
     default:
       inactiveAnalysisKeys = []
     }
@@ -418,19 +404,6 @@ extension YAMLValue {
     }
   }
 
-  var appBoolValue: Bool? {
-    switch self {
-    case .boolean(let value): value
-    case .string(let value):
-      switch value.lowercased() {
-      case "true": true
-      case "false": false
-      default: nil
-      }
-    default: nil
-    }
-  }
-
   var appDateValue: Date? {
     guard let value = scalarString else { return nil }
     let formatter = ISO8601DateFormatter()
@@ -484,19 +457,4 @@ struct VaultConfig: Codable {
     var attachmentFolderPath: String?
     var newLinkFormat: String?    // "shortest" or "relative" or "absolute"
   }
-}
-
-// MARK: - Search Result
-
-struct SearchResult: Identifiable, Hashable {
-  var id: String { notePath }
-  let notePath: String
-  let displayName: String
-  let kb: KnowledgeBase
-  let score: Double
-  let matchField: String       // "title", "tag", "body", "authors"
-  let snippet: String          // highlighted excerpt
-  let highlights: [SearchHighlight]
-  let sourceLine: Int
-  let isReviewed: Bool
 }

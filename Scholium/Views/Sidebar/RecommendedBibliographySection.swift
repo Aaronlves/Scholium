@@ -9,44 +9,43 @@ struct RecommendedBibliographySection: View {
     let repairMethod: () -> Void
 
     var body: some View {
-        if controller.target != nil {
-            VStack(alignment: .leading, spacing: 8) {
-                header
-                Text("Reading leads, not evidence.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            header
+            controls
 
-                controls
-
-                if !controller.visibleCandidates.isEmpty {
-                    VStack(spacing: 0) {
-                        ForEach(controller.visibleCandidates) { candidate in
-                            candidateRow(candidate)
-                            if candidate.id != controller.visibleCandidates.last?.id {
-                                Divider()
-                            }
+            if !controller.visibleCandidates.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(controller.visibleCandidates) { candidate in
+                        candidateRow(candidate)
+                        if candidate.id != controller.visibleCandidates.last?.id {
+                            Divider()
                         }
                     }
-                    .background(
-                        Color.primary.opacity(0.035),
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    )
-                } else if controller.projection?.state == .complete {
-                    Text("No warranted recommendations were returned for the inspected source scope.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if controller.phase == .ready {
-                    Text("No reading leads have been requested for this Analysis.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
-
-                status
+                .background(
+                    Color.primary.opacity(0.035),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+            } else if controller.target == nil {
+                Text("Open an Analysis to prepare new recommendations for this Triptych.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if controller.projection?.state == .complete {
+                Text("No warranted recommendations were returned for the inspected source scope.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if controller.phase == .ready {
+                Text("No reading leads have been requested for this Analysis.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("scholium.recommendedBibliography")
+
+            status
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.recommendedBibliography")
     }
 
     private var header: some View {
@@ -273,6 +272,126 @@ struct RecommendedBibliographySection: View {
             candidate.reason,
             candidate.matchState.interfaceName,
         ].filter { !$0.isEmpty }.joined(separator: ". ")
+    }
+}
+
+/// The Library's compact, scan-first projection. It deliberately keeps the
+/// complete recommendation workflow in the existing popover rather than
+/// squeezing forms and explanations into the navigation column.
+struct SidebarRecommendedBibliographySection: View {
+    @ObservedObject var controller: RecommendedBibliographyController
+    let openAnalysis: (VaultQualifiedNoteID) -> Void
+    let openZoteroItem: (String) async -> Void
+    let copyText: (String) -> Void
+    let repairMethod: () -> Void
+
+    @State private var showsDetails = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Text("RECOMMENDED BIBLIOGRAPHY")
+                    .font(ScholiumInterfaceTypography.editorialLabel)
+                    .tracking(0.7)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 4)
+
+                Text(controller.visibleCandidates.count.formatted())
+                    .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                    .accessibilityLabel(
+                        "\(controller.visibleCandidates.count) bibliography recommendations"
+                    )
+
+                Button {
+                    showsDetails = true
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .layoutPriority(2)
+                .help(
+                    controller.target == nil
+                        ? "Open an Analysis to prepare new recommendations; existing Triptych recommendations remain available"
+                        : "Open Recommended Bibliography"
+                )
+                .accessibilityLabel("Open Recommended Bibliography")
+                .accessibilityIdentifier("scholium.recommendedBibliography.open")
+            }
+
+            if controller.visibleCandidates.isEmpty {
+                Text("None")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        ForEach(Array(controller.visibleCandidates.enumerated()), id: \.element.id) { index, candidate in
+                            literatureEntry(candidate)
+                            if index < controller.visibleCandidates.count - 1 {
+                                ScholiumStructuralRule(orientation: .vertical)
+                                    .frame(height: 28)
+                                    .padding(.horizontal, 8)
+                            }
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .accessibilityLabel("Recommended literature")
+            }
+        }
+        .popover(isPresented: $showsDetails, arrowEdge: .trailing) {
+            ScrollView {
+                RecommendedBibliographySection(
+                    controller: controller,
+                    openAnalysis: openAnalysis,
+                    openZoteroItem: openZoteroItem,
+                    copyText: copyText,
+                    repairMethod: repairMethod
+                )
+                .padding(16)
+            }
+            .frame(width: 380, height: 520)
+            .scholiumSurface(.boundedPanel)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.recommendedBibliography.library")
+    }
+
+    private func literatureEntry(
+        _ candidate: RecommendedBibliographyCandidate
+    ) -> some View {
+        let title = candidate.identity.title ?? candidate.identity.rawCitation
+        return HStack(spacing: 0) {
+            Text(literatureIdentity(candidate) + ", ")
+            Text(title).italic()
+        }
+        .font(ScholiumInterfaceTypography.literatureCitation)
+    }
+
+    private func literatureIdentity(
+        _ candidate: RecommendedBibliographyCandidate
+    ) -> String {
+        let authors = candidate.identity.authors
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let authorText: String = switch authors.count {
+        case 0: "Unknown author"
+        case 1: authors[0]
+        case 2: "\(authors[0]) & \(authors[1])"
+        default: "\(authors[0]) et al."
+        }
+        return [authorText, candidate.identity.year.map(String.init)]
+            .compactMap { $0 }
+            .joined(separator: ", ")
     }
 }
 

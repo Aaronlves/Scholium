@@ -196,8 +196,7 @@ struct WorkspaceRuntimeReplacementTests {
     private func liveRuntime(for fixture: ApplicationFixture) -> WorkspaceRuntime {
         WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .milliseconds(20)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
     }
 

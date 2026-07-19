@@ -6,12 +6,12 @@ Use the profile assigned by Scholium to the registered vault role. Existing and 
 
 - Include each property key in the exact write set before changing it.
 - Fill a value only from verified source metadata, explicit researcher information, or the active workflow's warranted result.
-- Preserve unknown, custom, nested, machine-managed, and legacy properties unless the exact task targets them.
+- Preserve unknown, custom, nested, and machine-managed properties unless the exact task targets them.
 - Do not expose or rewrite machine identifiers, schema markers, fingerprints, Zotero linkage, provenance stores, or automatic history as ordinary properties.
 - Do not add YAML to a Topic solely to display properties.
 - Treat every governed custom schema as its own authority; do not substitute the default Works profile.
 
-Creation and modification time are app-owned History data. Never add, infer, refresh, normalize, or maintain `created`, `updated`, `modified`, `created_at`, `updated_at`, `last_modified_at`, or an equivalent timestamp property. Preserve an existing timestamp key exactly as legacy or custom YAML unless a separately authorized migration owns that key. Its absence is never a metadata defect.
+Creation and modification time are app-owned History data. Never add, infer, refresh, normalize, or maintain `created`, `updated`, `modified`, `created_at`, `updated_at`, `last_modified_at`, or an equivalent timestamp property. Preserve an existing timestamp key exactly as custom YAML unless a separately authorized migration owns that key. Its absence is never a metadata defect.
 
 ## 2. Research Unit
 
@@ -79,7 +79,7 @@ For a newly authorized durable Analysis using **Declare Now**, fill:
 When creation uses **Not Yet**, omit `research_unit` entirely. Do not write an
 empty mapping, placeholder scope, or sentinel value.
 
-If required bibliographic identity cannot be verified, do not fabricate it: leave it unresolved under the active creation contract and report the gap. Use `type`, `tags`, `access`, `text_reliability`, `locators`, and `status` only when warranted. Scholium no longer generates, validates, or presents Project Relevance as an active property. Preserve existing `relevance` or `relevance_rating` YAML byte-for-byte as inactive legacy or custom data unless an explicit migration owns it.
+If required bibliographic identity cannot be verified, do not fabricate it: leave it unresolved under the active creation contract and report the gap. Use `type`, `tags`, `access`, `text_reliability`, `locators`, and `status` only when warranted. Scholium no longer generates, validates, or presents Project Relevance as an active property. Preserve existing `relevance` or `relevance_rating` YAML byte-for-byte as inactive custom data unless an explicit migration owns it.
 
 The optional `debate_importance` property is a whole number from 0–10 and must appear together with non-empty `debate_importance_scope`. Add or change the pair only when both keys are authorized and the available checked source analysis and comparative context justify a judgment within the named debate, domain, tradition, period, or reception context. The rating has no pass grade. It is not project relevance, quality, truth, prestige, citation impact, or the source's self-assessment. Omit both fields when the evidence is insufficient and place the rationale or not-assessed reason in the report body.
 

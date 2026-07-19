@@ -65,12 +65,25 @@ struct DocumentPresentationSnapshot: Equatable, Sendable {
 final class DocumentController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
     typealias DocumentCommitHandler = @MainActor (NoteDocument) async -> Void
-    typealias SaveErrorHandler = @MainActor (String?) -> Void
 
     @Published private(set) var selectedDocument: WindowSelectedDocument?
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
+    @Published var lifecycleMutationGeneration: UInt64 = 0
+    @Published var pendingSourceLine: Int?
+    @Published var changedSinceReviewPaths: Set<String> = []
+    @Published var requestedPresentationMode: NotePresentationMode?
+    @Published var pendingCommentSelection: MarkdownReviewSelection?
+    @Published var focusedResearcherCommentID: UUID?
+    @Published var humanReviewRecords: [String: HumanReviewRecord] = [:]
+    @Published var humanReviewRecordsByNoteID: [UUID: HumanReviewRecord] = [:]
+    @Published var noteIdentityByPath: [String: UUID] = [:]
+    @Published var identityAmbiguities: [NoteIdentityAmbiguity] = []
+    @Published var pendingIdentityRebindings: [NoteIdentityPendingRebinding] = []
+    @Published var identityMigrationFailures: [NoteIdentityMigrationFailure] = []
+    @Published var isResolvingIdentity = false
+    @Published var identityResolutionError: String?
 
     private let sessions = DocumentSessionStore()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
@@ -82,7 +95,6 @@ final class DocumentController: ObservableObject {
     private var operations: (any DocumentUseCases)?
     private var sessionCancellables: [ObjectIdentifier: AnyCancellable] = [:]
     private var documentDidCommit: DocumentCommitHandler = { _ in }
-    private var saveErrorDidChange: SaveErrorHandler = { _ in }
 
     init(intentHandler: @escaping IntentHandler = { _ in }) {
         self.intentHandler = intentHandler
@@ -101,31 +113,22 @@ final class DocumentController: ObservableObject {
         return snapshots[key]
     }
 
-    var isActiveDocumentEdited: Bool {
-        guard let key = selectedDocument?.sessionKey,
-              let session = sessions.retainedSession(for: key) else { return false }
-        return session.hasUnsavedChanges
-    }
-
     /// Binds this window-local controller to capabilities selected by the one
     /// app-wide WorkspaceStore subscription. Rebinding never replaces editor
     /// sessions or another window's presentation state.
     func bind(
         to operations: any DocumentUseCases,
         snapshot: WorkspaceSnapshot? = nil,
-        documentDidCommit: @escaping DocumentCommitHandler = { _ in },
-        saveErrorDidChange: @escaping SaveErrorHandler = { _ in }
+        documentDidCommit: @escaping DocumentCommitHandler = { _ in }
     ) {
         self.operations = operations
         self.documentDidCommit = documentDidCommit
-        self.saveErrorDidChange = saveErrorDidChange
         if let snapshot { receive(snapshot) }
     }
 
     func unbind() {
         operations = nil
         documentDidCommit = { _ in }
-        saveErrorDidChange = { _ in }
     }
 
     func workspaceSnapshots() async throws -> [WorkspaceVaultSnapshot] {
@@ -379,6 +382,13 @@ final class DocumentController: ObservableObject {
         guard let selectedDocumentPath, removedPaths.contains(selectedDocumentPath) else {
             return
         }
+        selectedDocument = nil
+    }
+
+    /// Leaves the Document region in its no-note state after the researcher
+    /// closes the last content tab. Retained sessions remain window-local so a
+    /// later reopen can preserve the existing exact-source safety boundary.
+    func clearSelectionAfterClosingLastTab() {
         selectedDocument = nil
     }
 
@@ -986,9 +996,8 @@ final class DocumentController: ObservableObject {
         session.editError = message
     }
 
-    private func setSaveError(_ message: String?) {
+    func setSaveError(_ message: String?) {
         lastSaveError = message
-        saveErrorDidChange(message)
     }
 
     private func requireOperations() throws -> any DocumentUseCases {
@@ -1120,15 +1129,15 @@ enum DocumentControllerError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .saveFailed(let message):
-            "Scholium kept the current editor open because it could not safely save this note. \(message)"
+            String(localized: "Scholium kept the current editor open because it could not safely save this note. \(message)", table: "Localizable", bundle: .module)
         case .editorUnavailable:
-            "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer."
+            String(localized: "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer.", table: "Localizable", bundle: .module)
         case .changedDuringSave:
-            "Scholium kept the current editor open because the note continued changing while it was being saved."
+            String(localized: "Scholium kept the current editor open because the note continued changing while it was being saved.", table: "Localizable", bundle: .module)
         case .deltaMirrorMismatch:
-            "Scholium kept the current editor open because an editor update did not reach the autosave mirror. The complete editor buffer was recovered; retry the save."
+            String(localized: "Scholium kept the current editor open because an editor update did not reach the autosave mirror. The complete editor buffer was recovered; retry the save.", table: "Localizable", bundle: .module)
         case .documentUnavailable:
-            "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych."
+            String(localized: "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.", table: "Localizable", bundle: .module)
         }
     }
 }

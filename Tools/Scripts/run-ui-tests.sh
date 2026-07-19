@@ -5,11 +5,11 @@ ROOT="${0:A:h:h:h}"
 QA_APP="/tmp/Scholium-QA.app"
 FIXTURES="/tmp/scholium-workbench-qa"
 QA_HOME="/tmp/scholium-workbench-home"
-QA_BUILD_DERIVED="/tmp/Scholium-Xcode-QA"
-UI_TEST_DERIVED="/tmp/Scholium-UITests"
+QA_BUILD_DERIVED="${ROOT}/.build/qa-swiftpm"
+UI_TEST_DERIVED="${ROOT}/.build/qa-ui-derived-data"
 REGISTERED_QA="${HOME}/Applications/Scholium-Codex-QA-Do-Not-Use.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-QA_RUN_LOCK="/tmp/com.kbmanager.qa.ui-tests.lock"
+QA_RUN_LOCK="/tmp/com.scholium.qa.ui-tests.lock"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 
 ensure_ui_host_is_unlocked() {
@@ -63,7 +63,7 @@ cleanup() {
 
   terminate_qa_instances
   "${LSREGISTER}" -u "${REGISTERED_QA}" 2>/dev/null || true
-  defaults delete com.kbmanager.qa 2>/dev/null || true
+  defaults delete com.scholium.qa 2>/dev/null || true
   rm -rf "${REGISTERED_QA}"
   if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]]; then
     rm -rf \
@@ -96,7 +96,7 @@ DEVELOPER_DIR="${DEVELOPER_DIR}" "${ROOT}/Tools/Scripts/build-qa-app.sh"
 
 if [[ -d "${REGISTERED_QA}" ]]; then
   existing_id="$(plutil -extract CFBundleIdentifier raw "${REGISTERED_QA}/Contents/Info.plist" 2>/dev/null || true)"
-  [[ "${existing_id}" == "com.kbmanager.qa" ]] || {
+  [[ "${existing_id}" == "com.scholium.qa" ]] || {
     print -u2 "Refusing to replace non-QA application at ${REGISTERED_QA}."
     exit 1
   }

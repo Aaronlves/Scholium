@@ -28475,7 +28475,6 @@
     const rawRow = table.position.row === 0 ? 0 : table.position.row + 1;
     const row = table.rows[rawRow];
     const column = table.position.column;
-    const cell = row.cells[column];
     if (command2 === "tableInsertRowBefore" || command2 === "tableInsertRowAfter") {
       const before = command2 === "tableInsertRowBefore";
       const point = before ? row.lineFrom : row.lineTo;

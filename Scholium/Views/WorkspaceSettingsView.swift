@@ -1,16 +1,18 @@
 import ScholiumContracts
+import Accessibility
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ScholiumSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "vaults"
 
     var body: some View {
         TabView(selection: selectedPane) {
             WorkspaceSettingsView()
-                .tabItem { Label("Vaults", systemImage: "externaldrive") }
+                .tabItem { Label(ScholiumL10n.Settings.vaults, systemImage: "externaldrive") }
                 .tag(WorkspaceSettingsPane.vaults)
 
             Group {
@@ -23,26 +25,56 @@ struct ScholiumSettingsView: View {
                     ContentUnavailableView("Document Styles Unavailable", systemImage: "paintbrush")
                 }
             }
-                .tabItem { Label("Document Styles", systemImage: "paintbrush") }
+                .tabItem {
+                    Label(ScholiumL10n.Settings.documentStyles, systemImage: "paintbrush")
+                }
                 .tag(WorkspaceSettingsPane.documentStyles)
 
             PropertiesSettingsView()
-                .tabItem { Label("Properties", systemImage: "slider.horizontal.3") }
+                .tabItem {
+                    Label(ScholiumL10n.Settings.properties, systemImage: "slider.horizontal.3")
+                }
                 .tag(WorkspaceSettingsPane.properties)
 
             ResearchGuidanceSettingsView()
-                .tabItem { Label("Research Guidance", systemImage: "text.bubble") }
+                .tabItem {
+                    Label(ScholiumL10n.Settings.researchGuidance, systemImage: "text.bubble")
+                }
                 .tag(WorkspaceSettingsPane.researchGuidance)
 
             AttentionSettingsView()
-                .tabItem { Label("Attention", systemImage: "exclamationmark.triangle") }
+                .tabItem {
+                    Label(ScholiumL10n.Settings.attention, systemImage: "exclamationmark.triangle")
+                }
                 .tag(WorkspaceSettingsPane.attention)
 
             ZoteroSettingsView()
-                .tabItem { Label("Zotero", systemImage: "books.vertical") }
+                .tabItem { Label(ScholiumL10n.Settings.zotero, systemImage: "books.vertical") }
                 .tag(WorkspaceSettingsPane.zotero)
         }
         .padding(8)
+        .overlay(alignment: .bottom) {
+            if let message = settingsModel.toastMessage {
+                ToastView(message: message)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
+                    .padding(.bottom, 20)
+            }
+        }
+        .animation(
+            ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
+            value: settingsModel.toastMessage
+        )
+        .task(id: settingsModel.toastMessage) {
+            guard let message = settingsModel.toastMessage else { return }
+            AccessibilityNotification.Announcement(message).post()
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            settingsModel.dismissToast(message)
+        }
         .onAppear {
             settingsModel.selectPane(WorkspaceSettingsPane(rawValue: persistedPane) ?? .vaults)
         }
@@ -129,7 +161,7 @@ private struct AttentionSettingsView: View {
                 settings.attentionDismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
                 try await settingsModel.saveTriptychSettings(settings)
                 dismissalDays = settings.attentionDismissalDays
-                settingsModel.showToast("Attention settings saved")
+                settingsModel.showToast(String(localized: "Attention settings saved", table: "Localizable", bundle: .module))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -185,7 +217,7 @@ private struct PropertiesSettingsView: View {
                 .foregroundStyle(.secondary)
             Picker("Vault", selection: $selectedSlot) {
                 ForEach(WorkspaceVaultSlot.allCases) { slot in
-                    Text(slot.displayName).tag(slot)
+                    Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
                 }
             }
             .pickerStyle(.segmented)
@@ -425,7 +457,7 @@ private struct PropertiesSettingsView: View {
                     return result
                 }
                 try await settingsModel.saveTriptychSettings(settings)
-                settingsModel.showToast("Properties configuration saved")
+                settingsModel.showToast(String(localized: "Properties configuration saved", table: "Localizable", bundle: .module))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -649,11 +681,20 @@ enum ResearchGuidancePresentation {
     }
 }
 
+private enum ResearchGuidanceCollection: String, Hashable {
+    case promptTemplates = "prompt-templates"
+    case skills
+    case advanced
+}
+
 private struct ResearchGuidanceSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @AppStorage("scholium.settings.researchGuidanceCollection") private var collection = "prompt-templates"
+    @AppStorage("scholium.settings.researchGuidanceCollection")
+    private var persistedCollection = ResearchGuidanceCollection.promptTemplates.rawValue
     @AppStorage("scholium.settings.researchGuidancePromptSection") private var promptSection = "templates"
-    @State private var showsAdvanced = false
+    @State private var collection: ResearchGuidanceCollection = .promptTemplates
+    @State private var selectedSkillID: String?
+    @State private var pendingAdvancedDestination: ResearchGuidanceAdvancedDestination?
     @State private var selectedMethodFunction: ResearchFunctionID = .develop
     @State private var methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus] = [:]
     @State private var citationStatus: ResearchCitationMethodStatus?
@@ -669,14 +710,16 @@ private struct ResearchGuidanceSettingsView: View {
 
     private var statusLoadIdentity: String {
         let workspace = settingsModel.activeTriptychServicesID?.uuidString ?? "none"
-        return "\(workspace):\(collection):\(statusRefreshGeneration)"
+        let scope = collection == .promptTemplates ? "prompt-templates" : "skills-and-advanced"
+        return "\(workspace):\(scope):\(statusRefreshGeneration)"
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Picker("Research Guidance Collection", selection: $collection) {
-                Text("Prompt Templates").tag("prompt-templates")
-                Text("Skills").tag("skills")
+                Text("Prompt Templates").tag(ResearchGuidanceCollection.promptTemplates)
+                Text("Skills").tag(ResearchGuidanceCollection.skills)
+                Text("Advanced").tag(ResearchGuidanceCollection.advanced)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -684,106 +727,45 @@ private struct ResearchGuidanceSettingsView: View {
             .padding(.vertical, 10)
             .accessibilityIdentifier("scholium.researchGuidance.collection")
             Divider()
-            if collection == "skills" {
-                ScrollViewReader { advancedProxy in
-                    VStack(spacing: 0) {
-                        VStack(spacing: 0) {
-                            Button {
-                                showsAdvanced.toggle()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: showsAdvanced ? "chevron.down" : "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .accessibilityHidden(true)
-                                    Text("Advanced")
-                                    Spacer()
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 12)
-                            .frame(height: 38)
-                            .accessibilityValue(showsAdvanced ? "Expanded" : "Collapsed")
-                            .accessibilityHint("Shows research methods, bindings, routing, evolution, and recovery")
-                            .accessibilityIdentifier("scholium.researchGuidance.advanced")
-
-                            if !repairPrompts.isEmpty {
-                                VStack(spacing: 6) {
-                                    ForEach(repairPrompts) { prompt in
-                                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                            Label(
-                                                prompt.message,
-                                                systemImage: "exclamationmark.triangle"
-                                            )
-                                            .font(.caption)
-                                            .foregroundStyle(ScholiumColorRole.attention.color)
-                                            Spacer(minLength: 8)
-                                            Button("Repair…") {
-                                                openAdvanced(prompt.destination, with: advancedProxy)
-                                            }
-                                            .accessibilityHint(
-                                                "Opens the issue-specific Advanced recovery destination"
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.bottom, 8)
-                                .accessibilityIdentifier(
-                                    "scholium.researchGuidance.repairSummary"
-                                )
-                            }
-
-                            if showsAdvanced {
-                                ScrollView {
-                                    VStack(spacing: 0) {
-                                        AgentCLISettingsView()
-                                            .padding(.vertical, 8)
-                                        Divider()
-                                        ResearchCitationMethodSettingsView { updated in
-                                            citationStatus = updated
-                                        }
-                                        .padding(.vertical, 8)
-                                        .id(ResearchGuidanceAdvancedDestination.citationMethod.anchorID)
-                                        Divider()
-                                        RecommendedBibliographyMethodSettingsView()
-                                            .padding(.vertical, 8)
-                                        Divider()
-                                        ResearchFunctionMethodSettingsView(
-                                            selectedFunction: $selectedMethodFunction
-                                        ) { updated in
-                                            methodStatuses[updated.function] = updated
-                                        }
-                                        .padding(.vertical, 8)
-                                        .id(
-                                            ResearchGuidanceAdvancedDestination
-                                                .researchMethod(selectedMethodFunction)
-                                                .anchorID
-                                        )
-                                    }
-                                    .padding(.leading, 18)
-                                }
-                                .frame(maxHeight: 260)
-                            }
+            if collection == .skills {
+                // A SKILL.md can be thousands of lines long. Keep its editor
+                // inside the finite Settings viewport instead of allowing the
+                // text view's intrinsic document height to expand the window.
+                GeometryReader { proxy in
+                    ResearchSkillsSettingsView(
+                        selectedSkillID: $selectedSkillID,
+                        methodStatuses: methodStatuses,
+                        citationStatus: citationStatus,
+                        statusLoadState: statusLoadState,
+                        refreshGuidanceStatus: {
+                            statusRefreshGeneration &+= 1
                         }
-                        Divider()
-                        // A SKILL.md can be thousands of lines long. Keep its editor
-                        // inside the finite Settings viewport instead of allowing the
-                        // text view's intrinsic document height to expand and clip the
-                        // collection picker and package list.
-                        GeometryReader { proxy in
-                            ResearchSkillsSettingsView(
-                                showsAdvanced: $showsAdvanced,
-                                methodStatuses: methodStatuses,
-                                citationStatus: citationStatus,
-                                statusLoadState: statusLoadState,
-                                refreshGuidanceStatus: {
-                                    statusRefreshGeneration &+= 1
-                                }
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+            } else if collection == .advanced {
+                VStack(spacing: 0) {
+                    guidanceStatusBar
+                    Divider()
+                    ScrollViewReader { advancedProxy in
+                        ScrollView {
+                            ResearchGuidanceAdvancedSettingsView(
+                                selectedMethodFunction: $selectedMethodFunction,
+                                citationStatusChanged: { citationStatus = $0 },
+                                methodStatusChanged: { methodStatuses[$0.function] = $0 }
                             )
-                            .frame(width: proxy.size.width, height: proxy.size.height)
+                                .padding(18)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                        .task(id: pendingAdvancedDestination) {
+                            guard let destination = pendingAdvancedDestination else { return }
+                            await Task.yield()
+                            guard pendingAdvancedDestination == destination else { return }
+                            advancedProxy.scrollTo(destination.anchorID, anchor: .top)
+                            pendingAdvancedDestination = nil
                         }
                     }
+                    .accessibilityIdentifier("scholium.researchGuidance.advancedPage")
                 }
             } else {
                 VStack(spacing: 0) {
@@ -806,31 +788,67 @@ private struct ResearchGuidanceSettingsView: View {
             }
         }
         .onAppear {
-            // Migrate the former third peer collection into the subordinate
-            // Prompt Templates section without discarding the researcher's
-            // last visible destination.
-            if collection == "dialogue-response" {
-                collection = "prompt-templates"
-                promptSection = "dialogue-response"
-            }
+            let resolvedCollection = ResearchGuidanceCollection(rawValue: persistedCollection)
+                ?? .promptTemplates
+            collection = resolvedCollection
+            persistedCollection = resolvedCollection.rawValue
+        }
+        .onChange(of: collection) { _, updatedCollection in
+            persistedCollection = updatedCollection.rawValue
         }
         .task(id: statusLoadIdentity) {
-            guard collection == "skills" else { return }
+            guard collection == .skills || collection == .advanced else { return }
             await reloadGuidanceStatus()
         }
     }
 
-    private func openAdvanced(
-        _ destination: ResearchGuidanceAdvancedDestination,
-        with proxy: ScrollViewProxy
-    ) {
+    @ViewBuilder
+    private var guidanceStatusBar: some View {
+        HStack(spacing: 10) {
+            switch statusLoadState {
+            case .loading:
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking guidance status…")
+                    .foregroundStyle(.secondary)
+            case .unavailable:
+                Label("Guidance status unavailable", systemImage: "exclamationmark.circle")
+                    .foregroundStyle(.secondary)
+            case .loaded where repairPrompts.isEmpty:
+                Label("Guidance configuration ready", systemImage: "checkmark.circle")
+                    .foregroundStyle(.secondary)
+            case .loaded:
+                Label(
+                    repairPrompts.count == 1
+                        ? "1 guidance setting needs repair"
+                        : "\(repairPrompts.count) guidance settings need repair",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .foregroundStyle(ScholiumColorRole.attention.color)
+                Spacer(minLength: 8)
+                Menu("Repair…") {
+                    ForEach(repairPrompts) { prompt in
+                        Button(prompt.message) { openAdvanced(prompt.destination) }
+                    }
+                }
+                .accessibilityHint("Opens the exact Advanced repair destination")
+            }
+            if statusLoadState != .loaded || repairPrompts.isEmpty {
+                Spacer(minLength: 8)
+            }
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .accessibilityIdentifier("scholium.researchGuidance.statusBar")
+    }
+
+    private func openAdvanced(_ destination: ResearchGuidanceAdvancedDestination) {
         if case .researchMethod(let function) = destination {
             selectedMethodFunction = function
         }
-        showsAdvanced = true
-        DispatchQueue.main.async {
-            proxy.scrollTo(destination.anchorID, anchor: .top)
-        }
+        pendingAdvancedDestination = destination
+        collection = .advanced
     }
 
     private func reloadGuidanceStatus() async {
@@ -860,6 +878,39 @@ private struct ResearchGuidanceSettingsView: View {
             methodStatuses = [:]
             citationStatus = nil
             statusLoadState = .unavailable
+        }
+    }
+}
+
+/// Cross-package configuration has its own page. Skill package editing,
+/// evolution, and Recovery deliberately remain in ResearchSkillsSettingsView.
+private struct ResearchGuidanceAdvancedSettingsView: View {
+    @Binding var selectedMethodFunction: ResearchFunctionID
+    let citationStatusChanged: (ResearchCitationMethodStatus) -> Void
+    let methodStatusChanged: (ResearchFunctionSkillBindingStatus) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            AgentCLISettingsView()
+                .padding(.vertical, 8)
+            Divider()
+            ResearchCitationMethodSettingsView(onStatusChange: citationStatusChanged)
+                .padding(.vertical, 8)
+                .id(ResearchGuidanceAdvancedDestination.citationMethod.anchorID)
+            Divider()
+            RecommendedBibliographyMethodSettingsView()
+                .padding(.vertical, 8)
+            Divider()
+            ResearchFunctionMethodSettingsView(
+                selectedFunction: $selectedMethodFunction,
+                onStatusChange: methodStatusChanged
+            )
+            .padding(.vertical, 8)
+            .id(
+                ResearchGuidanceAdvancedDestination
+                    .researchMethod(selectedMethodFunction)
+                    .anchorID
+            )
         }
     }
 }
@@ -908,7 +959,7 @@ private struct AgentCLISettingsView: View {
                                     "export PATH=\"$HOME/.local/bin:$PATH\"",
                                     forType: .string
                                 )
-                                settingsModel.showToast("PATH setup copied")
+                                settingsModel.showToast(String(localized: "PATH setup copied", table: "Localizable", bundle: .module))
                             }
                             .accessibilityHint(
                                 "Copies a shell command; run it in your shell profile and start a new agent task"
@@ -940,7 +991,7 @@ private struct AgentCLISettingsView: View {
         defer { isWorking = false }
         do {
             status = try await settingsModel.installCommandLineTool()
-            settingsModel.showToast("Scholium CLI installed")
+            settingsModel.showToast(String(localized: "Scholium CLI installed", table: "Localizable", bundle: .module))
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -984,7 +1035,7 @@ private struct RecommendedBibliographyMethodSettingsView: View {
                     Picker("Bibliography Method", selection: selection) {
                         Text("Built-in Source Analyzer").tag(String?.none)
                         ForEach(status.candidates) { candidate in
-                            Text(candidate.name).tag(String?.some(candidate.packageID))
+                            Text(verbatim: candidate.name).tag(String?.some(candidate.packageID))
                         }
                     }
                     .frame(maxWidth: 420)
@@ -1129,7 +1180,7 @@ private struct ResearchFunctionMethodSettingsView: View {
                             Picker("Method", selection: primarySelection) {
                                 Text("Built-in").tag(String?.none)
                                 ForEach(primaryCandidates) { candidate in
-                                    Text(candidate.name).tag(String?.some(candidate.packageID))
+                                    Text(verbatim: candidate.name).tag(String?.some(candidate.packageID))
                                 }
                             }
                             .frame(maxWidth: 420)
@@ -1339,8 +1390,6 @@ private struct ResearchFunctionMethodSettingsView: View {
             "The selected guidance cannot play this role."
         case .invalidPractice:
             "The selected practice is no longer available."
-        case .legacyReplacementPractice:
-            "A legacy replacement Practice must become a supplement or a complete Researcher Skill."
         }
     }
 
@@ -1689,7 +1738,7 @@ private struct DialogueResponseSettingsView: View {
                     commentPreservation: commentPreservation
                 )
                 try await settingsModel.saveDialogueResponseProfile(profile)
-                settingsModel.showToast("Dialogue Defaults saved")
+                settingsModel.showToast(String(localized: "Dialogue Defaults saved", table: "Localizable", bundle: .module))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1726,7 +1775,10 @@ private struct PromptTemplateSettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        // This is a page-local master/detail editor, not a window navigation
+        // hierarchy. HSplitView keeps its divider inside Settings and avoids
+        // injecting NavigationSplitView's sidebar toggle into the window toolbar.
+        HSplitView {
             List(selection: $selectedTemplateID) {
                 ForEach(ResearchPromptKind.allCases) { kind in
                     Section(kind.displayName) {
@@ -1749,7 +1801,7 @@ private struct PromptTemplateSettingsView: View {
                 }
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 270)
+            .accessibilityIdentifier("scholium.researchGuidance.promptTemplateList")
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 0) {
                     Menu {
@@ -1775,9 +1827,11 @@ private struct PromptTemplateSettingsView: View {
                 .frame(height: 28)
                 .background(.bar)
             }
-        } detail: {
-            if let template = selectedTemplate {
-                VStack(alignment: .leading, spacing: 12) {
+            .frame(minWidth: 190, idealWidth: 220, maxWidth: 270, maxHeight: .infinity)
+
+            Group {
+                if let template = selectedTemplate {
+                    VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(template.kind.displayName)
                             .font(.title2.weight(.semibold))
@@ -1822,11 +1876,13 @@ private struct PromptTemplateSettingsView: View {
                             .disabled(draft?.validationIssues.isEmpty != true || isSaving)
                     }
                 }
-                .padding(18)
-                .accessibilityIdentifier("scholium.researchGuidance.templateEditor")
-            } else {
-                ContentUnavailableView("Select a Prompt Template", systemImage: "text.bubble")
+                    .padding(18)
+                    .accessibilityIdentifier("scholium.researchGuidance.templateEditor")
+                } else {
+                    ContentUnavailableView("Select a Prompt Template", systemImage: "text.bubble")
+                }
             }
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(id: settingsModel.workspaceAssignment?.id) { selectPreferredTemplate() }
         .onChange(of: selectedTemplateID) { _, _ in loadDraft() }
@@ -1856,7 +1912,7 @@ private struct PromptTemplateSettingsView: View {
                 settings.savePromptTemplate(template)
                 try await settingsModel.saveTriptychSettings(settings)
                 selectedTemplateID = template.id
-                settingsModel.showToast("Research Guidance saved")
+                settingsModel.showToast(String(localized: "Research Guidance saved", table: "Localizable", bundle: .module))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1940,13 +1996,12 @@ private struct PromptTemplateSettingsView: View {
 
 private struct ResearchSkillsSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @Binding var showsAdvanced: Bool
+    @Binding var selectedSkillID: String?
     let methodStatuses: [ResearchFunctionID: ResearchFunctionSkillBindingStatus]
     let citationStatus: ResearchCitationMethodStatus?
     let statusLoadState: ResearchGuidanceStatusLoadState
     let refreshGuidanceStatus: () -> Void
     @State private var skills: [ResearchSkillPackage] = []
-    @State private var selectedSkillID: String?
     @State private var source = ""
     @State private var inspectedDraft: ResearchSkillPackage?
     @State private var draftInspectionTask: Task<Void, Never>?
@@ -2037,16 +2092,16 @@ private struct ResearchSkillsSettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        // Skill management is a page-local editor. HSplitView keeps its package
+        // list inside Skills without registering a window navigation sidebar.
+        HSplitView {
             List(selection: $selectedSkillID) {
                 skillSection("Built-in", skills: skills.filter { $0.origin == .bundled })
                 skillSection("Triptych", skills: skills.filter { $0.origin != .bundled })
-                if showsAdvanced {
-                    recoverySection
-                }
+                recoverySection
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 270)
+            .accessibilityIdentifier("scholium.researchGuidance.skillList")
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 0) {
                     Button(action: createSkill) { Image(systemName: "plus") }
@@ -2063,29 +2118,35 @@ private struct ResearchSkillsSettingsView: View {
                     .disabled(selectedSkill?.isTriptychLocal != true)
                     .accessibilityLabel("Delete Triptych Skill")
                     Spacer()
-                    if showsAdvanced {
-                        Button("Reveal Skills Folder", action: revealSkillsFolder)
-                            .buttonStyle(.borderless)
-                    }
+                    Button("Reveal Skills Folder", action: revealSkillsFolder)
+                        .buttonStyle(.borderless)
                 }
                 .padding(.horizontal, 8)
                 .frame(height: 28)
                 .background(.bar)
             }
-        } detail: {
-            if let skill = selectedSkill {
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
+            .frame(minWidth: 190, idealWidth: 220, maxWidth: 270, maxHeight: .infinity)
+
+            Group {
+                if let skill = selectedSkill {
+                    ScrollViewReader { scrollProxy in
+                        ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(skill.name)
+                            Text(verbatim: skill.name)
                                 .font(.title2.weight(.semibold))
                                 .accessibilityIdentifier("scholium.researchGuidance.skillTitle")
                             Spacer()
                         }
-                        Text(skill.description.isEmpty ? "No valid purpose is available." : skill.description)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Group {
+                            if skill.description.isEmpty {
+                                Text("No valid purpose is available.")
+                            } else {
+                                Text(verbatim: skill.description)
+                            }
+                        }
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
                         GroupBox("Skill") {
                             VStack(alignment: .leading, spacing: 7) {
@@ -2124,15 +2185,12 @@ private struct ResearchSkillsSettingsView: View {
                             .foregroundStyle(.red)
                             .accessibilityIdentifier("scholium.researchGuidance.skillValidation")
                             Button("Repair…") {
-                                showsAdvanced = true
-                                DispatchQueue.main.async {
-                                    scrollProxy.scrollTo(
-                                        "scholium.researchGuidance.repairDestination",
-                                        anchor: .top
-                                    )
-                                }
+                                scrollProxy.scrollTo(
+                                    "scholium.researchGuidance.repairDestination",
+                                    anchor: .top
+                                )
                             }
-                            .accessibilityHint("Opens the Advanced repair surface for this Skill")
+                            .accessibilityHint("Moves to the editable repair surface for this Skill")
                             .accessibilityIdentifier("scholium.researchGuidance.repairSkill")
                         }
 
@@ -2140,17 +2198,12 @@ private struct ResearchSkillsSettingsView: View {
                             if skill.canDuplicate || skill.isTriptychLocal {
                                 Button("Duplicate", action: duplicateSelectedSkill)
                             }
-                            if skill.isTriptychLocal {
-                                Button("Edit") { showsAdvanced = true }
-                                    .disabled(showsAdvanced)
-                            }
                             Spacer()
                         }
 
-                        if showsAdvanced {
-                            Divider()
-                                .id("scholium.researchGuidance.repairDestination")
-                            if let routing = displayedRoutingPackage {
+                        Divider()
+                            .id("scholium.researchGuidance.repairDestination")
+                        if let routing = displayedRoutingPackage {
                                 DisclosureGroup(
                                     "Routing Metadata",
                                     isExpanded: $showsRoutingMetadata
@@ -2181,9 +2234,9 @@ private struct ResearchSkillsSettingsView: View {
                                     .padding(.top, 6)
                                 }
                                 .accessibilityIdentifier("scholium.researchGuidance.skillRouting")
-                            }
+                        }
 
-                            if skill.isTriptychLocal {
+                        if skill.isTriptychLocal {
                                 TextEditor(text: $source)
                                     .font(ScholiumTypography.swiftUIMonospaceFont(size: 13, relativeTo: .body))
                                     .frame(maxWidth: .infinity, minHeight: 220, idealHeight: 300, maxHeight: 360)
@@ -2250,11 +2303,10 @@ private struct ResearchSkillsSettingsView: View {
                                                 || skill.revision == nil
                                         )
                                 }
-                            } else {
-                                Text("Built-in Skill source is release-managed. Duplicate it to make a Triptych-owned revision.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                        } else {
+                            Text("Built-in Skill source is release-managed. Duplicate it to make a Triptych-owned revision.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                         }
                         .padding(18)
@@ -2262,13 +2314,15 @@ private struct ResearchSkillsSettingsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("scholium.researchGuidance.skillEditor")
-            } else if let snapshot = selectedRecoverySnapshot {
-                maintenanceRecoveryDetail(snapshot)
-            } else if selectedSkillID == Self.recoveryIssuesSelection {
-                maintenanceRecoveryIssuesDetail
-            } else {
-                ContentUnavailableView("Select a Skill", systemImage: "text.book.closed")
+                } else if let snapshot = selectedRecoverySnapshot {
+                    maintenanceRecoveryDetail(snapshot)
+                } else if selectedSkillID == Self.recoveryIssuesSelection {
+                    maintenanceRecoveryIssuesDetail
+                } else {
+                    ContentUnavailableView("Select a Skill", systemImage: "text.book.closed")
+                }
             }
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
         .onChange(of: selectedSkillID) { _, _ in loadDraft() }
@@ -2332,7 +2386,7 @@ private struct ResearchSkillsSettingsView: View {
                 ForEach(skills, id: \.selectionID) { skill in
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(skill.name)
+                            Text(verbatim: skill.name)
                             Text(ownershipLabel(for: skill))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -2362,7 +2416,7 @@ private struct ResearchSkillsSettingsView: View {
                 ForEach(maintenanceSnapshots) { snapshot in
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(recoveryPackageName(snapshot.packageID))
+                            Text(verbatim: recoveryPackageName(snapshot.packageID))
                             Text(snapshot.createdAt, format: .dateTime.year().month().day().hour().minute())
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -2399,7 +2453,7 @@ private struct ResearchSkillsSettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Label("Recovery", systemImage: "clock.arrow.circlepath")
                     .font(.title2.weight(.semibold))
-                Text(recoveryPackageName(snapshot.packageID))
+                Text(verbatim: recoveryPackageName(snapshot.packageID))
                     .font(.headline)
                 Text("This is a complete, backend-validated Researcher Skill snapshot. Restore rechecks the current package and creates a new undo snapshot before replacement.")
                     .foregroundStyle(.secondary)
@@ -2666,7 +2720,7 @@ private struct ResearchSkillsSettingsView: View {
             } catch {
                 maintenanceSnapshots = []
                 maintenanceSnapshotIssues = []
-                errorMessage = "Research Skills loaded, but recovery inventory is unavailable. \(error.localizedDescription)"
+                errorMessage = String(localized: "Research Skills loaded, but recovery inventory is unavailable. \(error.localizedDescription)", table: "Localizable", bundle: .module)
             }
             if let id {
                 selectedSkillID = skills.first {
@@ -2762,7 +2816,7 @@ private struct ResearchSkillsSettingsView: View {
             }
             await reload(selecting: skill.id)
             refreshGuidanceStatus()
-            settingsModel.showToast("Skill saved")
+            settingsModel.showToast(String(localized: "Skill saved", table: "Localizable", bundle: .module))
         }
     }
 
@@ -2806,7 +2860,7 @@ private struct ResearchSkillsSettingsView: View {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(handoff, forType: .string)
-            settingsModel.showToast("Agent proposal request copied")
+            settingsModel.showToast(String(localized: "Agent proposal request copied", table: "Localizable", bundle: .module))
         } catch {
             maintenanceProposalError = error.localizedDescription
         }
@@ -2908,7 +2962,7 @@ private struct ResearchSkillsSettingsView: View {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(handoff, forType: .string)
-            settingsModel.showToast("Agent evaluation handoff copied")
+            settingsModel.showToast(String(localized: "Agent evaluation handoff copied", table: "Localizable", bundle: .module))
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2945,7 +2999,7 @@ private struct ResearchSkillsSettingsView: View {
             $0.isTriptychLocal && $0.id == snapshot.packageID
         }) {
             guard let revision = current.revision else {
-                errorMessage = "Scholium cannot prove the current package revision."
+                errorMessage = String(localized: "Scholium cannot prove the current package revision.", table: "Localizable", bundle: .module)
                 return
             }
             expectedState = .present(revision)
@@ -3113,8 +3167,6 @@ struct WorkspaceSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTriptychID: UUID?
-    @State private var newTriptychID = UUID()
-    @State private var showsNewTriptych = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -3137,8 +3189,10 @@ struct WorkspaceSettingsView: View {
                 .disabled(selectedTriptychID == nil)
 
                 Button("New Triptych…") {
-                    newTriptychID = UUID()
-                    showsNewTriptych = true
+                    openWindow(
+                        id: "scholium-bootstrap",
+                        value: BootstrapWindowRoute(purpose: .newTriptych)
+                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -3169,27 +3223,6 @@ struct WorkspaceSettingsView: View {
                 selectedTriptychID = settingsModel.workspaceAssignment?.id
                     ?? settingsModel.registeredTriptychs.first?.id
             }
-        }
-        .sheet(isPresented: $showsNewTriptych) {
-            WorkspacePathEditor(
-                title: "Create a Triptych",
-                explanation: "Choose one Analyses vault, one Topics vault, and one Works vault. Scholium does not create or manage projects inside Works.",
-                completionTitle: "Create Triptych",
-                targetTriptychID: newTriptychID,
-                showsCancel: true,
-                onCompletion: {
-                    let createdID = settingsModel.workspaceAssignment?.id ?? newTriptychID
-                    selectedTriptychID = createdID
-                    showsNewTriptych = false
-                    openWindow(
-                        id: "scholium-main",
-                        value: TriptychWindowRoute(triptychID: createdID)
-                    )
-                },
-                onCancel: { showsNewTriptych = false }
-            )
-            .environmentObject(settingsModel)
-            .frame(minWidth: 640, idealWidth: 700, minHeight: 500)
         }
     }
 
@@ -3359,7 +3392,7 @@ private struct CSSSnippetSettingsView: View {
 
     private func importSnippet() {
         let panel = NSOpenPanel()
-        panel.title = "Import CSS Snippet"
+        panel.title = ScholiumL10n.string("Import CSS Snippet")
         panel.prompt = "Import"
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -3476,9 +3509,9 @@ private struct WorkspacePathEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title)
+                Text(ScholiumL10n.dynamicString(title))
                     .font(.title2.weight(.semibold))
-                Text(explanation)
+                Text(ScholiumL10n.dynamicString(explanation))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -3646,14 +3679,14 @@ private struct WorkspacePathEditor: View {
     private func save() {
         guard let paperAnalysisURL, let topicKnowledgeURL, let outputURL else { return }
         guard let portableContainerURL else {
-            errorMessage = "Authorize the folder containing Works before saving this Triptych."
+            errorMessage = String(localized: "Authorize the folder containing Works before saving this Triptych.", table: "Localizable", bundle: .module)
             return
         }
         isSaving = true
         errorMessage = nil
         Task {
             do {
-                try await settingsModel.configureThreeVaultWorkspace(
+                try await settingsModel.configureTriptych(
                     paperAnalysisURL: paperAnalysisURL,
                     topicKnowledgeURL: topicKnowledgeURL,
                     outputURL: outputURL,
@@ -3715,7 +3748,7 @@ struct PortableControlFolderRow: View {
             .resolvingSymlinksInPath()
             .standardizedFileURL else { return }
         let panel = NSOpenPanel()
-        panel.title = "Authorize the Folder Containing Works"
+        panel.title = ScholiumL10n.string("Authorize the Folder Containing Works")
         panel.message = "Choose '\(expected.lastPathComponent)' so Scholium can use the portable .scholium folder beside Works."
         panel.prompt = "Authorize"
         panel.canChooseDirectories = true
@@ -3744,9 +3777,9 @@ struct WorkspaceFolderRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(ScholiumL10n.dynamicString(title))
                     .font(.body.weight(.medium))
-                Text(subtitle)
+                Text(ScholiumL10n.dynamicString(subtitle))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(url?.path(percentEncoded: false) ?? "No folder selected")
@@ -3769,7 +3802,11 @@ struct WorkspaceFolderRow: View {
 
     private func chooseFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose \(title) Folder"
+        panel.title = String(
+            format: ScholiumL10n.string("Choose %@ Folder"),
+            locale: Locale.current,
+            title
+        )
         panel.prompt = "Choose"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

@@ -201,17 +201,18 @@ struct DocumentLifecycleOperationsTests {
             qualification: nil,
             reviewNote: "Private review state"
         )
-        let dialogue = try await handle.research.createDialogue(
-            instruction: "Inspect this private note.",
-            selectedNotes: [DialogueNoteReference(
+        let dialogue = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .dialogue,
+                target: ResearchFunctionTarget(
                 noteID: stableID,
-                vaultID: fixture.targetID.vaultID,
-                vaultName: "Analyses",
+                    note: fixture.targetID,
+                    role: .analysis,
+                    fingerprint: source.fingerprint,
                 title: "Target",
-                relativePath: fixture.targetID.relativePath,
-                fingerprint: source.fingerprint
-            )],
-            includedCommentIDs: []
+                ),
+                instruction: "Inspect this private note."
+            )
         )
         let checkpoint = try await handle.research.createCheckpoint(
             name: "Contains Deleted Target",
@@ -237,9 +238,9 @@ struct DocumentLifecycleOperationsTests {
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
         #expect(commit.removedHumanReview)
-        #expect(commit.removedDialogueIDs == [dialogue.entry.id])
+        #expect(commit.removedDialogueIDs == [dialogue.runID])
         #expect(commit.invalidatedCheckpointIDs.contains(checkpoint.id))
-        #expect(dialogue.checkpoint == nil)
+        #expect(dialogue.snapshot.checkpointID == nil)
         #expect(try await handle.research.humanReview(noteID: stableID) == nil)
         #expect(try await handle.research.dialogues(noteID: stableID).isEmpty)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)

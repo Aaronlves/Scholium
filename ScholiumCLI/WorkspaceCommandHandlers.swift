@@ -74,12 +74,6 @@ extension ScholiumCLI {
                 selector: option("--triptych", in: arguments)
             )
             scope = .workspace
-        } else if arguments.count >= 2, !arguments[0].hasPrefix("-") {
-            // One-release compatibility alias: scholium search <vault> <query>
-            let vault = try await context.resolveVault(arguments[0])
-            assignment = try await context.triptych(containing: [vault.id])
-            scope = .currentVault(vault.id)
-            query = arguments[1]
         } else {
             throw CLIError.usage("Choose --vault <selector> or --workspace.")
         }
@@ -313,7 +307,7 @@ extension ScholiumCLI {
     ) async throws {
         guard let subcommand = arguments.first else {
             throw CLIError.usage(
-                "Usage: scholium skills <catalog|show|resources|assemble> [options]"
+                "Usage: scholium skills <catalog|show|resources> [options]"
             )
         }
         let workspaceResearch: (any ResearchUseCases)?
@@ -361,25 +355,6 @@ extension ScholiumCLI {
             return try await context.runtime.researchGuidance.resource(
                 id: id,
                 relativePath: relativePath
-            )
-        }
-
-        func instructionAssembly(
-            mode: ResearchSkillMode,
-            requestedSkillIDs: [String] = [],
-            mixedPhases: [ResearchSkillAssemblyPhase] = []
-        ) async throws -> String {
-            if let workspaceResearch {
-                return try await workspaceResearch.skillInstructionAssembly(
-                    mode: mode,
-                    requestedSkillIDs: requestedSkillIDs,
-                    mixedPhases: mixedPhases
-                )
-            }
-            return try await context.runtime.researchGuidance.instructionAssembly(
-                mode: mode,
-                requestedSkillIDs: requestedSkillIDs,
-                mixedPhases: mixedPhases
             )
         }
 
@@ -562,44 +537,6 @@ extension ScholiumCLI {
                 write(String(decoding: data, as: UTF8.self) + "\n")
             } else {
                 for resource in resources { write(resource + "\n") }
-            }
-
-        case "assemble":
-            let modeValue = option("--mode", in: arguments) ?? "dialogue"
-            guard let mode = ResearchSkillMode(rawValue: modeValue) else {
-                throw CLIError.usage("Unknown Skill mode '\(modeValue)'.")
-            }
-            let skillIDs = allOptions("--skill", in: arguments)
-
-            if mode == .mixed {
-                let phaseValues = allOptions("--phase", in: arguments)
-                guard !phaseValues.isEmpty else {
-                    throw CLIError.usage(
-                        "Mixed mode requires --phase <mode>[:skill-id,skill-id] at least once."
-                    )
-                }
-                let phases = try phaseValues.map { value -> ResearchSkillAssemblyPhase in
-                    let pieces = value.split(separator: ":", maxSplits: 1).map(String.init)
-                    guard let phaseMode = ResearchSkillMode(rawValue: pieces[0]),
-                          phaseMode != .mixed else {
-                        throw CLIError.usage("Invalid Mixed phase: \(value)")
-                    }
-                    let phaseSkills = pieces.count == 2
-                        ? pieces[1].split(separator: ",").map(String.init)
-                        : []
-                    return ResearchSkillAssemblyPhase(mode: phaseMode, skillIDs: phaseSkills)
-                }
-                let assembly = try await instructionAssembly(
-                    mode: .mixed,
-                    mixedPhases: phases
-                )
-                write(assembly + (assembly.hasSuffix("\n") ? "" : "\n"))
-            } else {
-                let assembly = try await instructionAssembly(
-                    mode: mode,
-                    requestedSkillIDs: skillIDs
-                )
-                write(assembly + (assembly.hasSuffix("\n") ? "" : "\n"))
             }
 
         default:
@@ -808,20 +745,17 @@ extension ScholiumCLI {
                 write("Dialogue: \(entry.id.uuidString)\n")
                 write("Instruction: \(entry.instruction)\n")
                 write("Checkpoint: \(entry.checkpointID?.uuidString ?? "None")\n\n")
-                if let contract = entry.responseContract {
-                    write("Response contract: request-snapshot\n")
-                    write("  Base: \(contract.base)\n")
-                    write("  Modules: \(contract.modules.isEmpty ? "None selected" : contract.modules.joined(separator: ", "))\n")
-                    write("  Comment preservation: \(contract.commentPreservation)\n")
-                    if !contract.validationIssues.isEmpty {
-                        write("  Contract issues: \(contract.validationIssues.joined(separator: " "))\n")
-                    }
-                } else {
-                    write("Response contract: legacy-default (request-time selection unavailable)\n")
+                let contract = entry.responseContract
+                write("Response contract: request-snapshot\n")
+                write("  Base: \(contract.base)\n")
+                write("  Modules: \(contract.modules.isEmpty ? "None selected" : contract.modules.joined(separator: ", "))\n")
+                write("  Comment preservation: \(contract.commentPreservation)\n")
+                if !contract.validationIssues.isEmpty {
+                    write("  Contract issues: \(contract.validationIssues.joined(separator: " "))\n")
                 }
-                if !entry.generatedPrompt.isEmpty {
-                    write("Legacy copied prompt:\n")
-                    write(entry.generatedPrompt + "\n")
+                if !entry.preparedInstructions.isEmpty {
+                    write("Prepared instructions:\n")
+                    write(entry.preparedInstructions + "\n")
                 }
                 if !entry.chronologicalTurns.isEmpty {
                     write("\nFollow-up exchange:\n")

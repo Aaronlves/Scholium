@@ -43,7 +43,6 @@ public struct PropertyContract: Codable, Hashable, Sendable {
     public let valueKind: PropertyValueKind
     public let creationRequirement: PropertyCreationRequirement
     public let allowedValues: [String]?
-    public let legacyAliases: [String]
     public let constraints: [PropertyConstraint]
 
     public init(
@@ -51,14 +50,12 @@ public struct PropertyContract: Codable, Hashable, Sendable {
         valueKind: PropertyValueKind,
         creationRequirement: PropertyCreationRequirement = .optional,
         allowedValues: [String]? = nil,
-        legacyAliases: [String] = [],
         constraints: [PropertyConstraint] = []
     ) {
         self.canonicalKey = canonicalKey
         self.valueKind = valueKind
         self.creationRequirement = creationRequirement
         self.allowedValues = allowedValues.map(Self.unique)
-        self.legacyAliases = Self.unique(legacyAliases)
         self.constraints = Self.unique(constraints)
     }
 
@@ -117,8 +114,7 @@ public enum PropertyContractCatalog {
         for key: String,
         profile: SchemaProfileID
     ) -> PropertyContract? {
-        let profile = cachedProfile(for: profile)
-        return profile.canonicalByKey[key] ?? profile.aliasByKey[key]
+        cachedProfile(for: profile).canonicalByKey[key]
     }
 
     public static func canonicalKey(
@@ -226,48 +222,31 @@ public enum PropertyContractCatalog {
     private struct CachedProfile: Sendable {
         let contracts: [PropertyContract]
         let canonicalByKey: [String: PropertyContract]
-        let aliasByKey: [String: PropertyContract]
 
         init(contracts: [PropertyContract]) {
             self.contracts = contracts
             var canonical: [String: PropertyContract] = [:]
-            var aliases: [String: PropertyContract] = [:]
             for contract in contracts {
-                // Preserve the former first-match behavior for both canonical
-                // keys and aliases while still making lookup constant-time.
                 if canonical[contract.canonicalKey] == nil {
                     canonical[contract.canonicalKey] = contract
                 }
-                for alias in contract.legacyAliases where aliases[alias] == nil {
-                    aliases[alias] = contract
-                }
             }
             canonicalByKey = canonical
-            aliasByKey = aliases
         }
     }
 
     private static let analysisProfile = CachedProfile(contracts:
         analysisContracts(researchUnitRequirement: .optional)
     )
-    // Historical analyses remain readable without a Research Unit.
-    private static let paperAnalysisProfile = CachedProfile(contracts:
-        analysisContracts(researchUnitRequirement: .optional)
-    )
     private static let topicProfile = CachedProfile(contracts: topicContracts)
     private static let workProfile = CachedProfile(contracts: workContracts)
-    private static let dissertationV3Profile = CachedProfile(contracts: dissertationV3Contracts)
-    private static let dissertationV4Profile = CachedProfile(contracts: dissertationV4Contracts)
     private static let genericProfile = CachedProfile(contracts: [])
 
     private static func cachedProfile(for profile: SchemaProfileID) -> CachedProfile {
         switch profile {
         case .analysis: analysisProfile
-        case .paperAnalysisV1: paperAnalysisProfile
         case .topicMarkdown: topicProfile
         case .draftProject: workProfile
-        case .dissertationControlV3: dissertationV3Profile
-        case .dissertationControlV4: dissertationV4Profile
         case .genericMarkdown: genericProfile
         }
     }
@@ -335,131 +314,6 @@ public enum PropertyContractCatalog {
         property("deadline", .date),
     ]
 
-    private static let dissertationV3Contracts: [PropertyContract] = [
-        customProperty("note_type", .text, requirement: .required),
-        customProperty("project_role", .text, requirement: .required),
-        customProperty("claim_type", .text, requirement: .required),
-        customProperty("status", .text, requirement: .required),
-        customProperty("settlement_dimensions", .textList, requirement: .required),
-        customProperty("settlement_degree", .text, requirement: .required),
-        customProperty("review_status", .text, requirement: .required),
-        customProperty("confidence", .choice, requirement: .required, allowed: [
-            "low", "medium", "high",
-        ]),
-        customProperty("prose_permission", .text, requirement: .required),
-        customProperty("last_reviewed", .date, requirement: .required),
-        customProperty("reopen_condition", .multilineText, requirement: .required),
-        customProperty("privacy", .text, requirement: .required),
-        customProperty("version", .text),
-        customProperty("design_decisions", .textList),
-    ]
-
-    private static let dissertationV4Contracts: [PropertyContract] = {
-        let base: [PropertyContract] = [
-            customProperty(
-                "schema_version", .choice, requirement: .required,
-                allowed: [DissertationControlV4.schemaVersion]
-            ),
-            customProperty("note_id", .text, requirement: .required),
-            customProperty("title", .text, requirement: .required),
-            customProperty(
-                "note_type", .choice, requirement: .required,
-                allowed: DissertationControlV4.noteTypes.sorted()
-            ),
-            customProperty(
-                "project_role", .choice, requirement: .required,
-                allowed: DissertationControlV4.projectRoles.sorted()
-            ),
-            customProperty(
-                "origin", .choice, requirement: .required,
-                allowed: DissertationControlV4.origins.sorted()
-            ),
-            customProperty(
-                "evidential_layer", .choice, requirement: .required,
-                allowed: DissertationControlV4.evidentialLayers.sorted()
-            ),
-            customProperty(
-                "status", .choice, requirement: .required,
-                allowed: DissertationControlV4.statuses.sorted()
-            ),
-            customProperty(
-                "settlement_dimensions", .textList, requirement: .required,
-                allowed: DissertationControlV4.settlementDimensions.sorted()
-            ),
-            customProperty(
-                "settlement_degree", .choice, requirement: .required,
-                allowed: DissertationControlV4.settlementDegrees.sorted()
-            ),
-            customProperty(
-                "review_status", .choice, requirement: .required,
-                allowed: DissertationControlV4.reviewStatuses.sorted()
-            ),
-            customProperty(
-                "confidence", .choice, requirement: .required,
-                allowed: DissertationControlV4.confidences.sorted()
-            ),
-            customProperty(
-                "evidence_state", .choice, requirement: .required,
-                allowed: DissertationControlV4.evidenceStates.sorted()
-            ),
-            customProperty(
-                "prose_permission", .choice, requirement: .required,
-                allowed: DissertationControlV4.prosePermissions.sorted()
-            ),
-            customProperty("privacy", .text, requirement: .required),
-            customProperty("reopen_condition", .multilineText, requirement: .required),
-            customProperty("provenance", .textList, requirement: .required),
-            customProperty("created_at", .date, requirement: .required),
-            customProperty("updated_at", .date, requirement: .required),
-            customProperty("last_reviewed", .date, requirement: .required),
-            customProperty(
-                "migration_state", .choice,
-                allowed: DissertationControlV4.migrationStates.sorted()
-            ),
-            controlledV4Property("question_kind"),
-            controlledV4Property("claim_kind"),
-            controlledV4Property("inference_type"),
-            controlledV4Property("inference_force"),
-            controlledV4Property("position_kind"),
-            controlledV4Property("concept_kind"),
-            controlledV4Property("case_kind"),
-            controlledV4Property("evidence_kind"),
-            controlledV4Property("verification_state"),
-            customProperty("source_locator", .text),
-            customProperty(
-                "predicate", .choice,
-                allowed: DissertationControlV4.predicates.map(\.rawValue).sorted()
-            ),
-            controlledV4Property("semantic_direction"),
-            controlledV4Property("assembly_kind"),
-            customProperty("chapter_id", .text),
-            controlledV4Property("workflow_stage"),
-            customProperty("draft_target", .text),
-            controlledV4Property("registry_kind"),
-            customProperty(
-                "indexed_note_types", .textList,
-                allowed: DissertationControlV4.noteTypes.sorted()
-            ),
-            controlledV4Property("control_kind"),
-        ]
-        return base.map { contract in
-            let conditional = DissertationControlV4.additionalRequiredFields
-                .compactMap { noteType, keys -> PropertyConstraint? in
-                    guard keys.contains(contract.canonicalKey) else { return nil }
-                    return .requiredWhen(canonicalKey: "note_type", equals: noteType)
-                }
-                .sorted { String(describing: $0) < String(describing: $1) }
-            return PropertyContract(
-                canonicalKey: contract.canonicalKey,
-                valueKind: contract.valueKind,
-                creationRequirement: contract.creationRequirement,
-                allowedValues: contract.allowedValues,
-                legacyAliases: contract.legacyAliases,
-                constraints: contract.constraints + conditional
-            )
-        }
-    }()
-
     private static func property(
         _ key: String,
         _ kind: PropertyValueKind,
@@ -472,30 +326,7 @@ public enum PropertyContractCatalog {
             valueKind: kind,
             creationRequirement: requirement,
             allowedValues: allowed,
-            legacyAliases: TriptychProperty.legacyAliases[key] ?? [],
             constraints: constraints
-        )
-    }
-
-    private static func customProperty(
-        _ key: String,
-        _ kind: PropertyValueKind,
-        requirement: PropertyCreationRequirement = .optional,
-        allowed: [String]? = nil
-    ) -> PropertyContract {
-        PropertyContract(
-            canonicalKey: key,
-            valueKind: kind,
-            creationRequirement: requirement,
-            allowedValues: allowed
-        )
-    }
-
-    private static func controlledV4Property(_ key: String) -> PropertyContract {
-        customProperty(
-            key,
-            .choice,
-            allowed: DissertationControlV4.controlledFieldValues[key]?.sorted()
         )
     }
 
@@ -503,11 +334,7 @@ public enum PropertyContractCatalog {
         for contract: PropertyContract,
         in frontmatter: [String: YAMLValue]
     ) -> YAMLValue? {
-        if let value = frontmatter[contract.canonicalKey] { return value }
-        for alias in contract.legacyAliases {
-            if let value = frontmatter[alias] { return value }
-        }
-        return nil
+        frontmatter[contract.canonicalKey]
     }
 
     private static func isCompatible(

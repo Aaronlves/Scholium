@@ -522,7 +522,7 @@ struct ResearchFunctionControllerTests {
         let researchMenu = String(appSource[menuStart.lowerBound..<menuEnd.lowerBound])
 
         #expect(researchMenu.contains("researchFunctionActions?.open(.dialogue)"))
-        #expect(researchMenu.contains("researchFunctionActions?.open(.review)"))
+        #expect(!researchMenu.contains("researchFunctionActions?.open(.review)"))
         #expect(researchMenu.contains("researchFunctionActions?.open(.critique)"))
         #expect(!researchMenu.contains("appState?.openResearchFunction"))
         #expect(noteSource.contains("select: openResearchFunction"))
@@ -586,7 +586,7 @@ struct ResearchFunctionControllerTests {
         )
         let work = materialCandidate(
             title: "Chapter",
-            path: "Dissertation/Chapter.md",
+            path: "Project/Chapter.md",
             role: .work
         )
         var state = ResearchFunctionMaterialsState()
@@ -692,10 +692,10 @@ struct ResearchFunctionControllerTests {
         )
         await waitUntil { controller.canPrepare }
         let candidate = try #require(controller.materialCandidates.first)
-        controller.setMaterialSelected(candidate.id, isSelected: true)
+        controller.sendMaterials(.setSelected(candidate.id, true))
         controller.prepare()
         #expect(controller.materialsState.isFrozen)
-        controller.setMaterialSelected(candidate.id, isSelected: false)
+        controller.sendMaterials(.setSelected(candidate.id, false))
         controller.sendMaterials(.setQuery("different"))
         await waitUntil { capturedRequest != nil }
 
@@ -744,7 +744,7 @@ struct ResearchFunctionControllerTests {
 
         #expect(source.contains("ViewThatFits(in: .horizontal)"))
         #expect(source.contains("isCompact: true"))
-        #expect(source.contains("Text(item.id.interfaceTitle)"))
+        #expect(source.contains("Text(item.id.interfaceTitleResource)"))
         #expect(!source.contains("Menu {"))
     }
 

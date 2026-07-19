@@ -12,8 +12,7 @@ struct DeliverySurfaceParityTests {
 
         let appRuntime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL,
-            refreshInterval: .seconds(30)
+            workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
         let appHandle = try await appRuntime.openWorkspace(id: fixture.assignment.id)
         let original = try #require(
@@ -36,20 +35,18 @@ struct DeliverySurfaceParityTests {
             qualification: .qualified,
             reviewNote: "Fixture review visible to every delivery surface."
         )
-        let stableNoteID = try #require(original.stableIdentity.resolvedID)
-        _ = try await appHandle.research.createDialogue(
-            instruction: "Inspect the fixture argument.",
-            selectedNotes: [DialogueNoteReference(
-                noteID: stableNoteID,
-                vaultID: fixture.analysisNoteID.vaultID,
-                vaultName: "Analyses",
-                title: "Agency",
-                relativePath: fixture.analysisNoteID.relativePath,
-                fingerprint: declared.document.fingerprint
-            )],
-            includedCommentIDs: [],
-            requestedDestination: nil,
-            responseProfile: nil
+        _ = try await appHandle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .dialogue,
+                target: ResearchFunctionTarget(
+                    noteID: try #require(original.stableIdentity.resolvedID),
+                    note: fixture.analysisNoteID,
+                    role: .analysis,
+                    fingerprint: declared.document.fingerprint,
+                    title: "Agency"
+                ),
+                instruction: "Inspect the fixture argument."
+            )
         )
         let appSnapshot = try await appHandle.snapshot()
         let appHits = try await appHandle.discovery.search(

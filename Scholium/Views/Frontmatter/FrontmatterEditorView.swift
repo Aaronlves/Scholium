@@ -140,10 +140,19 @@ struct FrontmatterEditorView: View {
                     }
 
                     if hiddenPropertyCount > 0 {
-                        Label(
-                            "\(hiddenPropertyCount) machine or legacy propert\(hiddenPropertyCount == 1 ? "y is" : "ies are") preserved in Source mode.",
-                            systemImage: "gearshape.2"
-                        )
+                        Group {
+                            if hiddenPropertyCount == 1 {
+                                Label(
+                                    "One machine or custom property is preserved in Source mode.",
+                                    systemImage: "gearshape.2"
+                                )
+                            } else {
+                                Label(
+                                    "\(hiddenPropertyCount) machine or custom properties are preserved in Source mode.",
+                                    systemImage: "gearshape.2"
+                                )
+                            }
+                        }
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     }

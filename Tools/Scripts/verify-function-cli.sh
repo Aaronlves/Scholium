@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="${0:A:h:h:h}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")}"
 export DEVELOPER_DIR
-SCRATCH="${2:-${TMPDIR:-/tmp}/scholium-function-cli-verification}"
+SCRATCH="${2:-${ROOT}/.build/function-cli-verification}"
 
 if (( $# >= 1 )); then
   BINARY="$1"

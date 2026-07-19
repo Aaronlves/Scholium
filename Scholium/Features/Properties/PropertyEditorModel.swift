@@ -16,8 +16,7 @@ struct PropertyEditorField: Identifiable, Hashable, Sendable {
 
     let presentation: PropertyPresentation
     let contract: PropertyContract?
-    /// The exact key spelling already present in this document. New fields
-    /// use the canonical key; edits to legacy documents retain their alias.
+    /// The canonical key edited in exact source.
     let sourceKey: String
     let valueKind: PropertyValueKind
     let isReadOnly: Bool
@@ -78,17 +77,13 @@ struct PropertyEditorModel: Sendable {
     }
 
     var hiddenPropertyCount: Int {
-        let aliases = Set(
-            PropertyContractCatalog.contracts(for: profile).flatMap(\.legacyAliases)
-        )
         return note.frontmatter.keys.count {
             $0 != "research_unit"
-                && (ResearcherPropertyPolicy.isHidden($0) || aliases.contains($0))
+                && ResearcherPropertyPolicy.isHidden($0)
         }
     }
 
-    /// Applies one researcher edit without normalizing a legacy key spelling.
-    /// Canonical semantics and exact-source spelling remain separate.
+    /// Applies one researcher edit to its canonical property key.
     func updating(
         _ frontmatter: [String: YAMLValue],
         field: PropertyEditorField,
@@ -189,24 +184,16 @@ struct PropertyEditorModel: Sendable {
             return PropertyEditorField(
                 presentation: presentation,
                 contract: contract,
-                sourceKey: sourceKey(for: contract),
+                sourceKey: contract.canonicalKey,
                 valueKind: contract.valueKind,
                 isReadOnly: !ResearcherPropertyPolicy.isHumanEditable(presentation.key)
             )
         }
     }
 
-    private func sourceKey(for contract: PropertyContract) -> String {
-        if note.frontmatter[contract.canonicalKey] != nil {
-            return contract.canonicalKey
-        }
-        return contract.legacyAliases.first(where: { note.frontmatter[$0] != nil })
-            ?? contract.canonicalKey
-    }
-
     private var recognizedKeys: Set<String> {
         let contracts = PropertyContractCatalog.contracts(for: profile)
-        return Set(contracts.map(\.canonicalKey) + contracts.flatMap(\.legacyAliases))
+        return Set(contracts.map(\.canonicalKey))
     }
 
     private func isEditableByConfiguration(_ key: String) -> Bool {

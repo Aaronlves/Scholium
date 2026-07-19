@@ -7,23 +7,18 @@ import AppKit
 #endif
 
 @MainActor
-final class WindowSession: ObservableObject, Identifiable {
-    let id: UUID
-    @Published var snapshot: WindowSessionSnapshot
-
-    init(snapshot: WindowSessionSnapshot = WindowSessionSnapshot()) {
-        id = snapshot.id
-        self.snapshot = snapshot
-    }
-}
-
-@MainActor
 private struct WorkspaceEditorFlushRegistration {
     let token: UUID
     let triptychID: UUID
     let windowID: UUID
     let relativePath: String
     let flush: @MainActor () async throws -> Void
+}
+
+@MainActor
+private struct PendingWorkspaceInstallation {
+    let token: UUID
+    let task: Task<Void, Error>
 }
 
 enum WorkspaceActivationKind: Equatable, Sendable {
@@ -59,6 +54,78 @@ struct WindowWorkspaceCapabilities: Sendable {
     let research: any ResearchUseCases
 }
 
+/// Machine-local persistence for the one app-wide agent-application choice.
+/// Filesystem I/O stays at the delivery composition boundary rather than in
+/// the handoff controller or its views.
+@MainActor
+struct FileAgentApplicationPreferenceStore: AgentApplicationPreferencePersisting {
+    private struct Envelope: Codable {
+        let schema: String
+        let application: RememberedAgentApplication
+    }
+
+    private static let schema = "scholium-agent-application-preference-v1"
+    private static let maximumPreferenceBytes = 1_048_576
+    private let fileURL: URL
+    private let fileManager: FileManager
+
+    init(applicationSupportURL: URL, fileManager: FileManager = .default) {
+        fileURL = applicationSupportURL.appendingPathComponent(
+            "AgentApplicationHandoff.json",
+            isDirectory: false
+        )
+        self.fileManager = fileManager
+    }
+
+    func load() throws -> RememberedAgentApplication? {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
+        let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
+        guard let size = attributes[.size] as? NSNumber,
+              size.intValue <= Self.maximumPreferenceBytes else {
+            throw AgentApplicationHandoffError.invalidPreference
+        }
+        let envelope = try JSONDecoder().decode(
+            Envelope.self,
+            from: Data(contentsOf: fileURL)
+        )
+        guard envelope.schema == Self.schema else {
+            throw AgentApplicationHandoffError.unsupportedPreference
+        }
+        guard !envelope.application.bookmarkData.isEmpty,
+              envelope.application.bookmarkData.count <= Self.maximumPreferenceBytes else {
+            throw AgentApplicationHandoffError.invalidPreference
+        }
+        return RememberedAgentApplication(
+            displayName: AgentApplicationDisplayName.sanitized(
+                envelope.application.displayName
+            ),
+            bundleIdentifier: envelope.application.bundleIdentifier,
+            bookmarkData: envelope.application.bookmarkData
+        )
+    }
+
+    func save(_ application: RememberedAgentApplication) throws {
+        try fileManager.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let data = try JSONEncoder().encode(Envelope(
+            schema: Self.schema,
+            application: application
+        ))
+        try data.write(to: fileURL, options: .atomic)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
+    }
+
+    func forget() throws {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try fileManager.removeItem(at: fileURL)
+    }
+}
+
 /// The macOS delivery adapter over one live Application runtime.
 ///
 /// WorkspaceRuntime owns every repository, index, watcher, research store,
@@ -71,6 +138,7 @@ final class WorkspaceStore: ObservableObject {
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
     let commandLineToolInstaller: CommandLineToolInstaller
+    let agentApplicationHandoff: AgentApplicationHandoffController
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
     @Published private(set) var workspaceEventGenerations: [UUID: UInt64] = [:]
@@ -86,16 +154,16 @@ final class WorkspaceStore: ObservableObject {
 
     private var handles: [UUID: WorkspaceHandle] = [:]
     private var eventTasks: [UUID: Task<Void, Never>] = [:]
+    private var installationTasks: [UUID: PendingWorkspaceInstallation] = [:]
     private var eventGates: [UUID: WorkspaceEventGenerationGate] = [:]
     private var editorFlushRegistrations: [UUID: WorkspaceEditorFlushRegistration] = [:]
 
     init() {
-        if let isolated = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"],
-           !isolated.isEmpty {
-            applicationSupportURL = URL(
-                fileURLWithPath: (isolated as NSString).expandingTildeInPath,
+        if let isolatedHome = ScholiumRuntimeIsolation.homeURL() {
+            applicationSupportURL = isolatedHome.appendingPathComponent(
+                "ApplicationSupport",
                 isDirectory: true
-            ).appendingPathComponent("ApplicationSupport", isDirectory: true)
+            )
         } else {
             applicationSupportURL = (try? ScholiumPaths.sharedApplicationSupportURL())
                 ?? FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -114,6 +182,9 @@ final class WorkspaceStore: ObservableObject {
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
         commandLineToolInstaller = CommandLineToolInstaller()
+        agentApplicationHandoff = AgentApplicationHandoffController(
+            applicationSupportURL: applicationSupportURL
+        )
     }
 
     deinit {
@@ -122,6 +193,9 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func shutdownApplicationRuntime() async {
+        let pendingInstallations = installationTasks.values.map(\.task)
+        installationTasks.removeAll()
+        pendingInstallations.forEach { $0.cancel() }
         let tasks = eventTasks.values
         eventTasks.removeAll()
         tasks.forEach { $0.cancel() }
@@ -133,6 +207,9 @@ final class WorkspaceStore: ObservableObject {
         workspaceEvents.removeAll()
         workspaceActivations.removeAll()
         latestWorkspaceActivation = nil
+        for task in pendingInstallations {
+            _ = try? await task.value
+        }
         await applicationRuntime.shutdown()
     }
 
@@ -149,10 +226,6 @@ final class WorkspaceStore: ObservableObject {
         #else
         return false
         #endif
-    }
-
-    func existingTriptychManifestID(forWorksURL worksURL: URL) async -> UUID? {
-        await applicationRuntime.portableManifestID(forWorksURL: worksURL)
     }
 
     func registeredTriptychs() async throws -> [TriptychAssignment] {
@@ -239,7 +312,7 @@ final class WorkspaceStore: ObservableObject {
         try await applicationRuntime.saveWindowSession(snapshot)
     }
 
-    func workspaceHandle(id: UUID) async throws -> WorkspaceHandle {
+    private func workspaceHandle(id: UUID) async throws -> WorkspaceHandle {
         let handle = try await applicationRuntime.openWorkspace(id: id)
         try await install(handle: handle)
         return handle
@@ -249,7 +322,7 @@ final class WorkspaceStore: ObservableObject {
         capabilities(from: try await workspaceHandle(id: id))
     }
 
-    func configureTriptych(
+    private func configureTriptych(
         paperAnalysisURL: URL,
         topicKnowledgeURL: URL,
         outputURL: URL,
@@ -296,11 +369,15 @@ final class WorkspaceStore: ObservableObject {
         ))
     }
 
-    func reloadTriptych(id: UUID) async throws -> WorkspaceHandle {
+    private func reloadTriptych(id: UUID) async throws -> WorkspaceHandle {
         let previous = handles[id]?.runtimeIdentity
         let handle = try await applicationRuntime.reloadWorkspace(id: id)
         try await install(handle: handle, replacing: previous)
         return handle
+    }
+
+    func reloadTriptychCapabilities(id: UUID) async throws -> WindowWorkspaceCapabilities {
+        capabilities(from: try await reloadTriptych(id: id))
     }
 
     func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
@@ -355,47 +432,55 @@ final class WorkspaceStore: ObservableObject {
 
     func settingsCapabilities() -> WorkspaceSettingsCapabilities {
         WorkspaceSettingsCapabilities(
-            commandLineToolStatus: { [self] in
-                await commandLineToolInstaller.commandLineToolStatus()
-            },
-            installCommandLineTool: { [self] in
-                try await commandLineToolInstaller.installCommandLineTool()
-            },
-            loadSnapshot: { [self] preferredID in
-                try await settingsSnapshot(preferredTriptychID: preferredID)
-            },
-            configureWorkspace: { [self] paper, topics, works, portable, id, name in
-                let handle = try await configureTriptych(
-                    paperAnalysisURL: paper,
-                    topicKnowledgeURL: topics,
-                    outputURL: works,
-                    portableContainerURL: portable,
-                    triptychID: id,
-                    triptychName: name
-                )
-                return try await settingsSnapshot(preferredTriptychID: handle.id)
-            },
-            saveTriptychSettings: { [self] id, settings in
-                let handle = try await workspaceHandle(id: id)
-                try await handle.research.saveSettings(settings)
-                return try await settingsSnapshot(preferredTriptychID: id)
-            },
-            dialogueResponseProfile: { [self] id in
-                try await workspaceHandle(id: id).research.dialogueResponseProfile()
-            },
-            saveDialogueResponseProfile: { [self] id, profile in
-                try await workspaceHandle(id: id).research.saveDialogueResponseProfile(profile)
-            },
-            portableContainerURL: { [self] url in
-                await portableContainerURL(forWorksURL: url)
-            },
-            zoteroConnectionInfo: { [self] in await zoteroBridge.connectionInfo() },
-            openZotero: { [self] in await zoteroBridge.openZotero() },
-            forgetZoteroCache: { [self] in try await zoteroBridge.forgetCache() },
-            refreshZoteroLibraryInfo: { [self] in
-                try await zoteroBridge.refreshLibraryInfo()
-            },
-            researchSkills: { [self] id in
+            workspace: WorkspaceSettingsWorkspaceCapabilities(
+                loadSnapshot: { [self] preferredID in
+                    try await settingsSnapshot(preferredTriptychID: preferredID)
+                },
+                configureWorkspace: { [self] paper, topics, works, portable, id, name in
+                    let handle = try await configureTriptych(
+                        paperAnalysisURL: paper,
+                        topicKnowledgeURL: topics,
+                        outputURL: works,
+                        portableContainerURL: portable,
+                        triptychID: id,
+                        triptychName: name
+                    )
+                    return try await settingsSnapshot(preferredTriptychID: handle.id)
+                },
+                saveTriptychSettings: { [self] id, settings in
+                    let handle = try await workspaceHandle(id: id)
+                    try await handle.research.saveSettings(settings)
+                    return try await settingsSnapshot(preferredTriptychID: id)
+                },
+                dialogueResponseProfile: { [self] id in
+                    try await workspaceHandle(id: id).research.dialogueResponseProfile()
+                },
+                saveDialogueResponseProfile: { [self] id, profile in
+                    try await workspaceHandle(id: id).research.saveDialogueResponseProfile(profile)
+                },
+                portableContainerURL: { [self] url in
+                    await portableContainerURL(forWorksURL: url)
+                }
+            ),
+            machine: WorkspaceSettingsMachineCapabilities(
+                commandLineToolStatus: { [self] in
+                    await commandLineToolInstaller.commandLineToolStatus()
+                },
+                installCommandLineTool: { [self] in
+                    try await commandLineToolInstaller.installCommandLineTool()
+                },
+                openExternal: { [self] url in openExternal(url) }
+            ),
+            zotero: WorkspaceSettingsZoteroCapabilities(
+                zoteroConnectionInfo: { [self] in await zoteroBridge.connectionInfo() },
+                openZotero: { [self] in await zoteroBridge.openZotero() },
+                forgetZoteroCache: { [self] in try await zoteroBridge.forgetCache() },
+                refreshZoteroLibraryInfo: { [self] in
+                    try await zoteroBridge.refreshLibraryInfo()
+                }
+            ),
+            researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities(
+                researchSkills: { [self] id in
                 try await workspaceHandle(id: id).research.skills()
             },
             inspectResearchSkillDraft: { [self] workspaceID, id, source, origin in
@@ -508,10 +593,10 @@ final class WorkspaceStore: ObservableObject {
                     expectedCurrentState: expectedState
                 )
             },
-            researchSkillsURL: { [self] id in
-                try await workspaceHandle(id: id).research.skillsURL
-            },
-            openExternal: { [self] url in openExternal(url) }
+                researchSkillsURL: { [self] id in
+                    try await workspaceHandle(id: id).research.skillsURL
+                }
+            )
         )
     }
 
@@ -556,6 +641,68 @@ final class WorkspaceStore: ObservableObject {
         replacing previousIdentity: TriptychRuntimeIdentity? = nil,
         announcedSnapshot: WorkspaceSnapshot? = nil
     ) async throws {
+        if let pending = installationTasks[handle.id] {
+            try await pending.task.value
+            return try await install(
+                handle: handle,
+                replacing: previousIdentity,
+                announcedSnapshot: announcedSnapshot
+            )
+        }
+        if let existing = handles[handle.id],
+           existing.runtimeIdentity == handle.runtimeIdentity,
+           previousIdentity == nil || previousIdentity?.triptychID == handle.id {
+            return
+        }
+
+        let token = UUID()
+        let workspaceID = handle.id
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.finishInstallation(workspaceID: workspaceID, token: token) }
+            try await self.performInstall(
+                handle: handle,
+                replacing: previousIdentity,
+                announcedSnapshot: announcedSnapshot
+            )
+        }
+        installationTasks[workspaceID] = PendingWorkspaceInstallation(
+            token: token,
+            task: task
+        )
+        try await task.value
+    }
+
+    private func finishInstallation(workspaceID: UUID, token: UUID) {
+        guard installationTasks[workspaceID]?.token == token else { return }
+        installationTasks[workspaceID] = nil
+    }
+
+    private func performInstall(
+        handle: WorkspaceHandle,
+        replacing previousIdentity: TriptychRuntimeIdentity?,
+        announcedSnapshot: WorkspaceSnapshot?
+    ) async throws {
+        let snapshot: WorkspaceSnapshot
+        if let announcedSnapshot {
+            snapshot = announcedSnapshot
+        } else {
+            snapshot = try await handle.snapshot()
+        }
+        try Task.checkCancellation()
+        // Obtaining the stream is the readiness handshake: WorkspaceEventSource
+        // has registered this continuation before the actor call returns.
+        let stream = await handle.events.events()
+        try Task.checkCancellation()
+
+        // A caller and the old handle's runtimeReloaded event can converge on
+        // the same successor. Recheck after both suspension points so only one
+        // complete installation is committed and retained.
+        if let existing = handles[handle.id],
+           existing.runtimeIdentity == handle.runtimeIdentity,
+           previousIdentity == nil || previousIdentity?.triptychID == handle.id {
+            return
+        }
         if let previousIdentity,
            previousIdentity.triptychID != handle.id {
             eventTasks[previousIdentity.triptychID]?.cancel()
@@ -568,24 +715,8 @@ final class WorkspaceStore: ObservableObject {
             workspaceEvents[previousIdentity.triptychID] = nil
             workspaceActivations[previousIdentity.triptychID] = nil
         }
-        // Runtime replacement is announced to existing consumers as well as
-        // returned to the explicit caller. Whichever path installs the same
-        // activation first wins; the second must not create a duplicate
-        // stream subscription. Cross-ID reidentification still publishes its
-        // replacement activation after clearing the previous key above.
-        if let existing = handles[handle.id],
-           existing.runtimeIdentity == handle.runtimeIdentity,
-           previousIdentity == nil || previousIdentity?.triptychID == handle.id {
-            return
-        }
         eventTasks[handle.id]?.cancel()
         handles[handle.id] = handle
-        let snapshot: WorkspaceSnapshot
-        if let announcedSnapshot {
-            snapshot = announcedSnapshot
-        } else {
-            snapshot = try await handle.snapshot()
-        }
         workspaceSnapshots[handle.id] = snapshot
         eventGates[handle.id] = WorkspaceEventGenerationGate()
         workspaceEventGenerations[handle.id] = 0
@@ -607,13 +738,7 @@ final class WorkspaceStore: ObservableObject {
             capabilities: capabilities(from: handle),
             snapshot: snapshot
         )
-        workspaceActivations[handle.id] = activation
-        latestWorkspaceActivation = activation
         let activationID = handle.runtimeIdentity.activationID
-        // Establish the sole delivery subscription before publishing a
-        // completed installation. This is an explicit readiness handshake,
-        // not a task-scheduling assumption.
-        let stream = await handle.events.events()
         eventTasks[handle.id] = Task { [weak self] in
             for await event in stream {
                 guard !Task.isCancelled, let self else { return }
@@ -632,6 +757,8 @@ final class WorkspaceStore: ObservableObject {
                 )
             }
         }
+        workspaceActivations[handle.id] = activation
+        latestWorkspaceActivation = activation
     }
 
     private func capabilities(from handle: WorkspaceHandle) -> WindowWorkspaceCapabilities {

@@ -149,7 +149,7 @@ struct DocumentControllerConvergenceTests {
             (
                 name: "NoteContentView",
                 start: "struct NoteContentView: View {",
-                end: "// MARK: - Note History"
+                end: "// MARK: - Research Record"
             ),
         ]
 

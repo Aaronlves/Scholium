@@ -427,7 +427,7 @@ extension WorkspaceHandle {
             // Ordinary Dialogue keeps its historical record shape. A
             // Research Function Dialogue persists the canonical immutable
             // packet so a prepared run remains recoverable after dismissal.
-            generatedPrompt: functionSnapshot == nil
+            preparedInstructions: functionSnapshot == nil
                 ? ""
                 : skillInstructions + "\n\n" + responseLocator,
             checkpointID: nil,

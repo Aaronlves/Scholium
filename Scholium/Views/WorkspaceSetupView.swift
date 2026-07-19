@@ -11,15 +11,14 @@ struct WorkspaceSetupSelection {
     let triptychName: String
 }
 
-/// Immutable window projection plus setup actions supplied by `ContentView`.
-/// The setup surface owns only its step-local form state.
+/// Immutable Bootstrap projection plus registration actions. The setup surface
+/// owns only its step-local form state and is never hosted by a workspace.
 struct WorkspaceSetupContext {
     let isCreatingNewTriptych: Bool
     let targetTriptychID: UUID?
     let workspaceAssignment: TriptychAssignment?
     let registeredTriptychs: [TriptychAssignment]
     let recoveryMessage: String?
-    let isInitialConfiguration: Bool
     let refreshAssignment: () async -> Void
     let portableContainerURL: (URL) async -> URL?
     let configure: (WorkspaceSetupSelection) async throws -> Void
@@ -218,12 +217,6 @@ private struct GuidedWorkspaceSetupView: View {
         guard let portableContainerURL else { return }
         isSaving = true
         errorMessage = nil
-        if context.isInitialConfiguration {
-            // `vaultConfig` becomes valid before the async setup callback
-            // returns. Clear the sheet route first so that root-level setup
-            // cannot briefly re-present itself over the new stable workspace.
-            context.dismiss()
-        }
         Task {
             do {
                 try await context.configure(WorkspaceSetupSelection(

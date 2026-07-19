@@ -292,6 +292,7 @@ struct ResearchWorkflowContractTests {
             "SKILL.md",
             "references/Reviewer.md",
         ])
+        #expect(!loaded.contains("references/practice-catalog.md"))
         #expect(!loaded.contains("references/Dialectical-Partner.md"))
         #expect(practice.loadedResources.allSatisfy {
             $0.revision == DocumentFingerprint(content: $0.source)
@@ -299,52 +300,22 @@ struct ResearchWorkflowContractTests {
         #expect(envelope.isExecutable)
         #expect(envelope.warnings.isEmpty)
         #expect(envelope.renderedInstructions.contains("ephemeral structural task packet"))
-    }
-
-    @Test("Legacy replacement Practices always require repair")
-    func replacementPracticeConflict() async throws {
-        let root = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = ResearchSkillStore(controlURL: root.appendingPathComponent(".scholium"))
-        let note = object(.note, "Works/Argument.md")
-        let selections = [
-            replacement("reviewer"),
-            replacement("dialectical-partner"),
-        ]
-        let conflict = ResearchWorkflowContract(
-            mode: .review,
-            taskObject: "Review an argument",
-            purpose: "Apply researcher-selected methods without silent resolution.",
-            originalReadSet: [note],
-            originalWriteSet: [],
-            phases: [phase(
-                mode: .review,
-                requiredSkills: ["scholium-critique"],
-                selectedPractices: selections,
-                readSet: [note]
-            )]
-        )
-        let unresolved = try await ResearchWorkflowAssembler.resolve(conflict, store: store)
-        #expect(!unresolved.isExecutable)
-        #expect(unresolved.blockingConflicts.count == 1)
-
-        let ordered = ResearchWorkflowContract(
-            mode: .review,
-            taskObject: conflict.taskObject,
-            purpose: conflict.purpose,
-            originalReadSet: [note],
-            originalWriteSet: [],
-            phases: [phase(
-                mode: .review,
-                requiredSkills: ["scholium-critique"],
-                selectedPractices: [replacement("reviewer", precedence: 1),
-                                    replacement("dialectical-partner", precedence: 2)],
-                readSet: [note]
-            )]
-        )
-        let resolved = try await ResearchWorkflowAssembler.resolve(ordered, store: store)
-        #expect(!resolved.isExecutable)
-        #expect(resolved.blockingConflicts.count == 1)
+        for protectedCapacity in [
+            "Background-Grasping",
+            "Concept-Understanding",
+            "Philosophical Taste",
+            "Logical and Dialectical Reasoning",
+            "false consensus",
+        ] {
+            #expect(envelope.renderedInstructions.contains(protectedCapacity))
+        }
+        for unselectedPracticeID in [
+            "research-explorer",
+            "thesis-architect",
+            "philosophical-expositor",
+        ] {
+            #expect(!envelope.renderedInstructions.contains(unselectedPracticeID))
+        }
     }
 
     @Test("The audit planner keeps final substantive revisions and never self-schedules")
@@ -482,22 +453,6 @@ struct ResearchWorkflowContractTests {
                 summary: "A provisional phase result.",
                 evidenceStatus: "Must be reassessed by any later phase."
             )
-        )
-    }
-
-    private func replacement(
-        _ practiceID: String,
-        precedence: Int? = nil
-    ) -> ResearchPracticeSelection {
-        ResearchPracticeSelection(
-            packageID: "scholium-philosophical-practices",
-            practiceID: practiceID,
-            application: .replace,
-            officialSkillID: "scholium-critique",
-            editablePoint: "review-method",
-            scope: "This review phase only",
-            reason: "The researcher selected this methodological replacement.",
-            precedence: precedence
         )
     }
 

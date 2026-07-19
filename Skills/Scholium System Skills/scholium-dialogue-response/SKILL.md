@@ -14,9 +14,8 @@ Dialogue is note-nonmutating by default. It may read the fixed Target and select
 1. Identify the exact Triptych selector and Dialogue ID supplied by Scholium.
 2. Read [references/response-contract.md](references/response-contract.md) completely.
 3. Retrieve the Dialogue with `scholium dialogue show <dialogue-id> --triptych <triptych> --format json` through `scholium-research-integration`.
-4. Use the request-scoped `responseContract` snapshot when present. Do not replace it with a newer workspace default.
-5. If the snapshot is absent, apply the compatibility fallback in the contract reference and state that the exact request-time choice was unavailable.
-6. Read [references/response-method.md](references/response-method.md) and compose only the base outcome plus the selected modules.
+4. Require and use the request-scoped `responseContract` snapshot. Do not replace it with a newer workspace default. A missing snapshot is an invalid current Dialogue record and must fail closed.
+5. Read [references/response-method.md](references/response-method.md) and compose only the base outcome plus the selected modules.
 
 The portable default profile is located exactly at:
 
@@ -31,7 +30,7 @@ For a Works vault at `/Research/Ethics/Works`, the file is `/Research/Ethics/.sc
 ```text
 Triptych selector:
 Dialogue ID:
-Contract source: request-snapshot | dialogue-defaults | compatibility-fallback
+Contract source: request-snapshot
 Profile revision, if available:
 Base response: academic-outcome
 Selected modules:

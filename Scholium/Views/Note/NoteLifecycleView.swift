@@ -216,7 +216,7 @@ struct NoteLifecycleView: View {
     private var destinationPicker: some View {
         Picker("Destination", selection: $classificationSlot) {
             ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Text(slot.displayName).tag(slot)
+                Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
             }
         }
         .labelsHidden()
@@ -276,7 +276,7 @@ struct NoteLifecycleView: View {
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
         case .move:
-            "Moving or renaming preserves the note identity, Human Review, comments, and Note History."
+            "Moving or renaming preserves the note identity, Human Review, comments, and Research Record."
         case .putBack:
             "Put Back returns this note to its exact original vault-relative location. Scholium never renames it or chooses another folder."
         case .classify:

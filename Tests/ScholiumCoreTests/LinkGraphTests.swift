@@ -5,36 +5,6 @@ import ScholiumContracts
 
 @Suite("Deterministic shared link graph")
 struct LinkGraphTests {
-    @Test("Canceled partial graph publication never reuses a generation")
-    func canceledPartialPublicationUsesNewGeneration() {
-        let triptychID = UUID()
-        var buildGenerations = GraphGenerationLedger<UUID>()
-        var vaultGenerations = Array(repeating: GraphGenerationLedger<UUID>(), count: 3)
-
-        let canceled = buildGenerations.reserveNext(for: triptychID)
-        let acceptedCanceled = vaultGenerations[0].accept(canceled, for: triptychID)
-        #expect(acceptedCanceled)
-
-        // Simulate cancellation after only one vault accepted the build. The
-        // replacement must use a strictly newer generation so all three vaults,
-        // including the partially updated one, accept the same projection.
-        let replacement = buildGenerations.reserveNext(for: triptychID)
-        for index in vaultGenerations.indices {
-            let acceptedReplacement = vaultGenerations[index].accept(
-                replacement,
-                for: triptychID
-            )
-            #expect(acceptedReplacement)
-        }
-
-        #expect(replacement > canceled)
-        #expect(vaultGenerations.allSatisfy {
-            $0.latest(for: triptychID) == replacement
-        })
-        let acceptedStaleGeneration = vaultGenerations[0].accept(canceled, for: triptychID)
-        #expect(!acceptedStaleGeneration)
-    }
-
     @Test("Workspace resolution follows a unique cross-vault link")
     func uniqueCrossVaultResolution() {
         let analysisVault = UUID()
@@ -171,10 +141,182 @@ struct LinkGraphTests {
         )
         #expect(resolution == .resolved(localID))
     }
+
+    @Test("Indexed graph builds preserve every link-resolution priority")
+    func indexedBuildPreservesResolutionPriority() throws {
+        let sourceVault = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
+        let firstRemoteVault = UUID(uuidString: "20000000-0000-0000-0000-000000000002")!
+        let secondRemoteVault = UUID(uuidString: "30000000-0000-0000-0000-000000000003")!
+        let source = NoteDocument(
+            relativePath: "Folder/Source.md",
+            rawContent: """
+            # Local Section
+
+            [[#Local Section]]
+            [[Folder/Exact]]
+            [[Relative]]
+            [[FolderOnly]]
+            [[VaultOnly]]
+            [[Local Alias]]
+            [[Remote/Exact]]
+            [[Remote/UniqueExact]]
+            [[RemoteStem]]
+            [[Remote Alias]]
+            [[Collision]]
+            [[Missing]]
+            """
+        )
+        let sourceID = VaultQualifiedNoteID(
+            vaultID: sourceVault,
+            relativePath: source.relativePath
+        )
+        let sourceSemantic = MarkdownSemanticDocument(parsing: source)
+
+        func note(
+            _ vaultID: UUID,
+            _ path: String,
+            title: String? = nil,
+            aliases: [String] = []
+        ) -> LinkCatalogNote {
+            LinkCatalogNote(
+                id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
+                title: title,
+                aliases: aliases
+            )
+        }
+
+        let exactRoot = note(sourceVault, "Folder/Exact.md")
+        let exactRelative = note(sourceVault, "Folder/Relative.md")
+        let sameFolderStem = note(sourceVault, "Folder/FolderOnly.md")
+        let competingVaultStem = note(sourceVault, "Elsewhere/FolderOnly.md")
+        let vaultWideStem = note(sourceVault, "Elsewhere/VaultOnly.md")
+        let localDeclared = note(
+            sourceVault,
+            "Elsewhere/LocalDeclared.md",
+            title: "Local Alias",
+            aliases: ["Local Alias"]
+        )
+        let remoteExact = note(firstRemoteVault, "Remote/UniqueExact.md")
+        let competingRemoteDeclared = note(
+            secondRemoteVault,
+            "Elsewhere/DeclaredExact.md",
+            aliases: ["UniqueExact"]
+        )
+        let remoteStem = note(firstRemoteVault, "Elsewhere/RemoteStem.md")
+        let remoteDeclared = note(
+            firstRemoteVault,
+            "Elsewhere/RemoteDeclared.md",
+            aliases: ["Remote Alias"]
+        )
+        let firstCollision = note(firstRemoteVault, "One/Collision.md")
+        let secondCollision = note(secondRemoteVault, "Two/Collision.md")
+        let catalog = [
+            LinkCatalogNote(vaultID: sourceVault, document: source, semantic: sourceSemantic),
+            exactRoot,
+            exactRelative,
+            sameFolderStem,
+            competingVaultStem,
+            vaultWideStem,
+            localDeclared,
+            remoteExact,
+            competingRemoteDeclared,
+            remoteStem,
+            remoteDeclared,
+            firstCollision,
+            secondCollision,
+        ]
+
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: catalog,
+            documents: [sourceID: sourceSemantic],
+            resolutionScope: .workspace
+        )
+        let outgoing = try #require(graph.outgoing[sourceID])
+        let resolutions = Dictionary(
+            uniqueKeysWithValues: outgoing.map {
+                ($0.occurrence.target, $0.occurrence.resolution)
+            }
+        )
+
+        #expect(resolutions[""] == .resolved(sourceID))
+        #expect(resolutions["Folder/Exact"] == .resolved(exactRoot.id))
+        #expect(resolutions["Relative"] == .resolved(exactRelative.id))
+        #expect(resolutions["FolderOnly"] == .resolved(sameFolderStem.id))
+        #expect(resolutions["VaultOnly"] == .resolved(vaultWideStem.id))
+        #expect(resolutions["Local Alias"] == .resolved(localDeclared.id))
+        #expect(resolutions["Remote/Exact"] == .resolved(exactRoot.id))
+        #expect(resolutions["Remote/UniqueExact"] == .resolved(remoteExact.id))
+        #expect(resolutions["RemoteStem"] == .resolved(remoteStem.id))
+        #expect(resolutions["Remote Alias"] == .resolved(remoteDeclared.id))
+        #expect(
+            resolutions["Collision"]
+                == .ambiguous([firstCollision.id, secondCollision.id].sorted())
+        )
+        #expect(resolutions["Missing"] == .broken("Missing"))
+        #expect(graph.diagnostics.filter { $0.code == .ambiguous }.count == 1)
+        #expect(graph.diagnostics.filter { $0.code == .broken }.count == 1)
+    }
+
+    @Test("Graph build handles the 1,560-note and 46,800-link activation workload")
+    func activationScaleWorkload() {
+        let vaultIDs = [
+            UUID(uuidString: "40000000-0000-0000-0000-000000000004")!,
+            UUID(uuidString: "50000000-0000-0000-0000-000000000005")!,
+            UUID(uuidString: "60000000-0000-0000-0000-000000000006")!,
+        ]
+        let notesPerVault = 520
+        let linksPerNote = 30
+        var catalog: [LinkCatalogNote] = []
+        var documents: [VaultQualifiedNoteID: MarkdownSemanticDocument] = [:]
+        catalog.reserveCapacity(vaultIDs.count * notesPerVault)
+        documents.reserveCapacity(vaultIDs.count * notesPerVault)
+
+        for (vaultIndex, vaultID) in vaultIDs.enumerated() {
+            for noteIndex in 0..<notesPerVault {
+                let path = "Notes/Note-\(noteIndex).md"
+                let links = (1...linksPerNote).map { offset in
+                    let target = (noteIndex + offset) % notesPerVault
+                    return "[[Notes/Note-\(target)]]"
+                }.joined(separator: " ")
+                let document = NoteDocument(
+                    relativePath: path,
+                    rawContent: "# Fixture \(vaultIndex)-\(noteIndex)\n\n\(links)\n"
+                )
+                let id = VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
+                let semantic = MarkdownSemanticDocument(parsing: document)
+                catalog.append(LinkCatalogNote(
+                    vaultID: vaultID,
+                    document: document,
+                    semantic: semantic
+                ))
+                documents[id] = semantic
+            }
+        }
+
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: catalog,
+            documents: documents,
+            resolutionScope: .workspace
+        )
+        let outgoingCount = graph.outgoing.values.reduce(0) { $0 + $1.count }
+        let incomingCount = graph.incoming.values.reduce(0) { $0 + $1.count }
+
+        #expect(catalog.count == 1_560)
+        #expect(documents.count == 1_560)
+        #expect(outgoingCount == 46_800)
+        #expect(incomingCount == 46_800)
+        #expect(graph.outgoing.count == 1_560)
+        #expect(graph.incoming.count == 1_560)
+        #expect(graph.diagnostics.isEmpty)
+        #expect(graph.relationships.count == 46_800)
+    }
+
     @Test("Retired relation arrows never create explicit evidence")
     func v4ArrowDirection() {
         let vaultID = UUID()
-        let claim = NoteDocument(relativePath: "02 Claims/Project Claims/Claim.md", rawContent: "---\nschema_version: dissertation-control-v4\n---\n# Claim\n\n## Relations\n- `supports` -> [[Target]]\n")
+        let claim = NoteDocument(relativePath: "02 Claims/Project Claims/Claim.md", rawContent: "# Claim\n\n## Relations\n- `supports` -> [[Target]]\n")
         let target = NoteDocument(relativePath: "02 Claims/Project Claims/Target.md", rawContent: "# Target\n")
         let claimID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: claim.relativePath)
         let targetID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath)
@@ -193,7 +335,7 @@ struct LinkGraphTests {
     @Test("Retired reified relation blocks contribute only neutral wikilinks")
     func reifiedDirection() {
         let vaultID = UUID()
-        let record = NoteDocument(relativePath: "04 Positions and Relations/Complex Relation Records/Pressure.md", rawContent: "---\nschema_version: dissertation-control-v4\n---\n# Pressure\n\n## Relation\n- Subject: [[Objection]]\n- Predicate: `pressures`\n- Object: [[Claim]]\n")
+        let record = NoteDocument(relativePath: "04 Positions and Relations/Complex Relation Records/Pressure.md", rawContent: "# Pressure\n\n## Relation\n- Subject: [[Objection]]\n- Predicate: `pressures`\n- Object: [[Claim]]\n")
         let objection = NoteDocument(relativePath: "03 Inferences/Objection.md", rawContent: "# Objection\n")
         let claim = NoteDocument(relativePath: "02 Claims/Project Claims/Claim.md", rawContent: "# Claim\n")
         let docs = [record, objection, claim]
@@ -228,8 +370,8 @@ struct LinkGraphTests {
     @Test("Retired typed arrows do not run endpoint rules")
     func v4EndpointDiagnostic() {
         let vaultID = UUID()
-        let question = NoteDocument(relativePath: "01 Questions/Q.md", rawContent: "---\nschema_version: dissertation-control-v4\nnote_type: question\n---\n# Q\n\n## Relations\n- `evidence_for` -> [[Claim]]\n")
-        let claim = NoteDocument(relativePath: "02 Claims/Project Claims/Claim.md", rawContent: "---\nschema_version: dissertation-control-v4\nnote_type: claim\n---\n# Claim\n")
+        let question = NoteDocument(relativePath: "01 Questions/Q.md", rawContent: "# Q\n\n## Relations\n- `evidence_for` -> [[Claim]]\n")
+        let claim = NoteDocument(relativePath: "02 Claims/Project Claims/Claim.md", rawContent: "# Claim\n")
         let qID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: question.relativePath)
         let cID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: claim.relativePath)
         let graph = LinkGraphBuilder.build(

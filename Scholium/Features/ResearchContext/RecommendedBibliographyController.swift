@@ -78,18 +78,17 @@ final class RecommendedBibliographyController: ObservableObject {
         generation &+= 1
         let token = generation
         task?.cancel()
-        if targetChanged {
+        if targetChanged, target != nil {
             projection = nil
             selectedGoals = []
             purpose = ""
         }
         self.target = target
-        if targetChanged { preparation = nil }
+        if targetChanged, target != nil { preparation = nil }
         errorMessage = nil
         needsMethodRepair = false
         guard let target, let client else {
-            projection = nil
-            phase = .idle
+            phase = projection == nil && preparation == nil ? .idle : .ready
             return
         }
         phase = .loading
@@ -220,7 +219,7 @@ final class RecommendedBibliographyController: ObservableObject {
             // A prepared projection without its immutable preparation is a
             // malformed durable state rather than an apparently ready panel.
             phase = .failed
-            errorMessage = "The pending Recommended Bibliography request could not be restored."
+            errorMessage = String(localized: "The pending Recommended Bibliography request could not be restored.", table: "Localizable", bundle: .module)
         case (.none, .complete), (.none, .none):
             phase = .ready
         }

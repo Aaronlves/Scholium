@@ -98,7 +98,7 @@ struct ResearchRecordsTests {
             instruction: "Inspect the argument.",
             selectedNotes: [reference],
             includedComments: [],
-            generatedPrompt: "Prompt",
+            preparedInstructions: "Prompt",
             checkpointID: UUID()
         )
         let returnedDialogue = try await dialogueStore.save(dialogue)
@@ -218,7 +218,7 @@ struct ResearchRecordsTests {
                 instruction: "Inspect this note.",
                 selectedNotes: [reference],
                 includedComments: [],
-                generatedPrompt: "Prompt",
+                preparedInstructions: "Prompt",
                 checkpointID: UUID()
             ))
         }
@@ -286,7 +286,7 @@ struct ResearchRecordsTests {
             instruction: "Inspect this topic.",
             selectedNotes: [reference],
             includedComments: [],
-            generatedPrompt: "Prompt",
+            preparedInstructions: "Prompt",
             checkpointID: UUID()
         )
         await #expect(throws: (any Error).self) {
@@ -355,7 +355,7 @@ struct ResearchRecordsTests {
             instruction: "Compare these notes.",
             selectedNotes: [deletedReference, retainedReference],
             includedComments: [],
-            generatedPrompt: "Contains private deleted-note context.",
+            preparedInstructions: "Contains private deleted-note context.",
             checkpointID: UUID()
         )
         _ = try await dialogueStore.save(shared)
@@ -634,7 +634,7 @@ struct ResearchRecordsTests {
             instruction: "Revise.",
             selectedNotes: [reference],
             includedComments: [included],
-            generatedPrompt: "Historical path: Old.md",
+            preparedInstructions: "Historical path: Old.md",
             checkpointID: nil,
             followUpComments: [followUp],
             replies: [response]
@@ -655,7 +655,7 @@ struct ResearchRecordsTests {
         let migrated = try await dialogueStore.entry(id: entry.id)
         #expect(migrated.selectedNotes[0].relativePath == "Folder/New.md")
         #expect(migrated.includedComments[0].note.relativePath == "Folder/New.md")
-        #expect(migrated.generatedPrompt == "Historical path: Old.md")
+        #expect(migrated.preparedInstructions == "Historical path: Old.md")
         #expect(migrated.followUpComments == [followUp])
         #expect(migrated.replies == [response])
     }
@@ -721,7 +721,7 @@ struct ResearchRecordsTests {
             instruction: "Revise the relevant Triptych notes.",
             selectedNotes: [first, second],
             includedComments: includedComments,
-            generatedPrompt: prompt,
+            preparedInstructions: prompt,
             checkpointID: UUID(),
             requestedDestination: "Update relevant notes in Topics when warranted.",
             linkedNoteSummary: "Topic B neutrally links to Paper A; this is not evidence."
@@ -817,7 +817,7 @@ struct ResearchRecordsTests {
             instruction: "Clarify the argument without overstating the source.",
             selectedNotes: [note],
             includedComments: [included],
-            generatedPrompt: "",
+            preparedInstructions: "",
             checkpointID: UUID(),
             createdAt: Date(timeIntervalSince1970: 1_000)
         )
@@ -1012,7 +1012,7 @@ struct ResearchRecordsTests {
             instruction: "Develop the argument.",
             selectedNotes: [reference],
             includedComments: [],
-            generatedPrompt: "Prepared instructions",
+            preparedInstructions: "Prepared instructions",
             checkpointID: checkpointID,
             functionSnapshot: snapshot
         )
@@ -1041,7 +1041,7 @@ struct ResearchRecordsTests {
             runID: snapshot.runID
         )
         #expect(finalized.functionSnapshot == finalizedSnapshot)
-        #expect(finalized.generatedPrompt == "Finalized instructions")
+        #expect(finalized.preparedInstructions == "Finalized instructions")
         #expect(finalized.checkpointID == checkpointID)
         _ = try await store.finalizeFunctionPreflight(
             snapshot: finalizedSnapshot,
@@ -1120,7 +1120,7 @@ struct ResearchRecordsTests {
             instruction: "Prepare, then fail.",
             selectedNotes: [reference],
             includedComments: [],
-            generatedPrompt: "Prepared instructions",
+            preparedInstructions: "Prepared instructions",
             checkpointID: nil,
             functionSnapshot: rollbackSnapshot
         ))

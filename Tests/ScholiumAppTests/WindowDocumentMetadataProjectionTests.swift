@@ -6,32 +6,13 @@ import Testing
 
 @Suite("Window document metadata projection")
 struct WindowDocumentMetadataProjectionTests {
-    @Test("Status follows Core canonical precedence and legacy aliases")
+    @Test("Status uses only the current canonical property")
     func statusUsesCoreVocabulary() throws {
         let contract = try #require(
             PropertyContractCatalog.contract(for: "status", profile: .analysis)
         )
-        #expect(!contract.legacyAliases.isEmpty)
-
-        for alias in contract.legacyAliases {
-            let source = """
-            ---
-            \(alias): complete
-            unknown:
-              nested: untouched
-            ---
-            Body
-            """
-            let note = metadataLocation(source, role: .sourceCorpus)
-
-            #expect(note.status == "complete")
-            #expect(note.rawContent == source)
-        }
-
-        let alias = try #require(contract.legacyAliases.first)
         let canonicalSource = """
         ---
-        \(alias): complete
         \(contract.canonicalKey): reviewed
         unknown: untouched
         ---
@@ -86,16 +67,26 @@ struct WindowDocumentMetadataProjectionTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/Models/Models.swift"),
-            encoding: .utf8
-        )
+        let relativePaths = [
+            "Scholium/Models/Models.swift",
+            "ScholiumContracts/SearchContracts.swift",
+            "ScholiumCore/SearchIndex.swift",
+        ]
+        let sources = try relativePaths.map {
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent($0),
+                encoding: .utf8
+            )
+        }
 
-        #expect(!source.contains("\"analysis_status\""))
-        #expect(!source.contains("\"lifecycle_status\""))
-        #expect(!source.contains("0...10"))
-        #expect(!source.contains("TriptychProperty"))
-        #expect(source.contains("PropertyContractCatalog.contract"))
+        for source in sources {
+            #expect(!source.contains("\"analysis_status\""))
+            #expect(!source.contains("\"lifecycle_status\""))
+        }
+        let appModelSource = sources[0]
+        #expect(!appModelSource.contains("0...10"))
+        #expect(!appModelSource.contains("TriptychProperty"))
+        #expect(appModelSource.contains("PropertyContractCatalog.contract"))
     }
 
     @Test("Sidebar property options aggregate each note projection once")
@@ -103,13 +94,12 @@ struct WindowDocumentMetadataProjectionTests {
         let first = metadataLocation(
             """
             ---
-            analysis_status: complete
+            status: complete
             authors:
               - Beauvoir
               - Arendt
             custom: Alpha
             relevance: 9
-            relevance_rating: 7
             nested:
               child: Gamma
             too_long: \(String(repeating: "x", count: 81))
@@ -140,7 +130,6 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(options.valuesByKey["authors"] == ["Arendt", "Beauvoir", "Weil"])
         #expect(options.valuesByKey["custom"] == ["Alpha", "Beta"])
         #expect(options.valuesByKey["relevance"] == nil)
-        #expect(options.valuesByKey["relevance_rating"] == nil)
         #expect(options.valuesByKey["nested.child"] == ["Gamma"])
         #expect(options.valuesByKey["too_long"] == nil)
         #expect(options.keys == options.keys.sorted {
@@ -172,6 +161,38 @@ struct WindowDocumentMetadataProjectionTests {
             "let propertyFilterOptions = appState.availablePropertyFilterOptions"
         ))
         #expect(!sidebarContext.contains("availablePropertyValues(for:"))
+    }
+
+    @Test("Window model caches property filter options when the note inventory changes")
+    func windowModelCachesPropertyFilterOptions() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let notesStart = try #require(source.range(
+            of: "@Published var notes: [WindowDocumentLocation]"
+        ))
+        let filtersEnd = try #require(source.range(
+            of: "var activeMetadataFilterCount",
+            range: notesStart.lowerBound..<source.endIndex
+        ))
+        let filterState = source[notesStart.lowerBound..<filtersEnd.lowerBound]
+
+        #expect(filterState.contains(
+            "didSet {\n            availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: notes)"
+        ))
+        #expect(filterState.contains(
+            "private(set) var availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: [])"
+        ))
+        #expect(!filterState.contains(
+            "var availablePropertyFilterOptions: WindowPropertyFilterOptions {"
+        ))
     }
 }
 

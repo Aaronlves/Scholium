@@ -6,7 +6,6 @@ extension ScholiumCLI {
         let repeatable: Bool
 
         static let value = Self(takesValue: true, repeatable: false)
-        static let repeatedValue = Self(takesValue: true, repeatable: true)
         static let flag = Self(takesValue: false, repeatable: false)
     }
 
@@ -84,7 +83,7 @@ extension ScholiumCLI {
         if key == "search" {
             let hasVault = counts["--vault", default: 0] > 0
             let hasWorkspace = counts["--workspace", default: 0] > 0
-            guard hasVault != hasWorkspace || positionals.count == 2 else {
+            guard hasVault != hasWorkspace else {
                 throw CLIError.usage(
                     "Choose exactly one search scope: --vault <selector> or --workspace."
                 )
@@ -121,7 +120,7 @@ extension ScholiumCLI {
             "vault list": .init(pathLength: 2, options: format),
             "search": .init(
                 pathLength: 1,
-                positionalCount: 1 ... 2,
+                positionalCount: 1 ... 1,
                 options: [
                     "--vault": .value,
                     "--workspace": .flag,
@@ -172,15 +171,6 @@ extension ScholiumCLI {
                 positionalCount: 1 ... 1,
                 options: selected
             ),
-            "skills assemble": .init(
-                pathLength: 2,
-                options: [
-                    "--mode": .value,
-                    "--skill": .repeatedValue,
-                    "--phase": .repeatedValue,
-                    "--triptych": .value,
-                ]
-            ),
             "workflow validate": .init(
                 pathLength: 2,
                 options: ["--from": .value, "--triptych": .value, "--format": .value]
@@ -194,12 +184,10 @@ extension ScholiumCLI {
                 options: ["--from": .value, "--format": .value]
             ),
             "function available": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
-            "function availability": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "function prepare": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "function show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "function prepare-fidelity": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "function select-resources": .init(pathLength: 2, options: ["--from": .value, "--triptych": .value, "--format": .value]),
-            "function select-methods": .init(pathLength: 2, options: ["--from": .value, "--triptych": .value, "--format": .value]),
             "function complete": .init(pathLength: 2, options: ["--from": .value, "--triptych": .value, "--format": .value]),
             "function cancel": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "bibliography prepare": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),

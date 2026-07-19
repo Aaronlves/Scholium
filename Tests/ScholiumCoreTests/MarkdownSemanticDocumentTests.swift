@@ -6,11 +6,8 @@ import ScholiumContracts
 @Suite("Shared Markdown semantic document")
 struct MarkdownSemanticDocumentTests {
     @Test("Retired relation arrows remain source-located neutral links")
-    func v4RelationArrow() {
+    func retiredRelationArrow() {
         let source = """
-        ---
-        schema_version: dissertation-control-v4
-        ---
         # Claim
 
         ## Relations
@@ -27,7 +24,7 @@ struct MarkdownSemanticDocumentTests {
 
     @Test("Relation-looking prose outside the canonical section stays a neutral link")
     func relationArrowSectionBoundary() {
-        let source = "---\nschema_version: dissertation-control-v4\n---\n# Note\n\n- `supports` -> [[Target]]\n"
+        let source = "# Note\n\n- `supports` -> [[Target]]\n"
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "note.md", rawContent: source))
         #expect(semantic.links.count == 1)
         #expect(semantic.links[0].syntax == .wikilink)
@@ -46,8 +43,8 @@ struct MarkdownSemanticDocumentTests {
     }
 
     @Test("Legacy predicate aliases stay readable but semantically neutral")
-    func v4LegacyAliasBoundary() {
-        let source = "---\nschema_version: dissertation-control-v4\n---\n# Claim\n\n## Relations\n- [[Target|:supports]]\n"
+    func retiredAliasBoundary() {
+        let source = "# Claim\n\n## Relations\n- [[Target|:supports]]\n"
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "claim.md", rawContent: source))
         #expect(semantic.links.first?.relationship == nil)
         #expect(semantic.links.first?.vectorKind == .neutral)
@@ -56,7 +53,7 @@ struct MarkdownSemanticDocumentTests {
 
     @Test("Unknown canonical relation predicates remain visible diagnostics")
     func unknownRelationPredicate() {
-        let source = "---\nschema_version: dissertation-control-v4\n---\n# Note\n\n## Relations\n- `probably_supports` -> [[Target]]\n"
+        let source = "# Note\n\n## Relations\n- `probably_supports` -> [[Target]]\n"
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "note.md", rawContent: source))
         #expect(semantic.diagnostics.contains { $0.code == .unknownRelationshipPredicate })
         #expect(semantic.links.first?.relationship == nil)
@@ -65,9 +62,6 @@ struct MarkdownSemanticDocumentTests {
     @Test("Retired reified relations remain ordinary neutral links")
     func reifiedRelation() {
         let source = """
-        ---
-        schema_version: dissertation-control-v4
-        ---
         # Pressure Record
 
         ## Relation

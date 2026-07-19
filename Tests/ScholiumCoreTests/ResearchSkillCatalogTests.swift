@@ -276,9 +276,46 @@ struct ResearchSkillCatalogTests {
         let core = try catalog.entry(id: "scholium-core-protocol")
         let resources = try BundledResearchSkillLibrary.resourcePaths(for: core)
         #expect(resources.contains("SKILL.md"))
+        #expect(resources.contains("references/agent-transport.md"))
         #expect(resources.contains("references/mixed-mode.md"))
         #expect(!resources.contains { $0.contains("..") })
         #expect(!resources.contains { $0.hasPrefix("agents/") })
+        let coreEntry = try BundledResearchSkillLibrary.resource(
+            for: core,
+            relativePath: "SKILL.md"
+        )
+        for protectedCapacity in [
+            "Truth-pursuing",
+            "Fidelity-caring",
+            "Knowledge-base-constructing",
+            "Preserve epistemic integrity",
+            "Preserve researcher authority",
+            "Protect private research",
+            "Schedule audits once",
+        ] {
+            #expect(coreEntry.contains(protectedCapacity))
+        }
+        #expect(coreEntry.contains("references/agent-transport.md"))
+        #expect(!coreEntry.contains("scholium skills catalog"))
+        #expect(!coreEntry.contains("scholium doctor"))
+        let transport = try BundledResearchSkillLibrary.resource(
+            for: core,
+            relativePath: "references/agent-transport.md"
+        )
+        #expect(transport.contains("scholium doctor --format json"))
+        #expect(transport.contains(
+            "scholium skills catalog --triptych <triptych> --format text"
+        ))
+        #expect(transport.contains(
+            "scholium skills show <workflow-skill-id> --triptych <triptych> --format text"
+        ))
+        #expect(transport.contains(
+            "--resource <relative-path> --format text"
+        ))
+        #expect(transport.contains("Prepared Function state and typed `nextActions` remain JSON"))
+        #expect(!transport.contains(
+            "scholium skills catalog --triptych <triptych> --format json"
+        ))
         #expect(try BundledResearchSkillLibrary.resource(
             for: core,
             relativePath: "references/mixed-mode.md"
@@ -456,24 +493,6 @@ struct ResearchSkillCatalogTests {
         #expect(locator.contains(
             "scholium dialogue show \(dialogueID.uuidString) --triptych \(triptychID.uuidString) --format json"
         ))
-    }
-
-    @Test("Dialogue entries decode without a legacy response snapshot")
-    func legacyDialogueEntryDecodesWithoutContract() throws {
-        let entry = DialogueEntry(
-            triptychID: UUID(),
-            instruction: "Inspect this note.",
-            selectedNotes: [],
-            includedComments: [],
-            generatedPrompt: "",
-            checkpointID: UUID()
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(entry)
-        #expect(!String(decoding: data, as: UTF8.self).contains("responseContract"))
-        let decoded = try JSONDecoder.scholium.decode(DialogueEntry.self, from: data)
-        #expect(decoded.responseContract == nil)
     }
 
     private static func validSkillSource(name: String) -> String {

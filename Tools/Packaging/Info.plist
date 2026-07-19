@@ -4,10 +4,15 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>Scholium</string>
     <key>CFBundleIdentifier</key>
-    <string>com.kbmanager.app</string>
+    <string>com.scholium.app</string>
     <key>CFBundleIconFile</key>
     <string>ScholiumIcon.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>

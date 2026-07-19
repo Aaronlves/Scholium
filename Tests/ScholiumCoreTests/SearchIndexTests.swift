@@ -54,6 +54,74 @@ struct SearchIndexTests {
         #expect(legacyCallout.first?.relativePath == "Papers/Reasons.md")
     }
 
+    @Test("Latin fast-path indexing preserves canonical Unicode equivalence")
+    func canonicalUnicodeEquivalence() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(
+            databaseURL: fixture.databaseURL,
+            vaultID: fixture.vault.id
+        )
+        _ = try await index.rebuild([
+            fixture.item("Papers/Cafe.md", "A Cafe\u{301} argument remains searchable."),
+        ])
+
+        #expect(try await index.search(SearchQuery("Café")).map(\.relativePath) == [
+            "Papers/Cafe.md",
+        ])
+    }
+
+    @Test("Cancellation rolls back a complete index rebuild")
+    func cancelledRebuildRollsBack() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(
+            databaseURL: fixture.databaseURL,
+            vaultID: fixture.vault.id
+        )
+        let original = fixture.item("Original.md", "original-search-term")
+        let originalGeneration = try await index.rebuild([original])
+
+        let cancelledRebuild = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await index.rebuild([
+                fixture.item("Replacement.md", "replacement-search-term"),
+            ])
+        }
+        await #expect(throws: CancellationError.self) {
+            _ = try await cancelledRebuild.value
+        }
+
+        let generationAfterCancellation = try await index.generation()
+        #expect(generationAfterCancellation == originalGeneration)
+        #expect(try await index.search(SearchQuery("original-search-term")).map(\.relativePath) == [
+            "Original.md",
+        ])
+        #expect(try await index.search(SearchQuery("replacement-search-term")).isEmpty)
+    }
+
+    @Test("Cancellation rolls back an empty index rebuild")
+    func cancelledEmptyRebuildRollsBack() async throws {
+        let fixture = try Fixture()
+        let index = try SQLiteSearchIndex(
+            databaseURL: fixture.databaseURL,
+            vaultID: fixture.vault.id
+        )
+        let original = fixture.item("Original.md", "original-search-term")
+        let originalGeneration = try await index.rebuild([original])
+
+        let cancelledRebuild = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await index.rebuild([])
+        }
+        await #expect(throws: CancellationError.self) {
+            _ = try await cancelledRebuild.value
+        }
+
+        #expect(try await index.generation() == originalGeneration)
+        #expect(try await index.search(SearchQuery("original-search-term")).map(\.relativePath) == [
+            "Original.md",
+        ])
+    }
+
     @Test("Malformed phrases and filters report query diagnostics")
     func malformedQueryDiagnostics() async throws {
         let fixture = try Fixture()
@@ -442,21 +510,21 @@ struct SearchIndexTests {
         _ = try await sourceIndex.rebuild([fixture.item("Paper.md", "Shared private phrase")])
 
         let controlID = UUID()
-        let controlVault = RegisteredVault(name: "Control", role: .dissertationControl, canonicalPath: "/fixtures/control")
+        let workVault = RegisteredVault(name: "Works", role: .draftProject, canonicalPath: "/fixtures/works")
         let controlURL = fixture.root.appendingPathComponent("control.sqlite")
         let controlIndex = try SQLiteSearchIndex(databaseURL: controlURL, vaultID: controlID)
         let controlDocument = NoteDocument(relativePath: "Decision.md", rawContent: "Shared private phrase")
         _ = try await controlIndex.rebuild([SearchIndexDocument(
             vaultID: controlID,
-            vaultName: controlVault.name,
-            vaultRole: .dissertationControl,
+            vaultName: workVault.name,
+            vaultRole: .draftProject,
             document: controlDocument
         )])
 
-        let indexes = [(fixture.vault, sourceIndex), (controlVault, controlIndex)]
+        let indexes = [(fixture.vault, sourceIndex), (workVault, controlIndex)]
         let hits = try await FederatedSearchEngine.search(SearchQuery("private"), indexes: indexes)
         #expect(hits.contains { $0.vaultRole == .sourceCorpus })
-        #expect(hits.contains { $0.vaultRole == .dissertationControl })
+        #expect(hits.contains { $0.vaultRole == .draftProject })
     }
 
     private struct Fixture {

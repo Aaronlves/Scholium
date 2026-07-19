@@ -774,16 +774,14 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
     public let instruction: String
     public let selectedNotes: [DialogueNoteReference]
     public let includedComments: [DialogueIncludedComment]
-    public let generatedPrompt: String
+    public let preparedInstructions: String
     public let checkpointID: UUID?
-    /// Optional function-run evidence. A method-unresolved preflight may be
-    /// finalized once without changing its research facts; legacy and ordinary
-    /// Dialogue records decode without it.
+    /// Optional function-run evidence. A resource-unresolved preflight may be
+    /// finalized once without changing its research facts.
     public let functionSnapshot: ResearchFunctionSnapshot?
     public let functionCompletion: ResearchFunctionCompletion?
-    /// Immutable request-time presentation choices. Nil is retained only for
-    /// legacy records written before Beta response contracts existed.
-    public let responseContract: DialogueResponseContract?
+    /// Immutable request-time presentation choices.
+    public let responseContract: DialogueResponseContract
     public let requestedDestination: String?
     public let linkedNoteSummary: String?
     public let createdAt: Date
@@ -796,7 +794,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         case instruction
         case selectedNotes
         case includedComments
-        case generatedPrompt
+        case preparedInstructions
         case checkpointID
         case functionSnapshot
         case functionCompletion
@@ -814,11 +812,13 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         instruction: String,
         selectedNotes: [DialogueNoteReference],
         includedComments: [DialogueIncludedComment],
-        generatedPrompt: String,
+        preparedInstructions: String,
         checkpointID: UUID?,
         functionSnapshot: ResearchFunctionSnapshot? = nil,
         functionCompletion: ResearchFunctionCompletion? = nil,
-        responseContract: DialogueResponseContract? = nil,
+        responseContract: DialogueResponseContract = DialogueResponseContract(
+            profile: DialogueResponseProfile()
+        ),
         requestedDestination: String? = nil,
         linkedNoteSummary: String? = nil,
         createdAt: Date = Date(),
@@ -830,7 +830,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         self.instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         self.selectedNotes = selectedNotes
         self.includedComments = includedComments
-        self.generatedPrompt = generatedPrompt
+        self.preparedInstructions = preparedInstructions
         self.checkpointID = checkpointID
         self.functionSnapshot = functionSnapshot
         self.functionCompletion = functionCompletion
@@ -854,7 +854,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
             [DialogueIncludedComment].self,
             forKey: .includedComments
         ) ?? []
-        generatedPrompt = try container.decode(String.self, forKey: .generatedPrompt)
+        preparedInstructions = try container.decode(String.self, forKey: .preparedInstructions)
         checkpointID = try container.decodeIfPresent(UUID.self, forKey: .checkpointID)
         functionSnapshot = try container.decodeIfPresent(
             ResearchFunctionSnapshot.self,
@@ -864,7 +864,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
             ResearchFunctionCompletion.self,
             forKey: .functionCompletion
         )
-        responseContract = try container.decodeIfPresent(
+        responseContract = try container.decode(
             DialogueResponseContract.self,
             forKey: .responseContract
         )
@@ -885,11 +885,11 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         try container.encode(instruction, forKey: .instruction)
         try container.encode(selectedNotes, forKey: .selectedNotes)
         try container.encode(includedComments, forKey: .includedComments)
-        try container.encode(generatedPrompt, forKey: .generatedPrompt)
+        try container.encode(preparedInstructions, forKey: .preparedInstructions)
         try container.encodeIfPresent(checkpointID, forKey: .checkpointID)
         try container.encodeIfPresent(functionSnapshot, forKey: .functionSnapshot)
         try container.encodeIfPresent(functionCompletion, forKey: .functionCompletion)
-        try container.encodeIfPresent(responseContract, forKey: .responseContract)
+        try container.encode(responseContract, forKey: .responseContract)
         try container.encodeIfPresent(requestedDestination, forKey: .requestedDestination)
         try container.encodeIfPresent(linkedNoteSummary, forKey: .linkedNoteSummary)
         try container.encode(createdAt, forKey: .createdAt)
@@ -1364,7 +1364,7 @@ public enum CritiqueDocumentContract {
         ]
     }
 
-    /// Adds a new metadata block to a legacy Critique that has no frontmatter,
+    /// Adds a new metadata block to a Critique that has no frontmatter,
     /// preserving every existing source byte after the optional BOM.
     public static func sourceByAddingRequestMetadata(
         to document: NoteDocument,

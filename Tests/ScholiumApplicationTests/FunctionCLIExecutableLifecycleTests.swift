@@ -73,7 +73,7 @@ struct FunctionCLIExecutableLifecycleTests {
             "--format", "json",
         ])
         let shown = try decoder.decode(DialogueEntry.self, from: shownResult.stdout)
-        #expect(shown.responseContract?.knownModules == [
+        #expect(shown.responseContract.knownModules == [
             .criticalReflection,
             .philosophicalSignificance,
         ])

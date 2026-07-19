@@ -24,21 +24,6 @@ extension WorkspaceHandle {
         }
         do {
             let selection = try await store.functionSkillSelection(for: function)
-            if let legacy = selection.selectedPractices.first(where: {
-                $0.application == .replace
-            }) {
-                return ResearchFunctionSkillBindingStatus(
-                    function: function,
-                    candidates: candidates,
-                    selection: selection,
-                    bindingRevision: revision,
-                    issue: ResearchFunctionSkillBindingIssue(
-                        code: .legacyReplacementPractice,
-                        selectedPackageID: legacy.packageID,
-                        selectedPracticeID: legacy.practiceID
-                    )
-                )
-            }
             let compatible = try await store.compatiblePracticeIDs(
                 for: function,
                 primaryPackageID: selection.primaryPackageID

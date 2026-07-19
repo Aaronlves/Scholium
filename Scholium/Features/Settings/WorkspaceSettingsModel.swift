@@ -37,12 +37,9 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     }
 }
 
-/// Delivery-neutral operations assembled by the macOS composition root.
-/// Settings owns feature state but never receives an Application handle.
+/// Triptych registration and portable-settings operations used by Settings.
 @MainActor
-struct WorkspaceSettingsCapabilities {
-    let commandLineToolStatus: () async -> CommandLineToolStatus
-    let installCommandLineTool: () async throws -> CommandLineToolStatus
+struct WorkspaceSettingsWorkspaceCapabilities {
     let loadSnapshot: (UUID?) async throws -> WorkspaceSettingsSnapshot
     let configureWorkspace: (
         URL, URL, URL, URL, UUID?, String?
@@ -51,10 +48,28 @@ struct WorkspaceSettingsCapabilities {
     let dialogueResponseProfile: (UUID) async throws -> DialogueResponseProfile
     let saveDialogueResponseProfile: (UUID, DialogueResponseProfile) async throws -> Void
     let portableContainerURL: (URL) async -> URL?
+}
+
+/// Machine-local installation and external-opening operations used by Settings.
+@MainActor
+struct WorkspaceSettingsMachineCapabilities {
+    let commandLineToolStatus: () async -> CommandLineToolStatus
+    let installCommandLineTool: () async throws -> CommandLineToolStatus
+    let openExternal: (URL) -> Bool
+}
+
+/// Zotero operations used by the dedicated Settings pane.
+@MainActor
+struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo
     let openZotero: () async -> Void
     let forgetZoteroCache: () async throws -> Void
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
+}
+
+/// Research Guidance package, binding, and recovery operations used by Settings.
+@MainActor
+struct WorkspaceSettingsResearchGuidanceCapabilities {
     let researchSkills: (UUID) async throws -> [ResearchSkillPackage]
     let inspectResearchSkillDraft: (
         UUID, String, String, ResearchSkillOrigin
@@ -103,7 +118,16 @@ struct WorkspaceSettingsCapabilities {
         UUID, UUID, ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome
     let researchSkillsURL: (UUID) async throws -> URL
-    let openExternal: (URL) -> Bool
+}
+
+/// Delivery-neutral operations assembled by the macOS composition root.
+/// Settings owns feature state but never receives an Application handle.
+@MainActor
+struct WorkspaceSettingsCapabilities {
+    let workspace: WorkspaceSettingsWorkspaceCapabilities
+    let machine: WorkspaceSettingsMachineCapabilities
+    let zotero: WorkspaceSettingsZoteroCapabilities
+    let researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities
 }
 
 extension ResearchSkillMaintenancePreparation {
@@ -133,6 +157,7 @@ final class WorkspaceSettingsModel: ObservableObject {
     @Published private(set) var snapshot: WorkspaceSettingsSnapshot
     @Published private(set) var isRefreshing = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var toastMessage: String?
     @Published var workspaceRecoveryMessage: String?
     @Published private(set) var activeTriptychServicesID: UUID?
 
@@ -202,7 +227,9 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     func refresh() async {
         if let capabilities {
-            await perform { try await capabilities.loadSnapshot(self.snapshot.activeTriptychID) }
+            await perform {
+                try await capabilities.workspace.loadSnapshot(self.snapshot.activeTriptychID)
+            }
         } else if let loadSnapshot {
             await perform { try await loadSnapshot() }
         }
@@ -218,14 +245,14 @@ final class WorkspaceSettingsModel: ObservableObject {
                 repairMessage: "The command-line installer is unavailable in this preview."
             )
         }
-        return await capabilities.commandLineToolStatus()
+        return await capabilities.machine.commandLineToolStatus()
     }
 
     func installCommandLineTool() async throws -> CommandLineToolStatus {
         guard let capabilities else {
             throw CommandLineToolInstallationError.bundledToolUnavailable
         }
-        return try await capabilities.installCommandLineTool()
+        return try await capabilities.machine.installCommandLineTool()
     }
 
     func refreshRegisteredVaults() async {
@@ -252,12 +279,12 @@ final class WorkspaceSettingsModel: ObservableObject {
             await refresh()
             return
         }
-        await perform { try await capabilities.loadSnapshot(preferred) }
+        await perform { try await capabilities.workspace.loadSnapshot(preferred) }
     }
 
     func activateTriptych(id: UUID) async {
         if let capabilities {
-            await perform { try await capabilities.loadSnapshot(id) }
+            await perform { try await capabilities.workspace.loadSnapshot(id) }
         } else if let activateSnapshot {
             await perform { try await activateSnapshot(id) }
         }
@@ -275,24 +302,24 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        replaceSnapshot(try await capabilities.saveTriptychSettings(id, settings))
+        replaceSnapshot(try await capabilities.workspace.saveTriptychSettings(id, settings))
     }
 
     func dialogueResponseProfile() async throws -> DialogueResponseProfile {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.dialogueResponseProfile(id)
+        return try await capabilities.workspace.dialogueResponseProfile(id)
     }
 
     func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await capabilities.saveDialogueResponseProfile(id, profile)
+        try await capabilities.workspace.saveDialogueResponseProfile(id, profile)
     }
 
-    func configureThreeVaultWorkspace(
+    func configureTriptych(
         paperAnalysisURL: URL,
         topicKnowledgeURL: URL,
         outputURL: URL,
@@ -303,7 +330,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        replaceSnapshot(try await capabilities.configureWorkspace(
+        replaceSnapshot(try await capabilities.workspace.configureWorkspace(
             paperAnalysisURL,
             topicKnowledgeURL,
             outputURL,
@@ -315,36 +342,36 @@ final class WorkspaceSettingsModel: ObservableObject {
     }
 
     func portableContainerURL(for worksURL: URL) async -> URL? {
-        await capabilities?.portableContainerURL(worksURL)
+        await capabilities?.workspace.portableContainerURL(worksURL)
     }
 
     func zoteroConnectionInfo() async -> ZoteroLibraryInfo {
         guard let capabilities else {
             return ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
         }
-        return await capabilities.zoteroConnectionInfo()
+        return await capabilities.zotero.zoteroConnectionInfo()
     }
 
     func openZotero() async {
-        await capabilities?.openZotero()
+        await capabilities?.zotero.openZotero()
     }
 
     func forgetZoteroCache() async throws {
-        try await capabilities?.forgetZoteroCache()
+        try await capabilities?.zotero.forgetZoteroCache()
     }
 
     func refreshZoteroLibraryInfo() async throws -> ZoteroLibraryInfo {
         guard let capabilities else {
             return ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
         }
-        return try await capabilities.refreshZoteroLibraryInfo()
+        return try await capabilities.zotero.refreshZoteroLibraryInfo()
     }
 
     func researchSkills() async throws -> [ResearchSkillPackage] {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchSkills(id)
+        return try await capabilities.researchGuidance.researchSkills(id)
     }
 
     func inspectResearchSkillDraft(
@@ -355,7 +382,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             return nil
         }
-        return try? await capabilities.inspectResearchSkillDraft(
+        return try? await capabilities.researchGuidance.inspectResearchSkillDraft(
             workspaceID,
             id,
             source,
@@ -367,7 +394,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.citationMethodStatus(workspaceID)
+        return try await capabilities.researchGuidance.citationMethodStatus(workspaceID)
     }
 
     func researchFunctionSkillBindingStatus(
@@ -376,7 +403,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchFunctionSkillBindingStatus(
+        return try await capabilities.researchGuidance.researchFunctionSkillBindingStatus(
             workspaceID,
             function
         )
@@ -386,7 +413,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.bibliographyMethodStatus(workspaceID)
+        return try await capabilities.researchGuidance.bibliographyMethodStatus(workspaceID)
     }
 
     func setBibliographyMethod(
@@ -396,7 +423,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.setBibliographyMethod(
+        return try await capabilities.researchGuidance.setBibliographyMethod(
             workspaceID,
             packageID,
             expectedBindingRevision
@@ -410,7 +437,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.saveResearchFunctionSkillSelection(
+        return try await capabilities.researchGuidance.saveResearchFunctionSkillSelection(
             workspaceID,
             selection,
             expectedBindingRevision
@@ -425,7 +452,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.activateCitationMethod(
+        return try await capabilities.researchGuidance.activateCitationMethod(
             workspaceID,
             ResearchCitationMethodSelection(
                 packageID: packageID,
@@ -441,7 +468,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.clearCitationMethod(
+        return try await capabilities.researchGuidance.clearCitationMethod(
             workspaceID,
             expectedBindingRevision
         )
@@ -453,7 +480,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.adoptBundledCitationStarter(
+        return try await capabilities.researchGuidance.adoptBundledCitationStarter(
             workspaceID,
             expectedBindingRevision
         )
@@ -463,7 +490,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.createResearchSkill(workspaceID, id, source)
+        return try await capabilities.researchGuidance.createResearchSkill(workspaceID, id, source)
     }
 
     func duplicateBundledResearchSkill(
@@ -473,7 +500,11 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.duplicateBundledResearchSkill(workspaceID, id, newID)
+        return try await capabilities.researchGuidance.duplicateBundledResearchSkill(
+            workspaceID,
+            id,
+            newID
+        )
     }
 
     func renameResearchSkill(
@@ -484,7 +515,12 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.renameResearchSkill(workspaceID, id, newID, expectedRevision)
+        return try await capabilities.researchGuidance.renameResearchSkill(
+            workspaceID,
+            id,
+            newID,
+            expectedRevision
+        )
     }
 
     func saveResearchSkill(
@@ -495,7 +531,12 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.saveResearchSkill(workspaceID, id, source, expectedRevision)
+        return try await capabilities.researchGuidance.saveResearchSkill(
+            workspaceID,
+            id,
+            source,
+            expectedRevision
+        )
     }
 
     func deleteResearchSkill(
@@ -505,21 +546,25 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await capabilities.deleteResearchSkill(workspaceID, id, expectedRevision)
+        try await capabilities.researchGuidance.deleteResearchSkill(
+            workspaceID,
+            id,
+            expectedRevision
+        )
     }
 
     func researchSkillResourcePaths(id: String) async throws -> [String] {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchSkillResourcePaths(workspaceID, id)
+        return try await capabilities.researchGuidance.researchSkillResourcePaths(workspaceID, id)
     }
 
     func researchSkillResource(id: String, relativePath: String) async throws -> String {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchSkillResource(
+        return try await capabilities.researchGuidance.researchSkillResource(
             workspaceID,
             id,
             relativePath
@@ -532,7 +577,10 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.prepareResearchSkillMaintenance(workspaceID, request)
+        return try await capabilities.researchGuidance.prepareResearchSkillMaintenance(
+            workspaceID,
+            request
+        )
     }
 
     func applyResearchSkillMaintenance(
@@ -545,7 +593,7 @@ final class WorkspaceSettingsModel: ObservableObject {
               let confirmationToken = preparation.confirmationToken else {
             throw ResearchSkillMaintenanceError.evaluationFailed
         }
-        return try await capabilities.applyResearchSkillMaintenance(
+        return try await capabilities.researchGuidance.applyResearchSkillMaintenance(
             workspaceID,
             preparation,
             confirmationToken
@@ -559,7 +607,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.restoreResearchSkillMaintenance(
+        return try await capabilities.researchGuidance.restoreResearchSkillMaintenance(
             workspaceID,
             snapshotID,
             expectedCurrentState
@@ -572,7 +620,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchSkillMaintenanceSnapshots(
+        return try await capabilities.researchGuidance.researchSkillMaintenanceSnapshots(
             workspaceID,
             packageID
         )
@@ -582,21 +630,20 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchSkillsURL(workspaceID)
+        return try await capabilities.researchGuidance.researchSkillsURL(workspaceID)
     }
 
     func openExternal(_ url: URL) {
-        _ = capabilities?.openExternal(url)
+        _ = capabilities?.machine.openExternal(url)
     }
 
     func showToast(_ message: String) {
-        // Settings previously wrote to a window-only toast surface that its
-        // scene did not render. Keep success paths silent and nonmodal.
-        _ = message
+        toastMessage = message
     }
 
-    func clearError() {
-        errorMessage = nil
+    func dismissToast(_ message: String) {
+        guard toastMessage == message else { return }
+        toastMessage = nil
     }
 
     private func perform(

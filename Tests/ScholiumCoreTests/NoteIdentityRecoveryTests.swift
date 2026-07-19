@@ -45,7 +45,7 @@ struct NoteIdentityRecoveryTests {
             instruction: "Revise.",
             selectedNotes: [reference],
             includedComments: [],
-            generatedPrompt: "Historical target: Old.md",
+            preparedInstructions: "Historical target: Old.md",
             checkpointID: UUID()
         )
         _ = try await stores.dialogue.save(dialogueEntry)
@@ -96,7 +96,7 @@ struct NoteIdentityRecoveryTests {
         #expect(await stores.reviews.record(noteID: identity.id)?.relativePath == "Folder/New.md")
         let migratedDialogue = try await stores.dialogue.entry(id: dialogueEntry.id)
         #expect(migratedDialogue.selectedNotes[0].relativePath == "Folder/New.md")
-        #expect(migratedDialogue.generatedPrompt == "Historical target: Old.md")
+        #expect(migratedDialogue.preparedInstructions == "Historical target: Old.md")
         #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
         #expect(session.selectedDocument?.relativePath == "Folder/New.md")
@@ -164,7 +164,7 @@ struct NoteIdentityRecoveryTests {
             instruction: "Compare.",
             selectedNotes: references,
             includedComments: [],
-            generatedPrompt: "Two Shared.md files",
+            preparedInstructions: "Two Shared.md files",
             checkpointID: UUID()
         )
         _ = try await stores.dialogue.save(dialogueEntry)
@@ -220,7 +220,7 @@ struct NoteIdentityRecoveryTests {
             expectedRevision: destination.fingerprint
         )
         // Simulate an external deletion. Repository permanent deletion now
-        // intentionally purges Note History, while this fixture needs the
+        // intentionally purges repository history, while this fixture needs the
         // destination's unrelated history to remain and block path migration.
         try FileManager.default.removeItem(
             at: fixture.works.appendingPathComponent("New.md")

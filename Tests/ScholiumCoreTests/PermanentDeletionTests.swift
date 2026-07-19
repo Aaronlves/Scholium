@@ -72,7 +72,7 @@ struct PermanentDeletionTests {
             instruction: "Inspect private research.",
             selectedNotes: [reference],
             includedComments: [],
-            generatedPrompt: "Private transport context.",
+            preparedInstructions: "Private transport context.",
             checkpointID: UUID()
         )
         _ = try await dialogueStore.save(dialogue)
@@ -403,7 +403,7 @@ struct PermanentDeletionTests {
                     fingerprint: workFingerprint
                 )],
                 includedComments: [],
-                generatedPrompt: "",
+                preparedInstructions: "",
                 checkpointID: UUID()
             )
             _ = try await dialogueStore.save(dialogue)
@@ -419,7 +419,7 @@ struct PermanentDeletionTests {
                     fingerprint: DocumentFingerprint(content: critiqueSource)
                 )],
                 includedComments: [],
-                generatedPrompt: "",
+                preparedInstructions: "",
                 checkpointID: UUID()
             )
             _ = try await dialogueStore.save(critiqueDialogue)

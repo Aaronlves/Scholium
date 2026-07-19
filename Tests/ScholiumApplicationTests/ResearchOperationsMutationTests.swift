@@ -175,98 +175,12 @@ struct ResearchOperationsMutationTests {
         await runtime.shutdown()
     }
 
-    @Test("Dialogue preparation is read-only and persists its immutable request contract")
-    func dialoguePreparation() async throws {
+    @Test("Recovery operations stay inside the Application boundary")
+    func recoveryOperations() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let note = try #require(try await handle.snapshot().document(id: fixture.analysisID))
-        let stableID = try #require(note.stableIdentity.resolvedID)
-        let anchor = try commentAnchor(in: note.document)
-        let commentRecord = try await handle.research.addComment(
-            to: fixture.analysisID,
-            text: "Preserve this distinction.",
-            anchor: anchor,
-            expectedRevision: note.fingerprint
-        )
-        let commentID = try #require(commentRecord.comments.first?.id)
-        let reference = DialogueNoteReference(
-            noteID: stableID,
-            vaultID: fixture.analysisID.vaultID,
-            vaultName: "Analyses",
-            title: "Analysis",
-            relativePath: fixture.analysisID.relativePath,
-            fingerprint: note.fingerprint,
-            kind: nil
-        )
-
-        let preparation = try await handle.research.createDialogue(
-            instruction: "Reconstruct the argument and mark uncertainty.",
-            selectedNotes: [reference],
-            includedCommentIDs: [commentID],
-            requestedDestination: "Topics/Agency.md"
-        )
-        #expect(!preparation.entry.generatedPrompt.isEmpty)
-        #expect(preparation.entry.generatedPrompt.contains("Target and Materials are read-only"))
-        #expect(preparation.checkpoint == nil)
-        #expect(preparation.entry.checkpointID == nil)
-        #expect(preparation.entry.includedComments.map(\.comment.id) == [commentID])
-        #expect(preparation.instructions.contains("Scholium Dialogue locator"))
-        #expect(preparation.instructions.contains(preparation.entry.id.uuidString))
-        #expect(preparation.instructions.contains("scholium dialogue show"))
-        #expect(try await handle.research.dialogue(id: preparation.entry.id) == preparation.entry)
-        #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
-
-        let followUp = DialogueFollowUpComment(
-            text: "Also distinguish premise from background context.",
-            noteID: stableID,
-            commentID: commentID,
-            createdAt: Date(timeIntervalSince1970: 1_700_000_300)
-        )
-        let updated = try await handle.research.appendDialogueFollowUpComment(
-            followUp,
-            to: preparation.entry.id
-        )
-        #expect(updated.followUpComments == [followUp])
-        await runtime.shutdown()
-    }
-
-    @Test("Critique and recovery operations stay inside the Application boundary")
-    func critiqueAndRecovery() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let work = try #require(try await handle.snapshot().document(id: fixture.workID))
-
-        let preparation = try await handle.research.requestCritique(
-            for: fixture.workID,
-            expectedRevision: work.fingerprint,
-            scope: .both,
-            lens: "Source fidelity",
-            selectedRanges: "Lines 5-8",
-            additionalInstructions: "Separate textual and argumentative concerns."
-        )
-        #expect(preparation.association.workRelativePath == fixture.workID.relativePath)
-        #expect(preparation.association.rounds.count == 1)
-        #expect(preparation.association.rounds.first?.checkpointID == preparation.checkpoint.id)
-        #expect(preparation.instructions.contains("Write Critique to:"))
-        #expect(preparation.instructions.contains("Source fidelity"))
-        let critiqueID = VaultQualifiedNoteID(
-            vaultID: fixture.workID.vaultID,
-            relativePath: preparation.association.critiqueRelativePath
-        )
-        let critique = try await handle.documents.load(critiqueID)
-        #expect(critique.parsedFrontmatter[CritiqueDocumentContract.authorshipKey]?.scalarString == "agent")
-        #expect(critique.parsedFrontmatter[CritiqueDocumentContract.targetPathKey]?.scalarString
-            == fixture.workID.relativePath)
-        let projected = try #require(try await handle.snapshot().document(id: critiqueID))
-        #expect(projected.stableIdentity.resolvedID != nil)
-        #expect(try await handle.research.critique(
-            critiqueRelativePath: preparation.association.critiqueRelativePath
-        )?.id == preparation.association.id)
-
         // Seeding writes disposable fixture bytes before exercising only the
         // public delivery-neutral list/resolve surface and event publication.
         let recovery = TriptychMutationRecoveryRecord(
@@ -339,7 +253,7 @@ struct ResearchFunctionOperationsTests {
         #expect(try await handle.documents.load(fixture.analysisID).fingerprint == target.fingerprint)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         let dialogue = try await handle.research.dialogue(id: preparation.runID)
-        #expect(dialogue.responseContract?.knownModules == [
+        #expect(dialogue.responseContract.knownModules == [
             .criticalReflection,
             .philosophicalSignificance,
         ])
@@ -355,9 +269,9 @@ struct ResearchFunctionOperationsTests {
         ))
         let unchangedDialogue = try await handle.research.dialogue(id: preparation.runID)
         #expect(unchangedDialogue.responseContract == dialogue.responseContract)
-        #expect(unchangedDialogue.generatedPrompt == dialogue.generatedPrompt)
+        #expect(unchangedDialogue.preparedInstructions == dialogue.preparedInstructions)
         #expect(unchangedDialogue.functionSnapshot?.request == preparation.snapshot.request)
-        #expect(unchangedDialogue.responseContract?.profileRevision
+        #expect(unchangedDialogue.responseContract.profileRevision
             != originalProfile.profileRevision)
 
         let incomplete = ResearchFunctionCompletionSubmission(
@@ -1341,15 +1255,15 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Legacy incompatible and replacement Practices expose typed repair")
-    func legacyPracticeBindingRepair() async throws {
+    @Test("Incompatible Practices expose typed current-state repair")
+    func incompatiblePracticeBindingRepair() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let practices = try await handle.research.duplicateBundledSkill(
             id: "scholium-philosophical-practices",
-            as: "my-legacy-practices"
+            as: "my-practices"
         )
         let bindingURL = fixture.rootURL
             .appendingPathComponent(".scholium", isDirectory: true)
@@ -1365,7 +1279,6 @@ struct ResearchFunctionOperationsTests {
               {
                 "package_id": "\(practices.id)",
                 "practice_id": "reviewer",
-                "application": "supplement"
               }
             ]
           }
@@ -1377,31 +1290,6 @@ struct ResearchFunctionOperationsTests {
         #expect(invalidStatus.issue?.code == .invalidPractice)
         #expect(invalidStatus.issue?.selectedPracticeID == "reviewer")
 
-        let replacement = """
-        {
-          "schema_version": 1,
-          "function_bindings": {},
-          "function_skill_bindings": {},
-          "function_practice_bindings": {
-            "critique": [
-              {
-                "package_id": "\(practices.id)",
-                "practice_id": "reviewer",
-                "application": "replace",
-                "official_skill_id": "scholium-critique",
-                "editable_point": "review calibration",
-                "scope": "one Critique",
-                "reason": "legacy fixture"
-              }
-            ]
-          }
-        }
-        """
-        try Data(replacement.utf8).write(to: bindingURL, options: .atomic)
-        let replacementStatus = try await handle.research
-            .researchFunctionSkillBindingStatus(for: .critique)
-        #expect(replacementStatus.issue?.code == .legacyReplacementPractice)
-        #expect(replacementStatus.issue?.selectedPracticeID == "reviewer")
         await runtime.shutdown()
     }
 

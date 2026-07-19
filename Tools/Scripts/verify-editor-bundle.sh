@@ -38,11 +38,11 @@ fi
 
 if ! rg -q 'font-size: 12pt' "$editor_styles" || \
    ! rg -q 'font-size: 12pt' "$read_styles" || \
-   ! rg -q '\.cm-live-h1 \{ font-size: 150%' "$editor_styles" || \
-   ! rg -q 'h1 \{ font-size: 150%' "$read_styles" || \
+   ! rg -U -q '^\.cm-live-h1 \{[^}]*font-size:' "$editor_styles" || \
+   ! rg -U -q '^[[:space:]]*h1 \{[^}]*font-size:' "$read_styles" || \
    ! rg -q '\.scholium-callout-body' "$callout_styles" || \
    ! rg -q 'font-size: 100%' "$callout_styles"; then
-  print -u2 "The normalized document typography baseline is missing or incomplete."
+  print -u2 "The shared document typography roles are missing or incomplete."
   exit 1
 fi
 

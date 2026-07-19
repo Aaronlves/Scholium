@@ -78,8 +78,8 @@ public struct ZoteroMCPTransportDescriptor: Codable, Hashable, Sendable {
         identifier: "scholium-zotero-mcp",
         displayName: "Scholium Zotero MCP",
         command: "scholium",
-        installationCommand: "swift build -c release --product scholium",
-        setupCommand: "mkdir -p ~/.local/bin && install -m 755 .build/release/scholium ~/.local/bin/scholium",
+        installationCommand: "Tools/Scripts/install-cli.sh",
+        setupCommand: "export PATH=\"$HOME/.local/bin:$PATH\"",
         clientConfiguration: ZoteroMCPClientConfiguration(
             command: "scholium",
             arguments: ["zotero", "mcp", "serve"]

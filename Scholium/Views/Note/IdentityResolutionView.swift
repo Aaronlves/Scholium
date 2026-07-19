@@ -61,7 +61,7 @@ struct IdentityResolutionView: View {
                 .accessibilityHint("Choose one previous location, or identify the file as a new note.")
             }
 
-            Text("Confirming a previous note moves its comments, Human Review, Dialogue references, Critique association, Note History, and window state to the current location. Scholium does not change the Markdown file.")
+            Text("Confirming a previous note moves its comments, Human Review, Dialogue references, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

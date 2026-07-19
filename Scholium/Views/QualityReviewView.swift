@@ -242,7 +242,7 @@ struct QualityReviewView: View {
 
     private func save(asDraft: Bool) {
         guard let revision = context.revision else {
-            errorMessage = "The reviewed revision is unavailable. Close Review and reopen the note."
+            errorMessage = String(localized: "The reviewed revision is unavailable. Close Review and reopen the note.", table: "Localizable", bundle: .module)
             return
         }
         Task { @MainActor in

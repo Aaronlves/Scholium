@@ -2,75 +2,65 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-enum ScholiumLibraryVisibilityPolicy {
-    static func automaticVisibility(
-        windowWidth: CGFloat,
-        hasOpenDocument: Bool,
-        isInitial: Bool,
-        previousLayoutMode: LayoutMode
-    ) -> Bool? {
-        if LayoutMode(windowWidth: windowWidth) == .compact {
-            if !hasOpenDocument { return true }
-            if isInitial || previousLayoutMode != .compact { return false }
-        } else if previousLayoutMode == .compact {
-            return true
-        }
-        return nil
-    }
-}
-
 // MARK: - Content View
 
 struct ContentView: View {
     @EnvironmentObject var appState: WindowModel
+    @EnvironmentObject private var researchRecordWindowCoordinator: ResearchRecordWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        GeometryReader { geometry in
+        ScholiumWorkspaceSplitView(
+            libraryVisible: shellLibraryVisible,
+            apparatusVisible: shellApparatusVisible,
+            reduceMotion: reduceMotion,
+            documentTabs: appState.documentTabController.tabs,
+            selectedDocumentTabID: appState.documentTabController.selectedTabID,
+            selectDocumentTab: { appState.selectDocumentTab(withID: $0) },
+            closeDocumentTab: { appState.closeDocumentTab(withID: $0) },
+            researchInspectorVisibilityDidChange: {
+                appState.setResearchInspectorVisible($0)
+            }
+        ) {
+            LibrarySurface {
+                SidebarView(
+                    controller: appState.discoveryController,
+                    context: sidebarContext
+                )
+            }
+            .frame(
+                minWidth: 0,
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
+        } document: {
             Group {
                 if !appState.hasCompletedInitialRestore {
                     ScholiumLaunchPlaceholderView()
-                } else if appState.vaultConfig == nil {
-                    WorkspaceSetupView(context: workspaceSetupContext)
                 } else {
-                    NavigationSplitView(columnVisibility: sidebarVisibility) {
-                        LibrarySurface(isElevatedOverDocument: appState.currentNote != nil) {
-                            SidebarView(
-                                controller: appState.discoveryController,
-                                context: sidebarContext
-                            )
-                        }
-                            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            .navigationSplitViewColumnWidth(
-                                min: 300,
-                                ideal: ScholiumMetrics.Triptych.preferredWidth,
-                                max: ScholiumMetrics.Triptych.preferredWidth
-                            )
-                    } detail: {
-                        detailRegion
-                    }
-                    .navigationSplitViewStyle(.prominentDetail)
-                    .toolbar {
-                        ToolbarItem(placement: .navigation) {
-                            TriptychActionsMenu(
-                                revealCurrentVault: { appState.revealVaultInFinder() },
-                                manageTriptychs: { openSettings() }
-                            )
-                        }
-                    }
-                    .navigationTitle(windowTitle)
+                    detailRegion
                 }
             }
-            .onAppear { updateAdaptiveLayout(for: geometry.size.width, isInitial: true) }
-            .onChange(of: geometry.size.width) { _, width in
-                updateAdaptiveLayout(for: width)
-            }
-            .onChange(of: appState.selectedDocumentPath) { _, _ in
-                updateLibraryVisibilityForDocumentChange(at: geometry.size.width)
-            }
+            .scholiumSurface(.document)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } apparatus: {
+            apparatusRegion
+            .scholiumSurface(.apparatus)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
         }
+        // Only the opaque backing planes extend beneath the native titlebar.
+        // The representable is the sole expanding workspace root; it does not
+        // report child fitting sizes back to SwiftUI.
+        .ignoresSafeArea(.container, edges: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(
             ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
             value: appState.currentNote != nil
@@ -163,22 +153,29 @@ struct ContentView: View {
         .task(id: appState.currentResearchFunctionTarget) {
             await appState.refreshResearchFunctionAvailability()
         }
-    }
-
-    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
-        Binding(
-            get: { appState.sidebarVisible ? .all : .detailOnly },
-            set: { visibility in
-                appState.sidebarVisible = visibility != .detailOnly
-            }
-        )
+        .onChange(of: appState.researchRecordRequestGeneration) { _, _ in
+            researchRecordWindowCoordinator.present(for: appState)
+            openWindow(id: "scholium-research-record")
+        }
     }
 
     private var showsTrailingContext: Bool {
         ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_DISABLE_INSPECTOR"] != "1"
-            && (appState.backlinksVisible || appState.noteHistoryVisible)
-            && appState.usesWideWindowLayout
+            && appState.backlinksVisible
             && appState.currentNote != nil
+    }
+
+    private var shellLibraryVisible: Bool {
+        guard appState.hasCompletedInitialRestore,
+              appState.vaultConfig != nil
+        else { return true }
+        return appState.sidebarVisible
+    }
+
+    private var shellApparatusVisible: Bool {
+        appState.hasCompletedInitialRestore
+            && appState.vaultConfig != nil
+            && showsTrailingContext
     }
 
     private var presentedSheet: Binding<WindowSheetRoute?> {
@@ -214,16 +211,33 @@ struct ContentView: View {
             errorMessage: appState.workspaceCatalogError,
             isRefreshing: appState.isRefreshingWorkspaceCatalog,
             dismissalDays: appState.triptychSettings.attentionDismissalDays,
-            refresh: { await appState.refreshWorkspaceCatalog() }
+            refresh: { await appState.refreshWorkspaceCatalog() },
+            close: { appState.discoveryController.showAttentionQueue(false) }
         )
     }
 
-    private var relationshipViewContext: RelationshipViewContext {
-        RelationshipViewContext(
+    private var researchInspectorContentContext: ResearchInspectorContentContext {
+        ResearchInspectorContentContext(
             currentVault: appState.currentDocumentVault,
             analysesVaultID: appState.workspaceAssignment?.workspace.paperAnalysisVaultID,
             catalog: appState.workspaceCatalog,
-            attentionDismissalDays: appState.triptychSettings.attentionDismissalDays,
+            reviewDisplayState: appState.currentDocumentReviewDisplayState,
+            reviewRecord: appState.currentDocumentReviewRecord,
+            currentRevision: appState.currentNote?.document.fingerprint,
+            openReview: {
+                let function: ResearchFunctionID = appState.currentDocumentVaultRole.allowsHumanReview
+                    ? .review
+                    : .critique
+                appState.openResearchFunction(function)
+            },
+            openResearchRecord: {
+                appState.requestResearchRecord()
+            },
+            openProperties: {
+                guard let path = appState.currentNote?.relativePath else { return }
+                appState.editingNotePath = path
+                appState.showFrontmatterEditor = true
+            },
             resolveZoteroSource: { source in
                 try await appState.zoteroBridge.resolve(source: source)
             },
@@ -234,12 +248,12 @@ struct ContentView: View {
                 try await appState.confirmZoteroItemKey(itemKey, for: reference)
             },
             didConfirmZoteroSource: { title in
-                appState.showToast("Zotero source confirmed for \(title).")
+                appState.showToast(String(localized: "Zotero source confirmed for \(title).", table: "Localizable", bundle: .module))
             },
             copyResearchText: { text in
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
-                appState.showToast("Research instructions copied.")
+                appState.showToast(String(localized: "Research instructions copied.", table: "Localizable", bundle: .module))
             },
             repairBibliographyMethod: {
                 UserDefaults.standard.set(
@@ -302,7 +316,7 @@ struct ContentView: View {
             requestedPresentationMode: appState.requestPresentationMode,
             pendingSourceLine: appState.pendingSourceLine,
             isCompactLayout: appState.layoutMode == .compact,
-            noteHistoryVisible: appState.noteHistoryVisible,
+            sidebarVisible: appState.sidebarVisible,
             researchInspectorVisible: appState.backlinksVisible,
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
@@ -355,6 +369,7 @@ struct ContentView: View {
                 appState.rememberPresentationMode($0, for: path)
             },
             setPendingSourceLine: { appState.pendingSourceLine = $0 },
+            setSidebarVisible: { appState.setLibraryVisible($0) },
             editProperties: {
                 guard let path = documentPath else { return }
                 appState.editingNotePath = path
@@ -363,11 +378,8 @@ struct ContentView: View {
             openResearchFunction: { function, selection in
                 appState.openResearchFunction(function, selection: selection)
             },
-            setNoteHistoryVisible: {
-                appState.setNoteHistoryVisible($0, animated: false)
-            },
             setResearchInspectorVisible: {
-                appState.setResearchInspectorVisible($0, animated: false)
+                appState.setResearchInspectorVisible($0)
             },
             notify: { message, kind in
                 switch kind {
@@ -376,30 +388,6 @@ struct ContentView: View {
                 case .error: appState.showToast(message, kind: .error)
                 }
             }
-        )
-    }
-
-    private var noteHistoryContext: NoteHistoryContext {
-        NoteHistoryContext(
-            controller: appState.researchController,
-            vaultRole: appState.currentDocumentVaultRole,
-            documentRevisions: appState.currentDocumentRevisions,
-            currentReview: { _ in appState.currentDocumentReviewRecord },
-            loadDialogue: { await appState.dialogueHistory(for: $0) },
-            loadCritique: { await appState.critiqueAssociationRelated(to: $0) },
-            loadCheckpoints: { try await appState.noteCheckpoints(for: $0) },
-            checkpointContent: { try await appState.noteCheckpointContent($0, path: $1) },
-            createCheckpoint: {
-                _ = try await appState.createCheckpoint(name: $0, kind: .manual)
-            },
-            restoreNote: { try await appState.restoreNote($0, from: $1) },
-            revealCheckpoints: { appState.revealCheckpointsInFinder() },
-            copyText: { try appState.copyTextToClipboard($0) },
-            openNote: { appState.requestOpenNote($0) },
-            closeTrailing: {
-                appState.setNoteHistoryVisible(false, animated: false)
-            },
-            notify: { appState.showToast($0) }
         )
     }
 
@@ -415,6 +403,12 @@ struct ContentView: View {
             filteredNotes: appState.filteredNotes,
             allNotes: appState.notes,
             currentVaultID: appState.currentRegisteredVault?.id,
+            disclosureScope: appState.currentRegisteredVault.map {
+                LibraryDisclosureScope(
+                    vaultID: $0.id,
+                    locationScope: appState.noteLocationScope
+                )
+            },
             selectedDocumentPath: selectedLibraryDocumentPath,
             libraryFocusRequestGeneration: appState.libraryFocusRequestGeneration,
             currentVaultRole: appState.currentVaultRole,
@@ -434,9 +428,10 @@ struct ContentView: View {
             propertyKeys: propertyFilterOptions.keys,
             propertyValues: propertyFilterOptions.valuesByKey,
             resolvedIdentityPaths: Set(appState.noteIdentityByPath.keys),
+            bibliographyController: appState.researchController.bibliography,
+            attentionQueueContext: attentionQueueContext,
             reviewDisplayState: { appState.reviewDisplayState(for: $0) },
             notesAreOrdered: { appState.notesAreOrdered($0, $1) },
-            presentAttention: { appState.showAttentionQueues = true },
             selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
             openLifecycleNote: { appState.requestLifecycleNote($0, in: $1) },
@@ -455,6 +450,35 @@ struct ContentView: View {
                     destination: destination
                 )
             },
+            openRecommendedAnalysis: { reference in
+                guard let note = appState.workspaceCatalog?.notes.first(where: {
+                    $0.reference.vaultID == reference.vaultID
+                        && $0.reference.relativePath == reference.relativePath
+                }) else { return }
+                appState.requestOpenNote(note.reference)
+            },
+            openRecommendedZoteroItem: { itemKey in
+                await appState.zoteroBridge.openInZotero(zoteroKey: itemKey)
+            },
+            copyRecommendedBibliographyText: { text in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                appState.showToast(String(localized: "Research instructions copied.", table: "Localizable", bundle: .module))
+            },
+            repairRecommendedBibliographyMethod: {
+                UserDefaults.standard.set(
+                    WorkspaceSettingsPane.researchGuidance.rawValue,
+                    forKey: "scholium.settings.selectedPane"
+                )
+                UserDefaults.standard.set(
+                    "skills",
+                    forKey: "scholium.settings.researchGuidanceCollection"
+                )
+                openSettings()
+            },
+            revealCurrentVault: { appState.revealVaultInFinder() },
+            setSidebarVisible: { appState.setLibraryVisible($0) },
+            openSettings: { openSettings() },
             selectSortOrder: { appState.noteSortOrder = $0 },
             showError: { appState.showToast($0, kind: .error) }
         )
@@ -464,64 +488,9 @@ struct ContentView: View {
         appState.currentWorkspaceSlot
     }
 
-    private var workspaceSetupContext: WorkspaceSetupContext {
-        WorkspaceSetupContext(
-            isCreatingNewTriptych: appState.isCreatingNewTriptych,
-            targetTriptychID: appState.workspaceAssignment?.id,
-            workspaceAssignment: appState.workspaceAssignment,
-            registeredTriptychs: appState.registeredTriptychs,
-            recoveryMessage: appState.workspaceRecoveryMessage,
-            isInitialConfiguration: appState.vaultConfig == nil,
-            refreshAssignment: { await appState.refreshWorkspaceAssignment() },
-            portableContainerURL: { await appState.portableContainerURL(for: $0) },
-            configure: { selection in
-                try await appState.configureThreeVaultWorkspace(
-                    paperAnalysisURL: selection.paperAnalysisURL,
-                    topicKnowledgeURL: selection.topicKnowledgeURL,
-                    outputURL: selection.outputURL,
-                    portableContainerURL: selection.portableContainerURL,
-                    triptychID: selection.triptychID,
-                    triptychName: selection.triptychName
-                )
-                appState.workspaceRecoveryMessage = nil
-            },
-            dismiss: { appState.showWorkspaceSetup = false }
-        )
-    }
-
     @ViewBuilder
     private func sheetContent(for route: WindowSheetRoute) -> some View {
         switch route {
-        case .adaptiveContext:
-            if let note = appState.currentNote {
-                if appState.noteHistoryVisible {
-                    NoteHistorySheet(
-                        note: note,
-                        presentation: .sheet,
-                        context: noteHistoryContext
-                    )
-                        .onDisappear {
-                            appState.setNoteHistoryVisible(false, animated: false)
-                        }
-                } else {
-                    AdaptiveResearchInspectorSheet(
-                        note: note,
-                        controller: appState.researchController,
-                        graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
-                        catalog: appState.workspaceCatalog,
-                        currentVaultID: appState.currentDocumentVaultID,
-                        relationshipViewContext: relationshipViewContext
-                    ) {
-                        appState.setResearchInspectorVisible(false, animated: false)
-                    }
-                    .environmentObject(appState)
-                    .onDisappear {
-                        appState.setResearchInspectorVisible(false, animated: false)
-                    }
-                }
-            }
-        case .workspaceSetup:
-            WorkspaceSetupView(context: workspaceSetupContext)
         case .frontmatter(let route):
             if let note = note(at: route.path) {
                 FrontmatterEditorView(
@@ -540,7 +509,7 @@ struct ContentView: View {
                         expectedRevision: revision,
                         researchUnitEdit: researchUnitEdit
                     )
-                    appState.showToast("Frontmatter saved")
+                    appState.showToast(String(localized: "Frontmatter saved", table: "Localizable", bundle: .module))
                 }
                     .frame(minWidth: 520, minHeight: 560)
             }
@@ -576,16 +545,10 @@ struct ContentView: View {
                             )
                             openSettings()
                         },
+                        agentApplicationHandoff: appState.agentApplicationHandoff,
                         copyInstructions: { instructions in
-                            do {
-                                try appState.copyTextToClipboard(instructions)
-                                appState.showToast("Function instructions copied.")
-                            } catch {
-                                appState.showToast(
-                                    error.localizedDescription,
-                                    kind: .error
-                                )
-                            }
+                            try appState.copyTextToClipboard(instructions)
+                            appState.showToast(String(localized: "Function instructions copied.", table: "Localizable", bundle: .module))
                         },
                         dismiss: {
                             appState.presentationRouter.dismissSheet()
@@ -616,15 +579,10 @@ struct ContentView: View {
                     }
                 }
             }
-        case .attention:
-            AttentionQueueView(
-                controller: appState.discoveryController,
-                context: attentionQueueContext
-            )
         case .createCheckpoint:
             CreateCheckpointView { name in
                 _ = try await appState.createCheckpoint(name: name, kind: .manual)
-                appState.showToast("Checkpoint created.")
+                appState.showToast(String(localized: "Checkpoint created.", table: "Localizable", bundle: .module))
             }
         case .restoreCheckpoint:
             RestoreCheckpointView(
@@ -634,7 +592,7 @@ struct ContentView: View {
                         checkpointID,
                         selection: selection
                     )
-                    appState.showToast("Checkpoint restored. Before Restore checkpoint created.")
+                    appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
                 },
                 revealCheckpoints: {
                     appState.revealCheckpointsInFinder()
@@ -827,45 +785,6 @@ struct ContentView: View {
         )
     }
 
-    private func updateAdaptiveLayout(for width: CGFloat, isInitial: Bool = false) {
-        guard abs(appState.windowWidth - width) > 0.5 else { return }
-        let previousLayoutMode = appState.layoutMode
-        // GeometryReader is evaluated during layout. Defer observable state
-        // changes until that pass completes to avoid recursive AppKit
-        // constraint invalidation on beta macOS.
-        DispatchQueue.main.async {
-            guard abs(appState.windowWidth - width) > 0.5 else { return }
-            appState.windowWidth = width
-            if width < 1200, appState.backlinksVisible {
-                appState.setResearchInspectorVisible(false, animated: false)
-            }
-            if width < 1200, appState.noteHistoryVisible {
-                appState.setNoteHistoryVisible(false, animated: false)
-            }
-            if let visibility = ScholiumLibraryVisibilityPolicy.automaticVisibility(
-                windowWidth: width,
-                hasOpenDocument: appState.currentNote != nil,
-                isInitial: isInitial,
-                previousLayoutMode: previousLayoutMode
-            ) {
-                appState.sidebarVisible = visibility
-            }
-        }
-    }
-
-    private func updateLibraryVisibilityForDocumentChange(at width: CGFloat) {
-        let hasOpenDocument = appState.currentNote != nil
-        DispatchQueue.main.async {
-            guard let visibility = ScholiumLibraryVisibilityPolicy.automaticVisibility(
-                windowWidth: width,
-                hasOpenDocument: hasOpenDocument,
-                isInitial: true,
-                previousLayoutMode: appState.layoutMode
-            ) else { return }
-            appState.sidebarVisible = visibility
-        }
-    }
-
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
@@ -877,37 +796,25 @@ struct ContentView: View {
                     appState.showTransactionRecovery = true
                 }
             }
-            if showsTrailingContext, let note = appState.currentNote {
-                // SwiftUI's `.inspector` host can recursively invalidate
-                // NSWindow constraints on beta macOS when the selected note adds a
-                // WebKit-backed document. HSplitView preserves the native trailing,
-                // resizable inspector model without that unstable window host.
-                HSplitView {
-                    detailContent
-                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            detailContent
+        }
+    }
 
-                    if appState.noteHistoryVisible {
-                        NoteHistorySheet(
-                            note: note,
-                            presentation: .trailing,
-                            context: noteHistoryContext
-                        )
-                            .frame(minWidth: 300, idealWidth: 340, maxWidth: 420, maxHeight: .infinity)
-                    } else {
-                        ResearchInspectorView(
-                            note: note,
-                            controller: appState.researchController,
-                            graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
-                            catalog: appState.workspaceCatalog,
-                            currentVaultID: appState.currentDocumentVaultID,
-                            relationshipViewContext: relationshipViewContext
-                        )
-                            .frame(minWidth: 280, idealWidth: 322, maxWidth: 380, maxHeight: .infinity)
-                    }
-                }
-            } else {
-                detailContent
-            }
+    @ViewBuilder
+    private var apparatusRegion: some View {
+        if let note = appState.currentNote {
+            ResearchInspectorView(
+                note: note,
+                controller: appState.researchController,
+                graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
+                catalog: appState.workspaceCatalog,
+                currentVaultID: appState.currentDocumentVaultID,
+                researchInspectorContentContext: researchInspectorContentContext
+            )
+        } else {
+            Color.clear
+                .scholiumSurface(.apparatus)
+                .accessibilityHidden(true)
         }
     }
 
@@ -924,69 +831,30 @@ struct ContentView: View {
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.995)))
                 .zIndex(0)
         } else {
-            FeaturedArtworkDetailView()
+            ScholiumNoDocumentDetailView()
                 .transition(.opacity)
         }
     }
 
-    private var windowTitle: String {
-        appState.currentNote?.title ?? appState.currentNote?.displayName ?? "Scholium"
-    }
 }
 
 private struct LibrarySurface<Content: View>: View {
-    let isElevatedOverDocument: Bool
     let content: Content
 
-    init(
-        isElevatedOverDocument: Bool,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.isElevatedOverDocument = isElevatedOverDocument
+    init(@ViewBuilder content: () -> Content) {
         self.content = content()
     }
 
     var body: some View {
         content
             .scholiumSurface(.navigation)
-            .overlay(alignment: .trailing) {
-                ScholiumStructuralRule(orientation: .vertical)
-            }
-            .ignoresSafeArea(.container, edges: .top)
-            .zIndex(isElevatedOverDocument ? 2 : 0)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Library")
             .accessibilityIdentifier("scholium.librarySurface")
     }
 }
 
-private struct TriptychActionsMenu: View {
-    let revealCurrentVault: () -> Void
-    let manageTriptychs: () -> Void
-
-    var body: some View {
-        Menu {
-            Button {
-                manageTriptychs()
-            } label: {
-                Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
-            }
-            Button {
-                revealCurrentVault()
-            } label: {
-                Label("Reveal Current Vault in Finder", systemImage: "folder")
-            }
-        } label: {
-            Label("Triptych management", systemImage: "ellipsis")
-        }
-        .labelStyle(.iconOnly)
-        .help("Triptych management")
-        .accessibilityLabel("Triptych management")
-        .accessibilityIdentifier("scholium.triptychManagement")
-    }
-}
-
-private struct ScholiumLaunchPlaceholderView: View {
+struct ScholiumLaunchPlaceholderView: View {
     var body: some View {
         ProgressView()
             .controlSize(.small)
@@ -996,36 +864,13 @@ private struct ScholiumLaunchPlaceholderView: View {
 }
 
 /// The configured workspace's intentionally silent no-document state. The
-/// Library remains the only actionable interface; this image is decorative.
-private struct FeaturedArtworkDetailView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
+/// Library remains the only actionable interface.
+private struct ScholiumNoDocumentDetailView: View {
     var body: some View {
-        GeometryReader { geometry in
-            if let artwork {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
-            } else {
-                ScholiumColorRole.documentBackground.color
-            }
-        }
+        ScholiumColorRole.documentBackground.color
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityHidden(true)
-        .accessibilityIdentifier("scholium.featuredArtwork")
-    }
-
-    private var artwork: NSImage? {
-        let name = colorScheme == .dark
-            ? "ScholiumFeaturedFolioDark"
-            : "ScholiumFeaturedFolioLight"
-        let url = Bundle.module.url(
-            forResource: name,
-            withExtension: "png",
-            subdirectory: "Artwork"
-        ) ?? Bundle.module.url(forResource: name, withExtension: "png")
-        return url.flatMap(NSImage.init(contentsOf:))
+        .accessibilityIdentifier("scholium.noDocumentSurface")
     }
 }
 
@@ -1089,43 +934,6 @@ private struct SpotlightSearchOverlay: View {
     }
 }
 
-private struct AdaptiveResearchInspectorSheet: View {
-    let note: WindowDocumentLocation
-    let controller: ResearchController
-    let graph: GraphSnapshot?
-    let catalog: WorkspaceCatalogSnapshot?
-    let currentVaultID: UUID?
-    let relationshipViewContext: RelationshipViewContext
-    let close: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Research Inspector")
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                Button("Done", action: close)
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding(18)
-
-            Divider()
-
-            ResearchInspectorView(
-                note: note,
-                controller: controller,
-                graph: graph,
-                catalog: catalog,
-                currentVaultID: currentVaultID,
-                relationshipViewContext: relationshipViewContext
-            )
-        }
-        .frame(minWidth: 420, idealWidth: 460, minHeight: 560, idealHeight: 680)
-        .scholiumSurface(.denseEvidence)
-        .accessibilityIdentifier("scholium.adaptiveContextPanel")
-    }
-}
-
 // MARK: - Loading Overlay
 
 private struct LoadingOverlay: View {
@@ -1141,20 +949,35 @@ private struct LoadingOverlay: View {
                 )
             )
             .accessibilityAddTraits(.isModal)
+            .accessibilityIdentifier("scholium.loadingOverlay")
     }
 }
 
 // MARK: - Toast View
 
 struct ToastView: View {
-    let toast: WindowModel.Toast
+    let message: String
+    let symbol: String
+    let color: Color
+
+    init(toast: WindowModel.Toast) {
+        message = toast.message
+        symbol = toast.kind.symbol
+        color = toast.kind.color
+    }
+
+    init(message: String) {
+        self.message = message
+        symbol = "checkmark.circle"
+        color = ScholiumColorRole.confirmed.color
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: toast.kind.symbol)
+            Image(systemName: symbol)
                 .font(.callout)
-                .foregroundStyle(toast.kind.color)
-            Text(toast.message)
+                .foregroundStyle(color)
+            Text(message)
                 .font(.callout)
                 .fontWeight(.medium)
         }

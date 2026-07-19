@@ -125,11 +125,19 @@ struct AppCompositionRootTests {
         #expect(second.discoveryController.search.errorMessage == "current completion")
 
         first.discoveryController.selectLocationScope(.trash)
-        first.researchController.showNoteHistory(true)
+        first.requestResearchRecord()
         #expect(first.discoveryController.library.locationScope == .trash)
         #expect(second.discoveryController.library.locationScope == .workspace)
-        #expect(first.researchController.inspector.showsNoteHistory)
-        #expect(!second.researchController.inspector.showsNoteHistory)
+        #expect(first.researchRecordRequestGeneration == 1)
+        #expect(first.researchController.researchRecordRequestGeneration == 1)
+        #expect(second.researchRecordRequestGeneration == 0)
+
+        first.pendingSourceLine = 17
+        first.changedSinceReviewPaths = [reference.relativePath]
+        #expect(first.documentController.pendingSourceLine == 17)
+        #expect(first.documentController.changedSinceReviewPaths == [reference.relativePath])
+        #expect(second.documentController.pendingSourceLine == nil)
+        #expect(second.documentController.changedSinceReviewPaths.isEmpty)
 
         let lifecycleTarget = NoteLifecycleTarget(
             documentID: VaultQualifiedNoteID(
@@ -284,7 +292,7 @@ struct AppCompositionRootTests {
 
         let store = WorkspaceStore()
         let workspaceID = UUID()
-        let initiallyConfigured = try await store.configureTriptych(
+        let initiallyConfigured = try await store.configureTriptychCapabilities(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
             outputURL: works,
@@ -292,6 +300,7 @@ struct AppCompositionRootTests {
             triptychID: workspaceID,
             triptychName: "Rebind Fixture"
         )
+        let initialHandle = try await store.applicationRuntime.openWorkspace(id: workspaceID)
         let first = WindowModel(workspaceStore: store, requestedTriptychID: workspaceID)
         let second = WindowModel(workspaceStore: store, requestedTriptychID: workspaceID)
         await first.refreshWorkspaceAssignment(preferredTriptychID: workspaceID)
@@ -307,7 +316,7 @@ struct AppCompositionRootTests {
         )
         #expect(firstInitial.runtimeIdentity == initiallyConfigured.runtimeIdentity)
         #expect(secondInitial.runtimeIdentity == initiallyConfigured.runtimeIdentity)
-        #expect(await initiallyConfigured.events.subscriberCount == 1)
+        #expect(await initialHandle.events.subscriberCount == 1)
 
         first.presentationRouter.present(.createCheckpoint)
         first.discoveryController.beginSearch(SearchWorkspaceState(
@@ -322,7 +331,8 @@ struct AppCompositionRootTests {
         first.documentController.session(for: sessionKey).editingSource = "first exact buffer"
         second.documentController.session(for: sessionKey).editingSource = "second exact buffer"
 
-        let replacement = try await store.reloadTriptych(id: workspaceID)
+        let replacement = try await store.reloadTriptychCapabilities(id: workspaceID)
+        let replacementHandle = try await store.applicationRuntime.openWorkspace(id: workspaceID)
         let firstReplacement: WindowWorkspaceCapabilities = try storedOptionalValue(
             named: "activeWorkspaceCapabilities",
             in: first
@@ -331,7 +341,7 @@ struct AppCompositionRootTests {
             named: "activeWorkspaceCapabilities",
             in: second
         )
-        #expect(replacement !== initiallyConfigured)
+        #expect(replacement.runtimeIdentity != initiallyConfigured.runtimeIdentity)
         #expect(firstReplacement.runtimeIdentity == replacement.runtimeIdentity)
         #expect(secondReplacement.runtimeIdentity == replacement.runtimeIdentity)
         #expect(firstReplacement.runtimeIdentity == secondReplacement.runtimeIdentity)
@@ -347,13 +357,13 @@ struct AppCompositionRootTests {
         #expect(try await second.documentController.workspaceSnapshots().count == 3)
         #expect(try await first.discoveryController.discoverySnapshot().catalog.notes.count == 3)
         #expect(try await second.researchController.researchSnapshot().healthIssues.isEmpty)
-        #expect(await initiallyConfigured.events.subscriberCount == 0)
-        #expect(await initiallyConfigured.ownedBackgroundTaskCount == 0)
-        #expect(await replacement.events.subscriberCount == 1)
+        #expect(await initialHandle.events.subscriberCount == 0)
+        #expect(await initialHandle.ownedBackgroundTaskCount == 0)
+        #expect(await replacementHandle.events.subscriberCount == 1)
 
         await store.shutdownApplicationRuntime()
-        #expect(await replacement.events.subscriberCount == 0)
-        #expect(await replacement.ownedBackgroundTaskCount == 0)
+        #expect(await replacementHandle.events.subscriberCount == 0)
+        #expect(await replacementHandle.ownedBackgroundTaskCount == 0)
     }
 
     @Test("Two live windows converge safely while retaining independent sessions")
@@ -398,7 +408,7 @@ struct AppCompositionRootTests {
         }
 
         let store = WorkspaceStore()
-        let configured = try await store.configureTriptych(
+        let configured = try await store.configureTriptychCapabilities(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
             outputURL: works,
@@ -406,6 +416,7 @@ struct AppCompositionRootTests {
             triptychName: "Live Multiwindow Fixture"
         )
         let workspaceID = configured.id
+        let configuredHandle = try await store.applicationRuntime.openWorkspace(id: workspaceID)
         var firstWindow: WindowModel? = WindowModel(
             workspaceStore: store,
             requestedTriptychID: workspaceID
@@ -450,8 +461,8 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.discoveryController !== secondWindow.discoveryController)
         #expect(firstWindow!.researchController !== secondWindow.researchController)
 
-        #expect(await configured.events.subscriberCount == 1)
-        #expect(await configured.ownedBackgroundTaskCount > 0)
+        #expect(await configuredHandle.events.subscriberCount == 1)
+        #expect(await configuredHandle.ownedBackgroundTaskCount > 0)
         #expect(await store.applicationRuntime.pooledVaultSubscriberCount(
             vaultID: analysesVault.id
         ) == 1)
@@ -538,12 +549,16 @@ struct AppCompositionRootTests {
         #expect(firstSession.presentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
-        var nativeTabRoute: TriptychWindowRoute?
-        firstWindow!.installWindowRouteHandler { nativeTabRoute = $0 }
         let visibleReference = try #require(firstWindow!.currentDocumentDescriptor?.reference)
-        firstWindow!.requestOpenNote(visibleReference, disposition: .newNativeTab)
-        #expect(nativeTabRoute?.initialDocument?.vaultID == analysesVault.id)
-        #expect(nativeTabRoute?.initialDocument?.relativePath == "Shared.md")
+        let windowIDBeforeOpeningTab = firstWindow!.nativeWindowID
+        let existingTabCount = firstWindow!.documentTabController.tabs.count
+        firstWindow!.requestOpenNote(visibleReference, disposition: .newTab)
+        try await waitUntil("the document opened in a second tab of the same window") {
+            firstWindow?.documentTabController.tabs.count == existingTabCount + 1
+        }
+        #expect(firstWindow!.nativeWindowID == windowIDBeforeOpeningTab)
+        #expect(firstWindow!.documentTabController.selectedTab?.document.sessionKey == sessionKey)
+        #expect(firstWindow!.documentTabController.selectedTab?.document.relativePath == "Shared.md")
 
         let visibleTarget = try #require(NoteLifecycleTarget(firstWindow!.currentNote!))
         #expect(visibleTarget.documentID.vaultID == analysesVault.id)
@@ -578,10 +593,12 @@ struct AppCompositionRootTests {
             expectedRevision: original.fingerprint
         )
         let commentID = try #require(addedCommentRecord.comments.first?.id)
-        await firstWindow!.retryIdentityRecovery()
-        #expect(firstWindow!.currentDocumentReviewRecord?.comments.contains {
-            $0.id == commentID && $0.anchor.fingerprint == original.fingerprint
-        } == true)
+        try await waitUntil("the first window received the new comment projection") {
+            await firstWindow!.retryIdentityRecovery()
+            return firstWindow!.currentDocumentReviewRecord?.comments.contains {
+                $0.id == commentID && $0.anchor.fingerprint == original.fingerprint
+            } == true
+        }
 
         let cleanSource = originalSource + "\nCommitted from the first window.\n"
         let cleanCommit = try await firstWindow!.documentController.save(
@@ -597,10 +614,12 @@ struct AppCompositionRootTests {
         }
         #expect(firstSession.conflict == nil)
         #expect(secondSession.conflict == nil)
-        await firstWindow!.retryIdentityRecovery()
-        #expect(firstWindow!.currentDocumentReviewRecord?.comments.contains {
-            $0.id == commentID && $0.anchor.fingerprint == cleanCommit.document.fingerprint
-        } == true)
+        try await waitUntil("the first window received the rebased comment projection") {
+            await firstWindow!.retryIdentityRecovery()
+            return firstWindow!.currentDocumentReviewRecord?.comments.contains {
+                $0.id == commentID && $0.anchor.fingerprint == cleanCommit.document.fingerprint
+            } == true
+        }
 
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
         firstSession.suppressAutosave = true
@@ -675,8 +694,8 @@ struct AppCompositionRootTests {
         try await waitUntil("the closed window released its independent lifetime") {
             releasedWindow == nil
         }
-        #expect(await configured.events.subscriberCount == 1)
-        #expect(await configured.ownedBackgroundTaskCount > 0)
+        #expect(await configuredHandle.events.subscriberCount == 1)
+        #expect(await configuredHandle.ownedBackgroundTaskCount > 0)
         #expect(await store.applicationRuntime.pooledVaultOwnsNativeWatcher(
             vaultID: analysesVault.id
         ) == true)
@@ -697,8 +716,8 @@ struct AppCompositionRootTests {
         #expect(store.workspaceSnapshots.isEmpty)
         #expect(store.workspaceEvents.isEmpty)
         #expect(store.workspaceEventGenerations.isEmpty)
-        #expect(await configured.events.subscriberCount == 0)
-        #expect(await configured.ownedBackgroundTaskCount == 0)
+        #expect(await configuredHandle.events.subscriberCount == 0)
+        #expect(await configuredHandle.ownedBackgroundTaskCount == 0)
         do {
             _ = try await store.applicationRuntime.availableWorkspaces()
             Issue.record("The explicitly shut-down live runtime remained usable.")

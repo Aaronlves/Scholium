@@ -39,11 +39,11 @@ if [[ -e "$source_dir/node_modules" ]]; then
   exit 65
 fi
 
-temporary_root="${TMPDIR:-/tmp}"
-stage_root="$(mktemp -d "${temporary_root%/}/scholium-editor-toolchain.XXXXXX")"
+stage_root="${repo_root}/.build/editor-toolchain-$$"
 stage="$stage_root/WebEditor"
 trap 'rm -rf "$stage_root"' EXIT INT TERM
 
+rm -rf "$stage_root"
 mkdir -p "$stage"
 
 rsync -a --delete \

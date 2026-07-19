@@ -7,20 +7,15 @@ public actor WorkspaceRuntime: SettingsUseCases {
     public struct LiveConfiguration: Sendable {
         public let applicationSupportURL: URL
         public let workspaceRegistryStorageURL: URL
-        public let refreshInterval: Duration
 
         public init(
             applicationSupportURL: URL,
-            workspaceRegistryStorageURL: URL? = nil,
-            refreshInterval: Duration = .seconds(2)
+            workspaceRegistryStorageURL: URL? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL.standardizedFileURL
             self.workspaceRegistryStorageURL = (
                 workspaceRegistryStorageURL ?? applicationSupportURL
             ).standardizedFileURL
-            self.refreshInterval = refreshInterval > .zero
-                ? refreshInterval
-                : .seconds(2)
         }
     }
 
@@ -55,8 +50,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
             registry: WorkspaceRegistry,
             identityRegistry: VaultIdentityRegistry,
             portableControlAccessRegistry: PortableControlAccessRegistry,
-            applicationSupportURL: URL,
-            refreshInterval: Duration
+            applicationSupportURL: URL
         )
         case snapshot(
             assignments: [UUID: TriptychAssignment],
@@ -125,8 +119,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                 registry: registry,
                 identityRegistry: identityRegistry,
                 portableControlAccessRegistry: portableRegistry,
-                applicationSupportURL: configuration.applicationSupportURL,
-                refreshInterval: configuration.refreshInterval
+                applicationSupportURL: configuration.applicationSupportURL
             )
         case .snapshot(let configuration):
             savedSearchStore = SavedSearchStore(
@@ -167,7 +160,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     ) async throws -> WorkspaceRuntime {
         let registry = WorkspaceRegistry(storageURL: workspaceRegistryStorageURL)
         let assignments = await registry.allTriptychs()
-        let defaultWorkspaceID = await registry.threeVaultWorkspace()?.id
+        let defaultWorkspaceID = await registry.defaultTriptych()?.id
         return WorkspaceRuntime(configuration: .snapshot(.init(
             applicationSupportURL: applicationSupportURL,
             workspaceRegistryStorageURL: workspaceRegistryStorageURL,
@@ -180,7 +173,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
         try requireActive()
         let assignments: [TriptychAssignment]
         switch membership {
-        case .live(let registry, _, _, _, _):
+        case .live(let registry, _, _, _):
             assignments = await registry.allTriptychs()
         case .snapshot(let fixed, _, _):
             assignments = Array(fixed.values)
@@ -203,7 +196,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     public func registeredVaults() async throws -> [RegisteredVault] {
         try requireActive()
         switch membership {
-        case .live(let registry, _, _, _, _):
+        case .live(let registry, _, _, _):
             return await registry.allVaults()
         case .snapshot(let assignments, _, _):
             return Array(
@@ -226,7 +219,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     public func resolveVault(_ selector: String) async throws -> RegisteredVault {
         try requireActive()
         switch membership {
-        case .live(let registry, _, _, _, _):
+        case .live(let registry, _, _, _):
             return try await registry.resolve(selector)
         case .snapshot:
             let vaults = try await registeredVaults()
@@ -255,7 +248,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     /// restoration records. The identity authority remains runtime-owned.
     public func vaultIdentity(id: UUID) async throws -> VaultIdentity? {
         try requireActive()
-        guard case .live(_, let identities, _, _, _) = membership else { return nil }
+        guard case .live(_, let identities, _, _) = membership else { return nil }
         return await identities.identity(id: id)
     }
 
@@ -263,7 +256,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     /// at its registered canonical roots. Source files are not modified.
     public func reconcileWorkspaceIdentity(id: UUID) async throws -> TriptychAssignment {
         try requireActive()
-        guard case .live(let registry, let identities, _, _, _) = membership else {
+        guard case .live(let registry, let identities, _, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         guard let assignment = await registry.triptych(id: id) else {
@@ -321,7 +314,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
         as stableID: UUID
     ) async throws -> TriptychAssignment {
         try requireActive()
-        guard case .live(let registry, _, _, _, _) = membership else {
+        guard case .live(let registry, _, _, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         let assignment = try await registry.reidentifyTriptych(id: currentID, as: stableID)
@@ -341,7 +334,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
         stableID: UUID? = nil
     ) async throws -> RegisteredVault {
         try requireActive()
-        guard case .live(let registry, _, _, _, _) = membership else {
+        guard case .live(let registry, _, _, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         let updated = try await registry.register(
@@ -409,7 +402,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
             let registry,
             let identityRegistry,
             let portableRegistry,
-            _, _
+            _
         ) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
@@ -476,7 +469,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
 
     public func setDefaultWorkspace(id: UUID) async throws {
         try requireActive()
-        guard case .live(let registry, _, _, _, _) = membership else {
+        guard case .live(let registry, _, _, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         try await registry.setDefaultTriptych(id: id)
@@ -484,7 +477,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
 
     public func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
         guard !isShutDown,
-              case .live(_, _, let registry, _, _) = membership,
+              case .live(_, _, let registry, _) = membership,
               let access = await registry.access(forWorksURL: worksURL) else {
             return nil
         }
@@ -508,14 +501,12 @@ public actor WorkspaceRuntime: SettingsUseCases {
         return try? await store.manifest().id
     }
 
-    /// Returns the persisted default Triptych. If an older registry has no
-    /// explicit default, this preserves Core's deterministic sorted-first
-    /// compatibility fallback.
+    /// Returns the persisted default Triptych.
     public func defaultWorkspace() async throws -> TriptychAssignment {
         try requireActive()
         switch membership {
-        case .live(let registry, _, _, _, _):
-            guard let assignment = await registry.threeVaultWorkspace() else {
+        case .live(let registry, _, _, _):
+            guard let assignment = await registry.defaultTriptych() else {
                 throw ScholiumApplicationError.noWorkspaceConfigured
             }
             return assignment
@@ -545,8 +536,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
             _,
             _,
             let portableRegistry,
-            let supportURL,
-            let refreshInterval
+            let supportURL
         ):
             task = Task {
                 try await WorkspaceHandle.open(
@@ -557,8 +547,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                     vaultPool: vaultPool,
                     zotero: zotero,
                     access: .live(
-                        portableControlAccessRegistry: portableRegistry,
-                        refreshInterval: refreshInterval
+                        portableControlAccessRegistry: portableRegistry
                     )
                 )
             }
@@ -796,7 +785,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
 
     private func assignment(id: UUID) async throws -> TriptychAssignment {
         switch membership {
-        case .live(let registry, _, _, _, _):
+        case .live(let registry, _, _, _):
             guard let assignment = await registry.triptych(id: id) else {
                 throw ScholiumApplicationError.workspaceNotFound(id)
             }

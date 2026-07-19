@@ -17,12 +17,12 @@ private final class CommentableMarkdownTextView: NSTextView {
         menu.autoenablesItems = true
 
         if selectedRange().length > 0 {
-            menu.addItem(menuItem(title: "Copy", action: #selector(NSText.copy(_:))))
+            menu.addItem(menuItem(title: ScholiumL10n.string("Copy"), action: #selector(NSText.copy(_:))))
         }
 
-        menu.addItem(menuItem(title: "Add Comment…", action: #selector(requestComment(_:))))
+        menu.addItem(menuItem(title: ScholiumL10n.string("Add Comment…"), action: #selector(requestComment(_:))))
         menu.addItem(.separator())
-        menu.addItem(menuItem(title: "Select All", action: #selector(NSText.selectAll(_:))))
+        menu.addItem(menuItem(title: ScholiumL10n.string("Select All"), action: #selector(NSText.selectAll(_:))))
         return menu
     }
 

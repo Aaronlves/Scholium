@@ -4,19 +4,19 @@ import Testing
 
 @Suite("Scholium delivery paths")
 struct ScholiumPathsTests {
-    @Test("Legacy KB Manager state is copied without deleting the original")
-    func legacyMigration() throws {
+    @Test("Scholium creates isolated app state without importing another product")
+    func isolatedApplicationState() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
-        let legacy = base.appendingPathComponent("KBManager", isDirectory: true)
-        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
-        try Data("legacy".utf8).write(to: legacy.appendingPathComponent("marker.txt"))
+        let otherProduct = base.appendingPathComponent("OtherProduct", isDirectory: true)
+        try FileManager.default.createDirectory(at: otherProduct, withIntermediateDirectories: true)
+        try Data("unrelated".utf8).write(to: otherProduct.appendingPathComponent("marker.txt"))
 
         let current = try ScholiumPaths.applicationSupportURL(baseURL: base)
 
         #expect(current.lastPathComponent == "Scholium")
-        #expect(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("marker.txt").path))
-        #expect(try String(contentsOf: current.appendingPathComponent("marker.txt"), encoding: .utf8) == "legacy")
+        #expect(FileManager.default.fileExists(atPath: otherProduct.appendingPathComponent("marker.txt").path))
+        #expect(!FileManager.default.fileExists(atPath: current.appendingPathComponent("marker.txt").path))
     }
 
     @Test("The CLI discovers the sandboxed app's shared Application Support")
@@ -25,7 +25,7 @@ struct ScholiumPathsTests {
         defer { try? FileManager.default.removeItem(at: base) }
         let home = base.appendingPathComponent("home", isDirectory: true)
         let container = home.appendingPathComponent(
-            "Library/Containers/com.kbmanager.app/Data/Library/Application Support/Scholium",
+            "Library/Containers/com.scholium.app/Data/Library/Application Support/Scholium",
             isDirectory: true
         )
         try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)

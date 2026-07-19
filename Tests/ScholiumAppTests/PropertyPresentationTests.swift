@@ -40,19 +40,6 @@ struct PropertyPresentationTests {
         }
     }
 
-    @Test("Dissertation GUI descriptors resolve through Core without restating constraints")
-    func dissertationDescriptorsResolve() {
-        for profile in [
-            SchemaProfileID.dissertationControlV3,
-            SchemaProfileID.dissertationControlV4,
-        ] {
-            for presentation in PropertyPresentationCatalog.presentations(for: profile) {
-                let contract = PropertyPresentationCatalog.contract(for: presentation, in: profile)
-                #expect(contract?.canonicalKey == presentation.key)
-            }
-        }
-    }
-
     @Test("Presentation descriptors contain interface metadata only")
     func presentationStoresOnlyInterfaceMetadata() throws {
         let presentation = try #require(
@@ -104,10 +91,10 @@ struct PropertyPresentationTests {
         #expect(rangeIssues.map(\.code).contains(.pairedPropertyMissing))
     }
 
-    @Test("Semantic edit preserves legacy key, unknown YAML, comments, BOM, CRLF, and body bytes")
-    func targetedEditPreservesUnknownAndLegacyBytes() throws {
-        let source = "\u{FEFF}---\r\n# keep this comment\r\nanalysis_status: draft\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body\r\n\r\nKeep me.\r\n"
-        let document = NoteDocument(relativePath: "legacy.md", rawContent: source)
+    @Test("Semantic edit preserves custom YAML, comments, BOM, CRLF, and body bytes")
+    func targetedEditPreservesCustomBytes() throws {
+        let source = "\u{FEFF}---\r\n# keep this comment\r\nstatus: draft\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body\r\n\r\nKeep me.\r\n"
+        let document = NoteDocument(relativePath: "current.md", rawContent: source)
         let note = workspaceLocation(document, role: .sourceCorpus)
         let model = PropertyEditorModel(note: note)
         let status = try #require(model.presentFields.first { $0.key == "status" })
@@ -122,9 +109,8 @@ struct PropertyPresentationTests {
         #expect(result.hasPrefix("\u{FEFF}---\r\n"))
         #expect(result.contains("# keep this comment\r\n"))
         #expect(result.contains("unknown:\r\n  nested: 'exact value'\r\n"))
-        #expect(result.contains("analysis_status: complete\r\n"))
-        #expect(!result.contains("\r\nstatus:"))
-        #expect(NoteDocument(relativePath: "legacy.md", rawContent: result).body == document.body)
+        #expect(result.contains("status: complete\r\n"))
+        #expect(NoteDocument(relativePath: "current.md", rawContent: result).body == document.body)
     }
 
     @Test("Malformed frontmatter fails closed through Core")

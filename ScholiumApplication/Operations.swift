@@ -652,23 +652,6 @@ public actor ResearchOperations: ResearchUseCases {
     }
 
     @discardableResult
-    public func createDialogue(
-        instruction: String,
-        selectedNotes: [DialogueNoteReference],
-        includedCommentIDs: Set<UUID>,
-        requestedDestination: String? = nil,
-        responseProfile: DialogueResponseProfile? = nil
-    ) async throws -> DialoguePreparation {
-        return try await functionCoordinator.createLegacyDialogue(
-            instruction: instruction,
-            selectedNotes: selectedNotes,
-            includedCommentIDs: includedCommentIDs,
-            requestedDestination: requestedDestination,
-            responseProfile: responseProfile
-        )
-    }
-
-    @discardableResult
     public func appendDialogueReply(
         _ reply: DialogueReply,
         to entryID: UUID
@@ -684,25 +667,6 @@ public actor ResearchOperations: ResearchUseCases {
     ) async throws -> DialogueEntry {
         let handle = try await reference.requireHandle()
         return try await handle.appendDialogueFollowUpComment(comment, to: entryID)
-    }
-
-    @discardableResult
-    public func requestCritique(
-        for work: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope: CritiqueRequestScope,
-        lens: String = "",
-        selectedRanges: String = "",
-        additionalInstructions: String = ""
-    ) async throws -> CritiquePreparation {
-        return try await functionCoordinator.requestLegacyCritique(
-            for: work,
-            expectedRevision: expectedRevision,
-            scope: scope,
-            lens: lens,
-            selectedRanges: selectedRanges,
-            additionalInstructions: additionalInstructions
-        )
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

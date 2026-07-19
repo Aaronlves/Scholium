@@ -90,10 +90,16 @@ public actor SQLiteSearchIndex {
         vaultRole: VaultRole?
     ) throws -> IndexGeneration {
         try database.transaction {
+            try Task.checkCancellation()
             try database.execute("DELETE FROM search_index;")
             try database.execute("DELETE FROM file_fingerprints;")
             try database.execute("DELETE FROM index_metadata;")
-            for document in documents.sorted(by: { $0.relativePath < $1.relativePath }) {
+            for (offset, document) in documents
+                .sorted(by: { $0.relativePath < $1.relativePath })
+                .enumerated() {
+                if offset.isMultiple(of: 64) {
+                    try Task.checkCancellation()
+                }
                 try Self.insert(document, into: database)
             }
             if let vaultName, let vaultRole {
@@ -106,6 +112,7 @@ public actor SQLiteSearchIndex {
                     bindings: [.text(vaultRole.rawValue)]
                 )
             }
+            try Task.checkCancellation()
             try Self.advanceGeneration(in: database)
         }
         return try generation()
@@ -418,6 +425,9 @@ public actor SQLiteSearchIndex {
 
     private static func indexable(_ value: String) -> String {
         let normalized = value.precomposedStringWithCanonicalMapping
+        guard normalized.unicodeScalars.contains(where: isCJK) else {
+            return normalized
+        }
         var additions: [String] = []
         let characters = Array(normalized)
         for character in characters where character.unicodeScalars.contains(where: isCJK) {
@@ -509,8 +519,7 @@ public actor SQLiteSearchIndex {
         case .tag:
             values = document.parsedFrontmatter["tags"]?.searchStrings ?? []
         case .status:
-            values = ["status", "analysis_status", "lifecycle_status"]
-                .flatMap { document.parsedFrontmatter[$0]?.searchStrings ?? [] }
+            values = document.parsedFrontmatter["status"]?.searchStrings ?? []
         case .metadata:
             for key in document.parsedFrontmatter.keys.sorted() {
                 let candidates = document.parsedFrontmatter[key]?.searchStrings ?? []

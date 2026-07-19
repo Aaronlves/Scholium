@@ -15,7 +15,7 @@ extension ScholiumCLI {
         let decoder = researchFunctionDecoder()
 
         switch subcommand {
-        case "available", "availability":
+        case "available":
             guard let input = option("--from", in: arguments) else {
                 throw CLIError.usage(
                     "Usage: scholium function available --from <json|-> [--format json]"
@@ -109,7 +109,7 @@ extension ScholiumCLI {
                 )
             }
 
-        case "select-resources", "select-methods":
+        case "select-resources":
             guard let input = option("--from", in: arguments) else {
                 throw CLIError.usage(
                     "Usage: scholium function select-resources --from <json|-> [--triptych <selector>] --format json|markdown"

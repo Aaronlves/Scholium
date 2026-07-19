@@ -69,10 +69,10 @@ if pgrep -f '/Contents/MacOS/Scholium( |$)' >/dev/null 2>&1; then
 fi
 
 RUN_ID="upgrade_$(date -u +%Y%m%dT%H%M%SZ)_$$"
-SCRATCH="/tmp/scholium-${RUN_ID}"
+SCRATCH="${ROOT}/.build/${RUN_ID}"
 TRIPTYCH="${SCRATCH}/Triptych"
 HOME_ROOT="${SCRATCH}/home"
-DERIVED="${SCRATCH}/derived"
+DERIVED="${SCRATCH}/derived-data"
 MANIFESTS="${OUTPUT}/manifests"
 RESULTS="${OUTPUT}/xcresults"
 
@@ -93,7 +93,19 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${OUTPUT}" "${MANIFESTS}" "${RESULTS}" "${HOME_ROOT}"
-ditto --norsrc --noextattr --noqtn --noacl "${FIXTURE_SOURCE}" "${TRIPTYCH}"
+mkdir -p "${TRIPTYCH}"
+for vault_root in 01-analyses 02-topics 03-works; do
+  ditto --norsrc --noextattr --noqtn --noacl \
+    "${FIXTURE_SOURCE}/${vault_root}" \
+    "${TRIPTYCH}/${vault_root}"
+done
+if [[ -d "${FIXTURE_SOURCE}/.scholium" ]]; then
+  ditto --norsrc --noextattr --noqtn --noacl \
+    "${FIXTURE_SOURCE}/.scholium" \
+    "${TRIPTYCH}/.scholium"
+fi
+# Upgrade verification consumes the same static fixture snapshot as UI tests.
+# The fixture authoring generator is deliberately excluded from the test run.
 python3 "${MANIFEST_TOOL}" seed --root "${TRIPTYCH}"
 python3 "${MANIFEST_TOOL}" capture --root "${TRIPTYCH}" --output "${MANIFESTS}/before.json"
 python3 "${MANIFEST_TOOL}" capture --root "${HOME_ROOT}" --output "${MANIFESTS}/home-before.json"

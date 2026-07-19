@@ -82,28 +82,6 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         }
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case visibleFields
-        case editableFields
-        case isExpanded
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            visibleFields: try container.decodeIfPresent([String].self, forKey: .visibleFields) ?? [],
-            editableFields: try container.decodeIfPresent([String].self, forKey: .editableFields) ?? [],
-            isExpanded: try container.decodeIfPresent(Bool.self, forKey: .isExpanded) ?? false
-        )
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(visibleFields, forKey: .visibleFields)
-        try container.encode(editableFields, forKey: .editableFields)
-        try container.encode(isExpanded, forKey: .isExpanded)
-    }
-
     private static func unique(_ fields: [String]) -> [String] {
         var seen: Set<String> = []
         return fields.compactMap { field in
@@ -127,51 +105,24 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public var activePromptTemplateIDs: [ResearchPromptKind: UUID]
     public var attentionDismissalDays: Int
 
-    public var critiquePromptTemplate: String {
-        get { activePromptTemplate(for: .critique).source }
-        set { setLegacyPrompt(newValue, kind: .critique) }
-    }
-
-    public var dialoguePromptTemplate: String {
-        get { activePromptTemplate(for: .dialogue).source }
-        set { setLegacyPrompt(newValue, kind: .dialogue) }
-    }
-
     public init(
         properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = Self.defaultProperties,
-        critiquePromptTemplate: String = Self.defaultCritiquePromptTemplate,
         promptTemplates: [ResearchPromptTemplate]? = nil,
         activePromptTemplateIDs: [ResearchPromptKind: UUID]? = nil,
         attentionDismissalDays: Int = 7
     ) {
         self.properties = Self.completeProperties(properties)
         var templates = promptTemplates ?? [.defaultDialogue, .defaultCritique]
-        var activeIDs = activePromptTemplateIDs ?? [
+        let activeIDs = activePromptTemplateIDs ?? [
             .dialogue: ResearchPromptTemplate.defaultDialogue.id,
             .critique: ResearchPromptTemplate.defaultCritique.id,
         ]
-        if promptTemplates == nil, critiquePromptTemplate != Self.defaultCritiquePromptTemplate {
-            let migrated = Self.migratedTemplate(for: .critique, source: critiquePromptTemplate)
-            templates.append(migrated)
-            activeIDs[.critique] = migrated.id
-        }
         for kind in ResearchPromptKind.allCases {
             let bundled = kind == .dialogue
                 ? ResearchPromptTemplate.defaultDialogue
                 : ResearchPromptTemplate.defaultCritique
             guard let index = templates.firstIndex(where: { $0.id == bundled.id }) else { continue }
-            let stored = templates[index]
-            guard stored != bundled else { continue }
             templates[index] = bundled
-            if stored.origin == .researcher, stored.source != bundled.source {
-                let migrated = Self.migratedTemplate(for: kind, source: stored.source)
-                if let migratedIndex = templates.firstIndex(where: { $0.id == migrated.id }) {
-                    templates[migratedIndex] = migrated
-                } else {
-                    templates.append(migrated)
-                }
-                if activeIDs[kind] == bundled.id { activeIDs[kind] = migrated.id }
-            }
         }
         self.promptTemplates = Self.completeTemplates(templates)
         self.activePromptTemplateIDs = activeIDs
@@ -181,7 +132,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case properties
-        case critiquePromptTemplate
         case promptTemplates
         case activePromptTemplateIDs
         case attentionDismissalDays
@@ -189,27 +139,23 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let legacyCritique = try container.decodeIfPresent(String.self, forKey: .critiquePromptTemplate)
-            ?? Self.defaultCritiquePromptTemplate
         self.init(
-            properties: try container.decodeIfPresent(
+            properties: try container.decode(
                 [WorkspaceVaultSlot: VaultPropertiesConfiguration].self,
                 forKey: .properties
-            ) ?? Self.defaultProperties,
-            critiquePromptTemplate: legacyCritique,
-            promptTemplates: try container.decodeIfPresent([ResearchPromptTemplate].self, forKey: .promptTemplates),
-            activePromptTemplateIDs: try container.decodeIfPresent([ResearchPromptKind: UUID].self, forKey: .activePromptTemplateIDs),
-            attentionDismissalDays: try container.decodeIfPresent(
+            ),
+            promptTemplates: try container.decode([ResearchPromptTemplate].self, forKey: .promptTemplates),
+            activePromptTemplateIDs: try container.decode([ResearchPromptKind: UUID].self, forKey: .activePromptTemplateIDs),
+            attentionDismissalDays: try container.decode(
                 Int.self,
                 forKey: .attentionDismissalDays
-            ) ?? 7
+            )
         )
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(properties, forKey: .properties)
-        try container.encode(critiquePromptTemplate, forKey: .critiquePromptTemplate)
         try container.encode(promptTemplates, forKey: .promptTemplates)
         try container.encode(activePromptTemplateIDs, forKey: .activePromptTemplateIDs)
         try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
@@ -340,15 +286,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
             : ResearchPromptTemplate.defaultCritique.id
     }
 
-    private mutating func setLegacyPrompt(_ source: String, kind: ResearchPromptKind) {
-        var template = activePromptTemplate(for: kind)
-        template.source = source
-        if template.origin == .scholium && source != (kind == .dialogue ? Self.defaultDialoguePromptTemplate : Self.defaultCritiquePromptTemplate) {
-            template = ResearchPromptTemplate(kind: kind, name: "Customized \(kind.displayName)", source: source)
-        }
-        savePromptTemplate(template)
-    }
-
     private mutating func repairActiveTemplateIDs() {
         for kind in ResearchPromptKind.allCases {
             let id = activePromptTemplateIDs[kind]
@@ -367,21 +304,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         return result
     }
 
-    private static func migratedTemplate(
-        for kind: ResearchPromptKind,
-        source: String
-    ) -> ResearchPromptTemplate {
-        let id = kind == .dialogue
-            ? UUID(uuidString: "82E8370D-D378-44F9-9E82-E4F70F941003")!
-            : UUID(uuidString: "82E8370D-D378-44F9-9E82-E4F70F941004")!
-        return ResearchPromptTemplate(
-            id: id,
-            kind: kind,
-            name: "Migrated \(kind.displayName)",
-            source: source,
-            origin: .researcher
-        )
-    }
 }
 
 public struct NoteIdentityRecord: Codable, Hashable, Identifiable, Sendable {

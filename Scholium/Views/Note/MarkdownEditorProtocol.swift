@@ -205,15 +205,3 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     let accepted: Bool
     let error: String?
 }
-
-enum MarkdownEditorBridgeEvent: Codable, Hashable, Sendable {
-    case ready(generation: Int)
-    case deltas(baseGeneration: Int, resultingGeneration: Int, changes: [MarkdownEditorDelta])
-    case contextChanged(generation: Int, context: MarkdownEditorContext)
-    case requestSave(generation: Int)
-    case requestSearch(generation: Int)
-    case linkActivated(generation: Int, target: String)
-    case commentActivated(generation: Int, id: UUID)
-    case scrollChanged(generation: Int, fraction: Double)
-    case failure(generation: Int, message: String)
-}
