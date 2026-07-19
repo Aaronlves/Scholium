@@ -8,16 +8,10 @@ DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export DEVELOPER_DIR
 rm -rf "${SCRATCH}" "${RELEASE_SCRATCH}"
 
-# The repository copy is the reviewable source of the protected Skill
-# packages. SwiftPM embeds the generated mirror; release verification must
-# fail if those two trees drift, including stale reference documentation.
-"${ROOT}/Tools/Scripts/sync-product-skills.sh" --check
-
-# Every protected Skill package must ship the local reference files that its
-# SKILL.md names. The mirror check above catches drift between source and the
-# SwiftPM bundle; this check catches a broken package before either copy is
-# accepted as a valid Beta resource.
-python3 - "${ROOT}/Skills" <<'PY'
+# The Core resource tree is the sole repository authority for release-shipped
+# product Skills. Every package must ship the local reference files named by
+# its SKILL.md before SwiftPM accepts it as a bundled Beta resource.
+python3 - "${ROOT}/ScholiumCore/Resources/Skills" <<'PY'
 from pathlib import Path
 import re
 import sys

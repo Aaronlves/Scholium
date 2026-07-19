@@ -65,7 +65,7 @@ Use disposable nonprivate Triptychs and record exact Target and Material fingerp
 11. Ask Dialogue to edit an Analysis and a Work and confirm promotion to Develop and Revise occurs through the function API.
 12. Run Dialogue with all five optional modules; confirm every module is genuinely considered, the agent allocates effort flexibly, the Response remains concise, no module is silently skipped, and no filler or numerical allocation appears.
 13. Evolve an opted-in local Researcher Skill after passing evaluation, restore its snapshot, then test stale revision, symlink, nested-resource, and failed-evaluation rejection.
-14. Attempt to evolve bundled Core, Revision, and the generated mirror and confirm refusal.
+14. Attempt to evolve the bundled Core and Revision packages and confirm refusal.
 15. Request a Zotero-only source without accessible text and confirm no philosophical reconstruction is fabricated.
 16. Run Research Explorer with no researcher position and confirm neutral orientation plus structured candidate-gap records; require documented repositories, queries, languages, dates, and inclusion basis before `field-verified`.
 17. Complete Recommended Bibliography with zero candidates and with reference-list, cited, discussed, appraised, metadata-verified, and source-inspected candidates; confirm the distinctions survive, unread sources receive no rating, and the list remains outside notes and Zotero.

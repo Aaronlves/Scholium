@@ -1,6 +1,6 @@
 # Scholium Product Skill Packages
 
-> **Status:** Active product sources. Skills is canonical and ScholiumCore/Resources/Skills is a generated mirror. Run Tools/Scripts/sync-product-skills.sh with --sync or --check; never edit the mirror independently.
+> **Status:** Canonical release-shipped product sources. `ScholiumCore/Resources/Skills` is the sole repository authority and the SwiftPM-bundled resource tree; edit it directly and verify the package before release.
 
 These are philosophy-facing research packages, not development-agent skills. They pursue warranted philosophical results, preserve source and researcher fidelity, and support a precise, reviewable knowledge base. Technical adapters remain subordinate to that purpose.
 

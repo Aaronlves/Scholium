@@ -436,8 +436,9 @@ for explicit `Bundle.module` lookups. `Info.plist` declares `en` and `zh-Hans`.
 
 ## Product Skill resources and maintenance
 
-`Skills/` is the canonical product-skill tree. The Core resource copy is a
-generated mirror checked by a dedicated sync script. The official Workflow
+`ScholiumCore/Resources/Skills/` is the sole canonical product-skill tree and
+the exact resource directory copied into the `ScholiumCore` SwiftPM bundle.
+There is no repository-level source mirror or synchronization step. The official Workflow
 layer contains Development, Critique, Revision, Content Fidelity, and
 Manuscript; Dialogue remains System infrastructure and Human Review has no
 skill. Catalog metadata exposes supported functions, capabilities—including

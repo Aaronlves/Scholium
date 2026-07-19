@@ -22,7 +22,7 @@ Target rules are not implementation claims. Live construction call sites, execut
 Additional operational references include
 [CSS Snippets](Docs/CSS_SNIPPETS.md), the
 [first-party Zotero MCP transport](Docs/ZOTERO_MCP.md), and the bundled
-[Product Skill Packages](Skills/README.md).
+[Product Skill Packages](ScholiumCore/Resources/Skills/README.md).
 The [Beta Performance Benchmark](Docs/PERFORMANCE_BENCHMARK.md) separates
 internal regression microbenchmarks and scenario-only runs from the unexecuted
 packaged-app G7 gate, and defines RDF-1 plus its fail-closed runner.
@@ -75,18 +75,35 @@ DEVELOPER_DIR="$developer_dir" swift test
 DEVELOPER_DIR="$developer_dir" swift run ScholiumApp
 ```
 
-All SwiftPM and Xcode-derived build state lives under the ignored repository
-`.build/` directory. This is safe because the checkout itself lives outside
-Desktop, Documents, CloudStorage, and other File Provider-managed locations.
-Do not redirect build caches or indexes to `/tmp`.
+All SwiftPM build products, dependency checkouts, compiler indexes, and test
+artifacts live under the ignored repository `.build/` directory. This is safe
+because the checkout itself lives outside Desktop, Documents, CloudStorage,
+and other File Provider-managed locations. Do not redirect build caches or
+indexes to `/tmp`.
 
-To inspect or clean development storage, double-click
-`Manage Scholium Development Storage.command` in Finder. Its native menu can
-show current usage; open the configured build root, a repository-local
-`.build`, temporary files, Xcode DerivedData, or packaged builds; delete stale
-artifacts; or delete all rebuildable artifacts. It detects whether the current
-scripts use local or external scratch and also finds obsolete data from the
-other layout. The same operations are available from the command line:
+### Development storage
+
+To inspect, open, or clean Scholium's development storage, double-click
+[`Manage Scholium Development Storage.command`](Manage%20Scholium%20Development%20Storage.command)
+in Finder. The native menu provides these operations:
+
+- **Show Storage Report** reports the size and exact location of the active
+  `.build`, stale development artifacts, and packaged builds.
+- **Open** commands reveal `.build`, temporary directories, Xcode DerivedData,
+  or `~/Applications/Scholium Builds` in Finder.
+- **Delete Stale Artifacts** removes obsolete Scholium temporary files,
+  DerivedData, QA apps, and caches left by the retired external-build layout.
+  It preserves the active repository `.build`.
+- **Delete All Rebuildable Artifacts** removes the same stale files and the
+  active `.build`. The next build will download dependencies as needed, compile
+  again, and rebuild its indexes.
+
+The cleaner refuses to run while Swift, Xcode, or Scholium is active. Its
+deletion allowlist is limited to recognized Scholium development paths. It
+never removes source files, application state, packaged builds, Triptych
+files, or portable `.scholium/` data.
+
+The same operations are available from the command line:
 
 ```bash
 ./Tools/Scripts/manage-development-storage.sh report
@@ -94,9 +111,14 @@ other layout. The same operations are available from the command line:
 ./Tools/Scripts/manage-development-storage.sh clean-all
 ```
 
-The clean commands are dry runs unless `--delete` is added. Application state,
-packaged builds, Triptych files, and portable `.scholium/` data are never
-cleanup candidates.
+The two clean commands are dry runs by default: they print every candidate and
+the recoverable space without deleting anything. Add `--delete` only after
+reviewing that list:
+
+```bash
+./Tools/Scripts/manage-development-storage.sh clean-stale --delete
+./Tools/Scripts/manage-development-storage.sh clean-all --delete
+```
 
 The optional external-agent Zotero transport is provided by the separately
 built `scholium` CLI. See [Zotero MCP](Docs/ZOTERO_MCP.md) for its supported
@@ -181,7 +203,7 @@ Scholium CLI** and choose **Install**. Scholium installs the version-matched hel
 to `~/.local/bin/scholium`, reports whether that directory is discoverable in
 the current PATH, and offers a PATH setup command without editing shell files.
 
-The shipped [Scholium CLI Contract](Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)
+The shipped [Scholium CLI Contract](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)
 defines the exact agent lifecycle and failure behavior. The
 [Zotero MCP guide](Docs/ZOTERO_MCP.md) covers the optional first-party Zotero
 transport. This README remains the concise human installation entry point.
@@ -262,7 +284,8 @@ Docs/IMPLEMENTATION_STATUS.md
 Docs/IMPLEMENTATION_ARCHITECTURE.md
                            Module, runtime, state, and editor ownership
 Docs/CSS_SNIPPETS.md       Supported document-style customization contract
-Skills/README.md           Bundled product-skill architecture and evidence boundary
+ScholiumCore/Resources/Skills/README.md
+                           Bundled product-skill architecture and evidence boundary
 Docs/BETA_RELEASE.md       Source-first beta policy and release gates
 Tools/Scripts/             Build, verification, QA, and release scripts
 Docs/PERFORMANCE_BENCHMARK.md

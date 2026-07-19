@@ -114,4 +114,4 @@ database.
 Metadata establishes record identity only. It is not evidence for a quotation,
 locator, claim, concept, argument, or interpretation. The protected capability
 contract remains in
-`Skills/Scholium System Skills/scholium-zotero-integration/references/mcp-contract.md`.
+`ScholiumCore/Resources/Skills/Scholium System Skills/scholium-zotero-integration/references/mcp-contract.md`.

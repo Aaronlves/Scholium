@@ -85,28 +85,26 @@ struct ResearchSkillCatalogTests {
         ])
     }
 
-    @Test("The bundled resource mirror is byte-for-byte equal to canonical Skills")
-    func canonicalResourceMirrorEquality() throws {
+    @Test("The bundled resource tree is the sole repository product Skill authority")
+    func bundledResourcesAreCanonical() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let canonical = repositoryRoot.appendingPathComponent("Skills", isDirectory: true)
-        let mirror = repositoryRoot.appendingPathComponent(
+        let retiredMirrorSource = repositoryRoot.appendingPathComponent(
+            "Skills",
+            isDirectory: true
+        )
+        let canonical = repositoryRoot.appendingPathComponent(
             "ScholiumCore/Resources/Skills",
             isDirectory: true
         )
 
+        #expect(!FileManager.default.fileExists(atPath: retiredMirrorSource.path))
         let canonicalFiles = try regularFiles(relativeTo: canonical)
-        let mirroredFiles = try regularFiles(relativeTo: mirror)
-
-        #expect(canonicalFiles.keys.sorted() == mirroredFiles.keys.sorted())
-        for relativePath in canonicalFiles.keys.sorted() {
-            #expect(
-                canonicalFiles[relativePath] == mirroredFiles[relativePath],
-                "Bundled Skill mirror differs at \(relativePath)."
-            )
-        }
+        #expect(canonicalFiles["catalog.yaml"] != nil)
+        #expect(canonicalFiles["README.md"] != nil)
+        #expect(canonicalFiles.keys.contains { $0.hasSuffix("/SKILL.md") })
     }
 
     @Test("The APA starter remains an optional complete researcher package")
@@ -158,8 +156,10 @@ struct ResearchSkillCatalogTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let casesURL = repositoryRoot
-            .appendingPathComponent("Skills/evals/cases.yaml", isDirectory: false)
+        let casesURL = repositoryRoot.appendingPathComponent(
+            "ScholiumCore/Resources/Skills/evals/cases.yaml",
+            isDirectory: false
+        )
         let source = try String(contentsOf: casesURL, encoding: .utf8)
         let document = try #require(try Yams.load(yaml: source) as? [String: Any])
         #expect(document["schema_version"] as? Int == 2)
