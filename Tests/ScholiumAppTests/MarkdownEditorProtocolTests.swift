@@ -5,7 +5,42 @@ import Testing
 
 @Suite("Markdown editor protocol")
 struct MarkdownEditorProtocolTests {
-    @Test("Request envelope and operation round trip with protocol version 2")
+    @Test("Preview request round trips as a nonmutating bridge operation")
+    func previewOperationRoundTrip() throws {
+        let data = try JSONEncoder().encode(MarkdownEditorOperation.showPreview)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "showPreview")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .showPreview)
+    }
+
+    @Test("Point-anchored preview request round trips as a nonmutating bridge operation")
+    func pointAnchoredPreviewOperationRoundTrip() throws {
+        let operation = MarkdownEditorOperation.showPreviewAt(x: 120.5, y: 80.25)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "showPreviewAt")
+        #expect(object["x"] as? Double == 120.5)
+        #expect(object["y"] as? Double == 80.25)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+    }
+
+    @Test("Blur request round trips as a nonmutating bridge operation")
+    func blurOperationRoundTrip() throws {
+        let data = try JSONEncoder().encode(MarkdownEditorOperation.blur)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "blur")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .blur)
+    }
+
+    @Test("Performance samples use the typed non-source diagnostic path")
+    func performanceOperationRoundTrip() throws {
+        let data = try JSONEncoder().encode(MarkdownEditorOperation.queryPerformance)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "queryPerformance")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
+    }
+
+    @Test("Request envelope and operation round trip with protocol version 3")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -21,7 +56,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 2)
+        #expect(object["protocolVersion"] as? Int == 3)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
@@ -53,5 +88,39 @@ struct MarkdownEditorProtocolTests {
         #expect(!MarkdownEditorSelectionRange(anchor: 4, head: 4).isNonempty)
         #expect(MarkdownEditorSelectionRange(anchor: 4, head: 9).isNonempty)
         #expect(MarkdownEditorSelectionRange(anchor: 9, head: 4).isNonempty)
+    }
+
+    @Test("Semantic scroll anchors are revision-bound and bounded")
+    func scrollAnchorValidationAndRoundTrip() throws {
+        let anchor = EditorScrollAnchor(
+            sourceFingerprint: "fingerprint",
+            sourceUTF16Offset: 12,
+            blockUTF16LowerBound: 10,
+            blockUTF16UpperBound: 20,
+            relativeBlockPosition: 0.25,
+            fallbackFraction: 0.6
+        )
+        #expect(anchor.isValid(forUTF16Length: 40))
+        #expect(!EditorScrollAnchor(
+            sourceFingerprint: "fingerprint",
+            sourceUTF16Offset: 12,
+            blockUTF16LowerBound: 10,
+            blockUTF16UpperBound: 20,
+            relativeBlockPosition: 1.25,
+            fallbackFraction: 0.6
+        ).isValid(forUTF16Length: 40))
+
+        let wire = MarkdownEditorWireScrollAnchor(
+            sourceUTF16Offset: 12,
+            blockUTF16LowerBound: 10,
+            blockUTF16UpperBound: 20,
+            relativeBlockPosition: 0.25,
+            fallbackFraction: 0.6
+        )
+        let operation = MarkdownEditorOperation.setScrollAnchor(wire)
+        #expect(try JSONDecoder().decode(
+            MarkdownEditorOperation.self,
+            from: JSONEncoder().encode(operation)
+        ) == operation)
     }
 }

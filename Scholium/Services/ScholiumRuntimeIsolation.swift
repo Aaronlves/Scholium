@@ -42,15 +42,32 @@ enum ScholiumRuntimeIsolation {
         return nil
     }
 
-    /// Returns an explicitly requested QA viewport without coupling window
-    /// geometry to whether automation preconfigures a fixture workspace.
-    static func windowWidth(
+    /// Resolves the one deterministic native-window identity requested by UI
+    /// automation. The bootstrap scene installs this identity in the initial
+    /// workspace route; later windows keep their independently generated IDs.
+    static func initialWindowSessionID(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> UUID? {
+#if DEBUG
+        guard bundleIdentifier == qaBundleIdentifier,
+              let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"])
+        else { return nil }
+        return UUID(uuidString: rawID)
+#else
+        return nil
+#endif
+    }
+
+    /// Returns an explicitly requested QA scene default without correcting a
+    /// native window after it opens or coupling the value to fixture setup.
+    static func initialWorkspaceWidth(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> CGFloat? {
 #if DEBUG
         guard bundleIdentifier == qaBundleIdentifier,
-              let rawWidth = nonempty(environment["SCHOLIUM_UI_TEST_WINDOW_WIDTH"]),
+              let rawWidth = nonempty(environment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"]),
               let width = Double(rawWidth),
               width > 0 else {
             return nil

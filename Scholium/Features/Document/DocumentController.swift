@@ -15,12 +15,20 @@ struct WindowDocumentDescriptor: Hashable, Sendable {
 enum WindowSelectedDocument: Hashable, Sendable {
     case workspace(WindowDocumentDescriptor)
     case unclassified(relativePath: String)
-    case unavailable(relativePath: String)
+    case unavailable(vaultID: UUID, relativePath: String)
 
     var relativePath: String {
         switch self {
         case .workspace(let descriptor): descriptor.reference.relativePath
-        case .unclassified(let relativePath), .unavailable(let relativePath): relativePath
+        case .unclassified(let relativePath), .unavailable(_, let relativePath): relativePath
+        }
+    }
+
+    var vaultID: UUID? {
+        switch self {
+        case .workspace(let descriptor): descriptor.reference.vaultID
+        case .unavailable(let vaultID, _): vaultID
+        case .unclassified: nil
         }
     }
 
@@ -48,7 +56,7 @@ private extension WindowSelectedDocument {
         switch self {
         case .workspace(let descriptor): .workspace(descriptor.sessionKey)
         case .unclassified(let relativePath): .unclassified(relativePath: relativePath)
-        case .unavailable(let relativePath): .unavailable(relativePath: relativePath)
+        case .unavailable(_, let relativePath): .unavailable(relativePath: relativePath)
         }
     }
 }
@@ -372,8 +380,8 @@ final class DocumentController: ObservableObject {
         selectDocument(.unclassified(relativePath: relativePath))
     }
 
-    func selectUnavailableDocument(relativePath: String) {
-        selectDocument(.unavailable(relativePath: relativePath))
+    func selectUnavailableDocument(vaultID: UUID, relativePath: String) {
+        selectDocument(.unavailable(vaultID: vaultID, relativePath: relativePath))
     }
 
     /// Clears a selection only when its authoritative document was removed.
@@ -446,9 +454,53 @@ final class DocumentController: ObservableObject {
     /// Updates mutable path and title projections without replacing the
     /// document session, editor buffer, undo bridge, or conflict state.
     func updateDocumentProjection(_ descriptor: WindowDocumentDescriptor) {
+        let previousPath = retainedReferences[descriptor.sessionKey]?.relativePath
+            ?? snapshots[descriptor.sessionKey]?.id.relativePath
         retainedReferences[descriptor.sessionKey] = descriptor.reference
         guard selectedDocument?.sessionKey == descriptor.sessionKey else { return }
         selectedDocument = .workspace(descriptor)
+        guard previousPath != nil,
+              previousPath != descriptor.reference.relativePath else { return }
+
+        let session = session(for: descriptor.sessionKey)
+        editingDocumentPath = session.isEditing
+            ? descriptor.reference.relativePath
+            : editingDocumentPath
+
+        // A filesystem rename can race an autosave already addressed to the
+        // previous path. Stable identity has now proved the destination, so a
+        // dirty retained buffer must retry there instead of leaving a stale
+        // file-missing alert over the still-valid editor session.
+        guard session.isEditing, session.hasUnsavedChanges else { return }
+        session.autosaveTask?.cancel()
+        session.autosaveTask = Task { @MainActor [weak self, weak session] in
+            guard let self, let session else { return }
+            if let activeSaveTask = session.activeSaveTask {
+                let supersededToken = session.activeSaveToken
+                _ = try? await activeSaveTask.value
+                // `saveEditingSource` normally clears this slot after its
+                // task completes. A rename retry can resume first on the main
+                // actor, however, and must not accidentally reuse the
+                // completed old-path task as the destination save. The token
+                // check prevents clearing any newer save.
+                if session.activeSaveToken == supersededToken {
+                    session.activeSaveTask = nil
+                    session.activeSaveToken = nil
+                    session.isSavingEdit = false
+                }
+            }
+            guard !Task.isCancelled,
+                  self.relativePath(for: .workspace(descriptor.sessionKey))
+                    == descriptor.reference.relativePath,
+                  session.hasUnsavedChanges else { return }
+            session.editError = nil
+            session.canRetrySave = false
+            self.setSaveError(nil)
+            await self.persistEditingSource(
+                session: session,
+                target: .workspace(descriptor.sessionKey)
+            )
+        }
     }
 
     func presentationMode(for path: String, vaultID: UUID?) -> NotePresentationMode {
@@ -563,10 +615,12 @@ final class DocumentController: ObservableObject {
         for session in sessions.retainedSessions.values {
             session.presentationMode = .read
             session.scrollFraction = 0
+            session.scrollAnchor = nil
         }
         for session in fallbackSessions.values {
             session.presentationMode = .read
             session.scrollFraction = 0
+            session.scrollAnchor = nil
         }
     }
 
@@ -630,6 +684,7 @@ final class DocumentController: ObservableObject {
         switch target {
         case .workspace(let key):
             (selectedDocument?.sessionKey == key ? selectedDocument?.relativePath : nil)
+                ?? retainedReferences[key]?.relativePath
                 ?? snapshots[key]?.id.relativePath
                 ?? ""
         case .unclassified(let relativePath), .unavailable(let relativePath):
@@ -651,6 +706,8 @@ final class DocumentController: ObservableObject {
         session.editingSource = source
         session.editingRevision = revision
         session.presentationMode = mode
+        session.retainedEditorMode = mode
+        session.retainsEditorSurface = true
         session.isEditing = true
         editingDocumentPath = relativePath(for: target)
         Task { @MainActor [weak session] in
@@ -665,9 +722,6 @@ final class DocumentController: ObservableObject {
     ) {
         session.cancelScheduledWork()
         session.isEditing = false
-        session.editingSource = ""
-        session.originalEditingSource = ""
-        session.editingRevision = nil
         session.presentationMode = .read
         session.returnToReadAfterSave = false
         session.suppressAutosave = false
@@ -710,6 +764,7 @@ final class DocumentController: ObservableObject {
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) async {
+        let attemptedPath = relativePath(for: target)
         do {
             let outcome = try await saveEditingSource(session: session, target: target)
             session.conflict = nil
@@ -729,6 +784,31 @@ final class DocumentController: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            if let repositoryError = error as? VaultRepositoryError,
+               case .fileDoesNotExist = repositoryError,
+               case .workspace = target {
+                // External move detection arrives through the typed workspace
+                // stream shortly after the repository observes the old path
+                // missing. Give stable identity a brief, cancellable chance
+                // to rebind before presenting a modal deletion failure. A
+                // confirmed move cancels this old autosave and retries at the
+                // destination; a true deletion still reaches the normal
+                // recovery UI after the grace interval.
+                do {
+                    try await Task.sleep(for: .milliseconds(750))
+                } catch is CancellationError {
+                    return
+                } catch {
+                    // Duration sleep has no other expected failure.
+                }
+            }
+            // A stable-identity rename can complete while an autosave is
+            // still addressed to the previous path. That failure is stale:
+            // presenting it would transiently replace or disable the editor
+            // just as `updateDocumentProjection` retries the same retained
+            // buffer at the identity-confirmed destination. The destination
+            // retry remains revision-gated and owns any current-path error.
+            guard relativePath(for: target) == attemptedPath else { return }
             await presentSaveFailure(error, session: session, target: target)
         }
     }
@@ -793,6 +873,16 @@ final class DocumentController: ObservableObject {
                 )
             }
             await documentDidCommit(document)
+            session.suppressAutosave = true
+            session.editingSource = document.rawContent
+            session.originalEditingSource = document.rawContent
+            session.editingRevision = document.fingerprint
+            session.editorSession.loadDocument(
+                document.rawContent,
+                documentID: session.editorSession.bridgeDocumentID,
+                mode: session.retainedEditorMode
+            )
+            session.suppressAutosave = false
             session.showConflictComparison = false
             session.editError = nil
             setSaveError(nil)
@@ -846,10 +936,12 @@ final class DocumentController: ObservableObject {
         let path = relativePath(for: target)
         guard !path.isEmpty else { throw DocumentControllerError.documentUnavailable }
         if !session.editorSession.isReady || !session.editorSession.isLoaded {
-            guard !session.hasUnsavedChanges else {
+            guard session.hasUnsavedChanges else { return .clean }
+            guard try await session.editorSession.waitUntilLoadedForSave() else {
                 throw DocumentControllerError.editorUnavailable
             }
-            return .clean
+            // The retained CodeMirror session is authoritative again;
+            // continue through the ordinary full-buffer and revision checks.
         }
         guard let revision = session.editingRevision else {
             throw DocumentControllerError.saveFailed(
@@ -857,7 +949,9 @@ final class DocumentController: ObservableObject {
             )
         }
 
-        let sourceBeingSaved = try await session.editorSession.currentText(for: path)
+        let sourceBeingSaved = try await session.editorSession.currentText(
+            for: session.editorSession.bridgeDocumentID
+        )
         try Task.checkCancellation()
         guard relativePath(for: target) == path else {
             throw DocumentControllerError.documentUnavailable
@@ -916,7 +1010,7 @@ final class DocumentController: ObservableObject {
             expectedText: sourceBeingSaved,
             committedText: saved.rawContent,
             fingerprint: saved.fingerprint,
-            documentID: path
+            documentID: session.editorSession.bridgeDocumentID
         )
         if synchronized {
             session.editingSource = saved.rawContent
@@ -925,7 +1019,9 @@ final class DocumentController: ObservableObject {
                 ?? .clean
         }
 
-        session.editingSource = try await session.editorSession.currentText(for: path)
+        session.editingSource = try await session.editorSession.currentText(
+            for: session.editorSession.bridgeDocumentID
+        )
         editingDocumentPath = path
         return .changedDuringSave
     }
@@ -1111,8 +1207,8 @@ final class DocumentController: ObservableObject {
         if session.editorSession.isLoaded {
             session.editorSession.loadDocument(
                 diskSource,
-                documentID: snapshot.id.relativePath,
-                mode: session.presentationMode
+                documentID: session.editorSession.bridgeDocumentID,
+                mode: session.retainedEditorMode
             )
         }
     }
@@ -1140,4 +1236,5 @@ enum DocumentControllerError: LocalizedError, Equatable {
             String(localized: "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.", table: "Localizable", bundle: .module)
         }
     }
+
 }

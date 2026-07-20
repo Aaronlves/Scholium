@@ -208,7 +208,7 @@ struct SidebarView: View {
             .frame(maxHeight: .infinity)
 
         }
-        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             sidebarBottomRegion
         }

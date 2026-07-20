@@ -11,16 +11,19 @@ import shutil
 from pathlib import Path
 
 
-FIXTURE_VERSION = "rdf-1-v1"
+FIXTURE_VERSION = "rdf-1-v2"
 TOTAL_NOTES = 800
 LONG_NOTE_WORDS = 5_000
+CJK_STRESS_CHARACTERS = 100_000
 ROLE_SPECS = (
     ("analyses", "01-analyses", "analysis", 267),
     ("topics", "02-topics", "topic", 266),
     ("works", "03-works", "work", 267),
 )
 LONG_NOTE_PATH = "Long/Canonical-5000-Word-Work.md"
+CJK_STRESS_NOTE_PATH = "Long/Canonical-100000-CJK-Work.md"
 TOKEN_PATTERN = re.compile(r"\b[\w'-]+\b", re.UNICODE)
+CJK_CHARACTER_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -33,6 +36,10 @@ def sha256_file(path: Path) -> str:
 
 def body_word_count(value: str) -> int:
     return len(TOKEN_PATTERN.findall(value))
+
+
+def cjk_character_count(value: str) -> int:
+    return len(CJK_CHARACTER_PATTERN.findall(value))
 
 
 def require_disposable_output(path: Path, allow_outside_tmp: bool) -> Path:
@@ -109,6 +116,22 @@ def long_note_body() -> str:
     return body
 
 
+def cjk_stress_note_body() -> str:
+    # Deterministic synthetic prose-shaped material. It is deliberately not a
+    # philosophical source and exists only to exercise CJK editing boundaries.
+    seed = "研究性能边界输入选择撤销渲染滚动保存恢复"
+    characters = (seed * ((CJK_STRESS_CHARACTERS // len(seed)) + 1))[
+        :CJK_STRESS_CHARACTERS
+    ]
+    paragraphs = [
+        characters[start : start + 1_000]
+        for start in range(0, len(characters), 1_000)
+    ]
+    body = "\n\n".join(paragraphs) + "\n"
+    assert cjk_character_count(body) == CJK_STRESS_CHARACTERS
+    return body
+
+
 def write_note(path: Path, source: str) -> dict[str, object]:
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = source.encode("utf-8")
@@ -140,15 +163,23 @@ def generate(output: Path) -> dict[str, object]:
         role_counts[role_key] = count
         for index in range(1, count + 1):
             is_long_note = role == "work" and index == 1
+            is_cjk_stress_note = role == "work" and index == 2
             is_malformed = index == count
             title = (
                 "Canonical 5000 Word Work"
                 if is_long_note
+                else "Canonical 100000 CJK Work"
+                if is_cjk_stress_note
                 else f"RDF-1 {role.title()} Note {index:03d}"
             )
             if is_long_note:
                 relative_path = LONG_NOTE_PATH
                 body = long_note_body()
+                link_count = 0
+                typed_count = 0
+            elif is_cjk_stress_note:
+                relative_path = CJK_STRESS_NOTE_PATH
+                body = cjk_stress_note_body()
                 link_count = 0
                 typed_count = 0
             else:
@@ -227,6 +258,12 @@ def generate(output: Path) -> dict[str, object]:
                 "body_word_count": LONG_NOTE_WORDS,
                 "word_count_rule": "Unicode word tokens in the Markdown body after frontmatter",
             },
+            "cjk_stress_note": {
+                "vault": "works",
+                "relative_path": CJK_STRESS_NOTE_PATH,
+                "cjk_character_count": CJK_STRESS_CHARACTERS,
+                "character_count_rule": "CJK Unified Ideographs in the Markdown body after frontmatter",
+            },
         },
         "search_queries": [
             {
@@ -297,6 +334,14 @@ def verify(output: Path) -> dict[str, object]:
     parts = source.split("---\n", 2)
     if len(parts) != 3 or body_word_count(parts[2]) != LONG_NOTE_WORDS:
         raise SystemExit(f"RDF-1 long note must contain exactly {LONG_NOTE_WORDS} body words.")
+
+    cjk_stress_note = output / "03-works" / CJK_STRESS_NOTE_PATH
+    source = cjk_stress_note.read_text(encoding="utf-8")
+    parts = source.split("---\n", 2)
+    if len(parts) != 3 or cjk_character_count(parts[2]) != CJK_STRESS_CHARACTERS:
+        raise SystemExit(
+            f"RDF-1 CJK stress note must contain exactly {CJK_STRESS_CHARACTERS} CJK characters."
+        )
     return manifest
 
 

@@ -1,4 +1,5 @@
 import ScholiumContracts
+import AppKit
 import SwiftUI
 import WebKit
 
@@ -22,7 +23,10 @@ private final class WindowAttachedWebView: WKWebView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
-        return prepareEditorContextMenu(menu)
+        return prepareEditorContextMenu(
+            menu,
+            previewPoint: convert(event.locationInWindow, from: nil)
+        )
     }
 
     private func installRightMouseMonitorIfNeeded() {
@@ -52,12 +56,12 @@ private final class WindowAttachedWebView: WKWebView {
         let standardMenu = targetView === self
             ? (super.menu(for: event) ?? NSMenu())
             : (targetView.menu(for: event) ?? NSMenu())
-        let menu = prepareEditorContextMenu(standardMenu)
+        let menu = prepareEditorContextMenu(standardMenu, previewPoint: point)
         NSMenu.popUpContextMenu(menu, with: event, for: targetView)
         return nil
     }
 
-    private func prepareEditorContextMenu(_ menu: NSMenu) -> NSMenu {
+    private func prepareEditorContextMenu(_ menu: NSMenu, previewPoint: NSPoint? = nil) -> NSMenu {
         menu.identifier = NSUserInterfaceItemIdentifier("scholium.editor.contextMenu")
         for item in menu.items where item.identifier?.rawValue.hasPrefix("scholium.editor.") == true {
             menu.removeItem(item)
@@ -97,6 +101,21 @@ private final class WindowAttachedWebView: WKWebView {
             menu.addItem(item)
             addedAction = true
         }
+        if editorSession.canAttemptPreview {
+            if !addedAction { menu.addItem(.separator()) }
+            let item = NSMenuItem(
+                title: ScholiumL10n.string("Preview"),
+                action: #selector(showPreview(_:)),
+                keyEquivalent: ""
+            )
+            item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.preview")
+            item.target = self
+            if let previewPoint {
+                item.representedObject = NSValue(point: previewPoint)
+            }
+            menu.addItem(item)
+            addedAction = true
+        }
         if onRequestComment != nil,
            editorSession.context?.composing != true,
            editorSession.context?.selections.contains(where: \.isNonempty) == true {
@@ -132,6 +151,19 @@ private final class WindowAttachedWebView: WKWebView {
 
     @objc private func requestComment(_ sender: NSMenuItem) {
         onRequestComment?()
+    }
+
+    @objc private func showPreview(_ sender: NSMenuItem) {
+        if let point = (sender.representedObject as? NSValue)?.pointValue {
+            editorSession?.showPreview(
+                at: CGPoint(
+                    x: point.x,
+                    y: isFlipped ? point.y : bounds.height - point.y
+                )
+            )
+        } else {
+            editorSession?.showPreview()
+        }
     }
 }
 
@@ -198,6 +230,7 @@ private struct EditorBridgeMessage: Codable {
     let message: String?
     let editorReady: Bool?
     let scrollFraction: Double?
+    let scrollAnchor: MarkdownEditorWireScrollAnchor?
     let commentID: String?
     let target: String?
     let context: MarkdownEditorContext?
@@ -231,6 +264,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     @Published private(set) var context: MarkdownEditorContext?
     private(set) var sessionID = UUID()
     private(set) var documentID = ""
+
+    /// Opaque identity for the CodeMirror document owned by this retained
+    /// session. A vault-relative path is a mutable projection and must not
+    /// force a new EditorState when the same stable note is renamed.
+    var bridgeDocumentID: String { sessionID.uuidString }
     private(set) var startingFingerprint = ""
     private(set) var generation = 0
 
@@ -241,8 +279,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingUserCSS = ""
     private var pendingLine: Int?
     private var pendingLinkCompletions: [EditorLinkCompletion] = []
+    private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     private var pendingResearcherComments: [MarkdownEditorCommentAnnotation] = []
     private var pendingScrollFraction: Double?
+    private var pendingScrollAnchor: EditorScrollAnchor?
+    private var reconstructionScrollAnchor: EditorScrollAnchor?
     private var startupTask: Task<Void, Never>?
     private var recoveryCaptureTask: Task<Void, Never>?
     private var requestBarrier: Task<Void, Never>?
@@ -258,12 +299,113 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var qaTerminationObserverInstalled = false
     #endif
     var hasAttachedWebView: Bool { webView != nil }
+    var canAttemptPreview: Bool { pendingMode == .livePreview }
+    var canShowPreviewAtSelection: Bool {
+        guard pendingMode == .livePreview,
+              let head = lastKnownSelections.first?.head else { return false }
+        if pendingLinkPreviews.contains(where: { head >= $0.from && head <= $0.to }) {
+            return true
+        }
+        let normalized = checkedSource.replacingOccurrences(of: "\r\n", with: "\n") as NSString
+        guard head >= 0, head <= normalized.length,
+              let expression = try? NSRegularExpression(pattern: #"\[\^([^\]\n]{1,240})\]"#) else {
+            return false
+        }
+        return expression.matches(
+            in: normalized as String,
+            range: NSRange(location: 0, length: normalized.length)
+        ).contains { match in
+            guard NSLocationInRange(head, NSRange(location: match.range.location, length: match.range.length + 1)) else {
+                return false
+            }
+            let precedingNewline = normalized.range(
+                of: "\n",
+                options: .backwards,
+                range: NSRange(location: 0, length: match.range.location)
+            )
+            let lineStart = precedingNewline.location == NSNotFound
+                ? 0
+                : precedingNewline.location + precedingNewline.length
+            let prefix = normalized.substring(with: NSRange(
+                location: lineStart,
+                length: match.range.location - lineStart
+            ))
+            let following = match.range.upperBound < normalized.length
+                ? normalized.substring(with: NSRange(location: match.range.upperBound, length: 1))
+                : ""
+            return !prefix.allSatisfy(\.isWhitespace) || following != ":"
+        }
+    }
 
     override init() {
         super.init()
     }
 
     #if DEBUG
+    struct TestingPresentationSnapshot: Decodable, Sendable {
+        let rootReadableMeasure: String
+        let rootContentTopInset: String
+        let rootTextScale: String
+        let rootProseLineHeight: String
+        let rootParagraphGap: String
+        let rootHeadingLineHeight: String
+        let rootInlineRegular: String
+        let rootInlineNarrow: String
+        let pageColor: String
+        let pageBackgroundColor: String
+        let documentFontFamily: String
+        let documentFontSize: String
+        let documentLineHeight: String
+        let documentMaxWidth: String
+        let documentPaddingTop: String
+        let documentPaddingInlineStart: String
+        let documentWidth: Double
+        let headingFontFamily: String
+        let headingFontSize: String
+        let headingFontWeight: String
+        let headingLineHeight: String
+        let headingBlockBefore: Double
+        let headingBlockAfter: Double
+        let headingWidth: Double
+        let calloutAccent: String
+        let calloutBorderColor: String
+        let calloutFontSize: String
+        let calloutLineHeight: String
+        let calloutWidth: Double
+        let calloutRoleFontFamily: String
+        let calloutRoleFontSize: String
+        let calloutRoleFontWeight: String
+        let calloutRoleLineHeight: String
+        let calloutRoleLetterSpacing: String
+        let calloutTitleFontFamily: String
+        let calloutTitleFontSize: String
+        let calloutTitleFontWeight: String
+        let calloutTitleLineHeight: String
+        let tableOverflowX: String
+        let tableWidth: Double
+        let tableCellFontFamily: String
+        let tableCellFontSize: String
+        let tableCellLineHeight: String
+        let tableCellPaddingBlockStart: String
+        let tableCellPaddingInlineStart: String
+        let tableCellBorderBottomWidth: String
+        let tableCellBorderBottomColor: String
+        let footnoteFontFamily: String
+        let footnoteColor: String
+        let footnoteFontSize: String
+        let footnoteLineHeight: String
+        let footnoteMarginBlockStart: String
+        let footnoteListPaddingInlineStart: String
+        let footnoteWidth: Double
+        let mathOverflowX: String
+        let mathColor: String
+        let mathFontSize: String
+        let mathLineHeight: String
+        let mathMarginBlockStart: String
+        let mathPaddingBlockStart: String
+        let mathWidth: Double
+    }
+
     struct TestingAccessibilitySnapshot: Decodable, Sendable {
         let contentEditableCount: Int
         let textboxCount: Int
@@ -277,6 +419,45 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let activeLineCount: Int
         let contentPaddingTop: String
         let contentPaddingInlineStart: String
+        let scrollTop: Double
+        let scrollExtent: Double
+        let mathRuntimeVersion: Int
+        let renderedMathCount: Int
+        let mathErrorCount: Int
+        let displayMathOverflowX: String
+        let previewAnchorCount: Int
+        let previewPopoverHidden: Bool
+        let previewTitle: String
+        let previewNestedListCount: Int
+        let previewBlockquoteCount: Int
+        let previewCodeBlockCount: Int
+        let previewCalloutCount: Int
+        let previewTableCount: Int
+        let previewRenderedMathCount: Int
+        let frontmatterLineCount: Int
+        let frontmatterVisibleHeight: Double
+        let unclosedFrontmatterNoticeCount: Int
+        let semanticTableCount: Int
+        let liveTableSourceLineCount: Int
+        let tableHeaderCount: Int
+        let tableBodyCellCount: Int
+        let tableStrongCount: Int
+        let tableFirstHeaderText: String
+        let tableOverflowX: String
+        let footnoteReferenceCount: Int
+        let footnoteSectionCount: Int
+        let footnoteItemCount: Int
+        let footnoteStrongCount: Int
+        let footnoteNestedListCount: Int
+        let footnoteBlockquoteCount: Int
+        let footnoteCodeBlockCount: Int
+        let footnoteCalloutCount: Int
+        let footnoteTableCount: Int
+        let footnoteRenderedMathCount: Int
+        let footnoteDefinitionSourceCount: Int
+        let liveCalloutWidgetCount: Int
+        let liveCalloutSourceLineCount: Int
+        let presentation: TestingPresentationSnapshot
     }
 
     @discardableResult
@@ -297,6 +478,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             const textboxes = document.querySelectorAll('[role="textbox"]');
             const content = editable[0];
             const contentStyle = content ? getComputedStyle(content) : null;
+            const rootStyle = getComputedStyle(document.documentElement);
+            const px = value => Number.parseFloat(value || '0') || 0;
+            const style = selector => {
+                const element = document.querySelector(selector);
+                return element ? getComputedStyle(element) : null;
+            };
+            const width = selector => document.querySelector(selector)?.getBoundingClientRect().width || 0;
+            const headingStyle = style('.cm-live-heading');
+            const calloutStyle = style('.cm-live-callout-widget.scholium-callout-state');
+            const calloutRoleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-role');
+            const calloutTitleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-title');
+            const tableStyle = style('.cm-live-table-widget');
+            const tableCellStyle = style('.cm-live-table-widget th');
+            const footnoteStyle = style('.cm-live-footnotes-widget');
+            const footnoteListStyle = style('.cm-live-footnotes-widget > ol');
+            const mathStyle = style('.cm-live-math.scholium-math-display');
             return {
                 contentEditableCount: editable.length,
                 textboxCount: textboxes.length,
@@ -309,22 +506,192 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 lineNumberCount: document.querySelectorAll('.cm-lineNumbers .cm-gutterElement').length,
                 activeLineCount: document.querySelectorAll('.cm-activeLine').length,
                 contentPaddingTop: contentStyle?.paddingTop || '',
-                contentPaddingInlineStart: contentStyle?.paddingInlineStart || ''
+                contentPaddingInlineStart: contentStyle?.paddingInlineStart || '',
+                scrollTop: document.querySelector('.cm-scroller')?.scrollTop || 0,
+                scrollExtent: (() => {
+                    const scroller = document.querySelector('.cm-scroller');
+                    return scroller ? Math.max(0, scroller.scrollHeight - scroller.clientHeight) : 0;
+                })(),
+                mathRuntimeVersion: window.scholiumMath?.version || 0,
+                renderedMathCount: document.querySelectorAll('.cm-live-math.scholium-math-rendered').length,
+                mathErrorCount: document.querySelectorAll('.cm-live-math.scholium-math-error').length,
+                displayMathOverflowX: (() => {
+                    const display = document.querySelector('.cm-live-math.scholium-math-display');
+                    return display ? getComputedStyle(display).overflowX : '';
+                })(),
+                previewAnchorCount: document.querySelectorAll('[data-link-preview-index], [data-footnote-preview-id]').length,
+                previewPopoverHidden: document.getElementById('scholium-preview-popover')?.hidden !== false,
+                previewTitle: document.querySelector('#scholium-preview-popover .scholium-preview-title')?.textContent || '',
+                previewNestedListCount: document.querySelectorAll('#scholium-preview-popover ul ul').length,
+                previewBlockquoteCount: document.querySelectorAll('#scholium-preview-popover blockquote').length,
+                previewCodeBlockCount: document.querySelectorAll('#scholium-preview-popover pre code.language-swift').length,
+                previewCalloutCount: document.querySelectorAll('#scholium-preview-popover .scholium-callout-state').length,
+                previewTableCount: document.querySelectorAll('#scholium-preview-popover table.scholium-table').length,
+                previewRenderedMathCount: document.querySelectorAll('#scholium-preview-popover .scholium-math-rendered').length,
+                frontmatterLineCount: document.querySelectorAll('.cm-live-frontmatter').length,
+                frontmatterVisibleHeight: Array.from(document.querySelectorAll('.cm-live-frontmatter'))
+                    .reduce((height, line) => height + line.getBoundingClientRect().height, 0),
+                unclosedFrontmatterNoticeCount: document.querySelectorAll('.cm-live-frontmatter-unavailable').length,
+                semanticTableCount: document.querySelectorAll('.cm-live-table-widget .scholium-table').length,
+                liveTableSourceLineCount: document.querySelectorAll('.cm-line.cm-live-table').length,
+                tableHeaderCount: document.querySelectorAll('.cm-live-table-widget th[scope="col"]').length,
+                tableBodyCellCount: document.querySelectorAll('.cm-live-table-widget tbody td').length,
+                tableStrongCount: document.querySelectorAll('.cm-live-table-widget strong').length,
+                tableFirstHeaderText: document.querySelector('.cm-live-table-widget th')?.textContent || '',
+                tableOverflowX: (() => {
+                    const scroller = document.querySelector('.cm-live-table-widget');
+                    return scroller ? getComputedStyle(scroller).overflowX : '';
+                })(),
+                footnoteReferenceCount: document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference').length,
+                footnoteSectionCount: document.querySelectorAll('.cm-live-footnotes-widget').length,
+                footnoteItemCount: document.querySelectorAll('.cm-live-footnotes-widget > ol > li').length,
+                footnoteStrongCount: document.querySelectorAll('.cm-live-footnotes-widget strong').length,
+                footnoteNestedListCount: document.querySelectorAll('.cm-live-footnotes-widget ul ul').length,
+                footnoteBlockquoteCount: document.querySelectorAll('.cm-live-footnotes-widget blockquote').length,
+                footnoteCodeBlockCount: document.querySelectorAll('.cm-live-footnotes-widget pre code.language-swift').length,
+                footnoteCalloutCount: document.querySelectorAll('.cm-live-footnotes-widget .scholium-callout-state').length,
+                footnoteTableCount: document.querySelectorAll('.cm-live-footnotes-widget table.scholium-table').length,
+                footnoteRenderedMathCount: document.querySelectorAll('.cm-live-footnotes-widget .scholium-math-rendered').length,
+                footnoteDefinitionSourceCount: document.querySelectorAll('.cm-live-footnote-definition-source').length,
+                liveCalloutWidgetCount: document.querySelectorAll('.cm-live-callout-widget.scholium-callout').length,
+                liveCalloutSourceLineCount: document.querySelectorAll('.cm-line.cm-live-callout').length,
+                presentation: {
+                    rootReadableMeasure: rootStyle.getPropertyValue('--scholium-document-readable-measure').trim(),
+                    rootContentTopInset: rootStyle.getPropertyValue('--scholium-document-content-top-inset').trim(),
+                    rootTextScale: rootStyle.getPropertyValue('--scholium-document-text-scale').trim(),
+                    rootProseLineHeight: rootStyle.getPropertyValue('--scholium-rhythm-prose-line-height').trim(),
+                    rootParagraphGap: rootStyle.getPropertyValue('--scholium-rhythm-paragraph-gap').trim(),
+                    rootHeadingLineHeight: rootStyle.getPropertyValue('--scholium-rhythm-heading-line-height').trim(),
+                    rootInlineRegular: rootStyle.getPropertyValue('--scholium-rhythm-inline-regular').trim(),
+                    rootInlineNarrow: rootStyle.getPropertyValue('--scholium-rhythm-inline-narrow').trim(),
+                    pageColor: style('.cm-scroller')?.color || '',
+                    pageBackgroundColor: style('.cm-editor')?.backgroundColor || '',
+                    documentFontFamily: style('.cm-scroller')?.fontFamily || '',
+                    documentFontSize: style('.cm-scroller')?.fontSize || '',
+                    documentLineHeight: style('.cm-scroller')?.lineHeight || '',
+                    documentMaxWidth: contentStyle?.maxWidth || '',
+                    documentPaddingTop: contentStyle?.paddingTop || '',
+                    documentPaddingInlineStart: contentStyle?.paddingInlineStart || '',
+                    documentWidth: width('.cm-content'),
+                    headingFontFamily: headingStyle?.fontFamily || '',
+                    headingFontSize: headingStyle?.fontSize || '',
+                    headingFontWeight: headingStyle?.fontWeight || '',
+                    headingLineHeight: headingStyle?.lineHeight || '',
+                    headingBlockBefore: px(headingStyle?.marginTop) + px(headingStyle?.paddingTop),
+                    headingBlockAfter: px(headingStyle?.marginBottom) + px(headingStyle?.paddingBottom),
+                    headingWidth: width('.cm-live-heading'),
+                    calloutAccent: calloutStyle?.getPropertyValue('--callout-accent').trim() || '',
+                    calloutBorderColor: calloutStyle?.borderInlineStartColor || '',
+                    calloutFontSize: calloutStyle?.fontSize || '',
+                    calloutLineHeight: calloutStyle?.lineHeight || '',
+                    calloutWidth: width('.cm-live-callout-widget.scholium-callout-state'),
+                    calloutRoleFontFamily: calloutRoleStyle?.fontFamily || '',
+                    calloutRoleFontSize: calloutRoleStyle?.fontSize || '',
+                    calloutRoleFontWeight: calloutRoleStyle?.fontWeight || '',
+                    calloutRoleLineHeight: calloutRoleStyle?.lineHeight || '',
+                    calloutRoleLetterSpacing: calloutRoleStyle?.letterSpacing || '',
+                    calloutTitleFontFamily: calloutTitleStyle?.fontFamily || '',
+                    calloutTitleFontSize: calloutTitleStyle?.fontSize || '',
+                    calloutTitleFontWeight: calloutTitleStyle?.fontWeight || '',
+                    calloutTitleLineHeight: calloutTitleStyle?.lineHeight || '',
+                    tableOverflowX: tableStyle?.overflowX || '',
+                    tableWidth: width('.cm-live-table-widget'),
+                    tableCellFontFamily: tableCellStyle?.fontFamily || '',
+                    tableCellFontSize: tableCellStyle?.fontSize || '',
+                    tableCellLineHeight: tableCellStyle?.lineHeight || '',
+                    tableCellPaddingBlockStart: tableCellStyle?.paddingBlockStart || '',
+                    tableCellPaddingInlineStart: tableCellStyle?.paddingInlineStart || '',
+                    tableCellBorderBottomWidth: tableCellStyle?.borderBottomWidth || '',
+                    tableCellBorderBottomColor: tableCellStyle?.borderBottomColor || '',
+                    footnoteFontFamily: footnoteStyle?.fontFamily || '',
+                    footnoteColor: footnoteStyle?.color || '',
+                    footnoteFontSize: footnoteStyle?.fontSize || '',
+                    footnoteLineHeight: footnoteStyle?.lineHeight || '',
+                    footnoteMarginBlockStart: footnoteStyle?.marginBlockStart || '',
+                    footnoteListPaddingInlineStart: footnoteListStyle?.paddingInlineStart || '',
+                    footnoteWidth: width('.cm-live-footnotes-widget'),
+                    mathOverflowX: mathStyle?.overflowX || '',
+                    mathColor: mathStyle?.color || '',
+                    mathFontSize: mathStyle?.fontSize || '',
+                    mathLineHeight: mathStyle?.lineHeight || '',
+                    mathMarginBlockStart: mathStyle?.marginBlockStart || '',
+                    mathPaddingBlockStart: mathStyle?.paddingBlockStart || '',
+                    mathWidth: width('.cm-live-math.scholium-math-display')
+                }
             };
             """,
             arguments: [:],
             in: nil,
             contentWorld: .page
         )
-        guard JSONSerialization.isValidJSONObject(rawResult as Any),
-              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
-              let snapshot = try? JSONDecoder().decode(TestingAccessibilitySnapshot.self, from: data) else {
+        guard JSONSerialization.isValidJSONObject(rawResult as Any) else {
             throw SessionError.invalidResult
         }
-        return snapshot
+        guard let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
+            throw SessionError.invalidResult
+        }
+        return try JSONDecoder().decode(TestingAccessibilitySnapshot.self, from: data)
+    }
+
+    func testingRevealFirstFootnoteDefinition() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const item = document.querySelector('.cm-live-footnotes-widget li');
+            if (!item) return false;
+            return !item.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true,
+                cancelable: true
+            }));
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard result as? Bool == true else { throw SessionError.invalidResult }
+    }
+
+    func testingPreviewFirstFootnote() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const anchor = document.querySelector('.cm-live-footnote-reference-widget [data-footnote-preview-id]');
+            if (!anchor) return false;
+            anchor.dispatchEvent(new PointerEvent('pointermove', {
+                bubbles: true,
+                cancelable: true,
+                metaKey: true
+            }));
+            await new Promise(resolve => setTimeout(resolve, 350));
+            return document.getElementById('scholium-preview-popover')?.hidden === false;
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard result as? Bool == true else { throw SessionError.invalidResult }
+    }
+
+    func testingApplyScrollAnchor(_ anchor: EditorScrollAnchor) async throws {
+        guard isReady, isLoaded, let webView,
+              let wireAnchor = Self.wireAnchor(from: anchor, in: checkedSource) else {
+            throw SessionError.invalidResult
+        }
+        pendingScrollAnchor = anchor
+        pendingScrollFraction = anchor.fallbackFraction
+        _ = try await send(.setScrollAnchor(wireAnchor), in: webView)
+    }
+
+    func testingApplyScrollFraction(_ fraction: Double) async throws {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let normalized = min(1, max(0, fraction))
+        pendingScrollFraction = normalized
+        pendingScrollAnchor = nil
+        _ = try await send(.setScrollFraction(normalized), in: webView)
     }
 
     var testingRetainedScrollFraction: Double? { pendingScrollFraction }
+    var testingRetainedScrollAnchor: EditorScrollAnchor? { pendingScrollAnchor }
 
     #endif
 
@@ -388,6 +755,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if !preservingRecovery {
             recoverySnapshot = nil
             lastKnownSelections = []
+            reconstructionScrollAnchor = nil
         }
         pendingSource = source
         pendingDocumentID = documentID
@@ -410,6 +778,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard let self else { return }
             do {
                 _ = try await send(.setMode(mode), in: webView)
+                PerformanceProbe.shared.markEditorModeReady(
+                    documentID: documentID,
+                    mode: mode
+                )
             } catch {
                 let message = "The document mode change was not applied because the editor changed during text composition."
                 errorMessage = message
@@ -434,9 +806,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func setScrollFraction(_ fraction: Double) {
         let normalized = min(1, max(0, fraction))
         pendingScrollFraction = normalized
+        pendingScrollAnchor = nil
         guard isReady, isLoaded, let webView else { return }
         Task {
             _ = try? await send(.setScrollFraction(normalized), in: webView)
+        }
+    }
+
+    func setScrollPosition(anchor: EditorScrollAnchor?, fallbackFraction: Double) {
+        let normalized = min(1, max(0, fallbackFraction))
+        pendingScrollFraction = normalized
+        pendingScrollAnchor = anchor
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            if let anchor,
+               let wireAnchor = Self.wireAnchor(from: anchor, in: checkedSource) {
+                _ = try? await send(.setScrollAnchor(wireAnchor), in: webView)
+            } else {
+                _ = try? await send(.setScrollFraction(normalized), in: webView)
+            }
         }
     }
 
@@ -444,8 +832,51 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingScrollFraction = min(1, max(0, fraction))
     }
 
+
+    fileprivate func recordScrollPosition(
+        _ wireAnchor: MarkdownEditorWireScrollAnchor?,
+        fallbackFraction: Double
+    ) -> EditorScrollAnchor? {
+        let fraction = min(1, max(0, fallbackFraction))
+        pendingScrollFraction = fraction
+        guard let wireAnchor,
+              let sourceOffset = Self.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.sourceUTF16Offset,
+                in: checkedSource
+              ),
+              let lowerBound = Self.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.blockUTF16LowerBound,
+                in: checkedSource
+              ),
+              let upperBound = Self.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.blockUTF16UpperBound,
+                in: checkedSource
+              ) else {
+            pendingScrollAnchor = nil
+            return nil
+        }
+        let anchor = EditorScrollAnchor(
+            sourceFingerprint: DocumentFingerprint(content: checkedSource).sha256,
+            sourceUTF16Offset: sourceOffset,
+            blockUTF16LowerBound: lowerBound,
+            blockUTF16UpperBound: upperBound,
+            relativeBlockPosition: wireAnchor.relativeBlockPosition,
+            fallbackFraction: fraction
+        )
+        guard anchor.isValid(forUTF16Length: checkedSource.utf16.count) else {
+            pendingScrollAnchor = nil
+            return nil
+        }
+        pendingScrollAnchor = anchor
+        return anchor
+    }
+
     fileprivate func retainedScrollFraction(fallback: Double) -> Double {
         pendingScrollFraction ?? min(1, max(0, fallback))
+    }
+
+    fileprivate var retainedScrollAnchor: EditorScrollAnchor? {
+        reconstructionScrollAnchor ?? pendingScrollAnchor
     }
 
     func setLinkCompletions(_ candidates: [EditorLinkCompletion]) {
@@ -453,6 +884,48 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard isReady, let webView else { return }
         Task {
             _ = try? await send(.setLinkCompletions(candidates), in: webView)
+        }
+    }
+
+    func setLinkPreviews(_ previews: [DocumentLinkPreview], in source: String) {
+        pendingLinkPreviews = previews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).compactMap { preview in
+            guard let from = Self.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound,
+                in: source
+            ), let to = Self.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound,
+                in: source
+            ), to > from else { return nil }
+            return MarkdownEditorLinkPreview(
+                from: from,
+                to: to,
+                title: String(preview.title.prefix(240)),
+                relationship: preview.relationship,
+                fragment: preview.fragment.map { String($0.prefix(240)) },
+                htmlBody: String(preview.htmlBody.prefix(24_000))
+            )
+        }
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
+        }
+    }
+
+    func showPreview() {
+        guard canAttemptPreview, isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.showPreview, in: webView)
+        }
+    }
+
+    func showPreview(at point: CGPoint) {
+        guard canAttemptPreview, isReady, isLoaded, let webView,
+              point.x.isFinite, point.y.isFinite else { return }
+        Task {
+            _ = try? await send(
+                .showPreviewAt(x: point.x, y: point.y),
+                in: webView
+            )
         }
     }
 
@@ -494,6 +967,24 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return checkedSource
     }
 
+    /// A retained editor can be briefly unavailable while SwiftUI reattaches
+    /// its WebView after a document projection changes. Saves must wait for
+    /// that same session to finish loading instead of treating the transient
+    /// presentation gap as loss of the authoritative CodeMirror buffer.
+    func waitUntilLoadedForSave(
+        maximumWait: Duration = .seconds(6)
+    ) async throws -> Bool {
+        if isReady, isLoaded, webView != nil { return true }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: maximumWait)
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            try await clock.sleep(for: .milliseconds(50))
+            if isReady, isLoaded, webView != nil { return true }
+        }
+        return isReady && isLoaded && webView != nil
+    }
+
     /// Captures CodeMirror's exact source, selection, and bounded history before
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
@@ -511,6 +1002,28 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         recoverySnapshot = snapshot
         lastKnownSelections = snapshot.ranges
+        let capturedScrollAnchor = try? await currentScrollAnchor()
+        reconstructionScrollAnchor = capturedScrollAnchor ?? pendingScrollAnchor
+    }
+
+    func currentScrollAnchor() async throws -> EditorScrollAnchor? {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let result = try await send(.queryScrollAnchor, in: webView)
+        return recordScrollPosition(
+            result.scrollAnchor,
+            fallbackFraction: result.scrollAnchor?.fallbackFraction
+                ?? pendingScrollFraction
+                ?? 0
+        )
+    }
+
+    func queryPerformanceSamples() async throws -> [MarkdownEditorPerformanceSample] {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let result = try await send(.queryPerformance, in: webView)
+        guard result.accepted, let samples = result.performanceSamples else {
+            throw SessionError.invalidResult
+        }
+        return samples
     }
 
     fileprivate func hasRecoverySnapshot(documentID: String, source: String) -> Bool {
@@ -613,6 +1126,21 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
+    /// Removes keyboard focus before the retained editor is hidden by Read.
+    /// The WebView remains attached so selection, undo, and CodeMirror state
+    /// survive, but it must not continue accepting invisible input.
+    func resignFocus() {
+        guard isReady, let webView else { return }
+        if let window = webView.window,
+           let firstResponder = window.firstResponder as? NSView,
+           firstResponder === webView || firstResponder.isDescendant(of: webView) {
+            window.makeFirstResponder(nil)
+        }
+        Task {
+            _ = try? await send(.blur, in: webView)
+        }
+    }
+
     func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         _ = try await send(.command(command, argument: argument), in: webView)
@@ -711,6 +1239,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 )
                 _ = try await send(.setUserCSS(pendingUserCSS), in: webView)
                 _ = try await send(.setLinkCompletions(pendingLinkCompletions), in: webView)
+                _ = try await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
                 _ = try await send(.setResearcherComments(pendingResearcherComments), in: webView)
                 if let snapshot = matchingRecovery,
                    snapshot.fingerprint == startingFingerprint,
@@ -737,8 +1266,18 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }
                 // Recovery replaces the complete EditorState and can reset the
                 // scroller. Apply the retained position only after restoration.
-                _ = try await send(.setScrollFraction(pendingScrollFraction ?? 0), in: webView)
+                if let anchor = pendingScrollAnchor,
+                   let wireAnchor = Self.wireAnchor(from: anchor, in: checkedSource) {
+                    _ = try await send(.setScrollAnchor(wireAnchor), in: webView)
+                } else {
+                    _ = try await send(.setScrollFraction(pendingScrollFraction ?? 0), in: webView)
+                }
+                reconstructionScrollAnchor = nil
                 isLoaded = true
+                PerformanceProbe.shared.markEditorModeReady(
+                    documentID: documentID,
+                    mode: mode
+                )
                 flushPendingLine()
                 focus()
             } catch {
@@ -781,12 +1320,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             let encoder = JSONEncoder()
             let requestData = try encoder.encode(request)
             guard requestData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
-                  let requestObject = try JSONSerialization.jsonObject(with: requestData) as? [String: Any] else {
+                  let requestJSON = String(data: requestData, encoding: .utf8) else {
                 throw SessionError.invalidResult
             }
             let rawResult = try await webView.callAsyncJavaScript(
-                "return await window.scholiumEditor.dispatch(request)",
-                arguments: ["request": requestObject],
+                "return await window.scholiumEditor.dispatch(JSON.parse(requestJSON))",
+                arguments: ["requestJSON": requestJSON],
                 in: nil,
                 contentWorld: .page
             )
@@ -920,6 +1459,33 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         return editorOffset
     }
+
+    private static func wireAnchor(
+        from anchor: EditorScrollAnchor,
+        in source: String
+    ) -> MarkdownEditorWireScrollAnchor? {
+        guard anchor.sourceFingerprint == DocumentFingerprint(content: source).sha256,
+              anchor.isValid(forUTF16Length: source.utf16.count),
+              let sourceOffset = editorUTF16Offset(
+                forSourceUTF16Offset: anchor.sourceUTF16Offset,
+                in: source
+              ),
+              let lowerBound = editorUTF16Offset(
+                forSourceUTF16Offset: anchor.blockUTF16LowerBound,
+                in: source
+              ),
+              let upperBound = editorUTF16Offset(
+                forSourceUTF16Offset: anchor.blockUTF16UpperBound,
+                in: source
+              ) else { return nil }
+        return MarkdownEditorWireScrollAnchor(
+            sourceUTF16Offset: sourceOffset,
+            blockUTF16LowerBound: lowerBound,
+            blockUTF16UpperBound: upperBound,
+            relativeBlockPosition: anchor.relativeBlockPosition,
+            fallbackFraction: anchor.fallbackFraction
+        )
+    }
 }
 
 struct MarkdownEditorWebView: NSViewRepresentable {
@@ -929,8 +1495,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let mode: NotePresentationMode
     let userCSS: String
     let linkCompletions: [EditorLinkCompletion]
+    let linkPreviews: [DocumentLinkPreview]
     let researcherComments: [ResearcherComment]
     let initialScrollFraction: Double
+    let initialScrollAnchor: EditorScrollAnchor?
     let onDocumentChange: (String) -> Void
     let onRequestSave: () -> Void
     let onRequestSearch: () -> Void
@@ -938,6 +1506,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onLinkActivation: (String) -> Void
     let onCommentActivation: ((UUID) -> Void)?
     let onScrollFractionChange: (Double) -> Void
+    let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -947,7 +1516,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestSearch: onRequestSearch,
             onLinkActivation: onLinkActivation,
             onCommentActivation: onCommentActivation,
-            onScrollFractionChange: onScrollFractionChange
+            onScrollFractionChange: onScrollFractionChange,
+            onScrollAnchorChange: onScrollAnchorChange
         )
     }
 
@@ -966,6 +1536,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
+            contentController.addUserScript(WKUserScript(
+                source: ScholiumMathAssets.runtimeJavaScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            ))
+        }
         if let editorScript = Self.editorScript {
             contentController.addUserScript(WKUserScript(
                 source: editorScript,
@@ -1000,8 +1577,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.mode = mode
         context.coordinator.userCSS = userCSS
         context.coordinator.linkCompletions = linkCompletions
+        context.coordinator.linkPreviews = linkPreviews
         context.coordinator.researcherComments = researcherComments
         context.coordinator.initialScrollFraction = initialScrollFraction
+        context.coordinator.initialScrollAnchor = initialScrollAnchor
+        session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
 
         guard let editorHTML = Self.editorHTML,
@@ -1027,7 +1607,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onCommentActivation = onCommentActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
+        context.coordinator.onScrollAnchorChange = onScrollAnchorChange
         context.coordinator.initialScrollFraction = initialScrollFraction
+        context.coordinator.initialScrollAnchor = initialScrollAnchor
         if context.coordinator.userCSS != userCSS {
             context.coordinator.userCSS = userCSS
             session.setUserCSS(userCSS)
@@ -1035,6 +1617,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if context.coordinator.linkCompletions != linkCompletions {
             context.coordinator.linkCompletions = linkCompletions
             session.setLinkCompletions(linkCompletions)
+        }
+        if context.coordinator.linkPreviews != linkPreviews {
+            context.coordinator.linkPreviews = linkPreviews
+            session.setLinkPreviews(linkPreviews, in: source)
         }
         if context.coordinator.researcherComments != researcherComments {
             context.coordinator.researcherComments = researcherComments
@@ -1046,15 +1632,17 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
             context.coordinator.lastDocumentVersion = 0
             session.loadDocument(source, documentID: documentID, mode: mode)
+            session.setLinkPreviews(linkPreviews, in: source)
             session.setResearcherComments(researcherComments, in: source)
-            session.setScrollFraction(initialScrollFraction)
+            session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.source != source {
             context.coordinator.source = source
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
             context.coordinator.lastDocumentVersion = 0
             session.loadDocument(source, documentID: documentID, mode: mode)
+            session.setLinkPreviews(linkPreviews, in: source)
             session.setResearcherComments(researcherComments, in: source)
-            session.setScrollFraction(initialScrollFraction)
+            session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.mode != mode {
             context.coordinator.mode = mode
             session.setMode(mode)
@@ -1096,7 +1684,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         )
     }
 
-    private static var editorHTML: String? {
+    static var editorHTML: String? {
         guard let directory = editorResourceDirectory,
               let css = try? String(
                 contentsOf: directory.appendingPathComponent("editor.css"),
@@ -1110,7 +1698,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:">
-            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)</style>
+            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
             <style id="scholium-user-css"></style>
           </head>
           <body><main id="editor"></main></body>
@@ -1127,17 +1715,20 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onLinkActivation: (String) -> Void
         var onCommentActivation: ((UUID) -> Void)?
         var onScrollFractionChange: (Double) -> Void
+        var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var documentID = ""
         var source = ""
         var mode: NotePresentationMode = .livePreview
         var userCSS = ""
         var linkCompletions: [EditorLinkCompletion] = []
+        var linkPreviews: [DocumentLinkPreview] = []
         var researcherComments: [ResearcherComment] = []
         var awaitingEditorLoad = false
         var recoveringAfterTermination = false
         var startingFingerprint = ""
         var lastDocumentVersion = 0
         var initialScrollFraction: Double = 0
+        var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
 
         init(
@@ -1147,7 +1738,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestSearch: @escaping () -> Void,
             onLinkActivation: @escaping (String) -> Void,
             onCommentActivation: ((UUID) -> Void)?,
-            onScrollFractionChange: @escaping (Double) -> Void
+            onScrollFractionChange: @escaping (Double) -> Void,
+            onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
         ) {
             self.session = session
             self.onDocumentChange = onDocumentChange
@@ -1156,6 +1748,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onLinkActivation = onLinkActivation
             self.onCommentActivation = onCommentActivation
             self.onScrollFractionChange = onScrollFractionChange
+            self.onScrollAnchorChange = onScrollAnchorChange
             super.init()
             session.installCommittedTextSynchronizer { [weak self] source, fingerprint in
                 guard let self else { return }
@@ -1223,7 +1816,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                       let fraction = payload.scrollFraction,
                       fraction.isFinite,
                       (0...1).contains(fraction) else { return }
-                session.recordScrollFraction(fraction)
+                if let anchor = session.recordScrollPosition(
+                    payload.scrollAnchor,
+                    fallbackFraction: fraction
+                ) {
+                    onScrollAnchorChange(anchor)
+                } else {
+                    session.recordScrollFraction(fraction)
+                }
                 onScrollFractionChange(fraction)
             default:
                 break
@@ -1296,9 +1896,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.editorBecameReady()
             session.setUserCSS(userCSS)
             session.setLinkCompletions(linkCompletions)
+            session.setLinkPreviews(linkPreviews, in: source)
             session.setResearcherComments(researcherComments, in: source)
-            session.setScrollFraction(
-                session.retainedScrollFraction(fallback: initialScrollFraction)
+            session.setScrollPosition(
+                anchor: session.retainedScrollAnchor ?? initialScrollAnchor,
+                fallbackFraction: session.retainedScrollFraction(
+                    fallback: initialScrollFraction
+                )
             )
         }
 

@@ -127,6 +127,10 @@ if rg -n --glob '*.swift' \
   --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
   --glob '!**/Styling/ScholiumCalloutStyles.swift' \
+  --glob '!**/Styling/ScholiumTableStyles.swift' \
+  --glob '!**/Styling/ScholiumFootnoteStyles.swift' \
+  --glob '!**/Styling/ScholiumMathAssets.swift' \
+  --glob '!**/Styling/ScholiumPreviewStyles.swift' \
   '\bFileManager\b|Data\(contentsOf:|String\(contentsOf:' \
   "${ROOT}/Scholium"; then
   echo "I/O wall guard failed: frontend filesystem I/O is outside its delivery allowlist." >&2
@@ -190,8 +194,10 @@ fi
 for shell_script in \
   "${ROOT}/Tools/Scripts/build-qa-app.sh" \
   "${ROOT}/Tools/Scripts/install-cli.sh" \
+  "${ROOT}/Tools/Scripts/inspect-window-size.sh" \
   "${ROOT}/Tools/Scripts/manage-development-storage.sh" \
   "${ROOT}/Tools/Scripts/package-app.sh" \
+  "${ROOT}/Tools/Scripts/run-debug-app.sh" \
   "${ROOT}/Tools/Scripts/run-editor-toolchain.sh" \
   "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh" \
   "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
@@ -207,11 +213,56 @@ PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
   "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
+  "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
   "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
 python3 "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py" self-test
+python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
 "${ROOT}/Tools/Scripts/verify-editor-bundle.sh"
 "${ROOT}/Tools/Scripts/verify-rdf1-fixture.sh"
-swift test --package-path "${ROOT}" --scratch-path "${SCRATCH}"
+# Xcode beta's Swift Testing helper can crash while multiple test products
+# tear down their event graphs (and AppKit/WebKit resources) in one invocation.
+# Run the complete product set serially; no suite or test is excluded.
+run_swift_test_product() {
+  local test_product="$1"
+  local attempt log command_status
+  local -a parallelism_arguments
+  parallelism_arguments=()
+  if [[ "${test_product}" == "ScholiumAppTests" ]]; then
+    # This target owns AppKit windows and WebKit processes. Make Swift
+    # Testing's in-process execution order explicit at that shared boundary.
+    parallelism_arguments=(--no-parallel)
+  fi
+  mkdir -p "${SCRATCH}"
+  for attempt in 1 2 3; do
+    log="${SCRATCH}/${test_product}-attempt-${attempt}.log"
+    set +e
+    swift test \
+      --package-path "${ROOT}" \
+      --scratch-path "${SCRATCH}" \
+      "${parallelism_arguments[@]}" \
+      --filter "${test_product}" 2>&1 | tee "${log}"
+    command_status=${pipestatus[1]}
+    set -e
+    if (( command_status == 0 )); then
+      return 0
+    fi
+    if (( attempt < 3 )) \
+      && rg -q 'swiftpm-testing-helper.*unexpected signal code 11' "${log}" \
+      && ! rg -q 'recorded an issue|Test run with .* failed|Suite .* failed' "${log}"; then
+      echo "Retrying ${test_product} after the known Xcode beta Swift Testing teardown fault (attempt ${attempt}/3)." >&2
+      continue
+    fi
+    return "${command_status}"
+  done
+}
+
+for test_product in \
+  ScholiumCoreTests \
+  ScholiumContractsTests \
+  ScholiumApplicationTests \
+  ScholiumAppTests; do
+  run_swift_test_product "${test_product}"
+done
 
 # Public Application signatures must be expressible entirely in Contracts and
 # Foundation. A leaked Core nominal would defeat the package dependency wall.

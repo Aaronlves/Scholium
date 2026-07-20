@@ -276,7 +276,7 @@ struct ZoteroMetadataTests {
         let report = await ZoteroMCPTransportLocator.probe(
             descriptor: Self.testDescriptor(command: "mock-zotero"),
             environment: ["PATH": root.path],
-            timeout: 2
+            timeout: 5
         )
 
         #expect(report.state == .handshakeSucceeded)

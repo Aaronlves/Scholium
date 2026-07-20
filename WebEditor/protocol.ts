@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 2;
+export const EDITOR_PROTOCOL_VERSION = 3;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -31,6 +31,13 @@ export interface RecoverySnapshot extends SelectionSnapshot {
   undoHistoryPreserved: boolean;
   dirty: boolean;
 }
+export interface EditorScrollAnchor {
+  sourceUTF16Offset: number;
+  blockUTF16LowerBound: number;
+  blockUTF16UpperBound: number;
+  relativeBlockPosition: number;
+  fallbackFraction: number;
+}
 export interface MarkdownEditingDialect {
   version: number;
   callouts: Array<{identifier: string; aliases: string[]; label: string; meaning: string}>;
@@ -39,6 +46,21 @@ export interface MarkdownEditingDialect {
     kind: "neutral" | "supports_target" | "supported_by_target" | "incompatible";
     meaning: string;
   }>;
+  footnotes: {
+    namedReferenceOpening: string;
+    namedReferenceClosing: string;
+    definitionSeparator: string;
+    inlineOpening: string;
+    continuationIndentSpaces: number;
+    allowsTabContinuation: boolean;
+    caseSensitiveIdentifiers: boolean;
+    ordinalByFirstReference: boolean;
+  };
+  mathematics: {
+    inlineDelimiter: string;
+    displayDelimiter: string;
+    singleDollarInline: boolean;
+  };
 }
 export interface EditorContext {
   selections: SelectionRange[];
@@ -50,21 +72,31 @@ export interface EditorContext {
   undoLabel?: string;
   redoLabel?: string;
 }
+export interface EditorPerformanceSample {
+  name: string;
+  durationMilliseconds: number;
+  observed: Record<string, number>;
+}
 export type EditorOperation =
   | {type: "initialize"; text: string; mode: EditorMode; dialect: MarkdownEditingDialect}
   | {type: "setMode"; mode: EditorMode}
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkCompletions"; value: unknown[]}
+  | {type: "setLinkPreviews"; value: unknown[]}
   | {type: "setResearcherComments"; value: unknown[]}
+  | {type: "showPreview"}
+  | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
   | {type: "goToLine"; line: number}
   | {type: "setScrollFraction"; fraction: number}
-  | {type: "queryText"} | {type: "querySelection"} | {type: "queryContext"}
+  | {type: "setScrollAnchor"; anchor: EditorScrollAnchor}
+  | {type: "queryText"} | {type: "querySelection"} | {type: "queryContext"} | {type: "queryScrollAnchor"}
+  | {type: "queryPerformance"}
   | {type: "captureRecovery"}
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "synchronizeCommittedText"; expectedText: string; committedText: string; committedFingerprint: string}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
-  | {type: "markClean"} | {type: "focus"};
+  | {type: "markClean"} | {type: "focus"} | {type: "blur"};
 export interface EditorRequest {
   protocolVersion: number;
   requestID: string;
@@ -84,14 +116,16 @@ export interface EditorCommandResult {
   context?: EditorContext;
   selection?: SelectionSnapshot;
   recovery?: RecoverySnapshot;
+  scrollAnchor?: EditorScrollAnchor;
+  performanceSamples?: EditorPerformanceSample[];
   accepted: boolean;
   error?: string;
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setUserCSS", "setLinkCompletions", "setResearcherComments", "announceStatus",
-  "goToLine", "setScrollFraction", "queryText", "querySelection", "queryContext",
-  "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus",
+  "initialize", "setMode", "setUserCSS", "setLinkCompletions", "setLinkPreviews", "setResearcherComments", "showPreview", "showPreviewAt", "announceStatus",
+  "goToLine", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
+  "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "standardLink", "wikilink",
@@ -107,17 +141,67 @@ const commandTypes = new Set<MarkdownEditorCommand>([
 function validMode(value: unknown): value is EditorMode {
   return value === "livePreview" || value === "source";
 }
+function validDialect(value: unknown): value is MarkdownEditingDialect {
+  if (!value || typeof value !== "object") return false;
+  const dialect = value as Partial<MarkdownEditingDialect>;
+  const callouts = dialect.callouts;
+  const vectors = dialect.vectorLinkOperators;
+  const footnotes = dialect.footnotes;
+  const mathematics = dialect.mathematics;
+  return dialect.version === 2
+    && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32
+    && callouts.every((callout) => Boolean(callout)
+      && typeof callout.identifier === "string" && callout.identifier.length <= 64
+      && Array.isArray(callout.aliases) && callout.aliases.length <= 32
+      && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64)
+      && typeof callout.label === "string" && callout.label.length <= 120
+      && typeof callout.meaning === "string" && callout.meaning.length <= 1_000)
+    && Array.isArray(vectors) && vectors.length === 4
+    && vectors.every((vector) => Boolean(vector)
+      && ["", "+", "-", "?"].includes(vector.marker)
+      && ["neutral", "supports_target", "supported_by_target", "incompatible"].includes(vector.kind)
+      && typeof vector.meaning === "string" && vector.meaning.length <= 1_000)
+    && Boolean(footnotes)
+    && footnotes?.namedReferenceOpening === "[^"
+    && footnotes.namedReferenceClosing === "]"
+    && footnotes.definitionSeparator === ":"
+    && footnotes.inlineOpening === "^["
+    && footnotes.continuationIndentSpaces === 2
+    && footnotes.allowsTabContinuation === true
+    && footnotes.caseSensitiveIdentifiers === true
+    && footnotes.ordinalByFirstReference === true
+    && Boolean(mathematics)
+    && mathematics?.inlineDelimiter === "$"
+    && mathematics.displayDelimiter === "$$"
+    && mathematics.singleDollarInline === true;
+}
 function validOperation(operation: Record<string, unknown>) {
   switch (operation.type) {
   case "initialize":
     return typeof operation.text === "string" && validMode(operation.mode)
-      && Boolean(operation.dialect) && typeof operation.dialect === "object";
+      && validDialect(operation.dialect);
   case "setMode": return validMode(operation.mode);
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
-  case "setLinkCompletions": case "setResearcherComments": return Array.isArray(operation.value);
+  case "setLinkCompletions": case "setLinkPreviews": case "setResearcherComments": return Array.isArray(operation.value);
+  case "showPreviewAt":
+    return typeof operation.x === "number" && Number.isFinite(operation.x)
+      && typeof operation.y === "number" && Number.isFinite(operation.y);
   case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1;
   case "setScrollFraction": return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
+  case "setScrollAnchor": {
+    const anchor = operation.anchor as Partial<EditorScrollAnchor> | undefined;
+    return Boolean(anchor)
+      && Number.isSafeInteger(anchor?.sourceUTF16Offset)
+      && Number.isSafeInteger(anchor?.blockUTF16LowerBound)
+      && Number.isSafeInteger(anchor?.blockUTF16UpperBound)
+      && typeof anchor?.relativeBlockPosition === "number"
+      && Number.isFinite(anchor.relativeBlockPosition)
+      && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1
+      && typeof anchor?.fallbackFraction === "number"
+      && Number.isFinite(anchor.fallbackFraction)
+      && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
+  }
   case "restoreRecovery": return Boolean(operation.snapshot) && typeof operation.snapshot === "object";
   case "synchronizeCommittedText":
     return typeof operation.expectedText === "string" && typeof operation.committedText === "string"
@@ -125,8 +209,8 @@ function validOperation(operation: Record<string, unknown>) {
   case "command":
     return typeof operation.command === "string" && commandTypes.has(operation.command as MarkdownEditorCommand)
       && (operation.argument === undefined || typeof operation.argument === "string");
-  case "queryText": case "querySelection": case "queryContext": case "captureRecovery":
-  case "markClean": case "focus": return true;
+  case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview":
+  case "markClean": case "focus": case "blur": return true;
   default: return false;
   }
 }

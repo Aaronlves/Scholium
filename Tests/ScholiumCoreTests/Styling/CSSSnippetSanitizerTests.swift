@@ -8,6 +8,7 @@ struct CSSSnippetSanitizerTests {
     func scopesSelectors() throws {
         let result = try CSSSnippetSanitizer.sanitize("""
         h1, h2 { color: #7257d9; font-family: Alegreya; }
+        body { font-size: 1em; }
         p { line-height: 1.7; }
         code { font-family: 'Victor Mono'; background-color: #eee; }
         """)
@@ -17,6 +18,7 @@ struct CSSSnippetSanitizerTests {
         #expect(result.livePreviewCSS.contains(".cm-live-h1"))
         #expect(result.livePreviewCSS.contains(".cm-line"))
         #expect(result.livePreviewCSS.contains(".cm-live-code"))
+        #expect(result.livePreviewCSS.contains("#editor .scholium-live-mode .cm-content"))
     }
 
     @Test("Network, cascade escape, and HTML injection are rejected", arguments: [

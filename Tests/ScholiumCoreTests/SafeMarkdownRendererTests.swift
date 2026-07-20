@@ -150,6 +150,91 @@ struct SafeMarkdownRendererTests {
         #expect(!rendered.contains("[^a]:"))
     }
 
+    @Test("Footnote definitions render owned nested blocks without absorbing following prose")
+    func nestedBlockFootnotes() {
+        let source = """
+        Claim[^blocks].
+
+        [^blocks]: First paragraph.
+
+          - Outer item
+            - Nested item
+
+          > Quoted reason.
+
+          > [!state] Nested claim
+          > Body with $z$.
+
+          | Term | Value |
+          |:---|---:|
+          | $z$ | 3 |
+
+          $$
+          z^2
+          $$
+
+          ```swift
+          let value = 1
+          ```
+        Following paragraph.
+        """
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "nested-footnote.md", rawContent: source)
+        ).htmlBody
+
+        #expect(rendered.contains("<div class=\"footnote-content\"><p>First paragraph.</p>"))
+        #expect(rendered.contains("<ul><li><p>Outer item</p>"))
+        #expect(rendered.contains("<ul><li><p>Nested item</p>"))
+        #expect(rendered.contains("<blockquote><p>Quoted reason.</p>"))
+        #expect(rendered.contains("class=\"scholium-callout scholium-callout-state\""))
+        #expect(rendered.contains("<table class=\"scholium-table\""))
+        #expect(rendered.contains("class=\"scholium-math scholium-math-inline\""))
+        #expect(rendered.contains("class=\"scholium-math scholium-math-display\""))
+        #expect(rendered.contains("<pre><code class=\"language-swift\">let value = 1"))
+        #expect(rendered.contains(">Following paragraph.</p>"))
+        #expect(!rendered.contains("<div class=\"footnote-content\"><p>Following paragraph."))
+    }
+
+    @Test("Mathematics renders inert shared-runtime placeholders with exact source fallback")
+    func mathematics() {
+        let source = "Inline $x^2 + y^2$.\n\n$$\n\\int_0^1 x\\,dx\n$$\n\n`$literal$`"
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "mathematics.md", rawContent: source)
+        )
+
+        #expect(rendered.semanticDocument.mathExpressions.count == 2)
+        #expect(rendered.htmlBody.contains("class=\"scholium-math scholium-math-inline\""))
+        #expect(rendered.htmlBody.contains("class=\"scholium-math scholium-math-display\""))
+        #expect(rendered.htmlBody.contains("data-math-kind=\"inline\""))
+        #expect(rendered.htmlBody.contains("data-math-source=\""))
+        #expect(rendered.htmlBody.contains("<code class=\"scholium-math-source\">$x^2 + y^2$</code>"))
+        #expect(rendered.htmlBody.contains("$literal$"))
+        #expect(!rendered.htmlBody.contains("<script"))
+    }
+
+    @Test("Tables expose column headers, alignment, and a bounded shared scroll container")
+    func tableSemantics() {
+        let source = """
+        | Claim | Status | Count |
+        |:---|:---:|---:|
+        | Fittingness | Open | 2 |
+        """
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "table.md", rawContent: source)
+        ).htmlBody
+
+        #expect(rendered.contains("class=\"scholium-table-scroll\""))
+        #expect(rendered.contains("data-scholium-protected=\"table\""))
+        #expect(rendered.contains("<table class=\"scholium-table\""))
+        #expect(rendered.contains("<thead><tr>"))
+        #expect(rendered.contains("<th scope=\"col\" class=\"scholium-table-align-left\">Claim</th>"))
+        #expect(rendered.contains("<th scope=\"col\" class=\"scholium-table-align-center\">Status</th>"))
+        #expect(rendered.contains("<th scope=\"col\" class=\"scholium-table-align-right\">Count</th>"))
+        #expect(rendered.contains("<tbody><tr>"))
+        #expect(rendered.contains("<td class=\"scholium-table-align-right\">2</td>"))
+        #expect(!rendered.contains("<thead><td>"))
+    }
+
     @Test("Legacy typed wikilinks render as inert neutral navigation")
     func wikilinks() {
         let rendered = SafeMarkdownRenderer.render(

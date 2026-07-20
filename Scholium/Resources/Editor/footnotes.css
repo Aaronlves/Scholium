@@ -1,0 +1,89 @@
+.footnote-reference-wrap {
+  line-height: 0;
+  vertical-align: super;
+}
+
+.footnote-reference {
+  appearance: none;
+  border: 0;
+  padding: 0 0.1em;
+  color: var(--scholium-color-accent);
+  background: none;
+  font: 700 0.65em system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.footnote-reference:disabled,
+.footnote-reference[aria-disabled="true"] {
+  color: var(--scholium-color-muted-text);
+  cursor: default;
+  text-decoration: line-through;
+}
+
+.footnote-reference:focus-visible,
+.footnote-return:focus-visible {
+  outline: 2px solid var(--scholium-color-accent);
+  outline-offset: 2px;
+}
+
+.footnotes {
+  margin-block-start: 3em;
+  color: var(--scholium-color-secondary-text);
+  font-size: 0.86em;
+}
+
+.footnotes hr {
+  inline-size: min(8em, 28%);
+  margin: 0 0 var(--scholium-rhythm-paragraph-gap);
+  border: 0;
+  border-block-start: 1px solid var(--scholium-color-separator);
+}
+
+.footnotes ol {
+  margin: 0;
+  padding-inline-start: 2em;
+}
+
+.footnotes li {
+  position: relative;
+  min-inline-size: 0;
+  padding-inline-end: 2.5em;
+  overflow-wrap: anywhere;
+}
+
+.footnote-content > :first-child { margin-block-start: 0; }
+.footnote-content > :last-child { margin-block-end: 0; }
+
+.footnote-return {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  min-inline-size: 1.7em;
+  min-block-size: 1.7em;
+  border: 0;
+  border-radius: 6px;
+  color: var(--scholium-color-accent);
+  background: color-mix(in srgb, var(--scholium-color-accent) 9%, transparent);
+  cursor: pointer;
+}
+
+.cm-live-footnote-reference-widget { white-space: normal; }
+
+.cm-live-footnotes-widget {
+  display: block;
+  inline-size: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+}
+
+.cm-live-footnotes-widget li,
+.cm-live-footnotes-widget .footnote-return { cursor: text; }
+
+.cm-live-footnote-definition-source {
+  color: var(--scholium-color-secondary-text);
+}
+
+@media (forced-colors: active) {
+  .footnotes hr { border-block-start-color: CanvasText; }
+  .footnote-return { border: 1px solid ButtonText; }
+}

@@ -118,6 +118,52 @@ struct MarkdownSemanticDocumentTests {
         #expect((source as NSString).substring(with: byTarget["Supported"]!.span.nsRange) == "+[[Supported]]")
     }
 
+    @Test("Unclosed comments fail closed and diagnose their exact opener")
+    func unclosedComments() throws {
+        for fixture in [
+            (source: "Visible.\n%%\n+[[Hidden]] $x$ [^hidden]", opener: "%%"),
+            (source: "Visible.\n<!--\n+[[Hidden]] $x$ [^hidden]", opener: "<!--"),
+        ] {
+            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+                relativePath: "comment.md",
+                rawContent: fixture.source
+            ))
+            #expect(semantic.links.isEmpty)
+            #expect(semantic.mathExpressions.isEmpty)
+            #expect(semantic.footnoteReferences.isEmpty)
+            let diagnostic = try #require(semantic.diagnostics.first {
+                $0.code == .malformedComment
+            })
+            let span = try #require(diagnostic.span)
+            #expect((fixture.source as NSString).substring(with: span.nsRange) == fixture.opener)
+        }
+    }
+
+    @Test("Incomplete inline extension markers remain exact ordinary source")
+    func incompleteInlineExtensionMarkers() {
+        let source = """
+        [^unclosed
+        [^]: empty identifier
+        ^[unclosed
+        ^[]
+        [[unclosed
+        ==unclosed
+        $unclosed
+        > [!unclosed
+        """
+        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+            relativePath: "Incomplete.md",
+            rawContent: source
+        ))
+
+        #expect(semantic.callouts.isEmpty)
+        #expect(semantic.links.isEmpty)
+        #expect(semantic.footnoteDefinitions.isEmpty)
+        #expect(semantic.footnoteReferences.isEmpty)
+        #expect(semantic.mathExpressions.isEmpty)
+        #expect(semantic.diagnostics.isEmpty)
+    }
+
     @Test("Mismatched backtick runs do not suppress valid vector links")
     func mismatchedBackticks() {
         let source = "` unmatched +[[Visible]] ``\nText ``` ?[[Hidden]] ```"
@@ -232,6 +278,42 @@ struct MarkdownSemanticDocumentTests {
         #expect(semantic.diagnostics.contains { $0.code == .unreferencedFootnote })
     }
 
+    @Test("Footnote continuations preserve nested block indentation and exact ownership")
+    func nestedBlockFootnote() throws {
+        let source = """
+        Claim[^blocks].
+
+        [^blocks]: First paragraph.
+
+          - Outer item
+            - Nested item
+
+          ```swift
+          let value = 1
+          ```
+        Following paragraph.
+        """
+        let semantic = MarkdownSemanticDocument(
+            parsing: NoteDocument(relativePath: "nested-footnote.md", rawContent: source)
+        )
+        let definition = try #require(semantic.footnoteDefinitions.first)
+
+        #expect(definition.content == """
+        First paragraph.
+
+        - Outer item
+          - Nested item
+
+        ```swift
+        let value = 1
+        ```
+        """)
+        let exactSource = (source as NSString).substring(with: definition.span.nsRange)
+        #expect(exactSource.hasPrefix("[^blocks]: First paragraph."))
+        #expect(exactSource.hasSuffix("  ```\n"))
+        #expect(!exactSource.contains("Following paragraph."))
+    }
+
     @Test("Links share one syntax-aware source-location contract")
     func links() {
         let source = """
@@ -264,5 +346,61 @@ struct MarkdownSemanticDocumentTests {
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "duplicate.md", rawContent: source))
         #expect(semantic.footnoteDefinitions.count == 1)
         #expect(semantic.diagnostics.contains { $0.code == .duplicateFootnote })
+    }
+
+    @Test("Dollar mathematics is source-located and excludes literal regions")
+    func mathematics() throws {
+        let source = """
+        ---
+        title: "$YAML$"
+        ---
+        Inline $x + 范围$ and double-inline $$C_L$$.
+
+        $$
+        \\int_0^1 x^2 \\, dx
+        $$
+
+        Escaped \\$literal$ and `code $ignored$`.
+        %% $commented$ %%
+        <!-- $hidden$ -->
+
+        <div>
+        $raw$
+        </div>
+        """
+        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+            relativePath: "Math.md",
+            rawContent: source
+        ))
+
+        #expect(semantic.mathExpressions.map(\.kind) == [.inline, .inline, .display])
+        #expect(semantic.mathExpressions.map(\.content) == [
+            "x + 范围", "C_L", "\\int_0^1 x^2 \\, dx",
+        ])
+        #expect(semantic.mathExpressions.map(\.delimiterLength) == [1, 2, 2])
+        for expression in semantic.mathExpressions {
+            let exact = (source as NSString).substring(with: expression.span.nsRange)
+            #expect(exact.contains(expression.content))
+        }
+        #expect(!semantic.mathExpressions.contains { $0.content.contains("YAML") })
+        #expect(!semantic.mathExpressions.contains { $0.content.contains("ignored") })
+        #expect(!semantic.mathExpressions.contains { $0.content.contains("commented") })
+        #expect(!semantic.mathExpressions.contains { $0.content.contains("hidden") })
+        #expect(!semantic.mathExpressions.contains { $0.content.contains("raw") })
+    }
+
+    @Test("Unclosed display mathematics remains exact source with a diagnostic")
+    func malformedDisplayMathematics() {
+        let source = "Before\n\n$$\nx + y\n"
+        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+            relativePath: "Malformed Math.md",
+            rawContent: source
+        ))
+
+        #expect(semantic.mathExpressions.isEmpty)
+        #expect(semantic.diagnostics.contains { diagnostic in
+            diagnostic.code == .malformedMath
+                && diagnostic.span.map { (source as NSString).substring(with: $0.nsRange) } == "$$"
+        })
     }
 }

@@ -11,6 +11,7 @@ WARMUPS=0
 SAMPLES=1
 RELAUNCH_COOLDOWN_MS=0
 METRIC_COOLDOWN_SECONDS=0
+MEMORY_WATCH_PID=""
 usage() {
   cat <<'EOF'
 Usage:
@@ -90,6 +91,7 @@ export DEVELOPER_DIR
   print -u2 "Xcode toolchain is unavailable at ${DEVELOPER_DIR}."
   exit 69
 }
+"${ROOT}/Tools/Scripts/require-unlocked-ui-host.sh"
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIXTURE}" --verify
 codesign --verify --deep --strict "${APP}"
 BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "${APP}/Contents/Info.plist")"
@@ -142,6 +144,10 @@ DERIVED="${SCRATCH}/derived-data"
 cleanup() {
   local exit_code=$?
   local pid
+  if [[ -n "${MEMORY_WATCH_PID}" ]]; then
+    kill "${MEMORY_WATCH_PID}" 2>/dev/null || true
+    wait "${MEMORY_WATCH_PID}" 2>/dev/null || true
+  fi
   for pid in $(pgrep -f "^${APP}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
     kill "${pid}" 2>/dev/null || true
   done
@@ -220,6 +226,7 @@ for metric in \
     -destination "platform=macOS,arch=$(uname -m)" \
     -parallel-testing-enabled NO \
     -maximum-parallel-testing-workers 1 \
+    -resultBundlePath "${SCRATCH}/${metric}.xcresult" \
     test-without-building \
     -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1PerformanceSamples \
     >"${SCRATCH}/${metric}.log"
@@ -227,6 +234,57 @@ for metric in \
     sleep "${METRIC_COOLDOWN_SECONDS}"
   fi
 done
+
+# Retained Editor memory is sampled through the exact app originator's launchd
+# service map rather than PPID or process-name matching. The UI journey owns
+# the real mode transitions; the external sampler owns attribution and RSS.
+memory_handoff="${RAW}/editor-retained-memory-handoff"
+memory_results="${memory_handoff}/editor_retained_memory.jsonl"
+memory_progress="${memory_handoff}/editor_retained_memory_progress.jsonl"
+memory_acknowledgment="${memory_handoff}/editor_retained_memory.ack"
+memory_home="${APP_SCRATCH}/home-editor-retained-memory"
+memory_run_file="${DERIVED}/Build/Products/ScholiumPerformance-editor-retained-memory.xctestrun"
+mkdir -p "${memory_home}" "${memory_handoff}"
+cp "${BASE_XCTESTRUN}" "${memory_run_file}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${APP}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${FIXTURE_COPY}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${memory_home}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${RUN_ID}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_PROGRESS_PATH \
+  "${memory_progress}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_ACKNOWLEDGMENT_PATH \
+  "${memory_acknowledgment}"
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_TRANSITIONS 50
+python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
+  --app "${APP}" \
+  --watch-progress "${memory_progress}" \
+  --acknowledgment "${memory_acknowledgment}" \
+  --output "${memory_results}" \
+  --samples 51 \
+  --timeout-seconds 900 \
+  >"${SCRATCH}/editor-retained-memory-sampler.log" 2>&1 &
+MEMORY_WATCH_PID=$!
+set +e
+"${DEVELOPER_DIR}/usr/bin/xcodebuild" \
+  -xctestrun "${memory_run_file}" \
+  -destination "platform=macOS,arch=$(uname -m)" \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -resultBundlePath "${SCRATCH}/editor-retained-memory.xcresult" \
+  test-without-building \
+  -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1EditorRetainedMemory \
+  >"${SCRATCH}/editor-retained-memory.log"
+memory_test_status=$?
+set -e
+if (( memory_test_status != 0 )); then
+  kill "${MEMORY_WATCH_PID}" 2>/dev/null || true
+  wait "${MEMORY_WATCH_PID}" 2>/dev/null || true
+  MEMORY_WATCH_PID=""
+  exit "${memory_test_status}"
+fi
+wait "${MEMORY_WATCH_PID}"
+MEMORY_WATCH_PID=""
+cp "${memory_results}" "${RAW}/editor_retained_memory.jsonl"
 
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   --output "${FIXTURE_COPY}" \

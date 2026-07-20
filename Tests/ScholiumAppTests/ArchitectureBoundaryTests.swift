@@ -114,6 +114,10 @@ struct ArchitectureBoundaryTests {
             "Scholium/Views/Note/MarkdownEditorWebView.swift",
             "Scholium/Styling/ScholiumWebFonts.swift",
             "Scholium/Styling/ScholiumCalloutStyles.swift",
+            "Scholium/Styling/ScholiumTableStyles.swift",
+            "Scholium/Styling/ScholiumFootnoteStyles.swift",
+            "Scholium/Styling/ScholiumMathAssets.swift",
+            "Scholium/Styling/ScholiumPreviewStyles.swift",
         ]
         let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]
         var violations: [String] = []
@@ -296,7 +300,7 @@ struct ArchitectureBoundaryTests {
         }
     }
 
-    @Test("Markdown editor exposes only the typed v2 dispatcher")
+    @Test("Markdown editor exposes only the typed v3 dispatcher")
     func markdownEditorBridgeBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -323,6 +327,7 @@ struct ArchitectureBoundaryTests {
         #expect(!native.contains("evaluateJavaScript"))
         for module in [
             "protocol.ts", "projection.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
+            "table-presentation.ts",
             "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
         ] {
             #expect(

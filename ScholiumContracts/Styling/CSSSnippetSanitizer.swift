@@ -41,7 +41,7 @@ public enum CSSSnippetSanitizer {
 
     private static let protectedSelectorFragments = [
         "scholium-callout", "footnote", "review", "diagnostic", "provenance",
-        "source-warning", "data-scholium-protected", "researcher-comment",
+        "source-warning", "data-scholium-protected", "researcher-comment", "scholium-preview",
         "workflow-gate", "cm-live-callout", "scholium-vector", "cm-live-vector"
     ]
 
@@ -70,9 +70,9 @@ public enum CSSSnippetSanitizer {
     ]
 
     private static let liveSelectorMap: [String: [String]] = [
-        "body": [".scholium-live-mode .cm-content"],
-        "main": [".scholium-live-mode .cm-content"],
-        ".scholium-document": [".scholium-live-mode .cm-content"],
+        "body": ["#editor .scholium-live-mode .cm-content"],
+        "main": ["#editor .scholium-live-mode .cm-content"],
+        ".scholium-document": ["#editor .scholium-live-mode .cm-content"],
         "h1": [".scholium-live-mode .cm-live-h1"],
         "h2": [".scholium-live-mode .cm-live-h2"],
         "h3": [".scholium-live-mode .cm-live-h3"],

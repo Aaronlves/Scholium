@@ -76,10 +76,24 @@ export function applyNormalizedChangesToExactSource(
   return result;
 }
 
-export function frontmatterEndLine(doc: Text) {
-  if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return 0;
-  for (let number = 2; number <= doc.lines; number += 1) {
-    if (doc.line(number).text.trim() === "---") return number;
+function isFrontmatterOpening(text: string) {
+  return text.replace(/^\uFEFF/, "").trim() === "---";
+}
+
+export function frontmatterBoundary(doc: Text) {
+  if (doc.lines < 2 || !isFrontmatterOpening(doc.line(1).text)) {
+    return {endLine: 0, unclosed: false};
   }
-  return 0;
+  for (let number = 2; number <= doc.lines; number += 1) {
+    if (doc.line(number).text.trim() === "---") return {endLine: number, unclosed: false};
+  }
+  return {endLine: 0, unclosed: true};
+}
+
+export function frontmatterEndLine(doc: Text) {
+  return frontmatterBoundary(doc).endLine;
+}
+
+export function hasUnclosedFrontmatter(doc: Text) {
+  return frontmatterBoundary(doc).unclosed;
 }

@@ -679,6 +679,7 @@ private struct ZoteroSourceSection: View {
                     )
                 }
             }
+            .accessibilityIdentifier("scholium.zoteroSourceSection")
             .task(id: requestIdentity) { await load() }
             .confirmationDialog(
                 "Use This Zotero Item?",

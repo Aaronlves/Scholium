@@ -72,8 +72,23 @@ Useful development commands:
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" swift build
 DEVELOPER_DIR="$developer_dir" swift test
-DEVELOPER_DIR="$developer_dir" swift run ScholiumApp
+./Tools/Scripts/run-debug-app.sh
 ```
+
+The Debug launcher assembles an ignored `.build/debug-app/Scholium-Debug.app`
+and opens it through LaunchServices. Use it for GUI work so scene launch,
+restoration, activation, and native window behavior run inside a real app
+bundle; `swift run ScholiumApp` remains unsuitable as a macOS GUI host.
+
+During isolated window QA, read the front QA window's exact frame without
+changing it:
+
+```bash
+./Tools/Scripts/inspect-window-size.sh
+```
+
+The first run may require Terminal accessibility permission. The probe is
+read-only and defaults to the `com.scholium.qa` bundle.
 
 All SwiftPM build products, dependency checkouts, compiler indexes, and test
 artifacts live under the ignored repository `.build/` directory. This is safe

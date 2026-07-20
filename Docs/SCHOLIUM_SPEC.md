@@ -4,12 +4,11 @@
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
 
-This is Scholium's sole target authority. It defines product semantics,
-interface behavior, action language, Scholarly Editorialism, accessibility,
-release requirements, and stable decisions. `IMPLEMENTATION_ARCHITECTURE.md`
-describes structure; `IMPLEMENTATION_STATUS.md`, README, live construction,
-and tests establish current reachability and evidence. A difference in current
-code is migration work, not an alternative product rule.
+This is Scholium's sole target authority for product, interface, action
+language, Scholarly Editorialism, accessibility, release, and stable decisions.
+`IMPLEMENTATION_ARCHITECTURE.md` describes structure; `IMPLEMENTATION_STATUS.md`,
+README, live construction, and tests establish reachability and evidence.
+Current divergence is migration work, not an alternative rule.
 
 In this specification:
 
@@ -19,9 +18,8 @@ In this specification:
 - **Deferred** is intentionally outside the stated release boundary.
 - **Unresolved** means a decision or acceptance judgment remains open.
 
-Apple's Human Interface Guidelines and the selected SDK own platform guidance
-and API behavior; this specification owns Scholium's Triptych, scholarly
-semantics, evidence distinctions, and research governance.
+Apple HIG and the selected SDK own platform/API behavior; this specification
+owns the Triptych, scholarly semantics, evidence, and research governance.
 
 The direct-agent-edit model supersedes Proposal and unapplied-Revision
 workflows. Unsupported pre-release app state fails closed or is ignored. This
@@ -71,33 +69,28 @@ Session. “Revision” may still describe an edit or a Critique section.
 
 ### 2.1 Research document first
 
-Scholium is a local-first macOS document editor with research intelligence for
-sustained humanities research, especially philosophy. The research document,
-not a dashboard, workflow state, task, or agent conversation, is its primary
-object. Exact Markdown remains the intellectual artifact beneath every
-projection.
+Scholium is a local-first macOS document editor for sustained humanities
+research, especially philosophy. The research document—not a dashboard, task,
+workflow state, or agent conversation—is primary; exact Markdown underlies
+every projection.
 
-The immediate priority is a dependable, comprehensible core: setup, open,
-create, read, edit, autosave, Search, conflict handling, recovery, Library
-navigation, Document tabs, and contextual inspection must work without data
-loss, shell reconstruction, or surprising state changes before visual polish
-or optional advanced workflows can block release. Exact visual metrics remain
-provisional unless required for readability, accessibility, source integrity,
-or correct native-window behavior.
+Before polish or optional workflows may block release, setup, open, create,
+read, edit, autosave, Search, conflicts, recovery, Library, Document tabs, and
+contextual inspection must work without data loss, shell reconstruction, or
+surprising state changes. Visual metrics are provisional unless required by
+readability, accessibility, source integrity, or native-window behavior.
 
-Scholium supports reading, writing, commenting, reviewing, searching,
-connecting, organizing, recovering, and tracing source-grounded work. It is
-not a project manager, reference manager, permanent AI chat, or full Obsidian
-replacement. Obsidian, Zotero, and agents are optional; the manual academic
-core must work entirely in Scholium.
+Scholium supports source-grounded reading, writing, commenting, review, Search,
+Connections, organization, recovery, and provenance. It is not project or
+reference management, permanent AI chat, or a full Obsidian replacement. The
+manual core must work without Obsidian, Zotero, or agents.
 
 ### 2.2 Researcher responsibility and optional agent access
 
-The researcher governs the Triptych. She may instruct an external agent to
-create, edit, rename, move, organize, or delete files through filesystem or CLI
-tools, but Scholium issues no persistent permission, Proposal, authorization
-scope, or app-required token. The current instruction defines the task; no
-permission survives it. Dialogue and Critique remain optional.
+The researcher governs the Triptych and may instruct an external agent to
+mutate files through filesystem or CLI tools. Scholium issues no persistent
+permission, Proposal, scope, or required token: only the current instruction
+authorizes the task. Dialogue and Critique remain optional.
 
 Scholium supplies safety, not transferred responsibility:
 
@@ -123,10 +116,9 @@ Beta distinguishes:
 - editable **Researcher Skills**, including independent copies of permitted
   bundled packages and researcher-owned Philosophical Practices.
 
-Bundled methods assist agents in producing warranted, source-faithful,
-reviewable work. They neither teach the researcher how to conduct philosophy,
-certify truth, nor replace her judgment. Researcher-owned methods remain her
-responsibility.
+Bundled methods assist warranted, source-faithful, reviewable work; they do not
+teach philosophy, certify truth, or replace researcher judgment. Researcher
+methods remain researcher-owned responsibility.
 
 ### 2.3 Authorship and provenance
 
@@ -154,10 +146,9 @@ Analyses and Topics remain reusable across Works in the same philosophical
 domain. A substantially different domain uses another complete Triptych.
 There is no fourth vault or **All Notes** mode.
 
-Researchers choose all three locations; Scholium recommends, but never
-requires, a common parent and never relocates them automatically. Because one
-portable `.scholium/` directory sits beside Works, two Triptychs may not have
-Works roots with the same parent.
+Researchers choose all locations. Scholium may recommend a common parent but
+never requires or relocates it. Because `.scholium/` sits beside Works, two
+Triptychs may not share a Works parent.
 
 ### 3.2 Triptych navigation and windows
 
@@ -173,13 +164,11 @@ the active document and its Apparatus projection, while Library disclosure and
 selection, Sidebar visibility, Apparatus visibility, and Apparatus mode remain
 stable.
 
-**New Triptych…** and a missing registration use a separate Bootstrap window.
-A configured Triptych with expired folder authorization stays in its workspace
-and opens one bounded **Restore Access** sheet; it never re-enters setup. A
-configured workspace retains one frame and one three-item split across loading,
-no-note, and selected-note states. Opening or closing notes never resizes the
-window. The no-note Document is a quiet, text-free, action-free semantic
-background; Library remains reachable through the standard Sidebar route.
+**New Triptych…** and missing registration use Bootstrap. Expired access stays
+in the configured workspace under one **Restore Access** sheet. The workspace
+retains one frame and three-item split across loading/no-note/note states;
+notes never resize it. No-note Document is text-, action-, and VoiceOver-free,
+while Library remains available through the Sidebar route.
 
 Works folders are researcher-controlled organization, not registered projects.
 Scholium supplies no project selector, assignment, completeness check, or
@@ -187,7 +176,7 @@ Triptych switcher inside Document.
 
 ### 3.3 `.scholium` and machine-local state
 
-The portable directory beside Works contains only small Triptych state:
+The portable directory beside Works contains only:
 
 - manifest and stable identity mappings;
 - Triptych Guide and Triptych-local settings or folder preferences;
@@ -199,7 +188,7 @@ The portable directory beside Works contains only small Triptych state:
 It may be synchronized through ordinary cloud storage or Git; Scholium never
 uploads it automatically.
 
-Application Support owns machine-specific or replaceable state:
+Application Support owns:
 
 - security-scoped bookmarks and absolute paths, including a separate bookmark
   for the folder containing Works that authorizes sibling `.scholium/` without
@@ -211,18 +200,16 @@ Application Support owns machine-specific or replaceable state:
 
 ### 3.4 Triptych Guide and AI instructions
 
-The concise agent-facing Guide states vault roles, researcher-chosen Works
-organization, relation syntax, fidelity/provenance/uncertainty/conflict rules,
-and CLI discovery and safe-file conventions.
+The agent-facing Guide states vault roles, researcher-owned Works organization,
+relation syntax, fidelity/provenance/uncertainty/conflict rules, and safe CLI/
+file conventions.
 
-Scholium never creates, overwrites, or silently updates a workspace
-`AGENTS.md`. On explicit request it may provide a protected one-shot bootstrap.
-The agent must resolve the Triptych and requested working root, inspect the
-applicable ancestor instruction chain, construct and validate a minimal
-candidate, promote it, and read it back. If an applicable `AGENTS.md` exists,
-the operation stops; no overwrite, merge, or shadow file is allowed. Only a
-successful task-created temporary copy may be removed. The resulting file is
-researcher-owned.
+Scholium never creates, overwrites, or silently updates workspace `AGENTS.md`
+except an explicitly requested protected one-shot bootstrap. The agent must
+resolve Triptych/root, inspect ancestor instructions, validate a minimal
+candidate, promote it, and read it back. Any applicable existing file stops the
+operation; no overwrite, merge, or shadow is allowed. Only a successful
+task-created temporary file may be removed; the result is researcher-owned.
 
 Triptych-local technical instructions are managed only in **Settings →
 Research Guidance**. Inventory is discovered from the filesystem and CLI, not
@@ -237,12 +224,9 @@ into Analyses, Topics, or Works. Irrelevant Markdown should not be imported.
 
 ## 4. Works folders and organization
 
-Works is an ordinary Markdown hierarchy. Folders may represent projects or
-research structures, but Scholium creates no membership, metadata requirement,
-selector, schema, completeness warning, or mandatory internal template. For
-example, a researcher may use Concepts, Questions, Arguments, Objections,
-Replies, Critiques, and Drafts, then rename or replace them freely.
-`Critiques/` is the only folder with special Scholium behavior.
+Works is an ordinary researcher-defined Markdown hierarchy. Scholium creates
+no project membership, required metadata, selector, schema, completeness
+warning, or internal template. `Critiques/` alone has special behavior.
 
 ## 5. Common note capabilities
 
@@ -267,9 +251,27 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
 - **Read** renders committed content for reading, selection, navigation, and
   commenting.
 - **Live Preview** edits the exact body through a visual projection, shares
-  Read's prose grammar where possible, reveals syntax only around the active
-  construct, and shows neither YAML nor line numbers.
-- **Source** edits complete Markdown and YAML and may show line numbers.
+  Read's semantic render components, typography, callout presentation,
+  document measure, and theme variables, reveals syntax only around the active
+  construct, and shows neither YAML nor line numbers. Inactive content should
+  match Read; caret, selection, marked-text composition, and the active
+  construct are the permitted editing differences.
+- **Source** edits complete Markdown and YAML, shows line numbers, and retains
+  the same document session, viewport, measure, and semantic colors while using
+  exact-source typography.
+
+Read and Live Preview support Obsidian-compatible inline `$…$` and display
+`$$…$$` mathematics outside YAML, code, raw HTML, comments, and escaped
+delimiters. The immutable editing dialect owns exact delimiter behavior.
+Malformed or unsupported mathematics stays visible as exact source with a
+diagnostic; rendering never rewrites it.
+
+Internal links, Vector Links, and footnote references provide bounded previews
+without becoming evidence or another source authority. A footnote preview
+contains only the referenced definition. Read may preview on ordinary hover;
+Live Preview requires Command-hover so pointer editing remains primary. Both
+provide keyboard, menu, and accessibility-equivalent routes, and activation
+still performs the ordinary link or footnote navigation action.
 
 Read and Live Preview have a direct keyboard toggle. Source is entered through
 the mode menu. It may alter protected or machine-facing YAML; the researcher
@@ -281,10 +283,9 @@ top clearance belongs to the scrolling document.
 
 ### 5.2 Properties
 
-Each vault has one configurable profile: visible fields, order, disclosure,
-and a human-editable allowlist. There are no folder- or note-specific layouts.
-Identity, fingerprints, provenance, and app-maintained facts are protected in
-Properties but remain visible as exact YAML in Source.
+Each vault has one profile for visible fields, order, disclosure, and editable
+allowlist; no folder/note layouts exist. Identity, fingerprints, provenance,
+and app facts are protected in Properties but visible in exact Source YAML.
 
 The optional Research Unit has one shape:
 
@@ -295,10 +296,9 @@ research_unit:
     - "Chapters 5–8 and the appendix have not been analyzed."
 ```
 
-`scope` is required and non-empty when the mapping exists. `limitations`
-contains only material claim boundaries. Do not duplicate role, identity,
-links, confidence, coverage percentages, reading passes, timestamps, or other
-derived facts.
+When present, `scope` is non-empty and `limitations` contains only material
+claim boundaries—never role, identity, links, confidence, coverage percentage,
+reading passes, timestamps, or derived facts.
 
 New Analysis offers **Declare Now** or **Not Yet**. Not Yet writes no mapping
 or sentinel. The note remains editable and available for Comments, Dialogue,
@@ -308,8 +308,8 @@ the same optional mapping only when it adds a durable boundary not already
 clear from title, body, or links. An authorized agent edit follows ordinary
 fingerprint, conflict, and source-preservation rules.
 
-Creation and modification times are app-owned Research Record facts, not
-properties. Existing timestamp keys remain exact custom source.
+Creation/modification times are app-owned Research Record facts, not
+Properties; existing timestamp keys remain exact custom source.
 
 An Analysis may pair whole-number `debate_importance` (0–10) with
 `debate_importance_scope`. Both are required together and comparable only
@@ -327,13 +327,11 @@ Appendix A.
 
 ### 5.3 Duplicate, rename, and identity
 
-Paths are locations; every note has a stable app-owned identity. A duplicate
-gets a new identity, resets Human Review and qualification, and records its
-source. Confirmed moves and renames preserve associated app-owned records and
-update resolved incoming links. If an external rename cannot be rebound
-confidently, the note remains readable but identity-dependent mutations, Human
-Review, Research Record lookup, and Comment attachment are blocked until the
-researcher confirms identity.
+Paths are locations; notes have stable app-owned identities. Duplication creates
+a new identity, resets Review/qualification, and records origin. Confirmed
+moves/renames preserve records and update resolved incoming links. Ambiguous
+external rename keeps the note readable but blocks identity-dependent mutation,
+Review, Research Record, and Comment attachment until confirmation.
 
 ## 6. Note location, Set Aside, and Trash
 
@@ -414,31 +412,27 @@ The bottom editor Research Strip appears only for an open role-valid note:
 | Analysis or Topic | **Dialogue · Develop · Fidelity** |
 | Work | **Critique · Revise · Dialogue · Fidelity · Manuscript** |
 
-These are stable product operations, not a taxonomy of every philosophical
-activity. There is no **Manage Comments** doorway or nested Comment, Human
-Review, or Critique sheet.
+These stable operations are not a taxonomy of philosophy. There is no Manage
+Comments doorway or nested Comment, Human Review, or Critique sheet.
 
-The optional-agent journey is: choose a function; inspect context; prepare the
-durable run; hand it to an external agent; explicitly paste/submit when needed;
-return to inspect source and status. Fingerprints, checkpoints, methods,
-packages, and evidence keys stay hidden unless repair or recovery needs them.
+The optional-agent journey is choose function, inspect context, prepare durable
+run, hand off, explicitly paste/submit when needed, then inspect source/status.
+Hide technical identities unless repair or recovery needs them.
 
-Beta provides a provider-neutral, copy-first application handoff. The first
-action is **Copy and Choose Agent App…**: copy the complete prepared
-instructions, ask the researcher to select one macOS app, remember that app on
-this Mac, and open it. Later runs offer **Copy and Open [App]…**, plus **Copy
+Beta uses provider-neutral copy-first handoff. **Copy and Choose Agent App…**
+copies complete instructions, explicitly selects and remembers one macOS app on
+this Mac, then opens it. Later actions are **Copy and Open [App]…**, **Copy
 Only**, **Choose Another Agent App…**, and **Forget Agent App**. The app-wide
-preference stays outside Triptychs. Scholium never infers the frontmost app,
-pastes, submits, starts a turn, or sends Target, Material, credentials, account,
-model, permission, or configuration data through the launch request.
+preference stays outside Triptychs. Scholium never infers an app, pastes,
+submits, starts a turn, or sends research/account/model/permission/configuration
+data in the launch request.
 
 **Choose Another Agent App…** changes the preference without launching the
 replacement; **Forget Agent App** removes only that preference.
 
-Cancelling the first chooser or failing to locate/open the app leaves the
-copied instructions and durable run intact, with copy, choose-again, retry, and
-cancel routes. Launch acceptance means only that macOS accepted the request,
-not that an agent accepted or completed work.
+Chooser cancel or launch failure preserves copied instructions and durable run
+with copy, choose-again, retry, and cancel. macOS launch acceptance is not agent
+acceptance or completion.
 
 1.0 adds **Open in Codex** without replacing provider-neutral or copy-only
 routes. After durable preparation, it opens a new local Codex task at the exact
@@ -449,13 +443,12 @@ auto-submit, select a model, alter Codex configuration or permissions, install
 Codex, or report agent execution. Unavailable Codex or an invalid root leaves
 the run recoverable with copy, retry, explanation, and cancel routes.
 
-Each function opens one shared, typed panel. Its current note is the immutable
-Target. Agent-facing panels choose read-only Materials through a search field,
-optional **Suggested Only**, a **Selected Materials (n)** tray with individual
-removal, and the real vault folder hierarchy. Search covers title, alias,
-filename, and path while retaining ancestors. Nothing is preselected and there
-is no bulk select. Loading, true empty, and failure are distinct; failure blocks
-preparation and offers **Retry Materials**. Preparation freezes the selection.
+Each function uses one typed panel with immutable current-note Target.
+Agent-facing panels select read-only Materials through Search, optional
+Suggested Only, an individually removable Selected Materials tray, and the real
+vault hierarchy. Search covers title/alias/filename/path and retains ancestors;
+nothing is preselected or bulk-selected. Distinguish loading, true empty, and
+blocking failure with Retry Materials. Preparation freezes selection.
 
 Suggestions use only resolved one-hop Connections, in order: from the selected
 passage, from the Target, then directly to the Target. Each states its reason
@@ -476,40 +469,34 @@ agent determines that the Target must change, it promotes the same fixed
 request through the API to Develop or Revise before mutation. Frontends do not
 classify prose or expose workflow/package mechanics.
 
-Prepared transport may include the researcher's instruction; selected paths,
-fingerprints, passages, lines, and Comments; Triptych context and ordinary Work
-metadata; Research Units; links; destination and edit rules; the exact read
-set; and, only for a write-capable run, permission to modify the single
-fingerprint-bound Target within the authorized range. Target and Materials are
-focal context, not a general authorization boundary. Prompts, model settings,
-token counts, and paragraph-level AI provenance are not permanent records.
-Each run accepts one overall researcher instruction.
+Transport may include the instruction; selected paths, fingerprints, passages,
+lines, Comments; Triptych/Work context; Research Units; links; destination/edit
+rules; exact read set; and, only for write runs, permission for the single
+fingerprint-bound Target/range. Target/Materials are focal context, not general
+authorization. Prompts, model settings, token counts, and paragraph-level AI
+provenance are not permanent records. Each run has one overall instruction.
 
-Conditional methods first create one persisted read-only preflight containing
-the complete primary method, checkpoint, and Dialogue/Critique record. The
-external agent inspects fixed inputs and finalizes an explicit conditional
-resource selection; empty means the primary method suffices. The same run then
-receives only selected release-pinned resources. Before finalization it has no
-mutation instructions and cannot complete. Generic retrieval is not function
-resource evidence.
+Conditional methods persist one read-only preflight with primary method,
+checkpoint, and Dialogue/Critique record. The agent finalizes explicit
+resources; empty means primary-only. The same run receives only selected pinned
+resources and cannot mutate/complete beforehand. Generic retrieval is not
+function-resource evidence.
 
 Dialogue shows consequential scholarly context, not active template source or
 assembled technical instructions. **Copy Only** uses the active Settings
 template; **Open in Codex** transfers the same durable request identity without
 making transport text part of the scholarly record.
 
-After changing source, an agent's default researcher-facing response is a
-concise academic change summary. It identifies unresolved questions or needed
-review when material; routine file-operation detail is secondary.
+After source changes, default to a concise academic change summary, material
+unresolved questions, and needed review; file-operation detail is secondary.
 
-Beta Dialogue stores one immutable request-scoped `responseContract`. Required
-**Academic Outcome** may be joined by Critical Reflection, Remaining Questions,
+Beta Dialogue stores one immutable request `responseContract`: required
+Academic Outcome plus optional Critical Reflection, Remaining Questions,
 Philosophical Significance, Debate Context, and Research Directions. Modules
-affect presentation only: they cannot expand retrieval or write scope, replace
-methods, or require fabricated content. Each selected module is considered;
-none is silently skipped, though no distinct warranted finding may result.
-There are no weights or coverage ledgers. Fidelity, uncertainty, failure
-disclosure, and researcher control always apply.
+affect presentation only; they cannot expand scope, replace methods, or require
+fabrication. Consider every selection without forced findings, weights, or
+coverage ledgers. Fidelity, uncertainty, failure disclosure, and researcher
+control always apply.
 
 Develop, Revise, Manuscript, and Dialogue promoted to a write function flush
 autosave and create **Before Agent Work** before instructions return. Critique
@@ -543,11 +530,10 @@ agent as a concise record of their own Comments and decisions.
 
 ### 8.3 Research Guidance, prompt templates, and skills
 
-**Settings → Research Guidance** is the only prompt-template editor. Each
-workflow has one active Triptych-local template. Researchers may create,
-duplicate, rename, delete, and assign templates; editing a default creates a
-researcher-owned copy, and **Reset to Scholium Default** restores the bundled
-baseline without overwriting another custom template.
+**Settings → Research Guidance** alone edits prompt templates. Each workflow
+has one active Triptych-local template. Create, duplicate, rename, delete, and
+assign are supported; editing a default creates a researcher copy, while Reset
+restores the bundled baseline without overwriting custom templates.
 
 One local selector presents **Prompt Templates · Skills · Advanced**:
 
@@ -559,14 +545,11 @@ One local selector presents **Prompt Templates · Skills · Advanced**:
   Recommended Bibliography method, and Research Methods with Supplements and
   Practices.
 
-Page-local list/detail dividers do not become Settings navigation sidebars or
-add a Show/Hide Sidebar control. Bundled defaults work without configuration.
-Lists expose human name, purpose, function, **Built-in** or **Triptych** origin,
-validity, and active status before maintenance detail. Bundled Workflow Skills
-offer **Duplicate**, not a disabled editor. Triptych-owned packages may be
-edited, duplicated, repaired through **Repair…**, and, when eligible, changed
-through **Evolve…**. Invalid package status routes to Skills; invalid
-cross-package bindings route to Advanced.
+Page-local list/detail dividers are not navigation sidebars. Bundled defaults
+need no setup. Lists lead with name, purpose, function, origin, validity, and
+active status. Bundled Workflow Skills offer Duplicate, not disabled editing;
+Triptych packages allow edit, duplicate, Repair, and eligible Evolve. Package
+faults route to Skills; binding faults to Advanced.
 
 The five official Workflow Skills are **Development**, **Critique**,
 **Revision**, **Content Fidelity**, and **Manuscript**. Dialogue is System
@@ -576,23 +559,19 @@ or specialist copy-on-adoption Researcher Skills, not new ownership classes or
 universal authorities. Source Analyzer has no Research Function and grants no
 note-write permission.
 
-Official packages may contain release-pinned one-level references and
-templates. Duplication copies the complete bounded package under a new ID;
-later releases update only the official copy. System Skills cannot be edited,
-duplicated as replacements, or shadowed. Researcher packages are discovered
-only from `.scholium/skills/<skill-id>/SKILL.md`, never research notes,
-arbitrary locations, `~/.codex/skills`, another agent's global configuration,
-or nested ownership folders.
-Malformed packages and protected-ID collisions remain visible but unavailable.
-Structural validation never certifies philosophical truth or method quality.
+Official packages may contain pinned one-level references/templates.
+Duplication copies the bounded package under a new ID; releases update only the
+official copy. System Skills cannot be edited, replaced, or shadowed.
+Researcher packages are discovered only at
+`.scholium/skills/<skill-id>/SKILL.md`, never notes, arbitrary/global paths, or
+nested ownership. Malformed/colliding packages stay visible but unavailable;
+structural validation certifies neither truth nor method quality.
 
-Every Workflow Skill is complete without Practices. A selected Practice loads
-only its entry and exact requested resource, records IDs/revisions, and
-supplements rather than replaces the primary method. Retired `replace`
-bindings fail decoding. Practices cannot alter Target, Materials, permissions,
-checkpoints, or write boundaries. The agent considers each selected Practice,
-reports only material influence, and leaves methodological conflict visible;
-there are no weights or coverage ledgers.
+Workflow Skills are complete without Practices. A Practice loads only its entry
+and requested resource, records IDs/revisions, and supplements the primary;
+retired `replace` bindings fail. It cannot alter inputs, permissions,
+checkpoints, or writes. Consider each, report only material influence, expose
+method conflict, and use no weights/coverage ledgers.
 
 Development covers exploration, concept/argument development, synthesis, and
 Analysis/Topic expression. Critique assesses without editing. Revision owns
@@ -611,13 +590,12 @@ scope, modality, qualification, or status requires separately scoped
 substantive writing. Revision owns write durability; Prose Control owns its
 editable style profile and preservation ledger.
 
-Application owns discovery, origin/update policy, bindings, dependency closure,
-task facts, permissions, and exact resource retrieval. Packages declare stable
-`supported_functions`; `supported_modes` is internal routing metadata. Records
-name exact revisions and only resources actually loaded. Core Protocol loads
-for every function; Dialogue infrastructure only for Dialogue; live Triptych,
-Zotero, citation, and Researcher resources only when explicitly required. A
-clipboard-only fallback must not claim packages it could not retrieve.
+Application owns discovery, origin/update policy, bindings, dependencies, task
+facts, permissions, and exact retrieval. Packages declare stable
+`supported_functions`; `supported_modes` is internal. Records name exact
+revisions/loaded resources. Core Protocol always loads; Dialogue only for
+Dialogue; Triptych/Zotero/citation/Researcher resources only when required. A
+clipboard fallback cannot claim unretrieved packages.
 
 **Settings → Research Guidance → Advanced → Research Methods** lets each
 function keep the official primary, select one compatible researcher-owned
@@ -632,45 +610,37 @@ templates preserve workflow input, explain the fault, and block generation
 until repaired. Templates and skills create neither request taxonomies,
 marketplaces, embedded runtimes, hidden authorization, nor scholarly records.
 
-Only Triptych-owned Researcher Skills may opt into evolution. Research Guidance
-exports an explicit revision-bound proposal request, imports a complete
-`ResearchSkillProposedPackage` JSON, shows per-file comparison, validation, and
-separately attributed evaluation, then offers **Apply** and **Restore**.
-Application requires the expected revision and confirmation token; Core
-snapshots and atomically replaces or rolls back the complete package.
+Only Triptych Researcher Skills may opt into evolution. Research Guidance
+exports a revision-bound request, imports complete proposed-package JSON, shows
+per-file comparison, validation, and separately attributed evaluation, then
+offers Apply/Restore. Application requires expected revision and confirmation;
+Core snapshots and atomically replaces or rolls back the whole package.
 
-Global **Recovery** is independent of current selection and validity. Safe
-snapshots remain visible when a package is missing/malformed or another
-snapshot is corrupt. Restore confirms full replacement, rechecks current
-state, removes files absent from the snapshot, and first snapshots any
-displaced package. Restoring a missing package is a guarded reinstall.
-Discovery and restore use descriptor-relative, no-follow reads so path or
-symlink substitution cannot redirect recovery.
+Global Recovery is independent of selection/validity; safe snapshots survive
+missing/malformed packages and other corrupt snapshots. Restore confirms full
+replacement, rechecks state, removes absent files, and first snapshots displaced
+packages; missing-package restore is a guarded reinstall. Descriptor-relative,
+no-follow reads prevent path/symlink redirection.
 
 ### 8.4 Function preparation, completion, and Fidelity
 
-The Application coordinator owns availability, preparation, completion, and
-cancellation for app and CLI. Agent-facing preparation resolves Target identity
-and fingerprint; validates every Material and rejects Target duplication;
-resolves exact resources; creates checkpoint and evidence record; rechecks all
-revisions; and rolls back any partial preparation. Human Review routes to its
-separate authority and creates no execution packet.
+One Application coordinator owns app/CLI availability, preparation, completion,
+and cancellation. Preparation resolves Target identity/fingerprint, validates
+Materials without Target duplication, resolves exact resources, creates
+checkpoint/evidence, rechecks revisions, and rolls back partial work. Human
+Review uses separate authority and no execution packet.
 
-The CLI uses `function available`, `prepare`, `show`, `select-resources`,
-`complete`, `prepare-fidelity`, and `cancel`; no pre-1.0 aliases remain. `show`
-recovers immutable packet and durable state. `prepare-fidelity` constructs or
-reuses the exact final-revision child. JSON responses contain typed
-`nextActions` argument vectors with optional stdin templates, never shell
-command strings. Dialogue exposes a typed `promote` action preserving Target,
-Materials, scope, and Comments.
+CLI uses only `function available`, `prepare`, `show`, `select-resources`,
+`complete`, `prepare-fidelity`, and `cancel`. `show` recovers immutable state;
+`prepare-fidelity` constructs/reuses the exact child. JSON `nextActions` are
+typed argument vectors with optional stdin templates, never shell strings.
+Dialogue `promote` preserves Target, Materials, scope, and Comments.
 
-`scholium version`, `doctor`, and hierarchical `help` work without a Triptych.
-The parser rejects unknown, duplicate, or valueless options before opening
-Application state; `--format json` errors use a stable envelope. Packaged apps contain a
-version-matched helper. **Settings → Research Guidance → Advanced → Scholium
-CLI** installs or updates exact bytes in the user-local command directory,
-verifies executable permission, reports PATH discovery separately, and never
-edits shell profiles.
+`version`, `doctor`, and hierarchical `help` need no Triptych. Parsing rejects
+unknown/duplicate/valueless options before Application state; JSON errors use a
+stable envelope. Packaged apps contain a version-matched helper; Settings
+installs exact bytes locally, verifies execution, reports PATH separately, and
+never edits shell profiles.
 
 Beta application launch uses complete prepared instructions; 1.0 Codex launch
 uses preparation identity and CLI bootstrap. Neither adds a second API.
@@ -678,20 +648,17 @@ Prepared, cancelled, completed, Awaiting Fidelity, verified, unverified, and
 stale states remain coordinator-owned; launch status is ephemeral delivery
 only.
 
-**Manual Fidelity** and **Automatic Fidelity** share one evidence-validation
-contract. Manual Fidelity targets the current exact revision. After Develop or
-Revise records a final fingerprint, automatic orchestration creates or reuses
-a child with the same Materials, scope, Comments, and checks. Manuscript reuses
-the child of its final selected Revise phase. Critique and Dialogue create no
-Target Fidelity.
+Manual and Automatic Fidelity share evidence validation. Manual targets the
+current revision; Develop/Revise finalization creates or reuses a child with
+the same inputs, and Manuscript reuses its final Revise child. Critique and
+Dialogue create no Target Fidelity.
 
-Because Scholium embeds no agent runtime, an automatic child remains
-**Awaiting Fidelity** until an agent submits actual outcomes. Only a completed,
-matching child advances the parent; outcomes submitted directly on the write
-run are rejected. A deterministic evidence key reuses identical function,
-scope, evidence set, checks, and final revision. Missing/unavailable evidence
-leaves **Awaiting Fidelity** or **Unverified**; later Target or evidence changes
-make it **Stale**. Invocation provenance and all record types stay distinct.
+With no embedded agent runtime, automatic children remain Awaiting Fidelity
+until outcomes arrive. Only a matching completed child advances the parent;
+direct write-run outcomes fail. Deterministic keys reuse identical function,
+scope, evidence, checks, and revision. Missing evidence leaves Awaiting/
+Unverified; later changes make it Stale. Provenance and record types stay
+distinct.
 
 ### 8.5 External edits and conflicts
 
@@ -962,11 +929,14 @@ no workspace split, toolbar, inert regions, tabs, feature tour, project model,
 or explanatory manual.
 
 Failure retains setup input. Success opens one configured workspace and closes
-Bootstrap; they never compete. Later launch may briefly resolve registration in
-Bootstrap without exposing workspace chrome. Expired folder access instead
-uses the workspace's bounded **Restore Access** sheet and preserves its active
-document. Settings **Manage Triptychs…** lists registrations, edits their three
-locations, creates another, and opens one in a separate window.
+Bootstrap only after that exact workspace route has attached its native window,
+split, and toolbar; they never compete. SwiftUI restores recoverable Workspace
+routes directly. The presented Bootstrap default is used only when no
+recoverable Workspace exists. Bootstrap starts at **720 × 720**; this is an
+initial size, not a minimum. Expired folder access instead uses the workspace's
+bounded **Restore Access** sheet and preserves its active document. Settings
+**Manage Triptychs…** lists registrations, edits their three locations, creates
+another, and opens one in a separate window.
 
 ## 17. Permanent boundaries and deferred capabilities
 
@@ -1038,53 +1008,51 @@ with three sibling items:
    projections. It never owns buffers, autosave, Undo, or conflicts; full
    chronology belongs to Research Record.
 
-Preferred workspace size is **1180 × 760**; AppKit owns minimum content size,
-split compression, collapse, animation, dividers, and live widths. Library is a
-semantic Sidebar and Apparatus an unmodified semantic Inspector. Scholium does
-not set Inspector minimum/maximum, preferred fraction, holding priority,
-resize-collapse behavior, full-height layout, safe area, separator, or
-animation, and persists no pane width or divider position. The three opaque
-planes use one-pixel rules, not cards, blur, large radii, or shadow.
+The workspace starts at **1180 × 760**; this is an initial size, not a minimum.
+SwiftUI Scene data owns route identity and system restoration. AppKit owns
+window resizing, divider mechanics and geometry, compression, automatic
+Sidebar collapse, collapse transitions, fullscreen, and restored native frame.
+Scholium declares no numeric minimum by default, never corrects a frame after
+opening, and never persists divider geometry. It may add one scene-level native
+minimum only when the complete language, text-size, accessibility, and window
+matrix establishes the smallest semantic/readability size that keeps the core
+task usable. Library is a semantic Sidebar and Apparatus an unmodified
+Inspector. Three opaque planes use one-pixel rules, not cards, blur, large
+radii, or shadow.
 
-A new window starts with Library visible and Apparatus hidden. Restoration
-applies each visibility once; afterward live collapsed state is authoritative
-and the window model only mirrors it for commands and the next session. Notes
-and tabs never reconstruct the shell or change peripheral visibility/mode.
-Showing Research Inspector initially selects **Connections**.
+New windows show Library and hide Apparatus. Restore applies both visibility
+values once; then native collapsed state is authoritative and the model only
+mirrors Library and Apparatus visibility for labels, commands, and the next
+session. Menu, toolbar, and content actions send explicit per-window intents to
+the native controller; model observation never continuously reasserts split
+state. Notes/tabs never reconstruct the shell or change peripheral
+visibility/mode. First Inspector reveal selects Connections.
 
-The native toolbar owns titlebar geometry and traffic lights. Its configured
-background is transparent while opaque region colors extend underneath;
-interactive content respects the live safe area. It contains Scholium's
-borderless **Show/Hide Sidebar**; then Heading Outline and compact note identity;
-current mode and Search; trailing **Research Record**; and AppKit's standard
-`.toggleInspector`. The automatic glass-like Sidebar item remains removed.
-Scholium adds no custom title strip, Inspector replacement, ellipsis, fixed
-toolbar height, or Liquid Glass treatment.
+The native toolbar owns titlebar/traffic-light geometry. Opaque regions extend
+under its transparent background; controls respect live safe area. Order is
+borderless Show/Hide Sidebar; Heading Outline and compact note identity; mode
+and Search; Research Record; standard `.toggleInspector`. Remove the automatic
+glass-like Sidebar item; add no custom title strip, Inspector replacement,
+ellipsis, fixed height, or Liquid Glass.
 
-Because the representable-hosted split may not be in the responder chain, the
-standard Inspector item and View command may bridge one window-owned visibility
-intent to the registered split controller's
-`toggleInspector(_:)`. The bridge preserves the standard item, transition,
-animation, and geometry. It disables responder auto-validation only as needed
-and uses the same selected-document condition as the View route. Research
-Record and Inspector controls remain visible but disabled without a Target.
+If the hosted split is outside the responder chain, the standard Inspector item
+and View command may bridge one intent through that scene's per-window
+coordinator to `toggleInspector(_:)`, preserving standard transition/geometry. Disable
+auto-validation only as needed and share the selected-document condition.
+Research Record/Inspector controls stay visible but disabled without Target.
 
-When two or more documents are open, a Document-owned tab strip appears only
-inside the middle split item. Each tab owns one document reference and retained
-editor session. `NSTabViewController` with `.unspecified` style is content-
-container authority; Scholium supplies the equal-width selector and existing
-save-before-transition guard. Closing flushes the editor and selects a retained
-neighbor; closing the last tab returns to the no-note background. Tab actions
-never create an `NSWindowTabGroup`, new `WindowGroup`, parallel tab-state model,
-or toolbar owner. Prototype toolbar/title capsule/New Tab/segmented styling is
-not product authority; exact selector styling remains provisional.
+With two or more documents, a Document-owned strip appears only in the middle
+item. Each tab references one retained editor session. `.unspecified`
+`NSTabViewController` owns containment; Scholium supplies equal-width selection
+and save-before-transition. Close flushes and selects a retained neighbor; last
+close returns no-note. Tabs create no window group, parallel state, or toolbar
+owner. Prototype styling has no authority; selector styling is provisional.
 
-The Library identity row sits beneath standard window controls. Its
-**Scholium** disclosure and Library content share an 18pt peripheral alignment;
-alignment to traffic lights at the default window is only a Section 19 visual
-reference, never geometry derived from system controls. No-note content is
-text/action free and VoiceOver-hidden. There is no Collapse Note, custom `<<`,
-Back/Forward, Recents, or Quick Open.
+The Library identity row sits below window controls; its Scholium disclosure
+and content share 18pt alignment. Traffic-light alignment is only a visual
+reference, never derived geometry. No-note is text/action-free and
+VoiceOver-hidden. No Collapse Note, custom `<<`, Back/Forward, Recents, or Quick
+Open exists.
 
 Menus follow researcher tasks:
 
@@ -1104,20 +1072,18 @@ Menus follow researcher tasks:
   appear in row status and Filter, not permanent task toggles.
 - Unclassified is reachable for classification but not a permanent Library
   row. Notes outside folders appear at vault root.
-- Folder and note rows form one hierarchy at one semantic callout size and
-  compact 21pt height. Hierarchy uses weight, color, indentation, and symbols,
-  not size. Notes use one line, no preview/author/date/path subline, and expose
-  the full title accessibly. At most one restrained state mark precedes title
-  with non-color redundancy. Selection persists visibly when focus moves.
-- **LIBRARY** shows no total count. Triptych-wide **ATTENTION** follows the
-  scope selector before the Library heading, using the same 10pt outer edge,
-  warning symbol, and count. It focuses/expands an inline full-width queue,
-  never a modal or Research destination. Inspector may summarize only the
-  current note.
-- Compact Recommended Bibliography remains above the footer even when **None**,
-  horizontally scrolls `Author, Year, Title` leads with thin rules, and offers
-  an explicit entry to the full surface. Format two authors with `&`; three or
-  more as first author + `et al.`.
+- Folder/note rows form one hierarchy at one semantic callout size and compact
+  21pt height. Use weight, color, indentation, and symbols—not size. Notes are
+  one line without sublines and expose full titles accessibly. At most one
+  redundant state mark precedes title; selection remains visible off-focus.
+- LIBRARY shows no total. Triptych-wide ATTENTION follows scope before Library,
+  with the same 10pt edge, warning symbol, and count. It expands/focuses an
+  inline full-width queue, never a modal/Research destination; Inspector may
+  summarize only the current note.
+- Compact Recommended Bibliography stays above the footer even when None,
+  horizontally scrolls `Author, Year, Title` leads with thin rules, and links
+  to the full surface. Use `&` for two authors and first author + `et al.` for
+  three or more.
 - Debate Importance ordering first requires one exact Debate Scope.
 - Shared Search follows Section 13: compact centered surface, always-visible
   scopes, no empty sheet, bounded results that identify match context and
@@ -1129,12 +1095,19 @@ Read, Live Preview, and Source are modes, not tabs, and follow Section 5.1.
 Ordinary scrolling space clears initial editor content from chrome; there is no
 floating context surface.
 
-The toolbar sequence is Heading Outline, compact note identity, mode, Search,
-Research Record, and standard Inspector control. Scholium controls use a
-borderless ink treatment. There is no second identity row, document-level
-Properties button, or More control. Complete Properties is in Research; every
-direct control keeps its menu/keyboard route. **View → Document Text Size** is
-per-window and never changes source.
+The three modes consume one provisional document-presentation configuration
+for readable measure, scrolling content inset, responsive threshold, trailing
+scroll space, text scale, and semantic typography. Live Preview and Source
+reconfigure one retained CodeMirror state; ordinary window, split, theme, and
+text-size changes never create an Editor window or replace that state. Exact
+layout values remain implementation defaults until the adaptation matrix and
+side-by-side Editor review accept them.
+
+Toolbar order is Heading Outline, compact identity, mode, Search, Research
+Record, standard Inspector. Scholium controls are borderless ink. No second
+identity row, Document Properties button, or More control exists. Complete
+Properties is in Research; direct controls retain menu/keyboard routes.
+Document Text Size is per-window and source-neutral.
 
 Properties performs targeted frontmatter edits and distinguishes absent,
 empty, invalid, derived, and not-applicable. Exact YAML stays available in
@@ -1144,7 +1117,9 @@ for absence.
 ### 18.5 Contextual research and Research Strip
 
 Apparatus contains Research Inspector only; Research Record and checkpoint
-recovery stay separate. The inspector scrolls independently and has
+recovery stay separate. Research Record is a nonrestored `UtilityWindow`, reads
+the focused Workspace directly, and starts at **760 × 680** without treating
+that size as a minimum. The inspector scrolls independently and has
 **Connections** and **Research** text tabs with a restrained ink underline,
 not a filled/capsule segment.
 
@@ -1167,26 +1142,21 @@ Diagnostics shows three or four important machine checks and never claims
 reading, truth, or support. Provenance detail remains in Research Record.
 Zotero retains **Open in Zotero**.
 
-Inspector typography remains ordinary system interface text and wraps rather
-than shrinks. Sections begin 15pt below the tab rule with 15pt between them;
-headings use one lighter system-sans label role. Both modes share an 18pt outer
-edge; section content is inset another 12pt, symbols use a fixed 16pt track and
-8pt gap, and trailing actions return to the outer edge unless disclosure or
-another semantic relation requires otherwise.
+Inspector uses wrapping system interface text. Sections start 15pt below the
+tab rule and separate by 15pt; headings use one lighter sans label. Modes share
+an 18pt edge; content adds 12pt, symbols use a 16pt track plus 8pt gap, and
+trailing actions return to the outer edge unless semantics require otherwise.
 
-Review Status uses one restrained third-plane bordered surface, not a badge.
-Heading/date/revision/action are system sans; verdict is 18pt editorial serif
-with redundant symbol and relative date. Revision currency appears only after
-a review. A researcher Review Note uses editorial serif beside a semantic rule
-and truncates after two lines. Color alone is insufficient; **Open Dialogue**
-or **Open Critique** remains available.
+Review Status is one restrained third-plane bordered surface, not a badge.
+Metadata/actions are sans; verdict is 18pt editorial serif with redundant
+symbol/date. Revision currency appears only after review. Review Note uses
+editorial serif beside a rule and truncates after two lines. Open Dialogue or
+Open Critique remains available; color is insufficient.
 
-The embedded bottom Research Strip uses one thin top rule and no visible title,
-card, capsule, or resting button border. Native/semantic interaction states and
-menu, keyboard, and accessibility parity remain. It follows the functions and
-panels in Sections 7–8. Durable handoff is keyboard/VoiceOver reachable; the
-panel stays intact after launch and restores sensible focus when Scholium
-reactivates. Report handoff, never agent-execution, status.
+The bottom Strip has one thin top rule and no title/card/capsule/resting border.
+It follows Sections 7–8 with native states and menu/keyboard/accessibility
+parity. Handoff is keyboard/VoiceOver reachable; the panel survives launch and
+restores focus on reactivation. Report handoff, never agent execution.
 
 ### 18.6 Canonical state and action meanings
 
@@ -1236,33 +1206,27 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 
 ## 19. Scholarly Editorialism and design variables
 
-**Scholarly Editorialism** is a contemporary macOS research environment using
-humanist typography, editorial hierarchy, warm opaque surfaces, fine rules,
-marginal organization, deliberate whitespace, and restrained chromatic
-emphasis. It suggests the patience and accumulated judgment of humanities
-research without imitating an antique book or decorative minimalism.
+**Scholarly Editorialism** combines humanist type, editorial hierarchy, warm
+opaque surfaces, fine rules, marginal organization, deliberate whitespace, and
+restrained color in a contemporary macOS environment—neither antique-book
+imitation nor decorative minimalism.
 
 Until sustained Usable Core acceptance, this is semantic direction, not a
-pixel-perfect gate. Except for accessibility thresholds, readability minima,
-source safety, and native-platform boundaries, exact dimensions, spacing,
-type, and decoration in Sections 18–20 are provisional. They cannot override
-native behavior, create another state owner, or delay dependable core work.
+pixel gate. Except accessibility, readability, source safety, and native
+boundaries, Sections 18–20 metrics remain provisional and cannot override
+native behavior, add state owners, or delay the core.
 
 ### 19.1 No custom glass
 
-Scholium-owned Library, Document, Inspector, Properties, Search, Research
-Strip, diff, diagnostics, conflicts, and evidence surfaces are opaque. No
-custom glass, blur, vibrancy, translucent/material cards, image-behind-glass,
-large radii, gradients behind text, or decorative shadow defines the brand.
-Depth comes from tone, spacing, alignment, type, rules, and restrained
-elevation.
+Scholium-owned surfaces are opaque. No custom glass, blur, vibrancy,
+translucent/material cards, image-behind-glass, large radii, text gradients, or
+decorative shadow defines the brand; depth uses tone, spacing, alignment, type,
+rules, and restrained elevation.
 
-System window chrome, menus, sheets, popovers, controls, focus, and selection
-retain macOS appearance. Semantic Sidebar/Inspector and toolbar tracking
-separators remain native. Document tabs use ordinary controls inside Document,
-not a simulated system window-tab bar. Incidental system material is not a
-Scholium token. This supersedes older glass, atmospheric-navigation, material,
-and vibrancy requirements.
+System chrome, menus, presentations, controls, focus, selection, semantic
+Sidebar/Inspector, and tracking separators stay native. Document tabs are
+ordinary Document controls, not simulated window tabs. Incidental system
+material is not a token. This supersedes prior glass/material rules.
 
 ### 19.2 Typography and color
 
@@ -1289,11 +1253,10 @@ and vibrancy requirements.
 
 ### 19.3 Variable boundary
 
-Keep eight semantic families: Color, Typography, Surfaces, Elevation,
-Boundaries, feature-scoped Metrics, Motion, and provisional Document Rhythm.
-Promote only stable cross-component decisions or contract-critical thresholds;
-do not invent numbered spacing, opacity, radius, shadow, border, gradient, or
-paper scales.
+Keep eight families: Color, Typography, Surfaces, Elevation, Boundaries,
+feature Metrics, Motion, and provisional Document Rhythm. Promote only stable
+cross-component decisions or critical thresholds; invent no numbered spacing,
+opacity, radius, shadow, border, gradient, or paper scales.
 
 - Interface type roles: identity, section title, row title, metadata, and
   narrowly approved editorial hierarchy. Document roles: Body,
@@ -1315,17 +1278,20 @@ paper scales.
 
 ### 19.4 Provisional layout defaults
 
-Layout defaults support usability testing, not independent release gates.
-AppKit owns toolbar height, traffic lights, split behavior, compression,
-overflow, and live pane widths. Scholium owns semantic order and only the
-feature-scoped insets/minima needed for readable content.
+Layout defaults support testing, not independent gates. AppKit owns chrome and
+split geometry; Scholium owns semantic order and readability-required feature
+insets. All adjustable scenes default to no Scholium numeric minimum. A
+scene-level minimum becomes authoritative only after the complete adaptation
+matrix proves it necessary; it is never duplicated in `NSWindow`, split, or
+component contracts.
 
-Preferred workspace remains **1180 × 760**. Regions keep coherent leading
-edges and independent scrolling; Document takes remaining space without fixed
-height. Reading measure, rows, spacing, icon tracks, and decorative rules stay
-provisional and must be tested at ordinary, narrow, mixed-script, and 200% text.
-Prototype coordinates, screenshots, and CSS-to-SwiftUI conversions acquire no
-authority without an approved usability or accessibility reason.
+Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, and
+Research Record **760 × 680**. Settings retains its fixed **700 × 560** content
+contract. Regions align and scroll independently;
+Document takes remaining space without fixed width or height. Measure, rows, spacing,
+icon tracks, and rules stay provisional pending ordinary/narrow/mixed-script/
+200% testing. Prototype coordinates, screenshots, or CSS conversions gain no
+authority without approved usability/accessibility grounds.
 
 ## 20. Accessibility and adaptation
 
@@ -1354,11 +1320,10 @@ severity ceiling remains a release-owner judgment.
 
 ### 21.1 Evidence hierarchy
 
-Use, in order: current source/live construction; executable tests; isolated QA
-on disposable nonprivate fixtures; dated `IMPLEMENTATION_STATUS.md` evidence;
-this target specification; then historical screenshots, test names, and memory
-as context only. Target prose, previews, and compilation do not prove workflows,
-accessibility, packaged release, signing, or performance.
+Evidence order is live source/construction; executable tests; isolated QA on
+disposable fixtures; dated status; this target; then history/memory as context.
+Target prose, previews, and compilation prove no workflow, accessibility,
+package, signing, or performance result.
 
 ### 21.2 Primary acceptance journeys
 
@@ -1384,8 +1349,8 @@ keyboard/VoiceOver, and no auto-paste/submission. 1.0 Codex evidence includes a
 new task, exact root, locator-only composer, explicit submission, unavailable
 fallback, Unicode/space paths, keyboard/VoiceOver, and unchanged-run recovery.
 
-Use disposable fixtures and retain command, source revision, Xcode/SDK, build,
-fixture identity, result, and artifact location for material evidence.
+For material evidence, use disposable fixtures and retain command, source
+revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 
 ### 21.3 Release gates
 
@@ -1410,11 +1375,9 @@ evidence belongs only in `IMPLEMENTATION_STATUS.md`.
 
 ### 21.4 Change control
 
-Every target change identifies researcher task, affected sections, product/
-interface/implementation scope, trust/source-fidelity impact, compatibility
-effect on vault and app data, required evidence, and any new non-goal or open
-question. Temporary code and visual experiments never become authority by
-accident.
+Every target change records task, affected sections/scope, trust/source impact,
+vault/app compatibility, required evidence, and new non-goals/questions.
+Temporary code or visuals never become authority accidentally.
 
 ## 22. Active cross-cutting decisions and unresolved work
 
@@ -1431,11 +1394,11 @@ definition; deleted/superseded IDs remain only in Git history.
 | **D-038** | Manual/automatic Fidelity share revision evidence and preserve invocation provenance. | 8.4 |
 | **D-039** | New Analysis offers Declare Now/Not Yet; only Complete Review requires status. | 5.2, 7.1 |
 | **D-040** | Research Guidance uses Prompt Templates · Skills · Advanced with the ownership defined there. | 8.3 |
-| **D-042** | Live Preview shares Read grammar without YAML/line numbers; initial clearance scrolls. | 5.1, 18.4 |
+| **D-042** | Read and inactive Live Preview share semantic render components and presentation variables; Live omits YAML/line numbers, while Source retains the same session and document geometry. | 5.1, 18.4, 19.2–19.3 |
 | **D-043** | Every Comment is source-anchored; no unanchored compatibility path exists. | 7.2 |
 | **D-049** | Complete primary methods are flexible; Practices only supplement; bibliography leads remain outside notes/Zotero. | 8.3, 15.3 |
 | **D-050** | One version-matched CLI provides strict discovery, typed next actions, resumable functions, Fidelity continuation, and explicit local installation. | 8.4 |
-| **D-052** | One native Sidebar–Document–Inspector split; AppKit owns geometry, Scholium only visibility. | 18.2 |
+| **D-052** | One native Sidebar–Document–Inspector split; AppKit owns resize, divider, compression, collapse, fullscreen, and restoration mechanics. Scholium applies restored visibility once, mirrors native visibility, and declares only a matrix-proven scene minimum. | 18.2, 19.4 |
 | **D-055** | Triptych Attention is an inline Library queue after scope, with non-color identity; Inspector shows only note summary. | 18.3 |
 | **D-059** | Beta is copy-first provider-neutral handoff; 1.0 adds Open in Codex; neither auto-submits or reports execution; Run with Codex needs a 2.0 decision. | 8.1, 17 |
 | **D-060** | One native toolbar and standard Inspector item; no replacement chrome or custom glass. | 18.2, 19.1 |
@@ -1562,6 +1525,6 @@ Traced, Untraced, Disputed, or Beyond Sources. These are your attributed
 judgments, not Scholium statuses.
 
 Always identify the materials actually consulted and any limitations. Write the
-result to the designated Critique document. Do not modify the target Work unless
-the researcher's instruction asks you to do so.
+result to the designated Critique document. Never modify the target Work;
+requested source changes require the separate Revise function.
 ```

@@ -174,14 +174,16 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .accessibilityIdentifier("scholium.researchFunctionPanel.scroll")
             }
+            .frame(minHeight: 180)
 
             if controller.activeFunction == .dialogue,
                let role = controller.target?.role,
                role == .analysis || role == .topic {
                 Divider()
                 reviewContent
-                    .frame(maxHeight: 470)
+                    .frame(minHeight: 180, idealHeight: 240, maxHeight: 300)
             }
 
             Divider()
@@ -349,6 +351,7 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                 context.dismiss()
             }
             .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier("scholium.dismissResearchFunction")
             Spacer()
             if controller.canCancelPreparedRun {
                 Button("Cancel Run", role: .destructive) {

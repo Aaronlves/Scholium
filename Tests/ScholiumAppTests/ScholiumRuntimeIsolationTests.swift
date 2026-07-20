@@ -54,20 +54,39 @@ struct ScholiumRuntimeIsolationTests {
         ) == root.standardizedFileURL)
     }
 
-    @Test("QA viewport control is independent from fixture configuration")
-    func qaViewportIsIndependent() {
-        let environment = ["SCHOLIUM_UI_TEST_WINDOW_WIDTH": "1180"]
+    @Test("Only the QA bundle accepts a deterministic initial window identity")
+    func initialWindowIdentityIsQABounded() {
+        let id = UUID()
+        let environment = ["SCHOLIUM_UI_TEST_SESSION_ID": id.uuidString]
 
-        #expect(ScholiumRuntimeIsolation.windowWidth(
+        #expect(ScholiumRuntimeIsolation.initialWindowSessionID(
             environment: environment,
             bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
-        ) == 1_180)
-        #expect(ScholiumRuntimeIsolation.windowWidth(
+        ) == id)
+        #expect(ScholiumRuntimeIsolation.initialWindowSessionID(
             environment: environment,
             bundleIdentifier: "com.scholium.app"
         ) == nil)
-        #expect(ScholiumRuntimeIsolation.windowWidth(
-            environment: ["SCHOLIUM_UI_TEST_WINDOW_WIDTH": "invalid"],
+        #expect(ScholiumRuntimeIsolation.initialWindowSessionID(
+            environment: ["SCHOLIUM_UI_TEST_SESSION_ID": "invalid"],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == nil)
+    }
+
+    @Test("QA viewport control is independent from fixture configuration")
+    func qaViewportIsIndependent() {
+        let environment = ["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1180"]
+
+        #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
+            environment: environment,
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == 1_180)
+        #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
+            environment: environment,
+            bundleIdentifier: "com.scholium.app"
+        ) == nil)
+        #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
+            environment: ["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "invalid"],
             bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
         ) == nil)
     }

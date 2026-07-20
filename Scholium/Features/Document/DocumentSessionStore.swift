@@ -25,6 +25,12 @@ final class DocumentSessionModel: ObservableObject {
     let editorFlushToken = UUID()
 
     @Published var isEditing = false
+    /// Once created for the selected document, the editor surface remains
+    /// attached while Read is presented. This preserves CodeMirror state
+    /// across ordinary mode switches without eagerly allocating a WebKit
+    /// editor for every document that is only read.
+    @Published var retainsEditorSurface = false
+    @Published var retainedEditorMode: NotePresentationMode = .livePreview
     @Published var editingSource = ""
     @Published var originalEditingSource = ""
     @Published var editingRevision: DocumentFingerprint?
@@ -32,11 +38,14 @@ final class DocumentSessionModel: ObservableObject {
     @Published var isSavingEdit = false
     @Published var presentationMode: NotePresentationMode = .read
     @Published var scrollFraction: Double = 0
+    @Published var scrollAnchor: EditorScrollAnchor?
     @Published var returnToReadAfterSave = false
     @Published var suppressAutosave = false
     @Published var renderedReadHTML = ""
     @Published var renderedReadFingerprint = ""
+    @Published var renderedReadReadyFingerprint = ""
     @Published var failedReadFingerprint: String?
+    @Published var previewCatalog: DocumentPreviewCatalog?
     var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     @Published var canRetrySave = false

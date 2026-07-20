@@ -36,9 +36,7 @@ struct WorkspaceSetupView: View {
                 : "Use This Triptych"
         )
         .frame(
-            minWidth: ScholiumMetrics.Onboarding.minimumWidth,
             maxWidth: .infinity,
-            minHeight: ScholiumMetrics.Onboarding.minimumHeight,
             maxHeight: .infinity
         )
         .interactiveDismissDisabled()

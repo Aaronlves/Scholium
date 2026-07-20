@@ -8,6 +8,37 @@ import Testing
 @Suite("Frontend architecture")
 @MainActor
 struct FrontendArchitectureTests {
+    @Test("EditorHost presentation preserves mounted Read and editor surfaces")
+    func editorHostRetainsMountedSurfaces() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let hostSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/DocumentEditorHost.swift"
+            ),
+            encoding: .utf8
+        )
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(hostSource.contains("if retainsEditor"))
+        #expect(!hostSource.contains("if presentsEditor"))
+        #expect(hostSource.contains(".allowsHitTesting(!presentsEditor)"))
+        #expect(hostSource.contains("presentsEditor && editorIsReady"))
+        #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
+        #expect(noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel"))
+        #expect(noteSource.contains("retainsEditor: documentSession.retainsEditorSurface"))
+        #expect(noteSource.contains("editorIsReady: editorSession.isLoaded"))
+        #expect(noteSource.contains("mode: documentSession.retainedEditorMode"))
+        #expect(noteSource.contains("renderedReadReadyFingerprint"))
+    }
+
     @Test("A window presents at most one sheet route")
     func presentationRouteExclusivity() {
         let router = WindowPresentationRouter()
@@ -132,7 +163,11 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(appSource.contains("WindowGroup(id: \"scholium-bootstrap\""))
+        #expect(appSource.contains("id: \"scholium-bootstrap\""))
+        #expect(appSource.contains("for: BootstrapWindowRoute.self"))
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
+        #expect(!appSource.contains("id: \"scholium-editor\""))
+        #expect(!appSource.contains("Window(\"Editor\""))
         #expect(appSource.contains("private struct ScholiumBootstrapRoot"))
         #expect(appSource.contains("@StateObject private var model: ScholiumBootstrapModel"))
         #expect(appSource.contains("dismissWindow()"))
@@ -142,6 +177,17 @@ struct FrontendArchitectureTests {
         #expect(!routerSource.contains("adaptiveContext"))
         #expect(!contentSource.contains("ScholiumInactiveLibrarySurface()"))
         #expect(!contentSource.contains("ScholiumInactiveApparatusSurface()"))
+        #expect(appSource.contains(
+            "@FocusedObject private var focusedWindowModel: WindowModel?"
+        ))
+        #expect(appSource.contains(
+            "ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)"
+        ))
+        #expect(appSource.contains(
+            "WindowVisibilityToggle(windowID: \"scholium-research-record\")"
+        ))
+        #expect(appSource.contains(".focusedSceneObject(appState)"))
+        #expect(!appSource.contains("ScholiumWindowModelFocusedKey"))
     }
 
     @Test("The native split owns Inspector visibility while protecting Document reachability")
@@ -182,9 +228,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let registrySource = try String(
+        let windowManagementSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWorkspaceSplitRegistry.swift"
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
             ),
             encoding: .utf8
         )
@@ -198,6 +244,7 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains(
             "libraryItem = NSSplitViewItem(sidebarWithViewController: libraryHost)"
         ))
+        #expect(!splitSource.contains("libraryItem.canCollapseFromWindowResize = false"))
         #expect(splitSource.contains(
             "inspectorWithViewController: apparatusHost"
         ))
@@ -210,7 +257,6 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("libraryItem.maximumThickness"))
         #expect(!splitSource.contains("libraryItem.automaticMaximumThickness"))
         #expect(!splitSource.contains("documentItem.minimumThickness"))
-        #expect(!appSource.contains("window.contentMinSize"))
         #expect(!splitSource.contains("ScholiumResearchInspectorSplitItemConfiguration"))
         #expect(!splitSource.contains("apparatusItem.minimumThickness"))
         #expect(!splitSource.contains("apparatusItem.maximumThickness"))
@@ -233,8 +279,6 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("scholium.apparatus.preferred-width"))
         #expect(!splitSource.contains("priority = .init(999)"))
         #expect(!splitSource.contains("restoreResearchInspectorWidthIfNeeded"))
-        #expect(splitSource.contains("splitViewDidResizeSubviews"))
-        #expect(splitSource.contains("researchInspectorVisibilityDidChange(isVisible)"))
         #expect(!splitSource.contains("rememberResearchInspectorWidth"))
         #expect(!splitSource.contains("splitView.adjustSubviews"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
@@ -242,15 +286,19 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("researchInspectorVisibilityDidChange"))
         #expect(!contentSource.contains("availableSize: geometry.size"))
         #expect(!contentSource.contains("updateWindowWidth(geometry.size.width)"))
-        #expect(registrySource.contains("final class ScholiumWorkspaceSplitRegistry"))
-        #expect(registrySource.contains(
-            "weak var splitViewController: NSSplitViewController?"
+        #expect(!contentSource.contains(".frame(minWidth: 360"))
+        #expect(windowManagementSource.contains("final class WorkspaceWindowCoordinator"))
+        #expect(windowManagementSource.contains("weak var window: NSWindow?"))
+        #expect(windowManagementSource.contains(
+            "weak var splitController: (any ScholiumWorkspaceSplitControlling)?"
         ))
-        #expect(appSource.contains("installWorkspaceToolbarIfPossible"))
-        #expect(appSource.contains("workspaceSplitRegistryDidChange"))
+        #expect(windowManagementSource.contains("final class ScholiumWindowLifecycleRegistry"))
+        #expect(!windowManagementSource.contains("static let shared"))
+        #expect(!windowManagementSource.contains("NotificationCenter"))
+        #expect(!appSource.contains("workspaceSplitRegistryDidChange"))
         #expect(!appSource.contains("findWorkspaceSplitView"))
         #expect(!appSource.contains("attemptWorkspaceToolbarInstallation"))
-        #expect(appSource.contains("func windowDidResize("))
+        #expect(appSource.contains("defaultValue: { TriptychWindowRoute() }"))
         #expect(!contentSource.contains("ToolbarItem(placement:"))
         #expect(!contentSource.contains("TriptychActionsMenu"))
         #expect(sidebarSource.contains(
@@ -278,7 +326,7 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("if let control = item.view as? NSControl"))
         #expect(toolbarSource.contains("control.target = self"))
         #expect(toolbarSource.contains(
-            "appState.setResearchInspectorVisible(!appState.backlinksVisible)"
+            "windowActions.setResearchInspectorVisible(!appState.backlinksVisible)"
         ))
         #expect(toolbarSource.contains("item.autovalidates = false"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
@@ -288,9 +336,9 @@ struct FrontendArchitectureTests {
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
-        #expect(appSource.contains("window.titlebarAppearsTransparent = true"))
-        #expect(!appSource.contains("window.styleMask.remove(.fullSizeContentView)"))
-        #expect(appSource.contains("window.styleMask.insert(.fullSizeContentView)"))
+        #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
+        #expect(!windowManagementSource.contains("window.styleMask.remove(.fullSizeContentView)"))
+        #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
         #expect(!contentSource.contains(".toolbarBackgroundVisibility("))
         #expect(!appSource.contains("Collapse Note"))
         #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.libraryHierarchy)"))
@@ -516,8 +564,6 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(content.contains(".scholiumSurface(.navigation)"))
-        #expect(content.contains(".ignoresSafeArea(.container, edges: .top)"))
-        #expect(!content.contains("geometry.safeAreaInsets.top"))
         #expect(content.contains("ScholiumNoDocumentDetailView()"))
         #expect(content.contains(".accessibilityIdentifier(\"scholium.noDocumentSurface\")"))
         #expect(content.contains("ScholiumWorkspaceSplitView("))
@@ -525,7 +571,6 @@ struct FrontendArchitectureTests {
         #expect(!content.contains("HSplitView {"))
         #expect(!content.contains("preferredApparatusWidth"))
         #expect(content.contains(".padding(.top, ScholiumMetrics.Search.responsiveMargin)"))
-        #expect(!content.contains(".ignoresSafeArea()"))
         #expect(!content.contains("NavigationBackdropView"))
         #expect(!content.contains(".backgroundExtensionEffect()"))
         #expect(!content.contains(".regularMaterial"))
@@ -541,6 +586,7 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.headingOutline\""))
         #expect(toolbar.contains("\"scholium.documentSearch\""))
         #expect(toolbar.contains("\"scholium.showResearchRecord\""))
+        #expect(toolbar.contains("windowActions.showResearchRecord()"))
         #expect(toolbar.contains(".toggleInspector"))
         #expect(toolbar.contains("static let researchRecord"))
         #expect(toolbar.contains(
@@ -927,7 +973,7 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("addTabbedWindow"))
     }
 
-    @Test("Native toolbar follows the explicitly registered workspace split")
+    @Test("Native toolbar follows the exact per-window coordinator split")
     func documentScopedNativeTabGeometry() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -951,9 +997,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let registrySource = try String(
+        let windowManagementSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWorkspaceSplitRegistry.swift"
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
             ),
             encoding: .utf8
         )
@@ -964,13 +1010,10 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains(
             "inspectorWithViewController: apparatusHost"
         ))
-        #expect(splitSource.contains(
-            "ScholiumWorkspaceSplitRegistry.shared.register(self, in: window)"
-        ))
-        #expect(registrySource.contains("static let didChangeNotification"))
-        #expect(appSource.contains(
-            "ScholiumWorkspaceSplitRegistry.shared"
-        ))
+        #expect(splitSource.contains("splitControllerDidAttach(self)"))
+        #expect(splitSource.contains("splitControllerDidDetach(self)"))
+        #expect(windowManagementSource.contains("splitController.nativeSplitViewController"))
+        #expect(!appSource.contains("ScholiumWorkspaceSplitRegistry"))
         #expect(!appSource.contains("findWorkspaceSplitView"))
         #expect(toolbarSource.components(
             separatedBy: "NSTrackingSeparatorToolbarItem("
@@ -979,31 +1022,6 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("dividerIndex: 1"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
         #expect(toolbarSource.contains("item.isBordered = false"))
-    }
-
-    @Test("Workspace split registration is scoped to one exact window")
-    func workspaceSplitRegistryLifecycle() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_180, height: 760),
-            styleMask: [.titled, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        let splitViewController = NSSplitViewController()
-        splitViewController.view.frame = window.contentView?.bounds ?? .zero
-
-        ScholiumWorkspaceSplitRegistry.shared.register(splitViewController, in: window)
-        #expect(
-            ScholiumWorkspaceSplitRegistry.shared.splitViewController(for: window)
-                === splitViewController
-        )
-        #expect(
-            ScholiumWorkspaceSplitRegistry.shared.splitView(for: window)
-                === splitViewController.splitView
-        )
-
-        ScholiumWorkspaceSplitRegistry.shared.unregister(splitViewController, from: window)
-        #expect(ScholiumWorkspaceSplitRegistry.shared.splitView(for: window) == nil)
     }
 
     @Test("Native and WebKit color roles use one semantic vocabulary")
@@ -1059,17 +1077,14 @@ struct FrontendArchitectureTests {
         }
     }
 
-    @Test("Dormant native editor shares the document typography contract")
-    func dormantNativeEditorTypographyContract() throws {
+    @Test("The retired native Markdown projection has no production path")
+    func retiredNativeMarkdownProjectionIsAbsent() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let nativeEditor = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/NativeMarkdownEditorView.swift"
-            ),
-            encoding: .utf8
+        let retiredProjection = repository.appendingPathComponent(
+            "Scholium/Views/Note/NativeMarkdownEditorView.swift"
         )
         let productionDocument = try String(
             contentsOf: repository.appendingPathComponent(
@@ -1078,10 +1093,8 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(nativeEditor.contains("ScholiumTypography.body("))
-        #expect(nativeEditor.contains("ScholiumTypography.heading("))
-        #expect(nativeEditor.contains("ScholiumTypography.exactSource("))
-        #expect(!nativeEditor.contains("readingBodySize"))
+        #expect(!FileManager.default.fileExists(atPath: retiredProjection.path))
+        #expect(!productionDocument.contains("NativeMarkdownReadView("))
         #expect(!productionDocument.contains("NativeMarkdownEditorView("))
     }
 
@@ -1095,7 +1108,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
     }
 
-    @Test("Live Preview omits Source chrome and keeps context clearance in scrolling content")
+    @Test("Live Preview omits Source chrome and consumes shared document layout")
     func livePreviewPresentationContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1137,16 +1150,21 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains(".scholium-live-mode .cm-lineNumbers"))
         #expect(editorStyles.contains(".scholium-source-mode .cm-activeLine"))
         #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
+        #expect(editorStyles.contains("#editor .cm-scroller.scholium-live-scroller"))
+        #expect(editorStyles.contains("#editor .cm-scroller.scholium-source-scroller"))
+        #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-live-scroller\""))
+        #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-source-scroller\""))
         #expect(editorStyles.contains("padding-inline: var(--scholium-rhythm-inline-regular)"))
         #expect(editorStyles.contains(
             "padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after)"
         ))
 
-        #expect(ScholiumMetrics.ContextSurface.initialOverlayClearance == 92)
-        #expect(noteSource.contains(".scholium-live-mode .cm-content,"))
-        #expect(noteSource.contains(".scholium-source-mode .cm-content"))
-        #expect(noteSource.contains(
-            #"padding-top: \(ScholiumMetrics.Document.contentTopInset)px;"#
+        #expect(noteSource.contains("ScholiumDocumentPresentationConfiguration"))
+        #expect(editorStyles.contains("var(--scholium-document-readable-measure)"))
+        #expect(editorStyles.contains("var(--scholium-document-content-top-inset)"))
+        #expect(editorStyles.contains("var(--scholium-document-text-scale)"))
+        #expect(ScholiumWebDesignTokens.responsiveLayoutCSS.contains(
+            "max-width: \(ScholiumDocumentRhythm.narrowWidthThreshold)px"
         ))
     }
 
@@ -1503,7 +1521,7 @@ struct FrontendArchitectureTests {
         ).opacity == 0.78)
     }
 
-    @Test("Document rhythm remains renderer-aware and CSS-aligned")
+    @Test("Document rhythm remains renderer-aware and is shared at runtime")
     func provisionalDocumentRhythmContract() throws {
         // The exact rhythm is intentionally provisional until the dedicated
         // Editor pass. Keep testing the renderer contract without freezing a
@@ -1515,27 +1533,129 @@ struct FrontendArchitectureTests {
                     widthClass: widthClass
                 )
                 #expect(insets.inline >= 0)
-                #expect(insets.blockStart >= 0)
                 #expect((0 ... 1).contains(insets.trailingViewportFraction))
             }
         }
 
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let css = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
-            encoding: .utf8
-        )
-        withKnownIssue(
-            "Editor CSS rhythm synchronization is deferred to the dedicated Editor pass."
-        ) {
-            for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
-                let normalized = declaration.trimmingCharacters(in: .whitespaces)
-                #expect(css.contains(normalized.replacingOccurrences(of: ".0", with: "")))
-            }
+        let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
+            let normalized = declaration.trimmingCharacters(in: .whitespaces)
+            #expect(sharedCSS.contains(normalized))
         }
+        #expect(editorHTML.contains(sharedCSS))
+        #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
+        #expect(sharedCSS.contains(ScholiumWebDesignTokens.responsiveLayoutCSS))
+    }
+
+    @Test("Read mode injects the protected callout presentation")
+    func readModeInjectsProtectedCalloutPresentation() {
+        let css = SafeMarkdownReadWebView.Coordinator.baseCSS
+
+        #expect(css.contains(".scholium-callout"))
+        #expect(css.contains(".cm-live-callout"))
+        #expect(!css.contains("(ScholiumCalloutStyles.css)"))
+    }
+
+    @Test("Read and Live Preview share one offline mathematics runtime and font set")
+    func sharedMathematicsRuntime() throws {
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let css = ScholiumMathAssets.css
+
+        #expect(ScholiumMathAssets.runtimeJavaScript.contains("scholiumMath"))
+        #expect(css.contains(".katex"))
+        #expect(css.contains("data:font/woff2;base64,"))
+        #expect(!css.contains("url(fonts/"))
+        #expect(css.contains(".scholium-math-display"))
+        #expect(editorHTML.contains(css))
+    }
+
+    @Test("Read and Live Preview share semantic table presentation")
+    func sharedTablePresentation() throws {
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let css = ScholiumTableStyles.css
+
+        #expect(css.contains(".scholium-table-scroll"))
+        #expect(css.contains(".scholium-table th"))
+        #expect(css.contains("--scholium-table-cell-inline-inset"))
+        #expect(css.contains("overflow-x: auto"))
+        #expect(editorHTML.contains(css))
+        #expect(SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<div class=\"scholium-table-scroll\"></div>",
+            source: "",
+            documentID: "Table.md",
+            fingerprint: DocumentFingerprint(content: "").sha256,
+            commentEnabled: false,
+            selectionEnabled: false,
+            researcherComments: [],
+            linkPreviews: [],
+            userCSS: ""
+        ).contains(css))
+    }
+
+    @Test("Read and Live Preview share semantic footnote presentation")
+    func sharedFootnotePresentation() throws {
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let css = ScholiumFootnoteStyles.css
+
+        #expect(css.contains(".footnote-reference"))
+        #expect(css.contains(".footnotes"))
+        #expect(css.contains(".cm-live-footnotes-widget"))
+        #expect(css.contains("padding-inline-end"))
+        #expect(editorHTML.contains(css))
+        #expect(SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<section class=\"footnotes\"></section>",
+            source: "",
+            documentID: "Footnotes.md",
+            fingerprint: DocumentFingerprint(content: "").sha256,
+            commentEnabled: false,
+            selectionEnabled: false,
+            researcherComments: [],
+            linkPreviews: [],
+            userCSS: ""
+        ).contains(css))
+    }
+
+    @Test("Read and Live Preview share the bounded preview presentation")
+    func sharedPreviewPresentation() throws {
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let css = ScholiumPreviewStyles.css
+        #expect(css.contains(".scholium-preview-popover"))
+        #expect(css.contains("prefers-contrast: more"))
+        #expect(css.contains("prefers-reduced-transparency: reduce"))
+        #expect(editorHTML.contains(css))
+
+        let preview = DocumentLinkPreview(
+            sourceSpan: SourceSpan(
+                utf8LowerBound: 0,
+                utf8UpperBound: 10,
+                utf16LowerBound: 0,
+                utf16UpperBound: 10,
+                start: SourcePosition(line: 1, utf8Column: 1, utf16Column: 1),
+                end: SourcePosition(line: 1, utf8Column: 11, utf16Column: 11)
+            ),
+            target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
+            targetFingerprint: DocumentFingerprint(content: "Target body"),
+            title: "Target note",
+            relationship: .supportsTarget,
+            fragment: "Claim",
+            htmlBody: "<p>Target body</p>"
+        )
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="10">Target</a>"#,
+            source: "[[Target]]",
+            documentID: "Source.md",
+            fingerprint: DocumentFingerprint(content: "[[Target]]").sha256,
+            commentEnabled: false,
+            selectionEnabled: false,
+            researcherComments: [],
+            linkPreviews: [preview],
+            userCSS: ""
+        )
+        #expect(readHTML.contains(css))
+        #expect(readHTML.contains("previewByRange"))
+        #expect(readHTML.contains("showLinkPopover"))
+        #expect(readHTML.contains("showFootnotePopover"))
     }
 
     @Test("Relationship colors provide increased-contrast variants")

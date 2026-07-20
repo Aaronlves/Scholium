@@ -76,6 +76,28 @@ public enum SafeMarkdownRenderer {
             replacements.append(Replacement(range: relative, text: ""))
         }
 
+        for (index, expression) in semantic.mathExpressions.enumerated() {
+            guard let relative = relativeRange(
+                expression.span,
+                bodyStart: bodyStart,
+                bodyLength: bodyLength
+            ), !overlaps(relative, replacements.map(\.range)) else { continue }
+            let rawSource = (document.body as NSString).substring(with: relative)
+            switch expression.kind {
+            case .inline:
+                let key = "SCHOLIUMINLINETOKEN\(nonce)M\(index)"
+                inlineHTML[key] = renderMath(expression, rawSource: rawSource)
+                replacements.append(Replacement(range: relative, text: key))
+            case .display:
+                let key = "\(nonce)-math-\(index)"
+                blockHTML[key] = renderMath(expression, rawSource: rawSource)
+                replacements.append(Replacement(
+                    range: relative,
+                    text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"
+                ))
+            }
+        }
+
         let definitionsByIdentifier = Dictionary(
             uniqueKeysWithValues: semantic.footnoteDefinitions.map { ($0.identifier, $0) }
         )
@@ -170,6 +192,13 @@ public enum SafeMarkdownRenderer {
         return "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\"\(disabled)>\(reference.ordinal)</button></sup>"
     }
 
+    private static func renderMath(_ expression: MathExpression, rawSource: String) -> String {
+        let encoded = Data(expression.content.utf8).base64EncodedString()
+        let kind = expression.kind.rawValue
+        let tag = expression.kind == .display ? "div" : "span"
+        return "<\(tag) class=\"scholium-math scholium-math-\(kind)\" data-math-kind=\"\(kind)\" data-math-source=\"\(encoded)\" \(sourceAttributes(expression.span)) data-scholium-protected=\"math\"><code class=\"scholium-math-source\">\(escapeHTML(rawSource))</code></\(tag)>"
+    }
+
     private static func renderInlineMarkdown(_ source: String) -> String {
         let parsed = Document(parsing: source)
         var visitor = SafeHTMLVisitor(blockHTML: [:], inlineHTML: [:], blockSourceSpans: [:])
@@ -241,13 +270,52 @@ public enum SafeMarkdownRenderer {
 
     private static func inlineLiteralRanges(in source: String) -> [NSRange] {
         let length = (source as NSString).length
-        let patterns = [#"`+[^`\n]*`+"#, #"<!--[\s\S]*?-->"#, #"%%[\s\S]*?%%"#]
-        return patterns.flatMap { pattern in
+        let codeRanges = [#"`+[^`\n]*`+"#].flatMap { pattern in
             (try? NSRegularExpression(pattern: pattern))?.matches(
                 in: source,
                 range: NSRange(location: 0, length: length)
             ).map(\.range) ?? []
         }
+        return codeRanges
+            + literalCommentRanges(in: source, opening: "%%", closing: "%%")
+            + literalCommentRanges(in: source, opening: "<!--", closing: "-->")
+    }
+
+    private static func literalCommentRanges(
+        in value: String,
+        opening: String,
+        closing: String
+    ) -> [NSRange] {
+        let source = value as NSString
+        var ranges: [NSRange] = []
+        var cursor = 0
+        while cursor < source.length {
+            let openingRange = source.range(
+                of: opening,
+                options: [],
+                range: NSRange(location: cursor, length: source.length - cursor)
+            )
+            guard openingRange.location != NSNotFound else { break }
+            let closingStart = NSMaxRange(openingRange)
+            let closingRange = source.range(
+                of: closing,
+                options: [],
+                range: NSRange(location: closingStart, length: source.length - closingStart)
+            )
+            guard closingRange.location != NSNotFound else {
+                ranges.append(NSRange(
+                    location: openingRange.location,
+                    length: source.length - openingRange.location
+                ))
+                break
+            }
+            ranges.append(NSRange(
+                location: openingRange.location,
+                length: NSMaxRange(closingRange) - openingRange.location
+            ))
+            cursor = NSMaxRange(closingRange)
+        }
+        return ranges
     }
 
     private static func apply(_ replacements: [Replacement], to source: String) -> String {
@@ -282,6 +350,9 @@ private struct SafeHTMLVisitor: MarkupWalker {
     let inlineHTML: [String: String]
     let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]]
     var blockSourceIndices: [MarkdownBlockKind: Int] = [:]
+    var tableColumnAlignments: [Table.ColumnAlignment?] = []
+    var currentTableColumn = 0
+    var isInsideTableHead = false
 
     mutating func visitDocument(_ document: Document) { descendInto(document) }
     mutating func visitParagraph(_ paragraph: Paragraph) {
@@ -358,19 +429,50 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "<code class=\"raw-html-inline\">\(SafeMarkdownRenderer.escapeHTML(inlineHTML.rawHTML))</code>"
     }
     mutating func visitTable(_ table: Table) {
-        result += "<table\(sourceAttributes(for: .table))>"; descendInto(table); result += "</table>"
+        let previousAlignments = tableColumnAlignments
+        let previousColumn = currentTableColumn
+        let previousHeadState = isInsideTableHead
+        tableColumnAlignments = table.columnAlignments
+        currentTableColumn = 0
+        isInsideTableHead = false
+        result += "<div class=\"scholium-table-scroll\" data-scholium-protected=\"table\"><table class=\"scholium-table\"\(sourceAttributes(for: .table))>"
+        descendInto(table)
+        result += "</table></div>"
+        tableColumnAlignments = previousAlignments
+        currentTableColumn = previousColumn
+        isInsideTableHead = previousHeadState
     }
     mutating func visitTableHead(_ tableHead: Table.Head) {
-        result += "<thead>"; descendInto(tableHead); result += "</thead>"
+        let previousHeadState = isInsideTableHead
+        isInsideTableHead = true
+        currentTableColumn = 0
+        result += "<thead><tr>"; descendInto(tableHead); result += "</tr></thead>"
+        isInsideTableHead = previousHeadState
     }
     mutating func visitTableBody(_ tableBody: Table.Body) {
         result += "<tbody>"; descendInto(tableBody); result += "</tbody>"
     }
     mutating func visitTableRow(_ tableRow: Table.Row) {
+        currentTableColumn = 0
         result += "<tr>"; descendInto(tableRow); result += "</tr>"
     }
     mutating func visitTableCell(_ tableCell: Table.Cell) {
-        result += "<td>"; descendInto(tableCell); result += "</td>"
+        guard tableCell.colspan > 0, tableCell.rowspan > 0 else { return }
+        let tag = isInsideTableHead ? "th" : "td"
+        var attributes = isInsideTableHead ? " scope=\"col\"" : ""
+        if currentTableColumn < tableColumnAlignments.count,
+           let alignment = tableColumnAlignments[currentTableColumn] {
+            let value = switch alignment {
+            case .left: "left"
+            case .center: "center"
+            case .right: "right"
+            }
+            attributes += " class=\"scholium-table-align-\(value)\""
+        }
+        if tableCell.colspan > 1 { attributes += " colspan=\"\(tableCell.colspan)\"" }
+        if tableCell.rowspan > 1 { attributes += " rowspan=\"\(tableCell.rowspan)\"" }
+        currentTableColumn += Int(tableCell.colspan)
+        result += "<\(tag)\(attributes)>"; descendInto(tableCell); result += "</\(tag)>"
     }
 
     private mutating func appendTextReplacingTokens(_ value: String) {

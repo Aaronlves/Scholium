@@ -63,12 +63,16 @@ EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/
 if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
   EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
-for editor_resource in index.html editor.bundle.js editor.css; do
+for editor_resource in index.html editor.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css; do
   [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
     print -u2 "Missing packaged editor resource: ${editor_resource}"
     exit 66
   }
 done
+if [[ "$(find "${EDITOR_RESOURCES}" -maxdepth 1 -type f -name 'KaTeX_*.woff2' | wc -l | tr -d ' ')" -ne 20 ]]; then
+  print -u2 "The packaged KaTeX font set is incomplete."
+  exit 66
+fi
 cp "${SCRATCH}/release/scholium" "${OUTPUT}/scholium"
 chmod +x "${OUTPUT}/scholium"
 cp -R "${CORE_RESOURCE_BUNDLE}" "${OUTPUT}/Scholium_ScholiumCore.bundle"
@@ -128,7 +132,25 @@ fi
 xattr -cr "${STAGING_APP}"
 xattr -cr "${OUTPUT}/Scholium_ScholiumCore.bundle"
 
-codesign --force --deep --options runtime \
+# Sign nested code from the inside out. The bundled CLI is intentionally a
+# standalone command-line executable and must not inherit the app sandbox
+# entitlements: it has no application bundle identifier and is launched from
+# the shell. The outer Scholium app alone receives the application
+# entitlements. Keep --deep for verification, not for applying entitlements to
+# nested code.
+codesign --force --options runtime \
+  --sign "${IDENTITY}" "${STAGING_APP}/Contents/Helpers/scholium"
+codesign --verify --strict --verbose=2 \
+  "${STAGING_APP}/Contents/Helpers/scholium"
+BUNDLED_CLI_ENTITLEMENTS="${SCRATCH}/bundled-cli-entitlements.plist"
+codesign -d --entitlements :- \
+  "${STAGING_APP}/Contents/Helpers/scholium" \
+  > "${BUNDLED_CLI_ENTITLEMENTS}" 2>/dev/null || true
+if rg -q 'com\.apple\.security\.app-sandbox' "${BUNDLED_CLI_ENTITLEMENTS}"; then
+  print -u2 "Refusing to package the bundled CLI with application sandbox entitlements."
+  exit 65
+fi
+codesign --force --options runtime \
   --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
   --sign "${IDENTITY}" "${STAGING_APP}"
 codesign --verify --deep --strict --verbose=2 "${STAGING_APP}"

@@ -12,16 +12,11 @@ tests, and scripts remain the final implementation evidence.
 
 ## Architectural stance
 
-Scholium uses compiler-enforced frontend/backend isolation and modularization
-inside one local modular monolith. `ScholiumApp` is the macOS frontend, while
-`ScholiumApplication` and the internal `ScholiumCore` target form the headless
-backend; `ScholiumCLI` is a second delivery adapter over the same backend.
-Frontend and CLI code can reach backend authority only through Application
-capabilities and immutable `ScholiumContracts` values. This is a module,
-dependency, and state-ownership boundary within one process, not an XPC,
-network-service, or distributed-system split. Modularization continues within
-both sides: window and feature controllers divide frontend ownership, while
-runtime and capability actors divide backend ownership.
+Scholium is one local modular monolith with compiler-enforced frontend/backend
+isolation. `ScholiumApp` and `ScholiumCLI` are delivery adapters over
+`ScholiumApplication` plus internal `ScholiumCore`; both reach backend authority
+only through Application capabilities and immutable `ScholiumContracts`
+values. This in-process module and ownership boundary is not XPC or a service.
 
 ## Ownership
 
@@ -43,44 +38,38 @@ ScholiumCore ← ScholiumApplication
 
 WorkspaceRuntime (one live runtime for the app delivery)
 └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
-    ├── WindowModel (one per complete workspace window)
-    │   ├── DiscoveryController
-    │   ├── DocumentTabController
-    │   ├── DocumentController
-    │   │   └── DocumentSessionStore
-    │   ├── ResearchController
-    │   │   └── ResearchFunctionController
-    │   ├── WindowPresentationRouter
-    │   └── typed WindowIntent routing
-    └── separate-window routing by stable window ID
+    └── SwiftUI WindowGroup (one Codable route per scene)
+        ├── WindowModel (one per complete workspace window)
+        │   ├── DiscoveryController
+        │   ├── DocumentTabController
+        │   ├── DocumentController
+        │   │   └── DocumentSessionStore
+        │   ├── ResearchController
+        │   │   └── ResearchFunctionController
+        │   ├── WindowPresentationRouter
+        │   └── typed WindowIntent routing
+        └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
+
+ScholiumApplicationDelegate
+└── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
 ```
 
-`WorkspaceRuntime` has live and snapshot configurations. Live activation
-reuses one Triptych runtime and one vault runtime per stable identity, owns
-watchers and derived refresh, and remains alive while any app window needs it.
-Snapshot activation performs bounded one-shot loading and starts no watcher;
-the CLI creates and deterministically shuts down one snapshot runtime per
-invocation.
+`WorkspaceRuntime` has two configurations: live reuses stable Triptych/vault
+runtimes, watchers, and derived refresh while any app window needs them;
+snapshot performs one-shot loading without watchers and shuts down after each
+CLI invocation.
 
-Application internally composes a concrete `WorkspaceHandle`. The macOS
-adapter converts it to `DocumentUseCases`, `DiscoveryUseCases`, and
-`ResearchUseCases` protocol values plus immutable identity and assignment
-values; the adapter's raw-handle helpers are private and `WindowModel` never
-stores the handle. `WorkspaceStore` coalesces concurrent explicit and
-event-announced installation of the same runtime, establishes and retains the
-one event subscription, then publishes the completed capability activation
-without another suspension point. Every
-event subscription begins with a complete `WorkspaceSnapshot`; accepted later
-events carry increasing generations.
-Commands remain direct capability calls, not messages on a generic event bus.
+Application composes a private `WorkspaceHandle`; the macOS adapter exposes
+only `DocumentUseCases`, `DiscoveryUseCases`, and `ResearchUseCases` plus
+immutable identity/assignment values. `WorkspaceStore` coalesces duplicate runtime
+installation, retains one event subscription before publishing activation,
+starts it with a complete `WorkspaceSnapshot`, and accepts only increasing
+generations. Commands remain direct capability calls, not event-bus messages.
 
-`WorkspaceStore` owns one live runtime, one accepted event subscription per
-active Triptych, immutable GUI snapshots, the cross-window editor-flush
-registry, and macOS presentation adapters. CSS/App Support persistence,
-Obsidian appearance reads, and Zotero HTTP remain behind Application actors.
-Each window receives a complete activation atomically, so a runtime replacement
-cannot mix capability actors from different generations. It owns no Core
-repository, index, watcher, or research store.
+`WorkspaceStore` owns the live runtime, accepted subscription, immutable GUI
+snapshots, cross-window editor-flush registry, and macOS adapters. Each window
+receives one atomic capability generation. CSS/App Support, Obsidian reads, and
+Zotero HTTP stay behind Application actors; the store owns no Core authority.
 
 The Beta agent-application handoff is one app-wide macOS presentation adapter
 owned by `WorkspaceStore`. `AgentApplicationHandoffController` coordinates the
@@ -91,79 +80,52 @@ small mode-0600 Application Support preference, never Triptych or vault state.
 No Application or Core use case receives the selected application or launch
 result, and no Function record treats launch as execution state.
 
-Each `WindowModel` is the per-window composition and focused-command root. It
-owns Triptych assignment, the ordinary Search scope and temporary Find
-invocation, session restoration, presentation routing, and closed cross-feature
-intent routing. `DocumentController` alone owns the selected document, including
-path-only Unclassified and identity-recovery selections. It also owns the
-per-window document workflow projection: presentation requests, save failure,
-identity recovery, Human Review and Comment state, and lifecycle generations.
-`ResearchController` owns research-request generations, Dialogue initial-note
-projection, checkpoint listing failures, and durable recovery listing state.
-`WindowModel` exposes these only as computed projections for composition and
-focused commands. It owns no
-duplicate window-tab membership or selection, navigation history, or Recent
-Notes state. Document state, Search state, and modal presentation remain
-independent per window. Library browsing, folder disclosure, Library selection,
-Sidebar visibility, Apparatus visibility, and Apparatus mode are outer-window
-state and never belong to a Document tab. Controllers never mutate one
-another. Settings uses the separate
-`WorkspaceSettingsModel` and does not construct a document window. Its
-delivery-neutral capability boundary is divided into workspace, machine,
-Zotero, and Research Guidance groups rather than one omnibus operation bag.
+`WindowModel` is the per-window composition and focused-command root. It owns
+Triptych assignment, Search/temporary Find, restoration, presentation, and
+typed cross-feature intents. `DocumentController` alone owns selection and
+document workflow state; `ResearchController` owns research generations,
+initial Dialogue projection, checkpoint-list failures, and durable-recovery
+listing. `WindowModel` exposes computed projections, not duplicated storage.
+Document, Search, and presentation are window-local; Library hierarchy and
+selection, Sidebar/Apparatus visibility, and Apparatus mode belong to the outer
+window, never a tab. Controllers do not mutate one another. Separate
+`WorkspaceSettingsModel` groups workspace, machine, Zotero, and Research
+Guidance capabilities without constructing a document window.
 
-Each workspace window owns one `DocumentTabController`. The middle
-`NSSplitViewItem` contains an `NSTabViewController` whose child view controllers
-are document pages. Its tab style is `.unspecified`; a Document-owned selector
-inside the middle column supplies the visible tab strip. `.unspecified` is a
-required ownership boundary, not an aesthetic choice: AppKit's `.toolbar` tab
-style replaces `NSWindow.toolbar` and makes the tab controller its delegate,
-which would create a second toolbar owner and discard Scholium's approved
-workspace toolbar composition. Opening or selecting a
-Document tab never creates another `WindowGroup`, `NSWindow`, `WindowModel`,
-split controller, Library, or Apparatus. `DocumentTabController` owns only tab
-order, selected tab identity, and the document reference for each tab.
-`DocumentController` and `DocumentSessionStore` retain exact document/editor
-sessions. Selecting a tab activates the matching session after the existing
-flush and reconstruction guard. Apparatus data is derived from the active
-document while its visibility and mode remain window-owned. **New Window** is
-the separate route that constructs another complete workspace shell.
-`WindowSessionSnapshot.selectedDocument` is the sole restored document;
-historical tab, Back/Forward, and Recent Notes fields exist only in the bounded
-decoder and disappear on the next encode.
+Each window has one `DocumentTabController`. An `.unspecified`
+`NSTabViewController` in the middle split item hosts document pages; a
+Document-owned selector renders the tabs. `.toolbar` is forbidden because it
+would replace `NSWindow.toolbar` and create a second toolbar owner. Tabs create
+no window, model, split, Library, or Apparatus. The controller owns only order,
+selection, and document references; `DocumentController` and
+`DocumentSessionStore` retain sessions and apply the flush/reconstruction guard.
+Apparatus derives from the active document but keeps window-owned visibility
+and mode. Only New Window creates a shell.
+`WindowSessionSnapshot.selectedDocument` alone restores selection; legacy
+tab/history fields decode only and vanish on encode.
 
-Every configured workspace scene constructs exactly one
-`ScholiumWorkspaceSplitView`, whose
-AppKit representable owns one `NSSplitViewController` with three sibling
-`NSSplitViewItem`s. `NSHostingController`s embed the existing Library,
-Document, and Apparatus SwiftUI feature roots directly. All three hosts retain
-their normal AppKit sizing negotiation; none adds wrapper controllers,
-centering corrections, live width bindings, one-time opening frames, or
-Scholium-defined split-item minima and maxima. Library retains native
-semantic-sidebar behavior and AppKit owns its initial width, compression, and
-user-drag limits.
+Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
+`NSSplitViewController` with three direct `NSSplitViewItem`/
+`NSHostingController` siblings for Library, Document, and Apparatus. AppKit
+owns window resizing, compression, divider mechanics, automatic Sidebar
+collapse, collapse transitions, fullscreen, frame restoration, and drag limits.
+SwiftUI's Codable route is the sole scene identity. No wrappers, width
+bindings, global window searches, opening-frame corrections, or
+Scholium-defined split minima/maxima intervene. A numeric minimum may exist
+only once at scene level after the specification's complete adaptation matrix
+proves it necessary.
 
-Apparatus remains a genuine contextual Inspector created with
-`NSSplitViewItem(inspectorWithViewController:)`. Production construction does
-not mutate the Inspector item's thickness, preferred fraction, holding
-priority, collapse policy, full-height layout, safe-area adjustment, or
-titlebar-separator style. Subsequent visibility changes use AppKit's standard
-`.toggleInspector` toolbar item or `NSSplitViewController.toggleInspector(_:)`,
-leaving animation, divider response, sibling resizing, and toolbar tracking to
-AppKit. Because the representable's nested controller is not guaranteed to be
-in the window's first-responder chain, the toolbar controller bridges the
-automatically created standard item's command into the same window-owned
-visibility state used by the View menu. The exact registered split controller
-then performs AppKit's native `toggleInspector(_:)` transition. Responder-based
-auto-validation is disabled for this bridged item, and
-`DocumentController.selectedDocument` supplies its availability without
-introducing Inspector geometry or a second visibility owner. The split item's
-collapsed state is authoritative. `WindowModel`
-mirrors the observed visibility for menus and the next window session; it does
-not reassert that state on key-window transitions and never observes,
-publishes, restores, or writes Inspector width. The exact-window registry
-exposes only the live split view needed by the native toolbar's tracking
-separators and visibility commands.
+Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`. Production never mutates
+its thickness, fraction, priority, collapse policy, full-height layout, safe
+area, or separator. AppKit's standard item/
+`NSSplitViewController.toggleInspector(_:)` owns the
+transition. Because the nested split may be outside the responder chain, the
+toolbar bridges that standard command and View-menu intent to the exact
+per-window coordinator; selected-document state supplies availability. The
+split's collapsed state is authoritative. `WindowModel` mirrors visibility for
+commands/restoration but never reasserts it or stores Inspector width; the
+coordinator receives explicit visibility intents and holds weak references to
+the exact window and split.
 
 The Inspector may project backlinks, related notes, Research Status, metadata,
 provenance, Dialogue or Critique status, and other current-note context. It may
@@ -171,9 +133,7 @@ navigate or open another note in the Document tabs, but it never owns a document
 buffer, editing, autosave, undo, or conflict state. Those remain exclusively in
 the Document surface and its existing controllers.
 
-The application uses a platform-translation gate before changing window or
-container architecture. A researcher description establishes the intended
-visible behavior, not the implementation mechanism. Engineering must first:
+Before changing a window/container boundary, engineering must:
 
 1. name the state that should remain stable and the content that should change;
 2. inspect the current ownership and controller hierarchy;
@@ -182,26 +142,22 @@ visible behavior, not the implementation mechanism. Engineering must first:
 4. record which controller owns lifetime, selection, persistence, and layout;
 5. integrate the proven container without parallel state or geometry owners.
 
-For content tabs, AppKit's established `NSTabViewController` contract is the
-mechanism authority: each page is a child view controller and selection
-replaces only that page. The mechanism prototype is not visual authority for
-the production toolbar or selector. `NSWindowTabGroup` is rejected for this requirement
-because its selected member is an entire `NSWindow`; SwiftUI `WindowGroup` is
-also rejected because every opened scene receives new scene-local state.
-Scholium does not adopt `NSDocument` as a second persistence owner: exact
-Markdown, autosave, external-change conflicts, and recovery remain in the
-existing Application and Document boundaries.
+For content tabs, `NSTabViewController` is the mechanism authority; its
+prototype is not visual authority. `NSWindowTabGroup` selects whole windows,
+and `WindowGroup` creates scene state, so neither meets the page-only contract.
+`NSDocument` is not adopted as a second persistence owner: Application and
+Document retain Markdown, autosave, conflict, and recovery authority.
 
-Bootstrap is a separate data-routed SwiftUI `WindowGroup` and never constructs
-the workspace split or toolbar. Its narrow `ScholiumBootstrapModel` owns only
-launch resolution, the first/new/missing-registration configuration purpose,
-and `WorkspaceSetupView`; it never creates `WindowModel`. Successful
-configuration opens one data-routed workspace scene and then dismisses
-Bootstrap; failure leaves Bootstrap and its setup state intact. When a
-configured Triptych still exists but one folder authorization is unavailable,
-the existing workspace presents a typed, single-task Restore Access sheet and
-replaces only that failed authorization. It never redirects that condition to
-the five-step Bootstrap flow.
+Bootstrap is a separate data-routed `WindowGroup`; `ScholiumBootstrapModel`
+owns launch resolution and `WorkspaceSetupView` for first/new/missing setup,
+never the workspace split, toolbar, or `WindowModel`. Bootstrap and Workspace
+use nonoptional Codable route bindings with a `defaultValue`; the route's
+`windowID` is their only session identity. Workspace restoration is automatic,
+while Bootstrap restoration is disabled. Success opens one workspace and waits
+for that route's native coordinator readiness before dismissing Bootstrap;
+failure or early unregister preserves setup. An existing
+Triptych with lost folder authorization stays in the workspace and replaces
+only that authorization through Restore Access.
 
 ## Research Function boundary
 
@@ -220,61 +176,41 @@ ResearchFunctionCoordinator (Application)
 Core skill, checkpoint, record, and repository authorities
 ```
 
-`ScholiumContracts` owns `ResearchFunctionID`, Target, Material, Whole/Passage
-scope, Fidelity checks, availability and repair reason codes, prepared runs,
-completion submissions, fingerprints, and the narrow `ResearchFunctionUseCases`
-protocol. `ResearchUseCases` is the workspace-level composite of record,
-checkpoint, skill, function, and Recommended Bibliography capabilities.
-Contracts contain no labels,
-symbols, package storage, YAML inspection, or UI layout.
+`ScholiumContracts` owns `ResearchFunctionID`, Target/Material/scope, Fidelity
+checks, availability/repair codes, runs, submissions, fingerprints, and
+`ResearchFunctionUseCases`. Workspace `ResearchUseCases` composes record,
+checkpoint, Skill, function, and bibliography capabilities. Contracts contain
+no labels, symbols, package storage, YAML inspection, or layout.
 
-`ScholiumApplication` owns one delivery-neutral `ResearchFunctionCoordinator`
-per workspace. Its availability, preparation, resource-finalization, completion,
-cancellation, and record-projection units resolve stable identities, revalidate
-Target and Materials, resolve exact skill resources, coordinate checkpoints
-and records, validate final fingerprints, and roll back partial preparation. A
-resource-unresolved Strip request persists the normal run, checkpoint, and
-Dialogue or Critique record as a read-only preflight. The agent must call
-`selectFunctionResources` with explicit typed resources—or an empty base-only
-selection—before mutation instructions or completion are available. Core
-atomically extends that same persisted snapshot through
-`finalizeFunctionPreflight`; it never replaces the run, checkpoint, record, or
-preparation identity. Only the exact selected resource references and package
-revisions enter the immutable execution handoff. The public
-`ResearchOperations` delegates to it. Dialogue and Critique preparation enter
-only through the typed Research Function API.
+One delivery-neutral `ResearchFunctionCoordinator` per workspace owns
+availability, preparation, resource finalization, completion, cancellation,
+and record projection. It resolves/rechecks identities, inputs, resources,
+checkpoints, records, and final fingerprints and rolls back partial work.
+Unresolved conditional resources persist the normal identities as a read-only
+preflight. `selectFunctionResources` must submit typed resources or an explicit
+empty selection before mutation/completion; Core's
+`finalizeFunctionPreflight` atomically extends the same snapshot with only
+selected references/revisions. Public `ResearchOperations` delegates here;
+Dialogue/Critique have no alternate preparation path.
 
-Write-capable preparation records only a pending Fidelity handoff. Its first
-post-edit completion persists the exact final Target fingerprint as
-`awaitingFidelity`, then Application creates or reuses an independent read-only
-automatic Fidelity child against that final revision with the same Materials,
-scope kind, Comments, and checks. This orchestration records no audit outcome:
-an agent must still submit the child's actual evidence. A later parent
-submission links the completed child, and Application can perform that link
-automatically when identical completed evidence is already available.
-Completion rejects direct Fidelity outcomes on the write run and validates the
-child's identity, final fingerprints, evidence, checks, and completion before
-monotonically advancing the parent. Exact evidence keys reuse completed
-evidence instead of storing or scheduling a duplicate audit.
+Write preparation records only a pending Fidelity handoff. Post-edit completion
+stores the final Target fingerprint as `awaitingFidelity`; Application creates
+or reuses an independent read-only child with the same inputs. An agent must
+submit its evidence. Parent advancement validates and links that child (or
+identical completed evidence); direct write-run Fidelity outcomes are rejected.
+Exact evidence keys prevent duplicate storage or scheduling.
 
-`ScholiumCore` keeps authorities separate: `ResearchSkillStore` owns package
-discovery, metadata, bindings, and fingerprints; `ResearchWorkflowAssembler`
-owns dependency closure and instruction assembly; `TriptychCheckpointStore`
-owns checkpoint and recovery; Dialogue, Critique, and Human Review retain
-separate stores; repositories remain the only exact revision-checked document
-mutation authority. `RecommendedBibliographyStore` alone owns atomic portable
-`.scholium/recommended-bibliography.json` state and never reads or writes note
-bytes or Zotero. No omnibus function store is introduced.
+Core separates Skill discovery/bindings (`ResearchSkillStore`), dependency and
+instruction assembly (`ResearchWorkflowAssembler`), checkpoints
+(`TriptychCheckpointStore`), Dialogue, Critique, and Human Review. Repositories
+alone mutate revision-checked source.
+`RecommendedBibliographyStore` alone owns its atomic portable JSON and never
+mutates notes or Zotero. No omnibus function store exists.
 
-`ScholiumCLI` decodes Contracts requests, invokes the same Application use
-cases as the app, and encodes results for `function available`, `prepare`,
-`show`, `select-resources`, `complete`, `prepare-fidelity`, and `cancel`.
-No pre-1.0 Function command aliases remain. Preparations and completions expose delivery-neutral
-`AgentCommandAction` argument vectors; CLI rendering never moves routing or
-write policy into the delivery target. Separate `bibliography prepare`, `show`,
-`complete`, and `cancel` commands delegate through
-`RecommendedBibliographyUseCases`. The CLI never duplicates eligibility, skill
-routing, checkpoint, or write-set policy.
+CLI decodes Contracts, invokes the same Application use cases, and encodes the
+canonical function and bibliography command families. No pre-1.0 aliases
+remain. `AgentCommandAction` uses argument vectors; CLI rendering never owns
+eligibility, Skill routing, checkpoints, write sets, or shell command strings.
 
 `CommandLineToolInstaller` is an app-wide Application capability. It verifies
 and atomically copies the packaged `Contents/Helpers/scholium` executable into
@@ -283,23 +219,15 @@ Settings feature receives status/install closures only; SwiftUI does not copy
 executables or inspect the filesystem. Packaging and QA scripts build and sign
 the app and its helper together.
 
-All SwiftPM scratch directories and Xcode DerivedData directories live beneath
-the repository-local, ignored `.build/` directory. Development uses SwiftPM's
-standard `.build` layout; verification, QA, localization, packaging,
-performance, and upgrade-safety workflows use separate subdirectories so they
-cannot delete one another's cache or index. This is safe only because the
-checkout lives outside File Provider-managed Desktop, Documents, and
-CloudStorage locations. Build caches and indexes must not be redirected to
-`/tmp`.
+All SwiftPM scratch and Xcode DerivedData live in isolated lanes beneath the
+ignored repository-local `.build/`; none may use `/tmp`. This requires the
+checkout to remain outside File Provider-managed locations.
 
-The App keeps `ResearchController` as the per-window feature root. Its owned
-`ResearchFunctionController` contains only the immutable active Target, panel
-draft, selected Materials, scope, selected Comments and Fidelity checks,
-progress, cancellation, errors, presentation identity, and stale-response
-tokens. A narrow `ResearchFunctionClient` combines document flush and current
-selection capture with async use-case closures at the window composition root;
-the controller owns no repository, filesystem, document controller, or
-authoritative research data.
+Per-window `ResearchController` owns a `ResearchFunctionController` containing
+only Target, draft inputs, progress/cancellation/errors, presentation identity,
+and stale-response tokens. A narrow client composes document flush/selection
+capture with async use cases; the controller owns no repository, filesystem,
+document controller, or authoritative research data.
 
 Recommended Bibliography follows a separate Triptych-library capability
 boundary:
@@ -376,14 +304,17 @@ window. That bounded AppKit bridge creates one `NSSplitViewController`
 containing three sibling `NSHostingController` surfaces. Bootstrap and setup
 belong to their separate scene and never construct this split. Configured
 loading and document states replace hosted content only; they never replace the
-outer split. `ScholiumWorkspaceSplitRegistry` weakly associates the exact window with
-that split so the native toolbar can track both dividers without participating
-in width calculation.
+outer split. Its `WorkspaceWindowCoordinator` receives that exact native window
+and split directly, installs the toolbar and close delegate, and registers the
+route's readiness/flusher capability with the application-owned lifecycle
+registry. No singleton split registry, window-list search, notification,
+polling, delayed frame correction, or width calculation participates.
 
-Research Record is a separate SwiftUI `UtilityWindow`. An app-level
-presentation coordinator weakly retains the exact `WindowModel` that explicitly
-opened it; this survives the utility window becoming key without copying or
-extending the lifetime of document state. The window projects Human Review,
+Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
+receives the current native focused object observed at the app scene boundary;
+each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
+registry, notification, generation counter, presentation coordinator, custom
+focused key, or manually retained window model participates. The window projects Human Review,
 anchored Comments, Dialogue, Critique association, and provenance through a
 narrow `ResearchRecordContext`. It never enters the trailing split item and
 never owns checkpoints, a document buffer, autosave, undo, or conflicts.
@@ -463,9 +394,9 @@ Already-prepared runs complete from immutable snapshots. New Critique runs
 never select the retired competing report template.
 
 Researcher Skill evolution is an independent Research Guidance maintenance
-slice. Contracts carry the expected revision, complete proposed package,
-evaluation, and confirmation token; Application enforces explicit request and
-confirmation. Core validates the proposal against the same bounded package and
+slice. Contracts carry the expected revision, complete
+`ResearchSkillProposedPackage`, evaluation, and confirmation token; Application
+enforces explicit request and confirmation. Core validates the proposal against the same bounded package and
 dependency graph as installed local Skills, snapshots the entire opted-in
 Triptych-local package, replaces it through descriptor-relative operations,
 reads it back, and rolls back on failure. Bundled packages remain immutable.
@@ -511,7 +442,7 @@ Each retained `DocumentSessionModel` owns:
 - its persistent `MarkdownEditorSession` and flush token;
 - the exact editor mirror and committed revision;
 - Read, Live Preview, or Source mode;
-- retained scroll position;
+- a revision-bound semantic source scroll anchor plus normalized fallback;
 - autosave and in-flight save tasks with stale tokens;
 - rendered Read projection state; and
 - save error, conflict, retry, and comparison presentation state.
@@ -521,6 +452,24 @@ reads, delta-mirror comparison, fingerprint-gated save, committed-text
 synchronization, conflict comparison, and flush-before-agent-work. The Swift
 model retains these facts across SwiftUI view reconstruction; it never
 reconstructs writable Markdown from HTML, parsed YAML, or another projection.
+
+`DocumentEditorHost` is the persistent presentation boundary for one selected
+document session. Read is mounted continuously; after first editor allocation,
+the retained CodeMirror surface is also mounted continuously. Read, Live
+Preview, and Source transitions change opacity, stacking, hit testing,
+accessibility exposure, and first-responder focus rather than view identity.
+`NoteContentView` observes that exact `DocumentSessionModel` directly; it does
+not depend on an ancestor's forwarded change notification to reveal a new
+mode. This ensures the editor surface is invalidated as soon as the persistent
+session changes instead of waiting for an unrelated pointer or layout event.
+The hidden surface cannot receive pointer, keyboard, or accessibility input.
+Clean external revisions synchronize the retained editor through the same
+generation-checked path; dirty buffers still enter Conflict. Window resizing,
+split changes, theme, text scale, document measure, and ordinary SwiftUI
+reconstruction may reconfigure presentation but cannot recreate the retained
+`WKWebView` or `EditorState`. Retained-surface memory remains a measured
+acceptance concern rather than permission to weaken this lifecycle contract.
+
 ### Editor boundary contract
 
 The editor is an app-private typed boundary, not a generic event bus. One exact
@@ -539,6 +488,35 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
+Bridge v3 also exposes a bounded diagnostic-only performance snapshot. Its
+256-sample ring contains metric names, durations, and numeric counts only; it
+cannot carry Markdown, paths, titles, queries, preview content, or other
+research data. CodeMirror-visible paint boundaries use `requestMeasure` and a
+subsequent animation frame. Offscreen views may throttle those frames, so an
+absent paint sample is not replaced with an internal-work duration. External
+UI automation and process-set memory measurements remain the authority for
+visible-response and retained-WebKit acceptance. Process ownership must be
+resolved from the exact app originator's launchd service map and checked
+against every executable before RSS is summed; PPID or process-name matching
+is insufficient because WebKit XPC workers are launchd children.
+
+The retained-memory scenario uses an app-owned, run-specific handshake rather
+than inferring readiness from XCUITest timing. The initial editor load and each
+requested Live Preview/Source transition append one progress record only after
+the typed JavaScript bridge acknowledges the mode. The external sampler
+attributes and records the complete app/WebKit process set, appends an
+acknowledgment, and the UI driver advances only after that acknowledgment.
+Its QA-only mode-request transport updates the active retained document
+session directly so repeated transitions cannot be coalesced by SwiftUI's
+one-shot presentation request; the normal WebView update, CodeMirror
+transition, and bridge acknowledgment remain the measured implementation.
+
+The retained-state correctness layer is deliberately separate from that
+external authority. A real WKWebView integration journey drives 50 typed
+Source/Live mode transitions through one attached session and requires the
+dirty buffer, accessibility mode chrome, and bounded performance ring to remain
+coherent. It does not infer process-memory convergence or visible p95 latency.
+
 `ScholiumContracts` owns durable Markdown meanings and the immutable editing
 dialect. TypeScript may parse an uncommitted buffer for immediate projection
 and exact transformations, but cannot invent persistence, relationship,
@@ -555,6 +533,10 @@ mirror. A clean external revision may replace the buffer through a
 generation-checked non-history transaction; a dirty buffer stays exact and
 enters Conflict. Mode changes and structural commands wait for marked-text
 composition and are discarded if document identity or generation changes.
+Outbound bridge requests cross WebKit as encoded JSON text and are parsed in
+JavaScript. They do not pass source strings through Foundation's
+`JSONSerialization.jsonObject`, because that conversion removes a leading
+U+FEFF from a string value and would violate the exact-source contract.
 
 After WebKit content-process termination, the retained session reloads its
 controlled document and restores a matching bounded CodeMirror snapshot. If
@@ -562,10 +544,153 @@ that snapshot is unavailable, it reconstructs from the checked mirror and last
 selection; it never rereads disk over a dirty buffer. Undo-history loss is
 reported separately from source loss.
 
+Scroll continuity is owned by the retained `DocumentSessionModel`, never by a
+path-keyed view or writable Markdown. `EditorScrollAnchor` binds a source UTF-16
+position, nearest semantic block bounds, block-relative position, normalized
+fallback, and document fingerprint. CodeMirror converts exact-source CRLF
+offsets at the typed bridge and uses its document geometry; Read maps the same
+contract onto source-located semantic DOM. A mismatched fingerprint or invalid
+range is discarded and falls back to the normalized fraction. Live Preview
+and Source additionally use CodeMirror's native scroll snapshot while sharing
+one `EditorState`. Reconstruction freezes a separate handoff anchor before the
+old surface can emit another scroll event, and delayed restoration is accepted
+only while the same immutable CodeMirror document remains installed. WebKit
+restoration must not depend solely on animation frames because offscreen or
+reconstructing views may throttle them.
+
 Add Comment is not a Markdown transformation: it captures an exact source
 selection, opens the role-valid Review or Critique panel, and focuses its
 anchored composer. `Command-F` opens Scholium's shared **This Note** Search;
 the embedded CodeMirror Find panel is not part of the product.
+
+### Shared document rendering migration
+
+`MarkdownSemanticDocument` remains the one Contracts-owned semantic projection;
+the editor migration extends it rather than creating a second render-document
+authority. `MarkdownEditingDialect` serializes the same supported syntax and
+delimiter rules to CodeMirror. Swift parses committed revisions for Read,
+graph, diagnostics, and persistence-adjacent consumers. TypeScript incrementally
+parses the uncommitted buffer for immediate Live Preview only, and shared
+fixtures require its source spans and meanings to agree with Contracts.
+The dialect explicitly carries the case-sensitive named/inline footnote
+syntax, two-space-or-tab continuation ownership, and first-reference ordinal
+rule as well as callouts, Vector Links, and mathematics. The TypeScript adapter
+fails closed when it receives a footnote dialect it does not implement.
+
+Complete note source uses one CodeMirror language owner built from
+`yamlFrontmatter` around the locked Markdown language. Closed frontmatter is a
+real incremental YAML subtree even when the YAML contains diagnostics; the
+body remains the Markdown subtree. If an opening delimiter has no closing
+delimiter, Live Preview makes no semantic projection, keeps the exact source
+editable, and presents an accessible Source-mode instruction. Table, callout,
+footnote, mathematics, and preview adapters all honor this fail-closed guard.
+
+That Markdown content language is extended through the locked Lezer API with
+typed Wiki/Vector-Link, named/inline footnote, callout, inline/display
+mathematics, highlight, and Obsidian-comment nodes. Live consumers do not infer
+those constructs outside the corresponding syntax ranges. The shared
+cross-runtime fixture projector parses a normalized LF/BOM-free view only for
+Lezer compatibility and maps every node boundary back to the exact original
+UTF-16 offset, so CRLF, leading BOM, Unicode decomposition, and final-newline
+form remain source-authoritative. These nodes locate editing syntax; Swift
+`MarkdownSemanticDocument` and `GraphSnapshot` remain the authorities for
+diagnostics, identity, relationship meaning, and committed Read output.
+
+The mode-neutral base catalog is also explicit rather than assumed. Contracts
+publishes source-located CommonMark/GFM blocks plus strong, emphasis,
+strikethrough, inline-code, link, and image nodes; the TypeScript projector maps
+the corresponding Lezer nodes to the same kinds and exact UTF-16 ranges.
+Semantic blocks do not own their terminal CR/LF sequence, and task-list prose
+owns the text after its task marker. Shared LF and BOM/CRLF/Unicode fixtures
+enforce that boundary. Incomplete inline extension markers remain ordinary
+editable source, matching mature Markdown failure behavior; only structurally
+opened block mathematics and comments produce fail-closed malformed
+diagnostics.
+
+Live block projections use direct CodeMirror `StateField` decorations because
+their replacement widgets change vertical geometry. Initial construction is
+fully indexed. When the index proves that a document contains no table,
+callout, or footnote constructs, pure selection changes and ordinary bounded
+insertions without a construct marker reuse the empty projection state;
+deletions, large insertions, marker-bearing insertions, and every
+construct-bearing document conservatively rebuild. This is a measured
+no-construct typing fast path, not a claim that every projection is already
+incremental.
+
+Read and Live Preview consume one app-owned presentation contract:
+
+- `ScholiumWebDesignTokens.documentPresentationCSS` supplies appearance and
+  document-rhythm variables to both WebKit surfaces;
+- protected render-component CSS owns common callout, link, table, footnote,
+  and mathematics roles;
+- Read emits static semantic DOM from the committed semantic document; and
+- the Live adapter maps the same roles to bounded CodeMirror decorations and
+  widgets without replacing active source, selection, composition, or undo.
+
+The modes need not share one DOM tree. A shared component contract plus thin
+static-Read and editable-CodeMirror adapters preserves Read semantics and
+accessibility while keeping Live Preview an editor. Layout changes may update
+presentation variables and container size but must not reconstruct the retained
+`WKWebView` or `EditorState`.
+
+The Host remains the owner of presentation CSS. When that CSS changes text
+scale, measure, insets, appearance roles, or user styling, the bridge updates
+the one controlled style element and explicitly requests a CodeMirror measure;
+it reports the resulting scroll position only after that measure. Font-ready
+remeasurement is bound to the same immutable document. This prevents a visual
+configuration change from leaving CodeMirror's height map and semantic scroll
+anchor on different geometries.
+
+Inactive Live callouts use the same semantic `.scholium-callout` DOM and
+protected component stylesheet as Read. Entering a callout reveals its exact
+source and returns ownership to CodeMirror. Named footnote-definition ranges
+are excluded from top-level callout and table projection so nested blocks have
+one owner: the semantic footnote end-section widget.
+
+Semantic tables follow that adapter boundary. Read emits a protected scroll
+container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
+alignment roles. Inactive Live tables use the same `tables.css` roles through
+a direct CodeMirror `StateField` block replacement, because a widget that
+changes vertical geometry cannot be supplied as an indirect viewport
+decoration. Each displayed cell retains its source offset; pointer or keyboard
+entry removes the projection and reveals the exact Markdown table in the same
+EditorState. The table DOM is never a writable or round-trip source.
+
+Footnotes use the same projection rule. Read and Live share `footnotes.css`,
+the reference-number role, end-section structure, logical-direction spacing,
+and contrast behavior. A direct Live `StateField` derives case-sensitive
+identifiers, first-reference ordinals, repeated occurrences, inline notes, and
+bounded two-space/tab continuations from the current buffer while excluding
+YAML, code, HTML, and comments. Inactive references become numbered inline
+widgets; the first inactive definition is hidden at its exact source range and
+appears in one semantic end-section widget. Activating a reference or endnote
+item places the caret at its source offset and removes only the affected
+projection. Duplicate, undefined, and unreferenced forms are not repaired, and
+neither the widget DOM nor its rendered inline content can become writable
+Markdown authority.
+
+Continuation normalization removes exactly one two-space or tab ownership
+indent and preserves every deeper space. Nested lists, block quotations, and
+fenced code therefore retain their structure in both the committed Read
+renderer and Live's display-only `markdown-fragment` adapter. The same adapter
+renders the one-definition footnote preview; raw HTML stays inert. Shared
+fixtures compare definition content as well as identifiers so Swift and
+TypeScript cannot silently choose different block ownership.
+
+Mathematics uses a locally bundled, exactly pinned KaTeX runtime and matching
+CSS/fonts. The first admissible integration must use `htmlAndMathml`,
+`trust: false`, bounded `maxExpand` and `maxSize`, no remote resources, and
+escaped plain-source diagnostics for failures. KaTeX output is a projection;
+only the original delimiter span is editable or writable.
+
+Link, Vector-Link, and footnote previews are revision-bound requests. Swift
+owns graph resolution, target selection, committed preview content, containment,
+and external-URL policy. WebKit owns only the source anchor, visible geometry,
+and transient presentation. Responses carry session, document, revision,
+generation, request, and target identity; stale or ambiguous responses are
+discarded. Footnote requests return one referenced definition, never the whole
+footnote section, and the definition uses the same safe Markdown-fragment
+presentation as the Live end section.
 
 The boundary requires pure TypeScript coverage for protocol validation, exact
 transformations, projection, clipboard conversion, composition, and
@@ -605,10 +730,12 @@ Stable geometry is named by meaning rather than number:
 - `ScholiumMetrics.Onboarding` owns the separate Bootstrap window and setup-form
   measures;
 - `ScholiumMetrics.Triptych` owns the exact interface measures;
-- `ScholiumMetrics.Workspace` owns preferred and minimum configured-workspace
-  window measures;
-- `ScholiumMetrics.Document` owns the readable document measure; and
-- `ScholiumMetrics.ContextSurface` owns the shared document-control geometry.
+- `ScholiumMetrics.Workspace` owns the configured-workspace initial size, not a
+  minimum;
+- `ScholiumMetrics.Document` owns the provisional readable measure, scrolling
+  top inset, and per-window text-scale range; and
+- `ScholiumDocumentRhythm` and `ScholiumWebDesignTokens` supply one provisional
+  responsive typography/inset contract to Read, Live Preview, and Source.
 
 `ScholiumMotion` exposes purpose-named animations and returns no animation
 when Reduce Motion is active. It does not install a global animation policy.
@@ -622,7 +749,8 @@ the specification. Reusable feature components remain stateless leaves
 receiving immutable values and typed closures; feature roots retain state and
 action routing. The bounded AppKit window-shell adapters are infrastructure
 exceptions: they own native controller and split-item lifetimes, weak
-exact-window registration, and collapsed-geometry reconciliation, but no
+exact-window attachment, toolbar/delegate installation, explicit split
+intents, and native visibility mirroring, but no
 Triptych, document, or researcher-visible semantic state. `WindowModel` and its
 feature controllers remain those state owners. This document records that
 dependency direction, while the specification owns the stable rule for when

@@ -4,20 +4,18 @@ Scholium's built-in Zotero interface and its external-agent MCP transport are
 separate components. The app interface remains bounded and read-only. The MCP
 service is the first-party `scholium zotero mcp serve` CLI command.
 
-Opening Zotero is not the same as starting the MCP service. Conversely, an MCP
-`initialize` handshake proves only that the stdio service is present; the
-`zotero_status` tool separately reports whether Zotero's local API and
-Connector are ready.
+Opening Zotero does not start MCP. An MCP `initialize` handshake proves only
+that the stdio service exists; `zotero_status` separately reports local API and
+Connector readiness.
 
-Neither path reads or writes `zotero.sqlite`. Retrieval uses Zotero Desktop's
-documented API at `127.0.0.1:23119`. The built-in app does not enumerate
-attachments or write Zotero data. The external MCP returns bounded attachment
-pointers only when a tool caller explicitly requests them.
+Neither path accesses `zotero.sqlite`; retrieval uses Zotero Desktop's API at
+`127.0.0.1:23119`. The app neither enumerates attachments nor writes Zotero.
+MCP returns bounded attachment pointers only on explicit request.
 
 ## Install the Scholium CLI
 
-The public Beta has no separate CLI asset. Its app bundle contains the exact
-version-matched **Scholium CLI** helper. In Scholium, open **Settings → Research
+The public Beta bundles its exact version-matched **Scholium CLI** helper; it
+has no separate CLI asset. Open **Settings → Research
 Guidance → Skills → Advanced → Scholium CLI** and choose **Install**. Scholium
 installs the executable and its required resource bundle under
 `~/.local/bin`, verifies the installation, reports whether that directory is
@@ -64,10 +62,10 @@ shown by Scholium or replace `scholium` in that agent's MCP configuration with
 the verified absolute executable path. Do not move the executable without its
 adjacent `Scholium_ScholiumCore.bundle` resource bundle.
 
-`scholium zotero mcp status` locates the command without launching it. Add
-`--probe` to launch the first-party service, perform only MCP `initialize` and
-`notifications/initialized`, and terminate it. The probe does not list tools,
-inspect a library, request attachments, or import records.
+`scholium zotero mcp status` locates the command without launching it. With
+`--probe`, it performs only `initialize` and `notifications/initialized`, then
+terminates; it does not list tools, inspect a library, request attachments, or
+import records.
 
 Enable Zotero's local API in Zotero Settings → Advanced → **Allow other
 applications on this computer to communicate with Zotero**.
@@ -99,19 +97,17 @@ following:
    remains unchanged; and
 6. read-back of every returned item through Zotero's read-only local API.
 
-The token is process-local, expires after ten minutes, and is bound to the
-operation kind, exact content hash, record count, and resolved destination. A
-target change, content change, replay, missing confirmation, ambiguous
-collection, or failed read-back is reported explicitly. If Zotero accepts a
-write but verification fails, the result states that the write may have
-completed and never claims verified success.
+The process-local ten-minute token binds operation, exact content hash, record
+count, and destination. Target/content changes, replay, missing confirmation,
+ambiguity, or failed read-back fail explicitly. If Zotero accepts a write but
+verification fails, report possible completion without claiming verified
+success.
 
 Imports use Zotero's localhost Connector; Scholium does not request or store a
 Zotero Web API key. The service never changes Zotero preferences, starts Zotero
 silently, selects a destination, opens an attachment, or reads the live
 database.
 
-Metadata establishes record identity only. It is not evidence for a quotation,
-locator, claim, concept, argument, or interpretation. The protected capability
-contract remains in
+Metadata establishes identity only, never evidence for a quotation, locator,
+claim, concept, argument, or interpretation. The protected contract is
 `ScholiumCore/Resources/Skills/Scholium System Skills/scholium-zotero-integration/references/mcp-contract.md`.

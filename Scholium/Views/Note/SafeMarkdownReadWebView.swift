@@ -10,15 +10,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let htmlBody: String
     let userCSS: String
     let researcherComments: [ResearcherComment]
+    var linkPreviews: [DocumentLinkPreview] = []
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
     let onCommentSelection: ((MarkdownReviewSelection) -> Void)?
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     let onCommentActivation: ((UUID) -> Void)?
     let onRenderingFailure: ((String) -> Void)?
+    var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
     var initialScrollFraction: Double = 0
+    var initialScrollAnchor: EditorScrollAnchor? = nil
     var onScrollFractionChange: ((Double) -> Void)? = nil
+    var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)? = nil
     var targetSourceLine: Int? = nil
     var onSourceLineReached: (() -> Void)? = nil
 
@@ -32,9 +36,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onSelectionChange: onSelectionChange,
             onCommentActivation: onCommentActivation,
             onRenderingFailure: onRenderingFailure,
+            onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
             initialScrollFraction: initialScrollFraction,
+            initialScrollAnchor: initialScrollAnchor,
             onScrollFractionChange: onScrollFractionChange,
+            onScrollAnchorChange: onScrollAnchorChange,
             targetSourceLine: targetSourceLine,
             onSourceLineReached: onSourceLineReached
         )
@@ -43,6 +50,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: Coordinator.messageHandlerName)
+        if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
+            contentController.addUserScript(WKUserScript(
+                source: ScholiumMathAssets.runtimeJavaScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            ))
+        }
 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
@@ -61,6 +75,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             source: source,
             userCSS: userCSS,
             researcherComments: researcherComments,
+            linkPreviews: linkPreviews,
             in: webView
         )
         return webView
@@ -76,9 +91,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onSelectionChange: onSelectionChange,
             onCommentActivation: onCommentActivation,
             onRenderingFailure: onRenderingFailure,
+            onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
             initialScrollFraction: initialScrollFraction,
+            initialScrollAnchor: initialScrollAnchor,
             onScrollFractionChange: onScrollFractionChange,
+            onScrollAnchorChange: onScrollAnchorChange,
             targetSourceLine: targetSourceLine,
             onSourceLineReached: onSourceLineReached,
             webView: webView
@@ -88,6 +106,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             source: source,
             userCSS: userCSS,
             researcherComments: researcherComments,
+            linkPreviews: linkPreviews,
             in: webView
         )
     }
@@ -118,9 +137,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private var onCommentActivation: ((UUID) -> Void)?
         private var onRenderingFailure: ((String) -> Void)?
+        private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
         private var initialScrollFraction: Double
+        private var initialScrollAnchor: EditorScrollAnchor?
         private var onScrollFractionChange: ((Double) -> Void)?
+        private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
+        private var sourceUTF16Length = 0
         private var targetSourceLine: Int?
         private var onSourceLineReached: (() -> Void)?
         private var lastReachedSourceLine: Int?
@@ -137,9 +160,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             onCommentActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
+            onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
             initialScrollFraction: Double,
+            initialScrollAnchor: EditorScrollAnchor?,
             onScrollFractionChange: ((Double) -> Void)?,
+            onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?,
             targetSourceLine: Int?,
             onSourceLineReached: (() -> Void)?
         ) {
@@ -151,9 +177,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onSelectionChange = onSelectionChange
             self.onCommentActivation = onCommentActivation
             self.onRenderingFailure = onRenderingFailure
+            self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
             self.initialScrollFraction = min(1, max(0, initialScrollFraction))
+            self.initialScrollAnchor = initialScrollAnchor
             self.onScrollFractionChange = onScrollFractionChange
+            self.onScrollAnchorChange = onScrollAnchorChange
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
         }
@@ -167,13 +196,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             onCommentActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
+            onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
             initialScrollFraction: Double,
+            initialScrollAnchor: EditorScrollAnchor?,
             onScrollFractionChange: ((Double) -> Void)?,
+            onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?,
             targetSourceLine: Int?,
             onSourceLineReached: (() -> Void)?,
             webView: WKWebView
         ) {
+            let normalizedScrollFraction = min(1, max(0, initialScrollFraction))
+            let scrollRestorationChanged = self.initialScrollFraction != normalizedScrollFraction
+                || self.initialScrollAnchor != initialScrollAnchor
             if self.documentID != documentID || self.fingerprint != fingerprint {
                 loadedSignature = nil
                 lastReachedSourceLine = nil
@@ -189,12 +224,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onSelectionChange = onSelectionChange
             self.onCommentActivation = onCommentActivation
             self.onRenderingFailure = onRenderingFailure
+            self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
-            self.initialScrollFraction = min(1, max(0, initialScrollFraction))
+            self.initialScrollFraction = normalizedScrollFraction
+            self.initialScrollAnchor = initialScrollAnchor
             self.onScrollFractionChange = onScrollFractionChange
+            self.onScrollAnchorChange = onScrollAnchorChange
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
             scrollToSourceLineIfNeeded(in: webView)
+            if pageIsReady, scrollRestorationChanged {
+                Task { @MainActor [weak self, weak webView] in
+                    guard let self, let webView, self.activeWebView === webView else { return }
+                    await self.restoreScrollPosition(in: webView)
+                }
+            }
         }
 
         func loadIfNeeded(
@@ -202,17 +246,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             source: String,
             userCSS: String,
             researcherComments: [ResearcherComment],
+            linkPreviews: [DocumentLinkPreview],
             in webView: WKWebView
         ) {
+            sourceUTF16Length = source.utf16.count
             let contentSignature = String(body.utf8.count)
             let cssSignature = String(userCSS.hashValue)
             let commentSignature = String(researcherComments.hashValue)
+            let previewSignature = String(linkPreviews.hashValue)
             let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
             let signature = [
                 fingerprint,
                 contentSignature,
                 cssSignature,
                 commentSignature,
+                previewSignature,
                 capabilitySignature,
             ]
                 .joined(separator: ":")
@@ -220,19 +268,28 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadedSignature = signature
             pageIsReady = false
             activeWebView = webView
-            webView.loadHTMLString(
-                Self.documentHTML(
-                    body: body,
-                    source: source,
-                    documentID: documentID,
-                    fingerprint: fingerprint,
-                    commentEnabled: onCommentSelection != nil,
-                    selectionEnabled: onSelectionChange != nil,
-                    researcherComments: researcherComments,
-                    userCSS: userCSS
-                ),
-                baseURL: nil
+            let html = Self.documentHTML(
+                body: body,
+                source: source,
+                documentID: documentID,
+                fingerprint: fingerprint,
+                commentEnabled: onCommentSelection != nil,
+                selectionEnabled: onSelectionChange != nil,
+                researcherComments: researcherComments,
+                linkPreviews: linkPreviews,
+                userCSS: userCSS
             )
+            let expectedSignature = signature
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView,
+                      self.activeWebView === webView,
+                      self.loadedSignature == expectedSignature else { return }
+                self.onRenderingLoading?()
+                await Task.yield()
+                guard self.activeWebView === webView,
+                      self.loadedSignature == expectedSignature else { return }
+                webView.loadHTMLString(html, baseURL: nil)
+            }
         }
 
         func userContentController(
@@ -266,10 +323,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       let id = UUID(uuidString: rawID) else { return }
                 onCommentActivation?(id)
             case "scrollChanged":
-                guard let fraction = payload["fraction"] as? Double,
-                      fraction.isFinite,
-                      (0...1).contains(fraction) else { return }
-                onScrollFractionChange?(fraction)
+                receiveScrollPosition(
+                    fractionValue: payload["fraction"],
+                    anchorValue: payload["anchor"]
+                )
             default:
                 return
             }
@@ -297,16 +354,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             didFinish navigation: WKNavigation!
         ) {
             pageIsReady = true
-            restoreScrollPosition(in: webView)
             scrollToSourceLineIfNeeded(in: webView)
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
             Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView else { return }
                 do {
+                    await self.restoreScrollPosition(in: webView)
                     let result = try await webView.callAsyncJavaScript(
                         """
-                        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                        if (document.fonts?.ready) await document.fonts.ready;
                         return true;
                         """,
                         arguments: [:],
@@ -334,9 +391,84 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure?("The Read renderer stopped unexpectedly.")
         }
 
-        private func restoreScrollPosition(in webView: WKWebView) {
+        private func restoreScrollPosition(in webView: WKWebView) async {
             let fraction = min(1, max(0, initialScrollFraction))
-            webView.evaluateJavaScript("window.scrollTo(0, Math.max(0, document.documentElement.scrollHeight - window.innerHeight) * \(fraction));")
+            let anchorValue: Any
+            if let anchor = initialScrollAnchor,
+               anchor.sourceFingerprint == fingerprint,
+               anchor.isValid(forUTF16Length: sourceUTF16Length) {
+                anchorValue = [
+                    "sourceUTF16Offset": anchor.sourceUTF16Offset,
+                    "blockUTF16LowerBound": anchor.blockUTF16LowerBound,
+                    "blockUTF16UpperBound": anchor.blockUTF16UpperBound,
+                    "relativeBlockPosition": anchor.relativeBlockPosition,
+                    "fallbackFraction": anchor.fallbackFraction,
+                ] as [String: Any]
+            } else {
+                anchorValue = NSNull()
+            }
+            let expectedDocumentID = documentID
+            let expectedFingerprint = fingerprint
+            let result = try? await webView.callAsyncJavaScript(
+                """
+                if (document.fonts?.ready) await document.fonts.ready;
+                let extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                for (let attempt = 0; attempt < 50 && extent <= 0; attempt += 1) {
+                  await new Promise(resolve => setTimeout(resolve, 10));
+                  extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                }
+                const restored = Boolean(anchor && window.scholiumReadScroll?.restore(anchor));
+                if (!restored) window.scrollTo({top: extent * fallbackFraction, behavior: 'auto'});
+                const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+                return {
+                  restored,
+                  fraction,
+                  anchor: window.scholiumReadScroll?.current(fraction) ?? null
+                };
+                """,
+                arguments: [
+                    "anchor": anchorValue,
+                    "fallbackFraction": fraction,
+                ],
+                in: nil,
+                contentWorld: .page
+            )
+            guard activeWebView === webView,
+                  documentID == expectedDocumentID,
+                  fingerprint == expectedFingerprint,
+                  let payload = result as? [String: Any] else { return }
+            receiveScrollPosition(
+                fractionValue: payload["fraction"],
+                anchorValue: payload["anchor"]
+            )
+        }
+
+        private func receiveScrollPosition(
+            fractionValue: Any?,
+            anchorValue: Any?
+        ) {
+            guard let fraction = (fractionValue as? NSNumber)?.doubleValue,
+                  fraction.isFinite,
+                  (0 ... 1).contains(fraction) else { return }
+            onScrollFractionChange?(fraction)
+            guard let raw = anchorValue as? [String: Any],
+                  let sourceOffset = (raw["sourceUTF16Offset"] as? NSNumber)?.intValue,
+                  let lowerBound = (raw["blockUTF16LowerBound"] as? NSNumber)?.intValue,
+                  let upperBound = (raw["blockUTF16UpperBound"] as? NSNumber)?.intValue,
+                  let relativePosition = (raw["relativeBlockPosition"] as? NSNumber)?.doubleValue else {
+                return
+            }
+            let anchor = EditorScrollAnchor(
+                sourceFingerprint: fingerprint,
+                sourceUTF16Offset: sourceOffset,
+                blockUTF16LowerBound: lowerBound,
+                blockUTF16UpperBound: upperBound,
+                relativeBlockPosition: relativePosition,
+                fallbackFraction: fraction
+            )
+            if anchor.isValid(forUTF16Length: sourceUTF16Length) {
+                onScrollAnchorChange?(anchor)
+            }
         }
 
         private func scrollToSourceLineIfNeeded(in webView: WKWebView) {
@@ -400,7 +532,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             decisionHandler(.cancel)
         }
 
-        private static func documentHTML(
+        static func documentHTML(
             body: String,
             source: String,
             documentID: String,
@@ -408,6 +540,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentEnabled: Bool,
             selectionEnabled: Bool,
             researcherComments: [ResearcherComment],
+            linkPreviews: [DocumentLinkPreview],
             userCSS: String
         ) -> String {
             let encodedDocumentID = jsonLiteral(documentID)
@@ -461,6 +594,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let annotationPayload = base64JSON(annotations)
+            let previewPayload = base64JSON(linkPreviews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).map {
+                ReadLinkPreview(
+                    utf16LowerBound: $0.sourceSpan.utf16LowerBound,
+                    utf16UpperBound: $0.sourceSpan.utf16UpperBound,
+                    title: String($0.title.prefix(240)),
+                    relationship: $0.relationship?.rawValue,
+                    fragment: $0.fragment.map { String($0.prefix(240)) },
+                    htmlBody: String($0.htmlBody.prefix(24_000))
+                )
+            })
             return """
             <!doctype html>
             <html lang="en">
@@ -468,12 +611,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
               <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src data:">
-              <style>\(ScholiumWebFonts.css)\n\(baseCSS)</style>
+              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
               <style id="scholium-user-css">\(userCSS)</style>
             </head>
             <body>
               <main id="scholium-document" class="scholium-document">\(body)</main>
-              <div id="footnote-popover" role="tooltip" hidden></div>
+              <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="tooltip" aria-live="polite" hidden>
+                <h2 class="scholium-preview-title"></h2>
+                <p class="scholium-preview-metadata"></p>
+                <div class="scholium-preview-body"></div>
+              </aside>
               <button id="comment-selection" type="button" hidden>Add Comment</button>
               <script>
               (() => {
@@ -486,10 +633,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const commentAnnotations = JSON.parse(new TextDecoder().decode(
                   Uint8Array.from(atob(\(jsonLiteral(annotationPayload))), character => character.charCodeAt(0))
                 ));
+                const linkPreviews = JSON.parse(new TextDecoder().decode(
+                  Uint8Array.from(atob(\(jsonLiteral(previewPayload))), character => character.charCodeAt(0))
+                ));
                 const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(messageHandlerName);
                 const post = (type, extra = {}) => handler && handler.postMessage({version, documentID, fingerprint, type, ...extra});
-                const popover = document.getElementById('footnote-popover');
+                const popover = document.getElementById('scholium-preview-popover');
+                const previewTitle = popover.querySelector('.scholium-preview-title');
+                const previewMetadata = popover.querySelector('.scholium-preview-metadata');
+                const previewBody = popover.querySelector('.scholium-preview-body');
                 const reviewButton = document.getElementById('comment-selection');
+                const previewByRange = new Map(linkPreviews.map(preview => [
+                  preview.utf16LowerBound + ':' + preview.utf16UpperBound,
+                  preview
+                ]));
                 const origins = new Map();
                 const vectorSemantics = {
                   neutral: {label: 'Related note', symbol: \(jsonLiteral(vectorSymbolDataURIs["link"] ?? ""))},
@@ -497,6 +654,33 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   supported_by_target: {label: 'Supported by', symbol: \(jsonLiteral(vectorSymbolDataURIs["arrow.left.circle"] ?? ""))},
                   incompatible: {label: 'Incompatible with', symbol: \(jsonLiteral(vectorSymbolDataURIs["xmark.circle"] ?? ""))}
                 };
+
+                function renderMathNodes() {
+                  const runtime = window.scholiumMath;
+                  if (!runtime || runtime.version !== 1) return;
+                  document.querySelectorAll('.scholium-math[data-math-source][data-math-kind]').forEach(element => {
+                    try {
+                      const source = new TextDecoder().decode(
+                        Uint8Array.from(atob(element.dataset.mathSource), character => character.charCodeAt(0))
+                      );
+                      const result = runtime.render({source, kind: element.dataset.mathKind});
+                      if (!result.ok) {
+                        element.classList.add('scholium-math-error');
+                        element.setAttribute('aria-label', 'Mathematics could not be rendered. Source is shown.');
+                        return;
+                      }
+                      const fallback = element.querySelector('.scholium-math-source');
+                      const rendered = document.createElement('span');
+                      rendered.className = 'scholium-math-output';
+                      rendered.innerHTML = result.html;
+                      fallback && fallback.before(rendered);
+                      element.classList.add('scholium-math-rendered');
+                    } catch (_) {
+                      element.classList.add('scholium-math-error');
+                    }
+                  });
+                }
+                renderMathNodes();
 
                 document.querySelectorAll('a.wiki-link[data-vector-kind]').forEach(link => {
                   const kind = link.dataset.vectorKind;
@@ -603,31 +787,75 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
                 function hidePopover() {
                   popover.hidden = true;
-                  popover.replaceChildren();
+                  previewTitle.textContent = '';
+                  previewMetadata.textContent = '';
+                  previewBody.replaceChildren();
                 }
 
-                function showPopover(button) {
+                function positionPopover(anchor) {
+                  popover.hidden = false;
+                  const rect = anchor.getBoundingClientRect();
+                  const measured = popover.getBoundingClientRect();
+                  const left = Math.max(12, Math.min(rect.left, window.innerWidth - measured.width - 12));
+                  const below = rect.bottom + 8;
+                  const top = below + measured.height <= window.innerHeight - 12
+                    ? below
+                    : Math.max(12, rect.top - measured.height - 8);
+                  popover.style.left = left + 'px';
+                  popover.style.top = top + 'px';
+                }
+
+                function removeInteractivePreviewContent() {
+                  previewBody.querySelectorAll('script, style, iframe, object, embed, form, input, button').forEach(node => node.remove());
+                  previewBody.querySelectorAll('*').forEach(node => {
+                    Array.from(node.attributes).forEach(attribute => {
+                      if (attribute.name.toLowerCase().startsWith('on')) node.removeAttribute(attribute.name);
+                    });
+                    node.removeAttribute('href');
+                    node.removeAttribute('contenteditable');
+                    node.tabIndex = -1;
+                  });
+                }
+
+                function showFootnotePopover(button) {
                   const ordinal = button.dataset.footnote;
                   const definition = document.getElementById('fn-' + ordinal);
                   const content = definition && definition.querySelector('.footnote-content');
                   if (!content) return;
-                  popover.replaceChildren(content.cloneNode(true));
-                  const rect = button.getBoundingClientRect();
-                  popover.style.left = Math.max(16, Math.min(rect.left, window.innerWidth - 376)) + 'px';
-                  popover.style.top = Math.min(window.innerHeight - 180, rect.bottom + 8) + 'px';
-                  popover.hidden = false;
+                  previewTitle.textContent = 'Footnote ' + ordinal;
+                  previewMetadata.textContent = 'Referenced footnote';
+                  previewBody.replaceChildren(content.cloneNode(true));
+                  removeInteractivePreviewContent();
+                  positionPopover(button);
+                }
+
+                function showLinkPopover(link) {
+                  const key = link.dataset.sourceUtf16Start + ':' + link.dataset.sourceUtf16End;
+                  const preview = previewByRange.get(key);
+                  if (!preview) return;
+                  const relationship = vectorSemantics[preview.relationship || 'neutral'];
+                  previewTitle.textContent = preview.title;
+                  previewMetadata.textContent = (relationship ? relationship.label : 'Related note')
+                    + (preview.fragment ? ' · ' + preview.fragment : '');
+                  previewBody.innerHTML = preview.htmlBody;
+                  removeInteractivePreviewContent();
+                  positionPopover(link);
                 }
 
                 document.addEventListener('pointerover', event => {
                   const button = event.target.closest && event.target.closest('.footnote-reference');
-                  if (button) showPopover(button);
+                  if (button) { showFootnotePopover(button); return; }
+                  const link = event.target.closest && event.target.closest('a.wiki-link');
+                  if (link) showLinkPopover(link);
                 });
                 document.addEventListener('focusin', event => {
                   const button = event.target.closest && event.target.closest('.footnote-reference');
-                  if (button) showPopover(button);
+                  if (button) { showFootnotePopover(button); return; }
+                  const link = event.target.closest && event.target.closest('a.wiki-link');
+                  if (link) showLinkPopover(link);
                 });
                 document.addEventListener('pointerout', event => {
-                  if (event.target.closest && event.target.closest('.footnote-reference')) hidePopover();
+                  if (event.target.closest && event.target.closest('.footnote-reference, a.wiki-link')) hidePopover();
                 });
 
                 document.addEventListener('click', event => {
@@ -743,13 +971,89 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   });
                 }
 
+                function semanticScrollBlocks() {
+                  const root = document.getElementById('scholium-document');
+                  if (!root) return [];
+                  return Array.from(root.querySelectorAll('[data-source-utf16-start][data-source-utf16-end]'))
+                    .filter(element => {
+                      const style = getComputedStyle(element);
+                      if (style.display === 'inline' || style.display === 'contents' || style.visibility === 'hidden') return false;
+                      const rect = element.getBoundingClientRect();
+                      return rect.height > 0 && Number.isFinite(Number(element.dataset.sourceUtf16Start))
+                        && Number.isFinite(Number(element.dataset.sourceUtf16End));
+                    });
+                }
+
+                function currentReadScrollAnchor(fraction) {
+                  const probe = 8;
+                  const candidates = semanticScrollBlocks();
+                  if (!candidates.length) return null;
+                  const ranked = candidates.map(element => {
+                    const rect = element.getBoundingClientRect();
+                    const lower = Number(element.dataset.sourceUtf16Start);
+                    const upper = Number(element.dataset.sourceUtf16End);
+                    const containsProbe = rect.top <= probe && rect.bottom > probe;
+                    const distance = containsProbe ? 0 : Math.min(Math.abs(rect.top - probe), Math.abs(rect.bottom - probe));
+                    return {element, rect, lower, upper, containsProbe, distance, span: Math.max(0, upper - lower)};
+                  }).sort((left, right) => {
+                    if (left.containsProbe !== right.containsProbe) return left.containsProbe ? -1 : 1;
+                    if (left.distance !== right.distance) return left.distance - right.distance;
+                    return left.span - right.span;
+                  });
+                  const selected = ranked[0];
+                  const relativeBlockPosition = Math.max(0, Math.min(1,
+                    (probe - selected.rect.top) / Math.max(1, selected.rect.height)));
+                  const sourceUTF16Offset = Math.max(selected.lower, Math.min(selected.upper,
+                    Math.round(selected.lower + selected.span * relativeBlockPosition)));
+                  return {
+                    sourceUTF16Offset,
+                    blockUTF16LowerBound: selected.lower,
+                    blockUTF16UpperBound: selected.upper,
+                    relativeBlockPosition,
+                    fallbackFraction: fraction
+                  };
+                }
+
+                function restoreReadScrollAnchor(anchor) {
+                  if (!anchor || typeof anchor !== 'object') return false;
+                  const offset = Number(anchor.sourceUTF16Offset);
+                  const lower = Number(anchor.blockUTF16LowerBound);
+                  const upper = Number(anchor.blockUTF16UpperBound);
+                  const relative = Number(anchor.relativeBlockPosition);
+                  if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
+                  const candidates = semanticScrollBlocks().map(element => ({
+                    element,
+                    lower: Number(element.dataset.sourceUtf16Start),
+                    upper: Number(element.dataset.sourceUtf16End)
+                  }));
+                  let target = candidates.find(candidate => candidate.lower === lower && candidate.upper === upper);
+                  if (!target) {
+                    target = candidates.filter(candidate => candidate.lower <= offset && candidate.upper >= offset)
+                      .sort((left, right) => (left.upper - left.lower) - (right.upper - right.lower))[0];
+                  }
+                  if (!target) {
+                    target = candidates.sort((left, right) => Math.abs(left.lower - offset) - Math.abs(right.lower - offset))[0];
+                  }
+                  if (!target) return false;
+                  const rect = target.element.getBoundingClientRect();
+                  const requestedTop = window.scrollY + rect.top
+                    + Math.max(0, Math.min(1, relative)) * Math.max(1, rect.height) - 8;
+                  window.scrollTo({top: Math.max(0, requestedTop), behavior: 'auto'});
+                  return true;
+                }
+
+                window.scholiumReadScroll = {
+                  current(fraction) { return currentReadScrollAnchor(fraction); },
+                  restore(anchor) { return restoreReadScrollAnchor(anchor); }
+                };
+
                 var scrollTimer;
                 window.addEventListener('scroll', () => {
                   clearTimeout(scrollTimer);
                   scrollTimer = setTimeout(() => {
                     const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                     const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
-                    post('scrollChanged', {fraction});
+                    post('scrollChanged', {fraction, anchor: currentReadScrollAnchor(fraction)});
                   }, 120);
                 }, {passive: true});
                 // Install only after the rendered document and its event
@@ -778,6 +1082,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let containerUTF16LowerBound: Int
             let containerUTF16UpperBound: Int
             let relativePosition: Double
+        }
+
+        private struct ReadLinkPreview: Encodable {
+            let utf16LowerBound: Int
+            let utf16UpperBound: Int
+            let title: String
+            let relationship: String?
+            let fragment: String?
+            let htmlBody: String
         }
 
         private static func renderedSourceSpans(
@@ -828,14 +1141,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             return "data:image/png;base64,\(data.base64EncodedString())"
         }
 
-        private static let baseCSS = """
-        :root { color-scheme: light dark; \(ScholiumWebDesignTokens.rootCSSDeclarations) \(ScholiumWebDesignTokens.rhythmCSSDeclarations) }
+        static let baseCSS = """
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
-        body { font-family: Alegreya, Georgia, serif; font-size: 12pt; line-height: var(--scholium-rhythm-prose-line-height); }
-        .scholium-document { box-sizing: border-box; min-width: 0; max-width: 510.667px; margin: 0 auto; padding: var(--scholium-rhythm-read-block-start) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll); overflow-wrap: anywhere; }
+        body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
+        .scholium-document { box-sizing: border-box; min-width: 0; max-width: var(--scholium-document-readable-measure); margin: 0 auto; padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll); font-size: var(--scholium-document-text-scale); overflow-wrap: anywhere; }
         h1, h2, h3, h4, h5, h6 { line-height: var(--scholium-rhythm-heading-line-height); margin: var(--scholium-rhythm-heading-before) 0 var(--scholium-rhythm-heading-after); text-wrap: balance; }
         .scholium-document > h1:first-child { margin-top: 0; margin-bottom: 40px; padding-bottom: 28px; border-bottom: 1px solid var(--scholium-color-separator); }
-        h1 { font-size: 187.5%; font-weight: 400; } h2 { font-size: 130%; } h3 { font-size: 115%; } h4, h5, h6 { font-size: 100%; }
+        h1 { font-size: var(--scholium-document-h1-size); font-weight: 400; } h2 { font-size: var(--scholium-document-h2-size); } h3 { font-size: var(--scholium-document-h3-size); } h4, h5, h6 { font-size: var(--scholium-document-h4-size); }
         p { margin: var(--scholium-rhythm-paragraph-gap) 0; } a { color: LinkText; text-underline-offset: .12em; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
@@ -847,25 +1159,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         code { font-size: .82em; padding: .08em .25em; border-radius: 4px; background: color-mix(in srgb, CanvasText 8%, transparent); }
         pre { box-sizing: border-box; max-width: 100%; padding: var(--scholium-rhythm-code-inset); overflow: auto; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
         img, video, svg { max-width: 100%; height: auto; }
-        table { display: block; max-width: 100%; overflow-x: auto; }
         blockquote { margin: 1em 0; padding-left: var(--scholium-rhythm-quote-inset); border-left: 3px solid color-mix(in srgb, AccentColor 50%, transparent); color: color-mix(in srgb, CanvasText 78%, transparent); }
-        (ScholiumCalloutStyles.css)
-        .footnote-reference { appearance: none; border: 0; padding: 0 .1em; background: none; color: LinkText; font: 700 .65em system-ui; cursor: pointer; }
-        .footnotes { margin-top: 3em; font-size: .86em; }
-        .footnotes li { position: relative; padding-right: 2.5em; }
-        .footnote-content > :first-child { margin-top: 0; }
-        .footnote-return { position: absolute; right: 0; top: 0; border: 0; border-radius: 6px; color: LinkText; background: color-mix(in srgb, LinkText 9%, transparent); cursor: pointer; }
-        #footnote-popover { position: fixed; z-index: 100; width: min(340px, calc(100vw - 32px)); max-height: 190px; overflow: auto; padding: 12px 16px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; background: color-mix(in srgb, Canvas 94%, transparent); box-shadow: 0 12px 36px color-mix(in srgb, CanvasText 20%, transparent); backdrop-filter: blur(20px); font-size: 16px; }
+        \(ScholiumCalloutStyles.css)
         #comment-selection { position: fixed; z-index: 110; border: 1px solid color-mix(in srgb, AccentColor 40%, transparent); border-radius: 8px; padding: 6px 10px; color: CanvasText; background: color-mix(in srgb, Canvas 92%, AccentColor 8%); box-shadow: 0 6px 20px color-mix(in srgb, CanvasText 15%, transparent); }
         .researcher-comment-annotation { color: inherit; background: color-mix(in srgb, AccentColor 18%, Mark 82%); border-bottom: 2px solid AccentColor; border-radius: 3px; cursor: pointer; }
         .researcher-comment-annotation.resolved { background: color-mix(in srgb, GrayText 9%, transparent); border-bottom-color: GrayText; }
         .researcher-comment-annotation:focus { outline: 2px solid AccentColor; outline-offset: 2px; }
         .raw-html, .raw-html-inline { color: GrayText; }
-        @media (prefers-color-scheme: dark) { :root { \(ScholiumWebDesignTokens.darkAppearanceCSSDeclarations) } }
-        @media (prefers-contrast: more) { :root { \(ScholiumWebDesignTokens.increasedContrastCSSDeclarations) } .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
-        @media (prefers-color-scheme: dark) and (prefers-contrast: more) { :root { \(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations) } }
-        @media (max-width: 700px) { .scholium-document { padding: var(--scholium-rhythm-read-narrow-block-start) var(--scholium-rhythm-inline-narrow) var(--scholium-rhythm-trailing-scroll); } }
-        @media (prefers-reduced-transparency: reduce) { #footnote-popover, #comment-selection { background: Canvas; backdrop-filter: none; } }
+        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
+        @media (prefers-reduced-transparency: reduce) { #comment-selection { background: Canvas; backdrop-filter: none; } }
+        \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }
 }

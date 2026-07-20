@@ -6,23 +6,30 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var appState: WindowModel
-    @EnvironmentObject private var researchRecordWindowCoordinator: ResearchRecordWindowCoordinator
+    let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ScholiumWorkspaceSplitView(
-            libraryVisible: shellLibraryVisible,
-            apparatusVisible: shellApparatusVisible,
-            reduceMotion: reduceMotion,
+            initialLibraryVisible: shellLibraryVisible,
+            initialApparatusVisible: shellApparatusVisible,
             documentTabs: appState.documentTabController.tabs,
             selectedDocumentTabID: appState.documentTabController.selectedTabID,
             selectDocumentTab: { appState.selectDocumentTab(withID: $0) },
             closeDocumentTab: { appState.closeDocumentTab(withID: $0) },
+            libraryVisibilityDidChange: {
+                appState.recordLibraryVisibility($0)
+            },
             researchInspectorVisibilityDidChange: {
-                appState.setResearchInspectorVisible($0)
+                appState.recordResearchInspectorVisibility($0)
+            },
+            splitControllerDidAttach: {
+                windowCoordinator.attach(splitController: $0)
+            },
+            splitControllerDidDetach: {
+                windowCoordinator.detach(splitController: $0)
             }
         ) {
             LibrarySurface {
@@ -32,7 +39,6 @@ struct ContentView: View {
                 )
             }
             .frame(
-                minWidth: 0,
                 maxWidth: .infinity,
                 maxHeight: .infinity,
                 alignment: .topLeading
@@ -56,10 +62,6 @@ struct ContentView: View {
                 alignment: .topLeading
             )
         }
-        // Only the opaque backing planes extend beneath the native titlebar.
-        // The representable is the sole expanding workspace root; it does not
-        // report child fitting sizes back to SwiftUI.
-        .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(
             ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
@@ -153,16 +155,6 @@ struct ContentView: View {
         .task(id: appState.currentResearchFunctionTarget) {
             await appState.refreshResearchFunctionAvailability()
         }
-        .onChange(of: appState.researchRecordRequestGeneration) { _, _ in
-            researchRecordWindowCoordinator.present(for: appState)
-            openWindow(id: "scholium-research-record")
-        }
-    }
-
-    private var showsTrailingContext: Bool {
-        ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_DISABLE_INSPECTOR"] != "1"
-            && appState.backlinksVisible
-            && appState.currentNote != nil
     }
 
     private var shellLibraryVisible: Bool {
@@ -173,9 +165,10 @@ struct ContentView: View {
     }
 
     private var shellApparatusVisible: Bool {
-        appState.hasCompletedInitialRestore
+        ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_DISABLE_INSPECTOR"] != "1"
+            && appState.hasCompletedInitialRestore
             && appState.vaultConfig != nil
-            && showsTrailingContext
+            && appState.backlinksVisible
     }
 
     private var presentedSheet: Binding<WindowSheetRoute?> {
@@ -231,7 +224,7 @@ struct ContentView: View {
                 appState.openResearchFunction(function)
             },
             openResearchRecord: {
-                appState.requestResearchRecord()
+                windowCoordinator.actions.showResearchRecord()
             },
             openProperties: {
                 guard let path = appState.currentNote?.relativePath else { return }
@@ -315,9 +308,6 @@ struct ContentView: View {
             initialScrollFraction: path.map { appState.scrollPosition(for: $0) } ?? 0,
             requestedPresentationMode: appState.requestPresentationMode,
             pendingSourceLine: appState.pendingSourceLine,
-            isCompactLayout: appState.layoutMode == .compact,
-            sidebarVisible: appState.sidebarVisible,
-            researchInspectorVisible: appState.backlinksVisible,
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
@@ -369,7 +359,7 @@ struct ContentView: View {
                 appState.rememberPresentationMode($0, for: path)
             },
             setPendingSourceLine: { appState.pendingSourceLine = $0 },
-            setSidebarVisible: { appState.setLibraryVisible($0) },
+            setSidebarVisible: { windowCoordinator.actions.setLibraryVisible($0) },
             editProperties: {
                 guard let path = documentPath else { return }
                 appState.editingNotePath = path
@@ -379,7 +369,7 @@ struct ContentView: View {
                 appState.openResearchFunction(function, selection: selection)
             },
             setResearchInspectorVisible: {
-                appState.setResearchInspectorVisible($0)
+                windowCoordinator.actions.setResearchInspectorVisible($0)
             },
             notify: { message, kind in
                 switch kind {
@@ -477,7 +467,7 @@ struct ContentView: View {
                 openSettings()
             },
             revealCurrentVault: { appState.revealVaultInFinder() },
-            setSidebarVisible: { appState.setLibraryVisible($0) },
+            setSidebarVisible: { windowCoordinator.actions.setLibraryVisible($0) },
             openSettings: { openSettings() },
             selectSortOrder: { appState.noteSortOrder = $0 },
             showError: { appState.showToast($0, kind: .error) }
@@ -827,7 +817,7 @@ struct ContentView: View {
                 actions: documentFeatureActions,
                 critiqueProvenanceContext: critiqueProvenanceContext
             )
-                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.995)))
                 .zIndex(0)
         } else {
@@ -998,7 +988,13 @@ struct ToastView: View {
 
 #Preview {
     let workspaceStore = WorkspaceStore()
-    ContentView()
-        .environmentObject(WindowModel(workspaceStore: workspaceStore))
+    let model = WindowModel(workspaceStore: workspaceStore)
+    let coordinator = WorkspaceWindowCoordinator(
+        windowID: model.nativeWindowID,
+        appState: model,
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry()
+    )
+    ContentView(windowCoordinator: coordinator)
+        .environmentObject(model)
         .frame(width: 1100, height: 700)
 }

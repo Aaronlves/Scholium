@@ -1,7 +1,7 @@
 [
   {
     "name": "canonical and legacy scholarly semantics",
-    "source": "> [!mini] Scope\n\n+[[Support]] -[[Ground]] ?[[Conflict]] [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1]\n\n[^1]: Basis\n",
+    "source": "> [!mini] Scope\n\n+[[Support]] -[[Ground]] ?[[Conflict]] [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1] with $x + y$.\n\n[^1]: Basis\n",
     "callouts": ["orient"],
     "links": [
       {"target": "Support", "vectorKind": "supports_target"},
@@ -11,6 +11,214 @@
       {"target": "https://example.test", "vectorKind": null}
     ],
     "footnoteDefinitions": ["1"],
-    "footnoteReferences": ["1"]
+    "footnoteDefinitionContents": ["Basis"],
+    "footnoteReferences": ["1"],
+    "mathExpressions": [{"kind": "inline", "content": "x + y"}],
+    "sourceSlices": {
+      "calloutHeaders": ["> [!mini] Scope"],
+      "links": ["+[[Support]]", "-[[Ground]]", "?[[Conflict]]", "[[Neutral]]", "[Web](https://example.test)"],
+      "footnoteDefinitions": ["[^1]: Basis\n"],
+      "footnoteReferences": ["[^1]"],
+      "mathExpressions": [{"source": "$x + y$", "content": "x + y"}]
+    }
+  },
+  {
+    "name": "nested footnote block ownership",
+    "source": "Claim[^blocks].\n\n[^blocks]: First paragraph.\n\n  - Outer item\n    - Nested item\n\n  ```swift\n  let value = 1\n  ```\nFollowing paragraph.\n",
+    "callouts": [],
+    "links": [],
+    "footnoteDefinitions": ["blocks"],
+    "footnoteDefinitionContents": ["First paragraph.\n\n- Outer item\n  - Nested item\n\n```swift\nlet value = 1\n```"],
+    "footnoteReferences": ["blocks"],
+    "mathExpressions": [],
+    "sourceSlices": {
+      "calloutHeaders": [],
+      "links": [],
+      "footnoteDefinitions": ["[^blocks]: First paragraph.\n\n  - Outer item\n    - Nested item\n\n  ```swift\n  let value = 1\n  ```\n"],
+      "footnoteReferences": ["[^blocks]"],
+      "mathExpressions": []
+    }
+  },
+  {
+    "name": "canonical aliases and unknown callouts exclude fenced literals",
+    "source": "```md\n> [!flag] Not semantic\n```\n\n> [!orient] Scope\n\n> [!bibli:] Sources\n\n> [!project:] Connections\n\n> [!objection] Claim\n\n> [!case] Example\n\n> [!author] Quotation\n\n> [!torn] Caution\n\n> [!bespoke] Preserved\n",
+    "callouts": ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "bespoke"],
+    "links": [],
+    "footnoteDefinitions": [],
+    "footnoteDefinitionContents": [],
+    "footnoteReferences": [],
+    "mathExpressions": [],
+    "sourceSlices": {
+      "calloutHeaders": [
+        "> [!orient] Scope",
+        "> [!bibli:] Sources",
+        "> [!project:] Connections",
+        "> [!objection] Claim",
+        "> [!case] Example",
+        "> [!author] Quotation",
+        "> [!torn] Caution",
+        "> [!bespoke] Preserved"
+      ],
+      "links": [],
+      "footnoteDefinitions": [],
+      "footnoteReferences": [],
+      "mathExpressions": []
+    }
+  },
+  {
+    "name": "literal regions exclude specialized semantics",
+    "source": "\uFEFF---\ntitle: \"[[YAML]] $YAML$\"\nfootnote: \"[^yaml]\"\n---\n\n`[[InlineCode]] $code$ [^code]`\n\n```md\n> [!flag] Fenced\n[[Fenced]] $fenced$ [^fenced]\n```\n\n%% [[Commented]] $commented$ [^commented] %%\n<!-- [[Hidden]] $hidden$ [^hidden] -->\n\n<div>\n[[RawHTML]] $raw$ [^raw]\n</div>\n\n> [!state] Valid\n\n[[Real#Section|Alias]] and [Topic](topics/Topic%20Name.md#Scope).\n\nClaim[^real] with $x + 范围$.\n\n[^real]: Basis\n",
+    "callouts": ["state"],
+    "links": [
+      {"target": "Real", "vectorKind": "neutral"},
+      {"target": "topics/Topic Name.md", "vectorKind": null}
+    ],
+    "footnoteDefinitions": ["real"],
+    "footnoteDefinitionContents": ["Basis"],
+    "footnoteReferences": ["real"],
+    "mathExpressions": [{"kind": "inline", "content": "x + 范围"}],
+    "sourceSlices": {
+      "calloutHeaders": ["> [!state] Valid"],
+      "links": ["[[Real#Section|Alias]]", "[Topic](topics/Topic%20Name.md#Scope)"],
+      "footnoteDefinitions": ["[^real]: Basis\n"],
+      "footnoteReferences": ["[^real]"],
+      "mathExpressions": [{"source": "$x + 范围$", "content": "x + 范围"}]
+    }
+  },
+  {
+    "name": "named repeated missing inline and unused footnotes",
+    "source": "First[^reason], repeated[^reason], missing[^missing], inline^[Inline *content*].\n\n[^reason]: First line\n  second line\n[^unused]: Not cited.\n",
+    "callouts": [],
+    "links": [],
+    "footnoteDefinitions": ["reason", "inline-1", "unused"],
+    "footnoteDefinitionContents": ["First line\nsecond line", "Inline *content*", "Not cited."],
+    "footnoteReferences": ["reason", "reason", "missing", "inline-1"],
+    "mathExpressions": [],
+    "sourceSlices": {
+      "calloutHeaders": [],
+      "links": [],
+      "footnoteDefinitions": [
+        "[^reason]: First line\n  second line\n",
+        "^[Inline *content*]",
+        "[^unused]: Not cited.\n"
+      ],
+      "footnoteReferences": ["[^reason]", "[^reason]", "[^missing]", "^[Inline *content*]"],
+      "mathExpressions": []
+    }
+  },
+  {
+    "name": "inline display and excluded mathematics",
+    "source": "---\ntitle: \"$YAML$\"\n---\nInline $x + 范围$ and double-inline $$C_L$$.\n\n$$\n\\int_0^1 x^2 \\, dx\n$$\n\nEscaped \\$literal$ and `code $ignored$`.\n%% $commented$ %%\n<!-- $hidden$ -->\n\n<div>\n$raw$\n</div>\n",
+    "callouts": [],
+    "links": [],
+    "footnoteDefinitions": [],
+    "footnoteDefinitionContents": [],
+    "footnoteReferences": [],
+    "mathExpressions": [
+      {"kind": "inline", "content": "x + 范围"},
+      {"kind": "inline", "content": "C_L"},
+      {"kind": "display", "content": "\\int_0^1 x^2 \\, dx"}
+    ],
+    "sourceSlices": {
+      "calloutHeaders": [],
+      "links": [],
+      "footnoteDefinitions": [],
+      "footnoteReferences": [],
+      "mathExpressions": [
+        {"source": "$x + 范围$", "content": "x + 范围"},
+        {"source": "$$C_L$$", "content": "C_L"},
+        {"source": "$$\n\\int_0^1 x^2 \\, dx\n$$", "content": "\\int_0^1 x^2 \\, dx\n"}
+      ]
+    }
+  },
+  {
+    "name": "source ordered fragment links embeds and mixed line endings",
+    "source": "\uFEFFPrelude 🧭\r\n\r\n+[[Support#Claim|Supports]] then [Topic](topics/Topic%20Name.md#Scope).\r\n-[[Ground#^block]] ?[[Conflict]] [[Neutral]] ![[figure.png|320]] C++[[Adjacent]] \\+[[Escaped]]\r\n",
+    "callouts": [],
+    "links": [
+      {"target": "Support", "vectorKind": "supports_target"},
+      {"target": "topics/Topic Name.md", "vectorKind": null},
+      {"target": "Ground", "vectorKind": "supported_by_target"},
+      {"target": "Conflict", "vectorKind": "incompatible"},
+      {"target": "Neutral", "vectorKind": "neutral"},
+      {"target": "figure.png", "vectorKind": null},
+      {"target": "Adjacent", "vectorKind": "neutral"},
+      {"target": "Escaped", "vectorKind": "neutral"}
+    ],
+    "footnoteDefinitions": [],
+    "footnoteDefinitionContents": [],
+    "footnoteReferences": [],
+    "mathExpressions": [],
+    "sourceSlices": {
+      "calloutHeaders": [],
+      "links": [
+        "+[[Support#Claim|Supports]]",
+        "[Topic](topics/Topic%20Name.md#Scope)",
+        "-[[Ground#^block]]",
+        "?[[Conflict]]",
+        "[[Neutral]]",
+        "![[figure.png|320]]",
+        "[[Adjacent]]",
+        "[[Escaped]]"
+      ],
+      "footnoteDefinitions": [],
+      "footnoteReferences": [],
+      "mathExpressions": []
+    }
+  },
+  {
+    "name": "duplicate footnotes preserve the first semantic definition",
+    "source": "Claim[^x].\n\n[^x]: First.\n[^x]: Second.\n",
+    "callouts": [],
+    "links": [],
+    "footnoteDefinitions": ["x"],
+    "footnoteDefinitionContents": ["First."],
+    "footnoteReferences": ["x"],
+    "mathExpressions": [],
+    "sourceSlices": {
+      "calloutHeaders": [],
+      "links": [],
+      "footnoteDefinitions": ["[^x]: First.\n"],
+      "footnoteReferences": ["[^x]"],
+      "mathExpressions": []
+    }
+  },
+  {
+    "name": "decomposed Unicode emoji CJK and RTL identities without final newline",
+    "source": "> [!state] 范围 🧭\n\n+[[Café#论点|支持]] [[العربية]] ?[[עברית]]\n\n主张[^理由] and ^[توضيح 🧭] with $变量 + x$.\n\n[^理由]: 根拠 é",
+    "callouts": ["state"],
+    "links": [
+      {"target": "Café", "vectorKind": "supports_target"},
+      {"target": "العربية", "vectorKind": "neutral"},
+      {"target": "עברית", "vectorKind": "incompatible"}
+    ],
+    "footnoteDefinitions": ["理由", "inline-1"],
+    "footnoteDefinitionContents": ["根拠 é", "توضيح 🧭"],
+    "footnoteReferences": ["理由", "inline-1"],
+    "mathExpressions": [{"kind": "inline", "content": "变量 + x"}],
+    "sourceSlices": {
+      "calloutHeaders": ["> [!state] 范围 🧭"],
+      "links": ["+[[Café#论点|支持]]", "[[العربية]]", "?[[עברית]]"],
+      "footnoteDefinitions": ["[^理由]: 根拠 é", "^[توضيح 🧭]"],
+      "footnoteReferences": ["[^理由]", "^[توضيح 🧭]"],
+      "mathExpressions": [{"source": "$变量 + x$", "content": "变量 + x"}]
+    }
+  },
+  {
+    "name": "unclosed Obsidian comment fails closed through end of source",
+    "source": "Visible prose.\n%%\n> [!flag] Hidden\n+[[Hidden]] $hidden$ [^hidden]",
+    "callouts": [],
+    "links": [],
+    "footnoteDefinitions": [],
+    "footnoteDefinitionContents": [],
+    "footnoteReferences": [],
+    "mathExpressions": [],
+    "sourceSlices": {
+      "calloutHeaders": [],
+      "links": [],
+      "footnoteDefinitions": [],
+      "footnoteReferences": [],
+      "mathExpressions": []
+    }
   }
 ]

@@ -368,6 +368,12 @@ enum ScholiumWebDesignTokens {
     static let colorVariableNames = Set(ScholiumColorRole.allCases.map(\.cssVariableName))
 
     static let rhythmCSSDeclarations = """
+    --scholium-document-prose-font-size: \(ScholiumDocumentRhythm.proseFontSizePoints)pt;
+    --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
+    --scholium-document-h1-size: \(ScholiumDocumentRhythm.heading1ScalePercent)%;
+    --scholium-document-h2-size: \(ScholiumDocumentRhythm.heading2ScalePercent)%;
+    --scholium-document-h3-size: \(ScholiumDocumentRhythm.heading3ScalePercent)%;
+    --scholium-document-h4-size: \(ScholiumDocumentRhythm.heading4ScalePercent)%;
     --scholium-rhythm-prose-line-height: \(ScholiumDocumentRhythm.proseLineHeight);
     --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
     --scholium-rhythm-paragraph-gap: \(ScholiumDocumentRhythm.paragraphGapEm)em;
@@ -381,9 +387,10 @@ enum ScholiumWebDesignTokens {
     --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
-    --scholium-rhythm-read-block-start: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).blockStart)px;
-    --scholium-rhythm-read-narrow-block-start: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).blockStart)px;
     --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
+    --scholium-document-readable-measure: \(ScholiumMetrics.Document.readableMeasure)px;
+    --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInset)px;
+    --scholium-document-text-scale: 1em;
     """
 
     static let rootCSSDeclarations = """
@@ -475,6 +482,38 @@ enum ScholiumWebDesignTokens {
     --scholium-color-connection-support: #9cd5ca;
     --scholium-color-connection-incompatible: #ddbce5;
     """
+
+    static let responsiveLayoutCSS = """
+    @media (max-width: \(ScholiumDocumentRhythm.narrowWidthThreshold)px) {
+      .scholium-document,
+      #editor .scholium-live-mode .cm-content,
+      #editor .scholium-source-mode .cm-content {
+        padding-inline: var(--scholium-rhythm-inline-narrow);
+      }
+    }
+    """
+
+    /// One runtime presentation contract for every WebKit-backed document
+    /// surface. Read and CodeMirror both append this Swift-owned block; the
+    /// resource stylesheet consumes these variables rather than duplicating
+    /// provisional layout and typography values.
+    static let documentPresentationCSS = """
+    :root {
+      color-scheme: light dark;
+      \(rootCSSDeclarations)
+      \(rhythmCSSDeclarations)
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { \(darkAppearanceCSSDeclarations) }
+    }
+    @media (prefers-contrast: more) {
+      :root { \(increasedContrastCSSDeclarations) }
+    }
+    @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+      :root { \(darkIncreasedContrastCSSDeclarations) }
+    }
+    \(responsiveLayoutCSS)
+    """
 }
 
 enum ScholiumMetrics {
@@ -484,8 +523,6 @@ enum ScholiumMetrics {
     }
 
     enum Onboarding {
-        static let minimumWidth: CGFloat = 640
-        static let minimumHeight: CGFloat = 560
         static let preferredWidth: CGFloat = 720
         static let preferredHeight: CGFloat = 720
     }
@@ -493,7 +530,6 @@ enum ScholiumMetrics {
     enum Workspace {
         static let preferredWidth: CGFloat = 1_180
         static let preferredHeight: CGFloat = 760
-        static let wideLayoutThreshold = preferredWidth
         /// Spacing between Scholium-owned controls hosted by the native
         /// toolbar. Toolbar height and window-control geometry remain owned by
         /// macOS and therefore are not Scholium metrics.
@@ -541,6 +577,10 @@ enum ScholiumMetrics {
         /// Document-local breathing room below the system-owned toolbar. The
         /// toolbar safe area is not added again by document layout.
         static let contentTopInset: CGFloat = 32.333_333_3
+        static let defaultTextScale = 1.0
+        static let minimumTextScale = 1.0
+        static let maximumTextScale = 2.0
+        static let textScaleStep = 0.1
         static let researchStripHorizontalInset: CGFloat = 28
         /// The Strip may breathe 30 points beyond each side of the approved
         /// reading measure without spanning the complete Document region.
@@ -583,11 +623,44 @@ enum ScholiumMetrics {
         static let cornerRadius: CGFloat = 12
     }
 
-    enum ContextSurface {
-        /// Scrolling document content begins below the floating context cluster.
-        /// Because this is content padding rather than a safe-area inset, the
-        /// clearance moves away and later prose can travel beneath the cluster.
-        static let initialOverlayClearance: CGFloat = 92
+}
+
+/// The one mutable presentation contract shared by Read, Live Preview, and
+/// Source. It configures layout and scale only; no renderer may derive or
+/// rewrite authoritative Markdown from these values.
+struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
+    let textScale: Double
+    let readableMeasure: CGFloat
+    let contentTopInset: CGFloat
+
+    init(
+        textScale: Double,
+        readableMeasure: CGFloat = ScholiumMetrics.Document.readableMeasure,
+        contentTopInset: CGFloat = ScholiumMetrics.Document.contentTopInset
+    ) {
+        self.textScale = min(
+            ScholiumMetrics.Document.maximumTextScale,
+            max(ScholiumMetrics.Document.minimumTextScale, textScale)
+        )
+        self.readableMeasure = max(0, readableMeasure)
+        self.contentTopInset = max(0, contentTopInset)
+    }
+
+    var css: String {
+        let locale = Locale(identifier: "en_US_POSIX")
+        return String(
+            format: """
+            :root {
+              --scholium-document-text-scale: %.6fem;
+              --scholium-document-readable-measure: %.6fpx;
+              --scholium-document-content-top-inset: %.6fpx;
+            }
+            """,
+            locale: locale,
+            textScale,
+            Double(readableMeasure),
+            Double(contentTopInset)
+        )
     }
 }
 
@@ -762,13 +835,19 @@ extension EnvironmentValues {
 
 struct ScholiumDocumentContentInsets: Equatable, Sendable {
     let inline: CGFloat
-    let blockStart: CGFloat
     let trailingViewportFraction: CGFloat
 }
 
 /// Provisional values shared by Read and editor renderers. They remain
 /// renderer-aware until the visual comparison freezes the rhythm contract.
 enum ScholiumDocumentRhythm {
+    static let proseFontSizePoints = 12
+    static let sourceFontSizePixels = 15
+    static let heading1ScalePercent = 187.5
+    static let heading2ScalePercent = 130
+    static let heading3ScalePercent = 115
+    static let heading4ScalePercent = 100
+    static let narrowWidthThreshold = 700
     static let proseLineHeight = 1.5
     static let sourceLineHeight = 1.5
     static let paragraphGapEm = 2.0 / 3.0
@@ -789,11 +868,7 @@ enum ScholiumDocumentRhythm {
         case (.read, .regular), (.livePreview, .regular): 0
         case (_, .narrow): 24
         }
-        let blockStart: CGFloat = switch renderer {
-        case .read: widthClass == .narrow ? 28 : 44
-        case .livePreview, .source: ScholiumMetrics.ContextSurface.initialOverlayClearance
-        }
-        return .init(inline: inline, blockStart: blockStart, trailingViewportFraction: 0.45)
+        return .init(inline: inline, trailingViewportFraction: 0.45)
     }
 }
 

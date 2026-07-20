@@ -18,7 +18,6 @@ final class ResearchController: ObservableObject {
     @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var records: WorkspaceResearchSnapshot?
     @Published private(set) var errorMessage: String?
-    @Published var researchRecordRequestGeneration: UInt64 = 0
     @Published var dialogueInitialNotes: Set<VaultQualifiedNoteID> = []
     @Published var checkpointListingError: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []

@@ -11,6 +11,7 @@ final class PerformanceProbe {
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
         case coldReadActivation = "cold_read_activation"
+        case editorRetainedMemory = "editor_retained_memory"
     }
 
     static let shared = PerformanceProbe()
@@ -124,6 +125,28 @@ final class PerformanceProbe {
         record(startNanoseconds: start, observedCount: noteCount)
     }
 
+    /// Publishes the retained Editor handshake only after the WebKit bridge
+    /// has acknowledged the requested mode. The UI-test driver can read the
+    /// sampler acknowledgment, but it deliberately cannot write into the app
+    /// container that owns this probe file.
+    func markEditorModeReady(documentID: String, mode: NotePresentationMode) {
+        guard let configuration,
+              configuration.metric == .editorRetainedMemory,
+              documentID == configuration.expectedDocument,
+              recordedSampleCount < configuration.sampleCount else { return }
+        let expectedMode: NotePresentationMode = recordedSampleCount.isMultiple(of: 2)
+            ? .livePreview
+            : .source
+        guard mode == expectedMode else { return }
+        let object: [String: Any] = [
+            "sample": configuration.firstSample + recordedSampleCount,
+            "transition": configuration.firstSample + recordedSampleCount,
+            "mode": mode == .livePreview ? "live_preview" : "source",
+        ]
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount += 1
+    }
+
     private func record(startNanoseconds: UInt64, observedCount: Int?) {
         guard let configuration,
               recordedSampleCount < configuration.sampleCount else { return }
@@ -140,30 +163,34 @@ final class PerformanceProbe {
             "completed_uptime_ns": end,
         ]
         if let observedCount { object["observed_count"] = observedCount }
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount += 1
+        searchStartNanoseconds = nil
+        readStartNanoseconds = nil
+    }
+
+    private func append(_ object: [String: Any], to resultURL: URL) -> Bool {
         guard let encoded = try? JSONSerialization.data(
             withJSONObject: object,
             options: [.sortedKeys]
-        ) else { return }
+        ) else { return false }
         do {
-            if !FileManager.default.fileExists(atPath: configuration.resultURL.path) {
-                guard FileManager.default.createFile(
-                    atPath: configuration.resultURL.path,
-                    contents: nil
-                ) else { return }
+            if !FileManager.default.fileExists(atPath: resultURL.path) {
+                guard FileManager.default.createFile(atPath: resultURL.path, contents: nil) else {
+                    return false
+                }
             }
-            let values = try configuration.resultURL.resourceValues(forKeys: [.isSymbolicLinkKey])
-            guard values.isSymbolicLink != true else { return }
-            let handle = try FileHandle(forWritingTo: configuration.resultURL)
+            let values = try resultURL.resourceValues(forKeys: [.isSymbolicLinkKey])
+            guard values.isSymbolicLink != true else { return false }
+            let handle = try FileHandle(forWritingTo: resultURL)
             try handle.seekToEnd()
             try handle.write(contentsOf: encoded + Data([0x0A]))
             try handle.close()
-            recordedSampleCount += 1
-            searchStartNanoseconds = nil
-            readStartNanoseconds = nil
+            return true
         } catch {
             // Performance evidence is optional and must never affect product
             // behavior or expose a research path through user-facing errors.
-            return
+            return false
         }
     }
 
@@ -187,8 +214,13 @@ final class PerformanceProbe {
             || parent.path.hasPrefix("/tmp/")
             || parent.path == "/private/tmp"
             || parent.path.hasPrefix("/private/tmp/")
+        let sandboxRaw = parent.path.components(separatedBy: sandboxSuffix).first.map {
+            $0 + sandboxSuffix
+        }
         let isIsolatedSandboxTemporary = parent.path.hasPrefix("/Users/")
-            && parent.path.hasSuffix(sandboxSuffix)
+            && sandboxRaw.map {
+                parent.path == $0 || parent.path.hasPrefix($0 + "/")
+            } == true
         guard isSystemTemporary || isIsolatedSandboxTemporary else {
             return nil
         }

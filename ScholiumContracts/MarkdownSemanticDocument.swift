@@ -63,6 +63,25 @@ public struct MarkdownBlock: Codable, Hashable, Sendable {
     public let span: SourceSpan
 }
 
+public enum MarkdownInlineKind: String, Codable, Hashable, Sendable {
+    case strong
+    case emphasis
+    case strikethrough
+    case code
+    case link
+    case image
+}
+
+public struct MarkdownInline: Codable, Hashable, Sendable {
+    public let kind: MarkdownInlineKind
+    public let span: SourceSpan
+
+    public init(kind: MarkdownInlineKind, span: SourceSpan) {
+        self.kind = kind
+        self.span = span
+    }
+}
+
 public struct HeadingNode: Codable, Hashable, Sendable {
     public let level: Int
     public let text: String
@@ -158,22 +177,45 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
         public let meaning: String
     }
 
+    public struct Mathematics: Codable, Hashable, Sendable {
+        public let inlineDelimiter: String
+        public let displayDelimiter: String
+        public let singleDollarInline: Bool
+    }
+
+    public struct Footnotes: Codable, Hashable, Sendable {
+        public let namedReferenceOpening: String
+        public let namedReferenceClosing: String
+        public let definitionSeparator: String
+        public let inlineOpening: String
+        public let continuationIndentSpaces: Int
+        public let allowsTabContinuation: Bool
+        public let caseSensitiveIdentifiers: Bool
+        public let ordinalByFirstReference: Bool
+    }
+
     public let version: Int
     public let callouts: [Callout]
     public let vectorLinkOperators: [VectorLinkOperator]
+    public let footnotes: Footnotes
+    public let mathematics: Mathematics
 
     public init(
         version: Int,
         callouts: [Callout],
-        vectorLinkOperators: [VectorLinkOperator]
+        vectorLinkOperators: [VectorLinkOperator],
+        footnotes: Footnotes,
+        mathematics: Mathematics
     ) {
         self.version = version
         self.callouts = callouts
         self.vectorLinkOperators = vectorLinkOperators
+        self.footnotes = footnotes
+        self.mathematics = mathematics
     }
 
     public static let current = MarkdownEditingDialect(
-        version: 1,
+        version: 2,
         callouts: CalloutSemanticRole.allCases.compactMap { role in
             guard role != .neutral else { return nil }
             return Callout(
@@ -204,7 +246,22 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
                 kind: .incompatible,
                 meaning: "The containing and target notes cannot both be true."
             ),
-        ]
+        ],
+        footnotes: Footnotes(
+            namedReferenceOpening: "[^",
+            namedReferenceClosing: "]",
+            definitionSeparator: ":",
+            inlineOpening: "^[",
+            continuationIndentSpaces: 2,
+            allowsTabContinuation: true,
+            caseSensitiveIdentifiers: true,
+            ordinalByFirstReference: true
+        ),
+        mathematics: Mathematics(
+            inlineDelimiter: "$",
+            displayDelimiter: "$$",
+            singleDollarInline: true
+        )
     )
 }
 
@@ -234,6 +291,19 @@ public struct FootnoteReference: Codable, Hashable, Sendable {
     public let occurrence: Int
     public let isInline: Bool
     public let span: SourceSpan
+}
+
+public enum MathExpressionKind: String, Codable, Hashable, Sendable {
+    case inline
+    case display
+}
+
+public struct MathExpression: Codable, Hashable, Sendable {
+    public let kind: MathExpressionKind
+    public let content: String
+    public let delimiterLength: Int
+    public let span: SourceSpan
+    public let contentSpan: SourceSpan
 }
 
 public enum LinkSyntax: String, Codable, Hashable, Sendable {
@@ -327,7 +397,8 @@ public enum MarkdownDiagnosticCode: String, Codable, Hashable, Sendable {
     case duplicateFootnote
     case undefinedFootnote
     case unreferencedFootnote
-    case malformedFootnote
+    case malformedMath
+    case malformedComment
     case unknownRelationshipPredicate
     case noncanonicalRelationshipSyntax
 }
@@ -342,10 +413,12 @@ public struct MarkdownDiagnostic: Codable, Hashable, Sendable {
 public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
     public let fingerprint: DocumentFingerprint
     public let blocks: [MarkdownBlock]
+    public let inlines: [MarkdownInline]
     public let headings: [HeadingNode]
     public let callouts: [CalloutBlock]
     public let footnoteDefinitions: [FootnoteDefinition]
     public let footnoteReferences: [FootnoteReference]
+    public let mathExpressions: [MathExpression]
     public let links: [LinkOccurrence]
     public let diagnostics: [MarkdownDiagnostic]
 
@@ -356,19 +429,23 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
     public init(
         fingerprint: DocumentFingerprint,
         blocks: [MarkdownBlock],
+        inlines: [MarkdownInline] = [],
         headings: [HeadingNode],
         callouts: [CalloutBlock],
         footnoteDefinitions: [FootnoteDefinition],
         footnoteReferences: [FootnoteReference],
+        mathExpressions: [MathExpression],
         links: [LinkOccurrence],
         diagnostics: [MarkdownDiagnostic]
     ) {
         self.fingerprint = fingerprint
         self.blocks = blocks
+        self.inlines = inlines
         self.headings = headings
         self.callouts = callouts
         self.footnoteDefinitions = footnoteDefinitions
         self.footnoteReferences = footnoteReferences
+        self.mathExpressions = mathExpressions
         self.links = links
         self.diagnostics = diagnostics
     }
@@ -383,6 +460,7 @@ public enum MarkdownSemanticParser {
         let parsed = Document(parsing: document.body, options: [.parseBlockDirectives])
 
         var blocks: [MarkdownBlock] = []
+        var inlines: [MarkdownInline] = []
         var headings: [HeadingNode] = []
         var literalRanges: [NSRange] = []
         collectMarkup(
@@ -391,11 +469,17 @@ public enum MarkdownSemanticParser {
             sourceMapper: sourceMapper,
             bodyUTF16Offset: bodyOffset,
             blocks: &blocks,
+            inlines: &inlines,
             headings: &headings,
             literalRanges: &literalRanges
         )
 
-        literalRanges.append(contentsOf: commentRanges(in: document.body))
+        let commentResult = parseComments(
+            body: document.body,
+            bodyUTF16Offset: bodyOffset,
+            sourceMapper: sourceMapper
+        )
+        literalRanges.append(contentsOf: commentResult.ranges)
         literalRanges.append(contentsOf: inlineCodeRanges(in: document.body))
 
         let calloutResult = parseCallouts(
@@ -405,6 +489,12 @@ public enum MarkdownSemanticParser {
             excluded: literalRanges
         )
         let footnoteResult = parseFootnotes(
+            body: document.body,
+            bodyUTF16Offset: bodyOffset,
+            sourceMapper: sourceMapper,
+            excluded: literalRanges
+        )
+        let mathResult = parseMath(
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
@@ -420,12 +510,19 @@ public enum MarkdownSemanticParser {
         return MarkdownSemanticDocument(
             fingerprint: document.fingerprint,
             blocks: blocks.sorted { $0.span.utf16LowerBound < $1.span.utf16LowerBound },
+            inlines: inlines.sorted { left, right in
+                if left.span.utf16LowerBound != right.span.utf16LowerBound {
+                    return left.span.utf16LowerBound < right.span.utf16LowerBound
+                }
+                return left.span.utf16UpperBound > right.span.utf16UpperBound
+            },
             headings: headings.sorted { $0.span.utf16LowerBound < $1.span.utf16LowerBound },
             callouts: calloutResult.callouts,
             footnoteDefinitions: footnoteResult.definitions,
             footnoteReferences: footnoteResult.references,
+            mathExpressions: mathResult.expressions,
             links: linkResult.links,
-            diagnostics: (calloutResult.diagnostics + footnoteResult.diagnostics + linkResult.diagnostics).sorted {
+            diagnostics: (commentResult.diagnostics + calloutResult.diagnostics + footnoteResult.diagnostics + mathResult.diagnostics + linkResult.diagnostics).sorted {
                 ($0.span?.utf16LowerBound ?? Int.max) < ($1.span?.utf16LowerBound ?? Int.max)
             }
         )
@@ -437,23 +534,32 @@ public enum MarkdownSemanticParser {
         sourceMapper: SemanticSourceMapper,
         bodyUTF16Offset: Int,
         blocks: inout [MarkdownBlock],
+        inlines: inout [MarkdownInline],
         headings: inout [HeadingNode],
         literalRanges: inout [NSRange]
     ) {
         if let range = markup.range,
-           let relativeRange = bodyMapper.nsRange(for: range),
-           let span = sourceMapper.span(for: NSRange(
-               location: bodyUTF16Offset + relativeRange.location,
-               length: relativeRange.length
-           )) {
-            if let heading = markup as? Heading {
-                headings.append(HeadingNode(level: heading.level, text: heading.plainText, span: span))
-            }
-            if let kind = blockKind(for: markup) {
-                blocks.append(MarkdownBlock(kind: kind, span: span))
-            }
-            if markup is CodeBlock || markup is InlineCode || markup is HTMLBlock || markup is InlineHTML {
-                literalRanges.append(relativeRange)
+           let relativeRange = bodyMapper.nsRange(for: range) {
+            let fullRange = NSRange(
+                location: bodyUTF16Offset + relativeRange.location,
+                length: relativeRange.length
+            )
+            if let span = sourceMapper.span(for: fullRange) {
+                if let heading = markup as? Heading {
+                    headings.append(HeadingNode(level: heading.level, text: heading.plainText, span: span))
+                }
+                if let kind = blockKind(for: markup) {
+                    let normalizedRange = rangeWithoutTerminalLineEnding(fullRange, in: sourceMapper.nsSource)
+                    if let normalizedSpan = sourceMapper.span(for: normalizedRange) {
+                        blocks.append(MarkdownBlock(kind: kind, span: normalizedSpan))
+                    }
+                }
+                if let kind = inlineKind(for: markup) {
+                    inlines.append(MarkdownInline(kind: kind, span: span))
+                }
+                if markup is CodeBlock || markup is InlineCode || markup is HTMLBlock || markup is InlineHTML {
+                    literalRanges.append(relativeRange)
+                }
             }
         }
 
@@ -464,6 +570,7 @@ public enum MarkdownSemanticParser {
                 sourceMapper: sourceMapper,
                 bodyUTF16Offset: bodyUTF16Offset,
                 blocks: &blocks,
+                inlines: &inlines,
                 headings: &headings,
                 literalRanges: &literalRanges
             )
@@ -484,6 +591,36 @@ public enum MarkdownSemanticParser {
         case is HTMLBlock: .html
         default: nil
         }
+    }
+
+    private static func inlineKind(for markup: Markup) -> MarkdownInlineKind? {
+        switch markup {
+        case is Strong: .strong
+        case is Emphasis: .emphasis
+        case is Strikethrough: .strikethrough
+        case is InlineCode: .code
+        case is Link: .link
+        case is Image: .image
+        default: nil
+        }
+    }
+
+    private static func rangeWithoutTerminalLineEnding(
+        _ range: NSRange,
+        in source: NSString
+    ) -> NSRange {
+        var length = range.length
+        guard length > 0 else { return range }
+        let last = source.character(at: range.location + length - 1)
+        if last == 0x0A {
+            length -= 1
+            if length > 0, source.character(at: range.location + length - 1) == 0x0D {
+                length -= 1
+            }
+        } else if last == 0x0D {
+            length -= 1
+        }
+        return NSRange(location: range.location, length: length)
     }
 
     private struct CalloutParseResult {
@@ -639,7 +776,10 @@ public enum MarkdownSemanticParser {
                 let candidate = nsBody.substring(with: candidateContent)
                 guard candidate.hasPrefix("  ") || candidate.hasPrefix("\t") || candidate.isEmpty else { break }
                 contentParts.append(candidate.replacingOccurrences(
-                    of: #"^(?: {2,}|\t)"#,
+                    // Remove exactly one Scholium continuation indent. Any
+                    // additional indentation is semantic Markdown belonging
+                    // to a nested list, quote, or code block.
+                    of: #"^(?: {2}|\t)"#,
                     with: "",
                     options: .regularExpression
                 ))
@@ -767,6 +907,176 @@ public enum MarkdownSemanticParser {
     private struct LinkParseResult {
         let links: [LinkOccurrence]
         let diagnostics: [MarkdownDiagnostic]
+    }
+
+    private struct MathParseResult {
+        let expressions: [MathExpression]
+        let diagnostics: [MarkdownDiagnostic]
+    }
+
+    /// Implements the published dollar-sequence model used by the mature
+    /// micromark/remark math ecosystem: inline closing runs equal the opener,
+    /// runs are greedy, escapes remain literal, and display fences are
+    /// standalone runs of at least two dollars. This scanner produces only a
+    /// source-located projection and never rewrites the document.
+    private static func parseMath(
+        body: String,
+        bodyUTF16Offset: Int,
+        sourceMapper: SemanticSourceMapper,
+        excluded: [NSRange]
+    ) -> MathParseResult {
+        let source = body as NSString
+        var expressions: [MathExpression] = []
+        var diagnostics: [MarkdownDiagnostic] = []
+        var displayRanges: [NSRange] = []
+        var cursor = 0
+
+        while cursor < source.length {
+            let lineRange = source.lineRange(for: NSRange(location: cursor, length: 0))
+            let contentRange = lineContentRange(lineRange, in: source)
+            defer { cursor = max(NSMaxRange(lineRange), cursor + 1) }
+            guard !intersectsExcluded(contentRange, excluded),
+                  let opener = displayFence(in: contentRange, source: source) else { continue }
+
+            var search = NSMaxRange(lineRange)
+            var closingLineRange: NSRange?
+            var closingFenceRange: NSRange?
+            while search < source.length {
+                let candidateLine = source.lineRange(for: NSRange(location: search, length: 0))
+                let candidateContent = lineContentRange(candidateLine, in: source)
+                if !intersectsExcluded(candidateContent, excluded),
+                   let candidate = displayFence(in: candidateContent, source: source),
+                   candidate.length >= opener.length {
+                    closingLineRange = candidateLine
+                    closingFenceRange = candidate
+                    break
+                }
+                search = max(NSMaxRange(candidateLine), search + 1)
+            }
+
+            guard let closingLineRange, let closingFenceRange else {
+                let span = sourceMapper.span(for: shifted(opener, by: bodyUTF16Offset))
+                diagnostics.append(MarkdownDiagnostic(
+                    code: .malformedMath,
+                    severity: .warning,
+                    message: "Display mathematics has no closing dollar fence.",
+                    span: span
+                ))
+                continue
+            }
+
+            let wholeRange = NSRange(
+                location: opener.location,
+                length: NSMaxRange(closingFenceRange) - opener.location
+            )
+            let rawContentRange = NSRange(
+                location: NSMaxRange(lineRange),
+                length: closingLineRange.location - NSMaxRange(lineRange)
+            )
+            guard let span = sourceMapper.span(for: shifted(wholeRange, by: bodyUTF16Offset)),
+                  let contentSpan = sourceMapper.span(for: shifted(rawContentRange, by: bodyUTF16Offset)) else {
+                continue
+            }
+            displayRanges.append(wholeRange)
+            expressions.append(MathExpression(
+                kind: .display,
+                content: source.substring(with: rawContentRange).trimmingCharacters(in: .newlines),
+                delimiterLength: opener.length,
+                span: span,
+                contentSpan: contentSpan
+            ))
+            cursor = NSMaxRange(closingLineRange)
+        }
+
+        let inlineExcluded = excluded + displayRanges
+        cursor = 0
+        while cursor < source.length {
+            guard source.character(at: cursor) == 0x24 else {
+                cursor += 1
+                continue
+            }
+            let openingStart = cursor
+            while cursor < source.length, source.character(at: cursor) == 0x24 { cursor += 1 }
+            let delimiterLength = cursor - openingStart
+            let openingRange = NSRange(location: openingStart, length: delimiterLength)
+            guard !isEscaped(at: openingStart, in: source),
+                  !intersectsExcluded(openingRange, inlineExcluded),
+                  (openingStart == 0 || source.character(at: openingStart - 1) != 0x24),
+                  (cursor == source.length || source.character(at: cursor) != 0x24) else { continue }
+
+            var search = cursor
+            var closingStart: Int?
+            while search < source.length {
+                guard source.character(at: search) == 0x24 else {
+                    search += 1
+                    continue
+                }
+                let runStart = search
+                while search < source.length, source.character(at: search) == 0x24 { search += 1 }
+                guard search - runStart == delimiterLength,
+                      !isEscaped(at: runStart, in: source),
+                      (runStart == 0 || source.character(at: runStart - 1) != 0x24),
+                      (search == source.length || source.character(at: search) != 0x24) else { continue }
+                closingStart = runStart
+                break
+            }
+            guard let closingStart, closingStart > cursor else { continue }
+
+            let wholeRange = NSRange(
+                location: openingStart,
+                length: closingStart + delimiterLength - openingStart
+            )
+            let contentRange = NSRange(location: cursor, length: closingStart - cursor)
+            guard !intersectsExcluded(wholeRange, inlineExcluded),
+                  let span = sourceMapper.span(for: shifted(wholeRange, by: bodyUTF16Offset)),
+                  let contentSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset)) else {
+                continue
+            }
+            let rawContent = source.substring(with: contentRange)
+            let content = normalizedInlineMathContent(rawContent)
+            expressions.append(MathExpression(
+                kind: .inline,
+                content: content,
+                delimiterLength: delimiterLength,
+                span: span,
+                contentSpan: contentSpan
+            ))
+            cursor = NSMaxRange(wholeRange)
+        }
+
+        return MathParseResult(
+            expressions: expressions.sorted { $0.span.utf16LowerBound < $1.span.utf16LowerBound },
+            diagnostics: diagnostics
+        )
+    }
+
+    private static func displayFence(in line: NSRange, source: NSString) -> NSRange? {
+        var position = line.location
+        var indentation = 0
+        while position < NSMaxRange(line), source.character(at: position) == 0x20, indentation < 4 {
+            position += 1
+            indentation += 1
+        }
+        guard indentation <= 3, position < NSMaxRange(line), source.character(at: position) == 0x24,
+              !isEscaped(at: position, in: source) else { return nil }
+        let start = position
+        while position < NSMaxRange(line), source.character(at: position) == 0x24 { position += 1 }
+        let delimiterEnd = position
+        guard delimiterEnd - start >= 2 else { return nil }
+        while position < NSMaxRange(line),
+              source.character(at: position) == 0x20 || source.character(at: position) == 0x09 {
+            position += 1
+        }
+        guard position == NSMaxRange(line) else { return nil }
+        return NSRange(location: start, length: delimiterEnd - start)
+    }
+
+    private static func normalizedInlineMathContent(_ raw: String) -> String {
+        guard raw.count > 2,
+              raw.first?.isWhitespace == true,
+              raw.last?.isWhitespace == true,
+              raw.contains(where: { !$0.isWhitespace }) else { return raw }
+        return String(raw.dropFirst().dropLast())
     }
 
     private static func parseLinks(
@@ -1061,13 +1371,67 @@ public enum MarkdownSemanticParser {
         }
     }
 
-    private static func commentRanges(in body: String) -> [NSRange] {
-        let patterns = [#"%%[\s\S]*?%%"#, #"<!--[\s\S]*?-->"#]
-        let fullRange = NSRange(location: 0, length: (body as NSString).length)
-        return patterns.reduce(into: [NSRange]()) { ranges, pattern in
-            guard let expression = try? NSRegularExpression(pattern: pattern) else { return }
-            ranges.append(contentsOf: expression.matches(in: body, range: fullRange).map(\.range))
+    private struct CommentParseResult {
+        let ranges: [NSRange]
+        let diagnostics: [MarkdownDiagnostic]
+    }
+
+    private static func parseComments(
+        body: String,
+        bodyUTF16Offset: Int,
+        sourceMapper: SemanticSourceMapper
+    ) -> CommentParseResult {
+        let source = body as NSString
+        var ranges: [NSRange] = []
+        var diagnostics: [MarkdownDiagnostic] = []
+        let delimiters = [
+            (opening: "%%", closing: "%%", name: "Obsidian comment"),
+            (opening: "<!--", closing: "-->", name: "HTML comment"),
+        ]
+
+        for delimiter in delimiters {
+            var cursor = 0
+            while cursor < source.length {
+                let searchRange = NSRange(location: cursor, length: source.length - cursor)
+                let opening = source.range(of: delimiter.opening, options: [], range: searchRange)
+                guard opening.location != NSNotFound else { break }
+
+                let closingSearchStart = NSMaxRange(opening)
+                let closingSearchRange = NSRange(
+                    location: closingSearchStart,
+                    length: source.length - closingSearchStart
+                )
+                let closing = source.range(
+                    of: delimiter.closing,
+                    options: [],
+                    range: closingSearchRange
+                )
+                guard closing.location != NSNotFound else {
+                    ranges.append(NSRange(
+                        location: opening.location,
+                        length: source.length - opening.location
+                    ))
+                    diagnostics.append(MarkdownDiagnostic(
+                        code: .malformedComment,
+                        severity: .warning,
+                        message: "\(delimiter.name) has no closing \(delimiter.closing) delimiter.",
+                        span: sourceMapper.span(for: shifted(opening, by: bodyUTF16Offset))
+                    ))
+                    break
+                }
+
+                ranges.append(NSRange(
+                    location: opening.location,
+                    length: NSMaxRange(closing) - opening.location
+                ))
+                cursor = NSMaxRange(closing)
+            }
         }
+
+        return CommentParseResult(
+            ranges: ranges.sorted { $0.location < $1.location },
+            diagnostics: diagnostics
+        )
     }
 
     private static func inlineCodeRanges(in body: String) -> [NSRange] {

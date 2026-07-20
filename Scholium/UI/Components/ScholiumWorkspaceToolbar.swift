@@ -29,12 +29,18 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     }
 
     private let appState: WindowModel
+    private let windowActions: WorkspaceWindowActions
     private let splitViewController: NSSplitViewController
     private let toolbar: NSToolbar
     private var appStateObservation: AnyCancellable?
 
-    init(appState: WindowModel, splitViewController: NSSplitViewController) {
+    init(
+        appState: WindowModel,
+        windowActions: WorkspaceWindowActions,
+        splitViewController: NSSplitViewController
+    ) {
         self.appState = appState
+        self.windowActions = windowActions
         self.splitViewController = splitViewController
         toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
         super.init()
@@ -94,7 +100,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             return hostedItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Sidebar"),
-                view: ScholiumWorkspaceSidebarToolbarView(appState: appState)
+                view: ScholiumWorkspaceSidebarToolbarView(
+                    appState: appState,
+                    windowActions: windowActions
+                )
             )
         case Item.libraryDivider:
             let splitView = splitViewController.splitView
@@ -129,7 +138,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Research Record"),
                 visibilityPriority: .user,
-                view: ScholiumWorkspaceResearchRecordToolbarView(appState: appState)
+                view: ScholiumWorkspaceResearchRecordToolbarView(
+                    appState: appState,
+                    windowActions: windowActions
+                )
             )
         default:
             return nil
@@ -170,7 +182,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         // window-owned visibility intent as the View menu; the representable
         // then asks its exact native controller to perform the standard
         // `toggleInspector(_:)` transition.
-        appState.setResearchInspectorVisible(!appState.backlinksVisible)
+        windowActions.setResearchInspectorVisible(!appState.backlinksVisible)
     }
 
     private func hostedItem<Content: View>(
@@ -220,6 +232,7 @@ private struct ScholiumWorkspaceToolbarEnvironment<Content: View>: View {
 
 private struct ScholiumWorkspaceSidebarToolbarView: View {
     @ObservedObject var appState: WindowModel
+    let windowActions: WorkspaceWindowActions
 
     var body: some View {
         let title = ScholiumL10n.dynamicString(
@@ -231,7 +244,7 @@ private struct ScholiumWorkspaceSidebarToolbarView: View {
             identifier: "scholium.toggleSidebar",
             isActive: appState.sidebarVisible
         ) {
-            appState.setLibraryVisible(!appState.sidebarVisible)
+            windowActions.setLibraryVisible(!appState.sidebarVisible)
         }
         .accessibilityValue(
             ScholiumL10n.dynamicString(appState.sidebarVisible ? "Shown" : "Hidden")
@@ -377,6 +390,7 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
 
 private struct ScholiumWorkspaceResearchRecordToolbarView: View {
     @ObservedObject var appState: WindowModel
+    let windowActions: WorkspaceWindowActions
 
     var body: some View {
         ScholiumInkIconControl(
@@ -384,7 +398,7 @@ private struct ScholiumWorkspaceResearchRecordToolbarView: View {
             systemImage: "clock.arrow.circlepath",
             identifier: "scholium.showResearchRecord"
         ) {
-            appState.requestResearchRecord()
+            windowActions.showResearchRecord()
         }
         .disabled(!isAvailable)
     }

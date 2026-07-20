@@ -125,12 +125,8 @@ struct AppCompositionRootTests {
         #expect(second.discoveryController.search.errorMessage == "current completion")
 
         first.discoveryController.selectLocationScope(.trash)
-        first.requestResearchRecord()
         #expect(first.discoveryController.library.locationScope == .trash)
         #expect(second.discoveryController.library.locationScope == .workspace)
-        #expect(first.researchRecordRequestGeneration == 1)
-        #expect(first.researchController.researchRecordRequestGeneration == 1)
-        #expect(second.researchRecordRequestGeneration == 0)
 
         first.pendingSourceLine = 17
         first.changedSinceReviewPaths = [reference.relativePath]
@@ -190,6 +186,40 @@ struct AppCompositionRootTests {
 
         let saved = try #require(try await store.windowSession(id: sessionID))
         #expect(saved.documentTextScale == 1.7)
+    }
+
+    @Test("Transient document view detachment preserves the active editor flush")
+    func transientDocumentDetachmentPreservesEditorFlush() async throws {
+        let store = WorkspaceStore()
+        let window = WindowModel(workspaceStore: store)
+        window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
+
+        let token = UUID()
+        var flushCount = 0
+        window.registerEditorFlush(
+            for: "Active.md",
+            token: token,
+            flush: { flushCount += 1 },
+            captureForReconstruction: {}
+        )
+
+        // NoteContentView can disappear during an Inspector or hosting-view
+        // reconstruction even though this same document remains selected.
+        window.unregisterEditorFlush(token: token)
+        window.beginSearch(.general)
+
+        try await waitUntil("the still-selected editor flushed before Search") {
+            flushCount == 1
+        }
+
+        try await window.prepareForWindowClose()
+        #expect(flushCount == 2)
+
+        // A successful close releases the workspace-wide registration rather
+        // than retaining the document session through the shared store.
+        window.beginSearch(.general)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(flushCount == 2)
     }
 
     @Test("Removing one window does not shut down the shared Application runtime")

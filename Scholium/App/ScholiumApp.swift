@@ -1,49 +1,26 @@
 import ScholiumContracts
 import AppKit
 import Combine
+import notify
 import QuartzCore
 import ScholiumApplication
 import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
-private final class ScholiumTerminationCoordinator {
-    static let shared = ScholiumTerminationCoordinator()
-    private var flushers: [UUID: @MainActor () async throws -> Void] = [:]
-
-    var hasRegisteredWindows: Bool { !flushers.isEmpty }
-
-    func register(
-        _ id: UUID,
-        flush: @escaping @MainActor () async throws -> Void
-    ) {
-        flushers[id] = flush
-    }
-
-    func unregister(_ id: UUID) {
-        flushers[id] = nil
-    }
-
-    func flushAll() async throws {
-        for flush in Array(flushers.values) {
-            try await flush()
-        }
-    }
-}
-
-@MainActor
-private final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate {
+final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate {
+    let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
     private var terminationInFlight = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard ScholiumTerminationCoordinator.shared.hasRegisteredWindows else {
+        guard windowLifecycleRegistry.hasRegisteredWindows else {
             return .terminateNow
         }
         guard !terminationInFlight else { return .terminateLater }
         terminationInFlight = true
         Task { @MainActor in
             do {
-                try await ScholiumTerminationCoordinator.shared.flushAll()
+                try await windowLifecycleRegistry.flushAll()
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 terminationInFlight = false
@@ -97,65 +74,70 @@ struct BootstrapWindowRoute: Codable, Hashable {
 @main
 struct ScholiumApp: App {
     @NSApplicationDelegateAdaptor(ScholiumApplicationDelegate.self) private var applicationDelegate
+    @FocusedObject private var focusedWindowModel: WindowModel?
     @StateObject private var workspaceStore = WorkspaceStore()
-    @StateObject private var researchRecordWindowCoordinator = ResearchRecordWindowCoordinator()
 
     init() {
         // Document tabs live inside the central split item. Native window
         // tabbing would create a second, whole-window tab system with different
         // state ownership, so it remains disabled.
         NSWindow.allowsAutomaticWindowTabbing = false
-        // Swift Package schemes run ScholiumApp as a raw executable rather
-        // than through the packaged .app. On beta macOS/Xcode that process can
-        // otherwise remain background-only even though SwiftUI created a scene.
-        NSApplication.shared.setActivationPolicy(.regular)
-        DispatchQueue.main.async {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            let application = NSApplication.shared
-            application.unhide(nil)
-            for window in application.windows where window.canBecomeKey {
-                window.makeKeyAndOrderFront(nil)
-            }
-            application.activate(ignoringOtherApps: true)
-        }
         ScholiumFontRegistry.registerBundledFonts()
     }
 
     var body: some Scene {
-        WindowGroup(id: "scholium-bootstrap", for: BootstrapWindowRoute.self) { route in
-            ScholiumBootstrapRoot(
-                workspaceStore: workspaceStore,
-                route: route
-            )
-        }
+        WindowGroup(
+            id: "scholium-bootstrap",
+            for: BootstrapWindowRoute.self,
+            content: { route in
+                ScholiumBootstrapRoot(
+                    workspaceStore: workspaceStore,
+                    route: route.wrappedValue,
+                    lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+                )
+            },
+            defaultValue: {
+                BootstrapWindowRoute(purpose: .firstConfiguration)
+            }
+        )
         .defaultSize(
             width: ScholiumMetrics.Onboarding.preferredWidth,
             height: ScholiumMetrics.Onboarding.preferredHeight
         )
-        .windowResizability(.contentSize)
+        .windowResizability(.automatic)
+        .defaultLaunchBehavior(.presented)
+        .restorationBehavior(.disabled)
 
-        WindowGroup(id: "scholium-main", for: TriptychWindowRoute.self) { route in
-            ScholiumWindowRoot(
-                workspaceStore: workspaceStore,
-                route: route
-            )
-            .environmentObject(researchRecordWindowCoordinator)
-        }
+        WindowGroup(
+            id: "scholium-main",
+            for: TriptychWindowRoute.self,
+            content: { route in
+                ScholiumWindowRoot(
+                    workspaceStore: workspaceStore,
+                    route: route.wrappedValue,
+                    lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+                )
+            },
+            defaultValue: { TriptychWindowRoute() }
+        )
         .defaultSize(
-            width: ScholiumMetrics.Workspace.preferredWidth,
+            width: ScholiumRuntimeIsolation.initialWorkspaceWidth()
+                ?? ScholiumMetrics.Workspace.preferredWidth,
             height: ScholiumMetrics.Workspace.preferredHeight
         )
+        .windowResizability(.automatic)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.automatic)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ScholiumCommands() }
 
         UtilityWindow("Research Record", id: "scholium-research-record") {
-            ScholiumResearchRecordUtilityRoot(
-                coordinator: researchRecordWindowCoordinator
-            )
+            ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)
         }
         .defaultSize(width: 760, height: 680)
+        .windowResizability(.automatic)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
         .commandsRemoved()
 
         Settings {
@@ -167,11 +149,11 @@ struct ScholiumApp: App {
 /// A secondary scholarly-record window that follows the focused workspace.
 /// It consumes the focused window model but owns no document or editor state.
 private struct ScholiumResearchRecordUtilityRoot: View {
-    @ObservedObject var coordinator: ResearchRecordWindowCoordinator
+    let appState: WindowModel?
 
     var body: some View {
         Group {
-            if let appState = coordinator.activeWindowModel {
+            if let appState {
                 ScholiumResearchRecordFocusedContent(appState: appState)
             } else {
                 ContentUnavailableView(
@@ -182,23 +164,6 @@ private struct ScholiumResearchRecordUtilityRoot: View {
             }
         }
         .scholiumSurface(.denseEvidence)
-        .id(coordinator.presentationGeneration)
-    }
-}
-
-/// Connects the secondary Research Record window to the workspace that
-/// explicitly opened it. The weak reference preserves one owner for all
-/// document state and never keeps a closed workspace alive.
-@MainActor
-final class ResearchRecordWindowCoordinator: ObservableObject {
-    @Published private(set) var presentationGeneration = 0
-    private weak var windowModel: WindowModel?
-
-    var activeWindowModel: WindowModel? { windowModel }
-
-    func present(for windowModel: WindowModel) {
-        self.windowModel = windowModel
-        presentationGeneration &+= 1
     }
 }
 
@@ -241,21 +206,24 @@ private struct ScholiumResearchRecordFocusedContent: View {
 private struct ScholiumBootstrapRoot: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
-    @Binding private var route: BootstrapWindowRoute?
+    private let route: BootstrapWindowRoute
+    private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     @StateObject private var model: ScholiumBootstrapModel
     @State private var isResolvingWorkspace = true
     @State private var didRouteToWorkspace = false
+    @State private var destinationWindowID: UUID?
+    @State private var routingErrorMessage: String?
 
     init(
         workspaceStore: WorkspaceStore,
-        route: Binding<BootstrapWindowRoute?>
+        route: BootstrapWindowRoute,
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
-        _route = route
-        let resolvedRoute = route.wrappedValue
-            ?? BootstrapWindowRoute(purpose: .firstConfiguration)
+        self.route = route
+        self.lifecycleRegistry = lifecycleRegistry
         _model = StateObject(wrappedValue: ScholiumBootstrapModel(
             workspaceStore: workspaceStore,
-            route: resolvedRoute
+            route: route
         ))
     }
 
@@ -263,15 +231,17 @@ private struct ScholiumBootstrapRoot: View {
         Group {
             if isResolvingWorkspace {
                 ScholiumLaunchPlaceholderView()
-                    .frame(
-                        minWidth: ScholiumMetrics.Onboarding.minimumWidth,
-                        minHeight: ScholiumMetrics.Onboarding.minimumHeight
-                    )
             } else {
                 WorkspaceSetupView(context: workspaceSetupContext)
             }
         }
         .tint(ScholiumColorRole.accent.color)
+        .background(
+            BootstrapWindowAttachment(
+                windowID: route.windowID,
+                lifecycleRegistry: lifecycleRegistry
+            )
+        )
         .task {
             if openFixtureWorkspaceIfRequested() {
                 return
@@ -283,21 +253,18 @@ private struct ScholiumBootstrapRoot: View {
         .onChange(of: model.workspaceAssignment?.id) { _, _ in
             openConfiguredWorkspaceIfAvailable()
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: ScholiumWorkspaceSplitRegistry.didChangeNotification
-            )
-        ) { notification in
-            guard didRouteToWorkspace,
-                  let workspaceWindow = notification.object as? NSWindow,
-                  ScholiumWorkspaceSplitRegistry.shared
-                    .splitView(for: workspaceWindow) != nil
-            else { return }
-            // Keep Bootstrap alive until the destination workspace has its
-            // real split controller. Closing it immediately after openWindow
-            // can briefly leave no usable scene and let SwiftUI recreate the
-            // default Bootstrap window on a configured relaunch.
-            dismissWindow()
+        .task(id: destinationWindowID) {
+            guard let destinationWindowID else { return }
+            do {
+                try await lifecycleRegistry.waitUntilReady(id: destinationWindowID)
+                dismissWindow()
+            } catch is CancellationError {
+                return
+            } catch {
+                didRouteToWorkspace = false
+                self.destinationWindowID = nil
+                routingErrorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -307,7 +274,7 @@ private struct ScholiumBootstrapRoot: View {
             targetTriptychID: model.targetTriptychID,
             workspaceAssignment: model.workspaceAssignment,
             registeredTriptychs: model.registeredTriptychs,
-            recoveryMessage: model.recoveryMessage,
+            recoveryMessage: routingErrorMessage ?? model.recoveryMessage,
             refreshAssignment: { await model.refresh() },
             portableContainerURL: { await model.portableContainerURL(for: $0) },
             configure: { selection in
@@ -322,11 +289,7 @@ private struct ScholiumBootstrapRoot: View {
               let triptychID = model.workspaceAssignment?.id,
               model.isReadyToOpenWorkspace
         else { return }
-        didRouteToWorkspace = true
-        openWindow(
-            id: "scholium-main",
-            value: TriptychWindowRoute(triptychID: triptychID)
-        )
+        openWorkspace(TriptychWindowRoute(triptychID: triptychID))
     }
 
     /// UI automation supplies an explicit disposable fixture root. Bootstrap
@@ -338,12 +301,19 @@ private struct ScholiumBootstrapRoot: View {
         guard ScholiumRuntimeIsolation.fixtureRootURL() != nil,
               !didRouteToWorkspace
         else { return false }
-        didRouteToWorkspace = true
-        openWindow(
-            id: "scholium-main",
-            value: TriptychWindowRoute()
+        openWorkspace(
+            TriptychWindowRoute(
+                windowID: ScholiumRuntimeIsolation.initialWindowSessionID() ?? UUID()
+            )
         )
         return true
+    }
+
+    private func openWorkspace(_ destination: TriptychWindowRoute) {
+        didRouteToWorkspace = true
+        routingErrorMessage = nil
+        openWindow(id: "scholium-main", value: destination)
+        destinationWindowID = destination.windowID
     }
 }
 
@@ -427,26 +397,37 @@ private struct ScholiumWindowRoot: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
-    @SceneStorage("scholium.windowSessionID") private var storedWindowSessionID = ""
-    @Binding private var route: TriptychWindowRoute?
+    private let route: TriptychWindowRoute
+    private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     @StateObject private var appState: WindowModel
-    @State private var registeredTerminationID: UUID?
+    @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
+    @State private var destinationBootstrapWindowID: UUID?
 
-    init(workspaceStore: WorkspaceStore, route: Binding<TriptychWindowRoute?>) {
-        _route = route
-        let requestedRoute = route.wrappedValue
-        _appState = StateObject(wrappedValue: WindowModel(
+    init(
+        workspaceStore: WorkspaceStore,
+        route: TriptychWindowRoute,
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    ) {
+        self.route = route
+        self.lifecycleRegistry = lifecycleRegistry
+        let model = WindowModel(
             workspaceStore: workspaceStore,
-            nativeWindowID: requestedRoute?.windowID,
-            requestedTriptychID: requestedRoute?.triptychID,
-            requestedInitialDocument: requestedRoute?.initialDocument
+            nativeWindowID: route.windowID,
+            requestedTriptychID: route.triptychID,
+            requestedInitialDocument: route.initialDocument
+        )
+        _appState = StateObject(wrappedValue: model)
+        _windowCoordinator = StateObject(wrappedValue: WorkspaceWindowCoordinator(
+            windowID: route.windowID,
+            appState: model,
+            lifecycleRegistry: lifecycleRegistry
         ))
     }
 
     var body: some View {
         Group {
             if appState.hasCompletedInitialRestore, appState.vaultConfig != nil {
-                ContentView()
+                ContentView(windowCoordinator: windowCoordinator)
             } else {
                 ScholiumLaunchPlaceholderView()
             }
@@ -454,19 +435,10 @@ private struct ScholiumWindowRoot: View {
             .environmentObject(appState)
             .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
-            .focusedSceneValue(\.scholiumWindowModel, appState)
+            .focusedSceneObject(appState)
+            .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
             .background(
-                WindowCloseGuard(
-                    appState: appState,
-                    reduceMotion: reduceMotion,
-                    nativeWindowID: appState.nativeWindowID
-                )
-            )
-            .frame(
-                minWidth: 320,
-                maxWidth: .infinity,
-                minHeight: 520,
-                maxHeight: .infinity
+                WorkspaceWindowAttachment(coordinator: windowCoordinator)
             )
             .fileImporter(
                 isPresented: $appState.showMarkdownImporter,
@@ -495,23 +467,37 @@ private struct ScholiumWindowRoot: View {
                 )
             }
             .preferredColorScheme(colorScheme)
-            .task(id: resolvedWindowSessionID) {
-                if storedWindowSessionID.isEmpty {
-                    storedWindowSessionID = resolvedWindowSessionID.uuidString
-                }
-                await appState.restoreWindowSession(id: resolvedWindowSessionID)
+            .task(id: route.windowID) {
+                windowCoordinator.update(reduceMotion: reduceMotion)
+                await appState.restoreWindowSession(id: route.windowID)
                 redirectUnconfiguredWindowToBootstrapIfNeeded()
                 appState.openRequestedInitialDocumentIfNeeded()
-                registerTerminationFlusher()
+            }
+            .task(id: destinationBootstrapWindowID) {
+                guard let destinationBootstrapWindowID else { return }
+                do {
+                    try await lifecycleRegistry.waitUntilReady(
+                        id: destinationBootstrapWindowID
+                    )
+                    dismissWindow()
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self.destinationBootstrapWindowID = nil
+                    appState.vaultError = error.localizedDescription
+                }
             }
             .onAppear {
-                registerTerminationFlusher()
+                windowCoordinator.activate {
+                    openWindow(id: "scholium-research-record")
+                }
+                windowCoordinator.update(reduceMotion: reduceMotion)
+            }
+            .onChange(of: reduceMotion) { _, reduceMotion in
+                windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onDisappear {
-                if let registeredTerminationID {
-                    ScholiumTerminationCoordinator.shared.unregister(registeredTerminationID)
-                }
-                registeredTerminationID = nil
+                windowCoordinator.detach()
                 appState.persistWindowSessionNow()
             }
     }
@@ -519,43 +505,22 @@ private struct ScholiumWindowRoot: View {
     private func redirectUnconfiguredWindowToBootstrapIfNeeded() {
         guard appState.hasCompletedInitialRestore,
               appState.vaultConfig == nil,
-              appState.workspaceAccessRecovery == nil
+              appState.workspaceAccessRecovery == nil,
+              destinationBootstrapWindowID == nil
         else { return }
-        openWindow(
-            id: "scholium-bootstrap",
-            value: BootstrapWindowRoute(
-                purpose: appState.requestedTriptychIDForRecovery == nil
-                    ? .firstConfiguration
-                    : .missingRegistration,
-                targetTriptychID: appState.requestedTriptychIDForRecovery
+        let destination = BootstrapWindowRoute(
+            purpose: appState.requestedTriptychIDForRecovery == nil
+                ? .firstConfiguration
+                : .missingRegistration,
+            targetTriptychID: appState.requestedTriptychIDForRecovery
+        )
+        windowCoordinator.failReadiness(
+            ScholiumWindowLifecycleError.failed(
+                "The workspace route has no configured Triptych."
             )
         )
-        DispatchQueue.main.async {
-            dismissWindow()
-        }
-    }
-
-    private var resolvedWindowSessionID: UUID {
-        // The deterministic ID belongs only to the initial QA window. Document
-        // tabs are children of this window and share its peripheral state.
-        if route == nil,
-           let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_SESSION_ID"],
-           let id = UUID(uuidString: raw) {
-            return id
-        }
-        return UUID(uuidString: storedWindowSessionID) ?? appState.windowSessionID
-    }
-
-    private func registerTerminationFlusher() {
-        let currentID = appState.windowSessionID
-        if let registeredTerminationID, registeredTerminationID != currentID {
-            ScholiumTerminationCoordinator.shared.unregister(registeredTerminationID)
-        }
-        guard registeredTerminationID != currentID else { return }
-        ScholiumTerminationCoordinator.shared.register(currentID) {
-            try await appState.prepareForWindowClose()
-        }
-        registeredTerminationID = currentID
+        openWindow(id: "scholium-bootstrap", value: destination)
+        destinationBootstrapWindowID = destination.windowID
     }
 
     private var colorScheme: ColorScheme? {
@@ -563,249 +528,6 @@ private struct ScholiumWindowRoot: View {
         case .dark: return .dark
         case .light: return .light
         case .system: return nil
-        }
-    }
-}
-
-private struct WindowCloseGuard: NSViewRepresentable {
-    @ObservedObject var appState: WindowModel
-    let reduceMotion: Bool
-    let nativeWindowID: UUID
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            appState: appState,
-            reduceMotion: reduceMotion,
-            nativeWindowID: nativeWindowID
-        )
-    }
-
-    func makeNSView(context: Context) -> WindowAttachmentView {
-        let view = WindowAttachmentView()
-        view.onWindowAttachment = { [weak coordinator = context.coordinator] window in
-            coordinator?.attach(to: window)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
-        context.coordinator.update(
-            appState: appState,
-            reduceMotion: reduceMotion,
-            nativeWindowID: nativeWindowID
-        )
-        if let window = nsView.window { context.coordinator.attach(to: window) }
-    }
-
-    static func dismantleNSView(_ nsView: WindowAttachmentView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    final class WindowAttachmentView: NSView {
-        var onWindowAttachment: ((NSWindow) -> Void)?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard let window else { return }
-            onWindowAttachment?(window)
-        }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, NSWindowDelegate {
-        var appState: WindowModel
-        private var reduceMotion: Bool
-        private let nativeWindowID: UUID
-        private weak var window: NSWindow?
-        nonisolated(unsafe) private weak var previousDelegate: (any NSWindowDelegate)?
-        private var closeIsAuthorized = false
-        private var flushInFlight = false
-        private var presentationGeneration: UInt64 = 0
-        private var workspaceToolbarController: ScholiumWorkspaceToolbarController?
-
-        init(
-            appState: WindowModel,
-            reduceMotion: Bool,
-            nativeWindowID: UUID
-        ) {
-            self.appState = appState
-            self.reduceMotion = reduceMotion
-            self.nativeWindowID = nativeWindowID
-            super.init()
-        }
-
-        func update(
-            appState: WindowModel,
-            reduceMotion: Bool,
-            nativeWindowID: UUID
-        ) {
-            precondition(nativeWindowID == self.nativeWindowID)
-            self.appState = appState
-            self.reduceMotion = reduceMotion
-            schedulePresentationUpdate()
-        }
-
-        func attach(to window: NSWindow) {
-            if self.window === window, window.delegate === self {
-                schedulePresentationUpdate()
-                installWorkspaceToolbarIfPossible()
-                return
-            }
-            detach()
-            self.window = window
-            window.titleVisibility = .hidden
-            window.tabbingMode = .disallowed
-            applyWindowChrome(to: window)
-            previousDelegate = window.delegate
-            window.delegate = self
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(workspaceSplitRegistryDidChange(_:)),
-                name: ScholiumWorkspaceSplitRegistry.didChangeNotification,
-                object: window
-            )
-            if let requestedWidth = ScholiumRuntimeIsolation.windowWidth() {
-                window.setContentSize(
-                    NSSize(
-                        width: requestedWidth,
-                        height: window.contentLayoutRect.height
-                    )
-                )
-            }
-            applyPresentationIfNeeded()
-            updateWindowWidth(from: window)
-            installWorkspaceToolbarIfPossible()
-        }
-
-        func detach() {
-            if let window {
-                NotificationCenter.default.removeObserver(
-                    self,
-                    name: ScholiumWorkspaceSplitRegistry.didChangeNotification,
-                    object: window
-                )
-                if window.toolbar?.identifier
-                    == ScholiumWorkspaceToolbarController.toolbarIdentifier {
-                    window.toolbar = nil
-                }
-            }
-            workspaceToolbarController = nil
-            if let window, window.delegate === self {
-                window.delegate = previousDelegate
-            }
-            window = nil
-            previousDelegate = nil
-        }
-
-        private func schedulePresentationUpdate() {
-            presentationGeneration &+= 1
-            let generation = presentationGeneration
-            DispatchQueue.main.async { [weak self] in
-                guard let self, generation == self.presentationGeneration else { return }
-                self.applyPresentationIfNeeded()
-            }
-        }
-
-        private func applyPresentationIfNeeded() {
-            guard let window else { return }
-            applyWindowChrome(to: window)
-            installWorkspaceToolbarIfPossible()
-            updateWindowWidth(from: window)
-        }
-
-        private func applyWindowChrome(to window: NSWindow) {
-            // AppKit keeps ownership of the standard window controls and
-            // content-layout guide. The stable opaque region backgrounds extend
-            // beneath the transparent titlebar in every root content state.
-            window.styleMask.insert(.fullSizeContentView)
-            window.titlebarAppearsTransparent = true
-            window.titlebarSeparatorStyle = .none
-            window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
-        }
-
-        private func installWorkspaceToolbarIfPossible() {
-            guard let window else { return }
-            guard let splitViewController = ScholiumWorkspaceSplitRegistry.shared
-                .splitViewController(for: window)
-            else {
-                if window.toolbar?.identifier
-                    == ScholiumWorkspaceToolbarController.toolbarIdentifier {
-                    window.toolbar = nil
-                }
-                workspaceToolbarController = nil
-                return
-            }
-
-            if let workspaceToolbarController,
-               workspaceToolbarController.controls(splitViewController) {
-                workspaceToolbarController.install(in: window)
-                return
-            }
-
-            let controller = ScholiumWorkspaceToolbarController(
-                appState: appState,
-                splitViewController: splitViewController
-            )
-            workspaceToolbarController = controller
-            controller.install(in: window)
-        }
-
-        @objc
-        private func workspaceSplitRegistryDidChange(_ notification: Notification) {
-            guard let changedWindow = notification.object as? NSWindow,
-                  changedWindow === window
-            else { return }
-            installWorkspaceToolbarIfPossible()
-        }
-
-        private func updateWindowWidth(from window: NSWindow) {
-            let width = window.contentLayoutRect.width
-            guard abs(appState.windowWidth - width) > 0.5 else { return }
-            appState.windowWidth = width
-        }
-
-        func windowShouldClose(_ sender: NSWindow) -> Bool {
-            if closeIsAuthorized {
-                closeIsAuthorized = false
-                return true
-            }
-            guard !flushInFlight else { return false }
-            flushInFlight = true
-            Task { @MainActor [weak self, weak sender] in
-                guard let self, let sender else { return }
-                do {
-                    try await appState.prepareForWindowClose()
-                    closeIsAuthorized = true
-                    flushInFlight = false
-                    sender.performClose(nil)
-                } catch {
-                    flushInFlight = false
-                    appState.lastSaveError = error.localizedDescription
-                    appState.showToast(
-                        "Scholium kept this window open because the current note could not be saved. \(error.localizedDescription)",
-                        kind: .error
-                    )
-                }
-            }
-            return false
-        }
-
-        func windowDidResize(_ notification: Notification) {
-            if let resizedWindow = notification.object as? NSWindow,
-               resizedWindow === window {
-                updateWindowWidth(from: resizedWindow)
-            }
-            previousDelegate?.windowDidResize?(notification)
-        }
-
-
-        override func responds(to selector: Selector!) -> Bool {
-            super.responds(to: selector) || previousDelegate?.responds(to: selector) == true
-        }
-
-        override func forwardingTarget(for selector: Selector!) -> Any? {
-            if previousDelegate?.responds(to: selector) == true { return previousDelegate }
-            return super.forwardingTarget(for: selector)
         }
     }
 }
@@ -836,16 +558,16 @@ private struct ScholiumSettingsRoot: View {
     }
 }
 
-private struct ScholiumWindowModelFocusedKey: FocusedValueKey {
-    typealias Value = WindowModel
-}
-
 struct ScholiumSearchActions {
     let begin: (SearchInvocation) -> Void
 }
 
 struct ScholiumSearchActionsFocusedKey: FocusedValueKey {
     typealias Value = ScholiumSearchActions
+}
+
+struct ScholiumWorkspaceWindowActionsFocusedKey: FocusedValueKey {
+    typealias Value = WorkspaceWindowActions
 }
 
 struct ScholiumFocusedResearchFunctionActions {
@@ -857,6 +579,7 @@ struct ScholiumFocusedResearchFunctionActionsKey: FocusedValueKey {
 }
 
 struct ScholiumFocusedEditorActions {
+    let documentID: String
     let isComposing: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
     let canAddComment: () -> Bool
@@ -870,14 +593,14 @@ struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
 }
 
 extension FocusedValues {
-    var scholiumWindowModel: WindowModel? {
-        get { self[ScholiumWindowModelFocusedKey.self] }
-        set { self[ScholiumWindowModelFocusedKey.self] = newValue }
-    }
-
     var scholiumSearchActions: ScholiumSearchActions? {
         get { self[ScholiumSearchActionsFocusedKey.self] }
         set { self[ScholiumSearchActionsFocusedKey.self] = newValue }
+    }
+
+    var scholiumWorkspaceWindowActions: WorkspaceWindowActions? {
+        get { self[ScholiumWorkspaceWindowActionsFocusedKey.self] }
+        set { self[ScholiumWorkspaceWindowActionsFocusedKey.self] = newValue }
     }
 
     var scholiumResearchFunctionActions: ScholiumFocusedResearchFunctionActions? {
@@ -892,8 +615,9 @@ extension FocusedValues {
 }
 
 private struct ScholiumCommands: Commands {
-    @FocusedValue(\.scholiumWindowModel) private var appState
+    @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
+    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
     @FocusedValue(\.scholiumResearchFunctionActions) private var researchFunctionActions
     @FocusedValue(\.scholiumEditorActions) private var editorActions
     @Environment(\.openWindow) private var openWindow
@@ -1092,7 +816,17 @@ private struct ScholiumCommands: Commands {
                         || editorActions?.isComposing == true
                 )
         }
-        CommandGroup(after: .sidebar) {
+        CommandGroup(replacing: .sidebar) {
+            Button(
+                ScholiumL10n.dynamicString(
+                    appState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar"
+                )
+            ) {
+                guard let appState else { return }
+                workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
+            }
+            .keyboardShortcut("s", modifiers: [.command, .control])
+            .disabled(workspaceWindowActions == nil)
             Divider()
             Button("Search…") {
                 searchActions?.begin(.general)
@@ -1107,10 +841,12 @@ private struct ScholiumCommands: Commands {
                 )
             ) {
                 guard let appState else { return }
-                appState.setResearchInspectorVisible(!appState.backlinksVisible)
+                workspaceWindowActions?.setResearchInspectorVisible(
+                    !appState.backlinksVisible
+                )
             }
             .keyboardShortcut("b", modifiers: [.command, .option])
-            .disabled(appState?.currentNote == nil)
+            .disabled(appState?.currentNote == nil || workspaceWindowActions == nil)
             Menu("Document Mode") {
                 Button("Read") { appState?.requestDocumentMode(.read) }
                 Button("Live Preview") { appState?.requestDocumentMode(.livePreview) }
@@ -1121,20 +857,38 @@ private struct ScholiumCommands: Commands {
             .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
             Divider()
             Menu("Document Text Size") {
-                Button("Increase Text Size") { appState?.adjustDocumentTextScale(by: 0.1) }
+                Button("Increase Text Size") {
+                    appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
+                }
                     .keyboardShortcut("=", modifiers: [.command])
-                    .disabled(appState?.currentNote == nil || appState?.documentTextScale == 2.0)
-                Button("Decrease Text Size") { appState?.adjustDocumentTextScale(by: -0.1) }
+                    .disabled(
+                        appState?.currentNote == nil
+                            || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                    )
+                Button("Decrease Text Size") {
+                    appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
+                }
                     .keyboardShortcut("-", modifiers: [.command])
-                    .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.0)
+                    .disabled(
+                        appState?.currentNote == nil
+                            || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
+                    )
                 Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
                     .keyboardShortcut("0", modifiers: [.command])
-                    .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.0)
+                    .disabled(
+                        appState?.currentNote == nil
+                            || appState?.documentTextScale == ScholiumMetrics.Document.defaultTextScale
+                    )
                 Divider()
                 Button("150%") { appState?.setDocumentTextScale(1.5) }
                     .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.5)
-                Button("200%") { appState?.setDocumentTextScale(2.0) }
-                    .disabled(appState?.currentNote == nil || appState?.documentTextScale == 2.0)
+                Button("200%") {
+                    appState?.setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
+                }
+                    .disabled(
+                        appState?.currentNote == nil
+                            || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                    )
             }
             .disabled(appState?.currentNote == nil)
             Menu("Appearance") {
@@ -1169,16 +923,14 @@ private struct ScholiumCommands: Commands {
                 }
             }
             Divider()
-            Button("Show Research Record") {
-                openWindow(id: "scholium-research-record")
-            }
+            WindowVisibilityToggle(windowID: "scholium-research-record")
             .disabled(appState?.currentNote == nil)
         }
         #if DEBUG
         if qaEditorFaultsAreEnabled {
             CommandMenu("QA") {
                 Button("Simulate Editor Process Termination") {
-                    guard let documentID = appState?.currentNote?.relativePath else { return }
+                    guard let documentID = editorActions?.documentID else { return }
                     DistributedNotificationCenter.default().postNotificationName(
                         Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
                         object: nil,
@@ -1247,22 +999,6 @@ private struct ScholiumCommands: Commands {
 }
 
 // MARK: - App State
-
-enum LayoutMode: String, Equatable, Sendable {
-    case wide
-    case medium
-    case compact
-
-    init(windowWidth: CGFloat) {
-        if windowWidth >= ScholiumMetrics.Workspace.wideLayoutThreshold {
-            self = .wide
-        } else if windowWidth >= 980 {
-            self = .medium
-        } else {
-            self = .compact
-        }
-    }
-}
 
 struct WindowPropertyFilterOptions: Equatable {
     let keys: [String]
@@ -1375,7 +1111,6 @@ final class WindowModel: ObservableObject {
     private(set) var availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: [])
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published var sidebarVisible = true
-    @Published var windowWidth: CGFloat = 1380
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var toastMessage: Toast?
     @Published var colorScheme: ColorSchemeChoice = .system {
@@ -1385,7 +1120,7 @@ final class WindowModel: ObservableObject {
     }
     @Published var allTags: [String] = []
     @Published var savedSearches: [SavedSearch] = []
-    @Published var documentTextScale: Double = 1.0
+    @Published var documentTextScale = ScholiumMetrics.Document.defaultTextScale
     @Published var documentRevisions: [String: DocumentFingerprint] = [:]
     @Published var triptychSettings = TriptychSettings()
     @Published var workspaceAssignment: TriptychAssignment?
@@ -1666,6 +1401,9 @@ final class WindowModel: ObservableObject {
     private var transitionTail: Task<Void, Never>?
     private var savedSearchMutationTail: Task<Void, Never>?
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
+    #if DEBUG
+    private var qaPerformanceModeNotificationTokens: [Int32] = []
+    #endif
 
     init(
         workspaceStore: WorkspaceStore,
@@ -1718,6 +1456,28 @@ final class WindowModel: ObservableObject {
                 self?.receiveWorkspaceEvents(events)
             }
             .store(in: &workspaceCancellables)
+        #if DEBUG
+        if Bundle.main.bundleIdentifier == "com.scholium.qa",
+           ProcessInfo.processInfo.arguments.contains(
+               "--scholium-performance-editor-mode-notifications"
+           ) {
+            let requests: [(String, NotePresentationMode)] = [
+                ("com.scholium.qa.performance-editor-mode.live-preview", .livePreview),
+                ("com.scholium.qa.performance-editor-mode.source", .source),
+            ]
+            for (name, mode) in requests {
+                var token: Int32 = 0
+                let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.requestPerformanceEditorMode(mode)
+                    }
+                }
+                if status == NOTIFY_STATUS_OK {
+                    qaPerformanceModeNotificationTokens.append(token)
+                }
+            }
+        }
+        #endif
         if let saved = UserDefaults.standard.string(forKey: "colorScheme"),
            let choice = ColorSchemeChoice(rawValue: saved) {
             colorScheme = choice
@@ -1744,15 +1504,18 @@ final class WindowModel: ObservableObject {
         observeWindowSessionChanges()
     }
 
+    deinit {
+        #if DEBUG
+        for token in qaPerformanceModeNotificationTokens {
+            notify_cancel(token)
+        }
+        #endif
+    }
+
     // MARK: Computed Properties
     private(set) var lifecycleMutationGeneration: UInt64 {
         get { documentController.lifecycleMutationGeneration }
         set { documentController.lifecycleMutationGeneration = newValue }
-    }
-
-    private(set) var researchRecordRequestGeneration: UInt64 {
-        get { researchController.researchRecordRequestGeneration }
-        set { researchController.researchRecordRequestGeneration = newValue }
     }
 
     var pendingSourceLine: Int? {
@@ -1854,11 +1617,26 @@ final class WindowModel: ObservableObject {
     }
 
     var currentDocumentVaultID: UUID? {
-        currentDocumentDescriptor?.reference.vaultID
+        if let vaultID = documentController.selectedDocument?.vaultID {
+            return vaultID
+        }
+        guard noteLocationScope == .workspace,
+              currentNote != nil else { return nil }
+        // Identity-recovery notes deliberately have no stable document
+        // descriptor yet, but they remain vault-qualified by the Library
+        // projection that selected them. Preserve that vault ownership so the
+        // Document surface can present the authoritative recovery state
+        // without inventing a stable note identity or enabling writes.
+        return currentRegisteredVault?.id
     }
 
     var currentDocumentVaultRole: VaultRole {
-        currentDocumentDescriptor?.reference.vaultRole ?? .other
+        if let role = currentDocumentDescriptor?.reference.vaultRole {
+            return role
+        }
+        guard noteLocationScope == .workspace,
+              currentNote != nil else { return .other }
+        return currentRegisteredVault?.role ?? .other
     }
 
     var currentDocumentVault: RegisteredVault? {
@@ -2044,7 +1822,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    var layoutMode: LayoutMode { LayoutMode(windowWidth: windowWidth) }
     var canEditCurrentNote: Bool {
         if case .unclassified = documentController.selectedDocument {
             return currentNote != nil
@@ -2087,26 +1864,30 @@ final class WindowModel: ObservableObject {
 
     var currentDocumentIdentityAmbiguity: NoteIdentityAmbiguity? {
         guard let path = currentNote?.relativePath else { return nil }
-        if let snapshot = currentDocumentVaultSnapshot {
-            return snapshot.identityRecovery.ambiguities.first { $0.relativePath == path }
+        if let ambiguity = currentDocumentVaultSnapshot?.identityRecovery.ambiguities.first(
+            where: { $0.relativePath == path }
+        ) {
+            return ambiguity
         }
         return identityAmbiguity(for: path)
     }
 
     var currentDocumentPendingIdentityRebinding: NoteIdentityPendingRebinding? {
         guard let path = currentNote?.relativePath else { return nil }
-        if let snapshot = currentDocumentVaultSnapshot {
-            return snapshot.identityRecovery.pendingRebindings.first { $0.relativePath == path }
+        if let rebinding = currentDocumentVaultSnapshot?.identityRecovery.pendingRebindings.first(
+            where: { $0.relativePath == path }
+        ) {
+            return rebinding
         }
         return pendingIdentityRebinding(for: path)
     }
 
     var currentDocumentIdentityMigrationFailure: NoteIdentityMigrationFailure? {
         guard let path = currentNote?.relativePath else { return nil }
-        if let snapshot = currentDocumentVaultSnapshot {
-            return snapshot.identityRecovery.failures.first {
-                $0.rebinding.relativePath == path
-            }
+        if let failure = currentDocumentVaultSnapshot?.identityRecovery.failures.first(
+            where: { $0.rebinding.relativePath == path }
+        ) {
+            return failure
         }
         return identityMigrationFailure(for: path)
     }
@@ -2221,6 +2002,10 @@ final class WindowModel: ObservableObject {
         flush: @escaping @MainActor () async throws -> Void,
         captureForReconstruction: @escaping @MainActor () async throws -> Void
     ) {
+        if let previous = editorFlushRegistration,
+           previous.token != token {
+            workspaceStore.unregisterEditorFlush(token: previous.token)
+        }
         editorFlushRegistration = EditorFlushRegistration(
             token: token,
             relativePath: relativePath,
@@ -2239,8 +2024,25 @@ final class WindowModel: ObservableObject {
     }
 
     func unregisterEditorFlush(token: UUID) {
+        guard let registration = editorFlushRegistration,
+              registration.token == token else {
+            workspaceStore.unregisterEditorFlush(token: token)
+            return
+        }
+        // SwiftUI may detach and reattach NoteContentView while the same
+        // document session remains selected. Its stable token is also used by
+        // the replacement view, so treating that transient onDisappear as the
+        // end of ownership can unregister the newly installed flush closure.
+        // The selected session remains the owner until navigation replaces it,
+        // the last tab closes, or window shutdown explicitly clears it.
+        guard selectedDocumentPath != registration.relativePath else { return }
         workspaceStore.unregisterEditorFlush(token: token)
-        guard editorFlushRegistration?.token == token else { return }
+        editorFlushRegistration = nil
+    }
+
+    private func clearEditorFlushRegistration() {
+        guard let registration = editorFlushRegistration else { return }
+        workspaceStore.unregisterEditorFlush(token: registration.token)
         editorFlushRegistration = nil
     }
 
@@ -2264,6 +2066,7 @@ final class WindowModel: ObservableObject {
     func prepareForWindowClose() async throws {
         try await flushRegisteredEditorIfNeeded()
         try await persistWindowSessionBeforeClose()
+        clearEditorFlushRegistration()
     }
 
     /// Serializes every transition that can replace the active document view.
@@ -2533,6 +2336,32 @@ final class WindowModel: ObservableObject {
             requestPresentationMode = mode
         }
     }
+
+    #if DEBUG
+    /// Drives the retained-editor performance scenario through the current
+    /// document session instead of a one-shot SwiftUI presentation request.
+    /// The editor bridge still performs the real mode transition and reports
+    /// readiness only after CodeMirror acknowledges it.
+    private func requestPerformanceEditorMode(_ mode: NotePresentationMode) {
+        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
+              ProcessInfo.processInfo.arguments.contains(
+                  "--scholium-performance-editor-mode-notifications"
+              ),
+              mode != .read,
+              canEditCurrentNote,
+              let descriptor = currentDocumentDescriptor else { return }
+
+        let session = documentController.session(for: descriptor)
+        guard session.isEditing, session.editorSession.isLoaded else {
+            requestDocumentMode(mode)
+            return
+        }
+        guard session.editorSession.context?.composing != true else { return }
+
+        session.presentationMode = mode
+        session.retainedEditorMode = mode
+    }
+    #endif
 
     func requestResearcherComments(
         at path: String,
@@ -2811,9 +2640,9 @@ final class WindowModel: ObservableObject {
 
     // MARK: Actions
 
-    /// Changes the per-window Library presentation only in response to an
-    /// explicit researcher action or restoration of that earlier choice.
-    func setLibraryVisible(_ visible: Bool) {
+    /// Mirrors the native Sidebar state for focused labels and next-session
+    /// restoration. Researcher intents enter through WorkspaceWindowActions.
+    func recordLibraryVisibility(_ visible: Bool) {
         guard sidebarVisible != visible else { return }
         sidebarVisible = visible
     }
@@ -2873,15 +2702,10 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    /// Updates the researcher-requested Inspector visibility. The native split
-    /// controller owns the resulting collapse animation and geometry.
-    func setResearchInspectorVisible(_ visible: Bool) {
+    /// Mirrors the native Inspector state without driving its geometry.
+    func recordResearchInspectorVisibility(_ visible: Bool) {
         guard visible != backlinksVisible else { return }
         backlinksVisible = visible
-    }
-
-    func requestResearchRecord() {
-        researchRecordRequestGeneration &+= 1
     }
 
     func presentationMode(for path: String) -> NotePresentationMode {
@@ -2987,7 +2811,14 @@ final class WindowModel: ObservableObject {
         discoveryController.replaceSearchCriteria(SearchWorkspaceState(
             scope: restoredPresentation.searchState.scope
         ))
-        documentTextScale = min(2.0, max(1.0, restoredPresentation.documentTextScale ?? 1.0))
+        documentTextScale = min(
+            ScholiumMetrics.Document.maximumTextScale,
+            max(
+                ScholiumMetrics.Document.minimumTextScale,
+                restoredPresentation.documentTextScale
+                    ?? ScholiumMetrics.Document.defaultTextScale
+            )
+        )
         documentController.restorePresentationState(
             modes: restoredPresentation.documentModes,
             scrollPositions: restoredPresentation.scrollPositions,
@@ -3096,12 +2927,15 @@ final class WindowModel: ObservableObject {
     }
 
     func setDocumentTextScale(_ requestedScale: Double) {
-        let adjusted = min(2.0, max(1.0, requestedScale))
+        let adjusted = min(
+            ScholiumMetrics.Document.maximumTextScale,
+            max(ScholiumMetrics.Document.minimumTextScale, requestedScale)
+        )
         documentTextScale = (adjusted * 10).rounded() / 10
     }
 
     func resetDocumentTextScale() {
-        documentTextScale = 1.0
+        documentTextScale = ScholiumMetrics.Document.defaultTextScale
     }
 
     func refreshWorkspaceAssignment(preferredTriptychID: UUID? = nil) async {
@@ -4579,12 +4413,15 @@ final class WindowModel: ObservableObject {
                 documentController.selectDocument(document)
             }
             synchronizeDocumentTabs(after: tabActivation)
-        case .unavailable(let relativePath):
+        case .unavailable(let vaultID, let relativePath):
             guard notes.contains(where: { $0.relativePath == relativePath }) else {
                 throw WindowNavigationError.noteUnavailable(relativePath)
             }
             PerformanceProbe.shared.beginReadActivation(documentID: relativePath)
-            documentController.selectUnavailableDocument(relativePath: relativePath)
+            documentController.selectUnavailableDocument(
+                vaultID: vaultID,
+                relativePath: relativePath
+            )
             synchronizeDocumentTabs(after: tabActivation)
         }
     }
@@ -4609,11 +4446,18 @@ final class WindowModel: ObservableObject {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
         PerformanceProbe.shared.beginReadActivation(documentID: snapshot.id.relativePath)
-        documentController.installOpenedDocument(
-            snapshot,
-            vaultName: vault.name,
-            vaultRole: vault.role
-        )
+        if snapshot.stableIdentity.resolvedID != nil {
+            documentController.installOpenedDocument(
+                snapshot,
+                vaultName: vault.name,
+                vaultRole: vault.role
+            )
+        } else {
+            documentController.selectUnavailableDocument(
+                vaultID: vault.id,
+                relativePath: snapshot.id.relativePath
+            )
+        }
         synchronizeDocumentTabs(after: tabActivation)
     }
 
@@ -4769,7 +4613,11 @@ final class WindowModel: ObservableObject {
         if noteLocationScope == .unclassified {
             return .unclassified(relativePath: path)
         }
-        return .unavailable(relativePath: path)
+        guard let vaultID = notes.first(where: { $0.relativePath == path })?
+            .workspaceSnapshot?.id.vaultID ?? currentRegisteredVault?.id else {
+            return .unclassified(relativePath: path)
+        }
+        return .unavailable(vaultID: vaultID, relativePath: path)
     }
 
     private func refreshSelectedDocumentProjection() {

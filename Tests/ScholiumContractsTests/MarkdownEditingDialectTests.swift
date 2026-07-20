@@ -8,7 +8,7 @@ struct MarkdownEditingDialectTests {
     func dialectProjection() throws {
         let dialect = MarkdownEditingDialect.current
 
-        #expect(dialect.version == 1)
+        #expect(dialect.version == 2)
         #expect(dialect.callouts.map(\.identifier) == [
             "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
         ])
@@ -18,6 +18,17 @@ struct MarkdownEditingDialectTests {
         #expect(dialect.vectorLinkOperators.map(\.kind) == [
             .neutral, .supportsTarget, .supportedByTarget, .incompatible,
         ])
+        #expect(dialect.footnotes.namedReferenceOpening == "[^")
+        #expect(dialect.footnotes.namedReferenceClosing == "]")
+        #expect(dialect.footnotes.definitionSeparator == ":")
+        #expect(dialect.footnotes.inlineOpening == "^[")
+        #expect(dialect.footnotes.continuationIndentSpaces == 2)
+        #expect(dialect.footnotes.allowsTabContinuation)
+        #expect(dialect.footnotes.caseSensitiveIdentifiers)
+        #expect(dialect.footnotes.ordinalByFirstReference)
+        #expect(dialect.mathematics.inlineDelimiter == "$")
+        #expect(dialect.mathematics.displayDelimiter == "$$")
+        #expect(dialect.mathematics.singleDollarInline)
 
         let encoded = try JSONEncoder().encode(dialect)
         #expect(try JSONDecoder().decode(MarkdownEditingDialect.self, from: encoded) == dialect)
@@ -68,7 +79,62 @@ struct MarkdownEditingDialectTests {
                 vectorKind: $0.vectorKind?.rawValue
             ) } == fixture.links)
             #expect(semantic.footnoteDefinitions.map(\.identifier) == fixture.footnoteDefinitions)
+            #expect(semantic.footnoteDefinitions.map(\.content) == fixture.footnoteDefinitionContents)
             #expect(semantic.footnoteReferences.map(\.identifier) == fixture.footnoteReferences)
+            #expect(semantic.mathExpressions.map { MathFixture(
+                kind: $0.kind.rawValue,
+                content: $0.content
+            ) } == fixture.mathExpressions)
+            let source = fixture.source as NSString
+            #expect(semantic.callouts.map { source.substring(with: $0.headerSpan.nsRange) }
+                == fixture.sourceSlices.calloutHeaders)
+            #expect(semantic.links.map { source.substring(with: $0.span.nsRange) }
+                == fixture.sourceSlices.links)
+            #expect(semantic.footnoteDefinitions.map { source.substring(with: $0.span.nsRange) }
+                == fixture.sourceSlices.footnoteDefinitions)
+            #expect(semantic.footnoteReferences.map { source.substring(with: $0.span.nsRange) }
+                == fixture.sourceSlices.footnoteReferences)
+            #expect(semantic.mathExpressions.map { expression in
+                MathSourceSlice(
+                    source: source.substring(with: expression.span.nsRange),
+                    content: source.substring(with: expression.contentSpan.nsRange)
+                )
+            } == fixture.sourceSlices.mathExpressions)
+        }
+    }
+
+    @Test("Shared base-syntax fixtures match exact CommonMark and GFM source spans")
+    func baseSyntaxParityFixtures() throws {
+        let url = try #require(Bundle.module.url(
+            forResource: "base-syntax-parity-fixtures",
+            withExtension: "json",
+            subdirectory: "Fixtures"
+        ))
+        let fixtures = try JSONDecoder().decode([BaseSyntaxFixture].self, from: Data(contentsOf: url))
+        for fixture in fixtures {
+            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+                relativePath: "Fixture.md",
+                rawContent: fixture.source
+            ))
+            let source = fixture.source as NSString
+            let blocks = semantic.blocks.map {
+                LocatedSyntax(
+                    kind: $0.kind.rawValue,
+                    from: $0.span.utf16LowerBound,
+                    to: $0.span.utf16UpperBound,
+                    source: source.substring(with: $0.span.nsRange)
+                )
+            }.sorted(by: LocatedSyntax.precedes)
+            let inlines = semantic.inlines.map {
+                LocatedSyntax(
+                    kind: $0.kind.rawValue,
+                    from: $0.span.utf16LowerBound,
+                    to: $0.span.utf16UpperBound,
+                    source: source.substring(with: $0.span.nsRange)
+                )
+            }.sorted(by: LocatedSyntax.precedes)
+            #expect(blocks == fixture.blocks)
+            #expect(inlines == fixture.inlines)
         }
     }
 
@@ -84,11 +150,52 @@ struct MarkdownEditingDialectTests {
         let callouts: [String]
         let links: [LinkFixture]
         let footnoteDefinitions: [String]
+        let footnoteDefinitionContents: [String]
         let footnoteReferences: [String]
+        let mathExpressions: [MathFixture]
+        let sourceSlices: SourceSlices
+    }
+
+    private struct BaseSyntaxFixture: Decodable {
+        let name: String
+        let source: String
+        let blocks: [LocatedSyntax]
+        let inlines: [LocatedSyntax]
+    }
+
+    private struct LocatedSyntax: Decodable, Equatable {
+        let kind: String
+        let from: Int
+        let to: Int
+        let source: String
+
+        static func precedes(_ left: Self, _ right: Self) -> Bool {
+            if left.from != right.from { return left.from < right.from }
+            if left.to != right.to { return left.to > right.to }
+            return left.kind < right.kind
+        }
     }
 
     private struct LinkFixture: Codable, Equatable {
         let target: String
         let vectorKind: String?
+    }
+
+    private struct MathFixture: Codable, Equatable {
+        let kind: String
+        let content: String
+    }
+
+    private struct SourceSlices: Decodable {
+        let calloutHeaders: [String]
+        let links: [String]
+        let footnoteDefinitions: [String]
+        let footnoteReferences: [String]
+        let mathExpressions: [MathSourceSlice]
+    }
+
+    private struct MathSourceSlice: Decodable, Equatable {
+        let source: String
+        let content: String
     }
 }

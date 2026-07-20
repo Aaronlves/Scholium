@@ -49,7 +49,7 @@ struct WorkspaceSettingsArchitectureTests {
         let appSource = try String(contentsOf: appURL, encoding: .utf8)
         let rootStart = try #require(appSource.range(of: "private struct ScholiumSettingsRoot"))
         let rootEnd = try #require(
-            appSource.range(of: "private struct ScholiumWindowModelFocusedKey", range: rootStart.upperBound..<appSource.endIndex)
+            appSource.range(of: "struct ScholiumSearchActions", range: rootStart.upperBound..<appSource.endIndex)
         )
         let rootSource = String(appSource[rootStart.lowerBound..<rootEnd.lowerBound])
 

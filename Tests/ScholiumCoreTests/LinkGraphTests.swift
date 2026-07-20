@@ -43,6 +43,34 @@ struct LinkGraphTests {
         #expect(support?.objectNote == analysisID)
     }
 
+    @Test("Unclosed comments never publish hidden links into GraphSnapshot")
+    func unclosedCommentGraphBoundary() {
+        let vaultID = UUID()
+        let source = NoteDocument(
+            relativePath: "Source.md",
+            rawContent: "Visible.\n%%\n+[[Hidden Target]]"
+        )
+        let target = NoteDocument(relativePath: "Hidden Target.md", rawContent: "# Hidden Target")
+        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath)
+        let targetID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath)
+        let documents = [
+            sourceID: MarkdownSemanticDocument(parsing: source),
+            targetID: MarkdownSemanticDocument(parsing: target),
+        ]
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: [
+                LinkCatalogNote(vaultID: vaultID, document: source, semantic: documents[sourceID]),
+                LinkCatalogNote(vaultID: vaultID, document: target, semantic: documents[targetID]),
+            ],
+            documents: documents
+        )
+
+        #expect(graph.outgoing[sourceID, default: []].isEmpty)
+        #expect(graph.incoming[targetID, default: []].isEmpty)
+        #expect(graph.relationships.isEmpty)
+    }
+
     @Test("Relationship endpoints remain vault-qualified when relative paths collide")
     func crossVaultRelationshipIdentity() {
         let analysisVault = UUID()

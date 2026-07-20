@@ -2,44 +2,58 @@ import AppKit
 import SwiftUI
 
 /// One native three-region workspace. Library, Document, and Apparatus are
-/// siblings in a single NSSplitViewController; AppKit owns their divider and
-/// Inspector behavior.
+/// siblings in a single NSSplitViewController; AppKit owns resizing, divider
+/// geometry, compression, collapse transitions, and live collapsed state.
 struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View>:
     NSViewControllerRepresentable
 {
-    let libraryVisible: Bool
-    let apparatusVisible: Bool
-    let reduceMotion: Bool
+    let initialLibraryVisible: Bool
+    let initialApparatusVisible: Bool
     let documentTabs: [DocumentTabItem]
     let selectedDocumentTabID: UUID?
     let selectDocumentTab: (UUID) -> Void
     let closeDocumentTab: (UUID) -> Void
+    let libraryVisibilityDidChange: (Bool) -> Void
     let researchInspectorVisibilityDidChange: (Bool) -> Void
+    let splitControllerDidAttach: @MainActor (
+        any ScholiumWorkspaceSplitControlling
+    ) -> Void
+    let splitControllerDidDetach: @MainActor (
+        any ScholiumWorkspaceSplitControlling
+    ) -> Void
     let library: Library
     let document: Document
     let apparatus: Apparatus
 
     init(
-        libraryVisible: Bool,
-        apparatusVisible: Bool,
-        reduceMotion: Bool,
+        initialLibraryVisible: Bool,
+        initialApparatusVisible: Bool,
         documentTabs: [DocumentTabItem],
         selectedDocumentTabID: UUID?,
         selectDocumentTab: @escaping (UUID) -> Void,
         closeDocumentTab: @escaping (UUID) -> Void,
+        libraryVisibilityDidChange: @escaping (Bool) -> Void,
         researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
+        splitControllerDidAttach: @escaping @MainActor (
+            any ScholiumWorkspaceSplitControlling
+        ) -> Void,
+        splitControllerDidDetach: @escaping @MainActor (
+            any ScholiumWorkspaceSplitControlling
+        ) -> Void,
         @ViewBuilder library: () -> Library,
         @ViewBuilder document: () -> Document,
         @ViewBuilder apparatus: () -> Apparatus
     ) {
-        self.libraryVisible = libraryVisible
-        self.apparatusVisible = apparatusVisible
-        self.reduceMotion = reduceMotion
+        self.initialLibraryVisible = initialLibraryVisible
+        self.initialApparatusVisible = initialApparatusVisible
         self.documentTabs = documentTabs
         self.selectedDocumentTabID = selectedDocumentTabID
         self.selectDocumentTab = selectDocumentTab
         self.closeDocumentTab = closeDocumentTab
+        self.libraryVisibilityDidChange = libraryVisibilityDidChange
         self.researchInspectorVisibilityDidChange = researchInspectorVisibilityDidChange
+        self.splitControllerDidAttach = splitControllerDidAttach
+        self.splitControllerDidDetach = splitControllerDidDetach
         self.library = library()
         self.document = document()
         self.apparatus = apparatus()
@@ -47,13 +61,16 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
 
     func makeNSViewController(context: Context) -> Controller {
         let controller = Controller(
-            libraryVisible: libraryVisible,
-            apparatusVisible: apparatusVisible,
+            initialLibraryVisible: initialLibraryVisible,
+            initialApparatusVisible: initialApparatusVisible,
             documentTabs: documentTabs,
             selectedDocumentTabID: selectedDocumentTabID,
             selectDocumentTab: selectDocumentTab,
             closeDocumentTab: closeDocumentTab,
+            libraryVisibilityDidChange: libraryVisibilityDidChange,
             researchInspectorVisibilityDidChange: researchInspectorVisibilityDidChange,
+            splitControllerDidAttach: splitControllerDidAttach,
+            splitControllerDidDetach: splitControllerDidDetach,
             library: library,
             document: document,
             apparatus: apparatus
@@ -63,7 +80,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
     }
 
     func updateNSViewController(_ controller: Controller, context: Context) {
-        controller.scheduleUpdate(
+        controller.update(
             library: library,
             document: document,
             apparatus: apparatus,
@@ -71,56 +88,59 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             selectedDocumentTabID: selectedDocumentTabID,
             selectDocumentTab: selectDocumentTab,
             closeDocumentTab: closeDocumentTab,
+            libraryVisibilityDidChange: libraryVisibilityDidChange,
             researchInspectorVisibilityDidChange: researchInspectorVisibilityDidChange,
-            libraryVisible: libraryVisible,
-            apparatusVisible: apparatusVisible,
-            animated: !reduceMotion
+            splitControllerDidAttach: splitControllerDidAttach,
+            splitControllerDidDetach: splitControllerDidDetach
         )
     }
 
     @MainActor
-    final class Controller: NSSplitViewController {
+    final class Controller: NSSplitViewController, ScholiumWorkspaceSplitControlling {
         private let libraryHost: NSHostingController<Library>
         private let documentTabsController: ScholiumDocumentTabsViewController<Document>
         private let apparatusHost: NSHostingController<Apparatus>
         private var libraryItem: NSSplitViewItem!
         private var documentItem: NSSplitViewItem!
         private var apparatusItem: NSSplitViewItem!
-        private var lastLibraryVisible: Bool
-        private var lastApparatusVisible: Bool
+        private let initialLibraryVisible: Bool
+        private let initialApparatusVisible: Bool
+        private var didApplyInitialVisibility = false
+        private var observesVisibility = false
+        private var libraryVisibilityDidChange: (Bool) -> Void
         private var researchInspectorVisibilityDidChange: (Bool) -> Void
-        private var observesResearchInspectorVisibility = false
-        private var pendingUpdate: (
-            library: Library,
-            document: Document,
-            apparatus: Apparatus,
-            documentTabs: [DocumentTabItem],
-            selectedDocumentTabID: UUID?,
-            selectDocumentTab: (UUID) -> Void,
-            closeDocumentTab: (UUID) -> Void,
-            researchInspectorVisibilityDidChange: (Bool) -> Void,
-            libraryVisible: Bool,
-            apparatusVisible: Bool,
-            animated: Bool
-        )?
-        private var isUpdateScheduled = false
-        private weak var registeredWindow: NSWindow?
+        private var splitControllerDidAttach: @MainActor (
+            any ScholiumWorkspaceSplitControlling
+        ) -> Void
+        private var splitControllerDidDetach: @MainActor (
+            any ScholiumWorkspaceSplitControlling
+        ) -> Void
 
         init(
-            libraryVisible: Bool,
-            apparatusVisible: Bool,
+            initialLibraryVisible: Bool,
+            initialApparatusVisible: Bool,
             documentTabs: [DocumentTabItem],
             selectedDocumentTabID: UUID?,
             selectDocumentTab: @escaping (UUID) -> Void,
             closeDocumentTab: @escaping (UUID) -> Void,
+            libraryVisibilityDidChange: @escaping (Bool) -> Void,
             researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
+            splitControllerDidAttach: @escaping @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void,
+            splitControllerDidDetach: @escaping @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void,
             library: Library,
             document: Document,
             apparatus: Apparatus
         ) {
-            lastLibraryVisible = libraryVisible
-            lastApparatusVisible = apparatusVisible
+            self.initialLibraryVisible = initialLibraryVisible
+            self.initialApparatusVisible = initialApparatusVisible
+            self.libraryVisibilityDidChange = libraryVisibilityDidChange
             self.researchInspectorVisibilityDidChange = researchInspectorVisibilityDidChange
+            self.splitControllerDidAttach = splitControllerDidAttach
+            self.splitControllerDidDetach = splitControllerDidDetach
             let libraryHost = NSHostingController(rootView: library)
             let documentTabsController = ScholiumDocumentTabsViewController(
                 document: document,
@@ -141,26 +161,31 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             fatalError("ScholiumWorkspaceSplitView is code-only")
         }
 
+        var nativeSplitViewController: NSSplitViewController { self }
+
+        var libraryIsVisible: Bool {
+            isViewLoaded && libraryItem != nil && !libraryItem.isCollapsed
+        }
+
+        var researchInspectorIsVisible: Bool {
+            isViewLoaded && apparatusItem != nil && !apparatusItem.isCollapsed
+        }
+
         override func viewDidLoad() {
             super.viewDidLoad()
             splitView.identifier = ScholiumWorkspaceSplitViewIdentifier.value
             splitView.isVertical = true
             splitView.dividerStyle = .thin
-            // The peripheral columns are genuine AppKit roles. Besides their
-            // collapse semantics, these roles let AppKit coordinate the native
-            // tab bar and toolbar tracking separators with the same split view.
+
             libraryItem = NSSplitViewItem(sidebarWithViewController: libraryHost)
             libraryItem.canCollapse = true
-            libraryItem.canCollapseFromWindowResize = false
             libraryItem.allowsFullHeightLayout = true
-            libraryItem.automaticallyAdjustsSafeAreaInsets = false
             libraryItem.titlebarSeparatorStyle = .line
 
             documentItem = NSSplitViewItem(viewController: documentTabsController)
             documentItem.canCollapse = false
             documentItem.canCollapseFromWindowResize = false
             documentItem.allowsFullHeightLayout = true
-            documentItem.automaticallyAdjustsSafeAreaInsets = false
             documentItem.titlebarSeparatorStyle = .line
 
             apparatusItem = NSSplitViewItem(
@@ -170,37 +195,30 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             addSplitViewItem(libraryItem)
             addSplitViewItem(documentItem)
             addSplitViewItem(apparatusItem)
-            libraryItem.isCollapsed = !lastLibraryVisible
-            observesResearchInspectorVisibility = true
         }
 
         override func viewWillAppear() {
             super.viewWillAppear()
-            // Let the semantic Inspector enter an attached split hierarchy in
-            // its native default state before applying the window's saved
-            // visibility. Collapsing it while the controller is detached
-            // prevents AppKit from establishing the default Inspector width,
-            // leaving no native geometry for a later toggle to restore.
-            reconcileVisibility(animated: false)
+            guard !didApplyInitialVisibility else { return }
+            didApplyInitialVisibility = true
+            setLibraryVisible(initialLibraryVisible, animated: false)
+            setResearchInspectorVisible(initialApparatusVisible, animated: false)
+            observesVisibility = true
+            reportVisibility()
         }
 
         override func viewDidAppear() {
             super.viewDidAppear()
-            guard let window = view.window else { return }
-            registeredWindow = window
-            ScholiumWorkspaceSplitRegistry.shared.register(self, in: window)
+            splitControllerDidAttach(self)
+            reportVisibility()
         }
 
         override func viewDidDisappear() {
-            ScholiumWorkspaceSplitRegistry.shared.unregister(
-                self,
-                from: registeredWindow
-            )
-            registeredWindow = nil
+            splitControllerDidDetach(self)
             super.viewDidDisappear()
         }
 
-        func scheduleUpdate(
+        func update(
             library: Library,
             document: Document,
             apparatus: Apparatus,
@@ -208,116 +226,82 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             selectedDocumentTabID: UUID?,
             selectDocumentTab: @escaping (UUID) -> Void,
             closeDocumentTab: @escaping (UUID) -> Void,
+            libraryVisibilityDidChange: @escaping (Bool) -> Void,
             researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
-            libraryVisible: Bool,
-            apparatusVisible: Bool,
-            animated: Bool
+            splitControllerDidAttach: @escaping @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void,
+            splitControllerDidDetach: @escaping @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void
         ) {
-            pendingUpdate = (
-                library,
-                document,
-                apparatus,
-                documentTabs,
-                selectedDocumentTabID,
-                selectDocumentTab,
-                closeDocumentTab,
-                researchInspectorVisibilityDidChange,
-                libraryVisible,
-                apparatusVisible,
-                animated
+            libraryHost.rootView = library
+            documentTabsController.update(
+                document: document,
+                tabs: documentTabs,
+                selectedTabID: selectedDocumentTabID,
+                selectTab: selectDocumentTab,
+                closeTab: closeDocumentTab
             )
-            guard !isUpdateScheduled else { return }
-            isUpdateScheduled = true
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.isUpdateScheduled = false
-                guard let update = self.pendingUpdate else { return }
-                self.pendingUpdate = nil
-                self.libraryHost.rootView = update.library
-                self.documentTabsController.update(
-                    document: update.document,
-                    tabs: update.documentTabs,
-                    selectedTabID: update.selectedDocumentTabID,
-                    selectTab: update.selectDocumentTab,
-                    closeTab: update.closeDocumentTab
-                )
-                self.apparatusHost.rootView = update.apparatus
-                self.researchInspectorVisibilityDidChange =
-                    update.researchInspectorVisibilityDidChange
-                self.updateVisibility(
-                    libraryVisible: update.libraryVisible,
-                    apparatusVisible: update.apparatusVisible,
-                    animated: update.animated
-                )
-            }
+            apparatusHost.rootView = apparatus
+            self.libraryVisibilityDidChange = libraryVisibilityDidChange
+            self.researchInspectorVisibilityDidChange =
+                researchInspectorVisibilityDidChange
+            self.splitControllerDidAttach = splitControllerDidAttach
+            self.splitControllerDidDetach = splitControllerDidDetach
         }
 
-        func updateVisibility(
-            libraryVisible: Bool,
-            apparatusVisible: Bool,
-            animated: Bool
-        ) {
-            guard isViewLoaded else { return }
-            let visibilityChanged = libraryVisible != lastLibraryVisible
-                || apparatusVisible != lastApparatusVisible
-            lastLibraryVisible = libraryVisible
-            lastApparatusVisible = apparatusVisible
-            guard visibilityChanged else { return }
-            reconcileVisibility(animated: animated)
-        }
-
-        private func reconcileVisibility(animated: Bool) {
+        func setLibraryVisible(_ visible: Bool, animated: Bool) {
             guard isViewLoaded,
                   libraryItem != nil,
-                  apparatusItem != nil
+                  libraryIsVisible != visible
             else { return }
-            let libraryShouldCollapse = !lastLibraryVisible
-            let apparatusShouldCollapse = !lastApparatusVisible
-            guard libraryItem.isCollapsed != libraryShouldCollapse
-                    || apparatusItem.isCollapsed != apparatusShouldCollapse
-            else { return }
-            if libraryItem.isCollapsed != libraryShouldCollapse {
-                guard animated else {
-                    libraryItem.isCollapsed = libraryShouldCollapse
-                    splitView.layoutSubtreeIfNeeded()
-                    applyInspectorVisibility(
-                        shouldCollapse: apparatusShouldCollapse
-                    )
-                    return
-                }
+            if animated {
                 NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.18
                     context.allowsImplicitAnimation = true
-                    libraryItem.isCollapsed = libraryShouldCollapse
+                    libraryItem.isCollapsed = !visible
                 }
+            } else {
+                libraryItem.isCollapsed = !visible
+                splitView.layoutSubtreeIfNeeded()
             }
-            applyInspectorVisibility(
-                shouldCollapse: apparatusShouldCollapse
-            )
+            reportVisibility()
         }
 
-        private func applyInspectorVisibility(
-            shouldCollapse: Bool
-        ) {
-            guard apparatusItem.isCollapsed != shouldCollapse else { return }
-            // AppKit owns the Inspector's standard collapse animation and
-            // divider/toolbar tracking behavior.
-            toggleInspector(nil)
+        func setResearchInspectorVisible(_ visible: Bool, animated: Bool) {
+            guard isViewLoaded,
+                  apparatusItem != nil,
+                  researchInspectorIsVisible != visible
+            else { return }
+            if animated {
+                toggleInspector(nil)
+            } else {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    context.allowsImplicitAnimation = false
+                    toggleInspector(nil)
+                }
+                splitView.layoutSubtreeIfNeeded()
+            }
+            reportVisibility()
         }
 
         override func splitViewDidResizeSubviews(_ notification: Notification) {
             super.splitViewDidResizeSubviews(notification)
-            guard observesResearchInspectorVisibility,
-                  apparatusItem != nil
-            else { return }
-            let isVisible = !apparatusItem.isCollapsed
-            guard isVisible != lastApparatusVisible else { return }
-            lastApparatusVisible = isVisible
-            researchInspectorVisibilityDidChange(isVisible)
+            reportVisibility()
         }
 
+        private func reportVisibility() {
+            guard observesVisibility,
+                  libraryItem != nil,
+                  apparatusItem != nil
+            else { return }
+            libraryVisibilityDidChange(!libraryItem.isCollapsed)
+            researchInspectorVisibilityDidChange(!apparatusItem.isCollapsed)
+        }
     }
 }
+
 
 enum ScholiumWorkspaceSplitViewIdentifier {
     static let value = NSUserInterfaceItemIdentifier("scholium.workspaceSplitView")

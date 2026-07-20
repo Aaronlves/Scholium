@@ -508,12 +508,6 @@ struct ResearchFunctionControllerTests {
             ),
             encoding: .utf8
         )
-        let nativeReadSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/NativeMarkdownEditorView.swift"
-            ),
-            encoding: .utf8
-        )
         let menuStart = try #require(appSource.range(of: "CommandMenu(\"Research\")"))
         let menuEnd = try #require(appSource.range(
             of: "#if DEBUG",
@@ -528,11 +522,10 @@ struct ResearchFunctionControllerTests {
         #expect(noteSource.contains("select: openResearchFunction"))
         #expect(noteSource.contains("ScholiumFocusedResearchFunctionActions"))
         #expect(noteSource.contains("open: openResearchFunction"))
-        #expect(noteSource.components(separatedBy: "onSelectionChange: { selection in").count == 3)
+        #expect(noteSource.components(separatedBy: "onSelectionChange: { selection in").count == 2)
         #expect(webReadSource.contains("case \"selectionChanged\":"))
         #expect(webReadSource.contains("payload[\"documentID\"] as? String == documentID"))
         #expect(webReadSource.contains("selected.utf16.count <= Self.maximumSelectionLength"))
-        #expect(nativeReadSource.contains("onSelectionChange?(reviewSelection"))
     }
 
     @Test("Unresolved availability is fail-closed while a function loads")

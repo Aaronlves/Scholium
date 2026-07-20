@@ -6,8 +6,11 @@ export interface SemanticProjectionRanges {
   strong: Set<string>;
   emphasis: Set<string>;
   links: Set<string>;
+  wikilinks: Set<string>;
   strikethrough: Set<string>;
+  highlights: Set<string>;
   tables: Array<{from: number; to: number}>;
+  callouts: Array<{from: number; to: number}>;
 }
 
 export function rangeKey(from: number, to: number) {
@@ -18,19 +21,23 @@ export function semanticProjectionRanges(
   state: EditorState,
   visibleRanges: readonly {from: number; to: number}[],
   margin = 2_000,
+  tree: ReturnType<typeof syntaxTree> = syntaxTree(state),
 ): SemanticProjectionRanges {
   const result: SemanticProjectionRanges = {
     headingLevelByLineFrom: new Map(),
     strong: new Set(),
     emphasis: new Set(),
     links: new Set(),
+    wikilinks: new Set(),
     strikethrough: new Set(),
+    highlights: new Set(),
     tables: [],
+    callouts: [],
   };
   if (visibleRanges.length === 0) return result;
   const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
   const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
-  syntaxTree(state).iterate({
+  tree.iterate({
     from,
     to,
     enter(node) {
@@ -40,8 +47,11 @@ export function semanticProjectionRanges(
       if (node.name === "StrongEmphasis") result.strong.add(key);
       if (node.name === "Emphasis") result.emphasis.add(key);
       if (["Link", "Autolink"].includes(node.name)) result.links.add(key);
+      if (["WikiLink", "VectorLink"].includes(node.name)) result.wikilinks.add(key);
       if (node.name === "Strikethrough") result.strikethrough.add(key);
+      if (node.name === "Highlight") result.highlights.add(key);
       if (node.name === "Table") result.tables.push({from: node.from, to: node.to});
+      if (node.name === "Callout") result.callouts.push({from: node.from, to: node.to});
     },
   });
   return result;

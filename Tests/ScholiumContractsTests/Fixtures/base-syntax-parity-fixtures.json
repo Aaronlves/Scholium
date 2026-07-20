@@ -1,0 +1,46 @@
+[
+  {
+    "name": "complete CommonMark and GFM base catalog",
+    "source": "# Heading 范围\n\nParagraph with **strong**, *emphasis*, ~~strike~~, `code`, [link](https://example.test), <https://example.test>, and ![image](image.png).\n\n> Quotation\n\n- Bullet\n- [x] Task\n\n1. Ordered\n\n| A | B |\n|:--|--:|\n| 1 | 2 |\n\n```swift\nlet value = 1\n```\n\n    indented\n\n---\n\n<section>raw</section>",
+    "blocks": [
+      {"kind": "heading", "from": 0, "to": 12, "source": "# Heading 范围"},
+      {"kind": "paragraph", "from": 14, "to": 151, "source": "Paragraph with **strong**, *emphasis*, ~~strike~~, `code`, [link](https://example.test), <https://example.test>, and ![image](image.png)."},
+      {"kind": "blockQuote", "from": 153, "to": 164, "source": "> Quotation"},
+      {"kind": "paragraph", "from": 155, "to": 164, "source": "Quotation"},
+      {"kind": "unorderedList", "from": 166, "to": 185, "source": "- Bullet\n- [x] Task"},
+      {"kind": "listItem", "from": 166, "to": 174, "source": "- Bullet"},
+      {"kind": "paragraph", "from": 168, "to": 174, "source": "Bullet"},
+      {"kind": "listItem", "from": 175, "to": 185, "source": "- [x] Task"},
+      {"kind": "paragraph", "from": 181, "to": 185, "source": "Task"},
+      {"kind": "listItem", "from": 187, "to": 197, "source": "1. Ordered"},
+      {"kind": "orderedList", "from": 187, "to": 197, "source": "1. Ordered"},
+      {"kind": "paragraph", "from": 190, "to": 197, "source": "Ordered"},
+      {"kind": "table", "from": 199, "to": 228, "source": "| A | B |\n|:--|--:|\n| 1 | 2 |"},
+      {"kind": "code", "from": 230, "to": 256, "source": "```swift\nlet value = 1\n```"},
+      {"kind": "code", "from": 262, "to": 270, "source": "indented"},
+      {"kind": "thematicBreak", "from": 272, "to": 275, "source": "---"},
+      {"kind": "html", "from": 277, "to": 299, "source": "<section>raw</section>"}
+    ],
+    "inlines": [
+      {"kind": "strong", "from": 29, "to": 39, "source": "**strong**"},
+      {"kind": "emphasis", "from": 41, "to": 51, "source": "*emphasis*"},
+      {"kind": "strikethrough", "from": 53, "to": 63, "source": "~~strike~~"},
+      {"kind": "code", "from": 65, "to": 71, "source": "`code`"},
+      {"kind": "link", "from": 73, "to": 101, "source": "[link](https://example.test)"},
+      {"kind": "link", "from": 103, "to": 125, "source": "<https://example.test>"},
+      {"kind": "image", "from": 131, "to": 150, "source": "![image](image.png)"}
+    ]
+  },
+  {
+    "name": "BOM CRLF decomposed Unicode and no final newline",
+    "source": "\uFEFF---\r\ntitle: 范围\r\n---\r\n\r\nSetext é 🧭\r\n====\r\n\r\nParagraph **强调** and [链接](目标.md).",
+    "blocks": [
+      {"kind": "heading", "from": 24, "to": 42, "source": "Setext é 🧭\r\n===="},
+      {"kind": "paragraph", "from": 46, "to": 79, "source": "Paragraph **强调** and [链接](目标.md)."}
+    ],
+    "inlines": [
+      {"kind": "strong", "from": 56, "to": 62, "source": "**强调**"},
+      {"kind": "link", "from": 67, "to": 78, "source": "[链接](目标.md)"}
+    ]
+  }
+]

@@ -11,3 +11,11 @@ information:
 
 The generated `editor.bundle.js` contains only these editor dependencies and
 Scholium's integration code. Scholium does not copy Tolaria or MarkEdit source.
+
+The shared mathematics runtime, stylesheet, and fonts are built from KaTeX
+0.18.1, distributed under the MIT License:
+
+- https://github.com/KaTeX/KaTeX
+
+`math.bundle.js`, `katex.min.css`, and the `KaTeX_*.woff2` files are generated
+from the exact package version locked in `WebEditor/package-lock.json`.

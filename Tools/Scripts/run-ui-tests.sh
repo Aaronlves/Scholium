@@ -12,20 +12,6 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchS
 QA_RUN_LOCK="/tmp/com.scholium.qa.ui-tests.lock"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 
-ensure_ui_host_is_unlocked() {
-  # XCUITest's macOS AutomationMode cannot be enabled while the console is
-  # locked. Check the session before building the disposable app so a locked
-  # host fails fast without spending CPU on a run that cannot start.
-  local locked_state=""
-  locked_state="$(ioreg -n Root -d 1 -a 2>/dev/null \
-    | plutil -extract 'IOConsoleUsers.0.CGSSessionScreenIsLocked' raw -o - - 2>/dev/null \
-    || true)"
-  if [[ "${locked_state}" == "true" ]]; then
-    print -u2 "Scholium UI tests require an unlocked macOS console. Unlock the Mac, then rerun this command."
-    exit 78
-  fi
-}
-
 acquire_qa_run_lock() {
   if mkdir "${QA_RUN_LOCK}" 2>/dev/null; then
     print "$$" > "${QA_RUN_LOCK}/pid"
@@ -86,7 +72,7 @@ cleanup() {
 acquire_qa_run_lock
 trap cleanup EXIT
 
-ensure_ui_host_is_unlocked
+"${ROOT}/Tools/Scripts/require-unlocked-ui-host.sh"
 
 DEVELOPER_DIR="${DEVELOPER_DIR}" "${ROOT}/Tools/Scripts/build-qa-app.sh"
 [[ -d "${QA_APP}" && -d "${FIXTURES}" ]] || {

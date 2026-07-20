@@ -36,6 +36,21 @@ ALLOWED_KEYS = {
     "completed_uptime_ns",
     "observed_count",
 }
+MEMORY_ROLES = ("app", "gpu", "networking", "web_content")
+MEMORY_ALLOWED_KEYS = {
+    "schema",
+    "sample",
+    "transition",
+    "mode",
+    "sample_uptime_ns",
+    "scope",
+    "process_count",
+    "resident_bytes",
+    "role_process_counts",
+    "role_resident_bytes",
+}
+MEMORY_TRANSITIONS = 50
+MEMORY_TAIL_GROWTH_LIMIT = 0.05
 
 
 def parse_args() -> argparse.Namespace:
@@ -115,6 +130,100 @@ def load_metric(
     return records, measured
 
 
+def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
+    if not path.is_file():
+        raise SystemExit(f"Missing Editor memory results: {path}")
+    records: list[dict[str, object]] = []
+    expected_count = MEMORY_TRANSITIONS + 1
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            record = json.loads(raw_line)
+        except json.JSONDecodeError as error:
+            raise SystemExit(f"{path}:{line_number}: invalid JSON: {error}") from error
+        if not isinstance(record, dict):
+            raise SystemExit(f"{path}:{line_number}: record must be an object")
+        unexpected = set(record) - MEMORY_ALLOWED_KEYS
+        if unexpected:
+            raise SystemExit(
+                f"{path}:{line_number}: privacy contract rejected keys {sorted(unexpected)}"
+            )
+        if record.get("schema") != "scholium-process-memory-v1":
+            raise SystemExit(f"{path}:{line_number}: unsupported memory schema")
+        if record.get("scope") != "app_plus_attributed_webkit_services":
+            raise SystemExit(f"{path}:{line_number}: unsupported process-memory scope")
+        sample = record.get("sample")
+        transition = record.get("transition")
+        if not isinstance(sample, int) or isinstance(sample, bool) or transition != sample:
+            raise SystemExit(f"{path}:{line_number}: invalid memory sample index")
+        expected_mode = "live_preview" if sample % 2 == 0 else "source"
+        if record.get("mode") != expected_mode:
+            raise SystemExit(f"{path}:{line_number}: unexpected Editor mode sequence")
+        counts = record.get("role_process_counts")
+        resident = record.get("role_resident_bytes")
+        if not isinstance(counts, dict) or set(counts) != set(MEMORY_ROLES):
+            raise SystemExit(f"{path}:{line_number}: invalid process-role counts")
+        if not isinstance(resident, dict) or set(resident) != set(MEMORY_ROLES):
+            raise SystemExit(f"{path}:{line_number}: invalid process-role memory")
+        if any(
+            not isinstance(counts[role], int)
+            or isinstance(counts[role], bool)
+            or counts[role] <= 0
+            for role in MEMORY_ROLES
+        ):
+            raise SystemExit(f"{path}:{line_number}: nonpositive process-role count")
+        if any(
+            not isinstance(resident[role], int)
+            or isinstance(resident[role], bool)
+            or resident[role] <= 0
+            for role in MEMORY_ROLES
+        ):
+            raise SystemExit(f"{path}:{line_number}: nonpositive process-role RSS")
+        if record.get("process_count") != sum(counts.values()):
+            raise SystemExit(f"{path}:{line_number}: process count does not match roles")
+        if record.get("resident_bytes") != sum(resident.values()):
+            raise SystemExit(f"{path}:{line_number}: RSS total does not match roles")
+        records.append(record)
+
+    indexes = [record["sample"] for record in records]
+    if indexes != list(range(expected_count)):
+        raise SystemExit(
+            f"{path}: expected ordered memory samples 0...{MEMORY_TRANSITIONS}, got {indexes}"
+        )
+    first_counts = records[0]["role_process_counts"]
+    stable_counts = all(record["role_process_counts"] == first_counts for record in records)
+    totals = [int(record["resident_bytes"]) for record in records]
+    preceding_tail = totals[-20:-10]
+    final_tail = totals[-10:]
+    preceding_median = statistics.median(preceding_tail)
+    final_median = statistics.median(final_tail)
+    tail_growth_ratio = (final_median - preceding_median) / preceding_median
+    monotonic_tail_growth = all(
+        later >= earlier for earlier, later in zip(final_tail, final_tail[1:])
+    ) and any(later > earlier for earlier, later in zip(final_tail, final_tail[1:]))
+    converged = (
+        stable_counts
+        and not monotonic_tail_growth
+        and tail_growth_ratio <= MEMORY_TAIL_GROWTH_LIMIT
+    )
+    summary = {
+        "sample_count": len(records),
+        "transition_count": MEMORY_TRANSITIONS,
+        "stable_process_counts": stable_counts,
+        "role_process_counts": first_counts,
+        "initial_resident_bytes": totals[0],
+        "maximum_resident_bytes": max(totals),
+        "final_resident_bytes": totals[-1],
+        "preceding_tail_median_bytes": preceding_median,
+        "final_tail_median_bytes": final_median,
+        "tail_growth_ratio": tail_growth_ratio,
+        "tail_growth_limit_inclusive": MEMORY_TAIL_GROWTH_LIMIT,
+        "monotonic_tail_growth": monotonic_tail_growth,
+        "convergence_observed": converged,
+        "correctness_passed": True,
+    }
+    return records, summary
+
+
 def main() -> None:
     arguments = parse_args()
     if arguments.warmups < 0 or arguments.samples <= 0:
@@ -155,6 +264,16 @@ def main() -> None:
             "warmups_ms": [float(record["duration_ms"]) for record in records[: arguments.warmups]],
             "retained_ms": measured,
         }
+
+    memory_records, memory_summary = load_editor_memory(
+        arguments.input_dir / "editor_retained_memory.jsonl"
+    )
+    summaries["editor_retained_memory"] = memory_summary
+    raw_durations["editor_retained_memory"] = {
+        "resident_bytes": [record["resident_bytes"] for record in memory_records],
+        "role_resident_bytes": [record["role_resident_bytes"] for record in memory_records],
+    }
+    all_pass = all_pass and bool(memory_summary["convergence_observed"])
 
     gate_status = "not_applicable"
     if arguments.evidence_class == "product_gate":

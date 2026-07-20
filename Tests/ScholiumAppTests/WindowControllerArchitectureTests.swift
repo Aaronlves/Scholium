@@ -129,9 +129,17 @@ struct WindowControllerArchitectureTests {
         #expect(controller.selectedDocumentPath == "Inbox/Imported.md")
         #expect(controller.activeDocument == nil)
 
-        controller.selectUnavailableDocument(relativePath: "Topics/Ambiguous.md")
-        #expect(controller.selectedDocument == .unavailable(relativePath: "Topics/Ambiguous.md"))
+        let recoveryVaultID = UUID()
+        controller.selectUnavailableDocument(
+            vaultID: recoveryVaultID,
+            relativePath: "Topics/Ambiguous.md"
+        )
+        #expect(controller.selectedDocument == .unavailable(
+            vaultID: recoveryVaultID,
+            relativePath: "Topics/Ambiguous.md"
+        ))
         #expect(controller.selectedDocumentPath == "Topics/Ambiguous.md")
+        #expect(controller.selectedDocument?.vaultID == recoveryVaultID)
 
         let reference = fixtureReference(path: "Topics/Stable.md")
         let descriptor = WindowDocumentDescriptor(
@@ -191,6 +199,15 @@ struct WindowControllerArchitectureTests {
         let session = controller.session(for: descriptor)
         #expect(session.presentationMode == .source)
         #expect(session.scrollFraction == 0.64)
+        let semanticAnchor = EditorScrollAnchor(
+            sourceFingerprint: "revision-bound-fingerprint",
+            sourceUTF16Offset: 12,
+            blockUTF16LowerBound: 10,
+            blockUTF16UpperBound: 24,
+            relativeBlockPosition: 0.25,
+            fallbackFraction: 0.64
+        )
+        session.scrollAnchor = semanticAnchor
 
         controller.rememberPresentationMode(
             .livePreview,
@@ -208,11 +225,33 @@ struct WindowControllerArchitectureTests {
         #expect(controller.session(for: descriptor) === session)
         #expect(session.presentationMode == .livePreview)
         #expect(session.scrollFraction == 0.31)
+        #expect(session.scrollAnchor == semanticAnchor)
         #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
             DocumentPresentationSnapshot(
                 modes: [reference.relativePath: NotePresentationMode.livePreview.rawValue],
                 scrollPositions: [reference.relativePath: 0.31]
             ))
+
+        controller.resetPresentationState()
+        #expect(session.presentationMode == .read)
+        #expect(session.scrollFraction == 0)
+        #expect(session.scrollAnchor == nil)
+    }
+
+    @Test("Retained stable identity keeps its save address while selection is temporarily absent")
+    func retainedSessionKeepsSaveAddressWithoutSelection() {
+        let reference = fixtureReference(path: "Topics/Retained Save.md")
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
+            reference: reference
+        )
+        let controller = DocumentController()
+
+        controller.installOpenedDocument(descriptor)
+        controller.clearSelectionAfterClosingLastTab()
+
+        #expect(controller.selectedDocument == nil)
+        #expect(controller.relativePath(for: .workspace(descriptor.sessionKey)) == reference.relativePath)
     }
 
     @Test("Path-only fallback presentation state is retained by the controller")
@@ -235,6 +274,41 @@ struct WindowControllerArchitectureTests {
         #expect(controller.session(for: target) === session)
     }
 
+    @Test("Read presentation retains the initialized editor buffer and mode")
+    func readPresentationRetainsInitializedEditor() {
+        let reference = fixtureReference(path: "Topics/Retained Editor.md")
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
+            reference: reference
+        )
+        let controller = DocumentController()
+        controller.installOpenedDocument(descriptor)
+        let session = controller.session(for: descriptor)
+        let source = "# Retained\n\nExact Markdown.\n"
+        let revision = DocumentFingerprint(content: source)
+
+        controller.beginEditing(
+            session: session,
+            target: .workspace(descriptor.sessionKey),
+            source: source,
+            revision: revision,
+            mode: .source
+        )
+        controller.finishEditing(
+            session: session,
+            target: .workspace(descriptor.sessionKey)
+        )
+
+        #expect(!session.isEditing)
+        #expect(session.presentationMode == .read)
+        #expect(session.retainsEditorSurface)
+        #expect(session.retainedEditorMode == .source)
+        #expect(session.editingSource == source)
+        #expect(session.originalEditingSource == source)
+        #expect(session.editingRevision == revision)
+        #expect(!session.hasUnsavedChanges)
+    }
+
     @Test("A rename updates projection without replacing the editor session")
     func renamePreservesDocumentSession() {
         let vaultID = UUID()
@@ -250,13 +324,38 @@ struct WindowControllerArchitectureTests {
         let controller = DocumentController()
         controller.installOpenedDocument(original)
         let session = controller.session(for: original)
+        let bridgeDocumentID = session.editorSession.bridgeDocumentID
+        controller.beginEditing(
+            session: session,
+            target: .workspace(original.sessionKey),
+            source: "original exact buffer",
+            revision: DocumentFingerprint(content: "original exact buffer"),
+            mode: .livePreview
+        )
+        session.suppressAutosave = false
         session.editingSource = "dirty exact buffer"
+        session.editError = "The note no longer exists at the previous path."
+        session.canRetrySave = false
+        controller.setSaveError(session.editError)
+        session.scrollAnchor = EditorScrollAnchor(
+            sourceFingerprint: "rename-stable-fingerprint",
+            sourceUTF16Offset: 8,
+            blockUTF16LowerBound: 4,
+            blockUTF16UpperBound: 18,
+            relativeBlockPosition: 0.5,
+            fallbackFraction: 0.4
+        )
 
         controller.updateDocumentProjection(renamed)
 
         #expect(controller.activeDocument == renamed)
         #expect(controller.session(for: renamed) === session)
+        #expect(session.editorSession.bridgeDocumentID == bridgeDocumentID)
         #expect(session.editingSource == "dirty exact buffer")
+        #expect(session.scrollAnchor?.sourceFingerprint == "rename-stable-fingerprint")
+        #expect(controller.editingDocumentPath == "Topics/New.md")
+        #expect(session.autosaveTask != nil)
+        session.cancelScheduledWork()
     }
 
     @Test("Document controller owns the Put Back path projection")
@@ -614,11 +713,9 @@ struct WindowControllerArchitectureTests {
         #expect(controllerSource.contains("@Published var humanReviewRecords"))
         #expect(controllerSource.contains("@Published var noteIdentityByPath"))
 
-        #expect(!windowModelSource.contains("@Published private(set) var researchRecordRequestGeneration"))
         #expect(!windowModelSource.contains("@Published var dialogueInitialNotes"))
         #expect(!windowModelSource.contains("@Published var checkpointListingError"))
         #expect(!windowModelSource.contains("@Published var transactionRecoveryRecords"))
-        #expect(researchControllerSource.contains("@Published var researchRecordRequestGeneration"))
         #expect(researchControllerSource.contains("@Published var dialogueInitialNotes"))
         #expect(researchControllerSource.contains("@Published var transactionRecoveryRecords"))
 

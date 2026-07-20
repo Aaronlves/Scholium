@@ -206,6 +206,7 @@ struct FrontmatterEditorView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .accessibilityIdentifier("scholium.propertiesEditor")
         .task {
             // Initialize field values from existing frontmatter
             for (key, value) in note.frontmatter {
