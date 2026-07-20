@@ -539,9 +539,9 @@ enum ScholiumMetrics {
         /// identity and Apparatus mode row. Document identity and commands
         /// belong to the native toolbar and do not create a second row.
         static let regionHeaderHeight: CGFloat = 48
-        /// The footer actions and embedded Research Strip share one bottom-
-        /// anchored command height so their upper rules remain aligned.
-        static let bottomCommandBarHeight: CGFloat = 52
+        /// Library-owned footer action height. It does not constrain Document
+        /// or align an unrelated bottom surface across split regions.
+        static let libraryFooterHeight: CGFloat = 52
     }
 
     /// Shared alignment and spacing for the two permanent peripheral regions.
@@ -581,18 +581,14 @@ enum ScholiumMetrics {
         static let minimumTextScale = 1.0
         static let maximumTextScale = 2.0
         static let textScaleStep = 0.1
-        static let researchStripHorizontalInset: CGFloat = 28
-        /// The Strip may breathe 30 points beyond each side of the approved
-        /// reading measure without spanning the complete Document region.
-        static let researchStripMaximumWidth: CGFloat = readableMeasure + 60
     }
 
     enum Apparatus {
-        /// Component-owned height for the Connections/Research mode row and
+        /// Component-owned height for the Overview/Connections/Functions row and
         /// the trailing Research Inspector header. It does not size the window
         /// toolbar or the standard window controls.
         static let headerHeight = Workspace.regionHeaderHeight
-        /// Connections and Research share one outer content edge. Individual
+        /// All three Inspector modes share one outer content edge. Individual
         /// sections must not invent their own horizontal padding.
         static let contentInset = Peripheral.contentInset
         static let firstSectionSpacing = Peripheral.sectionSpacing

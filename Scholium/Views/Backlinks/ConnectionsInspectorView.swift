@@ -28,6 +28,8 @@ struct RelationshipInspectorContext {
     let graph: GraphSnapshot?
     let catalog: WorkspaceCatalogSnapshot?
     let current: VaultQualifiedNoteID?
+    let freshness: ResearchProjectionFreshness
+    let retryRefresh: () -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
 }
 
@@ -152,6 +154,10 @@ struct ConnectionsInspectorView: View {
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionSpacing) {
+                ResearchProjectionFreshnessBanner(
+                    freshness: context.freshness,
+                    retry: context.retryRefresh
+                )
                 ForEach(ConnectionPeerGroup.allCases, id: \.self) { group in
                     connectionGroup(group, items: projection.groups[group] ?? [])
                 }
@@ -163,7 +169,6 @@ struct ConnectionsInspectorView: View {
         }
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .accessibilityIdentifier("scholium.connectionsInspector")
     }
 
     private func connectionGroup(
@@ -311,6 +316,8 @@ private struct CombinedConnectionRow: View {
         graph: nil,
         catalog: nil,
         current: nil,
+        freshness: .unavailable("No workspace is open."),
+        retryRefresh: {},
         openReference: { _, _ in }
     ))
         .frame(width: 320, height: 600)

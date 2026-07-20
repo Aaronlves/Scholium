@@ -3,33 +3,131 @@ import SwiftUI
 
 // MARK: - Research Inspector content
 
+enum ResearchProjectionFreshness: Equatable, Sendable {
+    case refreshing
+    case current
+    case stale(String)
+    case failed(String)
+    case unavailable(String)
+
+    var titleResource: LocalizedStringResource {
+        switch self {
+        case .refreshing: "Refreshing derived state…"
+        case .current: "Current for saved source"
+        case .stale: "Derived State Stale"
+        case .failed: "Refresh Failed"
+        case .unavailable: "Derived State Unavailable"
+        }
+    }
+
+    var detail: String? {
+        switch self {
+        case .stale(let reason), .failed(let reason), .unavailable(let reason): reason
+        case .refreshing, .current: nil
+        }
+    }
+
+    var permitsRetry: Bool {
+        switch self {
+        case .stale, .failed: true
+        case .refreshing, .current, .unavailable: false
+        }
+    }
+}
+
+struct ResearchProjectionFreshnessBanner: View {
+    let freshness: ResearchProjectionFreshness
+    let retry: () -> Void
+
+    var body: some View {
+        ScholiumApparatusSection("DERIVED STATE") {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(freshness.titleResource, systemImage: symbol)
+                    .font(ScholiumInterfaceTypography.apparatusBody)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail = freshness.detail {
+                    Text(detail)
+                        .font(ScholiumInterfaceTypography.apparatusMetadata)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if freshness.permitsRetry {
+                    Button("Retry Refresh", action: retry)
+                        .buttonStyle(.link)
+                }
+            }
+        }
+        .accessibilityIdentifier("scholium.researchProjectionFreshness")
+    }
+
+    private var symbol: String {
+        switch freshness {
+        case .refreshing: "arrow.triangle.2.circlepath"
+        case .current: "checkmark.circle"
+        case .stale: "clock.badge.exclamationmark"
+        case .failed: "exclamationmark.triangle"
+        case .unavailable: "questionmark.circle"
+        }
+    }
+}
+
 /// Immutable workspace context and app-only Zotero effects required by the
 /// Research Inspector. Navigation remains a typed Research intent.
-struct ResearchInspectorContentContext {
+struct ResearchOverviewPresentation {
+    let researchUnit: ResearchUnitDeclaration
     let currentVault: RegisteredVault?
     let analysesVaultID: UUID?
     let catalog: WorkspaceCatalogSnapshot?
     let reviewDisplayState: HumanReviewDisplayState
     let reviewRecord: HumanReviewRecord?
     let currentRevision: DocumentFingerprint?
+    let critique: CritiqueAssociation?
+    let visibleAttentionItems: [AttentionQueueItem]
+    let freshness: ResearchProjectionFreshness
+
+    var commentCount: Int { reviewRecord?.comments.count ?? 0 }
+    var unresolvedCommentCount: Int {
+        reviewRecord?.comments.filter { $0.resolvedAt == nil }.count ?? 0
+    }
+    var commentsNeedingReattachmentCount: Int {
+        reviewRecord?.comments.filter {
+            $0.anchor.state == .needsReattachment
+        }.count ?? 0
+    }
+    var attentionKinds: [AttentionQueueKind] {
+        Set(visibleAttentionItems.map(\.kind))
+            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
+}
+
+struct ResearchInspectorContentContext {
+    let presentation: ResearchOverviewPresentation
     let openReview: () -> Void
     let openResearchRecord: () -> Void
     let openProperties: () -> Void
+    let retryRefresh: () -> Void
     let resolveZoteroSource: (ZoteroSourceIdentity) async throws -> ZoteroMatchResult
     let openZoteroItem: (String) async -> Void
     let confirmZoteroItem: (String, VaultNoteReference) async throws -> Void
     let didConfirmZoteroSource: (String) -> Void
-    let copyResearchText: (String) -> Void
-    let repairBibliographyMethod: () -> Void
+
+    var currentVault: RegisteredVault? { presentation.currentVault }
+    var researchUnit: ResearchUnitDeclaration { presentation.researchUnit }
+    var analysesVaultID: UUID? { presentation.analysesVaultID }
+    var catalog: WorkspaceCatalogSnapshot? { presentation.catalog }
+    var reviewDisplayState: HumanReviewDisplayState { presentation.reviewDisplayState }
+    var reviewRecord: HumanReviewRecord? { presentation.reviewRecord }
+    var currentRevision: DocumentFingerprint? { presentation.currentRevision }
+    var critique: CritiqueAssociation? { presentation.critique }
+    var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
+    var freshness: ResearchProjectionFreshness { presentation.freshness }
 }
 
 /// Document-local research context: Attention, Zotero source identity, and
 /// source-anchored Connections. Authoritative note content remains primary.
-struct ResearchInspectorContentView: View {
+struct ResearchOverviewView: View {
     let note: WindowDocumentLocation
     let context: ResearchInspectorContentContext
-    @AppStorage(AttentionPreferences.dismissalLedgerKey)
-    private var attentionDismissalLedgerData = Data()
 
     init(
         note: WindowDocumentLocation,
@@ -45,7 +143,9 @@ struct ResearchInspectorContentView: View {
                 alignment: .leading,
                 spacing: ScholiumMetrics.Apparatus.sectionSpacing
             ) {
-                reviewStatusSection
+                researchStatusSection
+                scholarlyStatusSection
+                attentionSection
                 propertiesSection
                 provenanceSection
                 diagnosticsSection
@@ -72,21 +172,71 @@ struct ResearchInspectorContentView: View {
 
     // MARK: - Research sections
 
-    private var reviewStatusSection: some View {
+    private var researchStatusSection: some View {
+        ScholiumApparatusSection(
+            "RESEARCH STATUS",
+            content: {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.Apparatus.rowSpacing
+                ) {
+                    switch context.researchUnit.state {
+                    case .absent:
+                        Label("Not Yet", systemImage: "circle.dashed")
+                            .foregroundStyle(.secondary)
+                    case .declared:
+                        if let scope = context.researchUnit.scope {
+                            LabeledContent("Scope") {
+                                Text(scope)
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        ForEach(
+                            Array(context.researchUnit.limitations.enumerated()),
+                            id: \.offset
+                        ) { index, limitation in
+                            LabeledContent(
+                                context.researchUnit.limitations.count == 1
+                                    ? "Limitation"
+                                    : "Limitation \(index + 1)"
+                            ) {
+                                Text(limitation)
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    case .invalid(let message):
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(ScholiumColorRole.attention.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(ScholiumInterfaceTypography.apparatusBody)
+            },
+            trailing: {
+                Button("Edit Research Status…", action: context.openProperties)
+                    .buttonStyle(.link)
+            }
+        )
+        .accessibilityIdentifier("scholium.researchStatus")
+    }
+
+    private var scholarlyStatusSection: some View {
         VStack(
             alignment: .leading,
             spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                    Text("REVIEW STATUS")
+                    Text("SCHOLARLY STATUS")
                         .font(ScholiumInterfaceTypography.apparatusLabel)
                         .tracking(0.7)
                         .foregroundStyle(.secondary)
 
                     Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
 
-                    if context.reviewRecord?.latestReview != nil {
+                    if context.reviewRecord?.latestReview != nil || context.critique != nil {
                         HStack(spacing: 5) {
                             Image(systemName: reviewRevisionSymbol)
                                 .font(.system(size: 6, weight: .semibold))
@@ -136,7 +286,7 @@ struct ResearchInspectorContentView: View {
                 ScholiumStructuralRule()
 
                 HStack(spacing: 8) {
-                    if let fingerprint = context.reviewRecord?.latestReview?.fingerprint.sha256 {
+                    if let fingerprint = scholarlyFingerprint {
                         Text("Fingerprint \(fingerprint.prefix(4))…\(fingerprint.suffix(4))")
                             .font(ScholiumTypography.swiftUIRevisionIdentity())
                             .foregroundStyle(.secondary)
@@ -154,7 +304,17 @@ struct ResearchInspectorContentView: View {
                             alignment: .trailing
                         )
                         .contentShape(Rectangle())
+                        .accessibilityIdentifier(
+                            isWork ? "scholium.openCritique" : "scholium.openReview"
+                        )
                 }
+
+                ScholiumStructuralRule()
+                Text(commentSummary)
+                    .font(ScholiumInterfaceTypography.apparatusMetadata)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("scholium.researchOverview.comments")
             }
             .padding(12)
             .background(
@@ -175,6 +335,27 @@ struct ResearchInspectorContentView: View {
             ScholiumStructuralRule()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("scholium.scholarlyStatus")
+    }
+
+    private var attentionSection: some View {
+        ScholiumApparatusSection("ATTENTION") {
+            if context.visibleAttentionItems.isEmpty {
+                Text("None")
+                    .font(ScholiumInterfaceTypography.apparatusBody)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("\(context.visibleAttentionItems.count) requiring attention")
+                        .font(ScholiumInterfaceTypography.apparatusBody)
+                    Text(attentionKindSummary)
+                        .font(ScholiumInterfaceTypography.apparatusMetadata)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityIdentifier("scholium.researchOverview.attention")
     }
 
     private var reviewBadge: some View {
@@ -267,6 +448,13 @@ struct ResearchInspectorContentView: View {
                             date: review.completedAt
                         )
                     }
+                    if let critique = context.critique {
+                        provenanceRow(
+                            symbol: "doc.text.magnifyingglass",
+                            title: "Critique",
+                            date: critique.updatedAt
+                        )
+                    }
                 }
             },
             trailing: {
@@ -301,22 +489,52 @@ struct ResearchInspectorContentView: View {
                                     .accessibilityHidden(true)
                             },
                             content: {
-                                Text(diagnostic.title)
+                                Text(diagnostic.titleResource)
                                     .font(ScholiumInterfaceTypography.apparatusBody)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         )
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel(
-                            "\(diagnostic.title): \(diagnostic.accessibilityState)"
-                        )
+                        .accessibilityLabel(Text(
+                            "\(ScholiumL10n.localized(diagnostic.titleResource)): \(ScholiumL10n.localized(diagnostic.accessibilityStateResource))"
+                        ))
+                    }
+
+                    ScholiumApparatusRow(
+                        leading: {
+                            Image(systemName: freshnessSymbol)
+                                .foregroundStyle(freshnessColor)
+                                .accessibilityHidden(true)
+                        },
+                        content: {
+                            Text(context.freshness.titleResource)
+                                .font(ScholiumInterfaceTypography.apparatusBody)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(Text(context.freshness.titleResource))
+
+                    if let detail = context.freshness.detail {
+                        Text(detail)
+                            .font(ScholiumInterfaceTypography.apparatusMetadata)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if context.freshness.permitsRetry {
+                        Button("Retry Refresh", action: context.retryRefresh)
+                            .buttonStyle(.link)
                     }
                 }
             }
         )
     }
 
-    private func provenanceRow(symbol: String, title: String, date: Date) -> some View {
+    private func provenanceRow(
+        symbol: String,
+        title: LocalizedStringResource,
+        date: Date
+    ) -> some View {
         ScholiumApparatusRow(
             leading: {
                 Image(systemName: symbol)
@@ -336,22 +554,33 @@ struct ResearchInspectorContentView: View {
     }
 
     private var reviewTitle: String {
-        if context.currentVault?.role.allowsHumanReview == false {
-            return "Critique"
+        if isWork {
+            guard let critique = context.critique else {
+                return ScholiumL10n.string("No critique")
+            }
+            let count = critique.rounds.count
+            return count == 1
+                ? ScholiumL10n.string("1 Critique Round")
+                : ScholiumL10n.string("\(count) Critique Rounds")
+        }
+        if context.reviewRecord?.draft != nil {
+            return ScholiumL10n.string("Review draft")
         }
         return switch context.reviewDisplayState {
         case .notReviewed:
             context.currentRevision != nil && context.reviewRecord?.latestReview != nil
-                ? "Changed since review"
-                : "Not reviewed"
-        case .reviewed: "Reviewed"
-        case .qualified: "Qualified"
-        case .unqualified: "Unqualified"
+                ? ScholiumL10n.string("Changed since review")
+                : ScholiumL10n.string("Not reviewed")
+        case .reviewed: ScholiumL10n.string("Reviewed")
+        case .qualified: ScholiumL10n.string("Qualified")
+        case .unqualified: ScholiumL10n.string("Unqualified")
         }
     }
 
     private var reviewActionTitle: String {
-        context.currentVault?.role.allowsHumanReview == false ? "Open Critique" : "Open Review"
+        isWork
+            ? ScholiumL10n.string("Open Critique")
+            : ScholiumL10n.string("Open Review")
     }
 
     private var completedReviewNote: String? {
@@ -367,22 +596,31 @@ struct ResearchInspectorContentView: View {
     }
 
     private var reviewRevisionTitle: String {
-        guard context.currentVault?.role.allowsHumanReview != false else {
-            return "Current note"
+        if isWork {
+            guard context.critique != nil else {
+                return ScholiumL10n.string("No critique")
+            }
+            return revisionIsCurrent
+                ? ScholiumL10n.string("Current revision")
+                : ScholiumL10n.string("Earlier revision")
         }
-        guard context.reviewRecord?.latestReview != nil else { return "Not reviewed" }
-        return latestReviewMatchesCurrentRevision ? "Current revision" : "Earlier revision"
+        guard context.reviewRecord?.latestReview != nil else {
+            return ScholiumL10n.string("Not reviewed")
+        }
+        return latestReviewMatchesCurrentRevision
+            ? ScholiumL10n.string("Current revision")
+            : ScholiumL10n.string("Earlier revision")
     }
 
     private var reviewRevisionSymbol: String {
-        latestReviewMatchesCurrentRevision ? "circle.fill" : "circle"
+        revisionIsCurrent ? "circle.fill" : "circle"
     }
 
     private var reviewRevisionColor: Color {
-        if latestReviewMatchesCurrentRevision {
+        if revisionIsCurrent {
             return ScholiumColorRole.confirmed.color
         }
-        if context.reviewRecord?.latestReview != nil {
+        if context.reviewRecord?.latestReview != nil || context.critique != nil {
             return ScholiumColorRole.attention.color
         }
         return ScholiumColorRole.secondaryText.color
@@ -390,10 +628,14 @@ struct ResearchInspectorContentView: View {
 
     private var reviewBadgeIsFilled: Bool {
         context.reviewRecord?.latestReview != nil
+            || context.critique != nil
             || context.reviewDisplayState != .notReviewed
     }
 
     private var reviewBadgeForegroundSymbol: String? {
+        if isWork {
+            return context.critique == nil ? nil : "doc.text.magnifyingglass"
+        }
         if context.reviewDisplayState == .notReviewed,
            context.reviewRecord?.latestReview == nil {
             return nil
@@ -406,12 +648,67 @@ struct ResearchInspectorContentView: View {
     }
 
     private var reviewColor: Color {
-        switch context.reviewDisplayState {
+        if isWork {
+            guard context.critique != nil else {
+                return ScholiumColorRole.mutedText.color
+            }
+            return revisionIsCurrent
+                ? ScholiumColorRole.confirmed.color
+                : ScholiumColorRole.attention.color
+        }
+        return switch context.reviewDisplayState {
         case .notReviewed: ScholiumColorRole.mutedText.color
         case .reviewed: ScholiumColorRole.secondaryText.color
         case .qualified: ScholiumColorRole.confirmed.color
         case .unqualified: ScholiumColorRole.destructive.color
         }
+    }
+
+    private var isWork: Bool {
+        context.currentVault?.role == .draftProject
+    }
+
+    private var revisionIsCurrent: Bool {
+        if isWork {
+            guard let critique = context.critique,
+                  let currentRevision = context.currentRevision else { return false }
+            return critique.targetFingerprint == currentRevision
+        }
+        return latestReviewMatchesCurrentRevision
+    }
+
+    private var commentSummary: String {
+        let presentation = context.presentation
+        return ScholiumL10n.string(
+            "\(presentation.commentCount) comments · \(presentation.unresolvedCommentCount) unresolved · \(presentation.commentsNeedingReattachmentCount) need reattachment"
+        )
+    }
+
+    private var attentionKindSummary: String {
+        context.presentation.attentionKinds
+            .map { ScholiumL10n.localized(attentionTitle(for: $0)) }
+            .joined(separator: " · ")
+    }
+
+    private func attentionTitle(
+        for kind: AttentionQueueKind
+    ) -> LocalizedStringResource {
+        switch kind {
+        case .possibleOrphan: "Possible Orphan"
+        case .changedSinceReview: "Changed Since Review"
+        case .malformedMetadata: "Malformed Metadata"
+        case .brokenConnection: "Broken Connection"
+        case .ambiguousConnection: "Ambiguous Connection"
+        case .unqualifiedAnalysisReliance: "Unqualified Analysis Reliance"
+        case .unresolvedIdentity: "Unresolved Identity"
+        }
+    }
+
+    private var scholarlyFingerprint: String? {
+        if isWork {
+            return context.critique?.targetFingerprint.sha256
+        }
+        return context.reviewRecord?.latestReview?.fingerprint.sha256
     }
 
     private struct PropertyFact: Identifiable {
@@ -426,13 +723,16 @@ struct ResearchInspectorContentView: View {
         case .paperAnalysis:
             ["authors", "year", "type", "status", "debate_importance"]
         case .topicKnowledge:
-            ["status", "research_unit.scope", "aliases"]
+            ["status", "aliases"]
         case .draftProject:
-            ["kind", "status", "research_unit.scope", "deadline", "authors"]
+            ["kind", "status", "deadline", "authors"]
         case .generic:
             note.frontmatter.keys
                 .filter {
-                    $0 != "title" && $0 != "tags" && !ResearcherPropertyPolicy.isHidden($0)
+                    $0 != "title"
+                        && $0 != "tags"
+                        && $0 != "research_unit"
+                        && !ResearcherPropertyPolicy.isHidden($0)
                 }
                 .sorted()
         }
@@ -442,9 +742,7 @@ struct ResearchInspectorContentView: View {
 
     private func propertyFact(for key: String) -> PropertyFact? {
         let value: String?
-        if key == "research_unit.scope" {
-            value = note.researchUnit.scope
-        } else if let raw = note.property(at: key) {
+        if let raw = note.property(at: key) {
             value = propertyDisplayValue(raw, key: key)
         } else {
             value = nil
@@ -454,7 +752,6 @@ struct ResearchInspectorContentView: View {
         let label: String
         switch key {
         case "authors": label = note.authors.count == 1 ? "Author" : "Authors"
-        case "research_unit.scope": label = "Scope"
         case "debate_importance": label = "Importance"
         default:
             label = PropertyPresentationCatalog.presentation(
@@ -475,10 +772,10 @@ struct ResearchInspectorContentView: View {
 
     private struct DiagnosticItem: Identifiable {
         let id: String
-        let title: String
+        let titleResource: LocalizedStringResource
         let symbol: String
         let color: Color
-        let accessibilityState: String
+        let accessibilityStateResource: LocalizedStringResource
     }
 
     private var diagnostics: [DiagnosticItem] {
@@ -496,8 +793,12 @@ struct ResearchInspectorContentView: View {
         ]
     }
 
-    private func diagnostic(_ id: String, _ title: String, passes: Bool?) -> DiagnosticItem {
-        let presentation: (String, Color, String) = switch passes {
+    private func diagnostic(
+        _ id: String,
+        _ titleResource: LocalizedStringResource,
+        passes: Bool?
+    ) -> DiagnosticItem {
+        let presentation: (String, Color, LocalizedStringResource) = switch passes {
         case true:
             ("checkmark.circle", ScholiumColorRole.confirmed.color, "No issue")
         case false:
@@ -507,22 +808,35 @@ struct ResearchInspectorContentView: View {
         }
         return DiagnosticItem(
             id: id,
-            title: title,
+            titleResource: titleResource,
             symbol: presentation.0,
             color: presentation.1,
-            accessibilityState: presentation.2
+            accessibilityStateResource: presentation.2
         )
+    }
+
+    private var freshnessSymbol: String {
+        switch context.freshness {
+        case .refreshing: "arrow.triangle.2.circlepath"
+        case .current: "checkmark.circle"
+        case .stale: "clock.badge.exclamationmark"
+        case .failed: "exclamationmark.triangle"
+        case .unavailable: "questionmark.circle"
+        }
+    }
+
+    private var freshnessColor: Color {
+        switch context.freshness {
+        case .current: ScholiumColorRole.confirmed.color
+        case .stale, .failed: ScholiumColorRole.attention.color
+        case .refreshing, .unavailable: ScholiumColorRole.secondaryText.color
+        }
     }
 
     // MARK: - Document Attention
 
     private var documentAttentionItems: [AttentionQueueItem] {
-        guard let vaultID = context.currentVault?.id,
-              let items = context.catalog?.attention else { return [] }
-        let matching = items.filter {
-            $0.note.vaultID == vaultID && $0.note.relativePath == note.relativePath
-        }
-        return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(matching)
+        context.visibleAttentionItems
     }
 
 }
@@ -628,10 +942,12 @@ private struct ZoteroSourceSection: View {
 
     var body: some View {
         if !requests.isEmpty {
+            let sectionTitle: LocalizedStringResource = requests.count == 1
+                && currentVault?.role == .sourceCorpus
+                ? "ZOTERO SOURCE"
+                : "ZOTERO SOURCES FROM LINKED ANALYSES"
             ScholiumApparatusSection(
-                requests.count == 1 && currentVault?.role == .sourceCorpus
-                    ? "ZOTERO SOURCE"
-                    : "ZOTERO SOURCES FROM LINKED ANALYSES",
+                sectionTitle,
                 showsDivider: false
             ) {
                 if isLoading {
@@ -937,27 +1253,32 @@ private struct ZoteroSourceSection: View {
 // MARK: - Preview
 
 #Preview {
-    ResearchInspectorContentView(
+    ResearchOverviewView(
         note: .unclassified(NoteDocument(
             relativePath: "topics/consciousness.md",
             rawContent: "---\ntitle: Consciousness\nstatus: developing\n---\n"
         )),
         context: ResearchInspectorContentContext(
-            currentVault: nil,
-            analysesVaultID: nil,
-            catalog: nil,
-            reviewDisplayState: .notReviewed,
-            reviewRecord: nil,
-            currentRevision: nil,
+            presentation: ResearchOverviewPresentation(
+                researchUnit: ResearchUnitDeclaration(frontmatter: [:]),
+                currentVault: nil,
+                analysesVaultID: nil,
+                catalog: nil,
+                reviewDisplayState: .notReviewed,
+                reviewRecord: nil,
+                currentRevision: nil,
+                critique: nil,
+                visibleAttentionItems: [],
+                freshness: .unavailable("No workspace is open.")
+            ),
             openReview: {},
             openResearchRecord: {},
             openProperties: {},
+            retryRefresh: {},
             resolveZoteroSource: { _ in .insufficientMetadata },
             openZoteroItem: { _ in },
             confirmZoteroItem: { _, _ in },
-            didConfirmZoteroSource: { _ in },
-            copyResearchText: { _ in },
-            repairBibliographyMethod: {}
+            didConfirmZoteroSource: { _ in }
         )
     )
 }

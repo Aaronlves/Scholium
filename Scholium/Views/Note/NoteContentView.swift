@@ -33,7 +33,6 @@ struct DocumentFeatureState {
     let pendingIdentityRebinding: NoteIdentityPendingRebinding?
     let identityMigrationFailureMessage: String?
     let isResolvingIdentity: Bool
-    let researchStrip: ResearchStripPresentation
 }
 
 struct DocumentFeatureActions {
@@ -175,18 +174,17 @@ private struct DocumentSessionFallback: View {
 
 struct ResearchInspectorView: View {
     @ObservedObject private var controller: ResearchController
-
-    enum Mode: String, CaseIterable, Identifiable {
-        case connections = "Connections"
-        case research = "Research"
-        var id: String { rawValue }
-    }
+    @Environment(\.layoutDirection) private var layoutDirection
+    @FocusState private var focusedMode: ResearchInspectorMode?
 
     let note: WindowDocumentLocation
     let graph: GraphSnapshot?
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
     let researchInspectorContentContext: ResearchInspectorContentContext
+    let researchFunctionsPresentation: ResearchFunctionsPresentation
+    let openResearchFunction: (ResearchFunctionID) -> Void
+    let openResearchRecord: () -> Void
 
     init(
         note: WindowDocumentLocation,
@@ -194,7 +192,10 @@ struct ResearchInspectorView: View {
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
-        researchInspectorContentContext: ResearchInspectorContentContext
+        researchInspectorContentContext: ResearchInspectorContentContext,
+        researchFunctionsPresentation: ResearchFunctionsPresentation,
+        openResearchFunction: @escaping (ResearchFunctionID) -> Void,
+        openResearchRecord: @escaping () -> Void
     ) {
         self.note = note
         self.controller = controller
@@ -202,6 +203,9 @@ struct ResearchInspectorView: View {
         self.catalog = catalog
         self.currentVaultID = currentVaultID
         self.researchInspectorContentContext = researchInspectorContentContext
+        self.researchFunctionsPresentation = researchFunctionsPresentation
+        self.openResearchFunction = openResearchFunction
+        self.openResearchRecord = openResearchRecord
     }
 
     var body: some View {
@@ -209,13 +213,21 @@ struct ResearchInspectorView: View {
             inspectorTabs
 
             Group {
-                switch inspectorMode.wrappedValue {
-                case .connections:
-                    ConnectionsInspectorView(context: relationshipContext)
-                case .research:
-                    ResearchInspectorContentView(
+                switch controller.inspector.mode {
+                case .overview:
+                    ResearchOverviewView(
                         note: note,
                         context: researchInspectorContentContext
+                    )
+                case .connections:
+                    ConnectionsInspectorView(context: relationshipContext)
+                case .functions:
+                    ResearchFunctionsInspectorView(
+                        presentation: researchFunctionsPresentation,
+                        freshness: researchInspectorContentContext.freshness,
+                        select: openResearchFunction,
+                        openResearchRecord: openResearchRecord,
+                        retryRefresh: researchInspectorContentContext.retryRefresh
                     )
                 }
             }
@@ -230,34 +242,51 @@ struct ResearchInspectorView: View {
         ZStack(alignment: .bottom) {
             ScholiumStructuralRule()
 
-            HStack(spacing: 0) {
-                ForEach(Mode.allCases) { mode in
-                    InspectorModeButton(
-                        title: mode.rawValue,
-                        isSelected: inspectorMode.wrappedValue == mode
-                    ) {
-                        inspectorMode.wrappedValue = mode
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(ResearchInspectorMode.allCases) { mode in
+                        InspectorModeButton(
+                            mode: mode,
+                            isSelected: controller.inspector.mode == mode,
+                            focusedMode: $focusedMode,
+                            select: { selectMode(mode) },
+                            move: { moveFocus(from: mode, direction: $0) }
+                        )
+                        .frame(minWidth: 92)
                     }
-                    .frame(maxWidth: .infinity)
                 }
+                .frame(minWidth: 276)
             }
+            .scrollIndicators(.hidden)
             .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
         }
-        .frame(height: ScholiumMetrics.Apparatus.headerHeight)
+        .frame(minHeight: ScholiumMetrics.Apparatus.headerHeight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Research Inspector")
     }
 
-    private var inspectorMode: Binding<Mode> {
-        Binding(
-            get: {
-                switch controller.inspector.modeRawValue.lowercased() {
-                case "research", "relationships": .research
-                default: .connections
-                }
-            },
-            set: { controller.selectInspectorMode($0.rawValue.lowercased()) }
-        )
+    private func selectMode(_ mode: ResearchInspectorMode) {
+        controller.selectInspectorMode(mode)
+        focusedMode = mode
+    }
+
+    private func moveFocus(
+        from mode: ResearchInspectorMode,
+        direction: MoveCommandDirection
+    ) {
+        let modes = ResearchInspectorMode.allCases
+        guard let index = modes.firstIndex(of: mode) else { return }
+        let visualStep: Int
+        switch direction {
+        case .left:
+            visualStep = layoutDirection == .leftToRight ? -1 : 1
+        case .right:
+            visualStep = layoutDirection == .leftToRight ? 1 : -1
+        default:
+            return
+        }
+        let nextIndex = (index + visualStep + modes.count) % modes.count
+        selectMode(modes[nextIndex])
     }
 
     private var relationshipContext: RelationshipInspectorContext {
@@ -267,6 +296,8 @@ struct ResearchInspectorView: View {
             current: currentVaultID.map {
                 VaultQualifiedNoteID(vaultID: $0, relativePath: note.relativePath)
             },
+            freshness: researchInspectorContentContext.freshness,
+            retryRefresh: researchInspectorContentContext.retryRefresh,
             openReference: { reference, line in
                 controller.requestOpen(reference, sourceLine: line)
             }
@@ -276,15 +307,18 @@ struct ResearchInspectorView: View {
 
 private struct InspectorModeButton: View {
     @State private var isHovering = false
-    let title: String
+    let mode: ResearchInspectorMode
     let isSelected: Bool
+    let focusedMode: FocusState<ResearchInspectorMode?>.Binding
     let select: () -> Void
+    let move: (MoveCommandDirection) -> Void
 
     var body: some View {
         Button(action: select) {
-            Text(ScholiumL10n.dynamicString(title))
+            Text(mode.interfaceTitleResource)
                 .font(.body)
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .frame(
                     maxWidth: .infinity,
                     minHeight: ScholiumMetrics.Apparatus.headerHeight
@@ -292,6 +326,8 @@ private struct InspectorModeButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
+        .focusable(interactions: .activate)
+        .focused(focusedMode, equals: mode)
         .foregroundStyle(
             isSelected || isHovering
                 ? ScholiumColorRole.primaryText.color
@@ -308,8 +344,9 @@ private struct InspectorModeButton: View {
                 .padding(.horizontal, 14)
         }
         .onHover { isHovering = $0 }
+        .onMoveCommand(perform: move)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("scholium.inspectorMode.\(title.lowercased())")
+        .accessibilityIdentifier("scholium.inspectorMode.\(mode.rawValue)")
     }
 }
 // MARK: - Note Content View
@@ -416,15 +453,6 @@ struct NoteContentView: View {
             }
 
             documentBodySurface
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !state.researchStrip.items.isEmpty {
-                    ResearchStripView(
-                        presentation: state.researchStrip,
-                        select: openResearchFunction
-                    )
-                    .padding(.horizontal, ScholiumMetrics.Document.researchStripHorizontalInset)
-                }
-            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
@@ -2155,8 +2183,7 @@ private func dialogueTargetIDs(
         identityAmbiguity: nil,
         pendingIdentityRebinding: nil,
         identityMigrationFailureMessage: nil,
-        isResolvingIdentity: false,
-        researchStrip: ResearchStripPresentation(items: [], activeFunction: nil)
+        isResolvingIdentity: false
     )
     let actions = DocumentFeatureActions(
         requestIdentityResolution: {},

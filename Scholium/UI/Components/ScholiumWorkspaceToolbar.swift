@@ -182,7 +182,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         // window-owned visibility intent as the View menu; the representable
         // then asks its exact native controller to perform the standard
         // `toggleInspector(_:)` transition.
-        windowActions.setResearchInspectorVisible(!appState.backlinksVisible)
+        windowActions.setResearchInspectorVisible(!appState.researchInspectorVisible)
     }
 
     private func hostedItem<Content: View>(

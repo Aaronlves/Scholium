@@ -1,7 +1,7 @@
 import Foundation
 
 /// The role one Triptych-local Researcher Skill plays in a Research Function.
-/// These values are Settings/backend semantics, not Research Strip labels.
+/// These values are Settings/backend semantics, not Functions-mode labels.
 public enum ResearchFunctionSkillBindingRole: String, Codable, Hashable, Sendable {
     /// Replaces the release-managed primary package for this function while
     /// leaving the function's permissions and completion contract unchanged.
@@ -119,7 +119,7 @@ public struct ResearchFunctionSkillBindingIssue: Codable, Hashable, Sendable {
     }
 }
 
-/// Delivery-neutral Settings state. The Research Strip never receives this
+/// Delivery-neutral Settings state. Functions mode never receives this
 /// value and therefore cannot inspect or select package identifiers.
 public struct ResearchFunctionSkillBindingStatus: Codable, Hashable, Sendable {
     public let function: ResearchFunctionID

@@ -2,9 +2,34 @@ import ScholiumContracts
 import Combine
 import Foundation
 
+enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
+    case overview
+    case connections
+    case functions
+
+    var id: Self { self }
+
+    init(restoring rawValue: String?) {
+        switch rawValue?.lowercased() {
+        case "connections", "incoming", "outgoing": self = .connections
+        case "functions": self = .functions
+        case "overview", "research", "relationships", .none: self = .overview
+        default: self = .overview
+        }
+    }
+
+    var interfaceTitleResource: LocalizedStringResource {
+        switch self {
+        case .overview: "Overview"
+        case .connections: "Connections"
+        case .functions: "Functions"
+        }
+    }
+}
+
 struct ResearchInspectorState: Equatable, Sendable {
-    var modeRawValue = "connections"
-    var showsResearchInspector = false
+    var mode: ResearchInspectorMode = .overview
+    var isVisible = false
 }
 
 /// Per-window owner for research-context data and function presentation.
@@ -395,17 +420,17 @@ final class ResearchController: ObservableObject {
         projectFunctionRuns()
     }
 
-    func selectInspectorMode(_ rawValue: String) {
-        peripheralPresentation.selectInspectorMode(rawValue)
+    func selectInspectorMode(_ mode: ResearchInspectorMode) {
+        peripheralPresentation.selectInspectorMode(mode)
     }
 
     func showResearchInspector(_ isVisible: Bool) {
         peripheralPresentation.showResearchInspector(isVisible)
     }
 
-    func restoreInspector(modeRawValue: String?, isVisible: Bool?) {
+    func restoreInspector(storedMode: String?, isVisible: Bool?) {
         peripheralPresentation.restoreInspector(
-            modeRawValue: modeRawValue,
+            storedMode: storedMode,
             isVisible: isVisible
         )
     }

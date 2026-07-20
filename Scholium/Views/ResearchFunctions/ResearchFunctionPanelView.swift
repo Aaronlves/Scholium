@@ -35,10 +35,10 @@ struct ResearchFunctionPanelContext {
     }
 }
 
-/// Shared presentation root for the editor Strip. It observes only the
-/// per-window function controller; Review is supplied through a narrow,
-/// immutable adapter so the reusable Human Review view keeps its own record
-/// boundary.
+/// Shared typed presentation root for Research Function entry points. It
+/// observes only the per-window function controller; Review is supplied
+/// through a narrow, immutable adapter so the reusable Human Review view keeps
+/// its own record boundary.
 struct ResearchFunctionPanelView<ReviewContent: View>: View {
     @ObservedObject private var controller: ResearchFunctionController
     let context: ResearchFunctionPanelContext

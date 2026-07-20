@@ -564,9 +564,9 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     }
 }
 
-/// Agent-side finalization of a method-unresolved preflight. The Strip never
-/// constructs this value and never exposes its semantic method references as
-/// interface modes.
+/// Agent-side finalization of a method-unresolved preflight. Interface
+/// launchers never construct this value or expose its semantic method
+/// references as interface modes.
 public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Sendable {
     public let runID: UUID
     public let confirmationToken: UUID

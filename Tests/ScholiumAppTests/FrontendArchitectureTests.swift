@@ -326,7 +326,7 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("if let control = item.view as? NSControl"))
         #expect(toolbarSource.contains("control.target = self"))
         #expect(toolbarSource.contains(
-            "windowActions.setResearchInspectorVisible(!appState.backlinksVisible)"
+            "windowActions.setResearchInspectorVisible(!appState.researchInspectorVisible)"
         ))
         #expect(toolbarSource.contains("item.autovalidates = false"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
@@ -451,7 +451,7 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
     }
 
-    @Test("Connections and Research share one Apparatus geometry")
+    @Test("Overview, Connections, and Functions share one Apparatus geometry")
     func apparatusAlignmentContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -472,6 +472,12 @@ struct FrontendArchitectureTests {
         let connectionsSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Backlinks/ConnectionsInspectorView.swift"
+            ),
+            encoding: .utf8
+        )
+        let functionsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift"
             ),
             encoding: .utf8
         )
@@ -531,6 +537,9 @@ struct FrontendArchitectureTests {
         #expect(connectionsSource.contains(
             "ScholiumInterfaceTypography.apparatusResearchContent"
         ))
+        #expect(functionsSource.contains(
+            ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
+        ))
         #expect(researchSource.contains("ScholiumInterfaceTypography.reviewValue"))
         #expect(researchSource.contains("\"Current revision\""))
         #expect(researchSource.contains("private var propertiesSection"))
@@ -575,7 +584,8 @@ struct FrontendArchitectureTests {
         #expect(!content.contains(".backgroundExtensionEffect()"))
         #expect(!content.contains(".regularMaterial"))
         #expect(!content.contains("height: geometry.size.height"))
-        #expect(noteSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
+        #expect(!noteSource.contains("ResearchStripView"))
+        #expect(!noteSource.contains("scholium.researchStrip"))
         #expect(noteSource.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)"))
         let toolbar = try String(
             contentsOf: repository.appendingPathComponent(
@@ -608,11 +618,7 @@ struct FrontendArchitectureTests {
                 == ScholiumMetrics.Peripheral.sectionContentInset
         )
         #expect(ScholiumMetrics.Apparatus.headerHeight == 48)
-        #expect(ScholiumMetrics.Workspace.bottomCommandBarHeight == 52)
-        #expect(
-            ScholiumMetrics.Document.researchStripMaximumWidth
-                == ScholiumMetrics.Document.readableMeasure + 60
-        )
+        #expect(ScholiumMetrics.Workspace.libraryFooterHeight == 52)
 
         let preview = try String(
             contentsOf: repository.appendingPathComponent(
@@ -830,9 +836,9 @@ struct FrontendArchitectureTests {
     @Test("Research Inspector has one trailing-context owner")
     func researchContextExclusivity() {
         let controller = ResearchController()
-        #expect(!controller.inspector.showsResearchInspector)
+        #expect(!controller.inspector.isVisible)
         controller.showResearchInspector(true)
-        #expect(controller.inspector.showsResearchInspector)
+        #expect(controller.inspector.isVisible)
     }
 
     @Test("Recommended Bibliography remains an isolated Library feature")
@@ -1178,9 +1184,6 @@ struct FrontendArchitectureTests {
             "Scholium/Views/ContentView.swift": [
                 ".scholiumSurface(.navigation)",
                 "ScholiumColorRole.documentBackground",
-            ],
-            "Scholium/Views/ResearchFunctions/ResearchStripView.swift": [
-                "ScholiumColorRole.accent",
             ],
             "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift": [
                 "scholiumSurface(.denseEvidence)",

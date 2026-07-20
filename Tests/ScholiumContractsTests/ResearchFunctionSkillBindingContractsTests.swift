@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Research Function Skill binding contracts")
 struct ResearchFunctionSkillBindingContractsTests {
-    @Test("A Settings selection round-trips without adding Strip presentation data")
+    @Test("A Settings selection round-trips without adding interface presentation data")
     func selectionRoundTrip() throws {
         let selection = ResearchFunctionSkillSelection(
             function: .revise,

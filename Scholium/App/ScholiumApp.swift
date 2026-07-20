@@ -835,14 +835,14 @@ private struct ScholiumCommands: Commands {
             .disabled(searchActions == nil)
             Button(
                 ScholiumL10n.dynamicString(
-                    appState?.backlinksVisible == true
+                    appState?.researchInspectorVisible == true
                         ? "Hide Research Inspector"
                         : "Show Research Inspector"
                 )
             ) {
                 guard let appState else { return }
                 workspaceWindowActions?.setResearchInspectorVisible(
-                    !appState.backlinksVisible
+                    !appState.researchInspectorVisible
                 )
             }
             .keyboardShortcut("b", modifiers: [.command, .option])
@@ -1241,13 +1241,13 @@ final class WindowModel: ObservableObject {
 
     // MARK: Window Presentation
 
-    var inspectorModeRaw: String {
-        get { researchController.inspector.modeRawValue }
+    var researchInspectorMode: ResearchInspectorMode {
+        get { researchController.inspector.mode }
         set { researchController.selectInspectorMode(newValue) }
     }
 
-    var backlinksVisible: Bool {
-        get { researchController.inspector.showsResearchInspector }
+    var researchInspectorVisible: Bool {
+        get { researchController.inspector.isVisible }
         set { researchController.showResearchInspector(newValue) }
     }
 
@@ -1753,38 +1753,17 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var researchStripPresentation: ResearchStripPresentation {
-        guard let target = currentResearchFunctionTarget else {
-            return ResearchStripPresentation(items: [], activeFunction: nil)
-        }
-        let functions: [ResearchFunctionID]
-        switch target.role {
-        case .analysis, .topic:
-            functions = [.dialogue, .develop, .fidelity]
-        case .work:
-            functions = [.critique, .revise, .dialogue, .fidelity, .manuscript]
-        }
-        let items = functions.map { function in
-            let availability = researchController.functions.availability[function]
-            let disabledReason: String?
-            if availability == nil {
-                disabledReason = "Checking availability…"
-            } else if availability?.isEnabled == true {
-                disabledReason = nil
-            } else {
-                disabledReason = availability?.repairReasons.first?.interfaceDescription
-                    ?? "Unavailable for this note."
-            }
-            return ResearchStripItem(
-                id: function,
-                isEnabled: availability?.isEnabled == true,
-                disabledReason: disabledReason
-            )
-        }
-        let activeFunction = researchController.functions.target?.noteID == target.noteID
+    var researchFunctionsPresentation: ResearchFunctionsPresentation {
+        let target = currentResearchFunctionTarget
+        let activeFunction = researchController.functions.target == target
             ? researchController.functions.activeFunction
             : nil
-        return ResearchStripPresentation(items: items, activeFunction: activeFunction)
+        return ResearchFunctionsPresentation.make(
+            target: target,
+            availability: researchController.functions.availability,
+            activeFunction: activeFunction,
+            runs: researchController.functions.targetRuns
+        )
     }
 
     func refreshResearchFunctionAvailability() async {
@@ -2704,8 +2683,8 @@ final class WindowModel: ObservableObject {
 
     /// Mirrors the native Inspector state without driving its geometry.
     func recordResearchInspectorVisibility(_ visible: Bool) {
-        guard visible != backlinksVisible else { return }
-        backlinksVisible = visible
+        guard visible != researchInspectorVisible else { return }
+        researchInspectorVisible = visible
     }
 
     func presentationMode(for path: String) -> NotePresentationMode {
@@ -2759,7 +2738,7 @@ final class WindowModel: ObservableObject {
             // Visibility changes only after a direct researcher action.
             sidebarVisible = true
             researchController.restoreInspector(
-                modeRawValue: nil,
+                storedMode: nil,
                 isVisible: nil
             )
             await restoreWorkspaceIfNeeded()
@@ -2805,7 +2784,7 @@ final class WindowModel: ObservableObject {
             ? (restoredPresentation.libraryVisible ?? true)
             : true
         researchController.restoreInspector(
-            modeRawValue: restoredPresentation.inspectorMode,
+            storedMode: restoredPresentation.inspectorMode,
             isVisible: restoredPresentation.inspectorVisible
         )
         discoveryController.replaceSearchCriteria(SearchWorkspaceState(
@@ -2896,8 +2875,8 @@ final class WindowModel: ObservableObject {
             documentModes: documentPresentation.modes,
             scrollPositions: documentPresentation.scrollPositions,
             libraryVisible: sidebarVisible,
-            inspectorMode: inspectorModeRaw,
-            inspectorVisible: backlinksVisible,
+            inspectorMode: researchInspectorMode.rawValue,
+            inspectorVisible: researchInspectorVisible,
             contentDestination: .document,
             searchState: SearchWorkspaceState(scope: ordinarySearchScope),
             documentTextScale: documentTextScale

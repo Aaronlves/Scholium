@@ -34,8 +34,9 @@ unrecognized Triptych files.
 - **Unclassified** temporarily stages imported Markdown before the researcher
   assigns it to a vault.
 - A **Research Function** is a researcher-selected scholarly operation exposed
-  by the document-local **Research Strip** and executed through the shared
-  Application API: Dialogue, Develop, Fidelity, Critique, Revise, or Manuscript.
+  by the Research Inspector's **Functions** mode and executed through the
+  shared Application API: Dialogue, Develop, Fidelity, Critique, Revise, or
+  Manuscript.
 - A function's **Target** is its one immutable Analysis, Topic, or Work. Its
   **Materials** are explicitly selected read-only notes; they are never
   implicit write targets.
@@ -403,9 +404,10 @@ usage changes.
 
 ## 8. Research Functions and direct agent work
 
-### 8.1 Research Strip and function contract
+### 8.1 Research Functions and function contract
 
-The bottom editor Research Strip appears only for an open role-valid note:
+The Research Inspector's **Functions** mode exposes only the functions valid
+for the current role-valid note:
 
 | Target | Functions, in order |
 | --- | --- |
@@ -600,7 +602,7 @@ clipboard fallback cannot claim unretrieved packages.
 **Settings → Research Guidance → Advanced → Research Methods** lets each
 function keep the official primary, select one compatible researcher-owned
 replacement, and add compatible supplements and exact Practices. Application
-validates and atomically persists bindings. The Research Strip receives
+validates and atomically persists bindings. The Functions mode receives
 semantic availability only.
 
 Workflow panels expose scholarly inputs, not prompt names, bodies,
@@ -674,8 +676,8 @@ overwriting either version.
 3. Use Dialogue, Develop, or Fidelity when useful; Dialogue contains Human
    Review, while Develop absorbs exploratory, conceptual, argumentative,
    synthetic, or expressive work.
-4. Direct Source Analysis may inspect an available source without a Strip
-   function, stored PDF, or Zotero control.
+4. Direct Source Analysis may inspect an available source without creating a
+   Research Function, stored PDF, or Zotero control.
 5. The researcher decides what to incorporate and whether related Topics or
    Works need updates.
 
@@ -866,7 +868,7 @@ files, or live SQLite.
 
 One Triptych-wide **Recommended Bibliography** section is fixed at Library's
 bottom across vault scopes and labelled **Reading leads, not evidence**. It is
-not a Research Function, Strip control, note appendix, Zotero write path, or
+not a Research Function, Inspector launcher, note appendix, Zotero write path, or
 evidence store.
 
 Optional goals are Background Reading, Core Positions, Historical
@@ -1004,9 +1006,9 @@ with three sibling items:
    Filter; one folder/note hierarchy; Recommended Bibliography; compact Set
    Aside, Trash, and Settings routes.
 2. **Document:** selected note or the text-free semantic background.
-3. **Apparatus:** Research Inspector's read-only Connections and Research
-   projections. It never owns buffers, autosave, Undo, or conflicts; full
-   chronology belongs to Research Record.
+3. **Apparatus:** Research Inspector's read-only Overview, Connections, and
+   Functions projections. It never owns buffers, autosave, Undo, or conflicts;
+   full chronology belongs to Research Record.
 
 The workspace starts at **1180 × 760**; this is an initial size, not a minimum.
 SwiftUI Scene data owns route identity and system restoration. AppKit owns
@@ -1026,7 +1028,9 @@ mirrors Library and Apparatus visibility for labels, commands, and the next
 session. Menu, toolbar, and content actions send explicit per-window intents to
 the native controller; model observation never continuously reasserts split
 state. Notes/tabs never reconstruct the shell or change peripheral
-visibility/mode. First Inspector reveal selects Connections.
+visibility/mode. A new window's first Inspector reveal selects Overview. Each
+window restores its own last Inspector mode; changing notes, Document tabs, or
+document presentation mode never changes it.
 
 The native toolbar owns titlebar/traffic-light geometry. Opaque regions extend
 under its transparent background; controls respect live safe area. Order is
@@ -1114,14 +1118,47 @@ empty, invalid, derived, and not-applicable. Exact YAML stays available in
 Source. Research Status shows Scope, then non-empty Limitations, and **Not Yet**
 for absence.
 
-### 18.5 Contextual research and Research Strip
+### 18.5 Contextual research and Research Functions
 
 Apparatus contains Research Inspector only; Research Record and checkpoint
 recovery stay separate. Research Record is a nonrestored `UtilityWindow`, reads
 the focused Workspace directly, and starts at **760 × 680** without treating
-that size as a minimum. The inspector scrolls independently and has
-**Connections** and **Research** text tabs with a restrained ink underline,
-not a filled/capsule segment.
+that size as a minimum. There is exactly one native trailing Inspector per
+Workspace, with **Overview · Connections · Functions** in that order. These are
+mutually exclusive modes inside the Inspector, not split columns, Document
+tabs, panels, or windows. Their text labels use a restrained ink underline,
+not a filled/capsule segment; labels remain horizontally reachable rather than
+truncating. The selected mode is exposed accessibly, Left/Right Arrow changes
+mode, Tab enters its content, and every mode owns at most one vertical scroll.
+
+A new window begins in Overview and stores its last mode per window. Restoring
+a window restores that mode; switching notes, Document tabs, or Read/Live
+Preview/Source never changes it. Hiding the Inspector leaves no substitute in
+Document. Research menu and keyboard commands remain complete routes: they may
+open a function without revealing the Inspector or changing its mode.
+
+Overview presents only compact current-note projections, in this order:
+
+1. **Research Status:** Scope followed by every non-empty Limitation; **Not
+   Yet** means absence, while invalid source reports its exact validation
+   problem. Editing opens the existing Properties surface.
+2. **Scholarly Status:** Human Review state for an Analysis/Topic or Critique
+   currency and round count for a Work, followed by Comment totals, unresolved
+   count, and anchors needing reattachment. Review/Critique actions keep their
+   existing destinations.
+3. **Attention:** the visible current-note count and distinct issue kinds after
+   dismissal. The complete queue, messages, filters, and dismissal controls
+   remain in Library.
+4. **Key Properties:** at most five role-priority facts, excluding Research
+   Status Scope, plus the route to complete Properties.
+5. **Provenance:** compact note and latest Review/Critique times; detailed
+   chronology stays in Research Record.
+6. **Diagnostics and Freshness:** important machine checks plus an explicit
+   current, refreshing, stale, failed, or unavailable derived-state label.
+   Stale or failed state preserves the last-known-good projection and offers
+   Retry; it never claims reading, truth, or philosophical evidence.
+7. **Zotero Source:** existing read-only matching, confirmation, and Open in
+   Zotero behavior, without attachment browsing.
 
 Connections begins with three expanded, independently collapsible groups:
 
@@ -1133,30 +1170,41 @@ Connections begins with three expanded, independently collapsible groups:
 
 Within a group, explicit links sort supports, supported by, incompatible, then
 neutral. Redundant symbols state predicate/direction; titles wrap. Do not open
-a second panel merely to show a title. Preserve source anchors.
+a second panel merely to show a title. Preserve source anchors. Connections
+shows the same freshness state before its groups. Stale or failed state keeps
+the last complete graph readable and offers Retry.
 
-Research orders **Review Status**, **Properties**, **Provenance**,
-**Diagnostics**, and **Zotero Source**. Properties shows at most five
-role-priority facts and one route to the full editor; tags stay in that editor.
-Diagnostics shows three or four important machine checks and never claims
-reading, truth, or support. Provenance detail remains in Research Record.
-Zotero retains **Open in Zotero**.
+Functions presents the role-valid functions in the Section 8.1 order. Human
+Review is not a Function launcher. Availability fails closed while checking;
+an unavailable function is disabled and states its first actionable repair
+reason. Each launcher is a wrapping, full-width native button with a 44pt
+target. It opens the existing typed Research Function sheet rather than
+embedding the workflow in the narrow Inspector. Closing a sheet restores focus
+to its initiating Functions button only when it was launched there.
+
+**Current Activity** shows only the newest current-note run still requiring
+action: prepared, awaiting Fidelity, unverified, or stale. If more remain, it
+shows their count and an **Open Research Record** route. Complete and cancelled
+runs, full instructions, Fidelity outcomes, and complete history remain in
+Research Record.
 
 Inspector uses wrapping system interface text. Sections start 15pt below the
 tab rule and separate by 15pt; headings use one lighter sans label. Modes share
 an 18pt edge; content adds 12pt, symbols use a 16pt track plus 8pt gap, and
 trailing actions return to the outer edge unless semantics require otherwise.
 
-Review Status is one restrained third-plane bordered surface, not a badge.
+Scholarly Status is one restrained third-plane bordered surface, not a badge.
 Metadata/actions are sans; verdict is 18pt editorial serif with redundant
 symbol/date. Revision currency appears only after review. Review Note uses
-editorial serif beside a rule and truncates after two lines. Open Dialogue or
+editorial serif beside a rule and truncates after two lines. Open Review or
 Open Critique remains available; color is insufficient.
 
-The bottom Strip has one thin top rule and no title/card/capsule/resting border.
-It follows Sections 7–8 with native states and menu/keyboard/accessibility
-parity. Handoff is keyboard/VoiceOver reachable; the panel survives launch and
-restores focus on reactivation. Report handoff, never agent execution.
+Document has no bottom Research Strip or hidden-Inspector duplicate. Function
+handoff remains keyboard/VoiceOver reachable; its sheet survives launch and
+restores focus on reactivation. Inspector visibility, mode changes, and
+projection refresh never replace the retained Editor host or its buffer,
+selection, Undo, IME, scroll, or focus state. Report handoff, never agent
+execution.
 
 ### 18.6 Canonical state and action meanings
 
@@ -1379,35 +1427,26 @@ Every target change records task, affected sections/scope, trust/source impact,
 vault/app compatibility, required evidence, and new non-goals/questions.
 Temporary code or visuals never become authority accidentally.
 
-## 22. Active cross-cutting decisions and unresolved work
+## 22. Decision index and unresolved work
 
-Sections 1–21 are the complete contract. The table keeps stable identifiers
-for implementation and cutover work while pointing to each rule's canonical
-definition; deleted/superseded IDs remain only in Git history.
+Sections 1–21 are the complete contract. Stable or implemented decisions are
+not restated here: implementation does not retire their target rules. This
+index preserves IDs and canonical locations; deleted or superseded IDs remain
+only in Git history.
 
-| Decision | Active rule | Canonical section |
-| --- | --- | --- |
-| **D-003** | One exact Markdown source underlies all document modes. | 5.1, 18.1 |
-| **D-026** | One role-valid bottom Strip; Human Review lives within Dialogue, not as an agent function. | 7, 8.1 |
-| **D-031** | Beta Search is deterministic lexical retrieval; graph relations stay separate. | 13 |
-| **D-037** | Dialogue, Human Review, Comments, Responses, Critique, and dispositions share presentations without sharing identity/provenance. | 7, 8.1–8.2 |
-| **D-038** | Manual/automatic Fidelity share revision evidence and preserve invocation provenance. | 8.4 |
-| **D-039** | New Analysis offers Declare Now/Not Yet; only Complete Review requires status. | 5.2, 7.1 |
-| **D-040** | Research Guidance uses Prompt Templates · Skills · Advanced with the ownership defined there. | 8.3 |
-| **D-042** | Read and inactive Live Preview share semantic render components and presentation variables; Live omits YAML/line numbers, while Source retains the same session and document geometry. | 5.1, 18.4, 19.2–19.3 |
-| **D-043** | Every Comment is source-anchored; no unanchored compatibility path exists. | 7.2 |
-| **D-049** | Complete primary methods are flexible; Practices only supplement; bibliography leads remain outside notes/Zotero. | 8.3, 15.3 |
-| **D-050** | One version-matched CLI provides strict discovery, typed next actions, resumable functions, Fidelity continuation, and explicit local installation. | 8.4 |
-| **D-052** | One native Sidebar–Document–Inspector split; AppKit owns resize, divider, compression, collapse, fullscreen, and restoration mechanics. Scholium applies restored visibility once, mirrors native visibility, and declares only a matrix-proven scene minimum. | 18.2, 19.4 |
-| **D-055** | Triptych Attention is an inline Library queue after scope, with non-color identity; Inspector shows only note summary. | 18.3 |
-| **D-059** | Beta is copy-first provider-neutral handoff; 1.0 adds Open in Codex; neither auto-submits or reports execution; Run with Codex needs a 2.0 decision. | 8.1, 17 |
-| **D-060** | One native toolbar and standard Inspector item; no replacement chrome or custom glass. | 18.2, 19.1 |
-| **D-074** | Open in New Tab creates a retained Document content tab; New Window alone creates a workspace shell. | 3.2, 18.2 |
-| **D-076** | Bootstrap owns new/missing setup; expired authorization uses a workspace Restore Access sheet. | 3.2, 16 |
-| **D-078** | Pre-1.0 uses a clean Analyses/Topics/Works cutover; Works use project-neutral `draftProject`/`draft-project`; researcher source is preserved. | Introduction, 3–4 |
-| **D-079** | Research Record is a note-following utility window, separate from Inspector and checkpoints. | 8.2, 18.5 |
-| **D-081** | Simplified Chinese follows the contextual vocabulary boundary; identifiers, exact content, and package-authored text remain unchanged. | 18.7 |
-| **D-083** | Pre-1.0 app/agent state uses the clean-cutover inventory below. Unsupported state fails closed or is ignored; researcher source is untouched. | Introduction, 8.2–8.4 |
+| Decision | Canonical section | Decision | Canonical section |
+| --- | --- | --- | --- |
+| **D-003** | 5.1, 18.1 | **D-084** | 7, 8.1, 18.5 |
+| **D-031** | 13 | **D-037** | 7, 8.1–8.2 |
+| **D-038** | 8.4 | **D-039** | 5.2, 7.1 |
+| **D-040** | 8.3 | **D-042** | 5.1, 18.4, 19.2–19.3 |
+| **D-043** | 7.2 | **D-049** | 8.3, 15.3 |
+| **D-050** | 8.4 | **D-052** | 18.2, 19.4 |
+| **D-055** | 18.3, 18.5 | **D-059** | 8.1, 17 |
+| **D-060** | 18.2, 19.1 | **D-074** | 3.2, 18.2 |
+| **D-076** | 3.2, 16 | **D-078** | Introduction, 3–4 |
+| **D-079** | 8.2, 18.5 | **D-081** | 18.7 |
+| **D-083** | Introduction, 8.2–8.4 |  |  |
 
 Clean-cutover inventory:
 

@@ -1,6 +1,33 @@
 # Scholium
 
-Scholium is a local-first macOS research workbench where researchers and external agents develop source-grounded work across Scholium Triptychs.
+[English](README.md) | [简体中文](README.zh-Hans.md)
+
+> A quiet, local-first writing room for philosophical work.
+
+Philosophy rarely arrives as a finished argument. It grows through attentive
+reading: a distinction noticed in one text, an objection that unsettles a
+comfortable view, a reply revised until it can bear its own weight. Scholium
+is a native macOS research workbench built around that slower reality. The
+research document—not a dashboard, task board, or chat transcript—remains at
+the center. A field of inquiry takes shape as a **Triptych**: **Analyses** of
+sources, **Topics** that gather concepts and debates, and **Works** in which the
+researcher develops arguments of their own.
+
+A *scholium* is a note written beside a text. The app follows that spirit: it
+helps researchers think with sources without taking authorship or judgment
+away from them. Markdown remains ordinary, inspectable text in folders the
+researcher chooses, and the essential practices of reading, writing, Search,
+Connections, review, and recovery do not depend on an agent. When external
+agents are invited, Scholium gives their work explicit Targets and Materials,
+revision checks, provenance, and checkpoints so assistance remains bounded,
+reviewable, and recoverable.
+
+Scholium is for people who want software to be quiet where thought should be
+loud: focused reading and writing, Connections that never pretend to be
+evidence, and a Research Record that remembers how an argument changed. It is
+still being shaped with care. If you value philosophical craft, durable
+plain-text archives, and tools that assist without claiming your judgment, we
+hope you will feel at home here.
 
 ## Documentation
 

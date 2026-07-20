@@ -5,6 +5,11 @@ import Testing
 
 @Suite("External window-session persistence")
 struct WindowSessionStateTests {
+    @Test("New session snapshots serialize the canonical Overview Inspector mode")
+    func canonicalInspectorDefault() {
+        #expect(WindowSessionSnapshot().inspectorMode == "overview")
+    }
+
     @Test("One vault-qualified selected document round-trips outside research vaults")
     func roundTrip() async throws {
         let root = temporaryDirectory()

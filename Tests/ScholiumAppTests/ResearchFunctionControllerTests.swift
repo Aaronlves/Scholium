@@ -484,7 +484,7 @@ struct ResearchFunctionControllerTests {
         #expect(editorAnchor.quotation == readAnchor.quotation)
     }
 
-    @Test("Research menu and Strip share the focused selection-capturing action")
+    @Test("Research menu and Functions mode share the focused selection-capturing action")
     func directCommandSelectionParity() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -547,6 +547,50 @@ struct ResearchFunctionControllerTests {
         await gate.waitUntilPassed("Agency", count: 2)
         await waitUntil { controller.canPrepare }
         #expect(controller.canPrepare)
+    }
+
+    @Test("A newly selected note never borrows the previous note's Function availability")
+    func availabilityIsTargetScoped() async {
+        let controller = ResearchFunctionController()
+        let gate = LoadGate()
+        controller.bind(client(beforeLoad: { target in
+            if target.title == "Chapter" {
+                await gate.wait(target.title)
+            }
+        }))
+        await controller.refreshAvailability(
+            for: target(title: "Agency", path: "Topics/Agency.md")
+        )
+        #expect(controller.availability[.develop]?.isEnabled == true)
+
+        let chapter = target(
+            title: "Chapter",
+            path: "Works/Chapter.md",
+            role: .work
+        )
+        let refresh = Task { await controller.refreshAvailability(for: chapter) }
+        await gate.waitUntilArrived("Chapter", count: 1)
+
+        #expect(controller.availability.isEmpty)
+        gate.release("Chapter")
+        await refresh.value
+        #expect(controller.availability[.critique]?.isEnabled == true)
+        #expect(controller.availability[.develop] == nil)
+    }
+
+    @Test("A failed availability request remains fail closed")
+    func failedAvailabilityIsDisabled() async {
+        let controller = ResearchFunctionController()
+        controller.bind(client(availableFunctions: { _ in
+            throw TestFailure.availabilityUnavailable
+        }))
+
+        await controller.refreshAvailability(
+            for: target(title: "Agency", path: "Topics/Agency.md")
+        )
+
+        #expect(controller.availability.isEmpty)
+        #expect(controller.errorMessage == TestFailure.availabilityUnavailable.localizedDescription)
     }
 
     @Test("Materials preserve role and folder ancestors while search and suggestions intersect")
@@ -706,7 +750,7 @@ struct ResearchFunctionControllerTests {
         let paths = [
             "Scholium/Features/ResearchFunctions/ResearchFunctionController.swift",
             "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift",
-            "Scholium/Views/ResearchFunctions/ResearchStripView.swift",
+            "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
         ]
         for path in paths {
             let source = try String(
@@ -722,42 +766,188 @@ struct ResearchFunctionControllerTests {
         }
     }
 
-    @Test("The Work Strip keeps every function available at compact editor widths")
-    func compactStripUsesAnAdaptiveVisibleLabelRow() throws {
+    @Test("The Functions Inspector keeps every role-valid function visible and wrapping")
+    func functionsInspectorUsesFullWidthNativeLaunchers() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchFunctions/ResearchStripView.swift"
+                "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift"
             ),
             encoding: .utf8
         )
 
-        #expect(source.contains("ViewThatFits(in: .horizontal)"))
-        #expect(source.contains("isCompact: true"))
-        #expect(source.contains("Text(item.id.interfaceTitleResource)"))
+        #expect(source.contains("frame(maxWidth: .infinity, minHeight: 44"))
+        #expect(source.contains("Label(item.id.interfaceTitleResource"))
+        #expect(source.contains(".fixedSize(horizontal: false, vertical: true)"))
         #expect(!source.contains("Menu {"))
     }
 
-    @Test("The Strip and direct actions never treat unresolved availability as enabled")
+    @Test("The Functions Inspector and direct actions never treat unresolved availability as enabled")
     func availabilityProjectionIsFailClosed() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
+        let appSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/ScholiumApp.swift"
             ),
             encoding: .utf8
         )
+        let inspectorSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift"
+            ),
+            encoding: .utf8
+        )
 
-        #expect(!source.contains("availability[function]?.isEnabled ?? true"))
-        #expect(source.contains("availability[function]?.isEnabled == true"))
-        #expect(source.contains("refreshAvailability(for: target)"))
-        #expect(source.contains("Checking availability…"))
+        #expect(!inspectorSource.contains("availability[function]?.isEnabled ?? true"))
+        #expect(inspectorSource.contains("result?.isEnabled == true"))
+        #expect(appSource.contains("refreshAvailability(for: target)"))
+        #expect(inspectorSource.contains("Checking availability…"))
+    }
+
+    @Test("Functions projection preserves role order and fails closed before availability")
+    func functionsProjectionOrderAndAvailability() {
+        let topic = target(title: "Agency", path: "Topics/Agency.md")
+        let topicPresentation = ResearchFunctionsPresentation.make(
+            target: topic,
+            availability: [:],
+            activeFunction: nil,
+            runs: []
+        )
+        #expect(topicPresentation.items.map(\.id) == [.dialogue, .develop, .fidelity])
+        #expect(topicPresentation.items.allSatisfy { !$0.isEnabled })
+        #expect(topicPresentation.items.allSatisfy {
+            $0.disabledReason == "Checking availability…"
+        })
+
+        let work = target(
+            title: "Chapter",
+            path: "Works/Chapter.md",
+            role: .work
+        )
+        let workPresentation = ResearchFunctionsPresentation.make(
+            target: work,
+            availability: [
+                .critique: .init(function: .critique, isEnabled: true),
+            ],
+            activeFunction: nil,
+            runs: []
+        )
+        #expect(workPresentation.items.map(\.id) == [
+            .critique, .revise, .dialogue, .fidelity, .manuscript,
+        ])
+        #expect(workPresentation.items.first?.isEnabled == true)
+        #expect(workPresentation.items.dropFirst().allSatisfy { !$0.isEnabled })
+    }
+
+    @Test("Current Activity keeps only the newest actionable run")
+    func functionsProjectionSelectsCurrentActivity() {
+        let target = target(title: "Agency", path: "Topics/Agency.md")
+        let origin = Date(timeIntervalSince1970: 1_000)
+        let runs = [
+            functionRun(target: target, state: .prepared, preparedAt: origin),
+            functionRun(target: target, state: .complete, preparedAt: origin.addingTimeInterval(40)),
+            functionRun(target: target, state: .stale, preparedAt: origin.addingTimeInterval(20)),
+            functionRun(target: target, state: .cancelled, preparedAt: origin.addingTimeInterval(50)),
+            functionRun(target: target, state: .unverified, preparedAt: origin.addingTimeInterval(30)),
+        ]
+
+        let presentation = ResearchFunctionsPresentation.make(
+            target: target,
+            availability: [:],
+            activeFunction: nil,
+            runs: runs
+        )
+        #expect(presentation.currentActivity?.state == .unverified)
+        #expect(presentation.additionalActionableRunCount == 2)
+    }
+
+    @Test("Overview projection summarizes review and visible Attention without duplicating records")
+    func overviewProjectionSummaries() {
+        let target = target(title: "Agency", path: "Topics/Agency.md")
+        let fingerprint = target.fingerprint
+        let attachedAnchor = ResearcherCommentAnchor(
+            fingerprint: fingerprint,
+            utf8Range: 0..<1,
+            utf16Range: 0..<1,
+            line: 1,
+            endLine: 1,
+            quotation: "#"
+        )
+        let detachedAnchor = ResearcherCommentAnchor(
+            fingerprint: fingerprint,
+            utf8Range: 0..<1,
+            utf16Range: 0..<1,
+            line: 1,
+            endLine: 1,
+            quotation: "#",
+            state: .needsReattachment
+        )
+        let review = HumanReviewRecord(
+            noteID: target.noteID,
+            vaultID: target.note.vaultID,
+            relativePath: target.note.relativePath,
+            comments: [
+                ResearcherComment(text: "Open", anchor: attachedAnchor),
+                ResearcherComment(text: "Reattach", anchor: detachedAnchor),
+                ResearcherComment(
+                    text: "Resolved",
+                    anchor: attachedAnchor,
+                    resolvedAt: Date(timeIntervalSince1970: 2_000)
+                ),
+            ]
+        )
+        let noteReference = VaultNoteReference(
+            vaultID: target.note.vaultID,
+            vaultName: "Topics",
+            vaultRole: .topicKnowledge,
+            relativePath: target.note.relativePath
+        )
+        let attention = [
+            AttentionQueueItem(
+                kind: .changedSinceReview,
+                severity: .warning,
+                note: noteReference,
+                message: "Changed"
+            ),
+            AttentionQueueItem(
+                kind: .possibleOrphan,
+                severity: .information,
+                note: noteReference,
+                message: "Orphan A"
+            ),
+            AttentionQueueItem(
+                kind: .possibleOrphan,
+                severity: .information,
+                note: noteReference,
+                message: "Orphan B"
+            ),
+        ]
+        let presentation = ResearchOverviewPresentation(
+            researchUnit: ResearchUnitDeclaration(frontmatter: [:]),
+            currentVault: nil,
+            analysesVaultID: nil,
+            catalog: nil,
+            reviewDisplayState: .notReviewed,
+            reviewRecord: review,
+            currentRevision: fingerprint,
+            critique: nil,
+            visibleAttentionItems: attention,
+            freshness: .current
+        )
+
+        #expect(presentation.commentCount == 3)
+        #expect(presentation.unresolvedCommentCount == 2)
+        #expect(presentation.commentsNeedingReattachmentCount == 1)
+        #expect(presentation.attentionKinds == [
+            AttentionQueueKind.changedSinceReview,
+            AttentionQueueKind.possibleOrphan,
+        ])
     }
 
     @Test("Guided Evolution requires two passes bound to the exact proposal")
@@ -839,6 +1029,9 @@ struct ResearchFunctionControllerTests {
 
     private func client(
         beforeLoad: @escaping @MainActor (ResearchFunctionTarget) async -> Void = { _ in },
+        availableFunctions: (@MainActor (
+            ResearchFunctionTarget
+        ) async throws -> [ResearchFunctionAvailability])? = nil,
         dialogueResponseProfile: @escaping @MainActor () async throws -> DialogueResponseProfile = {
             DialogueResponseProfile(modules: [.remainingQuestions])
         },
@@ -849,7 +1042,7 @@ struct ResearchFunctionControllerTests {
         prepare: (@MainActor (ResearchFunctionRequest) async throws -> ResearchFunctionPreparation)? = nil
     ) -> ResearchFunctionClient {
         ResearchFunctionClient(
-            availableFunctions: { target in
+            availableFunctions: availableFunctions ?? { target in
                 await beforeLoad(target)
                 return target.role == .work
                     ? [.init(function: .critique, isEnabled: true)]
@@ -902,13 +1095,50 @@ struct ResearchFunctionControllerTests {
         )
     }
 
-    private func target(title: String, path: String) -> ResearchFunctionTarget {
+    private func target(
+        title: String,
+        path: String,
+        role: ResearchFunctionTargetRole = .topic
+    ) -> ResearchFunctionTarget {
         ResearchFunctionTarget(
             noteID: UUID(),
             note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: path),
-            role: .topic,
+            role: role,
             fingerprint: DocumentFingerprint(content: "# \(title)\nA selected claim.\n"),
             title: title
+        )
+    }
+
+    private func functionRun(
+        target: ResearchFunctionTarget,
+        state: ResearchFunctionRunState,
+        preparedAt: Date
+    ) -> ResearchFunctionRecordProjection {
+        let request = ResearchFunctionRequest(
+            function: target.role == .work ? .revise : .develop,
+            target: target
+        )
+        let snapshot = ResearchFunctionSnapshot(
+            request: request,
+            recordKind: .functionEnvelope,
+            preparedAt: preparedAt
+        )
+        let completion: ResearchFunctionCompletion? = state == .prepared
+            ? nil
+            : ResearchFunctionCompletion(
+                runID: snapshot.runID,
+                function: request.function,
+                state: state,
+                targetFingerprint: target.fingerprint,
+                materialFingerprints: [:],
+                summary: state.rawValue,
+                didModifyTarget: false,
+                fidelityOutcomes: [],
+                completedAt: preparedAt
+            )
+        return ResearchFunctionRecordProjection(
+            snapshot: snapshot,
+            completion: completion
         )
     }
 
@@ -973,11 +1203,14 @@ struct ResearchFunctionControllerTests {
     }
 
     private enum TestFailure: LocalizedError {
+        case availabilityUnavailable
         case dialogueDefaultsUnavailable
         case materialsUnavailable
 
         var errorDescription: String? {
             switch self {
+            case .availabilityUnavailable:
+                "Function availability unavailable"
             case .dialogueDefaultsUnavailable:
                 "Dialogue defaults are unavailable."
             case .materialsUnavailable:

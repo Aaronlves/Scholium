@@ -16,6 +16,7 @@ struct ResearchLeafArchitectureTests {
             "Scholium/Views/CheckpointView.swift",
             "Scholium/Views/Note/CritiqueProvenanceView.swift",
             "Scholium/Views/Sidebar/ResearchInspectorContentView.swift",
+            "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
         ]
         let sources = try Dictionary(uniqueKeysWithValues: relativePaths.map { path in
             (
@@ -37,6 +38,10 @@ struct ResearchLeafArchitectureTests {
                 !source.contains("@EnvironmentObject"),
                 Comment(rawValue: "\(path) still depends on an ambient environment owner")
             )
+            #expect(!source.contains("import Scholium" + "Application"))
+            #expect(!source.contains("import Scholium" + "Core"))
+            #expect(!source.contains("FileManager"))
+            #expect(!source.contains("import Yams"))
         }
 
         let relationships = try #require(sources[relativePaths[0]])
@@ -131,7 +136,8 @@ struct ResearchLeafArchitectureTests {
         #expect(noteContent.contains("ConnectionsInspectorView(context: relationshipContext)"))
         #expect(noteContent.contains("CritiqueProvenanceView("))
         #expect(noteContent.contains("context: critiqueProvenanceContext"))
-        #expect(noteContent.contains("ResearchInspectorContentView("))
+        #expect(noteContent.contains("ResearchOverviewView("))
+        #expect(noteContent.contains("ResearchFunctionsInspectorView("))
         #expect(noteContent.contains("context: researchInspectorContentContext"))
         #expect(content.contains("controller: appState.researchController"))
         #expect(content.contains("graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph"))

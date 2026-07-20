@@ -488,6 +488,9 @@ final class ResearchFunctionController: ObservableObject {
         }
         availabilityGeneration &+= 1
         let token = availabilityGeneration
+        // Availability is target-scoped. Never display or enable launchers for
+        // a newly selected note from the previous note's completed request.
+        availability = [:]
         do {
             let result = try await client.availableFunctions(target)
             guard token == availabilityGeneration,
@@ -908,25 +911,25 @@ extension ResearchFunctionRepairReason {
     var interfaceDescription: String {
         switch code {
         case .targetUnavailable:
-            "The current note is unavailable."
+            ScholiumL10n.string("The current note is unavailable.")
         case .targetChanged:
-            "The note changed; reopen the function."
+            ScholiumL10n.string("The note changed; reopen the function.")
         case .targetIdentityChanged:
-            "The note identity changed; reopen the function."
+            ScholiumL10n.string("The note identity changed; reopen the function.")
         case .invalidTargetRole:
-            "This function is not available for this kind of note."
+            ScholiumL10n.string("This function is not available for this kind of note.")
         case .inactiveTarget:
-            "This function requires an active note."
+            ScholiumL10n.string("This function requires an active note.")
         case .missingWorkflow:
-            "The required workflow is not available."
+            ScholiumL10n.string("The required workflow is not available.")
         case .invalidWorkflow:
-            "The workflow needs repair in Research Guidance."
+            ScholiumL10n.string("The workflow needs repair in Research Guidance.")
         case .missingCapability:
-            "Install and bind a matching Researcher Skill in Settings."
+            ScholiumL10n.string("Install and bind a matching Researcher Skill in Settings.")
         case .malformedBinding:
-            "The Researcher Skill binding needs repair in Settings."
+            ScholiumL10n.string("The Researcher Skill binding needs repair in Settings.")
         case .humanReviewOnly:
-            "Review is completed by the researcher in Scholium."
+            ScholiumL10n.string("Review is completed by the researcher in Scholium.")
         }
     }
 }

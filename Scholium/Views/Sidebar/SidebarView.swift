@@ -403,7 +403,7 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 61)
-        .frame(height: ScholiumMetrics.Workspace.bottomCommandBarHeight)
+        .frame(height: ScholiumMetrics.Workspace.libraryFooterHeight)
     }
 
     private func locationButton(_ scope: NoteLocationScope, symbol: String) -> some View {

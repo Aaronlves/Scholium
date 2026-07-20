@@ -47,16 +47,16 @@ if rg -n --glob '*.swift' '[\p{Han}]' \
   exit 1
 fi
 
-# The editor-only Research Strip is the one function doorway. Retired Scholia
-# routing and standalone Dialogue/Critique presentations would recreate the
-# duplicate surfaces that the typed function route replaced.
+# The typed Research Function route is the one workflow doorway. Retired
+# Scholia routing and standalone Dialogue/Critique presentations would recreate
+# duplicate surfaces beside the Inspector and typed sheet.
 if rg -n --glob '*.swift' \
   '\b(showDialogue|ScholiaPanelView|ScholiaPresentationState|beginScholiaPresentation|pushScholiaDestination)\b|case[[:space:]]+scholia\b|\.[[:space:]]*scholia[[:space:]]*\(' \
   "${ROOT}/Scholium/App" \
   "${ROOT}/Scholium/Models" \
   "${ROOT}/Scholium/Services" \
   "${ROOT}/Scholium/Views"; then
-  echo "Research Strip guard failed: production Swift sources contain a retired Scholia route." >&2
+  echo "Research Function route guard failed: production Swift sources contain a retired Scholia route." >&2
   exit 1
 fi
 
@@ -88,15 +88,15 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# The document leaf receives only the immutable Strip projection and action
-# closure. Other adjacent inspector/history views in this source file may own
-# their already-established ResearchController adapters, so inspect only the
-# NoteContentView declaration rather than matching the entire file.
+# The document leaf retains only its focused Research Function action. Adjacent
+# Inspector and Research Record views in this source file may own their narrow
+# adapters, so inspect only the NoteContentView declaration rather than matching
+# the entire file.
 if sed -n \
   '/^struct NoteContentView: View/,/^\/\/ MARK: - Research Record/p' \
   "${ROOT}/Scholium/Views/Note/NoteContentView.swift" \
   | rg -n '\b(ResearchController|WindowModel)\b'; then
-  echo "Research Strip ownership guard failed: NoteContentView received a window or Research feature root." >&2
+  echo "Document ownership guard failed: NoteContentView received a window or Research feature root." >&2
   exit 1
 fi
 

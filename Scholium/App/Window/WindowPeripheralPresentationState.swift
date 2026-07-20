@@ -34,18 +34,18 @@ final class WindowPeripheralPresentationState: ObservableObject {
         }
     }
 
-    func selectInspectorMode(_ rawValue: String) {
-        inspector.modeRawValue = rawValue
+    func selectInspectorMode(_ mode: ResearchInspectorMode) {
+        inspector.mode = mode
     }
 
     func showResearchInspector(_ isVisible: Bool) {
-        inspector.showsResearchInspector = isVisible
+        inspector.isVisible = isVisible
     }
 
-    func restoreInspector(modeRawValue: String?, isVisible: Bool?) {
+    func restoreInspector(storedMode: String?, isVisible: Bool?) {
         guard !didRestoreInspector else { return }
         didRestoreInspector = true
-        if let modeRawValue { inspector.modeRawValue = modeRawValue }
-        inspector.showsResearchInspector = isVisible ?? false
+        inspector.mode = ResearchInspectorMode(restoring: storedMode)
+        inspector.isVisible = isVisible ?? false
     }
 }

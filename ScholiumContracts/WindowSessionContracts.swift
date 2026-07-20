@@ -29,7 +29,7 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         documentModes: [String: String] = [:],
         scrollPositions: [String: Double] = [:],
         libraryVisible: Bool? = nil,
-        inspectorMode: String = "incoming",
+        inspectorMode: String = "overview",
         inspectorVisible: Bool? = nil,
         contentDestination: WindowContentDestination? = nil,
         searchState: SearchWorkspaceState = SearchWorkspaceState(),

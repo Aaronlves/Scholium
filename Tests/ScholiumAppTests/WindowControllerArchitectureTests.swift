@@ -87,10 +87,10 @@ struct WindowControllerArchitectureTests {
 
         let firstResearch = ResearchController(peripheralPresentation: presentation)
         let secondResearch = ResearchController(peripheralPresentation: presentation)
-        firstResearch.selectInspectorMode("research")
+        firstResearch.selectInspectorMode(.functions)
         firstResearch.showResearchInspector(true)
-        #expect(secondResearch.inspector.modeRawValue == "research")
-        #expect(secondResearch.inspector.showsResearchInspector)
+        #expect(secondResearch.inspector.mode == .functions)
+        #expect(secondResearch.inspector.isVisible)
 
         let firstDocument = DocumentController()
         let secondDocument = DocumentController()
@@ -101,6 +101,34 @@ struct WindowControllerArchitectureTests {
         )
         firstDocument.installOpenedDocument(descriptor)
         #expect(secondDocument.selectedDocument == nil)
+    }
+
+    @Test(
+        "Inspector restoration normalizes current, legacy, absent, and unknown mode values",
+        arguments: [
+            (nil as String?, ResearchInspectorMode.overview),
+            ("overview", ResearchInspectorMode.overview),
+            ("connections", .connections),
+            ("functions", .functions),
+            ("research", .overview),
+            ("relationships", .overview),
+            ("incoming", .connections),
+            ("outgoing", .connections),
+            ("unknown", .overview),
+        ]
+    )
+    func inspectorModeRestoration(
+        rawValue: String?,
+        expected: ResearchInspectorMode
+    ) {
+        #expect(ResearchInspectorMode(restoring: rawValue) == expected)
+    }
+
+    @Test("A new window defaults to Overview without making Inspector visible")
+    func newWindowInspectorDefaults() {
+        let controller = ResearchController()
+        #expect(controller.inspector.mode == .overview)
+        #expect(!controller.inspector.isVisible)
     }
 
     @Test("Separate windows do not share peripheral presentation")
@@ -493,9 +521,10 @@ struct WindowControllerArchitectureTests {
     @Test("Research controller owns Inspector independently from Research Record")
     func researchPresentationIsolation() {
         let controller = ResearchController()
-        #expect(!controller.inspector.showsResearchInspector)
+        #expect(controller.inspector.mode == .overview)
+        #expect(!controller.inspector.isVisible)
         controller.showResearchInspector(true)
-        #expect(controller.inspector.showsResearchInspector)
+        #expect(controller.inspector.isVisible)
 
         let current = UUID()
         controller.functions.begin(
@@ -518,7 +547,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
         let relativePaths = [
             "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift",
-            "Scholium/Views/ResearchFunctions/ResearchStripView.swift",
+            "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
             "Scholium/Views/QualityReviewView.swift",
             "Scholium/Views/ResearcherCommentsView.swift",
         ]

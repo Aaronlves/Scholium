@@ -4,13 +4,13 @@ import SwiftUI
 /// trailing action, and optional structural rule. It owns presentation only;
 /// feature state and actions remain with the feature that supplies its content.
 struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
-    let title: String
+    let title: LocalizedStringResource
     let showsDivider: Bool
     @ViewBuilder let content: () -> Content
     @ViewBuilder let trailing: () -> Trailing
 
     init(
-        _ title: String,
+        _ title: LocalizedStringResource,
         showsDivider: Bool = true,
         @ViewBuilder content: @escaping () -> Content,
         @ViewBuilder trailing: @escaping () -> Trailing
@@ -50,7 +50,7 @@ struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
 
 extension ScholiumApparatusSection where Trailing == EmptyView {
     init(
-        _ title: String,
+        _ title: LocalizedStringResource,
         showsDivider: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) {

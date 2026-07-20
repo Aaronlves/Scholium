@@ -72,8 +72,9 @@ Before creating the tag or uploading assets:
    and checksum.
 5. Smoke-test the exact expanded ZIP in a clean macOS account without existing
    Scholium state. Exercise first launch, Triptych selection, read/edit/save,
-   conflicts, Search, the Research Strip and a representative Research
-   Function, checkpoints, restoration, and unavailable optional integrations.
+   conflicts, Search, all three Research Inspector modes and a representative
+   Research Function, checkpoints, restoration, and unavailable optional
+   integrations.
 6. Complete applicable specification gates and record every waiver or known
    limitation. Never report an ad-hoc signature as Developer ID signing,
    notarization, or Gatekeeper acceptance.

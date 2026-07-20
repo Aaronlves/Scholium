@@ -127,8 +127,8 @@ commands/restoration but never reasserts it or stores Inspector width; the
 coordinator receives explicit visibility intents and holds weak references to
 the exact window and split.
 
-The Inspector may project backlinks, related notes, Research Status, metadata,
-provenance, Dialogue or Critique status, and other current-note context. It may
+The Inspector may project Connections, Research Status, metadata, provenance,
+Human Review or Critique status, and other current-note context. It may
 navigate or open another note in the Document tabs, but it never owns a document
 buffer, editing, autosave, undo, or conflict state. Those remain exclusively in
 the Document surface and its existing controllers.
@@ -165,7 +165,7 @@ Research Functions follow the same in-process compiler boundary as every other
 delivery-neutral capability:
 
 ```text
-ResearchStripView / ResearchFunctionPanelView
+ResearchFunctionsInspectorView / ResearchFunctionPanelView
         ↓ immutable presentation values and closures
 ResearchFunctionController (one window)
         ↓ ResearchFunctionClient
@@ -326,12 +326,22 @@ summary. Recommended Bibliography is likewise rendered at the fixed Library
 bottom; its current Analysis-locked Application preparation identity is
 migration debt recorded in Implementation Status.
 
+The Research Inspector receives immutable `ResearchOverviewPresentation` and
+`ResearchFunctionsPresentation` values composed at the window root. It owns no
+workspace refresh, review, comment, Critique, availability, or run state. Its
+Overview, Connections, and Functions modes share the one native trailing split
+item and one per-window `ResearchInspectorMode`; legacy stored strings are
+normalized only while restoring that window. Mode changes and note/tab changes
+never reconstruct the retained Document host.
+
 The Research Function panel uses one typed `researchFunction` sheet route
 carrying only a stable Target reference, function ID, and presentation ID. The
 router owns sheet exclusivity; `ResearchFunctionController` owns the session
-and draft. `NoteContentView` receives only a `ResearchStripPresentation` and an
-`openResearchFunction(id:selection:)` closure. It never receives
-`WindowModel`, `ResearchController`, or Application authority.
+and draft. `NoteContentView` retains only the focused
+`openResearchFunction(id:selection:)` action for menu and keyboard invocation;
+it contains no Function presentation or bottom inset. Functions mode launches
+the same sheet and restores focus only when that mode supplied the initiating
+button. Neither leaf receives `WindowModel`, Core, or Application authority.
 
 ### Interface localization
 
@@ -383,7 +393,7 @@ semantic function. Application lists only valid compatible Triptych-local
 Researcher Skills, validates role and Practice compatibility, and performs
 revision-checked saves through `ResearchSkillStore`. The assembler composes the
 persisted selection into the effective phase contract. The frontend receives
-friendly candidate names only in Research Guidance; the Strip and CLI never
+friendly candidate names only in Research Guidance; Functions mode and CLI never
 choose package IDs.
 
 Conditional run resources use `ResearchFunctionConditionalResource` plus an

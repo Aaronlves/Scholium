@@ -285,19 +285,6 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
                 .frame(maxWidth: .infinity)
             }
 
-            ResearchStripView(
-                presentation: ResearchStripPresentation(
-                    items: [
-                        .init(id: .dialogue, isEnabled: true),
-                        .init(id: .develop, isEnabled: true),
-                        .init(id: .review, isEnabled: true),
-                        .init(id: .fidelity, isEnabled: true),
-                    ],
-                    activeFunction: nil
-                ),
-                select: { _ in }
-            )
-            .padding(10)
         }
         .scholiumSurface(.document)
     }
@@ -305,9 +292,12 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
     private var editorialInspector: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 16) {
+                Text(verbatim: "Overview")
+                    .font(ScholiumInterfaceTypography.apparatusTitle)
                 Text(verbatim: "Connections")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
-                Text(verbatim: "Research")
+                    .foregroundStyle(.secondary)
+                Text(verbatim: "Functions")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
                     .foregroundStyle(.secondary)
             }

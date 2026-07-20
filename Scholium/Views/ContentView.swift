@@ -10,6 +10,8 @@ struct ContentView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openSettings) private var openSettings
+    @AppStorage(AttentionPreferences.dismissalLedgerKey)
+    private var attentionDismissalLedgerData = Data()
 
     var body: some View {
         ScholiumWorkspaceSplitView(
@@ -168,7 +170,7 @@ struct ContentView: View {
         ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_DISABLE_INSPECTOR"] != "1"
             && appState.hasCompletedInitialRestore
             && appState.vaultConfig != nil
-            && appState.backlinksVisible
+            && appState.researchInspectorVisible
     }
 
     private var presentedSheet: Binding<WindowSheetRoute?> {
@@ -211,12 +213,19 @@ struct ContentView: View {
 
     private var researchInspectorContentContext: ResearchInspectorContentContext {
         ResearchInspectorContentContext(
-            currentVault: appState.currentDocumentVault,
-            analysesVaultID: appState.workspaceAssignment?.workspace.paperAnalysisVaultID,
-            catalog: appState.workspaceCatalog,
-            reviewDisplayState: appState.currentDocumentReviewDisplayState,
-            reviewRecord: appState.currentDocumentReviewRecord,
-            currentRevision: appState.currentNote?.document.fingerprint,
+            presentation: ResearchOverviewPresentation(
+                researchUnit: appState.currentNote?.researchUnit
+                    ?? ResearchUnitDeclaration(frontmatter: [:]),
+                currentVault: appState.currentDocumentVault,
+                analysesVaultID: appState.workspaceAssignment?.workspace.paperAnalysisVaultID,
+                catalog: appState.workspaceCatalog,
+                reviewDisplayState: appState.currentDocumentReviewDisplayState,
+                reviewRecord: appState.currentDocumentReviewRecord,
+                currentRevision: appState.currentNote?.document.fingerprint,
+                critique: currentCritique,
+                visibleAttentionItems: visibleCurrentDocumentAttentionItems,
+                freshness: researchProjectionFreshness
+            ),
             openReview: {
                 let function: ResearchFunctionID = appState.currentDocumentVaultRole.allowsHumanReview
                     ? .review
@@ -231,6 +240,9 @@ struct ContentView: View {
                 appState.editingNotePath = path
                 appState.showFrontmatterEditor = true
             },
+            retryRefresh: {
+                Task { await appState.retryDerivedRefresh() }
+            },
             resolveZoteroSource: { source in
                 try await appState.zoteroBridge.resolve(source: source)
             },
@@ -242,24 +254,44 @@ struct ContentView: View {
             },
             didConfirmZoteroSource: { title in
                 appState.showToast(String(localized: "Zotero source confirmed for \(title).", table: "Localizable", bundle: .module))
-            },
-            copyResearchText: { text in
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                appState.showToast(String(localized: "Research instructions copied.", table: "Localizable", bundle: .module))
-            },
-            repairBibliographyMethod: {
-                UserDefaults.standard.set(
-                    WorkspaceSettingsPane.researchGuidance.rawValue,
-                    forKey: "scholium.settings.selectedPane"
-                )
-                UserDefaults.standard.set(
-                    "skills",
-                    forKey: "scholium.settings.researchGuidanceCollection"
-                )
-                openSettings()
             }
         )
+    }
+
+    private var currentCritique: CritiqueAssociation? {
+        guard appState.currentDocumentVaultRole == .draftProject,
+              let noteID = appState.currentDocumentDescriptor?.sessionKey.noteID else {
+            return nil
+        }
+        return appState.researchController.records?.critiques.first {
+            $0.workNoteID == noteID
+        }
+    }
+
+    private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
+        guard let note = appState.currentNote,
+              let vaultID = appState.currentDocumentVaultID else { return [] }
+        let matching = (appState.workspaceCatalog?.attention ?? []).filter {
+            $0.note.vaultID == vaultID && $0.note.relativePath == note.relativePath
+        }
+        return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(matching)
+    }
+
+    private var researchProjectionFreshness: ResearchProjectionFreshness {
+        if appState.isRefreshingWorkspaceCatalog { return .refreshing }
+        switch appState.derivedRefreshStatus {
+        case .current:
+            return .current
+        case .stale(let issue):
+            return .stale(issue.reason)
+        case .failed(let issue):
+            return .failed(issue.reason)
+        case nil:
+            if appState.workspaceCatalog != nil { return .current }
+            return .unavailable(
+                appState.workspaceCatalogError ?? "No complete derived workspace snapshot is available."
+            )
+        }
     }
 
     private var critiqueProvenanceContext: CritiqueProvenanceContext {
@@ -311,8 +343,7 @@ struct ContentView: View {
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
-            isResolvingIdentity: appState.isResolvingIdentity,
-            researchStrip: appState.researchStripPresentation
+            isResolvingIdentity: appState.isResolvingIdentity
         )
     }
 
@@ -799,7 +830,12 @@ struct ContentView: View {
                 graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
-                researchInspectorContentContext: researchInspectorContentContext
+                researchInspectorContentContext: researchInspectorContentContext,
+                researchFunctionsPresentation: appState.researchFunctionsPresentation,
+                openResearchFunction: { appState.openResearchFunction($0) },
+                openResearchRecord: {
+                    windowCoordinator.actions.showResearchRecord()
+                }
             )
         } else {
             Color.clear

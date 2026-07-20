@@ -1017,7 +1017,7 @@ private struct AgentCLISettingsView: View {
 }
 
 /// Recommended Bibliography uses one complete Source Analyzer independently
-/// of the Strip's Research Function bindings.
+/// of Research Function bindings.
 private struct RecommendedBibliographyMethodSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var status: RecommendedBibliographyMethodStatus?
@@ -1044,7 +1044,7 @@ private struct RecommendedBibliographyMethodSettingsView: View {
                         "scholium.researchGuidance.bibliographyMethod"
                     )
 
-                    Text("Used only to screen reading leads from an Analysis. It does not create a Strip function, edit notes, or write to Zotero.")
+                    Text("Used only to screen reading leads from an Analysis. It does not create a Research Function, edit notes, or write to Zotero.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1124,7 +1124,7 @@ private struct RecommendedBibliographyMethodSettingsView: View {
 }
 
 /// Settings is the only presentation surface that activates Triptych-local
-/// Researcher Skills. The editor Strip receives semantic function
+/// Researcher Skills. The Functions mode receives semantic function
 /// availability, never package identifiers or routing metadata.
 private struct ResearchFunctionMethodSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
