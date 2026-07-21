@@ -18,15 +18,15 @@ export function linkTargetAt(source: string, offset: number): string | null {
   const newline = source.indexOf("\n", offset);
   const lineTo = newline < 0 ? source.length : newline;
   const line = source.slice(lineFrom, lineTo);
-  for (const match of line.matchAll(/(?:[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+  for (const match of line.matchAll(/(?:!|[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
     const from = lineFrom + match.index;
     const to = from + match[0].length;
-    if (offset >= from && offset <= to) return match[1].trim();
+    if (offset >= from && offset < to) return match[1].trim();
   }
   for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
     const from = lineFrom + match.index;
     const to = from + match[0].length;
-    if (offset >= from && offset <= to) return match[1].trim();
+    if (offset >= from && offset < to) return match[1].trim();
   }
   return null;
 }

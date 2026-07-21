@@ -10,6 +10,7 @@ editor_styles="$repo_root/Scholium/Resources/Editor/editor.css"
 read_styles="$repo_root/Scholium/Views/Note/SafeMarkdownReadWebView.swift"
 design_system="$repo_root/Scholium/UI/Foundation/ScholiumDesignSystem.swift"
 renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
+live_editor="$repo_root/WebEditor/editor.ts"
 committed_math="$repo_root/Scholium/Resources/Editor/math.bundle.js"
 committed_math_css="$repo_root/Scholium/Resources/Editor/katex.min.css"
 temporary_root="$repo_root/.build/editor-verification-$$"
@@ -19,7 +20,10 @@ trap 'rm -rf "$temporary_root"' EXIT INT TERM
 rm -rf "$temporary_root"
 mkdir -p "$temporary_root"
 
-if [[ ! -s "$callout_styles" ]] || ! rg -q '^\.scholium-callout' "$callout_styles" || ! rg -q '^\.cm-live-callout' "$callout_styles"; then
+if [[ ! -s "$callout_styles" ]] || \
+   ! rg -q '^\.scholium-callout' "$callout_styles" || \
+   ! rg -q '^\.cm-live-callout-widget' "$editor_styles" || \
+   ! rg -q 'callout\.classList\.add\("cm-live-callout-widget"\)' "$live_editor"; then
   print -u2 "The app-owned Callout stylesheet is missing or incomplete: $callout_styles"
   exit 1
 fi
@@ -41,9 +45,8 @@ if [[ ! -s "$footnote_styles" ]] || \
 fi
 
 for role in orient cite connect state illustrate quote flag neutral; do
-  if ! rg -q "^\\.scholium-callout-$role" "$callout_styles" || \
-     ! rg -q "^\\.cm-live-callout-$role" "$callout_styles"; then
-    print -u2 "The protected $role Callout is missing from Read or Live Preview."
+  if ! rg -q "^\\.scholium-callout-$role" "$callout_styles"; then
+    print -u2 "The protected shared $role Callout presentation is missing."
     exit 1
   fi
 done
@@ -51,21 +54,24 @@ done
 if ! rg -q '^\.scholium-callout-fold-mark' "$callout_styles" || \
    ! rg -q 'scholium-callout-fold-mark' "$renderer" || \
    ! rg -q 'scholium-callout-signature' "$renderer"; then
-  print -u2 "The protected Callout fold or decorative markup contract is incomplete."
+  print -u2 "The protected Callout fold or compatibility markup contract is incomplete."
   exit 1
 fi
 
-if ! rg -q '^\.scholium-callout-cite > header::after' "$callout_styles" || \
-   ! rg -q '^\.cm-live-callout-cite\.cm-live-callout-header::after' "$callout_styles"; then
-  print -u2 "The protected Source Callout divider is missing from Read or Live Preview."
+if rg -q '^\.cm-live-callout-(orient|cite|connect|state|illustrate|quote|flag|neutral)' "$callout_styles" || \
+   ! rg -q '^\.scholium-callout-role,$' "$callout_styles" || \
+   ! rg -q '^\.scholium-callout-title \{' "$callout_styles" || \
+   ! rg -q '^\.scholium-callout-cite \.scholium-callout-content > p' "$callout_styles" || \
+   ! rg -q '^\.scholium-callout-quote \.scholium-callout-quotation' "$callout_styles"; then
+  print -u2 "The shared typographic Callout contract is incomplete or duplicated."
   exit 1
 fi
 
 if ! rg -q -- '--scholium-document-prose-font-size:.*proseFontSizePoints' "$design_system" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$editor_styles" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$read_styles" || \
-   ! rg -U -q '^\.cm-live-h1 \{[^}]*font-size:' "$editor_styles" || \
-   ! rg -U -q '^[[:space:]]*h1 \{[^}]*font-size:' "$read_styles" || \
+   ! rg -U -q '^[[:space:]]*\.scholium-document h1,\n[[:space:]]*\.scholium-live-mode \.cm-live-h1 \{[^}]*font-size:' "$design_system" || \
+   rg -U -q '^\.cm-live-h[1-6].*\{[^}]*font-(size|weight):' "$editor_styles" || \
    ! rg -q '\.scholium-callout-body' "$callout_styles" || \
    ! rg -q 'font-size: 100%' "$callout_styles"; then
   print -u2 "The shared document typography roles are missing or incomplete."

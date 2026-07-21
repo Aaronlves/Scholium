@@ -135,14 +135,17 @@ The interaction boundaries above are normative: visible, selectable, and
 unblocked for launch; complete visible results for Search; rendered and
 interactive for Read. Semantic HTML projection alone is insufficient.
 
-Editor bridge v3 retains a bounded 256-sample diagnostic ring containing only
-metric names, durations, document length, visible-range/decorations counts,
-and byte counts. It records startup, document load, visible-range projection,
-key-to-state, key-to-paint, mode-transition work/paint, cached-preview
-work/paint, scroll frames, bridge requests, and a best-effort JavaScript heap
-sample. Paint records use CodeMirror's `requestMeasure` followed by the next
-animation frame. The bridge query proves instrumentation transport only; its
-internal work durations are regression evidence, not a substitute for the
+Editor bridge v4 retains a fixed 256-sample circular diagnostic buffer
+containing only metric names, durations, document length,
+visible-range/decorations counts, and byte counts. It records startup, document
+load, visible-range projection, key-to-state, key-to-paint, mode-transition
+work/paint, cached-preview work/paint, aggregated scroll sessions, bridge
+requests, and a best-effort JavaScript heap sample. Scroll-session records
+contain frame count, longest observed frame, and dropped-frame count rather
+than one allocation per frame; corresponding User Timing measures are cleared
+after capture. Paint records use CodeMirror's `requestMeasure` followed by the
+next animation frame. The bridge query proves instrumentation transport only;
+its internal work durations are regression evidence, not a substitute for the
 external visible-boundary driver. WebKit process memory must be measured from
 the process set because `performance.memory` is not a portable WKWebView API.
 

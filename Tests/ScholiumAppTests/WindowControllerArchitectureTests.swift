@@ -1,4 +1,5 @@
 import ScholiumContracts
+import Combine
 import Foundation
 import Testing
 @testable import ScholiumApp
@@ -266,6 +267,61 @@ struct WindowControllerArchitectureTests {
         #expect(session.scrollAnchor == nil)
     }
 
+    @Test("Observed scrolling never becomes a restore request or invalidates the session")
+    func observedScrollingIsNotRestoration() {
+        let session = DocumentSessionModel(key: nil)
+        var invalidationCount = 0
+        let observation = session.objectWillChange.sink {
+            invalidationCount += 1
+        }
+
+        session.observeScrollFraction(0.41)
+        session.observeScrollAnchor(EditorScrollAnchor(
+            sourceFingerprint: "scroll-fixture",
+            sourceUTF16Offset: 8,
+            blockUTF16LowerBound: 4,
+            blockUTF16UpperBound: 16,
+            relativeBlockPosition: 0.25,
+            fallbackFraction: 0.41
+        ))
+
+        #expect(session.scrollRestoreRequest == nil)
+        #expect(invalidationCount == 0)
+        #expect(session.scrollFraction == 0.41)
+
+        let first = session.requestScrollRestore(
+            fingerprint: "scroll-fixture",
+            reason: .documentLoad
+        )
+        let invalidationsAfterRequest = invalidationCount
+        session.observeScrollFraction(0.73)
+
+        #expect(session.scrollRestoreRequest == first)
+        #expect(invalidationCount == invalidationsAfterRequest)
+        let second = session.requestScrollRestore(
+            fingerprint: "scroll-fixture",
+            reason: .modeHandoff
+        )
+        #expect(second.id == first.id + 1)
+        #expect(second.position.fraction == 0.73)
+        session.acknowledgeScrollRestoreRequest(
+            id: first.id,
+            fingerprint: first.fingerprint
+        )
+        #expect(session.scrollRestoreRequest == second)
+        session.acknowledgeScrollRestoreRequest(
+            id: second.id,
+            fingerprint: "stale-fingerprint"
+        )
+        #expect(session.scrollRestoreRequest == second)
+        session.acknowledgeScrollRestoreRequest(
+            id: second.id,
+            fingerprint: second.fingerprint
+        )
+        #expect(session.scrollRestoreRequest == nil)
+        _ = observation
+    }
+
     @Test("Retained stable identity keeps its save address while selection is temporarily absent")
     func retainedSessionKeepsSaveAddressWithoutSelection() {
         let reference = fixtureReference(path: "Topics/Retained Save.md")
@@ -449,6 +505,91 @@ struct WindowControllerArchitectureTests {
         controller.failLifecycleListing("current", for: second)
         #expect(controller.library.lifecycleError == "current")
         #expect(!controller.library.lifecycleIsLoading)
+    }
+
+    @Test("Lifecycle destinations own immediate loading, retry, and dismissal state")
+    func lifecycleDestinationStateMachine() {
+        let controller = DiscoveryController()
+
+        controller.presentLifecycleListing(.setAside)
+        #expect(controller.library.lifecycleScope == .setAside)
+        #expect(controller.library.lifecycleItems.isEmpty)
+        #expect(controller.library.lifecycleIsLoading)
+        #expect(controller.library.lifecycleError == nil)
+
+        let first = controller.beginLifecycleListing(.setAside)
+        controller.receiveLifecycleItems([], for: first)
+        #expect(!controller.library.lifecycleIsLoading)
+        #expect(controller.library.lifecycleError == nil)
+
+        let retry = controller.beginLifecycleListing(.setAside)
+        #expect(controller.library.lifecycleIsLoading)
+        controller.failLifecycleListing("unavailable", for: retry)
+        #expect(controller.library.lifecycleError == "unavailable")
+        #expect(!controller.library.lifecycleIsLoading)
+
+        controller.dismissLifecycleListing()
+        #expect(controller.library.lifecycleScope == nil)
+        #expect(controller.library.lifecycleItems.isEmpty)
+        #expect(controller.library.lifecycleError == nil)
+        #expect(!controller.library.lifecycleIsLoading)
+    }
+
+    @Test("Lifecycle destination switching rejects the previous scope response")
+    func lifecycleDestinationSwitchRejectsStaleResponse() {
+        let controller = DiscoveryController()
+        controller.presentLifecycleListing(.setAside)
+        let setAside = controller.beginLifecycleListing(.setAside)
+
+        controller.presentLifecycleListing(.trash)
+        let trash = controller.beginLifecycleListing(.trash)
+        controller.failLifecycleListing("stale set aside", for: setAside)
+
+        #expect(controller.library.lifecycleScope == .trash)
+        #expect(controller.library.lifecycleError == nil)
+        #expect(controller.library.lifecycleIsLoading)
+
+        controller.receiveLifecycleItems([], for: trash)
+        #expect(controller.library.lifecycleScope == .trash)
+        #expect(!controller.library.lifecycleIsLoading)
+    }
+
+    @Test("Attention and lifecycle destinations are mutually exclusive")
+    func attentionAndLifecycleDestinationMutualExclusion() {
+        let controller = DiscoveryController()
+
+        controller.showAttentionQueue(true)
+        controller.presentLifecycleListing(.trash)
+        #expect(!controller.library.showsAttentionQueue)
+        #expect(controller.library.lifecycleScope == .trash)
+
+        controller.showAttentionQueue(true)
+        #expect(controller.library.showsAttentionQueue)
+        #expect(controller.library.lifecycleScope == nil)
+    }
+
+    @Test("Lifecycle destinations preserve Library filters, sort, and disclosure")
+    func lifecycleDestinationPreservesWorkspacePresentation() {
+        let controller = DiscoveryController()
+        var filters = DiscoveryFilterState()
+        filters.tag = "ethics"
+        filters.isChangedSinceReview = true
+        controller.replaceFilters(filters)
+        controller.selectSortOrder(.titleAscending)
+        let disclosureScope = LibraryDisclosureScope(
+            vaultID: UUID(),
+            locationScope: .workspace
+        )
+        controller.setExpandedFolders(["Arguments", "Sources"], in: disclosureScope)
+
+        controller.presentLifecycleListing(.setAside)
+        controller.presentLifecycleListing(.trash)
+        controller.dismissLifecycleListing()
+
+        #expect(controller.library.filters == filters)
+        #expect(controller.library.sortOrder == .titleAscending)
+        #expect(controller.expandedFolders(in: disclosureScope) == ["Arguments", "Sources"])
+        #expect(controller.library.locationScope == .workspace)
     }
 
     @Test("Discovery views share one controller instead of parallel feature models")

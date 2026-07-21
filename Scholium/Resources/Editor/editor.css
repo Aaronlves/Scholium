@@ -1,28 +1,24 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  --scholium-color-document-background: #fffcf5;
-  --scholium-color-navigation-background: #efe9df;
-  --scholium-color-surface-background: #f7f1e7;
-  --scholium-color-raised-surface-background: #ded3c5;
-  --scholium-color-primary-text: #17191c;
-  --scholium-color-secondary-text: #514d48;
-  --scholium-color-muted-text: #706b65;
-  --scholium-color-separator: #c8bcae;
-  --scholium-color-accent: #a94c22;
-  --scholium-color-accent-hover: #7a2917;
-  --scholium-color-notification-highlight: #b47617;
-  --scholium-color-information: #315f88;
-  --scholium-color-attention: #976015;
-  --scholium-color-attention-foreground: #976015;
-  --scholium-color-destructive: #a13235;
-  --scholium-color-destructive-foreground: #a13235;
-  --scholium-color-confirmed: #2c7048;
-  --scholium-color-confirmed-foreground: #2c7048;
-  --scholium-color-agent-authorship: #5d568f;
-  --scholium-color-connection-neutral: #a94c22;
-  --scholium-color-connection-support: #276f68;
-  --scholium-color-connection-incompatible: #6f4d83;
+  --scholium-color-document-background: #fff9f0;
+  --scholium-color-surface-background: #f2eadc;
+  --scholium-color-raised-surface-background: #e3dbce;
+  --scholium-color-primary-text: #15110b;
+  --scholium-color-secondary-text: #423c31;
+  --scholium-color-muted-text: #5b5449;
+  --scholium-color-separator: #b7b0a3;
+  --scholium-color-accent: #9f4318;
+  --scholium-color-accent-hover: #812f02;
+  --scholium-color-notification-highlight: #ad7b3d;
+  --scholium-color-information: #3d6379;
+  --scholium-color-attention: #81520a;
+  --scholium-color-destructive: #8d453e;
+  --scholium-color-confirmed: #40684e;
+  --scholium-color-agent-authorship: #61577c;
+  --scholium-color-connection-neutral: #6f593f;
+  --scholium-color-connection-support: #326960;
+  --scholium-color-connection-incompatible: #72516a;
   --scholium-symbol-link: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAGKADAAQAAAABAAAAGAAAAADiNXWtAAACV0lEQVRIDe3US0hVQRjA8atpD3uIFYVWBIYkRIsWbQqyMFq4KF1EhVAQEe1EEkRbSItA3FRQFBHUwkKCHkJQ5EYMQty46GVU0KYWtehhLwur/z/uwFw9V68Grfzg55lz5pyZ+b6Zayo1E5NUIG+S/qTuOTzcgVqU4QVuoRej+KdYwded+IrfGE5ff3E9CyefVuTzVQV68AnnsRHlMJu7+I4zKMSUwjI6+D18RCsWIo4l3NzBT1TFHbm0V/NSGLyF9oIsH5mJZTudpT/xcQlPL8CVN2M55qMAY2MND9yb7rjD2k4Uu+jcjnO4hg7cQB3mIo6l3LjJb+KHSRPM4oVlsK7V8IRchh+/hftxEbsRTs0i2ocxgpvIGk5YiXbUwNMxiFKE2EZjCM9gWdyTNljGSwiT0swMT0sZuvASrvAK/CFtgJmFOEbDY7kX+/EBt2HmGRF/VELPQeyBA5vqPGyBkz+Gg1oyN9nBH6bbZt6A10gMB9iJAZyCv1jDqxm5wpOogiWoxRc0Yj1WwTHGRThuxfRsgpvl6sNJcEXH4fHbmr660fVw0gcwM7NKjDBBEb2L8Rlulj+YEE9pHIWbb581dzFX8QhZB6cvZe2MHzBla+6/gfCc5t94z99X2IcDuA9LaWY5xWzeOoQnaILHMkzidSVOwNK5J2uRWHOeZ0Q4Rf4fdzUO5Gab9gg84+U4AuvehzY8R1xGbpMjXoUrrYAZbE6//o2r+zOM6+iEWeQ0OO+NS9MJ3UwnWAczeId+uPqxB4BHE0ecQfxmITceXffG0k15YL75P/EHCCx3R5I0KkcAAAAASUVORK5CYII=");
   --scholium-symbol-supports: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACTUlEQVQ4EdXUPUhVYRzH8Zu9v1lmZVb0wkVILMReKInIorbApWjJhlpaCsHBQMSpralyU2lpCGppDrqGi1T2oqgpSmARBb1aiSXl93v13O4591Q4NPiDD97znHOe1/8xkZhtmfOPCedzvxTbUIg36Ec3vmPGWcMb59GJH/iVZYLfD3AODhyb6Izn8tRhNGAn3iGFxxiFs7bdZwrQgXo8gQPGxkEq8AwfcBXlyEM022logYP1YA/+mI3cuYa3qIUz+lvmc7MRX9CO5ciJW3Aaz3EJRYhmGQ3rYIdB5vGjFR6ke56TTbS4tEG4HdG9pylxHM7sKLI7L+P6FR5hMUKp5soDuo2103dcxQLYiTbjFrpxCAthnMQNWD27kU5wMEmunLUjf4WdWr9VODLNWr4Dl+/B7oLPWYpdsN130vHCuH/OwE5/YhUuwk6ddRD3cgl8/gxc5RjewxRP/Zkaxd/f4Evukav4hDbch9tgHNBKOQU7d/Yu3wQfinUfigfTg5tYHbrz+8KXL6MPJxCs1ok4iQlUIpStXFkVdm6xu3fRHKMhhZMIOuVnYgeG8RArEIr7eBb+g2nCBnja2bG27STYGu+5NVfwGX5UsUnS2owBWOx2HjdzmtODOtAFfEQKfjyZZL/ogfnQQVinrsIqGYez99lFWIkSWBV1sET9tJ8ik+hyfXkvalAFD6QXrzEGy8ySqoAVcRfX0QWrJpNox96wLYkD2I99WA9XYEm+gPV7D+14CT+SUOI6Dh6wI/fZL2wLlmIUQ7DjEeR0SNv/zSRjEXIpUvpbJgAAAABJRU5ErkJggg==");
   --scholium-symbol-supported-by: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACVUlEQVQ4EdXUuWtUURSA8WhcIhpNkLgjyiAobhgNCYi4FuksrUwRmzSGSBALESv/AZdOQRIsLGy1CVlAkBCNKxKVyIDZFNw1oonL903mPsY7L4iFhQd+zJvz3rv33HvPTEnJ/xYz/lDwQu5vwHosxksM4CG+4a+jijeOohcT+Flgkus+NMGJUyOuuJSn9uEkqvEa3biLj7Bq8z5TiZs4gXtwwtRwkm14gLc4h62YiTg2kbgIJ3uEGkwbq7hzHq/QAisKEa/M/Gycwif0oBxF4RY04AnOYClCzOFiJRwojlkkLsGDdM+LYjUZl/YMbkeo0Bcb4V66XAuIYyOJYdzBvPjmQRIe0DUsyd8s4/MQsjgLV2H1Vu5n2HuLuAK7ZwdyEW5m+GbVzvwZVlYP9zCLW3Al+3Eg/+k7vm8r9sPV2fO58IuxAHPhoD9QgcPwZSu1YicLYZVXcQxf8AbG8qmPqVm8HocH4B5ZhW10A+7fGK7DSQvDrQu/vvBDse9zESrO8m0EzujgDtIG99nW+4p2fEAcFmK/f8fj+OZaEnZFaPawbA/qODqxBSHPZRKbuXqO21iUZPMXnvIR+AdzGvZtaDmr9uDKEUclCffflbiy1MiQvYCnaIKDp1VIOjeph9qMd+jGMiRR+OJ7sj60G3vhKtxr99fqfdbqK7AOjWiFLWpb3kcSYbkh4cu1sNX2YBIeyChsK9vSA3Zr/EF04DL6YZsmEQ/sDXMZ7MJO1GEFXIHtlYWt1oUeDMEfyW+RNnB4wIHc5+1Yg/mwvwfhwC9QNCC5fxu/AGL/diOPbj0lAAAAAElFTkSuQmCC");
@@ -61,37 +57,35 @@ body,
   line-height: var(--scholium-rhythm-source-line-height);
 }
 
-#editor .cm-content {
+.cm-editor .cm-scroller .cm-content {
   box-sizing: border-box;
   min-width: 0;
-  width: 100%;
-  max-width: var(--scholium-document-readable-measure);
+  inline-size: 100%;
+  max-inline-size: calc(
+    var(--scholium-document-readable-measure)
+    + var(--scholium-rhythm-inline-source)
+    + var(--scholium-rhythm-inline-source)
+  );
   margin: 0 auto;
   padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-source) var(--scholium-rhythm-trailing-scroll);
   font-size: var(--scholium-document-text-scale);
   caret-color: var(--scholium-color-accent);
 }
 
-#editor .scholium-live-mode .cm-content {
-  overflow-wrap: anywhere;
-  padding-inline: var(--scholium-rhythm-inline-regular);
-}
-
-#editor .scholium-source-mode .cm-content {
+.cm-editor.scholium-source-mode .cm-content {
   padding-inline: var(--scholium-rhythm-inline-source);
 }
 
 .cm-gutters {
   color: var(--scholium-color-muted-text);
-  background: color-mix(in srgb, var(--scholium-color-navigation-background) 96%, var(--scholium-color-primary-text) 4%);
+  background: color-mix(in srgb, var(--scholium-color-surface-background) 96%, var(--scholium-color-primary-text) 4%);
   border-right: 1px solid var(--scholium-color-separator);
 }
 
 /* Live Preview is a body projection, not an exact-source surface. Keep YAML
    and source locators available in Source mode without exposing either here. */
 .scholium-live-mode .cm-gutters,
-.scholium-live-mode .cm-lineNumbers,
-.scholium-live-mode .cm-live-frontmatter {
+.scholium-live-mode .cm-lineNumbers {
   display: none;
 }
 
@@ -121,7 +115,7 @@ body,
 }
 
 .cm-live-frontmatter-unavailable strong {
-  color: var(--scholium-color-attention-foreground);
+  color: var(--scholium-color-attention);
   font-size: 0.92em;
 }
 
@@ -158,29 +152,21 @@ body,
   padding-inline: 0;
 }
 
-.scholium-live-mode .cm-line.cm-live-heading {
-  font-family: "Alegreya", Georgia, serif;
-  font-weight: 700;
-  line-height: var(--scholium-rhythm-heading-line-height);
-  padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after);
-}
-
-.cm-live-h1 {
-  font-size: var(--scholium-document-h1-size);
-  font-weight: 400;
-  padding-top: 0;
-  padding-bottom: 28px;
-  margin-bottom: 40px;
-  border-bottom: 1px solid var(--scholium-color-separator);
-}
-.cm-live-h2 { font-size: var(--scholium-document-h2-size); }
-.cm-live-h3 { font-size: var(--scholium-document-h3-size); }
-.cm-live-h4 { font-size: var(--scholium-document-h4-size); }
-.cm-live-h5,
-.cm-live-h6 { font-size: var(--scholium-document-h4-size); }
-
 .cm-live-callout-widget {
   cursor: text;
+}
+
+.cm-live-callout-slot {
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding-block: calc(var(--scholium-callout-block-gap, 1.4em) / 2);
+  pointer-events: none;
+}
+
+.cm-live-callout-slot > .scholium-callout,
+.cm-live-callout-slot > .cm-live-callout-widget-fallback {
+  margin-block: 0;
+  pointer-events: auto;
 }
 
 .cm-live-callout-widget-fallback {
@@ -303,16 +289,10 @@ body,
   margin: 0.9em 0;
 }
 
-.cm-live-frontmatter {
-  color: var(--scholium-color-secondary-text);
-  background: color-mix(in srgb, var(--scholium-color-accent) 5%, transparent);
-}
-
 @media (prefers-reduced-transparency: reduce) {
   .cm-gutters,
   .cm-activeLine,
   .cm-activeLineGutter,
-  .cm-live-frontmatter,
   .cm-live-code {
     background: var(--scholium-color-document-background);
   }
@@ -320,50 +300,47 @@ body,
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --scholium-color-document-background: #302a26;
-    --scholium-color-navigation-background: #3a2b2b;
-    --scholium-color-surface-background: #3a322d;
-    --scholium-color-raised-surface-background: #423831;
-    --scholium-color-primary-text: #f4e8d5;
-    --scholium-color-secondary-text: #d4c2ad;
-    --scholium-color-muted-text: #b6a38f;
-    --scholium-color-separator: #807064;
-    --scholium-color-accent: #ef8d5b;
-    --scholium-color-accent-hover: #f5aa7b;
-    --scholium-color-notification-highlight: #e1b64f;
-    --scholium-color-information: #84b0d4;
-    --scholium-color-attention: #e0ab61;
-    --scholium-color-attention-foreground: #e0ab61;
-    --scholium-color-destructive: #ea817c;
-    --scholium-color-destructive-foreground: #ea817c;
-    --scholium-color-confirmed: #7fc39a;
-    --scholium-color-confirmed-foreground: #7fc39a;
-    --scholium-color-agent-authorship: #b5a6dc;
-    --scholium-color-connection-neutral: #ef8d5b;
-    --scholium-color-connection-support: #79b9ab;
-    --scholium-color-connection-incompatible: #c29ccf;
+    --scholium-color-document-background: #2f2920;
+    --scholium-color-surface-background: #3f3a30;
+    --scholium-color-raised-surface-background: #4e483e;
+    --scholium-color-primary-text: #f0eae1;
+    --scholium-color-secondary-text: #d1cabc;
+    --scholium-color-muted-text: #bfb8ab;
+    --scholium-color-separator: #7d766a;
+    --scholium-color-accent: #ffa17b;
+    --scholium-color-accent-hover: #feae8e;
+    --scholium-color-notification-highlight: #daa668;
+    --scholium-color-information: #95bed6;
+    --scholium-color-attention: #e3af71;
+    --scholium-color-destructive: #f6a39a;
+    --scholium-color-confirmed: #99c4a6;
+    --scholium-color-agent-authorship: #bdb3dd;
+    --scholium-color-connection-neutral: #ccb396;
+    --scholium-color-connection-support: #8cc5ba;
+    --scholium-color-connection-incompatible: #d2adc8;
   }
 }
 
 @media (prefers-contrast: more) {
   :root {
-    --scholium-color-raised-surface-background: #c8bcae;
-    --scholium-color-secondary-text: #17191c;
-    --scholium-color-muted-text: #514d48;
-    --scholium-color-separator: #706b65;
-    --scholium-color-accent: #7a2917;
-    --scholium-color-notification-highlight: #976015;
-    --scholium-color-information: #214d68;
-    --scholium-color-attention: #70420b;
-    --scholium-color-attention-foreground: #70420b;
-    --scholium-color-destructive: #7f2528;
-    --scholium-color-destructive-foreground: #7f2528;
-    --scholium-color-confirmed: #1f5838;
-    --scholium-color-confirmed-foreground: #1f5838;
-    --scholium-color-agent-authorship: #493d72;
-    --scholium-color-connection-neutral: #7a2917;
-    --scholium-color-connection-support: #195a54;
-    --scholium-color-connection-incompatible: #50365f;
+    --scholium-color-document-background: #fff9f0;
+    --scholium-color-surface-background: #f2eadc;
+    --scholium-color-raised-surface-background: #e3dbce;
+    --scholium-color-primary-text: #15110b;
+    --scholium-color-secondary-text: #423c31;
+    --scholium-color-muted-text: #494338;
+    --scholium-color-separator: #8c8579;
+    --scholium-color-accent: #6e2b0a;
+    --scholium-color-accent-hover: #501a01;
+    --scholium-color-notification-highlight: #95631e;
+    --scholium-color-information: #163c50;
+    --scholium-color-attention: #4e3107;
+    --scholium-color-destructive: #681212;
+    --scholium-color-confirmed: #1a4129;
+    --scholium-color-agent-authorship: #3b3154;
+    --scholium-color-connection-neutral: #48331a;
+    --scholium-color-connection-support: #01423a;
+    --scholium-color-connection-incompatible: #4a2c43;
   }
 
   .cm-live-vector-link {
@@ -377,27 +354,23 @@ body,
 
 @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
   :root {
-    --scholium-color-document-background: #302a26;
-    --scholium-color-navigation-background: #3a2b2b;
-    --scholium-color-surface-background: #3a322d;
-    --scholium-color-raised-surface-background: #423831;
-    --scholium-color-primary-text: #f4e8d5;
-    --scholium-color-secondary-text: #f4e8d5;
-    --scholium-color-muted-text: #d4c2ad;
-    --scholium-color-separator: #b6a38f;
-    --scholium-color-accent: #f5aa7b;
-    --scholium-color-accent-hover: #f5aa7b;
-    --scholium-color-notification-highlight: #f1c96d;
-    --scholium-color-information: #a7cce6;
-    --scholium-color-attention: #f0c07a;
-    --scholium-color-attention-foreground: #f0c07a;
-    --scholium-color-destructive: #f3a09c;
-    --scholium-color-destructive-foreground: #f3a09c;
-    --scholium-color-confirmed: #9cd7af;
-    --scholium-color-confirmed-foreground: #9cd7af;
-    --scholium-color-agent-authorship: #d0c3ea;
-    --scholium-color-connection-neutral: #f5aa7b;
-    --scholium-color-connection-support: #9cd5ca;
-    --scholium-color-connection-incompatible: #ddbce5;
+    --scholium-color-document-background: #2f2920;
+    --scholium-color-surface-background: #3f3a30;
+    --scholium-color-raised-surface-background: #4e483e;
+    --scholium-color-primary-text: #f0eae1;
+    --scholium-color-secondary-text: #ebe4d6;
+    --scholium-color-muted-text: #ebe4d6;
+    --scholium-color-separator: #a59d91;
+    --scholium-color-accent: #fedccf;
+    --scholium-color-accent-hover: #fdded2;
+    --scholium-color-notification-highlight: #f6bf7e;
+    --scholium-color-information: #c5e8fd;
+    --scholium-color-attention: #fedfbc;
+    --scholium-color-destructive: #ffdbd6;
+    --scholium-color-confirmed: #c3efd0;
+    --scholium-color-agent-authorship: #e6e0fd;
+    --scholium-color-connection-neutral: #fae0c2;
+    --scholium-color-connection-support: #b6f0e5;
+    --scholium-color-connection-incompatible: #ffdbf5;
   }
 }

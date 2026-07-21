@@ -3,20 +3,20 @@ import Combine
 import ScholiumContracts
 import SwiftUI
 
-/// The configured workspace toolbar is one native AppKit toolbar divided by
-/// separators that track the same NSSplitView used by Library, Document, and
-/// Apparatus. This keeps Document identity and commands over the Document as
-/// either peripheral divider moves.
+/// The configured window toolbar belongs to the Document region. Native
+/// tracking separators keep its contents between the live Library and
+/// Apparatus dividers; each visible peripheral pane owns its own split-item
+/// titlebar control instead. When a pane collapses, its reveal control
+/// temporarily moves inside this Document toolbar.
 @MainActor
 final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     static let toolbarIdentifier = NSToolbar.Identifier("scholium.workspaceToolbar")
 
     private enum Item {
         static let sidebar = NSToolbarItem.Identifier("scholium.toolbar.sidebar")
-        // Use AppKit's semantic tracking identifiers. On a full-size-content
-        // window these identifiers establish the titlebar sections owned by
-        // the native Sidebar and Inspector, rather than drawing separators
-        // that merely happen to follow the same x positions.
+        static let inspector = NSToolbarItem.Identifier("scholium.toolbar.inspector")
+        // These identifiers are structural bounds for the Document toolbar.
+        // They do not make either peripheral pane a semantic toolbar owner.
         static let libraryDivider = NSToolbarItem.Identifier.sidebarTrackingSeparator
         static let documentIdentity = NSToolbarItem.Identifier(
             "scholium.toolbar.documentIdentity"
@@ -54,7 +54,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         )
         .sink { [weak self] _ in
             DispatchQueue.main.async {
-                self?.updateStandardInspectorItem()
+                self?.reconcileToolbarOwnership()
             }
         }
     }
@@ -65,7 +65,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             window.toolbar = toolbar
         }
         window.toolbarStyle = .unified
-        updateStandardInspectorItem()
+        reconcileToolbarOwnership()
     }
 
     func controls(_ candidate: NSSplitViewController) -> Bool {
@@ -73,21 +73,44 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        desiredItemIdentifiers
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .flexibleSpace,
             Item.sidebar,
             Item.libraryDivider,
             Item.documentIdentity,
-            .flexibleSpace,
             Item.documentActions,
             Item.researchRecord,
+            Item.inspector,
             Item.apparatusDivider,
-            .toggleInspector,
         ]
     }
 
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+    private var desiredItemIdentifiers: [NSToolbarItem.Identifier] {
+        var identifiers: [NSToolbarItem.Identifier] = [
+            .flexibleSpace,
+            Item.libraryDivider,
+        ]
+        if !appState.sidebarVisible {
+            identifiers.append(Item.sidebar)
+        }
+        identifiers.append(contentsOf: [
+            Item.documentIdentity,
+            .flexibleSpace,
+            Item.documentActions,
+            Item.researchRecord,
+        ])
+        if !appState.researchInspectorVisible {
+            identifiers.append(Item.inspector)
+        }
+        identifiers.append(contentsOf: [
+            Item.apparatusDivider,
+            .flexibleSpace,
+        ])
+        return identifiers
     }
 
     func toolbar(
@@ -101,7 +124,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Sidebar"),
                 view: ScholiumWorkspaceSidebarToolbarView(
-                    appState: appState,
                     windowActions: windowActions
                 )
             )
@@ -143,46 +165,27 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                     windowActions: windowActions
                 )
             )
+        case Item.inspector:
+            return hostedItem(
+                identifier: itemIdentifier,
+                label: ScholiumL10n.string("Research Inspector"),
+                view: ScholiumWorkspaceInspectorToolbarView(
+                    appState: appState,
+                    windowActions: windowActions
+                )
+            )
         default:
             return nil
         }
     }
 
-    private func updateStandardInspectorItem() {
-        guard let item = toolbar.items.first(where: {
-            $0.itemIdentifier == .toggleInspector
-        }) else { return }
-        // `NSViewControllerRepresentable` does not guarantee that the nested
-        // split controller participates in the window's first-responder chain.
-        // Keep the automatically created standard item and bridge its command
-        // into the same window visibility state used by the View menu.
-        item.target = self
-        item.action = #selector(toggleInspector(_:))
-        if let control = item.view as? NSControl {
-            control.target = self
-            control.action = #selector(toggleInspector(_:))
+    private func reconcileToolbarOwnership() {
+        let desired = desiredItemIdentifiers
+        if toolbar.itemIdentifiers != desired {
+            // `itemIdentifiers` diffs the live toolbar. This preserves retained
+            // Document items while the reveal control crosses a split boundary.
+            toolbar.itemIdentifiers = desired
         }
-        // The target is registered outside the ordinary responder chain, so
-        // AppKit's responder-based auto-validation would disable an otherwise
-        // valid standard item. Window document selection is the complete
-        // availability rule for both toolbar and View-menu routes.
-        item.autovalidates = false
-        // The command needs a selected document target, not a fully refreshed
-        // note projection. Restoration can select the document before the
-        // derived note list finishes loading, so `currentNote` would leave the
-        // system item spuriously disabled during that interval.
-        item.isEnabled = appState.documentController.selectedDocument != nil
-        item.view?.setAccessibilityIdentifier("scholium.toggleInspector")
-    }
-
-    @objc
-    private func toggleInspector(_ sender: Any?) {
-        // The toolbar belongs to the outer AppKit window coordinator, while
-        // the split controller is hosted by a representable. Send the same
-        // window-owned visibility intent as the View menu; the representable
-        // then asks its exact native controller to perform the standard
-        // `toggleInspector(_:)` transition.
-        windowActions.setResearchInspectorVisible(!appState.researchInspectorVisible)
     }
 
     private func hostedItem<Content: View>(
@@ -231,23 +234,43 @@ private struct ScholiumWorkspaceToolbarEnvironment<Content: View>: View {
 }
 
 private struct ScholiumWorkspaceSidebarToolbarView: View {
-    @ObservedObject var appState: WindowModel
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
-        let title = ScholiumL10n.dynamicString(
-            appState.sidebarVisible ? "Hide Sidebar" : "Show Sidebar"
-        )
+        let title = ScholiumL10n.dynamicString("Show Sidebar")
         ScholiumInkIconControl(
             title: title,
             systemImage: "sidebar.leading",
             identifier: "scholium.toggleSidebar",
-            isActive: appState.sidebarVisible
+            isActive: false
         ) {
-            windowActions.setLibraryVisible(!appState.sidebarVisible)
+            windowActions.setLibraryVisible(true)
         }
         .accessibilityValue(
-            ScholiumL10n.dynamicString(appState.sidebarVisible ? "Shown" : "Hidden")
+            ScholiumL10n.dynamicString("Hidden")
+        )
+    }
+}
+
+private struct ScholiumWorkspaceInspectorToolbarView: View {
+    @ObservedObject var appState: WindowModel
+    let windowActions: WorkspaceWindowActions
+
+    var body: some View {
+        ScholiumInkIconControl(
+            title: ScholiumL10n.dynamicString("Show Research Inspector"),
+            systemImage: "sidebar.trailing",
+            identifier: "scholium.toggleInspector",
+            isActive: false
+        ) {
+            // This control exists only while the native Inspector item is
+            // collapsed. The window coordinator converts the idempotent intent
+            // into the exact split controller's native Inspector transition.
+            windowActions.setResearchInspectorVisible(true)
+        }
+        .disabled(appState.documentController.selectedDocument == nil)
+        .accessibilityValue(
+            ScholiumL10n.dynamicString("Hidden")
         )
     }
 }

@@ -59,6 +59,7 @@ struct AttentionQueueView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     kindPicker
+                    attentionSearchField
                     Spacer()
                     refreshControls
                 }
@@ -66,6 +67,7 @@ struct AttentionQueueView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     kindPicker
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    attentionSearchField
                     HStack(spacing: 12) {
                         refreshControls
                     }
@@ -127,7 +129,6 @@ struct AttentionQueueView: View {
                 }
             }
         }
-        .searchable(text: queryBinding, placement: .toolbar, prompt: "Search Attention")
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .task {
             pruneExpiredDismissals()
@@ -147,6 +148,13 @@ struct AttentionQueueView: View {
             }
         }
         .frame(maxWidth: 280)
+    }
+
+    private var attentionSearchField: some View {
+        TextField("Search Attention", text: queryBinding)
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .accessibilityIdentifier("scholium.attentionSearch")
     }
 
     @ViewBuilder

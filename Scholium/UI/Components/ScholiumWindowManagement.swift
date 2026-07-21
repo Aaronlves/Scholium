@@ -203,6 +203,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     // delegate alive while forwarding optional callbacks, then restore it.
     nonisolated(unsafe) private var previousDelegate: (any NSWindowDelegate)?
     private var toolbarController: ScholiumWorkspaceToolbarController?
+    private let loadingToolbar: NSToolbar
     private var reduceMotion = false
     private var closeIsAuthorized = false
     private var flushInFlight = false
@@ -220,6 +221,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         self.windowID = windowID
         self.appState = appState
         self.lifecycleRegistry = lifecycleRegistry
+        let loadingToolbar = NSToolbar(
+            identifier: NSToolbar.Identifier("scholium.workspaceToolbar.loading")
+        )
+        loadingToolbar.allowsUserCustomization = false
+        loadingToolbar.autosavesConfiguration = false
+        loadingToolbar.displayMode = .iconOnly
+        loadingToolbar.itemIdentifiers = [.flexibleSpace]
+        self.loadingToolbar = loadingToolbar
         super.init()
         registerLifecycle()
     }
@@ -249,6 +258,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     func attach(to window: NSWindow) {
         if self.window === window, window.delegate === self {
+            installLoadingToolbarIfNeeded()
             installToolbarIfPossible()
             markReadyIfPossible()
             return
@@ -259,6 +269,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.titleVisibility = .hidden
         window.tabbingMode = .disallowed
         applyWindowChrome(to: window)
+        installLoadingToolbarIfNeeded()
         previousDelegate = window.delegate
         window.delegate = self
         installToolbarIfPossible()
@@ -283,7 +294,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     func detach(splitController: any ScholiumWorkspaceSplitControlling) {
         guard self.splitController === splitController else { return }
         self.splitController = nil
-        removeToolbar()
+        replaceConfiguredToolbarWithLoadingToolbar()
     }
 
     func failReadiness(_ error: any Error) {
@@ -377,9 +388,30 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         controller.install(in: window)
     }
 
+    /// Keep the native toolbar band present from the window's first frame.
+    /// The split-dependent tracking items replace this inert toolbar in place;
+    /// document loading therefore cannot move the traffic lights or safe area.
+    private func installLoadingToolbarIfNeeded() {
+        guard toolbarController == nil, let window else { return }
+        if window.toolbar !== loadingToolbar {
+            window.toolbar = loadingToolbar
+        }
+        window.toolbarStyle = .unified
+    }
+
+    private func replaceConfiguredToolbarWithLoadingToolbar() {
+        toolbarController = nil
+        installLoadingToolbarIfNeeded()
+    }
+
     private func removeToolbar() {
-        if let window,
-           window.toolbar?.identifier == ScholiumWorkspaceToolbarController.toolbarIdentifier {
+        guard let window else {
+            toolbarController = nil
+            return
+        }
+        let isConfiguredToolbar = window.toolbar?.identifier
+            == ScholiumWorkspaceToolbarController.toolbarIdentifier
+        if window.toolbar === loadingToolbar || isConfiguredToolbar {
             window.toolbar = nil
         }
         toolbarController = nil

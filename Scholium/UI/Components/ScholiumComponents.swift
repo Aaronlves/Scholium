@@ -80,9 +80,9 @@ enum ScholiumInlineStatusKind: Sendable {
     var colorRole: ScholiumColorRole {
         switch self {
         case .information: .information
-        case .attention: .attentionForeground
-        case .destructive: .destructiveForeground
-        case .confirmed: .confirmedForeground
+        case .attention: .attention
+        case .destructive: .destructive
+        case .confirmed: .confirmed
         case .agentAuthorship: .agentAuthorship
         }
     }

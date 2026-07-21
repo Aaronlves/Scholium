@@ -70,16 +70,16 @@ public enum CSSSnippetSanitizer {
     ]
 
     private static let liveSelectorMap: [String: [String]] = [
-        "body": ["#editor .scholium-live-mode .cm-content"],
-        "main": ["#editor .scholium-live-mode .cm-content"],
-        ".scholium-document": ["#editor .scholium-live-mode .cm-content"],
+        "body": [".cm-editor.scholium-live-mode .cm-content"],
+        "main": [".cm-editor.scholium-live-mode .cm-content"],
+        ".scholium-document": [".cm-editor.scholium-live-mode .cm-content"],
         "h1": [".scholium-live-mode .cm-live-h1"],
         "h2": [".scholium-live-mode .cm-live-h2"],
         "h3": [".scholium-live-mode .cm-live-h3"],
         "h4": [".scholium-live-mode .cm-live-h4"],
         "h5": [".scholium-live-mode .cm-live-h5"],
         "h6": [".scholium-live-mode .cm-live-h6"],
-        "p": [".scholium-live-mode .cm-line"],
+        "p": [".scholium-live-mode .cm-live-paragraph"],
         "a": [".scholium-live-mode .cm-live-link", ".scholium-live-mode .cm-live-wikilink"],
         "mark": [".scholium-live-mode .cm-live-highlight"],
         ".scholium-highlight": [".scholium-live-mode .cm-live-highlight"],

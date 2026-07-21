@@ -17,6 +17,38 @@
         }
       }
     },
+    "%lld notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 篇文档"
+          }
+        }
+      }
+    },
+    "1 note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "1 note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 篇文档"
+          }
+        }
+      }
+    },
     "%@ changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again." : {
       "localizations" : {
         "en" : {
@@ -1927,6 +1959,22 @@
         }
       }
     },
+    "Back to Library" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Back to Library"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回研究文档"
+          }
+        }
+      }
+    },
     "Bibliography Method" : {
       "localizations" : {
         "en" : {
@@ -3173,39 +3221,6 @@
         }
       }
     },
-    "Collapse %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Collapse %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "折叠 %@"
-          }
-        }
-      }
-    },
-    "Collapse %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Collapse %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "折叠 %arg"
-          }
-        }
-      }
-    },
     "Collapsed" : {
       "localizations" : {
         "en" : {
@@ -3867,35 +3882,34 @@
         }
       }
     },
-    "Could Not Open %@" : {
+    "Could Not Open Set Aside" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Could Not Open %@"
+            "value" : "Could Not Open Set Aside"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法打开 %@"
+            "value" : "无法打开搁置"
           }
         }
       }
     },
-    "Could Not Open %arg" : {
-      "extractionState" : "extracted_with_value",
+    "Could Not Open Trash" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Could Not Open %arg"
+            "value" : "Could Not Open Trash"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法打开 %arg"
+            "value" : "无法打开纸篓"
           }
         }
       }
@@ -8332,7 +8346,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移至垃圾箱…"
+            "value" : "移至纸篓…"
           }
         }
       }
@@ -8838,6 +8852,38 @@
         }
       }
     },
+    "No Notes in Trash" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Notes in Trash"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "纸篓中没有文档"
+          }
+        }
+      }
+    },
+    "No Set Aside Notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Set Aside Notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有搁置的文档"
+          }
+        }
+      }
+    },
     "No Pending Recovery" : {
       "localizations" : {
         "en" : {
@@ -9095,39 +9141,6 @@
         }
       }
     },
-    "No notes are currently in %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No notes are currently in %@."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 中当前没有笔记。"
-          }
-        }
-      }
-    },
-    "No notes are currently in %arg." : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No notes are currently in %arg."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%arg 中当前没有笔记。"
-          }
-        }
-      }
-    },
     "No other fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML." : {
       "localizations" : {
         "en" : {
@@ -9236,6 +9249,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无"
+          }
+        }
+      }
+    },
+    "Notes moved to Trash appear here until you put them back or delete them permanently." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Notes moved to Trash appear here until you put them back or delete them permanently."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至纸篓的文档会保留在这里，直到你将其放回或永久删除。"
+          }
+        }
+      }
+    },
+    "Notes you set aside appear here until you put them back." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Notes you set aside appear here until you put them back."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搁置的文档会保留在这里，直到你将其放回。"
           }
         }
       }
@@ -9819,23 +9864,6 @@
         }
       }
     },
-    "Open note in %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open note in %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开 %arg中的笔记"
-          }
-        }
-      }
-    },
     "Open relation source" : {
       "localizations" : {
         "en" : {
@@ -9948,35 +9976,34 @@
         }
       }
     },
-    "Opening %@…" : {
+    "Opening Set Aside…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Opening %@…"
+            "value" : "Opening Set Aside…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在打开 %@…"
+            "value" : "正在打开搁置…"
           }
         }
       }
     },
-    "Opening %arg…" : {
-      "extractionState" : "extracted_with_value",
+    "Opening Trash…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Opening %arg…"
+            "value" : "Opening Trash…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在打开 %arg…"
+            "value" : "正在打开纸篓…"
           }
         }
       }
@@ -10982,6 +11009,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目的（可选）"
+          }
+        }
+      }
+    },
+    "Put Back %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Put Back %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放回 %@"
           }
         }
       }
@@ -13846,7 +13889,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 会先创建“恢复前”恢复点。在此恢复点之后创建的文件将移入废纸篓；更改、移动或删除的文件将从所选恢复点恢复。"
+            "value" : "Scholium 会先创建“恢复前”恢复点。在此恢复点之后创建的文件将移入纸篓；更改、移动或删除的文件将从所选恢复点恢复。"
           }
         }
       }
@@ -14463,6 +14506,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "认真的学习并不遵循这个逻辑。研究通过失败的规范、不完整的草稿和几个月后其价值才变得清晰的对话来取得进展。"
+          }
+        }
+      }
+    },
+    "SET ASIDE" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SET ASIDE"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搁置"
+          }
+        }
+      }
+    },
+    "Set Aside" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Set Aside"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搁置"
           }
         }
       }
@@ -16616,6 +16691,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要恢复事务"
+          }
+        }
+      }
+    },
+    "TRASH" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TRASH"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "纸篓"
+          }
+        }
+      }
+    },
+    "Trash" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Trash"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "纸篓"
           }
         }
       }

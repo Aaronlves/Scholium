@@ -614,13 +614,11 @@ final class DocumentController: ObservableObject {
         restoredPresentationVaultID = nil
         for session in sessions.retainedSessions.values {
             session.presentationMode = .read
-            session.scrollFraction = 0
-            session.scrollAnchor = nil
+            session.resetScrollPosition()
         }
         for session in fallbackSessions.values {
             session.presentationMode = .read
-            session.scrollFraction = 0
-            session.scrollAnchor = nil
+            session.resetScrollPosition()
         }
     }
 

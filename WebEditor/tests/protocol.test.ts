@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {
-  EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, encodedByteLength, isEditorRequest, rejected,
+  EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, encodedByteLength, isEditorRequest,
+  recoveryGenerationCanReplaceCurrent, rejected,
 } from "../protocol";
 
 const request = {
@@ -31,12 +32,21 @@ const dialect = {
 };
 
 describe("editor protocol", () => {
+  it("uses the coalesced interaction bridge protocol", () => {
+    expect(EDITOR_PROTOCOL_VERSION).toBe(4);
+  });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
     expect(isEditorRequest({...request, operation: {type: "blur"}})).toBe(true);
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);
+  });
+  it("keeps presentation CSS separate from user CSS", () => {
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "setPresentationCSS", value: ":root { --scale: 1.2; }"},
+    })).toBe(true);
   });
   it("accepts only finite point-anchored preview coordinates", () => {
     expect(isEditorRequest({
@@ -90,5 +100,41 @@ describe("editor protocol", () => {
       operation: {type: "setScrollAnchor", anchor: {...anchor, relativeBlockPosition: 1.1}},
     })).toBe(false);
     expect(isEditorRequest({...request, operation: {type: "queryScrollAnchor"}})).toBe(true);
+  });
+
+  it("rejects malformed and out-of-bounds recovery selections before dispatch", () => {
+    const snapshot = {
+      documentID: "document",
+      fingerprint: "fingerprint",
+      generation: 4,
+      ranges: [{anchor: 0, head: 4}],
+      source: "Body",
+      undoHistoryPreserved: false,
+      dirty: true,
+    };
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "restoreRecovery", snapshot},
+    })).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {
+        type: "restoreRecovery",
+        snapshot: {...snapshot, ranges: [{anchor: 0, head: 5}]},
+      },
+    })).toBe(false);
+    expect(isEditorRequest({
+      ...request,
+      operation: {
+        type: "restoreRecovery",
+        snapshot: {...snapshot, ranges: [{anchor: -1, head: 0}]},
+      },
+    })).toBe(false);
+  });
+
+  it("does not let a recovery snapshot rewind the current generation", () => {
+    expect(recoveryGenerationCanReplaceCurrent(3, 4)).toBe(false);
+    expect(recoveryGenerationCanReplaceCurrent(4, 4)).toBe(true);
+    expect(recoveryGenerationCanReplaceCurrent(5, 4)).toBe(true);
   });
 });

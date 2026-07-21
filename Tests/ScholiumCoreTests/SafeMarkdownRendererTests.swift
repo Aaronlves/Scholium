@@ -37,6 +37,20 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("data-scholium-protected=\"embed\""))
     }
 
+    @Test("Obsidian embeds remain neutral navigable links without transclusion")
+    func obsidianEmbedLink() {
+        let source = "![[Notes/Claim#Ground|Claim ground]]"
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "embed.md", rawContent: source)
+        ).htmlBody
+
+        #expect(rendered.contains("class=\"wiki-link scholium-embed\""))
+        #expect(rendered.contains("href=\"scholium-note:Notes/Claim%23Ground\""))
+        #expect(rendered.contains("data-scholium-protected=\"embed\""))
+        #expect(rendered.contains(">Claim ground</a>"))
+        #expect(!rendered.contains("data-relationship="))
+    }
+
     @Test("Callouts render as protected semantic components")
     func callouts() {
         let source = """

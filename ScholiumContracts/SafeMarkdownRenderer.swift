@@ -231,13 +231,13 @@ public enum SafeMarkdownRenderer {
 
     private static func renderWikilink(_ link: LinkOccurrence) -> String {
         let display = link.alias ?? (link.target.isEmpty ? link.fragment ?? "Link" : link.target)
-        if link.syntax == .embed {
-            return "<span class=\"scholium-embed\" \(sourceAttributes(link.span)) data-scholium-protected=\"embed\">\(escapeHTML(display))</span>"
-        }
         let destination = link.target + (link.fragment.map { "#\($0)" } ?? "")
         let decodedDestination = destination.removingPercentEncoding ?? destination
         let encoded = decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? decodedDestination
+        if link.syntax == .embed {
+            return "<a class=\"wiki-link scholium-embed\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
+        }
         let relation = link.relationship.map { " data-relationship=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
         let vectorClass = link.vectorKind == nil ? "" : " scholium-vector"
         let vector = link.vectorKind.map { " data-vector-kind=\"\(escapeAttribute($0.rawValue))\"" } ?? ""

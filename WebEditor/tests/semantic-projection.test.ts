@@ -1,10 +1,28 @@
 import {EditorState} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
 import {describe, expect, it} from "vitest";
-import {rangeKey, semanticProjectionRanges} from "../semantic-projection";
+import {
+  boundedLinePrefix,
+  boundedProjectionRanges,
+  rangeKey,
+  semanticProjectionRanges,
+} from "../semantic-projection";
 import {scholiumNoteLanguage} from "../language";
 
 describe("Lezer-backed semantic projection", () => {
+  it("reads only a bounded marker prefix from a 100,000-unit interaction line", () => {
+    const state = EditorState.create({doc: `> [!state] ${"x".repeat(99_989)}`});
+    const prefix = boundedLinePrefix(state.doc, state.doc.length, 512);
+
+    expect(prefix).toHaveLength(512);
+    expect(prefix.startsWith("> [!state] ")).toBe(true);
+  });
+
+  it("keeps a wrapped viewport bounded inside a 100,000-unit physical line", () => {
+    const ranges = boundedProjectionRanges(100_000, [{from: 48_000, to: 49_000}], 2_000);
+    expect(ranges).toEqual([{from: 46_000, to: 51_000}]);
+    expect(ranges[0].to - ranges[0].from).toBe(5_000);
+  });
   function completeProjection(source: string) {
     const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
     const tree = ensureSyntaxTree(state, state.doc.length, 5_000);

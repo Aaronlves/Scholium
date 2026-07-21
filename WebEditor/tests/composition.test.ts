@@ -1,10 +1,21 @@
 import {describe, expect, it} from "vitest";
-import {CompositionRequestGate} from "../composition";
+import {CompositionRequestGate, compositionRequestPolicy} from "../composition";
 
 type Request = {id: string; generation: number; identity: string};
 type Result = {accepted: boolean; id: string};
 
 describe("CompositionRequestGate synthetic bridge policy", () => {
+  it("gates every source, selection, mode, and projection mutation", () => {
+    expect(compositionRequestPolicy("initialize")).toBe("reject");
+    for (const operation of [
+      "setMode", "goToLine", "restoreRecovery", "synchronizeCommittedText", "command",
+      "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setResearcherComments",
+    ]) {
+      expect(compositionRequestPolicy(operation)).toBe("defer");
+    }
+    expect(compositionRequestPolicy("queryContext")).toBe("allow");
+    expect(compositionRequestPolicy("markClean")).toBe("allow");
+  });
   it("releases queued requests once and in order after composition", async () => {
     const gate = new CompositionRequestGate<Request, Result>();
     gate.begin();

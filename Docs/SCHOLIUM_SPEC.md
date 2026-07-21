@@ -261,11 +261,31 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
   the same document session, viewport, measure, and semantic colors while using
   exact-source typography.
 
+Rendered callouts hide generated role names visually but retain them for
+accessibility. A supplied title inherits the role heading style; an untitled
+callout adds no heading. Prose uses natural start alignment, never full
+justification.
+
+An inactive Live Preview callout atomically projects one half-open source
+range. Selection reveals source only on actual overlap, not boundary contact.
+Down Arrow from above enters at the range start; Up Arrow from below or a
+pointer press on its rendered title/body enters at its logical end. CodeMirror then
+resumes native editing. Only the disclosure mark changes fold state by pointer;
+the focused summary retains keyboard disclosure.
+
 Read and Live Preview support Obsidian-compatible inline `$…$` and display
 `$$…$$` mathematics outside YAML, code, raw HTML, comments, and escaped
 delimiters. The immutable editing dialect owns exact delimiter behavior.
 Malformed or unsupported mathematics stays visible as exact source with a
 diagnostic; rendering never rewrites it.
+
+Read and Live Preview treat Obsidian-compatible `![[Target]]` embeds, including
+aliases and heading or block fragments, as source-located neutral links.
+Inactive embeds share protected presentation, navigation, and diagnostics; the
+active construct reveals its exact syntax. This stage neither reads nor
+transcludes target content or creates philosophical relationship edges. Any
+later transclusion requires a separate recursion, cycle, authorization,
+external-change, and large-file contract.
 
 Internal links, Vector Links, and footnote references provide bounded previews
 without becoming evidence or another source authority. A footnote preview
@@ -1010,17 +1030,16 @@ with three sibling items:
    Functions projections. It never owns buffers, autosave, Undo, or conflicts;
    full chronology belongs to Research Record.
 
-The workspace starts at **1180 × 760**; this is an initial size, not a minimum.
-SwiftUI Scene data owns route identity and system restoration. AppKit owns
-window resizing, divider mechanics and geometry, compression, automatic
-Sidebar collapse, collapse transitions, fullscreen, and restored native frame.
-Scholium declares no numeric minimum by default, never corrects a frame after
-opening, and never persists divider geometry. It may add one scene-level native
-minimum only when the complete language, text-size, accessibility, and window
-matrix establishes the smallest semantic/readability size that keeps the core
-task usable. Library is a semantic Sidebar and Apparatus an unmodified
-Inspector. Three opaque planes use one-pixel rules, not cards, blur, large
-radii, or shadow.
+The workspace starts at **1180 × 760**, not a minimum. SwiftUI Scene data owns
+route identity and restoration; AppKit owns window, divider, compression,
+collapse, fullscreen, and frame geometry. Scholium neither corrects opening
+frames nor persists divider geometry. It declares no scene/window minimum
+unless the complete adaptation matrix proves one necessary. The sole specified
+content constraint is the expanded Library's **300pt minimum readable
+thickness**: AppKit must keep it at or above that boundary or collapse it.
+This is neither a preferred width, restored divider value, nor parallel
+geometry owner. Library remains a semantic Sidebar, Apparatus an unmodified
+Inspector, and all three planes opaque with one-pixel rules.
 
 New windows show Library and hide Apparatus. Restore applies both visibility
 values once; then native collapsed state is authoritative and the model only
@@ -1032,18 +1051,25 @@ visibility/mode. A new window's first Inspector reveal selects Overview. Each
 window restores its own last Inspector mode; changing notes, Document tabs, or
 document presentation mode never changes it.
 
-The native toolbar owns titlebar/traffic-light geometry. Opaque regions extend
-under its transparent background; controls respect live safe area. Order is
-borderless Show/Hide Sidebar; Heading Outline and compact note identity; mode
-and Search; Research Record; standard `.toggleInspector`. Remove the automatic
-glass-like Sidebar item; add no custom title strip, Inspector replacement,
-ellipsis, fixed height, or Liquid Glass.
+The native titlebar owns traffic-light, drag, and height geometry. Its one
+toolbar belongs to Document and exists inert from the first configured frame;
+loading may replace items but not move traffic lights or change band height.
+Opaque regions extend beneath it, and controls use the live safe area rather
+than a measured toolbar height.
 
-If the hosted split is outside the responder chain, the standard Inspector item
-and View command may bridge one intent through that scene's per-window
-coordinator to `toggleInspector(_:)`, preserving standard transition/geometry. Disable
-auto-validation only as needed and share the selected-document condition.
-Research Record/Inspector controls stay visible but disabled without Target.
+Visible Library and Apparatus own pane-local Hide controls. On collapse, that
+route leaves with the pane and one borderless Show control enters the Document
+toolbar; expansion reverses the transfer. Native collapsed state governs the
+reconciliation, which must leave exactly one route without rebuilding the
+shell. Tracking separators remain structural bounds. Add no split-item
+accessory row, custom title strip, Inspector replacement, ellipsis, fixed
+height, automatic glass-like item, or Liquid Glass.
+
+If needed, the collapsed Inspector's Show control and View command may send one
+explicit intent through the exact window coordinator to the native split.
+Both share selected-document availability and preserve native transition and
+geometry. Research Record and collapsed-Inspector Show remain visible but
+disabled without a Target; a visible Inspector can always be hidden.
 
 With two or more documents, a Document-owned strip appears only in the middle
 item. Each tab references one retained editor session. `.unspecified`
@@ -1053,10 +1079,10 @@ close returns no-note. Tabs create no window group, parallel state, or toolbar
 owner. Prototype styling has no authority; selector styling is provisional.
 
 The Library identity row sits below window controls; its Scholium disclosure
-and content share 18pt alignment. Traffic-light alignment is only a visual
-reference, never derived geometry. No-note is text/action-free and
-VoiceOver-hidden. No Collapse Note, custom `<<`, Back/Forward, Recents, or Quick
-Open exists.
+and content share the 20pt region-content alignment. Traffic-light alignment
+is visual reference only, never derived geometry. No-note is text/action-free
+and VoiceOver-hidden. No Collapse Note, custom `<<`, Back/Forward, Recents, or
+Quick Open exists.
 
 Menus follow researcher tasks:
 
@@ -1077,13 +1103,27 @@ Menus follow researcher tasks:
 - Unclassified is reachable for classification but not a permanent Library
   row. Notes outside folders appear at vault root.
 - Folder/note rows form one hierarchy at one semantic callout size and compact
-  21pt height. Use weight, color, indentation, and symbols—not size. Notes are
+  24pt height. Use weight, color, indentation, and symbols—not size. Notes are
   one line without sublines and expose full titles accessibly. At most one
   redundant state mark precedes title; selection remains visible off-focus.
 - LIBRARY shows no total. Triptych-wide ATTENTION follows scope before Library,
   with the same 10pt edge, warning symbol, and count. It expands/focuses an
   inline full-width queue, never a modal/Research destination; Inspector may
   summarize only the current note.
+- **Set Aside** and **Trash** are same-plane Library destinations, never
+  overlays, cards, sheets, or separate Sidebar modes. They replace only the
+  Library heading and hierarchy region; Triptych identity, scope, Attention,
+  Recommended Bibliography, and the 52pt footer remain stable. On successful
+  load the heading shows borderless Back, localized title, and localized count;
+  Filter and New Note are unavailable. Back, Escape, or the active footer item
+  returns to Library; the other destination switches directly. Attention and a
+  lifecycle destination dismiss each other. The hidden hierarchy stays mounted
+  to preserve context but accepts no input and leaves the accessibility tree.
+- Lifecycle rows keep the 24pt rhythm. A single-line truncated title opens the
+  note in place; a fixed 20pt trailing **Put Back** control remains keyboard and
+  VoiceOver reachable even when visually quiet. Hover is optional. After Put
+  Back, Move to Trash, or permanent deletion removes a row, focus moves next,
+  previous, then Back; cancellation or failure restores the originating row.
 - Compact Recommended Bibliography stays above the footer even when None,
   horizontally scrolls `Author, Year, Title` leads with thin rules, and links
   to the full surface. Use `&` for two authors and first author + `et al.` for
@@ -1099,19 +1139,22 @@ Read, Live Preview, and Source are modes, not tabs, and follow Section 5.1.
 Ordinary scrolling space clears initial editor content from chrome; there is no
 floating context surface.
 
-The three modes consume one provisional document-presentation configuration
-for readable measure, scrolling content inset, responsive threshold, trailing
-scroll space, text scale, and semantic typography. Live Preview and Source
-reconfigure one retained CodeMirror state; ordinary window, split, theme, and
-text-size changes never create an Editor window or replace that state. Exact
-layout values remain implementation defaults until the adaptation matrix and
-side-by-side Editor review accept them.
+All modes use one adaptive editorial-grid configuration for measure, insets,
+responsive threshold, trailing space, text scale, and semantic typography.
+The provisional v0.1 values are **50ch** measure; **32 CSS px** Read/Live and
+**40 CSS px** Source regular inline insets; **20 CSS px** below **44rem**; and a
+**32 CSS px** top inset. CSS lengths never convert to macOS points. Shared
+ownership and units are approved; these values still require the adaptation
+matrix and side-by-side Editor review. Live Preview and Source reconfigure one
+retained CodeMirror state; window, split, theme, or text-size changes never
+replace it or create an Editor window.
 
-Toolbar order is Heading Outline, compact identity, mode, Search, Research
-Record, standard Inspector. Scholium controls are borderless ink. No second
-identity row, Document Properties button, or More control exists. Complete
-Properties is in Research; direct controls retain menu/keyboard routes.
-Document Text Size is per-window and source-neutral.
+Subject to the transfer rule in §18.2, Document toolbar order is conditional
+Show Sidebar; Heading Outline and compact identity; mode and Search; Research
+Record; conditional Show Inspector. Scholium controls are borderless ink. No
+second identity row, Document Properties button, or More control exists.
+Complete Properties is in Research; direct controls retain menu/keyboard
+routes. Document Text Size is per-window and source-neutral.
 
 Properties performs targeted frontmatter edits and distinguishes absent,
 empty, invalid, derived, and not-applicable. Exact YAML stays available in
@@ -1133,9 +1176,10 @@ mode, Tab enters its content, and every mode owns at most one vertical scroll.
 
 A new window begins in Overview and stores its last mode per window. Restoring
 a window restores that mode; switching notes, Document tabs, or Read/Live
-Preview/Source never changes it. Hiding the Inspector leaves no substitute in
-Document. Research menu and keyboard commands remain complete routes: they may
-open a function without revealing the Inspector or changing its mode.
+Preview/Source never changes it. Hiding the Inspector transfers only its Show
+route under §18.2; no Inspector content moves into Document. Research menu and
+keyboard commands may open a function without revealing the Inspector or
+changing its mode.
 
 Overview presents only compact current-note projections, in this order:
 
@@ -1188,9 +1232,9 @@ shows their count and an **Open Research Record** route. Complete and cancelled
 runs, full instructions, Fidelity outcomes, and complete history remain in
 Research Record.
 
-Inspector uses wrapping system interface text. Sections start 15pt below the
-tab rule and separate by 15pt; headings use one lighter sans label. Modes share
-an 18pt edge; content adds 12pt, symbols use a 16pt track plus 8pt gap, and
+Inspector uses wrapping system interface text. Sections start 16pt below the
+tab rule and separate by 16pt; headings use one lighter sans label. Modes share
+a 20pt edge; content adds 12pt, symbols use a 16pt track plus 8pt gap, and
 trailing actions return to the outer edge unless semantics require otherwise.
 
 Scholarly Status is one restrained third-plane bordered surface, not a badge.
@@ -1251,6 +1295,14 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Checkpoint / Snapshot | 恢复点 / 快照 |
 | Comment / Response | 注释 / 回应 |
 | Research Status / Research Record | 内容状态 / 研究记录 |
+| Set Aside / SET ASIDE | 搁置 |
+| Trash / TRASH | 纸篓 |
+| Move to Trash… | 移至纸篓… |
+| Put Back… | 放回… |
+| Back to Library | 返回研究文档 |
+
+The literal `Trash/` directory, paths, stable identifiers, enum/raw values,
+and researcher-authored titles remain verbatim and are never translated.
 
 ## 19. Scholarly Editorialism and design variables
 
@@ -1276,6 +1328,12 @@ Sidebar/Inspector, and tracking separators stay native. Document tabs are
 ordinary Document controls, not simulated window tabs. Incidental system
 material is not a token. This supersedes prior glass/material rules.
 
+Library lifecycle destinations and pane-local titlebar controls retain their
+existing opaque plane. They neither dim retained content nor float above it,
+and add no material, reflection, grabber, rounded panel, accessory row,
+separately measured bar, shadow, or sheet motion. Pane-local hosts consume the
+native safe area once; the titlebar owns vertical alignment.
+
 ### 19.2 Typography and color
 
 - System sans is interface language: navigation names, chrome, menus, controls,
@@ -1290,11 +1348,15 @@ material is not a token. This supersedes prior glass/material rules.
   provisionally **130/115/100%** of Body. Callouts inherit Body unless an
   approved role requires otherwise.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
-- Native and WebKit surfaces use semantic `ScholiumColorRole`; feature views
-  name no raw hex or palette value.
-- Light appearance uses Ivory Leaf, Parchment, Vellum, Carbon/Sepia/Muted Ink,
-  Binding Rule, and Vermilion Copper. Dark uses Walnut, Cordovan, Leather,
-  Parchment text, and Luminous Copper—not mechanical inversion.
+- Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
+  **Paper** `#F8F0E2`. One resolver derives every Light, Dark, and Increase
+  Contrast semantic output; Library and Apparatus share the peripheral surface.
+  No output, Navigation surface, or functional/status hue is independently
+  configurable.
+- Native and WebKit consume the same derived `ScholiumColorRole` outputs.
+  Feature views name no raw value, and generated WebKit properties are
+  transport, not a second palette. Private functional/status anchors adapt to
+  appearance and contrast.
 - Status, authorship, and Connection colors remain distinct with text/symbol
   redundancy. Color never encodes philosophical value, truth, support, or
   authority.
@@ -1303,12 +1365,17 @@ material is not a token. This supersedes prior glass/material rules.
 
 Keep eight families: Color, Typography, Surfaces, Elevation, Boundaries,
 feature Metrics, Motion, and provisional Document Rhythm. Promote only stable
-cross-component decisions or critical thresholds; invent no numbered spacing,
-opacity, radius, shadow, border, gradient, or paper scales.
+cross-component decisions or critical thresholds. The adaptive grid uses a
+bounded **4pt** foundation with a **2pt** optical exception; APIs expose
+purpose-named roles, never numbered positions. Invent no numbered opacity,
+radius, shadow, border, gradient, or paper scales.
 
 - Interface type roles: identity, section title, row title, metadata, and
   narrowly approved editorial hierarchy. Document roles: Body,
   `heading(level:)`, Exact Source, Code, Diff, Revision Identity.
+- The Color family exposes only the two approved Accent and Paper inputs.
+  Semantic roles are resolver outputs, not additional Variables; components
+  consume those roles without owning a palette value.
 - Surfaces are opaque semantic planes; dense evidence is quietest and most
   legible.
 - Purpose-named boundaries are structural divider, subtle boundary, and
@@ -1318,6 +1385,18 @@ opacity, radius, shadow, border, gradient, or paper scales.
   never fall below **20pt**; this does not redefine native sizes.
 - Standard actions use direct SF Symbols. Domain symbols may centralize
   Scholium meaning, but text remains primary.
+- Grid roles are optical alignment **2pt**, label/accessory **4pt**, inline
+  control **8pt**, nested content **12pt**, section separation **16pt**, and
+  region content **20pt**. Fixed component anchors remain purpose-owned:
+  compact hierarchy row **24pt**, preferred/minimum custom targets **28/20pt**,
+  Document tab strip **40pt**, Function target **44pt**, region header **48pt**,
+  and Library footer **52pt**.
+- The Library's **300pt minimum readable thickness** is a component-specific
+  containment threshold outside the grid, not a spacing role, preferred width,
+  or scene minimum.
+- Set Aside and Trash reuse the region-content, inline-control,
+  label/accessory, hierarchy-row, action-target, and footer roles above; they
+  create no parallel spacing namespace.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
   duration scale, parallax, animated grain, or decorative motion.
 - Document rhythm remains renderer-aware and provisional until Read/Live
@@ -1327,19 +1406,19 @@ opacity, radius, shadow, border, gradient, or paper scales.
 ### 19.4 Provisional layout defaults
 
 Layout defaults support testing, not independent gates. AppKit owns chrome and
-split geometry; Scholium owns semantic order and readability-required feature
-insets. All adjustable scenes default to no Scholium numeric minimum. A
-scene-level minimum becomes authoritative only after the complete adaptation
-matrix proves it necessary; it is never duplicated in `NSWindow`, split, or
-component contracts.
+split geometry; Scholium owns semantic order and necessary content insets.
+Scenes have no Scholium numeric minimum unless the complete adaptation matrix
+proves one. Independently, the Library content threshold in §18.2 adds no
+preferred/maximum width or persisted divider position.
 
-Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, and
-Research Record **760 × 680**. Settings retains its fixed **700 × 560** content
-contract. Regions align and scroll independently;
-Document takes remaining space without fixed width or height. Measure, rows, spacing,
-icon tracks, and rules stay provisional pending ordinary/narrow/mixed-script/
-200% testing. Prototype coordinates, screenshots, or CSS conversions gain no
-authority without approved usability/accessibility grounds.
+Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, Research
+Record **760 × 680**, and fixed Settings content **700 × 560**. Regions scroll
+independently; Document takes remaining space without a fixed size. AppKit
+geometry stays outside the grid. WebKit uses `ch`, `rem`, CSS px, and viewport
+units without point conversion. The **50ch**, **20/32/40 CSS px**, and
+typographic rhythm values remain provisional pending ordinary, narrow,
+mixed-script, and 200% testing. Fractional browser-proof translations are
+superseded; screenshots and prototype coordinates remain evidence only.
 
 ## 20. Accessibility and adaptation
 
@@ -1353,10 +1432,24 @@ authority without approved usability/accessibility grounds.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, function panels, conflict comparison, and
   Research Record close.
+- Lifecycle destination headings expose the localized name and successful
+  count as one heading; active footer entries expose selection. The retained
+  Library hierarchy is accessibility-hidden while a destination is active.
+  Put Back remains in keyboard and VoiceOver order without hover, and row
+  removal follows the next/previous/Back focus sequence defined in §18.3.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - Test long labels, mixed English/Chinese, right-to-left chrome, minimum width,
   every lifecycle/error state, and WebKit/AppKit focus transitions.
+- At the Library boundary, verify both permitted narrow outcomes: expanded at
+  **300pt or wider**, or natively collapsed. The open-but-unreadable compressed
+  state is forbidden; the three Triptych scopes and longest fixed Library
+  heading remain single-line at the threshold in English, with localized and
+  right-to-left variants covered by the adaptation matrix.
+- Keep ordinary prose within the v0.1 **50ch** measure and verify no more than
+  80 Latin characters or 40 CJK glyphs per line. At 200% document text, prose
+  must reflow without page-level horizontal reading scroll; only wide tables,
+  code, and mathematics may scroll inside their own containers.
 - Synthetic events cannot certify real VoiceOver, Voice Control, Dictation,
   Full Keyboard Access, or CJK IME; retain manual gates where required.
 
@@ -1446,7 +1539,11 @@ only in Git history.
 | **D-060** | 18.2, 19.1 | **D-074** | 3.2, 18.2 |
 | **D-076** | 3.2, 16 | **D-078** | Introduction, 3–4 |
 | **D-079** | 8.2, 18.5 | **D-081** | 18.7 |
-| **D-083** | Introduction, 8.2–8.4 |  |  |
+| **D-083** | Introduction, 8.2–8.4 | **D-085** | 5.1 |
+| **D-086** | 5.1 | **D-087** | 18.2–18.5, 19.3–19.4, 20 |
+| **D-088** | 18.3, 19.1, 19.3–19.4, 20 | **D-089** | 18.7 |
+| **D-090** | 18.2, 19.3–19.4, 20 | **D-091** | 18.2, 18.4–18.5, 19.1, 20 |
+| **D-092** | 19.2–19.3, 20 |  |  |
 
 Clean-cutover inventory:
 
@@ -1461,6 +1558,13 @@ Clean-cutover inventory:
   Dialogue/Critique facade; package-entry `skills assemble` command; alternate
   Function CLI spelling; missing-field Research Skill binding decoder; or
   Dialogue response-contract fallback.
+- **D-091:** retain no shared peripheral toolbar, split-item accessory row,
+  custom title strip/height/background, load-time geometry change, duplicate
+  Show/Hide route, or glass-wrapped transfer control. Inspector visibility must
+  still use the exact native split.
+- **D-092:** retain no static appearance palette, Navigation input, duplicate
+  status role, renderer-owned color, or public functional/status hue. Accent
+  and Paper remain the only inputs to the shared native/WebKit resolver.
 
 Unresolved work must not be described as complete:
 

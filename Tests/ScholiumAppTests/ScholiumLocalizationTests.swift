@@ -99,4 +99,67 @@ struct ScholiumLocalizationTests {
                 == "内置 Source Analyzer"
         )
     }
+
+    @Test("Lifecycle destinations use approved Simplified Chinese terminology")
+    func lifecycleDestinationTerminology() {
+        #expect(ScholiumL10n.string("Set Aside", locale: simplifiedChinese) == "搁置")
+        #expect(ScholiumL10n.string("SET ASIDE", locale: simplifiedChinese) == "搁置")
+        #expect(ScholiumL10n.string("Trash", locale: simplifiedChinese) == "纸篓")
+        #expect(ScholiumL10n.string("TRASH", locale: simplifiedChinese) == "纸篓")
+        #expect(ScholiumL10n.string("Move to Trash…", locale: simplifiedChinese) == "移至纸篓…")
+        #expect(ScholiumL10n.string("Put Back…", locale: simplifiedChinese) == "放回…")
+        #expect(ScholiumL10n.string("Back to Library", locale: simplifiedChinese) == "返回研究文档")
+
+        let englishCount = String(
+            format: ScholiumL10n.string("%lld notes", locale: english),
+            locale: english,
+            Int64(3)
+        )
+        let chineseCount = String(
+            format: ScholiumL10n.string("%lld notes", locale: simplifiedChinese),
+            locale: simplifiedChinese,
+            Int64(3)
+        )
+        #expect(ScholiumL10n.string("1 note", locale: english) == "1 note")
+        #expect(englishCount == "3 notes")
+        #expect(chineseCount == "3 篇文档")
+
+        let researcherTitle = "QA 议题：Trash/Set Aside"
+        let putBackLabel = String(
+            format: ScholiumL10n.string("Put Back %@", locale: simplifiedChinese),
+            locale: simplifiedChinese,
+            researcherTitle
+        )
+        #expect(putBackLabel == "放回 QA 议题：Trash/Set Aside")
+    }
+
+    @Test("Lifecycle catalog retires alternate Trash terms and card-only keys")
+    func lifecycleDestinationCatalogHasNoRetiredEntries() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let catalog = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Resources/Localizable.xcstrings"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!catalog.contains("垃圾箱"))
+        #expect(!catalog.contains("废纸篓"))
+        for retiredCardKey in [
+            "\"Collapse %@\" :",
+            "\"Collapse %arg\" :",
+            "\"Could Not Open %@\" :",
+            "\"Could Not Open %arg\" :",
+            "\"No notes are currently in %@.\" :",
+            "\"No notes are currently in %arg.\" :",
+            "\"Open note in %arg\" :",
+            "\"Opening %@…\" :",
+            "\"Opening %arg…\" :",
+        ] {
+            #expect(!catalog.contains(retiredCardKey))
+        }
+    }
 }

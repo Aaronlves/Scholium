@@ -1,8 +1,9 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 3
+let markdownEditorProtocolVersion = 4
 let markdownEditorMaximumInboundBytes = 2_500_000
+let markdownEditorMaximumSelectionRangeCount = 128
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode
@@ -23,6 +24,23 @@ struct MarkdownEditorSelectionRange: Codable, Hashable, Sendable {
     let head: Int
 
     var isNonempty: Bool { anchor != head }
+
+    func isValid(forEditorUTF16Length length: Int) -> Bool {
+        length >= 0
+            && anchor >= 0
+            && anchor <= length
+            && head >= 0
+            && head <= length
+    }
+}
+
+func markdownEditorSelectionRangesAreValid(
+    _ ranges: [MarkdownEditorSelectionRange],
+    forEditorUTF16Length length: Int
+) -> Bool {
+    !ranges.isEmpty
+        && ranges.count <= markdownEditorMaximumSelectionRangeCount
+        && ranges.allSatisfy { $0.isValid(forEditorUTF16Length: length) }
 }
 
 struct MarkdownEditorSelectionSnapshot: Codable, Hashable, Sendable {
@@ -30,6 +48,21 @@ struct MarkdownEditorSelectionSnapshot: Codable, Hashable, Sendable {
     let fingerprint: String
     let generation: Int
     let ranges: [MarkdownEditorSelectionRange]
+
+    func isValid(
+        documentID expectedDocumentID: String,
+        fingerprint expectedFingerprint: String,
+        generation expectedGeneration: Int,
+        editorUTF16Length: Int
+    ) -> Bool {
+        documentID == expectedDocumentID
+            && fingerprint == expectedFingerprint
+            && generation == expectedGeneration
+            && markdownEditorSelectionRangesAreValid(
+                ranges,
+                forEditorUTF16Length: editorUTF16Length
+            )
+    }
 }
 
 struct MarkdownEditorRecoverySnapshot: Codable, Hashable, Sendable {
@@ -104,6 +137,46 @@ struct MarkdownEditorContext: Codable, Hashable, Sendable {
     let redoLabel: String?
 }
 
+/// The comparatively small, Equatable part of editor interaction state that
+/// can change command presentation. Exact caret coordinates are deliberately
+/// excluded so ordinary cursor motion does not invalidate SwiftUI.
+struct EditorInteractionAvailability: Hashable, Sendable {
+    let activeInlineConstructs: [String]
+    let activeBlockConstructs: [String]
+    let tablePosition: MarkdownEditorTablePosition?
+    let composing: Bool
+    let hasNonemptySelection: Bool
+    let availableCommands: [MarkdownEditorCommand]
+    let undoLabel: String?
+    let redoLabel: String?
+
+    init(context: MarkdownEditorContext) {
+        activeInlineConstructs = context.activeInlineConstructs
+        activeBlockConstructs = context.activeBlockConstructs
+        tablePosition = context.tablePosition
+        composing = context.composing
+        hasNonemptySelection = context.selections.contains(where: \.isNonempty)
+        availableCommands = context.availableCommands
+        undoLabel = context.undoLabel
+        redoLabel = context.redoLabel
+    }
+
+    func context(
+        selections: [MarkdownEditorSelectionRange]
+    ) -> MarkdownEditorContext {
+        MarkdownEditorContext(
+            selections: selections,
+            activeInlineConstructs: activeInlineConstructs,
+            activeBlockConstructs: activeBlockConstructs,
+            tablePosition: tablePosition,
+            composing: composing,
+            availableCommands: availableCommands,
+            undoLabel: undoLabel,
+            redoLabel: redoLabel
+        )
+    }
+}
+
 struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
     let name: String
     let durationMilliseconds: Double
@@ -113,6 +186,7 @@ struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
 enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case initialize(text: String, mode: NotePresentationMode, dialect: MarkdownEditingDialect)
     case setMode(NotePresentationMode)
+    case setPresentationCSS(String)
     case setUserCSS(String)
     case setLinkCompletions([EditorLinkCompletion])
     case setLinkPreviews([MarkdownEditorLinkPreview])
@@ -134,7 +208,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setUserCSS, setLinkCompletions, setLinkPreviews, setResearcherComments, showPreview, showPreviewAt, announceStatus
+        case initialize, setMode, setPresentationCSS, setUserCSS, setLinkCompletions, setLinkPreviews, setResearcherComments, showPreview, showPreviewAt, announceStatus
         case goToLine, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, synchronizeCommittedText, command, markClean, focus, blur
     }
@@ -149,6 +223,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 dialect: container.decode(MarkdownEditingDialect.self, forKey: .dialect)
             )
         case .setMode: self = try .setMode(container.decode(NotePresentationMode.self, forKey: .mode))
+        case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkCompletions: self = try .setLinkCompletions(container.decode([EditorLinkCompletion].self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
@@ -196,6 +271,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(mode, forKey: .mode)
             try container.encode(dialect, forKey: .dialect)
         case let .setMode(mode): try pair(.setMode, mode, .mode, into: &container)
+        case let .setPresentationCSS(value): try pair(.setPresentationCSS, value, .value, into: &container)
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
         case let .setLinkCompletions(value): try pair(.setLinkCompletions, value, .value, into: &container)
         case let .setLinkPreviews(value): try pair(.setLinkPreviews, value, .value, into: &container)

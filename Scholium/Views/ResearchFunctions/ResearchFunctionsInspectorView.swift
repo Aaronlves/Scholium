@@ -177,7 +177,11 @@ struct ResearchFunctionsInspectorView: View {
                 Label(item.id.interfaceTitleResource, systemImage: item.id.interfaceSymbol)
                     .font(ScholiumInterfaceTypography.apparatusBody.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight,
+                        alignment: .leading
+                    )
                     .contentShape(Rectangle())
             }
             .buttonStyle(.bordered)

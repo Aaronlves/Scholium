@@ -29,6 +29,7 @@ import {
   bracketMatching,
   defaultHighlightStyle,
   foldGutter,
+  HighlightStyle,
   foldKeymap,
   indentOnInput,
   syntaxTree,
@@ -62,11 +63,12 @@ import {
   type RecoverySnapshot,
   encodedByteLength,
   isEditorRequest,
+  recoveryGenerationCanReplaceCurrent,
   rejected,
 } from "./protocol";
 import {applySourceChanges, transformMarkdown} from "./transformations";
 import {continueList, indentList} from "./interaction";
-import {tableAt, tableTabAction} from "./tables";
+import {tableTabAction} from "./tables";
 import {
   tablePresentation,
   type TablePresentation,
@@ -80,8 +82,16 @@ import {
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
 import {linkTargetAt} from "./projection";
 import {scholiumNoteLanguage} from "./language";
-import {rangeKey, semanticProjectionRanges} from "./semantic-projection";
 import {
+  boundedProjectionRanges,
+  boundedLinePrefix,
+  rangeKey,
+  semanticProjectionRanges,
+} from "./semantic-projection";
+import {
+  activeProjectionSignature,
+  selectionAffectedProjectionRanges,
+  selectionIntersectsProjection,
   transactionCanMapProjection,
   transactionChangedSyntaxTree,
   transactionMayCreateProjection,
@@ -89,8 +99,8 @@ import {
 } from "./projection-update";
 import {
   applyNormalizedChangesToExactSource,
-  frontmatterEndLine,
-  hasUnclosedFrontmatter,
+  frontmatterBodyOffset,
+  frontmatterBoundary,
   normalizedDocumentText,
   replacementChange,
 } from "./state";
@@ -100,9 +110,20 @@ import {
   unsupportedFilePasteMessage,
   updateEditorAccessibility,
 } from "./accessibility";
-import {CompositionRequestGate} from "./composition";
+import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
 import {createMarkdownEditor} from "./bootstrap";
 import {editorPerformanceSamples, recordEditorMetric, sampleEditorMemory} from "./performance";
+import {
+  AnimationFrameCoalescer,
+  interactionAvailabilitySignature,
+} from "./interaction-reporting";
+import {
+  commandProtectionRanges,
+  immutableProjectionRanges,
+  projectionRangeContaining,
+  projectionRangesIntersecting as rangesIntersecting,
+  projectionSelectionOverlaps,
+} from "./projection-index";
 import type {MathProjection} from "./math";
 import {appendMarkdownBlocks, createTableDOM} from "./markdown-fragment";
 import {
@@ -122,12 +143,36 @@ interface ScholiumWindow extends Window {
 interface LinkCandidate { label: string; insertion: string; detail: string; path: string; isAmbiguous: boolean }
 interface ResearcherCommentAnnotation { id: string; from: number; to: number; comment: string; resolved: boolean }
 interface SourceDelta { from: number; to: number; insert: string }
-interface CalloutContext { role: string; depth: number; isHeader?: boolean; isEnd?: boolean }
-interface FenceState { character: "`" | "~"; openingLength: number }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
+interface SemanticCodeBlockRange extends ProjectionSourceRange { readonly fenced: boolean }
 interface SemanticLiteralRanges {
-  excluded: {from: number; to: number}[];
-  codeBlocks: {from: number; to: number}[];
+  readonly excluded: readonly Readonly<ProjectionSourceRange>[];
+  readonly codeBlocks: readonly Readonly<SemanticCodeBlockRange>[];
+}
+interface CalloutPresentation {
+  from: number;
+  to: number;
+  source: string;
+}
+interface LiveBlockProjectionRange extends ProjectionSourceRange {
+  readonly kind: "table" | "callout" | "footnote";
+}
+interface IndexedTablePositionRange extends ProjectionSourceRange {
+  readonly position: {row: number; column: number; rowCount: number; columnCount: number};
+}
+interface LiveProjectionIndex {
+  readonly literals: SemanticLiteralRanges;
+  readonly footnotes: FootnotePresentation;
+  readonly tables: readonly TablePresentation[];
+  readonly callouts: readonly CalloutPresentation[];
+  readonly frontmatterRange: Readonly<ProjectionSourceRange> | null;
+  readonly commandProtectedRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly structuralRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly blockRanges: readonly Readonly<LiveBlockProjectionRange>[];
+  readonly footnoteRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly tablePositionRanges: readonly Readonly<IndexedTablePositionRange>[];
+  readonly hasUnclosedFrontmatter: boolean;
+  readonly firstBodyLineFrom: number;
 }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
@@ -142,8 +187,14 @@ let documentVersion = 0;
 let exactSource = "";
 let linkCandidates: LinkCandidate[] = [];
 let linkPreviews: LinkPreview[] = [];
+let linkPreviewIndexByRange = new Map<string, number>();
 let editingDialect: MarkdownEditingDialect | null = null;
 let currentMode: "livePreview" | "source" = "livePreview";
+let hiddenFrontmatterSourceSelection: {
+  documentVersion: number;
+  selection: EditorSelection;
+} | null = null;
+const liveWidgetReuseCounts = {table: 0, callout: 0, footnote: 0};
 let selectedFootnotePreviewTarget: {
   identifier: string;
   from: number;
@@ -168,6 +219,48 @@ const modeCompartment = new Compartment();
 const lineSeparatorCompartment = new Compartment();
 const programmaticDocumentChange = Annotation.define<boolean>();
 const refreshLivePreviewEffect = StateEffect.define<null>();
+const livePreviewHighlightStyle = HighlightStyle.define([]);
+
+type LiveBlockEntryEdge = "start" | "end";
+interface LiveBlockActivation {
+  kind: "callout";
+  from: number;
+  to: number;
+  edge: LiveBlockEntryEdge;
+}
+const setLiveBlockActivationEffect = StateEffect.define<LiveBlockActivation | null>({
+  map(value, changes) {
+    if (value === null) return null;
+    return {
+      ...value,
+      from: changes.mapPos(value.from, 1),
+      to: changes.mapPos(value.to, -1),
+    };
+  },
+});
+const liveBlockActivationField = StateField.define<LiveBlockActivation | null>({
+  create: () => null,
+  update(previous, transaction) {
+    let next = previous;
+    if (next && transaction.docChanged) {
+      next = {
+        ...next,
+        from: transaction.changes.mapPos(next.from, 1),
+        to: transaction.changes.mapPos(next.to, -1),
+      };
+      if (next.to < next.from) next = null;
+    }
+    for (const effect of transaction.effects) {
+      if (effect.is(setLiveBlockActivationEffect)) next = effect.value;
+    }
+    if (!next) return null;
+    const selectionKeepsActivation = transaction.state.selection.ranges.some((range) =>
+      selectionIntersectsProjection(range, next!)
+      || (range.empty && range.head === (next!.edge === "start" ? next!.from : next!.to)),
+    );
+    return selectionKeepsActivation ? next : null;
+  },
+});
 const setResearcherCommentsEffect = StateEffect.define<ResearcherCommentAnnotation[]>();
 const researcherCommentField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -203,7 +296,6 @@ function overlaps(ranges: {from: number; to: number}[], from: number, to: number
   return ranges.some((range) => range.from < to && range.to > from);
 }
 
-/** @param {import("@codemirror/state").Text} doc */
 const neutralCallout = {
   identifier: "neutral",
   aliases: [] as string[],
@@ -218,80 +310,9 @@ function calloutDefinition(rawKind: string) {
   ) ?? neutralCallout;
 }
 
-/** @param {string} rawKind */
-function calloutRole(rawKind: string): string {
-  return calloutDefinition(rawKind).identifier;
-}
-
-/** @param {string} text */
-function quoteDepth(text: string): number {
-  const prefix = /^(\s*(?:>\s*)+)/.exec(text)?.[1] || "";
-  return (prefix.match(/>/g) || []).length;
-}
-
 /** @param {string} text */
 function calloutHeader(text: string): RegExpExecArray | null {
   return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
-}
-
-/** @param {import("@codemirror/state").Text} doc @param {number} firstLine @param {number} lastLine */
-function calloutContexts(doc: Text, firstLine: number, lastLine: number): Map<number, CalloutContext> {
-  let scanStart = firstLine;
-  while (scanStart > 1 && quoteDepth(doc.line(scanStart).text) > 0 && quoteDepth(doc.line(scanStart - 1).text) > 0) {
-    scanStart -= 1;
-  }
-
-  const activeByDepth = new Map<number, CalloutContext>();
-  const contexts = new Map<number, CalloutContext>();
-  for (let number = scanStart; number <= lastLine; number += 1) {
-    const text = doc.line(number).text;
-    const depth = quoteDepth(text);
-    if (depth === 0) {
-      activeByDepth.clear();
-      continue;
-    }
-    for (const activeDepth of [...activeByDepth.keys()]) {
-      if (activeDepth > depth) activeByDepth.delete(activeDepth);
-    }
-    const header = calloutHeader(text);
-    if (header) activeByDepth.set(depth, { role: calloutRole(header[2]), depth });
-    const active = [...activeByDepth.values()]
-      .filter((value) => value.depth <= depth)
-      .sort((left, right) => right.depth - left.depth)[0];
-    if (active && number >= firstLine) {
-      const nextDepth = number < doc.lines ? quoteDepth(doc.line(number + 1).text) : 0;
-      contexts.set(number, {
-        role: active.role,
-        depth: active.depth,
-        isHeader: Boolean(header),
-        isEnd: nextDepth < active.depth,
-      });
-    }
-  }
-  return contexts;
-}
-
-class CalloutRoleWidget extends WidgetType {
-  readonly role: string;
-  constructor(role: string) {
-    super();
-    this.role = role;
-  }
-
-  /** @param {CalloutRoleWidget} other */
-  eq(other: CalloutRoleWidget) { return other.role === this.role; }
-
-  toDOM() {
-    const semantics = calloutDefinition(this.role);
-    const span = document.createElement("span");
-    span.className = "cm-live-callout-role";
-    span.textContent = semantics.label;
-    span.title = semantics.meaning;
-    span.setAttribute("aria-label", `${semantics.label}. ${semantics.meaning}`);
-    return span;
-  }
-
-  ignoreEvent() { return true; }
 }
 
 class ListMarkerWidget extends WidgetType {
@@ -401,48 +422,23 @@ function vectorLinkKindAt(text: string, wikiIndex: number): VectorLinkKind {
   return kind;
 }
 
-function openingFence(text: string): FenceState | null {
-  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(text);
-  if (!match) return null;
-  const run = match[1];
-  // CommonMark does not allow a backtick in the info string of a backtick
-  // fence. Treat such a line as ordinary source instead of starting a
-  // projection that could hide unrelated Markdown below it.
-  if (run[0] === "`" && match[2].includes("`")) return null;
-  return { character: run[0] as "`" | "~", openingLength: run.length };
-}
-
-function isClosingFence(text: string, opening: FenceState): boolean {
-  const match = /^ {0,3}(`+|~+)[ \t]*$/.exec(text);
-  if (!match) return false;
-  const run = match[1];
-  return run[0] === opening.character && run.length >= opening.openingLength;
-}
-
-function fencedCodeLines(doc: Text, lastLine: number): Map<number, {fence: boolean}> {
-  const result = new Map<number, {fence: boolean}>();
-  let opening: FenceState | null = null;
-  for (let number = 1; number <= lastLine; number += 1) {
-    const text = doc.line(number).text;
-    if (opening === null) {
-      const candidate = openingFence(text);
-      if (!candidate) continue;
-      opening = candidate;
-      result.set(number, { fence: true });
-      continue;
-    }
-
-    const closes = isClosingFence(text, opening);
-    result.set(number, { fence: closes });
-    if (closes) opening = null;
-  }
-  return result;
-}
-
 function isIndentedCodeLine(text: string): boolean {
   // A tab in the first four columns reaches a CommonMark code indentation
   // stop. Four or more literal spaces are the equivalent source form.
   return /^(?: {4,}| {0,3}\t)/.test(text);
+}
+
+function isFencedDelimiterLine(doc: Text, block: SemanticCodeBlockRange, lineFrom: number) {
+  if (!block.fenced) return false;
+  const openingLine = doc.lineAt(block.from);
+  if (lineFrom === openingLine.from) return true;
+  const closingLine = doc.lineAt(Math.max(block.from, block.to - 1));
+  if (lineFrom !== closingLine.from) return false;
+  const opening = /^ {0,3}(`{3,}|~{3,})/.exec(openingLine.text)?.[1];
+  const closing = /^ {0,3}(`+|~+)[ \t]*$/.exec(closingLine.text)?.[1];
+  return Boolean(opening && closing
+    && opening[0] === closing[0]
+    && closing.length >= opening.length);
 }
 
 const legacyRelationshipPredicates = new Set([
@@ -504,15 +500,115 @@ function wikilinkPresentation(
   };
 }
 
-function semanticLiteralRanges(state: EditorState): SemanticLiteralRanges {
+function indexedTablePositionRanges(
+  doc: Text,
+  tables: readonly TablePresentation[],
+) {
+  const ranges: IndexedTablePositionRange[] = [];
+  for (const table of tables) {
+    const rows = [table.header, ...table.body];
+    const rowCount = rows.length;
+    const columnCount = table.header.length;
+    rows.forEach((cells, row) => {
+      const first = cells[0];
+      if (!first) return;
+      const line = doc.lineAt(first.sourceOffset);
+      cells.forEach((cell, column) => {
+        const next = cells[column + 1];
+        ranges.push({
+          from: column === 0 ? line.from : cell.sourceOffset,
+          to: next?.sourceOffset ?? line.to + 1,
+          position: {row, column, rowCount, columnCount},
+        });
+      });
+    });
+  }
+  return immutableProjectionRanges(ranges);
+}
+
+function finalizedLiveProjectionIndex(
+  doc: Text,
+  excluded: readonly ProjectionSourceRange[],
+  codeBlocks: readonly SemanticCodeBlockRange[],
+  footnotes: FootnotePresentation,
+  tables: readonly TablePresentation[],
+  callouts: readonly CalloutPresentation[],
+  frontmatterRange: ProjectionSourceRange | null,
+  hasUnclosedFrontmatter: boolean,
+  firstBodyLineFrom: number,
+): LiveProjectionIndex {
+  const immutableExcluded = immutableProjectionRanges(excluded);
+  const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
+  const immutableFrontmatter = frontmatterRange === null
+    ? null
+    : Object.freeze({...frontmatterRange});
+  const immutableTables = Object.freeze([...tables]);
+  const immutableCallouts = Object.freeze([...callouts]);
+  const footnoteRanges = immutableProjectionRanges([
+    ...footnotes.definitions,
+    ...footnotes.references,
+  ].map(({from, to}) => ({from, to})));
+  return Object.freeze({
+    literals: Object.freeze({
+      excluded: immutableExcluded,
+      codeBlocks: immutableCodeBlocks,
+    }),
+    footnotes,
+    tables: immutableTables,
+    callouts: immutableCallouts,
+    frontmatterRange: immutableFrontmatter,
+    commandProtectedRanges: commandProtectionRanges(
+      immutableExcluded,
+      immutableFrontmatter ?? undefined,
+    ),
+    structuralRanges: immutableProjectionRanges([
+      ...immutableTables,
+      ...immutableCallouts,
+      ...footnotes.definitions,
+      ...footnotes.references,
+    ].map(({from, to}) => ({from, to}))),
+    blockRanges: immutableProjectionRanges([
+      ...immutableTables.map(({from, to}) => ({from, to, kind: "table" as const})),
+      ...immutableCallouts.map(({from, to}) => ({from, to, kind: "callout" as const})),
+      ...footnotes.definitions.flatMap(({from, to, isInline}) =>
+        isInline ? [] : [{from, to, kind: "footnote" as const}]),
+    ]),
+    footnoteRanges,
+    tablePositionRanges: indexedTablePositionRanges(doc, immutableTables),
+    hasUnclosedFrontmatter,
+    firstBodyLineFrom,
+  });
+}
+
+function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
+  const startedAt = performance.now();
   const excluded: {from: number; to: number}[] = [];
-  const codeBlocks: {from: number; to: number}[] = [];
+  const codeBlocks: SemanticCodeBlockRange[] = [];
+  const definitionRanges = new Set<string>();
+  const referenceRanges = new Set<string>();
+  const tableRanges: ProjectionSourceRange[] = [];
+  const calloutRanges: ProjectionSourceRange[] = [];
   syntaxTree(state).iterate({
     enter(node) {
+      const key = rangeKey(node.from, node.to);
+      if (node.name === "FootnoteDefinition") definitionRanges.add(key);
+      if (node.name === "FootnoteReference") referenceRanges.add(key);
+      if (node.name === "InlineFootnote") {
+        definitionRanges.add(key);
+        referenceRanges.add(key);
+      }
+      if (node.name === "Table") {
+        tableRanges.push({from: node.from, to: node.to});
+        return false;
+      }
+      if (node.name === "Callout") {
+        calloutRanges.push({from: node.from, to: node.to});
+        return false;
+      }
       if (node.name === "FencedCode" || node.name === "CodeBlock") {
         const range = { from: node.from, to: node.to };
         excluded.push(range);
-        codeBlocks.push(range);
+        codeBlocks.push({...range, fenced: node.name === "FencedCode"});
         return false;
       }
       // These are the CodeMirror counterparts of the Swift Markdown literal
@@ -529,25 +625,163 @@ function semanticLiteralRanges(state: EditorState): SemanticLiteralRanges {
       return undefined;
     },
   });
-  return { excluded, codeBlocks };
+  const yamlBoundary = frontmatterBoundary(state.doc);
+  const yamlBodyFrom = yamlBoundary.endLine === 0
+    ? 0
+    : yamlBoundary.endLine < state.doc.lines
+      ? state.doc.line(yamlBoundary.endLine + 1).from
+      : state.doc.line(yamlBoundary.endLine).to;
+  const frontmatterRange = yamlBodyFrom > 0 ? {from: 0, to: yamlBodyFrom} : null;
+  const footnoteExcluded = [...excluded];
+  if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
+  const projectedFootnotes = footnotePresentation(
+    state.doc.toString(),
+    footnoteExcluded,
+    editingDialect?.footnotes,
+  );
+  const footnotes: FootnotePresentation = {
+    definitions: projectedFootnotes.definitions.filter((definition) =>
+      definitionRanges.has(rangeKey(definition.from, definition.to))),
+    references: projectedFootnotes.references.filter((reference) =>
+      referenceRanges.has(rangeKey(reference.from, reference.to))),
+  };
+  const insideNamedDefinition = (range: ProjectionSourceRange) => footnotes.definitions.some(
+    (definition) => !definition.isInline
+      && definition.from <= range.from && definition.to >= range.to,
+  );
+  const source = state.doc.toString();
+  const tables = tableRanges.flatMap((range): TablePresentation[] => {
+    if (insideNamedDefinition(range)) return [];
+    const presentation = tablePresentation(source, range.from, range.to);
+    return presentation ? [presentation] : [];
+  });
+  const callouts = calloutRanges.flatMap((range): CalloutPresentation[] => {
+    if (insideNamedDefinition(range)) return [];
+    return [{...range, source: state.doc.sliceString(range.from, range.to)}];
+  });
+  const index = finalizedLiveProjectionIndex(
+    state.doc,
+    excluded,
+    codeBlocks,
+    footnotes,
+    tables,
+    callouts,
+    frontmatterRange,
+    yamlBoundary.unclosed,
+    firstSemanticBodyLineFrom(state.doc, yamlBodyFrom),
+  );
+  recordEditorMetric("projection-index", startedAt, {
+    documentLength: state.doc.length,
+    literalCount: excluded.length,
+    tableCount: tables.length,
+    calloutCount: callouts.length,
+    footnoteCount: footnotes.definitions.length + footnotes.references.length,
+  });
+  return index;
+}
+
+function mapLiveProjectionIndex(index: LiveProjectionIndex, transaction: Transaction): LiveProjectionIndex {
+  const map = (position: number) => transaction.changes.mapPos(position);
+  let recomputeFirstBody = false;
+  transaction.changes.iterChanges((fromA) => {
+    if (fromA <= index.firstBodyLineFrom) recomputeFirstBody = true;
+  });
+  const footnotes: FootnotePresentation = {
+      definitions: index.footnotes.definitions.map((definition) => ({
+        ...definition,
+        from: map(definition.from),
+        to: map(definition.to),
+      })),
+      references: index.footnotes.references.map((reference) => ({
+        ...reference,
+        from: map(reference.from),
+        to: map(reference.to),
+        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+      })),
+    };
+  const tables = index.tables.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to),
+      header: presentation.header.map((cell) => ({...cell, sourceOffset: map(cell.sourceOffset)})),
+      body: presentation.body.map((row) =>
+        row.map((cell) => ({...cell, sourceOffset: map(cell.sourceOffset)}))),
+    }));
+  const callouts = index.callouts.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to),
+    }));
+  const frontmatterRange = index.frontmatterRange === null ? null : {
+    from: map(index.frontmatterRange.from),
+    to: map(index.frontmatterRange.to),
+  };
+  return finalizedLiveProjectionIndex(
+    transaction.state.doc,
+    index.literals.excluded.map((range) => ({from: map(range.from), to: map(range.to)})),
+    index.literals.codeBlocks.map((range) => ({
+      from: map(range.from),
+      to: map(range.to),
+      fenced: range.fenced,
+    })),
+    footnotes,
+    tables,
+    callouts,
+    frontmatterRange,
+    index.hasUnclosedFrontmatter,
+    recomputeFirstBody
+      ? firstSemanticBodyLineFrom(transaction.state.doc, frontmatterRange?.to ?? 0)
+      : map(index.firstBodyLineFrom),
+  );
+}
+
+const liveProjectionIndexField = StateField.define<LiveProjectionIndex>({
+  create: buildLiveProjectionIndex,
+  update(previous, transaction) {
+    if (!transaction.docChanged) {
+      // Pure selection transactions retain the same Lezer tree and reuse this
+      // index. A background parse publication is the intentional exception:
+      // it may reveal structural constructs absent from the earlier partial
+      // tree, so one refresh is required for that newly published tree.
+      return transactionChangedSyntaxTree(transaction)
+        ? buildLiveProjectionIndex(transaction.state)
+        : previous;
+    }
+    const indexedRanges: ProjectionSourceRange[] = [
+      ...previous.commandProtectedRanges,
+      ...previous.structuralRanges,
+    ];
+    const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
+    if (indexedRanges.length === 0
+        && !transactionMayCreateProjection(transaction, structuralMarker)) {
+      return mapLiveProjectionIndex(previous, transaction);
+    }
+    return transactionCanMapProjection(transaction, structuralMarker, indexedRanges)
+      ? mapLiveProjectionIndex(previous, transaction)
+      : buildLiveProjectionIndex(transaction.state);
+  },
+});
+
+function liveProjectionIndexForState(state: EditorState) {
+  return state.field(liveProjectionIndexField, false) ?? buildLiveProjectionIndex(state);
+}
+
+function semanticLiteralRanges(state: EditorState): SemanticLiteralRanges {
+  return liveProjectionIndexForState(state).literals;
 }
 
 function visibleMathExpressions(
   view: EditorView,
-  _excluded: readonly {from: number; to: number}[],
-  margin = 2_000,
+  coveredRanges: readonly ProjectionSourceRange[],
+  index: LiveProjectionIndex,
 ): MathProjection[] {
-  if (!editingDialect || view.visibleRanges.length === 0) return [];
+  if (!editingDialect || coveredRanges.length === 0) return [];
   const doc = view.state.doc;
-  const visibleFrom = Math.min(...view.visibleRanges.map((range) => range.from));
-  const visibleTo = Math.max(...view.visibleRanges.map((range) => range.to));
-  let from = doc.lineAt(Math.max(0, visibleFrom - margin)).from;
-  const to = doc.lineAt(Math.min(doc.length, visibleTo + margin)).to;
-  const yamlEnd = frontmatterEndLine(doc);
-  if (yamlEnd > 0) {
-    const yamlTo = doc.line(yamlEnd).to;
-    if (to <= yamlTo) return [];
-    from = Math.max(from, yamlTo);
+  let from = Math.min(...coveredRanges.map((range) => range.from));
+  const to = Math.max(...coveredRanges.map((range) => range.to));
+  if (index.frontmatterRange) {
+    if (to <= index.frontmatterRange.to) return [];
+    from = Math.max(from, index.frontmatterRange.to);
   }
   const expressions: MathProjection[] = [];
   syntaxTree(view.state).iterate({
@@ -555,6 +789,10 @@ function visibleMathExpressions(
     to,
     enter(node) {
       if (node.name !== "InlineMath" && node.name !== "BlockMath") return undefined;
+      // A syntax node may enclose the queried viewport. Do not materialize a
+      // very large one-line expression unless its exact source is fully
+      // contained by the bounded projection window.
+      if (node.from < from || node.to > to) return false;
       const raw = doc.sliceString(node.from, node.to);
       let delimiterLength = 0;
       while (raw.charCodeAt(delimiterLength) === 0x24) delimiterLength += 1;
@@ -590,43 +828,13 @@ function visibleMathExpressions(
   return expressions;
 }
 
-function footnoteProjectionForState(state: EditorState) {
-  const semanticLiterals = semanticLiteralRanges(state);
-  const excluded = [...semanticLiterals.excluded];
-  const yamlEnd = frontmatterEndLine(state.doc);
-  if (yamlEnd > 0) excluded.push({from: 0, to: state.doc.line(yamlEnd).to});
-  const definitionRanges = new Set<string>();
-  const referenceRanges = new Set<string>();
-  syntaxTree(state).iterate({
-    enter(node) {
-      const key = rangeKey(node.from, node.to);
-      if (node.name === "FootnoteDefinition") definitionRanges.add(key);
-      if (node.name === "FootnoteReference") referenceRanges.add(key);
-      if (node.name === "InlineFootnote") {
-        definitionRanges.add(key);
-        referenceRanges.add(key);
-      }
-    },
-  });
-  const projected = footnotePresentation(state.doc.toString(), excluded, editingDialect?.footnotes);
-  return {
-    definitions: projected.definitions.filter((definition) =>
-      definitionRanges.has(rangeKey(definition.from, definition.to)),
-    ),
-    references: projected.references.filter((reference) =>
-      referenceRanges.has(rangeKey(reference.from, reference.to)),
-    ),
-  };
-}
-
-function isInsideNamedFootnoteDefinition(
-  from: number,
-  to: number,
-  definitions: readonly FootnoteDefinitionPresentation[],
-) {
-  return definitions.some((definition) =>
-    !definition.isInline && definition.from <= from && definition.to >= to,
-  );
+function firstSemanticBodyLineFrom(doc: Text, knownBodyFrom?: number) {
+  const bodyFrom = knownBodyFrom ?? frontmatterBodyOffset(doc);
+  let line = doc.lineAt(bodyFrom);
+  while (line.text.trim().length === 0 && line.number < doc.lines) {
+    line = doc.line(line.number + 1);
+  }
+  return line.from;
 }
 
 interface LiveBlockProjectionState {
@@ -638,13 +846,144 @@ interface LiveTableProjectionState extends LiveBlockProjectionState {
   presentations: readonly TablePresentation[];
 }
 
+function annotateProjectedSourceOffsets(root: HTMLElement, source: string, sourceFrom: number) {
+  root.dataset.sourceOffset = String(sourceFrom);
+  let searchFrom = 0;
+  const candidates = root.querySelectorAll<HTMLElement>([
+    ".scholium-callout-title",
+    ".scholium-callout-content p",
+    ".scholium-callout-content li",
+    ".scholium-callout-content blockquote",
+    ".scholium-callout-content h1",
+    ".scholium-callout-content h2",
+    ".scholium-callout-content h3",
+    ".scholium-callout-content h4",
+    ".scholium-callout-content h5",
+    ".scholium-callout-content h6",
+    ".scholium-callout-content code",
+  ].join(","));
+  for (const candidate of candidates) {
+    const text = candidate.textContent?.trim() ?? "";
+    if (!text) continue;
+    const localOffset = source.indexOf(text, searchFrom);
+    if (localOffset < 0) continue;
+    candidate.dataset.sourceOffset = String(sourceFrom + localOffset);
+    searchFrom = localOffset + text.length;
+  }
+}
+
+function projectedSourceOffsetAt(
+  event: MouseEvent,
+  root: HTMLElement,
+  fallback: number,
+  upperBound: number,
+) {
+  const caretDocument = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => globalThis.Range | null;
+  };
+  const caret = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+  const caretElement = caret?.startContainer instanceof Element
+    ? caret.startContainer
+    : caret?.startContainer.parentElement;
+  const pointMapped = document.elementsFromPoint(event.clientX, event.clientY)
+    .flatMap((element) => {
+      const candidate = element.closest<HTMLElement>("[data-source-offset]");
+      return candidate && root.contains(candidate) ? [candidate] : [];
+    })[0] ?? null;
+  const mapped = caretElement?.closest<HTMLElement>("[data-source-offset]")
+    ?? pointMapped
+    ?? (event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-source-offset]")
+      : null)
+    ?? root;
+  const base = Number(mapped.dataset.sourceOffset);
+  if (!Number.isSafeInteger(base)) return fallback;
+  let visibleOffset = 0;
+  if (caret && mapped.contains(caret.startContainer)) {
+    const range = document.createRange();
+    range.setStart(mapped, 0);
+    range.setEnd(caret.startContainer, caret.startOffset);
+    visibleOffset = range.toString().length;
+  } else if (mapped !== root || pointMapped) {
+    const walker = document.createTreeWalker(mapped, NodeFilter.SHOW_TEXT);
+    let textOffset = 0;
+    let bestScore = Number.POSITIVE_INFINITY;
+    let bestOffset = 0;
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const content = node.textContent ?? "";
+      for (let index = 0; index < content.length; index += 1) {
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + 1);
+        const rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) continue;
+        const verticalDistance = event.clientY < rect.top
+          ? rect.top - event.clientY
+          : event.clientY > rect.bottom
+            ? event.clientY - rect.bottom
+            : 0;
+        const horizontalDistance = event.clientX < rect.left
+          ? rect.left - event.clientX
+          : event.clientX > rect.right
+            ? event.clientX - rect.right
+            : 0;
+        const score = verticalDistance * 1_000 + horizontalDistance;
+        if (score < bestScore) {
+          bestScore = score;
+          bestOffset = textOffset + index + (event.clientX > (rect.left + rect.right) / 2 ? 1 : 0);
+        }
+      }
+      textOffset += content.length;
+    }
+    visibleOffset = bestOffset;
+  }
+  return Math.max(fallback, Math.min(upperBound - 1, base + visibleOffset));
+}
+
+function beginProjectedPointerSelection(
+  view: EditorView,
+  event: MouseEvent,
+  sourceOffset: number,
+) {
+  event.preventDefault();
+  const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceOffset;
+  view.dispatch({selection: {anchor, head: sourceOffset}, scrollIntoView: true});
+  view.focus();
+  let frame: number | null = null;
+  let latest: MouseEvent | null = null;
+  const move = (moveEvent: MouseEvent) => {
+    latest = moveEvent;
+    if (frame !== null) return;
+    frame = window.requestAnimationFrame(() => {
+      frame = null;
+      const current = latest;
+      latest = null;
+      if (!current) return;
+      const head = view.posAtCoords({x: current.clientX, y: current.clientY});
+      if (head !== null) view.dispatch({selection: {anchor, head}});
+    });
+  };
+  const finish = () => {
+    if (frame !== null) window.cancelAnimationFrame(frame);
+    window.removeEventListener("mousemove", move, true);
+    window.removeEventListener("mouseup", finish, true);
+  };
+  window.addEventListener("mousemove", move, true);
+  window.addEventListener("mouseup", finish, true);
+}
+
+const tableWidgetPresentations = new WeakMap<HTMLElement, TablePresentation>();
+
 class TableWidget extends WidgetType {
   constructor(readonly presentation: TablePresentation) { super(); }
 
   eq(other: TableWidget) {
-    return other.presentation.from === this.presentation.from
+    const equal = other.presentation.from === this.presentation.from
       && other.presentation.to === this.presentation.to
       && other.presentation.source === this.presentation.source;
+    if (equal) liveWidgetReuseCounts.table += 1;
+    return equal;
   }
 
   get estimatedHeight() {
@@ -657,16 +996,34 @@ class TableWidget extends WidgetType {
       resolveCallout: calloutDefinition,
     });
     scroller.classList.add("cm-live-table-widget");
+    tableWidgetPresentations.set(scroller, this.presentation);
     scroller.addEventListener("mousedown", (event) => {
-      const target = event.target instanceof Element
-        ? event.target.closest<HTMLElement>("[data-source-offset]")
-        : null;
-      const sourceOffset = Number(target?.dataset.sourceOffset ?? this.presentation.from);
-      event.preventDefault();
-      view.dispatch({selection: {anchor: sourceOffset}, scrollIntoView: true});
-      view.focus();
+      const presentation = tableWidgetPresentations.get(scroller);
+      if (!presentation) return;
+      const sourceOffset = projectedSourceOffsetAt(
+        event,
+        scroller,
+        presentation.from,
+        presentation.to,
+      );
+      beginProjectedPointerSelection(view, event, sourceOffset);
     });
     return scroller;
+  }
+
+  updateDOM(dom: HTMLElement) {
+    const previous = tableWidgetPresentations.get(dom);
+    if (!previous || previous.source !== this.presentation.source) return false;
+    const elements = [...dom.querySelectorAll<HTMLElement>("[data-source-offset]")];
+    const previousOffsets = [...previous.header, ...previous.body.flat()].map((cell) => cell.sourceOffset);
+    const nextOffsets = [...this.presentation.header, ...this.presentation.body.flat()].map((cell) => cell.sourceOffset);
+    if (elements.length !== previousOffsets.length || elements.length !== nextOffsets.length) return false;
+    elements.forEach((element, index) => {
+      element.dataset.sourceOffset = String(nextOffsets[index]);
+    });
+    tableWidgetPresentations.set(dom, this.presentation);
+    liveWidgetReuseCounts.table += 1;
+    return true;
   }
 
   ignoreEvent() { return true; }
@@ -678,7 +1035,7 @@ function liveTableDecorations(
 ) {
   const decorations = presentations.flatMap((presentation): Range<Decoration>[] => {
     const active = state.selection.ranges.some((range) =>
-      range.from <= presentation.to && range.to >= presentation.from,
+      selectionIntersectsProjection(range, presentation),
     );
     if (active) return [];
     return [Decoration.replace({
@@ -690,23 +1047,11 @@ function liveTableDecorations(
 }
 
 function buildLiveTableDecorations(state: EditorState): LiveTableProjectionState {
-  if (hasUnclosedFrontmatter(state.doc)) {
+  const index = liveProjectionIndexForState(state);
+  if (index.hasUnclosedFrontmatter) {
     return {decorations: Decoration.none, hasConstructs: true, presentations: []};
   }
-  const source = state.doc.toString();
-  const footnotes = footnoteProjectionForState(state);
-  const presentations: TablePresentation[] = [];
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name !== "Table") return undefined;
-      if (isInsideNamedFootnoteDefinition(node.from, node.to, footnotes.definitions)) {
-        return false;
-      }
-      const presentation = tablePresentation(source, node.from, node.to);
-      if (presentation) presentations.push(presentation);
-      return false;
-    },
-  });
+  const presentations = index.tables;
   return {
     decorations: liveTableDecorations(state, presentations),
     hasConstructs: presentations.length > 0,
@@ -742,6 +1087,10 @@ const liveTableField = StateField.define<LiveTableProjectionState>({
     }
     if (!transaction.docChanged) {
       if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
+      if (activeProjectionSignature(transaction.startState.selection.ranges, previous.presentations)
+          === activeProjectionSignature(transaction.state.selection.ranges, previous.presentations)) {
+        return previous;
+      }
       return {
         ...previous,
         decorations: liveTableDecorations(transaction.state, previous.presentations),
@@ -757,53 +1106,134 @@ const liveTableField = StateField.define<LiveTableProjectionState>({
     }
     return buildLiveTableDecorations(transaction.state);
   },
-  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.decorations),
+    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
+  ],
 });
-
-interface CalloutPresentation {
-  from: number;
-  to: number;
-  source: string;
-}
 
 interface LiveCalloutProjectionState extends LiveBlockProjectionState {
   presentations: readonly CalloutPresentation[];
 }
 
+const calloutWidgetPresentations = new WeakMap<HTMLElement, CalloutPresentation>();
+
 class CalloutWidget extends WidgetType {
   constructor(readonly presentation: CalloutPresentation) { super(); }
 
   eq(other: CalloutWidget) {
-    return other.presentation.from === this.presentation.from
+    const equal = other.presentation.from === this.presentation.from
       && other.presentation.to === this.presentation.to
       && other.presentation.source === this.presentation.source;
+    if (equal) liveWidgetReuseCounts.callout += 1;
+    return equal;
   }
 
-  get estimatedHeight() { return 88; }
+  get estimatedHeight() {
+    return Math.max(72, this.presentation.source.split("\n").length * 30);
+  }
 
   toDOM(view: EditorView) {
-    const container = document.createElement("div");
-    appendMarkdownBlocks(this.presentation.source, container, {
+    const slot = document.createElement("div");
+    slot.className = "cm-live-callout-slot";
+    appendMarkdownBlocks(this.presentation.source, slot, {
       mathematics: editingDialect?.mathematics,
       resolveCallout: calloutDefinition,
     });
-    const callout = container.firstElementChild;
+    const callout = slot.firstElementChild;
     if (!(callout instanceof HTMLElement) || !callout.classList.contains("scholium-callout")) {
       const fallback = document.createElement("pre");
       fallback.className = "cm-live-callout-widget cm-live-callout-widget-fallback";
       fallback.textContent = this.presentation.source;
-      return fallback;
+      slot.replaceChildren(fallback);
+      return slot;
     }
     callout.classList.add("cm-live-callout-widget");
+    calloutWidgetPresentations.set(slot, this.presentation);
     callout.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      view.dispatch({selection: {anchor: this.presentation.from}, scrollIntoView: true});
-      view.focus();
+      if ((event.target as Element | null)?.closest(".scholium-callout-fold-mark")) return;
+      const presentation = calloutWidgetPresentations.get(slot);
+      if (presentation) beginCalloutPointerSelection(view, event, presentation);
     });
-    return callout;
+    callout.addEventListener("click", (event) => {
+      if ((event.target as Element | null)?.closest(".scholium-callout-fold-mark")) return;
+      event.preventDefault();
+    });
+    if (callout instanceof HTMLDetailsElement) {
+      let measurePending = false;
+      callout.addEventListener("toggle", () => {
+        if (measurePending) return;
+        measurePending = true;
+        queueMicrotask(() => {
+          measurePending = false;
+          view.requestMeasure();
+        });
+      });
+    }
+    return slot;
+  }
+
+  updateDOM(dom: HTMLElement) {
+    const previous = calloutWidgetPresentations.get(dom);
+    if (!previous || previous.source !== this.presentation.source) return false;
+    calloutWidgetPresentations.set(dom, this.presentation);
+    liveWidgetReuseCounts.callout += 1;
+    return true;
   }
 
   ignoreEvent() { return true; }
+}
+
+function beginCalloutPointerSelection(
+  view: EditorView,
+  event: MouseEvent,
+  presentation: CalloutPresentation,
+) {
+  event.preventDefault();
+  const sourceHead = presentation.to;
+  const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceHead;
+  view.dispatch({
+    effects: setLiveBlockActivationEffect.of({
+      kind: "callout",
+      from: presentation.from,
+      to: presentation.to,
+      edge: "end",
+    }),
+    selection: {anchor, head: sourceHead},
+    scrollIntoView: true,
+  });
+  view.focus();
+
+  let latestCoordinates: {x: number; y: number} | null = null;
+  let measurePending = false;
+  const measureLatestPosition = () => {
+    if (measurePending) return;
+    measurePending = true;
+    view.requestMeasure({
+      read: () => {
+        const coordinates = latestCoordinates;
+        latestCoordinates = null;
+        return coordinates ? view.posAtCoords(coordinates) : null;
+      },
+      write: (head) => {
+        measurePending = false;
+        if (head !== null) view.dispatch({selection: {anchor, head}});
+        if (latestCoordinates) measureLatestPosition();
+      },
+    });
+  };
+  const move = (moveEvent: MouseEvent) => {
+    latestCoordinates = {x: moveEvent.clientX, y: moveEvent.clientY};
+    measureLatestPosition();
+  };
+  const finish = () => {
+    latestCoordinates = null;
+    window.removeEventListener("mousemove", move, true);
+    window.removeEventListener("mouseup", finish, true);
+  };
+  window.addEventListener("mousemove", move, true);
+  window.addEventListener("mouseup", finish, true);
+  view.requestMeasure();
 }
 
 function liveCalloutDecorations(
@@ -811,35 +1241,29 @@ function liveCalloutDecorations(
   presentations: readonly CalloutPresentation[],
 ) {
   const decorations = presentations.flatMap((presentation): Range<Decoration>[] => {
+    const activation = state.field(liveBlockActivationField, false);
     const active = state.selection.ranges.some((range) =>
-      range.from <= presentation.to && range.to >= presentation.from,
-    );
+      selectionIntersectsProjection(range, presentation),
+    ) || activation?.kind === "callout"
+      && activation.from === presentation.from
+      && activation.to === presentation.to;
     if (active) return [];
     return [Decoration.replace({
       widget: new CalloutWidget(presentation),
       block: true,
+      inclusiveStart: false,
+      inclusiveEnd: false,
     }).range(presentation.from, presentation.to)];
   });
   return Decoration.set(decorations, true);
 }
 
 function buildLiveCalloutDecorations(state: EditorState): LiveCalloutProjectionState {
-  if (hasUnclosedFrontmatter(state.doc)) {
+  const index = liveProjectionIndexForState(state);
+  if (index.hasUnclosedFrontmatter) {
     return {decorations: Decoration.none, hasConstructs: true, presentations: []};
   }
-  const footnotes = footnoteProjectionForState(state);
-  const presentations: CalloutPresentation[] = [];
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name !== "Callout") return undefined;
-      const source = state.doc.sliceString(node.from, node.to);
-      if (isInsideNamedFootnoteDefinition(node.from, node.to, footnotes.definitions)) {
-        return false;
-      }
-      presentations.push({from: node.from, to: node.to, source});
-      return false;
-    },
-  });
+  const presentations = index.callouts;
   return {
     decorations: liveCalloutDecorations(state, presentations),
     hasConstructs: presentations.length > 0,
@@ -859,7 +1283,18 @@ const liveCalloutField = StateField.define<LiveCalloutProjectionState>({
       if (!transactionMayCreateProjection(transaction, /[>\[\]!]/)) return previous;
     }
     if (!transaction.docChanged) {
-      if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
+      const previousActivation = transaction.startState.field(liveBlockActivationField, false);
+      const nextActivation = transaction.state.field(liveBlockActivationField, false);
+      const activationChanged = previousActivation?.kind !== nextActivation?.kind
+        || previousActivation?.from !== nextActivation?.from
+        || previousActivation?.to !== nextActivation?.to
+        || previousActivation?.edge !== nextActivation?.edge;
+      if (transaction.startState.selection.eq(transaction.state.selection) && !activationChanged) return previous;
+      if (activeProjectionSignature(transaction.startState.selection.ranges, previous.presentations)
+          === activeProjectionSignature(transaction.state.selection.ranges, previous.presentations)
+          && !activationChanged) {
+        return previous;
+      }
       return {
         ...previous,
         decorations: liveCalloutDecorations(transaction.state, previous.presentations),
@@ -879,18 +1314,25 @@ const liveCalloutField = StateField.define<LiveCalloutProjectionState>({
     }
     return buildLiveCalloutDecorations(transaction.state);
   },
-  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.decorations),
+    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
+  ],
 });
+
+const footnoteReferencePresentations = new WeakMap<HTMLElement, FootnoteReferencePresentation>();
 
 class FootnoteReferenceWidget extends WidgetType {
   constructor(readonly reference: FootnoteReferencePresentation) { super(); }
 
   eq(other: FootnoteReferenceWidget) {
-    return other.reference.identifier === this.reference.identifier
+    const equal = other.reference.identifier === this.reference.identifier
       && other.reference.ordinal === this.reference.ordinal
       && other.reference.occurrence === this.reference.occurrence
       && other.reference.from === this.reference.from
       && other.reference.definitionFrom === this.reference.definitionFrom;
+    if (equal) liveWidgetReuseCounts.footnote += 1;
+    return equal;
   }
 
   toDOM(view: EditorView) {
@@ -910,29 +1352,48 @@ class FootnoteReferenceWidget extends WidgetType {
       button.setAttribute("aria-disabled", "true");
       button.classList.add("footnote-reference-missing");
     }
+    footnoteReferencePresentations.set(wrapper, this.reference);
     wrapper.addEventListener("mousedown", (event) => {
       event.preventDefault();
+      const reference = footnoteReferencePresentations.get(wrapper);
+      if (!reference) return;
       const rect = button.getBoundingClientRect();
       selectedFootnotePreviewTarget = {
-        identifier: this.reference.identifier,
-        from: this.reference.from,
+        identifier: reference.identifier,
+        from: reference.from,
         rect: {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom},
       };
-      view.dispatch({selection: {anchor: this.reference.from}, scrollIntoView: true});
+      view.dispatch({selection: {anchor: reference.from}, scrollIntoView: true});
       view.focus();
     });
     wrapper.append(button);
     return wrapper;
   }
 
+  updateDOM(dom: HTMLElement) {
+    const previous = footnoteReferencePresentations.get(dom);
+    const sameContent = previous
+      && previous.identifier === this.reference.identifier
+      && previous.ordinal === this.reference.ordinal
+      && previous.occurrence === this.reference.occurrence
+      && (previous.definitionFrom === null) === (this.reference.definitionFrom === null);
+    if (!sameContent) return false;
+    footnoteReferencePresentations.set(dom, this.reference);
+    liveWidgetReuseCounts.footnote += 1;
+    return true;
+  }
+
   ignoreEvent() { return true; }
 }
+
+const footnoteSectionPresentations = new WeakMap<HTMLElement, readonly FootnoteDefinitionPresentation[]>();
+const footnoteDefinitionPresentations = new WeakMap<HTMLElement, FootnoteDefinitionPresentation>();
 
 class FootnoteSectionWidget extends WidgetType {
   constructor(readonly definitions: readonly FootnoteDefinitionPresentation[]) { super(); }
 
   eq(other: FootnoteSectionWidget) {
-    return other.definitions.length === this.definitions.length
+    const equal = other.definitions.length === this.definitions.length
       && other.definitions.every((definition, index) => {
         const current = this.definitions[index];
         return definition.identifier === current.identifier
@@ -941,6 +1402,8 @@ class FootnoteSectionWidget extends WidgetType {
           && definition.from === current.from
           && definition.to === current.to;
       });
+    if (equal) liveWidgetReuseCounts.footnote += 1;
+    return equal;
   }
 
   get estimatedHeight() {
@@ -954,10 +1417,12 @@ class FootnoteSectionWidget extends WidgetType {
     section.setAttribute("aria-label", "Footnotes");
     section.append(document.createElement("hr"));
     const list = document.createElement("ol");
+    footnoteSectionPresentations.set(section, this.definitions);
     for (const definition of this.definitions) {
       const item = document.createElement("li");
       item.dataset.footnote = String(definition.ordinal);
       item.dataset.sourceOffset = String(definition.from);
+      footnoteDefinitionPresentations.set(item, definition);
       const content = document.createElement("div");
       content.className = "footnote-content";
       appendMarkdownBlocks(definition.content, content, {
@@ -972,7 +1437,9 @@ class FootnoteSectionWidget extends WidgetType {
       back.setAttribute("aria-label", `Edit footnote ${definition.ordinal}`);
       const revealSource = (event: MouseEvent) => {
         event.preventDefault();
-        view.dispatch({selection: {anchor: definition.from}, scrollIntoView: true});
+        const current = footnoteDefinitionPresentations.get(item);
+        if (!current) return;
+        view.dispatch({selection: {anchor: current.from}, scrollIntoView: true});
         view.focus();
       };
       item.addEventListener("mousedown", revealSource);
@@ -983,11 +1450,35 @@ class FootnoteSectionWidget extends WidgetType {
     return section;
   }
 
+  updateDOM(dom: HTMLElement) {
+    const previous = footnoteSectionPresentations.get(dom);
+    const sameContent = previous?.length === this.definitions.length
+      && this.definitions.every((definition, index) => {
+        const prior = previous[index];
+        return definition.identifier === prior.identifier
+          && definition.ordinal === prior.ordinal
+          && definition.content === prior.content
+          && definition.isInline === prior.isInline;
+      });
+    if (!sameContent) return false;
+    const items = [...dom.querySelectorAll<HTMLElement>("li[data-footnote]")];
+    if (items.length !== this.definitions.length) return false;
+    items.forEach((item, index) => {
+      const definition = this.definitions[index];
+      item.dataset.sourceOffset = String(definition.from);
+      footnoteDefinitionPresentations.set(item, definition);
+    });
+    footnoteSectionPresentations.set(dom, this.definitions);
+    liveWidgetReuseCounts.footnote += 1;
+    return true;
+  }
+
   ignoreEvent() { return true; }
 }
 
 interface LiveFootnoteProjectionState extends LiveBlockProjectionState {
   presentation: FootnotePresentation;
+  ranges: readonly Readonly<ProjectionSourceRange>[];
 }
 
 function liveFootnoteDecorations(
@@ -996,7 +1487,7 @@ function liveFootnoteDecorations(
 ) {
   const decorations: Range<Decoration>[] = [];
   const active = (from: number, to: number) => state.selection.ranges.some((range) =>
-    range.from <= to && range.to >= from,
+    selectionIntersectsProjection(range, {from, to}),
   );
   const activeDefinitionIdentifiers = new Set<string>();
 
@@ -1037,18 +1528,21 @@ function liveFootnoteDecorations(
 }
 
 function buildLiveFootnoteDecorations(state: EditorState): LiveFootnoteProjectionState {
-  if (hasUnclosedFrontmatter(state.doc)) {
+  const index = liveProjectionIndexForState(state);
+  if (index.hasUnclosedFrontmatter) {
     return {
       decorations: Decoration.none,
       hasConstructs: true,
       presentation: {definitions: [], references: []},
+      ranges: [],
     };
   }
-  const presentation = footnoteProjectionForState(state);
+  const presentation = index.footnotes;
   return {
     decorations: liveFootnoteDecorations(state, presentation),
     hasConstructs: presentation.definitions.length > 0 || presentation.references.length > 0,
     presentation,
+    ranges: index.footnoteRanges,
   };
 }
 
@@ -1085,54 +1579,113 @@ const liveFootnoteField = StateField.define<LiveFootnoteProjectionState>({
     }
     if (!transaction.docChanged) {
       if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
+      if (activeProjectionSignature(transaction.startState.selection.ranges, previous.ranges)
+          === activeProjectionSignature(transaction.state.selection.ranges, previous.ranges)) {
+        return previous;
+      }
       return {
         ...previous,
         decorations: liveFootnoteDecorations(transaction.state, previous.presentation),
       };
     }
-    const indexedRanges: ProjectionSourceRange[] = [
-      ...previous.presentation.definitions,
-      ...previous.presentation.references,
-    ];
-    if (transactionCanMapProjection(transaction, /[\[\]\^:]/, indexedRanges)) {
+    if (transactionCanMapProjection(transaction, /[\[\]\^:]/, previous.ranges)) {
       const presentation = mapFootnotePresentation(previous.presentation, transaction);
+      const ranges = immutableProjectionRanges([
+        ...presentation.definitions,
+        ...presentation.references,
+      ].map(({from, to}) => ({from, to})));
       return {
         decorations: liveFootnoteDecorations(transaction.state, presentation),
         hasConstructs: true,
         presentation,
+        ranges,
       };
     }
     return buildLiveFootnoteDecorations(transaction.state);
   },
-  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.decorations),
+    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
+  ],
 });
 
+interface LiveInlineProjectionState {
+  decorations: DecorationSet;
+  atomicRanges: DecorationSet;
+  coveredRanges: readonly ProjectionSourceRange[];
+}
+
+function bufferedVisibleRanges(view: EditorView, margin = 2_000) {
+  return immutableProjectionRanges(boundedProjectionRanges(
+    view.state.doc.length,
+    view.visibleRanges,
+    margin,
+  ));
+}
+
+function coversVisibleRanges(
+  covered: readonly ProjectionSourceRange[],
+  visible: readonly ProjectionSourceRange[],
+) {
+  return visible.every((range) => covered.some((candidate) =>
+    candidate.from <= range.from && candidate.to >= range.to));
+}
+
 /** @param {EditorView} view */
-function buildLiveDecorations(view: EditorView) {
+function buildLiveDecorations(
+  view: EditorView,
+  requestedRanges?: readonly ProjectionSourceRange[],
+): LiveInlineProjectionState {
   const projectionStartedAt = performance.now();
   const decorations: Range<Decoration>[] = [];
+  const atomicRanges: Range<Decoration>[] = [];
   const doc = view.state.doc;
-  if (hasUnclosedFrontmatter(doc)) {
+  const coveredRanges = requestedRanges
+    ? immutableProjectionRanges(requestedRanges)
+    : bufferedVisibleRanges(view);
+  const projectionWindowUTF16Count = coveredRanges.reduce(
+    (total, range) => total + Math.max(0, range.to - range.from),
+    0,
+  );
+  const index = liveProjectionIndexForState(view.state);
+  if (index.hasUnclosedFrontmatter) {
     recordEditorMetric("projection", projectionStartedAt, {
       documentLength: doc.length,
       visibleRangeCount: view.visibleRanges.length,
       decorationCount: 0,
+      projectionWindowUTF16Count,
     });
-    return Decoration.none;
+    return {decorations: Decoration.none, atomicRanges: Decoration.none, coveredRanges};
   }
   const selection = view.state.selection.main;
-  const yamlEnd = frontmatterEndLine(doc);
-  const semanticLiterals = semanticLiteralRanges(view.state);
-  const parsedProjection = semanticProjectionRanges(view.state, view.visibleRanges);
-  const literals = [...semanticLiterals.excluded];
-  const mathExpressions = visibleMathExpressions(view, literals);
-  const linkPreviewIndexByRange = new Map(
-    linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]),
-  );
+  const firstBodyLineFrom = index.firstBodyLineFrom;
+  const semanticLiterals = index.literals;
+  const parsedProjection = semanticProjectionRanges(view.state, coveredRanges, 0);
+  const visibleLiterals = new Map<string, ProjectionSourceRange>();
+  for (const covered of coveredRanges) {
+    for (const literal of rangesIntersecting(
+      semanticLiterals.excluded,
+      covered.from,
+      Math.min(doc.length + 1, covered.to + 1),
+    )) {
+      visibleLiterals.set(rangeKey(literal.from, literal.to), literal);
+    }
+  }
+  const literals = [...visibleLiterals.values()];
+  const mathExpressions = visibleMathExpressions(view, coveredRanges, index);
 
   /** @param {number} from @param {number} to */
   const addHidden = (from: number, to: number) => {
-    if (to > from) decorations.push(hiddenSyntax.range(from, to));
+    if (to <= from) return;
+    const range = hiddenSyntax.range(from, to);
+    decorations.push(range);
+    atomicRanges.push(range);
+  };
+  const addAtomicReplacement = (decoration: Decoration, from: number, to: number) => {
+    if (to <= from) return;
+    const range = decoration.range(from, to);
+    decorations.push(range);
+    atomicRanges.push(range);
   };
   /** @param {number} from @param {number} to @param {string} className */
   const addMark = (from: number, to: number, className: string) => {
@@ -1151,13 +1704,13 @@ function buildLiveDecorations(view: EditorView) {
   for (const expression of mathExpressions) {
     literals.push({from: expression.from, to: expression.to});
     const activeConstruct = view.state.selection.ranges.some((range) =>
-      range.from <= expression.to && range.to >= expression.from,
+      selectionIntersectsProjection(range, expression),
     );
     if (activeConstruct) continue;
     if (expression.kind === "inline") {
-      decorations.push(Decoration.replace({
+      addAtomicReplacement(Decoration.replace({
         widget: new MathWidget(expression),
-      }).range(expression.from, expression.to));
+      }), expression.from, expression.to);
       continue;
     }
 
@@ -1184,87 +1737,91 @@ function buildLiveDecorations(view: EditorView) {
     }
   }
 
-  for (const visible of view.visibleRanges) {
+  literals.sort((left, right) => left.from - right.from || left.to - right.to);
+
+  for (const visible of coveredRanges) {
     let line = doc.lineAt(visible.from);
     const lastLine = doc.lineAt(visible.to).number;
-    const calloutContext = calloutContexts(doc, line.number, lastLine);
-    const codeContext = fencedCodeLines(doc, lastLine);
     while (line.from <= visible.to) {
-      const text = line.text;
+      const scanFrom = Math.max(line.from, visible.from);
+      const scanTo = Math.min(line.to, visible.to);
+      const text = doc.sliceString(scanFrom, scanTo);
+      const linePrefix = doc.sliceString(line.from, Math.min(line.to, line.from + 512));
+      const lineFullyScanned = scanFrom === line.from && scanTo === line.to;
+      const lineQueryTo = Math.min(doc.length, scanTo + 1);
       const activeLine = selection.head >= line.from && selection.head <= line.to
         || view.composing && view.state.selection.ranges.some(
-          (range) => range.from <= line.to && range.to >= line.from,
+          (range) => range.from < lineQueryTo && range.to >= line.from,
         );
-      const excluded: {from: number; to: number}[] = literals.filter(
-        (literal) => literal.from <= line.to && literal.to >= line.from,
-      );
+      const excluded = [...rangesIntersecting(literals, scanFrom, lineQueryTo)];
 
-      if (yamlEnd > 0 && line.number <= yamlEnd) {
-        decorations.push(
-          Decoration.line({ attributes: { class: "cm-live-frontmatter" } }).range(line.from),
-        );
-        if (!activeLine && (line.number === 1 || line.number === yamlEnd)) {
-          addHidden(line.from, line.to);
-        }
+      if (index.frontmatterRange && line.from < index.frontmatterRange.to) {
+        // The direct frontmatter StateField owns the entire closed envelope.
+        // Adding line/CSS decorations here would desynchronize CodeMirror's
+        // height map from the visible DOM.
       } else {
-        const codeLine = codeContext.get(line.number);
-        const semanticCodeLine = semanticLiterals.codeBlocks.some(
-          (range) => range.from <= line.to && range.to >= line.from,
-        );
-        if (codeLine || semanticCodeLine || isIndentedCodeLine(text)) {
+        const semanticCodeBlock = rangesIntersecting(
+          semanticLiterals.codeBlocks,
+          scanFrom,
+          lineQueryTo,
+        )[0];
+        if (semanticCodeBlock || isIndentedCodeLine(linePrefix)) {
           decorations.push(Decoration.line({ attributes: { class: "cm-live-codeblock" } }).range(line.from));
-          if (codeLine?.fence && !activeLine) addHidden(line.from, line.to);
-          else if (!codeLine?.fence) addMark(line.from, line.to, "cm-live-code");
+          const fenceLine = semanticCodeBlock
+            ? isFencedDelimiterLine(doc, semanticCodeBlock, line.from)
+            : false;
+          if (fenceLine && !activeLine) addHidden(line.from, line.to);
+          else if (!fenceLine) addMark(scanFrom, scanTo, "cm-live-code");
           if (line.to === doc.length) break;
           line = doc.line(line.number + 1);
           continue;
         }
 
         const headingLevel = parsedProjection.headingLevelByLineFrom.get(line.from);
-        const heading = headingLevel ? /^(#{1,6})\s+/.exec(text) : null;
-        if (heading && heading[1].length === headingLevel) {
+        const heading = headingLevel ? /^(\uFEFF?)(#{1,6})\s+/.exec(linePrefix) : null;
+        if (heading && heading[2].length === headingLevel) {
+          const isDocumentTitle = headingLevel === 1 && line.from === firstBodyLineFrom;
           decorations.push(
             Decoration.line({
-              attributes: { class: `cm-live-heading cm-live-h${heading[1].length}` },
+              attributes: {
+                class: `cm-live-heading cm-live-h${heading[2].length}${isDocumentTitle ? " cm-live-document-title" : ""}`,
+              },
             }).range(line.from),
           );
           if (!activeLine) addHidden(line.from, line.from + heading[0].length);
         }
 
-        const callout = calloutHeader(text);
-        const context = calloutContext.get(line.number);
-        const parsedCallout = parsedProjection.callouts.find(
-          (range) => range.from <= line.to && range.to >= line.from,
-        );
-        const activeCallout = parsedCallout && view.state.selection.ranges.some((range) =>
-          range.from <= parsedCallout.to && range.to >= parsedCallout.from,
-        );
-        const quote = /^(\s*>\s?)/.exec(text);
-        if (quote && (!parsedCallout || activeCallout)) {
-          const contextClasses = context
-            ? `cm-live-callout cm-live-callout-${context.role}${context.isHeader ? " cm-live-callout-header" : ""}${context.isEnd ? " cm-live-callout-end" : ""}`
-            : "cm-live-quote";
+        const parsedCallout = rangesIntersecting(
+          parsedProjection.callouts,
+          scanFrom,
+          lineQueryTo,
+        )[0];
+        const parsedParagraph = rangesIntersecting(
+          parsedProjection.paragraphs,
+          scanFrom,
+          lineQueryTo,
+        )[0];
+        if (parsedParagraph && !parsedCallout && !heading) {
+          decorations.push(Decoration.line({
+            attributes: {class: "cm-live-paragraph"},
+          }).range(line.from));
+        }
+        const quote = /^(\s*>\s?)/.exec(linePrefix);
+        if (quote && !parsedCallout) {
           decorations.push(
             Decoration.line({
-              attributes: { class: contextClasses },
+              attributes: { class: "cm-live-quote" },
             }).range(line.from),
           );
           if (!activeLine) addHidden(line.from, line.from + quote[0].length);
         }
-        if (callout && activeCallout && !activeLine) {
-          const markerStart = line.from + callout[1].length;
-          const kindStart = markerStart + 2;
-          const kindEnd = kindStart + callout[2].length;
-          addHidden(markerStart, kindStart);
-          decorations.push(
-            Decoration.replace({ widget: new CalloutRoleWidget(calloutRole(callout[2])) }).range(kindStart, kindEnd),
-          );
-          const closingEnd = kindEnd + 1 + (callout[3]?.length || 0);
-          addHidden(kindEnd, closingEnd);
-          if (callout[4]) addMark(line.to - callout[4].length, line.to, "cm-live-callout-title");
-        }
+        // An active Callout is exact editable Markdown. The block widget is
+        // removed by liveCalloutField, and no Callout line styling, role
+        // widget, marker hiding, or quote projection is permitted here.
 
-        const rule = /^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.exec(text);
+        const rule = lineFullyScanned
+          ? /^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.exec(text)
+          : null;
         if (rule && !activeLine) {
           addHidden(line.from, line.to);
           decorations.push(
@@ -1272,28 +1829,36 @@ function buildLiveDecorations(view: EditorView) {
           );
         }
 
-        const list = /^(\s*)([-+*]|\d+[.)])(\s+)/.exec(text);
+        const list = /^(\s*)([-+*]|\d+[.)])(\s+)/.exec(linePrefix);
         if (list) {
           decorations.push(Decoration.line({ attributes: { class: "cm-live-list" } }).range(line.from));
           if (!activeLine) {
             const markerFrom = line.from + list[1].length;
             const markerTo = markerFrom + list[2].length;
-            decorations.push(Decoration.replace({ widget: new ListMarkerWidget(list[2]) }).range(markerFrom, markerTo));
+            addAtomicReplacement(
+              Decoration.replace({widget: new ListMarkerWidget(list[2])}),
+              markerFrom,
+              markerTo,
+            );
           }
         }
 
-        const parsedTable = parsedProjection.tables.find((range) => range.from <= line.to && range.to >= line.from);
+        const parsedTable = rangesIntersecting(
+          parsedProjection.tables,
+          scanFrom,
+          lineQueryTo,
+        )[0];
         const activeTable = parsedTable && view.state.selection.ranges.some((range) =>
-          range.from <= parsedTable.to && range.to >= parsedTable.from,
+          selectionIntersectsProjection(range, parsedTable),
         );
         if (activeTable) {
           decorations.push(Decoration.line({ attributes: { class: "cm-live-table" } }).range(line.from));
           if (!activeLine) {
-            for (const match of text.matchAll(/\|/g)) addMark(line.from + match.index, line.from + match.index + 1, "cm-live-table-separator");
+            for (const match of text.matchAll(/\|/g)) addMark(scanFrom + match.index, scanFrom + match.index + 1, "cm-live-table-separator");
           }
         }
 
-        const relation = /^(\s*-\s*)`([^`]+)`(\s*->\s*)/.exec(text);
+        const relation = /^(\s*-\s*)`([^`]+)`(\s*->\s*)/.exec(linePrefix);
         if (relation) {
           const predicateFrom = line.from + relation[1].length + 1;
           const predicateTo = predicateFrom + relation[2].length;
@@ -1308,7 +1873,7 @@ function buildLiveDecorations(view: EditorView) {
         }
 
         for (const match of text.matchAll(/(`+)([^\n]*?)\1/g)) {
-          const from = line.from + match.index;
+          const from = scanFrom + match.index;
           const to = from + match[0].length;
           excluded.push({ from, to });
           if (!activeLine) {
@@ -1323,7 +1888,7 @@ function buildLiveDecorations(view: EditorView) {
         // construct, replace its punctuation with a semantic SF Symbol mask;
         // moving the caret into it removes every projection decoration.
         for (const match of text.matchAll(/(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g)) {
-          const from = line.from + match.index;
+          const from = scanFrom + match.index;
           const to = from + match[0].length;
           const embed = match[1] === "!";
           const wikiIndex = match.index + (embed ? 1 : 0);
@@ -1338,7 +1903,7 @@ function buildLiveDecorations(view: EditorView) {
           excluded.push({ from: fullFrom, to });
 
           const activeConstruct = view.state.selection.ranges.some((selected) =>
-            selected.from <= to && selected.to >= fullFrom,
+            selectionIntersectsProjection(selected, {from: fullFrom, to}),
           );
           if (activeConstruct) continue;
 
@@ -1350,8 +1915,10 @@ function buildLiveDecorations(view: EditorView) {
           if (embed) {
             addHidden(from, openingEnd);
           } else {
-            decorations.push(
-              Decoration.replace({ widget: new VectorLinkIconWidget(kind) }).range(fullFrom, openingEnd),
+            addAtomicReplacement(
+              Decoration.replace({widget: new VectorLinkIconWidget(kind)}),
+              fullFrom,
+              openingEnd,
             );
           }
 
@@ -1373,7 +1940,7 @@ function buildLiveDecorations(view: EditorView) {
 
         if (!activeLine) {
           for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             if (overlaps(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
             addHidden(from, from + 1);
@@ -1382,7 +1949,7 @@ function buildLiveDecorations(view: EditorView) {
           }
 
           for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             if (overlaps(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
             addHidden(from, from + 2);
@@ -1391,7 +1958,7 @@ function buildLiveDecorations(view: EditorView) {
           }
 
           for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             if (overlaps(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
             addHidden(from, from + 2);
@@ -1400,7 +1967,7 @@ function buildLiveDecorations(view: EditorView) {
           }
 
           for (const match of text.matchAll(/==([^=\n]+)==/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             if (overlaps(excluded, from, to) || !parsedProjection.highlights.has(rangeKey(from, to))) continue;
             addHidden(from, from + 2);
@@ -1409,7 +1976,7 @@ function buildLiveDecorations(view: EditorView) {
           }
 
           for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             if (overlaps(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
             addHidden(from, from + 1);
@@ -1425,32 +1992,87 @@ function buildLiveDecorations(view: EditorView) {
   }
 
   const result = Decoration.set(decorations, true);
+  const atoms = Decoration.set(atomicRanges, true);
   recordEditorMetric("projection", projectionStartedAt, {
     documentLength: doc.length,
     visibleRangeCount: view.visibleRanges.length,
     decorationCount: decorations.length,
+    projectionWindowUTF16Count,
+    selectionScoped: requestedRanges ? 1 : 0,
+    widgetReuseCount: liveWidgetReuseCounts.table
+      + liveWidgetReuseCounts.callout
+      + liveWidgetReuseCounts.footnote,
   });
-  return result;
+  return {decorations: result, atomicRanges: atoms, coveredRanges};
+}
+
+function replacingDecorationsInRanges(
+  existing: DecorationSet,
+  replacement: DecorationSet,
+  affected: readonly ProjectionSourceRange[],
+) {
+  const touches = (from: number, to: number) => affected.some((range) =>
+    from === to
+      ? from >= range.from && from <= range.to
+      : from < range.to && to > range.from);
+  const add: Range<Decoration>[] = [];
+  replacement.between(0, editor.state.doc.length, (from, to, decoration) => {
+    if (touches(from, to)) add.push(decoration.range(from, to));
+  });
+  return existing.update({
+    filter: (from, to) => !touches(from, to),
+    add,
+    sort: true,
+  });
 }
 
 class LivePreviewPlugin {
-  decorations;
+  decorations: DecorationSet;
+  atomicRanges: DecorationSet;
+  coveredRanges: readonly ProjectionSourceRange[];
   constructor(view: EditorView) {
-    this.decorations = buildLiveDecorations(view);
+    const projection = buildLiveDecorations(view);
+    this.decorations = projection.decorations;
+    this.atomicRanges = projection.atomicRanges;
+    this.coveredRanges = projection.coveredRanges;
   }
   update(update: ViewUpdate) {
     const explicitlyRefreshed = update.transactions.some((transaction) =>
       transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect)),
     );
     const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
-    if (update.docChanged || update.selectionSet || update.viewportChanged || explicitlyRefreshed
-      || syntaxTreeChanged) {
-      this.decorations = buildLiveDecorations(update.view);
+    const viewportNeedsProjection = update.viewportChanged
+      && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
+    if (update.docChanged || viewportNeedsProjection || explicitlyRefreshed || syntaxTreeChanged) {
+      const projection = buildLiveDecorations(update.view);
+      this.decorations = projection.decorations;
+      this.atomicRanges = projection.atomicRanges;
+      this.coveredRanges = projection.coveredRanges;
+    } else if (update.selectionSet
+        && !update.startState.selection.eq(update.state.selection)) {
+      const affected = selectionAffectedProjectionRanges(
+        update.state.doc.length,
+        update.startState.selection.ranges,
+        update.state.selection.ranges,
+      );
+      const projection = buildLiveDecorations(update.view, affected);
+      this.decorations = replacingDecorationsInRanges(
+        this.decorations,
+        projection.decorations,
+        affected,
+      );
+      this.atomicRanges = replacingDecorationsInRanges(
+        this.atomicRanges,
+        projection.atomicRanges,
+        affected,
+      );
     }
   }
 }
 const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
   decorations: (value: LivePreviewPlugin) => value.decorations,
+  provide: (plugin) => EditorView.atomicRanges.of((view) =>
+    view.plugin(plugin)?.atomicRanges ?? Decoration.none),
 });
 
 class UnclosedFrontmatterWidget extends WidgetType {
@@ -1479,27 +2101,50 @@ class UnclosedFrontmatterWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function buildLiveFrontmatterGuard(state: EditorState) {
-  if (!hasUnclosedFrontmatter(state.doc)) return Decoration.none;
-  return Decoration.set([
-    Decoration.widget({
-      widget: new UnclosedFrontmatterWidget(),
-      block: true,
-      side: -1,
-    }).range(0),
-  ]);
+interface LiveFrontmatterProjectionState {
+  decorations: DecorationSet;
+  atomicRanges: DecorationSet;
 }
 
-const liveFrontmatterGuardField = StateField.define<DecorationSet>({
-  create: buildLiveFrontmatterGuard,
+function buildLiveFrontmatterProjection(state: EditorState): LiveFrontmatterProjectionState {
+  const index = liveProjectionIndexForState(state);
+  if (index.hasUnclosedFrontmatter) {
+    const unavailable = Decoration.set([
+      Decoration.replace({
+        widget: new UnclosedFrontmatterWidget(),
+        block: true,
+      }).range(0, state.doc.length),
+    ]);
+    return {
+      decorations: unavailable,
+      atomicRanges: unavailable,
+    };
+  }
+  const bodyFrom = index.frontmatterRange?.to ?? 0;
+  if (bodyFrom === 0) {
+    return {decorations: Decoration.none, atomicRanges: Decoration.none};
+  }
+  const hiddenFrontmatter = Decoration.set([
+    Decoration.replace({block: true}).range(0, bodyFrom),
+  ]);
+  return {decorations: hiddenFrontmatter, atomicRanges: hiddenFrontmatter};
+}
+
+const liveFrontmatterGuardField = StateField.define<LiveFrontmatterProjectionState>({
+  create: buildLiveFrontmatterProjection,
   update(previous, transaction) {
-    return transaction.docChanged ? buildLiveFrontmatterGuard(transaction.state) : previous;
+    return transaction.docChanged ? buildLiveFrontmatterProjection(transaction.state) : previous;
   },
-  provide: (field) => EditorView.decorations.from(field),
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.decorations),
+    EditorView.atomicRanges.of((view) => view.state.field(field).atomicRanges),
+  ],
 });
 
 const livePreviewMode = [
+  syntaxHighlighting(livePreviewHighlightStyle),
   liveFrontmatterGuardField,
+  liveBlockActivationField,
   liveTableField,
   liveCalloutField,
   liveFootnoteField,
@@ -1507,6 +2152,7 @@ const livePreviewMode = [
   EditorView.lineWrapping,
 ];
 const sourceMode = [
+  syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
   lineNumbers(),
   highlightActiveLineGutter(),
   foldGutter(),
@@ -1515,6 +2161,14 @@ const sourceMode = [
 
 let dirty = false;
 let pendingKeyStartedAt: number | null = null;
+let forceNextInteractionContext = true;
+let lastInteractionAvailabilitySignature: string | null = null;
+const interactionReporter = new AnimationFrameCoalescer(
+  (callback) => window.requestAnimationFrame(callback),
+  (identifier) => window.cancelAnimationFrame(identifier),
+  (callback, delayMilliseconds) => window.setTimeout(callback, delayMilliseconds),
+  (identifier) => window.clearTimeout(identifier),
+);
 /** @type {number | null} */
 let idleTimer: number | null = null;
 
@@ -1541,6 +2195,9 @@ const stateReporter = EditorView.updateListener.of((update) => {
     }
     const baseGeneration = documentVersion;
     documentVersion += 1;
+    if (hiddenFrontmatterSourceSelection?.documentVersion !== documentVersion) {
+      hiddenFrontmatterSourceSelection = null;
+    }
     /** @type {{from: number, to: number, insert: string}[]} */
     const changes: SourceDelta[] = [];
     update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
@@ -1560,16 +2217,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
     post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
   }
 
-  const head = update.state.selection.main.head;
-  const line = update.state.doc.lineAt(head);
-  post({
-    type: "stateChanged",
-    dirty,
-    line: line.number,
-    column: head - line.from + 1,
-    lineCount: update.state.doc.lines,
-  });
-  publishEditorContext();
+  scheduleEditorInteractionReport();
 
   if (update.docChanged) {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -1673,11 +2321,119 @@ const structuralInteractionKeymap = keymap.of([
   },
 ]);
 
+function revealProjectedBlockForVerticalMove(
+  view: EditorView,
+  forward: boolean,
+  extend: boolean,
+) {
+  if (currentMode !== "livePreview" || view.composing) return false;
+  const selection = view.state.selection.main;
+  const moved = view.moveVertically(selection, forward);
+  const index = liveProjectionIndexForState(view.state);
+  const crossed = rangesIntersecting(
+    index.blockRanges,
+    Math.min(selection.head, moved.head),
+    Math.max(selection.head, moved.head) + 1,
+  ).filter((candidate) => {
+    if (view.state.selection.ranges.some((range) => selectionIntersectsProjection(range, candidate))) {
+      return false;
+    }
+    return forward
+      ? selection.head <= candidate.from && moved.head >= candidate.to
+      : selection.head >= candidate.to && moved.head <= candidate.from;
+  });
+  const projection = forward ? crossed[0] : crossed.at(-1);
+  if (!projection) return false;
+
+  const isCallout = projection.kind === "callout";
+  const sourceHead = forward
+    ? projection.from
+    : isCallout
+      ? projection.to
+      : Math.max(projection.from, projection.to - 1);
+  const originalCoords = view.coordsAtPos(selection.head);
+  const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
+  const anchor = extend ? selection.anchor : sourceHead;
+  view.dispatch({
+    effects: isCallout
+      ? setLiveBlockActivationEffect.of({
+        kind: "callout",
+        from: projection.from,
+        to: projection.to,
+        edge: forward ? "start" : "end",
+      })
+      : undefined,
+    selection: {anchor, head: sourceHead},
+    scrollIntoView: true,
+  });
+  if (isCallout) {
+    view.requestMeasure();
+    return true;
+  }
+  view.requestMeasure({
+    read: () => {
+      const line = view.state.doc.lineAt(sourceHead);
+      const lineEdge = forward ? line.from : line.to;
+      const coords = view.coordsAtPos(lineEdge);
+      if (!coords) return sourceHead;
+      return view.posAtCoords({
+        x: desiredX,
+        y: (coords.top + coords.bottom) / 2,
+      }) ?? sourceHead;
+    },
+    write: (measuredHead) => {
+      if (view.state.selection.main.head !== sourceHead) return;
+      view.dispatch({
+        selection: {anchor, head: measuredHead},
+        scrollIntoView: true,
+      });
+    },
+  });
+  return true;
+}
+
+function revealProjectedBlockForHorizontalMove(
+  view: EditorView,
+  forward: boolean,
+  extend: boolean,
+) {
+  if (currentMode !== "livePreview" || view.composing) return false;
+  const selection = view.state.selection.main;
+  const projection = rangesIntersecting(
+    liveProjectionIndexForState(view.state).blockRanges,
+    Math.max(0, selection.head - 1),
+    selection.head + 1,
+  ).find((candidate) =>
+    forward ? selection.head === candidate.from : selection.head === candidate.to,
+  );
+  if (!projection) return false;
+  const head = forward ? projection.from : Math.max(projection.from, projection.to - 1);
+  view.dispatch({
+    selection: {anchor: extend ? selection.anchor : head, head},
+    scrollIntoView: true,
+  });
+  return true;
+}
+
+const liveProjectionNavigationKeymap = keymap.of([
+  {key: "ArrowDown", run: (view) => revealProjectedBlockForVerticalMove(view, true, false)},
+  {key: "Shift-ArrowDown", run: (view) => revealProjectedBlockForVerticalMove(view, true, true)},
+  {key: "ArrowUp", run: (view) => revealProjectedBlockForVerticalMove(view, false, false)},
+  {key: "Shift-ArrowUp", run: (view) => revealProjectedBlockForVerticalMove(view, false, true)},
+  {key: "ArrowRight", run: (view) => revealProjectedBlockForHorizontalMove(view, true, false)},
+  {key: "Shift-ArrowRight", run: (view) => revealProjectedBlockForHorizontalMove(view, true, true)},
+  {key: "ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, false)},
+  {key: "Shift-ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, true)},
+]);
+
 /** @param {import("@codemirror/autocomplete").CompletionContext} context */
 function wikilinkCompletionSource(context: CompletionContext) {
-  const match = context.matchBefore(/\[\[[^\]\n]*/);
+  const line = context.state.doc.lineAt(context.pos);
+  const scanFrom = Math.max(line.from, context.pos - 512);
+  const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
+  const match = /\[\[[^\]\n]*$/.exec(beforeCursor);
   if (!match) return null;
-  const typed = match.text.slice(2).toLocaleLowerCase();
+  const typed = match[0].slice(2).toLocaleLowerCase();
   const options = linkCandidates
     .filter((candidate) => !typed || candidate.label.toLocaleLowerCase().includes(typed) || candidate.path.toLocaleLowerCase().includes(typed))
     .slice(0, 100)
@@ -1689,13 +2445,14 @@ function wikilinkCompletionSource(context: CompletionContext) {
         ? () => undefined
         : candidate.insertion + "]]",
     }));
-  return { from: match.from + 2, options, filter: false };
+  return { from: scanFrom + match.index + 2, options, filter: false };
 }
 
 /** @param {import("@codemirror/autocomplete").CompletionContext} context */
 function calloutCompletionSource(context: CompletionContext) {
   const line = context.state.doc.lineAt(context.pos);
-  const beforeCursor = line.text.slice(0, context.pos - line.from);
+  if (context.pos - line.from > 512) return null;
+  const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
   const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
   if (!match) return null;
   const typed = match[2].toLocaleLowerCase();
@@ -1718,13 +2475,13 @@ const editorExtensions = [
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       bracketMatching(),
       closeBrackets(),
       autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
       rectangularSelection(),
       highlightSelectionMatches(),
       scholiumNoteLanguage,
+      liveProjectionNavigationKeymap,
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -1738,6 +2495,7 @@ const editorExtensions = [
       researcherCommentField,
       researcherCommentActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
+      liveProjectionIndexField,
       modeCompartment.of(livePreviewMode),
       EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
       EditorView.theme({
@@ -1886,7 +2644,7 @@ function showPreviewAtSelection() {
   }
   const coords = editor.coordsAtPos(head);
   if (!coords) return false;
-  const preview = linkPreviews.find((candidate) => head >= candidate.from && head <= candidate.to);
+  const preview = linkPreviews.find((candidate) => head >= candidate.from && head < candidate.to);
   if (preview) {
     showLinkPreview(preview, coords, startedAt);
     return true;
@@ -1979,16 +2737,42 @@ function postCurrentScrollPosition() {
 }
 
 let scrollReportTimer: number | undefined;
+let scrollSessionStartedAt: number | null = null;
 let previousScrollFrameAt: number | null = null;
+let scrollMeasurementFrame: number | null = null;
+let scrollSessionFrameCount = 0;
+let scrollSessionLongestFrame = 0;
+let scrollSessionDroppedFrameCount = 0;
 editor.scrollDOM.addEventListener("scroll", () => {
-  window.requestAnimationFrame(() => {
-    const now = performance.now();
-    if (previousScrollFrameAt !== null) recordEditorMetric("scroll-frame", previousScrollFrameAt);
-    previousScrollFrameAt = now;
-  });
+  if (scrollSessionStartedAt === null) scrollSessionStartedAt = performance.now();
+  if (scrollMeasurementFrame === null) {
+    scrollMeasurementFrame = window.requestAnimationFrame(() => {
+      scrollMeasurementFrame = null;
+      const now = performance.now();
+      scrollSessionFrameCount += 1;
+      if (previousScrollFrameAt !== null) {
+        const duration = Math.max(0, now - previousScrollFrameAt);
+        scrollSessionLongestFrame = Math.max(scrollSessionLongestFrame, duration);
+        if (duration > 20) scrollSessionDroppedFrameCount += 1;
+      }
+      previousScrollFrameAt = now;
+    });
+  }
   window.clearTimeout(scrollReportTimer);
   scrollReportTimer = window.setTimeout(() => {
     postCurrentScrollPosition();
+    if (scrollSessionStartedAt !== null) {
+      recordEditorMetric("scroll-session", scrollSessionStartedAt, {
+        frameCount: scrollSessionFrameCount,
+        longestFrameMilliseconds: scrollSessionLongestFrame,
+        droppedFrameCount: scrollSessionDroppedFrameCount,
+      });
+    }
+    scrollSessionStartedAt = null;
+    previousScrollFrameAt = null;
+    scrollSessionFrameCount = 0;
+    scrollSessionLongestFrame = 0;
+    scrollSessionDroppedFrameCount = 0;
   }, 120);
 }, { passive: true });
 
@@ -2008,41 +2792,45 @@ function editorSelections() {
 }
 
 function protectedCommandRanges() {
-  const ranges = semanticLiteralRanges(editor.state).excluded;
-  const yamlEnd = frontmatterEndLine(editor.state.doc);
-  if (yamlEnd > 0) ranges.push({from: 0, to: editor.state.doc.line(yamlEnd).to});
-  return ranges;
+  return liveProjectionIndexForState(editor.state).commandProtectedRanges;
+}
+
+function indexedTablePositionAt(state: EditorState, offset: number) {
+  return projectionRangeContaining(
+    liveProjectionIndexForState(state).tablePositionRanges,
+    offset,
+  )?.position;
 }
 
 function currentEditorContext(): EditorContext {
   const inline = new Set<string>();
   const block = new Set<string>();
+  const selectionLinePrefixes: string[] = [];
   for (const selection of editor.state.selection.ranges) {
+    const linePrefix = boundedLinePrefix(editor.state.doc, selection.head);
+    selectionLinePrefixes.push(linePrefix);
     for (let node = syntaxTree(editor.state).resolveInner(selection.head, -1); node; node = node.parent!) {
       if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
       if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
       if (!node.parent) break;
     }
-    if (calloutHeader(editor.state.doc.lineAt(selection.head).text)) block.add("Callout");
+    if (calloutHeader(linePrefix)) block.add("Callout");
   }
+  const protectedRanges = protectedCommandRanges();
   const protectedSelection = editor.state.selection.ranges.some((selection) =>
-    protectedCommandRanges().some((range) => selection.from < range.to && selection.to > range.from),
-  );
-  const currentTable = editor.state.selection.ranges.length === 1
-    ? tableAt(editor.state.doc.toString(), editor.state.selection.main.head)
-    : null;
+    projectionSelectionOverlaps(protectedRanges, selection));
+  const currentTablePosition = editor.state.selection.ranges.length === 1
+    ? indexedTablePositionAt(editor.state, editor.state.selection.main.head)
+    : undefined;
   const tableOnlyCommands = new Set([
     "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
     "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
     "tableAlignLeft", "tableAlignCenter", "tableAlignRight",
   ]);
   const availableCommands = allCommands.filter((command) => {
-    if (tableOnlyCommands.has(command)) return currentTable !== null;
+    if (tableOnlyCommands.has(command)) return currentTablePosition !== undefined;
     if (command === "toggleTask") {
-      return editor.state.selection.ranges.every((selection) => {
-        const line = editor.state.doc.lineAt(selection.head).text;
-        return /^\s*-\s+\[[ xX]\]/.test(line);
-      });
+      return selectionLinePrefixes.every((linePrefix) => /^\s*-\s+\[[ xX]\]/.test(linePrefix));
     }
     if (command === "linkSelectedText") return editor.state.selection.ranges.every((selection) => !selection.empty);
     return true;
@@ -2051,7 +2839,7 @@ function currentEditorContext(): EditorContext {
     selections: editorSelections(),
     activeInlineConstructs: [...inline],
     activeBlockConstructs: [...block],
-    tablePosition: currentTable?.position,
+    tablePosition: currentTablePosition,
     composing: editor.composing,
     availableCommands: editor.composing || protectedSelection ? [] : availableCommands,
     undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
@@ -2059,10 +2847,31 @@ function currentEditorContext(): EditorContext {
   };
 }
 
+function scheduleEditorInteractionReport(forceContext = false) {
+  forceNextInteractionContext ||= forceContext;
+  interactionReporter.schedule(() => {
+    const context = currentEditorContext();
+    const head = editor.state.selection.main.head;
+    const line = editor.state.doc.lineAt(head);
+    const availabilitySignature = interactionAvailabilitySignature(context);
+    const includeContext = forceNextInteractionContext
+      || availabilitySignature !== lastInteractionAvailabilitySignature;
+    forceNextInteractionContext = false;
+    lastInteractionAvailabilitySignature = availabilitySignature;
+    updateEditorAccessibility(editor.contentDOM, currentMode, context);
+    post({
+      type: "interactionChanged",
+      selections: context.selections,
+      line: line.number,
+      column: head - line.from + 1,
+      lineCount: editor.state.doc.lines,
+      ...(includeContext ? {context} : {}),
+    });
+  });
+}
+
 function publishEditorContext() {
-  const context = currentEditorContext();
-  updateEditorAccessibility(editor.contentDOM, currentMode, context);
-  post({type: "contextChanged", context});
+  scheduleEditorInteractionReport(true);
 }
 
 function successfulResult(requestID: string, sourceChanged = false, undoLabel?: string): EditorCommandResult {
@@ -2108,6 +2917,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
 
   switch (operation.type) {
   case "setMode": editorOperations.setMode(operation.mode); break;
+  case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkCompletions": editorOperations.setLinkCompletions(operation.value as LinkCandidate[]); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
@@ -2153,10 +2963,15 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "restoreRecovery": {
     const snapshot = operation.snapshot;
     if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint
+        || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion)
         || new TextEncoder().encode(snapshot.source).byteLength > MAX_SOURCE_UTF8_BYTES) {
       return rejected(request.requestID, documentVersion, "stale recovery snapshot");
     }
+    const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) =>
+      EditorSelection.range(range.anchor, range.head)));
+    const separator = snapshot.source.includes("\r\n") ? "\r\n" : "\n";
     let restoredHistory = false;
+    let recoveredState: EditorState | null = null;
     if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
       try {
         const serializedState = JSON.parse(snapshot.stateJSON);
@@ -2174,25 +2989,32 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
         );
         if (normalizedDocumentText(restored.doc.toString())
             === normalizedDocumentText(snapshot.source)) {
-          editor.setState(restored);
-          const separator = snapshot.source.includes("\r\n") ? "\r\n" : "\n";
-          editor.dispatch({
+          recoveredState = restored.update({
+            selection: recoveredSelection,
             effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
             annotations: Transaction.addToHistory.of(false),
-          });
-          exactSource = snapshot.source;
+          }).state;
           restoredHistory = true;
         }
       } catch { restoredHistory = false; }
     }
-    if (!restoredHistory) {
-      editor.dispatch({
+    if (!recoveredState) {
+      try {
+        recoveredState = editor.state.update({
         changes: replacementChange(editor.state.doc.toString(), snapshot.source),
-        selection: EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head))),
+        selection: recoveredSelection,
+        effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
         annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)],
-      });
-      exactSource = snapshot.source;
+        }).state;
+      } catch {
+        return rejected(request.requestID, documentVersion, "invalid recovery snapshot");
+      }
     }
+    // Source, history, line separator, and the latest exact selection become
+    // visible together. No partially restored state can escape a failed
+    // stateJSON or selection validation path.
+    editor.setState(recoveredState);
+    exactSource = snapshot.source;
     editorOperations.setMode(currentMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
@@ -2244,8 +3066,11 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
     recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes});
     return rejected("invalid", documentVersion, "malformed editor request");
   }
-  if ((editor.composing || compositionGate.active)
-      && (value.operation.type === "setMode" || value.operation.type === "command")) {
+  const compositionPolicy = compositionRequestPolicy(value.operation.type);
+  if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
+    return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
+  }
+  if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
     const result = compositionGate.enqueue(value);
     return result.then((accepted) => {
       recordEditorMetric("bridge-request", bridgeStartedAt, {
@@ -2315,6 +3140,30 @@ editor.contentDOM.addEventListener("drop", (event) => {
   if (pasteTransfer(event.dataTransfer, position ?? undefined)) event.preventDefault();
 }, {capture: true});
 
+let dynamicStyleMeasureScheduled = false;
+function scheduleDynamicStyleMeasure() {
+  if (dynamicStyleMeasureScheduled) return;
+  dynamicStyleMeasureScheduled = true;
+  queueMicrotask(() => {
+    dynamicStyleMeasureScheduled = false;
+    const documentSnapshot = editor.state.doc;
+    editor.requestMeasure({
+      read: () => editor.state.doc === documentSnapshot,
+      write: (isCurrentDocument) => {
+        if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrentScrollPosition();
+      },
+    });
+  });
+}
+
+function setDynamicStyle(id: string, css: string) {
+  const style = document.getElementById(id);
+  if (!style || style.textContent === css) return;
+  style.textContent = css;
+  scheduleDynamicStyleMeasure();
+  void document.fonts.ready.then(scheduleDynamicStyleMeasure);
+}
+
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
@@ -2328,6 +3177,7 @@ const editorOperations = {
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
     documentVersion = 0;
+    hiddenFrontmatterSourceSelection = null;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
     exactSource = text;
     editor.dispatch({
@@ -2339,7 +3189,8 @@ const editorOperations = {
       ],
     });
     dirty = false;
-    post({ type: "stateChanged", dirty: false, line: 1, column: 1, lineCount: editor.state.doc.lines });
+    lastInteractionAvailabilitySignature = null;
+    scheduleEditorInteractionReport(true);
   },
 
   /** @param {string} mode */
@@ -2347,18 +3198,38 @@ const editorOperations = {
     const startedAt = performance.now();
     hidePreview();
     const scrollSnapshot = editor.scrollSnapshot();
+    const nextMode = mode === "livePreview" ? "livePreview" : "source";
+    let selection: EditorSelection | undefined;
+    if (nextMode === "livePreview") {
+      const bodyFrom = frontmatterBodyOffset(editor.state.doc);
+      if (bodyFrom > 0 && editor.state.selection.ranges.some((range) => range.from < bodyFrom)) {
+        if (currentMode === "source") {
+          hiddenFrontmatterSourceSelection = {
+            documentVersion,
+            selection: editor.state.selection,
+          };
+        }
+        selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
+      }
+    } else if (nextMode === "source" && currentMode === "livePreview"
+        && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
+      selection = hiddenFrontmatterSourceSelection.selection;
+      hiddenFrontmatterSourceSelection = null;
+    }
     editor.dispatch({
+      selection,
       effects: [
-        modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : sourceMode),
+        modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
         scrollSnapshot,
       ],
     });
-    editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
-    editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
-    editor.scrollDOM.classList.toggle("scholium-live-scroller", mode === "livePreview");
-    editor.scrollDOM.classList.toggle("scholium-source-scroller", mode !== "livePreview");
-    currentMode = mode === "livePreview" ? "livePreview" : "source";
+    editor.dom.classList.toggle("scholium-live-mode", nextMode === "livePreview");
+    editor.dom.classList.toggle("scholium-source-mode", nextMode !== "livePreview");
+    editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
+    editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
+    currentMode = nextMode;
     updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
+    scheduleEditorInteractionReport(true);
     recordEditorMetric("mode-toggle-work", startedAt, {
       documentLength: editor.state.doc.length,
     });
@@ -2374,22 +3245,13 @@ const editorOperations = {
   },
 
   /** @param {string} css */
+  setPresentationCSS(css: string) {
+    setDynamicStyle("scholium-presentation-css", css);
+  },
+
+  /** @param {string} css */
   setUserCSS(css: string) {
-    const style = document.getElementById("scholium-user-css");
-    if (!style) return;
-    style.textContent = css;
-    const documentSnapshot = editor.state.doc;
-    const remeasure = () => {
-      if (editor.state.doc !== documentSnapshot) return;
-      editor.requestMeasure({
-        read: () => editor.state.doc === documentSnapshot,
-        write: (isCurrentDocument) => {
-          if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrentScrollPosition();
-        },
-      });
-    };
-    remeasure();
-    void document.fonts.ready.then(remeasure);
+    setDynamicStyle("scholium-user-css", css);
   },
 
   /** @param {{label: string, insertion: string, detail: string, path: string}[]} candidates */
@@ -2399,6 +3261,9 @@ const editorOperations = {
 
   setLinkPreviews(value: unknown) {
     linkPreviews = validatedLinkPreviews(value, editor.state.doc.length);
+    linkPreviewIndexByRange = new Map(
+      linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]),
+    );
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
   },
 
@@ -2522,19 +3387,12 @@ const editorOperations = {
     });
     exactSource = committedText;
     dirty = false;
-    post({
-      type: "stateChanged",
-      dirty: false,
-      line: editor.state.doc.lineAt(editor.state.selection.main.head).number,
-      column: editor.state.selection.main.head - editor.state.doc.lineAt(editor.state.selection.main.head).from + 1,
-      lineCount: editor.state.doc.lines,
-    });
+    scheduleEditorInteractionReport(true);
     return true;
   },
 
   markClean() {
     dirty = false;
-    post({ type: "stateChanged", dirty: false });
   },
 
   focus() {

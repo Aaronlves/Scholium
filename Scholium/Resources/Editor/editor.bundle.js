@@ -21364,12 +21364,13 @@
   });
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 3;
+  var EDITOR_PROTOCOL_VERSION = 4;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
     "initialize",
     "setMode",
+    "setPresentationCSS",
     "setUserCSS",
     "setLinkCompletions",
     "setLinkPreviews",
@@ -21443,6 +21444,16 @@
   function validMode(value) {
     return value === "livePreview" || value === "source";
   }
+  function validRecoverySnapshot(value) {
+    if (!value || typeof value !== "object") return false;
+    const snapshot = value;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && typeof snapshot.stateJSON !== "string") return false;
+    const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
+    return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
+  }
+  function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
+    return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
+  }
   function validDialect(value) {
     if (!value || typeof value !== "object") return false;
     const dialect = value;
@@ -21458,6 +21469,7 @@
         return typeof operation.text === "string" && validMode(operation.mode) && validDialect(operation.dialect);
       case "setMode":
         return validMode(operation.mode);
+      case "setPresentationCSS":
       case "setUserCSS":
         return typeof operation.value === "string" && operation.value.length <= 1e6;
       case "announceStatus":
@@ -21477,7 +21489,7 @@
         return Boolean(anchor) && Number.isSafeInteger(anchor?.sourceUTF16Offset) && Number.isSafeInteger(anchor?.blockUTF16LowerBound) && Number.isSafeInteger(anchor?.blockUTF16UpperBound) && typeof anchor?.relativeBlockPosition === "number" && Number.isFinite(anchor.relativeBlockPosition) && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1 && typeof anchor?.fallbackFraction === "number" && Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
       }
       case "restoreRecovery":
-        return Boolean(operation.snapshot) && typeof operation.snapshot === "object";
+        return validRecoverySnapshot(operation.snapshot);
       case "synchronizeCommittedText":
         return typeof operation.expectedText === "string" && typeof operation.committedText === "string" && typeof operation.committedFingerprint === "string";
       case "command":
@@ -30115,15 +30127,15 @@ ${fence}
     const newline3 = source.indexOf("\n", offset);
     const lineTo = newline3 < 0 ? source.length : newline3;
     const line = source.slice(lineFrom, lineTo);
-    for (const match of line.matchAll(/(?:[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+    for (const match of line.matchAll(/(?:!|[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
       const from = lineFrom + match.index;
       const to = from + match[0].length;
-      if (offset >= from && offset <= to) return match[1].trim();
+      if (offset >= from && offset < to) return match[1].trim();
     }
     for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
       const from = lineFrom + match.index;
       const to = from + match[0].length;
-      if (offset >= from && offset <= to) return match[1].trim();
+      if (offset >= from && offset < to) return match[1].trim();
     }
     return null;
   }
@@ -30132,9 +30144,27 @@ ${fence}
   function rangeKey(from, to) {
     return `${from}:${to}`;
   }
+  function boundedLinePrefix(doc2, position, limit = 512) {
+    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
+    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
+  }
+  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
+    const expanded = visibleRanges.map((range) => ({
+      from: Math.max(0, range.from - margin),
+      to: Math.min(documentLength, range.to + margin)
+    })).sort((left, right) => left.from - right.from || left.to - right.to);
+    const merged = [];
+    for (const range of expanded) {
+      const previous = merged.at(-1);
+      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+      else merged.push({ ...range });
+    }
+    return merged;
+  }
   function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
     const result = {
       headingLevelByLineFrom: /* @__PURE__ */ new Map(),
+      paragraphs: [],
       strong: /* @__PURE__ */ new Set(),
       emphasis: /* @__PURE__ */ new Set(),
       links: /* @__PURE__ */ new Set(),
@@ -30153,6 +30183,7 @@ ${fence}
       enter(node) {
         const heading2 = /^ATXHeading([1-6])$/.exec(node.name);
         if (heading2) result.headingLevelByLineFrom.set(state.doc.lineAt(node.from).from, Number(heading2[1]));
+        if (node.name === "Paragraph") result.paragraphs.push({ from: node.from, to: node.to });
         const key = rangeKey(node.from, node.to);
         if (node.name === "StrongEmphasis") result.strong.add(key);
         if (node.name === "Emphasis") result.emphasis.add(key);
@@ -30167,29 +30198,118 @@ ${fence}
     return result;
   }
 
+  // projection-index.ts
+  function compareRanges(left, right) {
+    return left.from - right.from || left.to - right.to;
+  }
+  var prefixMaximumEnds = /* @__PURE__ */ new WeakMap();
+  function maximumEndsFor(ranges) {
+    const cached = prefixMaximumEnds.get(ranges);
+    if (cached) return cached;
+    let maximum = -1;
+    const values2 = Object.freeze(ranges.map((range) => {
+      maximum = Math.max(maximum, range.to);
+      return maximum;
+    }));
+    prefixMaximumEnds.set(ranges, values2);
+    return values2;
+  }
+  function immutableProjectionRanges(ranges) {
+    const immutable = Object.freeze(ranges.map((range) => Object.freeze({ ...range })).sort(compareRanges));
+    maximumEndsFor(immutable);
+    return immutable;
+  }
+  function commandProtectionRanges(literalRanges, frontmatterRange) {
+    return immutableProjectionRanges(frontmatterRange ? [...literalRanges, frontmatterRange] : literalRanges);
+  }
+  function projectionRangesIntersecting(ranges, from, to) {
+    let low = 0;
+    let high = ranges.length;
+    while (low < high) {
+      const middle = low + high >>> 1;
+      if (ranges[middle].from < to) low = middle + 1;
+      else high = middle;
+    }
+    const maximumEnds = maximumEndsFor(ranges);
+    const matches = [];
+    for (let index = low - 1; index >= 0 && maximumEnds[index] > from; index -= 1) {
+      if (ranges[index].to > from) matches.push(ranges[index]);
+    }
+    matches.reverse();
+    return matches;
+  }
+  function projectionRangeContaining(ranges, offset) {
+    const candidates = projectionRangesIntersecting(ranges, offset, offset + 1);
+    return candidates[0] ?? null;
+  }
+  function projectionSelectionOverlaps(ranges, selection) {
+    if (selection.from === selection.to) {
+      return projectionRangeContaining(ranges, selection.from) !== null;
+    }
+    return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
+  }
+
   // projection-update.ts
+  function selectionIntersectsProjection(selection, projection) {
+    return selection.empty ? selection.head >= projection.from && selection.head < projection.to : selection.from < projection.to && selection.to > projection.from;
+  }
+  function activeProjectionSignature(selections, projections) {
+    const active = /* @__PURE__ */ new Map();
+    for (const selection of selections) {
+      const from = selection.empty ? selection.head : selection.from;
+      const to = selection.empty ? selection.head + 1 : selection.to;
+      for (const projection of projectionRangesIntersecting(projections, from, to)) {
+        if (!selectionIntersectsProjection(selection, projection)) continue;
+        active.set(`${projection.from}:${projection.to}`, projection);
+      }
+    }
+    return [...active.values()].sort((left, right) => left.from - right.from || left.to - right.to).map((projection) => `${projection.from}:${projection.to}`).join("|");
+  }
+  function selectionAffectedProjectionRanges(documentLength, previousSelections, nextSelections, margin = 2e3) {
+    return immutableProjectionRanges(boundedProjectionRanges(
+      documentLength,
+      [...previousSelections, ...nextSelections].map((selection) => ({
+        from: selection.from,
+        to: selection.to
+      })),
+      margin
+    ));
+  }
   function transactionChangedSyntaxTree(transaction) {
     return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
   }
+  function changedContextContainsMarker(transaction, from, to, marker) {
+    const doc2 = transaction.state.doc;
+    const boundedFrom = Math.max(0, Math.min(from, doc2.length));
+    const boundedTo = Math.max(boundedFrom, Math.min(to, doc2.length));
+    const firstLine = doc2.lineAt(boundedFrom);
+    const lastLine = doc2.lineAt(boundedTo);
+    const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
+    const contextTo = Math.min(lastLine.to, boundedTo + 256);
+    marker.lastIndex = 0;
+    return marker.test(doc2.sliceString(contextFrom, contextTo));
+  }
   function transactionMayCreateProjection(transaction, marker) {
     let mayCreate = false;
-    transaction.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
       if (mayCreate) return;
       if (toA > fromA || inserted.length > 8192) {
         mayCreate = true;
         return;
       }
-      mayCreate = marker.test(inserted.toString());
+      marker.lastIndex = 0;
+      mayCreate = marker.test(inserted.toString()) || changedContextContainsMarker(transaction, fromB, toB, marker);
     });
     return mayCreate;
   }
   function transactionCanMapProjection(transaction, marker, ranges) {
     if (!transaction.docChanged || ranges.length === 0) return false;
     let canMap = true;
-    transaction.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
       if (!canMap) return;
       const text = inserted.toString();
-      if (toA > fromA || inserted.length > 8192 || /[\r\n]/.test(text) || marker.test(text)) {
+      marker.lastIndex = 0;
+      if (toA > fromA || inserted.length > 8192 || /[\r\n]/.test(text) || marker.test(text) || changedContextContainsMarker(transaction, fromB, toB, marker)) {
         canMap = false;
         return;
       }
@@ -30263,8 +30383,10 @@ ${fence}
   function frontmatterEndLine(doc2) {
     return frontmatterBoundary(doc2).endLine;
   }
-  function hasUnclosedFrontmatter(doc2) {
-    return frontmatterBoundary(doc2).unclosed;
+  function frontmatterBodyOffset(doc2) {
+    const endLine = frontmatterEndLine(doc2);
+    if (endLine === 0) return 0;
+    return endLine < doc2.lines ? doc2.line(endLine + 1).from : doc2.line(endLine).to;
   }
 
   // accessibility.ts
@@ -30294,10 +30416,17 @@ ${fence}
   }
   function updateEditorAccessibility(content2, mode, context) {
     const attributes = editorAccessibilityAttributes(mode);
-    for (const [name2, value] of Object.entries(attributes)) content2.setAttribute(name2, value);
+    for (const [name2, value] of Object.entries(attributes)) {
+      if (content2.getAttribute(name2) !== value) content2.setAttribute(name2, value);
+    }
     const description = mode === "livePreview" && context ? activeConstructAccessibilityDescription(context) : mode === "source" ? "Exact Markdown and YAML source" : void 0;
-    if (description) content2.setAttribute("aria-description", description);
-    else content2.removeAttribute("aria-description");
+    if (description) {
+      if (content2.getAttribute("aria-description") !== description) {
+        content2.setAttribute("aria-description", description);
+      }
+    } else if (content2.hasAttribute("aria-description")) {
+      content2.removeAttribute("aria-description");
+    }
   }
   function announceEditorMessage(content2, message) {
     const previous = content2.getAttribute("aria-description");
@@ -30310,6 +30439,21 @@ ${fence}
   }
 
   // composition.ts
+  function compositionRequestPolicy(operationType) {
+    if (operationType === "initialize") return "reject";
+    if ([
+      "setMode",
+      "setPresentationCSS",
+      "setUserCSS",
+      "setLinkPreviews",
+      "setResearcherComments",
+      "goToLine",
+      "restoreRecovery",
+      "synchronizeCommittedText",
+      "command"
+    ].includes(operationType)) return "defer";
+    return "allow";
+  }
   var CompositionRequestGate = class {
     requests = [];
     composing = false;
@@ -30339,14 +30483,31 @@ ${fence}
 
   // performance.ts
   var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
   function recordEditorMetric(name2, startedAt, observed = {}) {
     const durationMilliseconds = Math.max(0, performance.now() - startedAt);
     const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    samples.push({ name: name2, durationMilliseconds, observed: safeObserved });
-    if (samples.length > 256) samples.splice(0, samples.length - 256);
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
     try {
-      performance.measure(`scholium-editor:${name2}`, { start: startedAt, duration: durationMilliseconds });
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
     } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
     }
   }
   function sampleEditorMemory(documentLength) {
@@ -30358,8 +30519,71 @@ ${fence}
     });
   }
   function editorPerformanceSamples() {
-    return samples.map((sample) => ({ ...sample, observed: { ...sample.observed } }));
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
   }
+
+  // interaction-reporting.ts
+  function interactionAvailabilitySignature(context) {
+    return JSON.stringify({
+      activeInlineConstructs: context.activeInlineConstructs,
+      activeBlockConstructs: context.activeBlockConstructs,
+      tablePosition: context.tablePosition ?? null,
+      composing: context.composing,
+      hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
+      availableCommands: context.availableCommands,
+      undoLabel: context.undoLabel ?? null,
+      redoLabel: context.redoLabel ?? null
+    });
+  }
+  var AnimationFrameCoalescer = class {
+    constructor(requestFrame, cancelFrame, requestWatchdog, cancelWatchdog, watchdogMilliseconds = 50) {
+      this.requestFrame = requestFrame;
+      this.cancelFrame = cancelFrame;
+      this.requestWatchdog = requestWatchdog;
+      this.cancelWatchdog = cancelWatchdog;
+      this.watchdogMilliseconds = watchdogMilliseconds;
+    }
+    requestFrame;
+    cancelFrame;
+    requestWatchdog;
+    cancelWatchdog;
+    watchdogMilliseconds;
+    frame = null;
+    watchdog = null;
+    latest = null;
+    generation = 0;
+    schedule(callback) {
+      this.latest = callback;
+      if (this.frame !== null) return;
+      const generation = ++this.generation;
+      this.frame = this.requestFrame(() => this.flush("frame", generation));
+      this.watchdog = this.requestWatchdog(
+        () => this.flush("watchdog", generation),
+        this.watchdogMilliseconds
+      );
+    }
+    cancel() {
+      if (this.frame !== null) this.cancelFrame(this.frame);
+      if (this.watchdog !== null) this.cancelWatchdog(this.watchdog);
+      this.frame = null;
+      this.watchdog = null;
+      this.latest = null;
+      this.generation += 1;
+    }
+    flush(source, generation) {
+      if (generation !== this.generation) return;
+      if (source === "watchdog" && this.frame !== null) this.cancelFrame(this.frame);
+      if (source === "frame" && this.watchdog !== null) this.cancelWatchdog(this.watchdog);
+      this.frame = null;
+      this.watchdog = null;
+      const latest = this.latest;
+      this.latest = null;
+      latest?.();
+    }
+  };
 
   // markdown-fragment.ts
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
@@ -30738,8 +30962,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var exactSource = "";
   var linkCandidates = [];
   var linkPreviews = [];
+  var linkPreviewIndexByRange = /* @__PURE__ */ new Map();
   var editingDialect = null;
   var currentMode = "livePreview";
+  var hiddenFrontmatterSourceSelection = null;
+  var liveWidgetReuseCounts = { table: 0, callout: 0, footnote: 0 };
   var selectedFootnotePreviewTarget = null;
   var lastUndoLabel;
   var lastRedoLabel;
@@ -30758,6 +30985,39 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var lineSeparatorCompartment = new Compartment();
   var programmaticDocumentChange = Annotation.define();
   var refreshLivePreviewEffect = StateEffect.define();
+  var livePreviewHighlightStyle = HighlightStyle.define([]);
+  var setLiveBlockActivationEffect = StateEffect.define({
+    map(value, changes) {
+      if (value === null) return null;
+      return {
+        ...value,
+        from: changes.mapPos(value.from, 1),
+        to: changes.mapPos(value.to, -1)
+      };
+    }
+  });
+  var liveBlockActivationField = StateField.define({
+    create: () => null,
+    update(previous, transaction) {
+      let next = previous;
+      if (next && transaction.docChanged) {
+        next = {
+          ...next,
+          from: transaction.changes.mapPos(next.from, 1),
+          to: transaction.changes.mapPos(next.to, -1)
+        };
+        if (next.to < next.from) next = null;
+      }
+      for (const effect of transaction.effects) {
+        if (effect.is(setLiveBlockActivationEffect)) next = effect.value;
+      }
+      if (!next) return null;
+      const selectionKeepsActivation = transaction.state.selection.ranges.some(
+        (range) => selectionIntersectsProjection(range, next) || range.empty && range.head === (next.edge === "start" ? next.from : next.to)
+      );
+      return selectionKeepsActivation ? next : null;
+    }
+  });
   var setResearcherCommentsEffect = StateEffect.define();
   var researcherCommentField = StateField.define({
     create: () => Decoration.none,
@@ -30797,71 +31057,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       (callout) => callout.identifier === kind || callout.aliases.includes(kind)
     ) ?? neutralCallout;
   }
-  function calloutRole(rawKind) {
-    return calloutDefinition(rawKind).identifier;
-  }
-  function quoteDepth(text) {
-    const prefix = /^(\s*(?:>\s*)+)/.exec(text)?.[1] || "";
-    return (prefix.match(/>/g) || []).length;
-  }
   function calloutHeader(text) {
     return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
   }
-  function calloutContexts(doc2, firstLine, lastLine) {
-    let scanStart = firstLine;
-    while (scanStart > 1 && quoteDepth(doc2.line(scanStart).text) > 0 && quoteDepth(doc2.line(scanStart - 1).text) > 0) {
-      scanStart -= 1;
-    }
-    const activeByDepth = /* @__PURE__ */ new Map();
-    const contexts = /* @__PURE__ */ new Map();
-    for (let number2 = scanStart; number2 <= lastLine; number2 += 1) {
-      const text = doc2.line(number2).text;
-      const depth2 = quoteDepth(text);
-      if (depth2 === 0) {
-        activeByDepth.clear();
-        continue;
-      }
-      for (const activeDepth of [...activeByDepth.keys()]) {
-        if (activeDepth > depth2) activeByDepth.delete(activeDepth);
-      }
-      const header = calloutHeader(text);
-      if (header) activeByDepth.set(depth2, { role: calloutRole(header[2]), depth: depth2 });
-      const active = [...activeByDepth.values()].filter((value) => value.depth <= depth2).sort((left, right) => right.depth - left.depth)[0];
-      if (active && number2 >= firstLine) {
-        const nextDepth = number2 < doc2.lines ? quoteDepth(doc2.line(number2 + 1).text) : 0;
-        contexts.set(number2, {
-          role: active.role,
-          depth: active.depth,
-          isHeader: Boolean(header),
-          isEnd: nextDepth < active.depth
-        });
-      }
-    }
-    return contexts;
-  }
-  var CalloutRoleWidget = class extends WidgetType {
-    role;
-    constructor(role) {
-      super();
-      this.role = role;
-    }
-    /** @param {CalloutRoleWidget} other */
-    eq(other) {
-      return other.role === this.role;
-    }
-    toDOM() {
-      const semantics = calloutDefinition(this.role);
-      const span = document.createElement("span");
-      span.className = "cm-live-callout-role";
-      span.textContent = semantics.label;
-      span.title = semantics.meaning;
-      span.setAttribute("aria-label", `${semantics.label}. ${semantics.meaning}`);
-      return span;
-    }
-    ignoreEvent() {
-      return true;
-    }
-  };
   var ListMarkerWidget = class extends WidgetType {
     marker;
     constructor(marker) {
@@ -30970,39 +31168,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return kind;
   }
-  function openingFence(text) {
-    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(text);
-    if (!match) return null;
-    const run = match[1];
-    if (run[0] === "`" && match[2].includes("`")) return null;
-    return { character: run[0], openingLength: run.length };
-  }
-  function isClosingFence(text, opening) {
-    const match = /^ {0,3}(`+|~+)[ \t]*$/.exec(text);
-    if (!match) return false;
-    const run = match[1];
-    return run[0] === opening.character && run.length >= opening.openingLength;
-  }
-  function fencedCodeLines(doc2, lastLine) {
-    const result = /* @__PURE__ */ new Map();
-    let opening = null;
-    for (let number2 = 1; number2 <= lastLine; number2 += 1) {
-      const text = doc2.line(number2).text;
-      if (opening === null) {
-        const candidate = openingFence(text);
-        if (!candidate) continue;
-        opening = candidate;
-        result.set(number2, { fence: true });
-        continue;
-      }
-      const closes = isClosingFence(text, opening);
-      result.set(number2, { fence: closes });
-      if (closes) opening = null;
-    }
-    return result;
-  }
   function isIndentedCodeLine(text) {
     return /^(?: {4,}| {0,3}\t)/.test(text);
+  }
+  function isFencedDelimiterLine(doc2, block, lineFrom) {
+    if (!block.fenced) return false;
+    const openingLine = doc2.lineAt(block.from);
+    if (lineFrom === openingLine.from) return true;
+    const closingLine = doc2.lineAt(Math.max(block.from, block.to - 1));
+    if (lineFrom !== closingLine.from) return false;
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(openingLine.text)?.[1];
+    const closing2 = /^ {0,3}(`+|~+)[ \t]*$/.exec(closingLine.text)?.[1];
+    return Boolean(opening && closing2 && opening[0] === closing2[0] && closing2.length >= opening.length);
   }
   var legacyRelationshipPredicates = /* @__PURE__ */ new Set([
     "supports",
@@ -31089,15 +31266,97 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       isLegacyRelationship: false
     };
   }
-  function semanticLiteralRanges(state) {
+  function indexedTablePositionRanges(doc2, tables) {
+    const ranges = [];
+    for (const table of tables) {
+      const rows = [table.header, ...table.body];
+      const rowCount = rows.length;
+      const columnCount = table.header.length;
+      rows.forEach((cells, row) => {
+        const first = cells[0];
+        if (!first) return;
+        const line = doc2.lineAt(first.sourceOffset);
+        cells.forEach((cell, column) => {
+          const next = cells[column + 1];
+          ranges.push({
+            from: column === 0 ? line.from : cell.sourceOffset,
+            to: next?.sourceOffset ?? line.to + 1,
+            position: { row, column, rowCount, columnCount }
+          });
+        });
+      });
+    }
+    return immutableProjectionRanges(ranges);
+  }
+  function finalizedLiveProjectionIndex(doc2, excluded, codeBlocks, footnotes, tables, callouts, frontmatterRange, hasUnclosedFrontmatter, firstBodyLineFrom) {
+    const immutableExcluded = immutableProjectionRanges(excluded);
+    const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
+    const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
+    const immutableTables = Object.freeze([...tables]);
+    const immutableCallouts = Object.freeze([...callouts]);
+    const footnoteRanges = immutableProjectionRanges([
+      ...footnotes.definitions,
+      ...footnotes.references
+    ].map(({ from, to }) => ({ from, to })));
+    return Object.freeze({
+      literals: Object.freeze({
+        excluded: immutableExcluded,
+        codeBlocks: immutableCodeBlocks
+      }),
+      footnotes,
+      tables: immutableTables,
+      callouts: immutableCallouts,
+      frontmatterRange: immutableFrontmatter,
+      commandProtectedRanges: commandProtectionRanges(
+        immutableExcluded,
+        immutableFrontmatter ?? void 0
+      ),
+      structuralRanges: immutableProjectionRanges([
+        ...immutableTables,
+        ...immutableCallouts,
+        ...footnotes.definitions,
+        ...footnotes.references
+      ].map(({ from, to }) => ({ from, to }))),
+      blockRanges: immutableProjectionRanges([
+        ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
+        ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
+        ...footnotes.definitions.flatMap(({ from, to, isInline }) => isInline ? [] : [{ from, to, kind: "footnote" }])
+      ]),
+      footnoteRanges,
+      tablePositionRanges: indexedTablePositionRanges(doc2, immutableTables),
+      hasUnclosedFrontmatter,
+      firstBodyLineFrom
+    });
+  }
+  function buildLiveProjectionIndex(state) {
+    const startedAt = performance.now();
     const excluded = [];
     const codeBlocks = [];
+    const definitionRanges = /* @__PURE__ */ new Set();
+    const referenceRanges = /* @__PURE__ */ new Set();
+    const tableRanges = [];
+    const calloutRanges = [];
     syntaxTree(state).iterate({
       enter(node) {
+        const key = rangeKey(node.from, node.to);
+        if (node.name === "FootnoteDefinition") definitionRanges.add(key);
+        if (node.name === "FootnoteReference") referenceRanges.add(key);
+        if (node.name === "InlineFootnote") {
+          definitionRanges.add(key);
+          referenceRanges.add(key);
+        }
+        if (node.name === "Table") {
+          tableRanges.push({ from: node.from, to: node.to });
+          return false;
+        }
+        if (node.name === "Callout") {
+          calloutRanges.push({ from: node.from, to: node.to });
+          return false;
+        }
         if (node.name === "FencedCode" || node.name === "CodeBlock") {
           const range = { from: node.from, to: node.to };
           excluded.push(range);
-          codeBlocks.push(range);
+          codeBlocks.push({ ...range, fenced: node.name === "FencedCode" });
           return false;
         }
         if ([
@@ -31117,20 +31376,135 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return void 0;
       }
     });
-    return { excluded, codeBlocks };
+    const yamlBoundary = frontmatterBoundary(state.doc);
+    const yamlBodyFrom = yamlBoundary.endLine === 0 ? 0 : yamlBoundary.endLine < state.doc.lines ? state.doc.line(yamlBoundary.endLine + 1).from : state.doc.line(yamlBoundary.endLine).to;
+    const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
+    const footnoteExcluded = [...excluded];
+    if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
+    const projectedFootnotes = footnotePresentation(
+      state.doc.toString(),
+      footnoteExcluded,
+      editingDialect?.footnotes
+    );
+    const footnotes = {
+      definitions: projectedFootnotes.definitions.filter((definition) => definitionRanges.has(rangeKey(definition.from, definition.to))),
+      references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
+    };
+    const insideNamedDefinition = (range) => footnotes.definitions.some(
+      (definition) => !definition.isInline && definition.from <= range.from && definition.to >= range.to
+    );
+    const source = state.doc.toString();
+    const tables = tableRanges.flatMap((range) => {
+      if (insideNamedDefinition(range)) return [];
+      const presentation = tablePresentation(source, range.from, range.to);
+      return presentation ? [presentation] : [];
+    });
+    const callouts = calloutRanges.flatMap((range) => {
+      if (insideNamedDefinition(range)) return [];
+      return [{ ...range, source: state.doc.sliceString(range.from, range.to) }];
+    });
+    const index = finalizedLiveProjectionIndex(
+      state.doc,
+      excluded,
+      codeBlocks,
+      footnotes,
+      tables,
+      callouts,
+      frontmatterRange,
+      yamlBoundary.unclosed,
+      firstSemanticBodyLineFrom(state.doc, yamlBodyFrom)
+    );
+    recordEditorMetric("projection-index", startedAt, {
+      documentLength: state.doc.length,
+      literalCount: excluded.length,
+      tableCount: tables.length,
+      calloutCount: callouts.length,
+      footnoteCount: footnotes.definitions.length + footnotes.references.length
+    });
+    return index;
   }
-  function visibleMathExpressions(view, _excluded, margin = 2e3) {
-    if (!editingDialect || view.visibleRanges.length === 0) return [];
+  function mapLiveProjectionIndex(index, transaction) {
+    const map = (position) => transaction.changes.mapPos(position);
+    let recomputeFirstBody = false;
+    transaction.changes.iterChanges((fromA) => {
+      if (fromA <= index.firstBodyLineFrom) recomputeFirstBody = true;
+    });
+    const footnotes = {
+      definitions: index.footnotes.definitions.map((definition) => ({
+        ...definition,
+        from: map(definition.from),
+        to: map(definition.to)
+      })),
+      references: index.footnotes.references.map((reference) => ({
+        ...reference,
+        from: map(reference.from),
+        to: map(reference.to),
+        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom)
+      }))
+    };
+    const tables = index.tables.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to),
+      header: presentation.header.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })),
+      body: presentation.body.map((row) => row.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })))
+    }));
+    const callouts = index.callouts.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to)
+    }));
+    const frontmatterRange = index.frontmatterRange === null ? null : {
+      from: map(index.frontmatterRange.from),
+      to: map(index.frontmatterRange.to)
+    };
+    return finalizedLiveProjectionIndex(
+      transaction.state.doc,
+      index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.literals.codeBlocks.map((range) => ({
+        from: map(range.from),
+        to: map(range.to),
+        fenced: range.fenced
+      })),
+      footnotes,
+      tables,
+      callouts,
+      frontmatterRange,
+      index.hasUnclosedFrontmatter,
+      recomputeFirstBody ? firstSemanticBodyLineFrom(transaction.state.doc, frontmatterRange?.to ?? 0) : map(index.firstBodyLineFrom)
+    );
+  }
+  var liveProjectionIndexField = StateField.define({
+    create: buildLiveProjectionIndex,
+    update(previous, transaction) {
+      if (!transaction.docChanged) {
+        return transactionChangedSyntaxTree(transaction) ? buildLiveProjectionIndex(transaction.state) : previous;
+      }
+      const indexedRanges = [
+        ...previous.commandProtectedRanges,
+        ...previous.structuralRanges
+      ];
+      const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
+      if (indexedRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
+        return mapLiveProjectionIndex(previous, transaction);
+      }
+      return transactionCanMapProjection(transaction, structuralMarker, indexedRanges) ? mapLiveProjectionIndex(previous, transaction) : buildLiveProjectionIndex(transaction.state);
+    }
+  });
+  function liveProjectionIndexForState(state) {
+    return state.field(liveProjectionIndexField, false) ?? buildLiveProjectionIndex(state);
+  }
+  function semanticLiteralRanges(state) {
+    return liveProjectionIndexForState(state).literals;
+  }
+  function visibleMathExpressions(view, coveredRanges, index) {
+    if (!editingDialect || coveredRanges.length === 0) return [];
     const doc2 = view.state.doc;
-    const visibleFrom = Math.min(...view.visibleRanges.map((range) => range.from));
-    const visibleTo = Math.max(...view.visibleRanges.map((range) => range.to));
-    let from = doc2.lineAt(Math.max(0, visibleFrom - margin)).from;
-    const to = doc2.lineAt(Math.min(doc2.length, visibleTo + margin)).to;
-    const yamlEnd = frontmatterEndLine(doc2);
-    if (yamlEnd > 0) {
-      const yamlTo = doc2.line(yamlEnd).to;
-      if (to <= yamlTo) return [];
-      from = Math.max(from, yamlTo);
+    let from = Math.min(...coveredRanges.map((range) => range.from));
+    const to = Math.max(...coveredRanges.map((range) => range.to));
+    if (index.frontmatterRange) {
+      if (to <= index.frontmatterRange.to) return [];
+      from = Math.max(from, index.frontmatterRange.to);
     }
     const expressions = [];
     syntaxTree(view.state).iterate({
@@ -31138,6 +31512,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       to,
       enter(node) {
         if (node.name !== "InlineMath" && node.name !== "BlockMath") return void 0;
+        if (node.from < from || node.to > to) return false;
         const raw = doc2.sliceString(node.from, node.to);
         let delimiterLength = 0;
         while (raw.charCodeAt(delimiterLength) === 36) delimiterLength += 1;
@@ -31177,39 +31552,87 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     });
     return expressions;
   }
-  function footnoteProjectionForState(state) {
-    const semanticLiterals = semanticLiteralRanges(state);
-    const excluded = [...semanticLiterals.excluded];
-    const yamlEnd = frontmatterEndLine(state.doc);
-    if (yamlEnd > 0) excluded.push({ from: 0, to: state.doc.line(yamlEnd).to });
-    const definitionRanges = /* @__PURE__ */ new Set();
-    const referenceRanges = /* @__PURE__ */ new Set();
-    syntaxTree(state).iterate({
-      enter(node) {
-        const key = rangeKey(node.from, node.to);
-        if (node.name === "FootnoteDefinition") definitionRanges.add(key);
-        if (node.name === "FootnoteReference") referenceRanges.add(key);
-        if (node.name === "InlineFootnote") {
-          definitionRanges.add(key);
-          referenceRanges.add(key);
+  function firstSemanticBodyLineFrom(doc2, knownBodyFrom) {
+    const bodyFrom = knownBodyFrom ?? frontmatterBodyOffset(doc2);
+    let line = doc2.lineAt(bodyFrom);
+    while (line.text.trim().length === 0 && line.number < doc2.lines) {
+      line = doc2.line(line.number + 1);
+    }
+    return line.from;
+  }
+  function projectedSourceOffsetAt(event, root, fallback, upperBound) {
+    const caretDocument = document;
+    const caret = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+    const caretElement = caret?.startContainer instanceof Element ? caret.startContainer : caret?.startContainer.parentElement;
+    const pointMapped = document.elementsFromPoint(event.clientX, event.clientY).flatMap((element) => {
+      const candidate = element.closest("[data-source-offset]");
+      return candidate && root.contains(candidate) ? [candidate] : [];
+    })[0] ?? null;
+    const mapped = caretElement?.closest("[data-source-offset]") ?? pointMapped ?? (event.target instanceof Element ? event.target.closest("[data-source-offset]") : null) ?? root;
+    const base2 = Number(mapped.dataset.sourceOffset);
+    if (!Number.isSafeInteger(base2)) return fallback;
+    let visibleOffset = 0;
+    if (caret && mapped.contains(caret.startContainer)) {
+      const range = document.createRange();
+      range.setStart(mapped, 0);
+      range.setEnd(caret.startContainer, caret.startOffset);
+      visibleOffset = range.toString().length;
+    } else if (mapped !== root || pointMapped) {
+      const walker = document.createTreeWalker(mapped, NodeFilter.SHOW_TEXT);
+      let textOffset = 0;
+      let bestScore = Number.POSITIVE_INFINITY;
+      let bestOffset = 0;
+      let node;
+      while (node = walker.nextNode()) {
+        const content2 = node.textContent ?? "";
+        for (let index = 0; index < content2.length; index += 1) {
+          const range = document.createRange();
+          range.setStart(node, index);
+          range.setEnd(node, index + 1);
+          const rect = range.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          const verticalDistance = event.clientY < rect.top ? rect.top - event.clientY : event.clientY > rect.bottom ? event.clientY - rect.bottom : 0;
+          const horizontalDistance = event.clientX < rect.left ? rect.left - event.clientX : event.clientX > rect.right ? event.clientX - rect.right : 0;
+          const score2 = verticalDistance * 1e3 + horizontalDistance;
+          if (score2 < bestScore) {
+            bestScore = score2;
+            bestOffset = textOffset + index + (event.clientX > (rect.left + rect.right) / 2 ? 1 : 0);
+          }
         }
+        textOffset += content2.length;
       }
-    });
-    const projected = footnotePresentation(state.doc.toString(), excluded, editingDialect?.footnotes);
-    return {
-      definitions: projected.definitions.filter(
-        (definition) => definitionRanges.has(rangeKey(definition.from, definition.to))
-      ),
-      references: projected.references.filter(
-        (reference) => referenceRanges.has(rangeKey(reference.from, reference.to))
-      )
+      visibleOffset = bestOffset;
+    }
+    return Math.max(fallback, Math.min(upperBound - 1, base2 + visibleOffset));
+  }
+  function beginProjectedPointerSelection(view, event, sourceOffset) {
+    event.preventDefault();
+    const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceOffset;
+    view.dispatch({ selection: { anchor, head: sourceOffset }, scrollIntoView: true });
+    view.focus();
+    let frame = null;
+    let latest = null;
+    const move = (moveEvent) => {
+      latest = moveEvent;
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        const current = latest;
+        latest = null;
+        if (!current) return;
+        const head = view.posAtCoords({ x: current.clientX, y: current.clientY });
+        if (head !== null) view.dispatch({ selection: { anchor, head } });
+      });
     };
+    const finish = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mouseup", finish, true);
+    };
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mouseup", finish, true);
   }
-  function isInsideNamedFootnoteDefinition(from, to, definitions) {
-    return definitions.some(
-      (definition) => !definition.isInline && definition.from <= from && definition.to >= to
-    );
-  }
+  var tableWidgetPresentations = /* @__PURE__ */ new WeakMap();
   var TableWidget = class extends WidgetType {
     constructor(presentation) {
       super();
@@ -31217,7 +31640,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     presentation;
     eq(other) {
-      return other.presentation.from === this.presentation.from && other.presentation.to === this.presentation.to && other.presentation.source === this.presentation.source;
+      const equal = other.presentation.from === this.presentation.from && other.presentation.to === this.presentation.to && other.presentation.source === this.presentation.source;
+      if (equal) liveWidgetReuseCounts.table += 1;
+      return equal;
     }
     get estimatedHeight() {
       return Math.max(44, (this.presentation.body.length + 1) * 34);
@@ -31228,14 +31653,33 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         resolveCallout: calloutDefinition
       });
       scroller.classList.add("cm-live-table-widget");
+      tableWidgetPresentations.set(scroller, this.presentation);
       scroller.addEventListener("mousedown", (event) => {
-        const target = event.target instanceof Element ? event.target.closest("[data-source-offset]") : null;
-        const sourceOffset = Number(target?.dataset.sourceOffset ?? this.presentation.from);
-        event.preventDefault();
-        view.dispatch({ selection: { anchor: sourceOffset }, scrollIntoView: true });
-        view.focus();
+        const presentation = tableWidgetPresentations.get(scroller);
+        if (!presentation) return;
+        const sourceOffset = projectedSourceOffsetAt(
+          event,
+          scroller,
+          presentation.from,
+          presentation.to
+        );
+        beginProjectedPointerSelection(view, event, sourceOffset);
       });
       return scroller;
+    }
+    updateDOM(dom) {
+      const previous = tableWidgetPresentations.get(dom);
+      if (!previous || previous.source !== this.presentation.source) return false;
+      const elements = [...dom.querySelectorAll("[data-source-offset]")];
+      const previousOffsets = [...previous.header, ...previous.body.flat()].map((cell) => cell.sourceOffset);
+      const nextOffsets = [...this.presentation.header, ...this.presentation.body.flat()].map((cell) => cell.sourceOffset);
+      if (elements.length !== previousOffsets.length || elements.length !== nextOffsets.length) return false;
+      elements.forEach((element, index) => {
+        element.dataset.sourceOffset = String(nextOffsets[index]);
+      });
+      tableWidgetPresentations.set(dom, this.presentation);
+      liveWidgetReuseCounts.table += 1;
+      return true;
     }
     ignoreEvent() {
       return true;
@@ -31244,7 +31688,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function liveTableDecorations(state, presentations) {
     const decorations2 = presentations.flatMap((presentation) => {
       const active = state.selection.ranges.some(
-        (range) => range.from <= presentation.to && range.to >= presentation.from
+        (range) => selectionIntersectsProjection(range, presentation)
       );
       if (active) return [];
       return [Decoration.replace({
@@ -31255,23 +31699,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return Decoration.set(decorations2, true);
   }
   function buildLiveTableDecorations(state) {
-    if (hasUnclosedFrontmatter(state.doc)) {
+    const index = liveProjectionIndexForState(state);
+    if (index.hasUnclosedFrontmatter) {
       return { decorations: Decoration.none, hasConstructs: true, presentations: [] };
     }
-    const source = state.doc.toString();
-    const footnotes = footnoteProjectionForState(state);
-    const presentations = [];
-    syntaxTree(state).iterate({
-      enter(node) {
-        if (node.name !== "Table") return void 0;
-        if (isInsideNamedFootnoteDefinition(node.from, node.to, footnotes.definitions)) {
-          return false;
-        }
-        const presentation = tablePresentation(source, node.from, node.to);
-        if (presentation) presentations.push(presentation);
-        return false;
-      }
-    });
+    const presentations = index.tables;
     return {
       decorations: liveTableDecorations(state, presentations),
       hasConstructs: presentations.length > 0,
@@ -31301,6 +31733,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       if (!transaction.docChanged) {
         if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
+        if (activeProjectionSignature(transaction.startState.selection.ranges, previous.presentations) === activeProjectionSignature(transaction.state.selection.ranges, previous.presentations)) {
+          return previous;
+        }
         return {
           ...previous,
           decorations: liveTableDecorations(transaction.state, previous.presentations)
@@ -31316,8 +31751,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       return buildLiveTableDecorations(transaction.state);
     },
-    provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+    provide: (field) => [
+      EditorView.decorations.from(field, (value) => value.decorations),
+      EditorView.atomicRanges.of((view) => view.state.field(field).decorations)
+    ]
   });
+  var calloutWidgetPresentations = /* @__PURE__ */ new WeakMap();
   var CalloutWidget = class extends WidgetType {
     constructor(presentation) {
       super();
@@ -31325,66 +31764,131 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     presentation;
     eq(other) {
-      return other.presentation.from === this.presentation.from && other.presentation.to === this.presentation.to && other.presentation.source === this.presentation.source;
+      const equal = other.presentation.from === this.presentation.from && other.presentation.to === this.presentation.to && other.presentation.source === this.presentation.source;
+      if (equal) liveWidgetReuseCounts.callout += 1;
+      return equal;
     }
     get estimatedHeight() {
-      return 88;
+      return Math.max(72, this.presentation.source.split("\n").length * 30);
     }
     toDOM(view) {
-      const container = document.createElement("div");
-      appendMarkdownBlocks(this.presentation.source, container, {
+      const slot = document.createElement("div");
+      slot.className = "cm-live-callout-slot";
+      appendMarkdownBlocks(this.presentation.source, slot, {
         mathematics: editingDialect?.mathematics,
         resolveCallout: calloutDefinition
       });
-      const callout = container.firstElementChild;
+      const callout = slot.firstElementChild;
       if (!(callout instanceof HTMLElement) || !callout.classList.contains("scholium-callout")) {
         const fallback = document.createElement("pre");
         fallback.className = "cm-live-callout-widget cm-live-callout-widget-fallback";
         fallback.textContent = this.presentation.source;
-        return fallback;
+        slot.replaceChildren(fallback);
+        return slot;
       }
       callout.classList.add("cm-live-callout-widget");
+      calloutWidgetPresentations.set(slot, this.presentation);
       callout.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        view.dispatch({ selection: { anchor: this.presentation.from }, scrollIntoView: true });
-        view.focus();
+        if (event.target?.closest(".scholium-callout-fold-mark")) return;
+        const presentation = calloutWidgetPresentations.get(slot);
+        if (presentation) beginCalloutPointerSelection(view, event, presentation);
       });
-      return callout;
+      callout.addEventListener("click", (event) => {
+        if (event.target?.closest(".scholium-callout-fold-mark")) return;
+        event.preventDefault();
+      });
+      if (callout instanceof HTMLDetailsElement) {
+        let measurePending = false;
+        callout.addEventListener("toggle", () => {
+          if (measurePending) return;
+          measurePending = true;
+          queueMicrotask(() => {
+            measurePending = false;
+            view.requestMeasure();
+          });
+        });
+      }
+      return slot;
+    }
+    updateDOM(dom) {
+      const previous = calloutWidgetPresentations.get(dom);
+      if (!previous || previous.source !== this.presentation.source) return false;
+      calloutWidgetPresentations.set(dom, this.presentation);
+      liveWidgetReuseCounts.callout += 1;
+      return true;
     }
     ignoreEvent() {
       return true;
     }
   };
+  function beginCalloutPointerSelection(view, event, presentation) {
+    event.preventDefault();
+    const sourceHead = presentation.to;
+    const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceHead;
+    view.dispatch({
+      effects: setLiveBlockActivationEffect.of({
+        kind: "callout",
+        from: presentation.from,
+        to: presentation.to,
+        edge: "end"
+      }),
+      selection: { anchor, head: sourceHead },
+      scrollIntoView: true
+    });
+    view.focus();
+    let latestCoordinates = null;
+    let measurePending = false;
+    const measureLatestPosition = () => {
+      if (measurePending) return;
+      measurePending = true;
+      view.requestMeasure({
+        read: () => {
+          const coordinates = latestCoordinates;
+          latestCoordinates = null;
+          return coordinates ? view.posAtCoords(coordinates) : null;
+        },
+        write: (head) => {
+          measurePending = false;
+          if (head !== null) view.dispatch({ selection: { anchor, head } });
+          if (latestCoordinates) measureLatestPosition();
+        }
+      });
+    };
+    const move = (moveEvent) => {
+      latestCoordinates = { x: moveEvent.clientX, y: moveEvent.clientY };
+      measureLatestPosition();
+    };
+    const finish = () => {
+      latestCoordinates = null;
+      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mouseup", finish, true);
+    };
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mouseup", finish, true);
+    view.requestMeasure();
+  }
   function liveCalloutDecorations(state, presentations) {
     const decorations2 = presentations.flatMap((presentation) => {
+      const activation = state.field(liveBlockActivationField, false);
       const active = state.selection.ranges.some(
-        (range) => range.from <= presentation.to && range.to >= presentation.from
-      );
+        (range) => selectionIntersectsProjection(range, presentation)
+      ) || activation?.kind === "callout" && activation.from === presentation.from && activation.to === presentation.to;
       if (active) return [];
       return [Decoration.replace({
         widget: new CalloutWidget(presentation),
-        block: true
+        block: true,
+        inclusiveStart: false,
+        inclusiveEnd: false
       }).range(presentation.from, presentation.to)];
     });
     return Decoration.set(decorations2, true);
   }
   function buildLiveCalloutDecorations(state) {
-    if (hasUnclosedFrontmatter(state.doc)) {
+    const index = liveProjectionIndexForState(state);
+    if (index.hasUnclosedFrontmatter) {
       return { decorations: Decoration.none, hasConstructs: true, presentations: [] };
     }
-    const footnotes = footnoteProjectionForState(state);
-    const presentations = [];
-    syntaxTree(state).iterate({
-      enter(node) {
-        if (node.name !== "Callout") return void 0;
-        const source = state.doc.sliceString(node.from, node.to);
-        if (isInsideNamedFootnoteDefinition(node.from, node.to, footnotes.definitions)) {
-          return false;
-        }
-        presentations.push({ from: node.from, to: node.to, source });
-        return false;
-      }
-    });
+    const presentations = index.callouts;
     return {
       decorations: liveCalloutDecorations(state, presentations),
       hasConstructs: presentations.length > 0,
@@ -31403,7 +31907,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (!transactionMayCreateProjection(transaction, /[>\[\]!]/)) return previous;
       }
       if (!transaction.docChanged) {
-        if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
+        const previousActivation = transaction.startState.field(liveBlockActivationField, false);
+        const nextActivation = transaction.state.field(liveBlockActivationField, false);
+        const activationChanged = previousActivation?.kind !== nextActivation?.kind || previousActivation?.from !== nextActivation?.from || previousActivation?.to !== nextActivation?.to || previousActivation?.edge !== nextActivation?.edge;
+        if (transaction.startState.selection.eq(transaction.state.selection) && !activationChanged) return previous;
+        if (activeProjectionSignature(transaction.startState.selection.ranges, previous.presentations) === activeProjectionSignature(transaction.state.selection.ranges, previous.presentations) && !activationChanged) {
+          return previous;
+        }
         return {
           ...previous,
           decorations: liveCalloutDecorations(transaction.state, previous.presentations)
@@ -31423,8 +31933,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       return buildLiveCalloutDecorations(transaction.state);
     },
-    provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+    provide: (field) => [
+      EditorView.decorations.from(field, (value) => value.decorations),
+      EditorView.atomicRanges.of((view) => view.state.field(field).decorations)
+    ]
   });
+  var footnoteReferencePresentations = /* @__PURE__ */ new WeakMap();
   var FootnoteReferenceWidget = class extends WidgetType {
     constructor(reference) {
       super();
@@ -31432,7 +31946,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     reference;
     eq(other) {
-      return other.reference.identifier === this.reference.identifier && other.reference.ordinal === this.reference.ordinal && other.reference.occurrence === this.reference.occurrence && other.reference.from === this.reference.from && other.reference.definitionFrom === this.reference.definitionFrom;
+      const equal = other.reference.identifier === this.reference.identifier && other.reference.ordinal === this.reference.ordinal && other.reference.occurrence === this.reference.occurrence && other.reference.from === this.reference.from && other.reference.definitionFrom === this.reference.definitionFrom;
+      if (equal) liveWidgetReuseCounts.footnote += 1;
+      return equal;
     }
     toDOM(view) {
       const wrapper = document.createElement("sup");
@@ -31451,24 +31967,37 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         button.setAttribute("aria-disabled", "true");
         button.classList.add("footnote-reference-missing");
       }
+      footnoteReferencePresentations.set(wrapper, this.reference);
       wrapper.addEventListener("mousedown", (event) => {
         event.preventDefault();
+        const reference = footnoteReferencePresentations.get(wrapper);
+        if (!reference) return;
         const rect = button.getBoundingClientRect();
         selectedFootnotePreviewTarget = {
-          identifier: this.reference.identifier,
-          from: this.reference.from,
+          identifier: reference.identifier,
+          from: reference.from,
           rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
         };
-        view.dispatch({ selection: { anchor: this.reference.from }, scrollIntoView: true });
+        view.dispatch({ selection: { anchor: reference.from }, scrollIntoView: true });
         view.focus();
       });
       wrapper.append(button);
       return wrapper;
     }
+    updateDOM(dom) {
+      const previous = footnoteReferencePresentations.get(dom);
+      const sameContent = previous && previous.identifier === this.reference.identifier && previous.ordinal === this.reference.ordinal && previous.occurrence === this.reference.occurrence && previous.definitionFrom === null === (this.reference.definitionFrom === null);
+      if (!sameContent) return false;
+      footnoteReferencePresentations.set(dom, this.reference);
+      liveWidgetReuseCounts.footnote += 1;
+      return true;
+    }
     ignoreEvent() {
       return true;
     }
   };
+  var footnoteSectionPresentations = /* @__PURE__ */ new WeakMap();
+  var footnoteDefinitionPresentations = /* @__PURE__ */ new WeakMap();
   var FootnoteSectionWidget = class extends WidgetType {
     constructor(definitions) {
       super();
@@ -31476,10 +32005,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     definitions;
     eq(other) {
-      return other.definitions.length === this.definitions.length && other.definitions.every((definition, index) => {
+      const equal = other.definitions.length === this.definitions.length && other.definitions.every((definition, index) => {
         const current = this.definitions[index];
         return definition.identifier === current.identifier && definition.ordinal === current.ordinal && definition.content === current.content && definition.from === current.from && definition.to === current.to;
       });
+      if (equal) liveWidgetReuseCounts.footnote += 1;
+      return equal;
     }
     get estimatedHeight() {
       return Math.max(72, this.definitions.length * 52);
@@ -31491,10 +32022,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       section.setAttribute("aria-label", "Footnotes");
       section.append(document.createElement("hr"));
       const list = document.createElement("ol");
+      footnoteSectionPresentations.set(section, this.definitions);
       for (const definition of this.definitions) {
         const item = document.createElement("li");
         item.dataset.footnote = String(definition.ordinal);
         item.dataset.sourceOffset = String(definition.from);
+        footnoteDefinitionPresentations.set(item, definition);
         const content2 = document.createElement("div");
         content2.className = "footnote-content";
         appendMarkdownBlocks(definition.content, content2, {
@@ -31509,7 +32042,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         back.setAttribute("aria-label", `Edit footnote ${definition.ordinal}`);
         const revealSource = (event) => {
           event.preventDefault();
-          view.dispatch({ selection: { anchor: definition.from }, scrollIntoView: true });
+          const current = footnoteDefinitionPresentations.get(item);
+          if (!current) return;
+          view.dispatch({ selection: { anchor: current.from }, scrollIntoView: true });
           view.focus();
         };
         item.addEventListener("mousedown", revealSource);
@@ -31519,6 +32054,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       section.append(list);
       return section;
     }
+    updateDOM(dom) {
+      const previous = footnoteSectionPresentations.get(dom);
+      const sameContent = previous?.length === this.definitions.length && this.definitions.every((definition, index) => {
+        const prior = previous[index];
+        return definition.identifier === prior.identifier && definition.ordinal === prior.ordinal && definition.content === prior.content && definition.isInline === prior.isInline;
+      });
+      if (!sameContent) return false;
+      const items = [...dom.querySelectorAll("li[data-footnote]")];
+      if (items.length !== this.definitions.length) return false;
+      items.forEach((item, index) => {
+        const definition = this.definitions[index];
+        item.dataset.sourceOffset = String(definition.from);
+        footnoteDefinitionPresentations.set(item, definition);
+      });
+      footnoteSectionPresentations.set(dom, this.definitions);
+      liveWidgetReuseCounts.footnote += 1;
+      return true;
+    }
     ignoreEvent() {
       return true;
     }
@@ -31526,7 +32079,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function liveFootnoteDecorations(state, presentation) {
     const decorations2 = [];
     const active = (from, to) => state.selection.ranges.some(
-      (range) => range.from <= to && range.to >= from
+      (range) => selectionIntersectsProjection(range, { from, to })
     );
     const activeDefinitionIdentifiers = /* @__PURE__ */ new Set();
     for (const definition of presentation.definitions) {
@@ -31562,18 +32115,21 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return Decoration.set(decorations2, true);
   }
   function buildLiveFootnoteDecorations(state) {
-    if (hasUnclosedFrontmatter(state.doc)) {
+    const index = liveProjectionIndexForState(state);
+    if (index.hasUnclosedFrontmatter) {
       return {
         decorations: Decoration.none,
         hasConstructs: true,
-        presentation: { definitions: [], references: [] }
+        presentation: { definitions: [], references: [] },
+        ranges: []
       };
     }
-    const presentation = footnoteProjectionForState(state);
+    const presentation = index.footnotes;
     return {
       decorations: liveFootnoteDecorations(state, presentation),
       hasConstructs: presentation.definitions.length > 0 || presentation.references.length > 0,
-      presentation
+      presentation,
+      ranges: index.footnoteRanges
     };
   }
   function mapFootnotePresentation(presentation, transaction) {
@@ -31605,50 +32161,91 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       if (!transaction.docChanged) {
         if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
+        if (activeProjectionSignature(transaction.startState.selection.ranges, previous.ranges) === activeProjectionSignature(transaction.state.selection.ranges, previous.ranges)) {
+          return previous;
+        }
         return {
           ...previous,
           decorations: liveFootnoteDecorations(transaction.state, previous.presentation)
         };
       }
-      const indexedRanges = [
-        ...previous.presentation.definitions,
-        ...previous.presentation.references
-      ];
-      if (transactionCanMapProjection(transaction, /[\[\]\^:]/, indexedRanges)) {
+      if (transactionCanMapProjection(transaction, /[\[\]\^:]/, previous.ranges)) {
         const presentation = mapFootnotePresentation(previous.presentation, transaction);
+        const ranges = immutableProjectionRanges([
+          ...presentation.definitions,
+          ...presentation.references
+        ].map(({ from, to }) => ({ from, to })));
         return {
           decorations: liveFootnoteDecorations(transaction.state, presentation),
           hasConstructs: true,
-          presentation
+          presentation,
+          ranges
         };
       }
       return buildLiveFootnoteDecorations(transaction.state);
     },
-    provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+    provide: (field) => [
+      EditorView.decorations.from(field, (value) => value.decorations),
+      EditorView.atomicRanges.of((view) => view.state.field(field).decorations)
+    ]
   });
-  function buildLiveDecorations(view) {
+  function bufferedVisibleRanges(view, margin = 2e3) {
+    return immutableProjectionRanges(boundedProjectionRanges(
+      view.state.doc.length,
+      view.visibleRanges,
+      margin
+    ));
+  }
+  function coversVisibleRanges(covered, visible) {
+    return visible.every((range) => covered.some((candidate) => candidate.from <= range.from && candidate.to >= range.to));
+  }
+  function buildLiveDecorations(view, requestedRanges) {
     const projectionStartedAt = performance.now();
     const decorations2 = [];
+    const atomicRanges2 = [];
     const doc2 = view.state.doc;
-    if (hasUnclosedFrontmatter(doc2)) {
+    const coveredRanges = requestedRanges ? immutableProjectionRanges(requestedRanges) : bufferedVisibleRanges(view);
+    const projectionWindowUTF16Count = coveredRanges.reduce(
+      (total, range) => total + Math.max(0, range.to - range.from),
+      0
+    );
+    const index = liveProjectionIndexForState(view.state);
+    if (index.hasUnclosedFrontmatter) {
       recordEditorMetric("projection", projectionStartedAt, {
         documentLength: doc2.length,
         visibleRangeCount: view.visibleRanges.length,
-        decorationCount: 0
+        decorationCount: 0,
+        projectionWindowUTF16Count
       });
-      return Decoration.none;
+      return { decorations: Decoration.none, atomicRanges: Decoration.none, coveredRanges };
     }
     const selection = view.state.selection.main;
-    const yamlEnd = frontmatterEndLine(doc2);
-    const semanticLiterals = semanticLiteralRanges(view.state);
-    const parsedProjection = semanticProjectionRanges(view.state, view.visibleRanges);
-    const literals2 = [...semanticLiterals.excluded];
-    const mathExpressions = visibleMathExpressions(view, literals2);
-    const linkPreviewIndexByRange = new Map(
-      linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index])
-    );
+    const firstBodyLineFrom = index.firstBodyLineFrom;
+    const semanticLiterals = index.literals;
+    const parsedProjection = semanticProjectionRanges(view.state, coveredRanges, 0);
+    const visibleLiterals = /* @__PURE__ */ new Map();
+    for (const covered of coveredRanges) {
+      for (const literal2 of projectionRangesIntersecting(
+        semanticLiterals.excluded,
+        covered.from,
+        Math.min(doc2.length + 1, covered.to + 1)
+      )) {
+        visibleLiterals.set(rangeKey(literal2.from, literal2.to), literal2);
+      }
+    }
+    const literals2 = [...visibleLiterals.values()];
+    const mathExpressions = visibleMathExpressions(view, coveredRanges, index);
     const addHidden = (from, to) => {
-      if (to > from) decorations2.push(hiddenSyntax.range(from, to));
+      if (to <= from) return;
+      const range = hiddenSyntax.range(from, to);
+      decorations2.push(range);
+      atomicRanges2.push(range);
+    };
+    const addAtomicReplacement = (decoration, from, to) => {
+      if (to <= from) return;
+      const range = decoration.range(from, to);
+      decorations2.push(range);
+      atomicRanges2.push(range);
     };
     const addMark = (from, to, className) => {
       if (to > from) decorations2.push(liveMark(className).range(from, to));
@@ -31666,13 +32263,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     for (const expression of mathExpressions) {
       literals2.push({ from: expression.from, to: expression.to });
       const activeConstruct = view.state.selection.ranges.some(
-        (range) => range.from <= expression.to && range.to >= expression.from
+        (range) => selectionIntersectsProjection(range, expression)
       );
       if (activeConstruct) continue;
       if (expression.kind === "inline") {
-        decorations2.push(Decoration.replace({
+        addAtomicReplacement(Decoration.replace({
           widget: new MathWidget(expression)
-        }).range(expression.from, expression.to));
+        }), expression.from, expression.to);
         continue;
       }
       const firstLine = doc2.lineAt(expression.from);
@@ -31697,106 +32294,109 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
       }
     }
-    for (const visible of view.visibleRanges) {
+    literals2.sort((left, right) => left.from - right.from || left.to - right.to);
+    for (const visible of coveredRanges) {
       let line = doc2.lineAt(visible.from);
       const lastLine = doc2.lineAt(visible.to).number;
-      const calloutContext = calloutContexts(doc2, line.number, lastLine);
-      const codeContext = fencedCodeLines(doc2, lastLine);
       while (line.from <= visible.to) {
-        const text = line.text;
+        const scanFrom = Math.max(line.from, visible.from);
+        const scanTo = Math.min(line.to, visible.to);
+        const text = doc2.sliceString(scanFrom, scanTo);
+        const linePrefix = doc2.sliceString(line.from, Math.min(line.to, line.from + 512));
+        const lineFullyScanned = scanFrom === line.from && scanTo === line.to;
+        const lineQueryTo = Math.min(doc2.length, scanTo + 1);
         const activeLine = selection.head >= line.from && selection.head <= line.to || view.composing && view.state.selection.ranges.some(
-          (range) => range.from <= line.to && range.to >= line.from
+          (range) => range.from < lineQueryTo && range.to >= line.from
         );
-        const excluded = literals2.filter(
-          (literal2) => literal2.from <= line.to && literal2.to >= line.from
-        );
-        if (yamlEnd > 0 && line.number <= yamlEnd) {
-          decorations2.push(
-            Decoration.line({ attributes: { class: "cm-live-frontmatter" } }).range(line.from)
-          );
-          if (!activeLine && (line.number === 1 || line.number === yamlEnd)) {
-            addHidden(line.from, line.to);
-          }
+        const excluded = [...projectionRangesIntersecting(literals2, scanFrom, lineQueryTo)];
+        if (index.frontmatterRange && line.from < index.frontmatterRange.to) {
         } else {
-          const codeLine = codeContext.get(line.number);
-          const semanticCodeLine = semanticLiterals.codeBlocks.some(
-            (range) => range.from <= line.to && range.to >= line.from
-          );
-          if (codeLine || semanticCodeLine || isIndentedCodeLine(text)) {
+          const semanticCodeBlock = projectionRangesIntersecting(
+            semanticLiterals.codeBlocks,
+            scanFrom,
+            lineQueryTo
+          )[0];
+          if (semanticCodeBlock || isIndentedCodeLine(linePrefix)) {
             decorations2.push(Decoration.line({ attributes: { class: "cm-live-codeblock" } }).range(line.from));
-            if (codeLine?.fence && !activeLine) addHidden(line.from, line.to);
-            else if (!codeLine?.fence) addMark(line.from, line.to, "cm-live-code");
+            const fenceLine = semanticCodeBlock ? isFencedDelimiterLine(doc2, semanticCodeBlock, line.from) : false;
+            if (fenceLine && !activeLine) addHidden(line.from, line.to);
+            else if (!fenceLine) addMark(scanFrom, scanTo, "cm-live-code");
             if (line.to === doc2.length) break;
             line = doc2.line(line.number + 1);
             continue;
           }
           const headingLevel = parsedProjection.headingLevelByLineFrom.get(line.from);
-          const heading2 = headingLevel ? /^(#{1,6})\s+/.exec(text) : null;
-          if (heading2 && heading2[1].length === headingLevel) {
+          const heading2 = headingLevel ? /^(\uFEFF?)(#{1,6})\s+/.exec(linePrefix) : null;
+          if (heading2 && heading2[2].length === headingLevel) {
+            const isDocumentTitle = headingLevel === 1 && line.from === firstBodyLineFrom;
             decorations2.push(
               Decoration.line({
-                attributes: { class: `cm-live-heading cm-live-h${heading2[1].length}` }
+                attributes: {
+                  class: `cm-live-heading cm-live-h${heading2[2].length}${isDocumentTitle ? " cm-live-document-title" : ""}`
+                }
               }).range(line.from)
             );
             if (!activeLine) addHidden(line.from, line.from + heading2[0].length);
           }
-          const callout = calloutHeader(text);
-          const context = calloutContext.get(line.number);
-          const parsedCallout = parsedProjection.callouts.find(
-            (range) => range.from <= line.to && range.to >= line.from
-          );
-          const activeCallout = parsedCallout && view.state.selection.ranges.some(
-            (range) => range.from <= parsedCallout.to && range.to >= parsedCallout.from
-          );
-          const quote = /^(\s*>\s?)/.exec(text);
-          if (quote && (!parsedCallout || activeCallout)) {
-            const contextClasses = context ? `cm-live-callout cm-live-callout-${context.role}${context.isHeader ? " cm-live-callout-header" : ""}${context.isEnd ? " cm-live-callout-end" : ""}` : "cm-live-quote";
+          const parsedCallout = projectionRangesIntersecting(
+            parsedProjection.callouts,
+            scanFrom,
+            lineQueryTo
+          )[0];
+          const parsedParagraph = projectionRangesIntersecting(
+            parsedProjection.paragraphs,
+            scanFrom,
+            lineQueryTo
+          )[0];
+          if (parsedParagraph && !parsedCallout && !heading2) {
+            decorations2.push(Decoration.line({
+              attributes: { class: "cm-live-paragraph" }
+            }).range(line.from));
+          }
+          const quote = /^(\s*>\s?)/.exec(linePrefix);
+          if (quote && !parsedCallout) {
             decorations2.push(
               Decoration.line({
-                attributes: { class: contextClasses }
+                attributes: { class: "cm-live-quote" }
               }).range(line.from)
             );
             if (!activeLine) addHidden(line.from, line.from + quote[0].length);
           }
-          if (callout && activeCallout && !activeLine) {
-            const markerStart = line.from + callout[1].length;
-            const kindStart = markerStart + 2;
-            const kindEnd = kindStart + callout[2].length;
-            addHidden(markerStart, kindStart);
-            decorations2.push(
-              Decoration.replace({ widget: new CalloutRoleWidget(calloutRole(callout[2])) }).range(kindStart, kindEnd)
-            );
-            const closingEnd = kindEnd + 1 + (callout[3]?.length || 0);
-            addHidden(kindEnd, closingEnd);
-            if (callout[4]) addMark(line.to - callout[4].length, line.to, "cm-live-callout-title");
-          }
-          const rule = /^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.exec(text);
+          const rule = lineFullyScanned ? /^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.exec(text) : null;
           if (rule && !activeLine) {
             addHidden(line.from, line.to);
             decorations2.push(
               Decoration.line({ attributes: { class: "cm-live-rule" } }).range(line.from)
             );
           }
-          const list = /^(\s*)([-+*]|\d+[.)])(\s+)/.exec(text);
+          const list = /^(\s*)([-+*]|\d+[.)])(\s+)/.exec(linePrefix);
           if (list) {
             decorations2.push(Decoration.line({ attributes: { class: "cm-live-list" } }).range(line.from));
             if (!activeLine) {
               const markerFrom = line.from + list[1].length;
               const markerTo = markerFrom + list[2].length;
-              decorations2.push(Decoration.replace({ widget: new ListMarkerWidget(list[2]) }).range(markerFrom, markerTo));
+              addAtomicReplacement(
+                Decoration.replace({ widget: new ListMarkerWidget(list[2]) }),
+                markerFrom,
+                markerTo
+              );
             }
           }
-          const parsedTable = parsedProjection.tables.find((range) => range.from <= line.to && range.to >= line.from);
+          const parsedTable = projectionRangesIntersecting(
+            parsedProjection.tables,
+            scanFrom,
+            lineQueryTo
+          )[0];
           const activeTable = parsedTable && view.state.selection.ranges.some(
-            (range) => range.from <= parsedTable.to && range.to >= parsedTable.from
+            (range) => selectionIntersectsProjection(range, parsedTable)
           );
           if (activeTable) {
             decorations2.push(Decoration.line({ attributes: { class: "cm-live-table" } }).range(line.from));
             if (!activeLine) {
-              for (const match of text.matchAll(/\|/g)) addMark(line.from + match.index, line.from + match.index + 1, "cm-live-table-separator");
+              for (const match of text.matchAll(/\|/g)) addMark(scanFrom + match.index, scanFrom + match.index + 1, "cm-live-table-separator");
             }
           }
-          const relation = /^(\s*-\s*)`([^`]+)`(\s*->\s*)/.exec(text);
+          const relation = /^(\s*-\s*)`([^`]+)`(\s*->\s*)/.exec(linePrefix);
           if (relation) {
             const predicateFrom = line.from + relation[1].length + 1;
             const predicateTo = predicateFrom + relation[2].length;
@@ -31810,7 +32410,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             }
           }
           for (const match of text.matchAll(/(`+)([^\n]*?)\1/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             excluded.push({ from, to });
             if (!activeLine) {
@@ -31821,7 +32421,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             }
           }
           for (const match of text.matchAll(/(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g)) {
-            const from = line.from + match.index;
+            const from = scanFrom + match.index;
             const to = from + match[0].length;
             const embed = match[1] === "!";
             const wikiIndex = match.index + (embed ? 1 : 0);
@@ -31832,7 +32432,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             if (fullFrom < line.from || overlaps3(excluded, fullFrom, to) || !parsedProjection.wikilinks.has(rangeKey(fullFrom, to))) continue;
             excluded.push({ from: fullFrom, to });
             const activeConstruct = view.state.selection.ranges.some(
-              (selected) => selected.from <= to && selected.to >= fullFrom
+              (selected) => selectionIntersectsProjection(selected, { from: fullFrom, to })
             );
             if (activeConstruct) continue;
             const target = match[2];
@@ -31843,8 +32443,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             if (embed) {
               addHidden(from, openingEnd);
             } else {
-              decorations2.push(
-                Decoration.replace({ widget: new VectorLinkIconWidget(kind) }).range(fullFrom, openingEnd)
+              addAtomicReplacement(
+                Decoration.replace({ widget: new VectorLinkIconWidget(kind) }),
+                fullFrom,
+                openingEnd
               );
             }
             const linkClass = embed ? "cm-live-embed" : presentation.isLegacyRelationship && kind === "neutral" ? "cm-live-vector-link cm-live-vector-neutral cm-live-vector-legacy" : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
@@ -31860,7 +32462,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           }
           if (!activeLine) {
             for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
-              const from = line.from + match.index;
+              const from = scanFrom + match.index;
               const to = from + match[0].length;
               if (overlaps3(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
               addHidden(from, from + 1);
@@ -31868,7 +32470,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               addHidden(from + 1 + match[1].length, to);
             }
             for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
-              const from = line.from + match.index;
+              const from = scanFrom + match.index;
               const to = from + match[0].length;
               if (overlaps3(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
               addHidden(from, from + 2);
@@ -31876,7 +32478,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               addHidden(to - 2, to);
             }
             for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
-              const from = line.from + match.index;
+              const from = scanFrom + match.index;
               const to = from + match[0].length;
               if (overlaps3(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
               addHidden(from, from + 2);
@@ -31884,7 +32486,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               addHidden(to - 2, to);
             }
             for (const match of text.matchAll(/==([^=\n]+)==/g)) {
-              const from = line.from + match.index;
+              const from = scanFrom + match.index;
               const to = from + match[0].length;
               if (overlaps3(excluded, from, to) || !parsedProjection.highlights.has(rangeKey(from, to))) continue;
               addHidden(from, from + 2);
@@ -31892,7 +32494,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               addHidden(to - 2, to);
             }
             for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
-              const from = line.from + match.index;
+              const from = scanFrom + match.index;
               const to = from + match[0].length;
               if (overlaps3(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
               addHidden(from, from + 1);
@@ -31906,30 +32508,73 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
     const result = Decoration.set(decorations2, true);
+    const atoms = Decoration.set(atomicRanges2, true);
     recordEditorMetric("projection", projectionStartedAt, {
       documentLength: doc2.length,
       visibleRangeCount: view.visibleRanges.length,
-      decorationCount: decorations2.length
+      decorationCount: decorations2.length,
+      projectionWindowUTF16Count,
+      selectionScoped: requestedRanges ? 1 : 0,
+      widgetReuseCount: liveWidgetReuseCounts.table + liveWidgetReuseCounts.callout + liveWidgetReuseCounts.footnote
     });
-    return result;
+    return { decorations: result, atomicRanges: atoms, coveredRanges };
+  }
+  function replacingDecorationsInRanges(existing, replacement, affected) {
+    const touches = (from, to) => affected.some((range) => from === to ? from >= range.from && from <= range.to : from < range.to && to > range.from);
+    const add = [];
+    replacement.between(0, editor.state.doc.length, (from, to, decoration) => {
+      if (touches(from, to)) add.push(decoration.range(from, to));
+    });
+    return existing.update({
+      filter: (from, to) => !touches(from, to),
+      add,
+      sort: true
+    });
   }
   var LivePreviewPlugin = class {
     decorations;
+    atomicRanges;
+    coveredRanges;
     constructor(view) {
-      this.decorations = buildLiveDecorations(view);
+      const projection = buildLiveDecorations(view);
+      this.decorations = projection.decorations;
+      this.atomicRanges = projection.atomicRanges;
+      this.coveredRanges = projection.coveredRanges;
     }
     update(update) {
       const explicitlyRefreshed = update.transactions.some(
         (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect))
       );
       const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
-      if (update.docChanged || update.selectionSet || update.viewportChanged || explicitlyRefreshed || syntaxTreeChanged) {
-        this.decorations = buildLiveDecorations(update.view);
+      const viewportNeedsProjection = update.viewportChanged && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
+      if (update.docChanged || viewportNeedsProjection || explicitlyRefreshed || syntaxTreeChanged) {
+        const projection = buildLiveDecorations(update.view);
+        this.decorations = projection.decorations;
+        this.atomicRanges = projection.atomicRanges;
+        this.coveredRanges = projection.coveredRanges;
+      } else if (update.selectionSet && !update.startState.selection.eq(update.state.selection)) {
+        const affected = selectionAffectedProjectionRanges(
+          update.state.doc.length,
+          update.startState.selection.ranges,
+          update.state.selection.ranges
+        );
+        const projection = buildLiveDecorations(update.view, affected);
+        this.decorations = replacingDecorationsInRanges(
+          this.decorations,
+          projection.decorations,
+          affected
+        );
+        this.atomicRanges = replacingDecorationsInRanges(
+          this.atomicRanges,
+          projection.atomicRanges,
+          affected
+        );
       }
     }
   };
   var livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
-    decorations: (value) => value.decorations
+    decorations: (value) => value.decorations,
+    provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomicRanges ?? Decoration.none)
   });
   var UnclosedFrontmatterWidget = class _UnclosedFrontmatterWidget extends WidgetType {
     eq(other) {
@@ -31958,25 +32603,43 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return true;
     }
   };
-  function buildLiveFrontmatterGuard(state) {
-    if (!hasUnclosedFrontmatter(state.doc)) return Decoration.none;
-    return Decoration.set([
-      Decoration.widget({
-        widget: new UnclosedFrontmatterWidget(),
-        block: true,
-        side: -1
-      }).range(0)
+  function buildLiveFrontmatterProjection(state) {
+    const index = liveProjectionIndexForState(state);
+    if (index.hasUnclosedFrontmatter) {
+      const unavailable = Decoration.set([
+        Decoration.replace({
+          widget: new UnclosedFrontmatterWidget(),
+          block: true
+        }).range(0, state.doc.length)
+      ]);
+      return {
+        decorations: unavailable,
+        atomicRanges: unavailable
+      };
+    }
+    const bodyFrom = index.frontmatterRange?.to ?? 0;
+    if (bodyFrom === 0) {
+      return { decorations: Decoration.none, atomicRanges: Decoration.none };
+    }
+    const hiddenFrontmatter = Decoration.set([
+      Decoration.replace({ block: true }).range(0, bodyFrom)
     ]);
+    return { decorations: hiddenFrontmatter, atomicRanges: hiddenFrontmatter };
   }
   var liveFrontmatterGuardField = StateField.define({
-    create: buildLiveFrontmatterGuard,
+    create: buildLiveFrontmatterProjection,
     update(previous, transaction) {
-      return transaction.docChanged ? buildLiveFrontmatterGuard(transaction.state) : previous;
+      return transaction.docChanged ? buildLiveFrontmatterProjection(transaction.state) : previous;
     },
-    provide: (field) => EditorView.decorations.from(field)
+    provide: (field) => [
+      EditorView.decorations.from(field, (value) => value.decorations),
+      EditorView.atomicRanges.of((view) => view.state.field(field).atomicRanges)
+    ]
   });
   var livePreviewMode = [
+    syntaxHighlighting(livePreviewHighlightStyle),
     liveFrontmatterGuardField,
+    liveBlockActivationField,
     liveTableField,
     liveCalloutField,
     liveFootnoteField,
@@ -31984,6 +32647,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorView.lineWrapping
   ];
   var sourceMode = [
+    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     lineNumbers(),
     highlightActiveLineGutter(),
     foldGutter(),
@@ -31991,6 +32655,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   ];
   var dirty = false;
   var pendingKeyStartedAt = null;
+  var forceNextInteractionContext = true;
+  var lastInteractionAvailabilitySignature = null;
+  var interactionReporter = new AnimationFrameCoalescer(
+    (callback) => window.requestAnimationFrame(callback),
+    (identifier4) => window.cancelAnimationFrame(identifier4),
+    (callback, delayMilliseconds) => window.setTimeout(callback, delayMilliseconds),
+    (identifier4) => window.clearTimeout(identifier4)
+  );
   var idleTimer = null;
   var stateReporter = EditorView.updateListener.of((update) => {
     if (update.selectionSet && selectedFootnotePreviewTarget?.from !== update.state.selection.main.head) {
@@ -32013,6 +32685,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       const baseGeneration = documentVersion;
       documentVersion += 1;
+      if (hiddenFrontmatterSourceSelection?.documentVersion !== documentVersion) {
+        hiddenFrontmatterSourceSelection = null;
+      }
       const changes = [];
       update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
         changes.push({ from: fromA, to: toA, insert: inserted.toString() });
@@ -32028,16 +32703,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       exactSource = updatedExactSource;
       post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
     }
-    const head = update.state.selection.main.head;
-    const line = update.state.doc.lineAt(head);
-    post({
-      type: "stateChanged",
-      dirty,
-      line: line.number,
-      column: head - line.from + 1,
-      lineCount: update.state.doc.lines
-    });
-    publishEditorContext();
+    scheduleEditorInteractionReport();
     if (update.docChanged) {
       if (idleTimer !== null) window.clearTimeout(idleTimer);
       idleTimer = window.setTimeout(() => post({ type: "idle", dirty }), 500);
@@ -32125,21 +32791,110 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
   ]);
+  function revealProjectedBlockForVerticalMove(view, forward, extend) {
+    if (currentMode !== "livePreview" || view.composing) return false;
+    const selection = view.state.selection.main;
+    const moved = view.moveVertically(selection, forward);
+    const index = liveProjectionIndexForState(view.state);
+    const crossed = projectionRangesIntersecting(
+      index.blockRanges,
+      Math.min(selection.head, moved.head),
+      Math.max(selection.head, moved.head) + 1
+    ).filter((candidate) => {
+      if (view.state.selection.ranges.some((range) => selectionIntersectsProjection(range, candidate))) {
+        return false;
+      }
+      return forward ? selection.head <= candidate.from && moved.head >= candidate.to : selection.head >= candidate.to && moved.head <= candidate.from;
+    });
+    const projection = forward ? crossed[0] : crossed.at(-1);
+    if (!projection) return false;
+    const isCallout = projection.kind === "callout";
+    const sourceHead = forward ? projection.from : isCallout ? projection.to : Math.max(projection.from, projection.to - 1);
+    const originalCoords = view.coordsAtPos(selection.head);
+    const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
+    const anchor = extend ? selection.anchor : sourceHead;
+    view.dispatch({
+      effects: isCallout ? setLiveBlockActivationEffect.of({
+        kind: "callout",
+        from: projection.from,
+        to: projection.to,
+        edge: forward ? "start" : "end"
+      }) : void 0,
+      selection: { anchor, head: sourceHead },
+      scrollIntoView: true
+    });
+    if (isCallout) {
+      view.requestMeasure();
+      return true;
+    }
+    view.requestMeasure({
+      read: () => {
+        const line = view.state.doc.lineAt(sourceHead);
+        const lineEdge = forward ? line.from : line.to;
+        const coords = view.coordsAtPos(lineEdge);
+        if (!coords) return sourceHead;
+        return view.posAtCoords({
+          x: desiredX,
+          y: (coords.top + coords.bottom) / 2
+        }) ?? sourceHead;
+      },
+      write: (measuredHead) => {
+        if (view.state.selection.main.head !== sourceHead) return;
+        view.dispatch({
+          selection: { anchor, head: measuredHead },
+          scrollIntoView: true
+        });
+      }
+    });
+    return true;
+  }
+  function revealProjectedBlockForHorizontalMove(view, forward, extend) {
+    if (currentMode !== "livePreview" || view.composing) return false;
+    const selection = view.state.selection.main;
+    const projection = projectionRangesIntersecting(
+      liveProjectionIndexForState(view.state).blockRanges,
+      Math.max(0, selection.head - 1),
+      selection.head + 1
+    ).find(
+      (candidate) => forward ? selection.head === candidate.from : selection.head === candidate.to
+    );
+    if (!projection) return false;
+    const head = forward ? projection.from : Math.max(projection.from, projection.to - 1);
+    view.dispatch({
+      selection: { anchor: extend ? selection.anchor : head, head },
+      scrollIntoView: true
+    });
+    return true;
+  }
+  var liveProjectionNavigationKeymap = keymap.of([
+    { key: "ArrowDown", run: (view) => revealProjectedBlockForVerticalMove(view, true, false) },
+    { key: "Shift-ArrowDown", run: (view) => revealProjectedBlockForVerticalMove(view, true, true) },
+    { key: "ArrowUp", run: (view) => revealProjectedBlockForVerticalMove(view, false, false) },
+    { key: "Shift-ArrowUp", run: (view) => revealProjectedBlockForVerticalMove(view, false, true) },
+    { key: "ArrowRight", run: (view) => revealProjectedBlockForHorizontalMove(view, true, false) },
+    { key: "Shift-ArrowRight", run: (view) => revealProjectedBlockForHorizontalMove(view, true, true) },
+    { key: "ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, false) },
+    { key: "Shift-ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, true) }
+  ]);
   function wikilinkCompletionSource(context) {
-    const match = context.matchBefore(/\[\[[^\]\n]*/);
+    const line = context.state.doc.lineAt(context.pos);
+    const scanFrom = Math.max(line.from, context.pos - 512);
+    const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
+    const match = /\[\[[^\]\n]*$/.exec(beforeCursor);
     if (!match) return null;
-    const typed = match.text.slice(2).toLocaleLowerCase();
+    const typed = match[0].slice(2).toLocaleLowerCase();
     const options = linkCandidates.filter((candidate) => !typed || candidate.label.toLocaleLowerCase().includes(typed) || candidate.path.toLocaleLowerCase().includes(typed)).slice(0, 100).map((candidate) => ({
       label: candidate.label,
       detail: candidate.detail,
       type: "text",
       apply: candidate.isAmbiguous ? () => void 0 : candidate.insertion + "]]"
     }));
-    return { from: match.from + 2, options, filter: false };
+    return { from: scanFrom + match.index + 2, options, filter: false };
   }
   function calloutCompletionSource(context) {
     const line = context.state.doc.lineAt(context.pos);
-    const beforeCursor = line.text.slice(0, context.pos - line.from);
+    if (context.pos - line.from > 512) return null;
+    const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
     const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
     if (!match) return null;
     const typed = match[2].toLocaleLowerCase();
@@ -32159,13 +32914,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     bracketMatching(),
     closeBrackets(),
     autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
     rectangularSelection(),
     highlightSelectionMatches(),
     scholiumNoteLanguage,
+    liveProjectionNavigationKeymap,
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -32179,6 +32934,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     researcherCommentField,
     researcherCommentActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
+    liveProjectionIndexField,
     modeCompartment.of(livePreviewMode),
     EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
     EditorView.theme({
@@ -32313,7 +33069,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     const coords = editor.coordsAtPos(head);
     if (!coords) return false;
-    const preview = linkPreviews.find((candidate) => head >= candidate.from && head <= candidate.to);
+    const preview = linkPreviews.find((candidate) => head >= candidate.from && head < candidate.to);
     if (preview) {
       showLinkPreview(preview, coords, startedAt);
       return true;
@@ -32396,16 +33152,42 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     post({ type: "scrollChanged", scrollFraction: scrollAnchor.fallbackFraction, scrollAnchor });
   }
   var scrollReportTimer;
+  var scrollSessionStartedAt = null;
   var previousScrollFrameAt = null;
+  var scrollMeasurementFrame = null;
+  var scrollSessionFrameCount = 0;
+  var scrollSessionLongestFrame = 0;
+  var scrollSessionDroppedFrameCount = 0;
   editor.scrollDOM.addEventListener("scroll", () => {
-    window.requestAnimationFrame(() => {
-      const now = performance.now();
-      if (previousScrollFrameAt !== null) recordEditorMetric("scroll-frame", previousScrollFrameAt);
-      previousScrollFrameAt = now;
-    });
+    if (scrollSessionStartedAt === null) scrollSessionStartedAt = performance.now();
+    if (scrollMeasurementFrame === null) {
+      scrollMeasurementFrame = window.requestAnimationFrame(() => {
+        scrollMeasurementFrame = null;
+        const now = performance.now();
+        scrollSessionFrameCount += 1;
+        if (previousScrollFrameAt !== null) {
+          const duration = Math.max(0, now - previousScrollFrameAt);
+          scrollSessionLongestFrame = Math.max(scrollSessionLongestFrame, duration);
+          if (duration > 20) scrollSessionDroppedFrameCount += 1;
+        }
+        previousScrollFrameAt = now;
+      });
+    }
     window.clearTimeout(scrollReportTimer);
     scrollReportTimer = window.setTimeout(() => {
       postCurrentScrollPosition();
+      if (scrollSessionStartedAt !== null) {
+        recordEditorMetric("scroll-session", scrollSessionStartedAt, {
+          frameCount: scrollSessionFrameCount,
+          longestFrameMilliseconds: scrollSessionLongestFrame,
+          droppedFrameCount: scrollSessionDroppedFrameCount
+        });
+      }
+      scrollSessionStartedAt = null;
+      previousScrollFrameAt = null;
+      scrollSessionFrameCount = 0;
+      scrollSessionLongestFrame = 0;
+      scrollSessionDroppedFrameCount = 0;
     }, 120);
   }, { passive: true });
   var allCommands = [
@@ -32459,26 +33241,31 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return editor.state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head }));
   }
   function protectedCommandRanges() {
-    const ranges = semanticLiteralRanges(editor.state).excluded;
-    const yamlEnd = frontmatterEndLine(editor.state.doc);
-    if (yamlEnd > 0) ranges.push({ from: 0, to: editor.state.doc.line(yamlEnd).to });
-    return ranges;
+    return liveProjectionIndexForState(editor.state).commandProtectedRanges;
+  }
+  function indexedTablePositionAt(state, offset) {
+    return projectionRangeContaining(
+      liveProjectionIndexForState(state).tablePositionRanges,
+      offset
+    )?.position;
   }
   function currentEditorContext() {
     const inline = /* @__PURE__ */ new Set();
     const block = /* @__PURE__ */ new Set();
+    const selectionLinePrefixes = [];
     for (const selection of editor.state.selection.ranges) {
+      const linePrefix = boundedLinePrefix(editor.state.doc, selection.head);
+      selectionLinePrefixes.push(linePrefix);
       for (let node = syntaxTree(editor.state).resolveInner(selection.head, -1); node; node = node.parent) {
         if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
         if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
         if (!node.parent) break;
       }
-      if (calloutHeader(editor.state.doc.lineAt(selection.head).text)) block.add("Callout");
+      if (calloutHeader(linePrefix)) block.add("Callout");
     }
-    const protectedSelection = editor.state.selection.ranges.some(
-      (selection) => protectedCommandRanges().some((range) => selection.from < range.to && selection.to > range.from)
-    );
-    const currentTable = editor.state.selection.ranges.length === 1 ? tableAt(editor.state.doc.toString(), editor.state.selection.main.head) : null;
+    const protectedRanges = protectedCommandRanges();
+    const protectedSelection = editor.state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedRanges, selection));
+    const currentTablePosition = editor.state.selection.ranges.length === 1 ? indexedTablePositionAt(editor.state, editor.state.selection.main.head) : void 0;
     const tableOnlyCommands = /* @__PURE__ */ new Set([
       "tableInsertRowBefore",
       "tableInsertRowAfter",
@@ -32491,12 +33278,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       "tableAlignRight"
     ]);
     const availableCommands = allCommands.filter((command2) => {
-      if (tableOnlyCommands.has(command2)) return currentTable !== null;
+      if (tableOnlyCommands.has(command2)) return currentTablePosition !== void 0;
       if (command2 === "toggleTask") {
-        return editor.state.selection.ranges.every((selection) => {
-          const line = editor.state.doc.lineAt(selection.head).text;
-          return /^\s*-\s+\[[ xX]\]/.test(line);
-        });
+        return selectionLinePrefixes.every((linePrefix) => /^\s*-\s+\[[ xX]\]/.test(linePrefix));
       }
       if (command2 === "linkSelectedText") return editor.state.selection.ranges.every((selection) => !selection.empty);
       return true;
@@ -32505,17 +33289,36 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       selections: editorSelections(),
       activeInlineConstructs: [...inline],
       activeBlockConstructs: [...block],
-      tablePosition: currentTable?.position,
+      tablePosition: currentTablePosition,
       composing: editor.composing,
       availableCommands: editor.composing || protectedSelection ? [] : availableCommands,
       undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
       redoLabel: redoDepth(editor.state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
     };
   }
+  function scheduleEditorInteractionReport(forceContext = false) {
+    forceNextInteractionContext ||= forceContext;
+    interactionReporter.schedule(() => {
+      const context = currentEditorContext();
+      const head = editor.state.selection.main.head;
+      const line = editor.state.doc.lineAt(head);
+      const availabilitySignature = interactionAvailabilitySignature(context);
+      const includeContext = forceNextInteractionContext || availabilitySignature !== lastInteractionAvailabilitySignature;
+      forceNextInteractionContext = false;
+      lastInteractionAvailabilitySignature = availabilitySignature;
+      updateEditorAccessibility(editor.contentDOM, currentMode, context);
+      post({
+        type: "interactionChanged",
+        selections: context.selections,
+        line: line.number,
+        column: head - line.from + 1,
+        lineCount: editor.state.doc.lines,
+        ...includeContext ? { context } : {}
+      });
+    });
+  }
   function publishEditorContext() {
-    const context = currentEditorContext();
-    updateEditorAccessibility(editor.contentDOM, currentMode, context);
-    post({ type: "contextChanged", context });
+    scheduleEditorInteractionReport(true);
   }
   function successfulResult(requestID, sourceChanged = false, undoLabel) {
     return {
@@ -32560,6 +33363,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     switch (operation.type) {
       case "setMode":
         editorOperations.setMode(operation.mode);
+        break;
+      case "setPresentationCSS":
+        editorOperations.setPresentationCSS(operation.value);
         break;
       case "setUserCSS":
         editorOperations.setUserCSS(operation.value);
@@ -32631,10 +33437,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       case "restoreRecovery": {
         const snapshot = operation.snapshot;
-        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || new TextEncoder().encode(snapshot.source).byteLength > MAX_SOURCE_UTF8_BYTES) {
+        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion) || new TextEncoder().encode(snapshot.source).byteLength > MAX_SOURCE_UTF8_BYTES) {
           return rejected(request.requestID, documentVersion, "stale recovery snapshot");
         }
+        const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
+        const separator = snapshot.source.includes("\r\n") ? "\r\n" : "\n";
         let restoredHistory = false;
+        let recoveredState = null;
         if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
           try {
             const serializedState = JSON.parse(snapshot.stateJSON);
@@ -32647,27 +33456,31 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               { history: historyField }
             );
             if (normalizedDocumentText(restored.doc.toString()) === normalizedDocumentText(snapshot.source)) {
-              editor.setState(restored);
-              const separator = snapshot.source.includes("\r\n") ? "\r\n" : "\n";
-              editor.dispatch({
+              recoveredState = restored.update({
+                selection: recoveredSelection,
                 effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
                 annotations: Transaction.addToHistory.of(false)
-              });
-              exactSource = snapshot.source;
+              }).state;
               restoredHistory = true;
             }
           } catch {
             restoredHistory = false;
           }
         }
-        if (!restoredHistory) {
-          editor.dispatch({
-            changes: replacementChange(editor.state.doc.toString(), snapshot.source),
-            selection: EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head))),
-            annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
-          });
-          exactSource = snapshot.source;
+        if (!recoveredState) {
+          try {
+            recoveredState = editor.state.update({
+              changes: replacementChange(editor.state.doc.toString(), snapshot.source),
+              selection: recoveredSelection,
+              effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+              annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
+            }).state;
+          } catch {
+            return rejected(request.requestID, documentVersion, "invalid recovery snapshot");
+          }
         }
+        editor.setState(recoveredState);
+        exactSource = snapshot.source;
         editorOperations.setMode(currentMode);
         dirty = snapshot.dirty;
         documentVersion = snapshot.generation;
@@ -32730,7 +33543,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes });
       return rejected("invalid", documentVersion, "malformed editor request");
     }
-    if ((editor.composing || compositionGate.active) && (value.operation.type === "setMode" || value.operation.type === "command")) {
+    const compositionPolicy = compositionRequestPolicy(value.operation.type);
+    if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
+      return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
+    }
+    if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
       const result = compositionGate.enqueue(value);
       return result.then((accepted) => {
         recordEditorMetric("bridge-request", bridgeStartedAt, {
@@ -32791,6 +33608,28 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
     if (pasteTransfer(event.dataTransfer, position ?? void 0)) event.preventDefault();
   }, { capture: true });
+  var dynamicStyleMeasureScheduled = false;
+  function scheduleDynamicStyleMeasure() {
+    if (dynamicStyleMeasureScheduled) return;
+    dynamicStyleMeasureScheduled = true;
+    queueMicrotask(() => {
+      dynamicStyleMeasureScheduled = false;
+      const documentSnapshot = editor.state.doc;
+      editor.requestMeasure({
+        read: () => editor.state.doc === documentSnapshot,
+        write: (isCurrentDocument) => {
+          if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrentScrollPosition();
+        }
+      });
+    });
+  }
+  function setDynamicStyle(id2, css2) {
+    const style = document.getElementById(id2);
+    if (!style || style.textContent === css2) return;
+    style.textContent = css2;
+    scheduleDynamicStyleMeasure();
+    void document.fonts.ready.then(scheduleDynamicStyleMeasure);
+  }
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
@@ -32804,6 +33643,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
       documentVersion = 0;
+      hiddenFrontmatterSourceSelection = null;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
       exactSource = text;
       editor.dispatch({
@@ -32815,25 +33655,45 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ]
       });
       dirty = false;
-      post({ type: "stateChanged", dirty: false, line: 1, column: 1, lineCount: editor.state.doc.lines });
+      lastInteractionAvailabilitySignature = null;
+      scheduleEditorInteractionReport(true);
     },
     /** @param {string} mode */
     setMode(mode) {
       const startedAt = performance.now();
       hidePreview();
       const scrollSnapshot = editor.scrollSnapshot();
+      const nextMode = mode === "livePreview" ? "livePreview" : "source";
+      let selection;
+      if (nextMode === "livePreview") {
+        const bodyFrom = frontmatterBodyOffset(editor.state.doc);
+        if (bodyFrom > 0 && editor.state.selection.ranges.some((range) => range.from < bodyFrom)) {
+          if (currentMode === "source") {
+            hiddenFrontmatterSourceSelection = {
+              documentVersion,
+              selection: editor.state.selection
+            };
+          }
+          selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
+        }
+      } else if (nextMode === "source" && currentMode === "livePreview" && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
+        selection = hiddenFrontmatterSourceSelection.selection;
+        hiddenFrontmatterSourceSelection = null;
+      }
       editor.dispatch({
+        selection,
         effects: [
-          modeCompartment.reconfigure(mode === "livePreview" ? livePreviewMode : sourceMode),
+          modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
           scrollSnapshot
         ]
       });
-      editor.dom.classList.toggle("scholium-live-mode", mode === "livePreview");
-      editor.dom.classList.toggle("scholium-source-mode", mode !== "livePreview");
-      editor.scrollDOM.classList.toggle("scholium-live-scroller", mode === "livePreview");
-      editor.scrollDOM.classList.toggle("scholium-source-scroller", mode !== "livePreview");
-      currentMode = mode === "livePreview" ? "livePreview" : "source";
+      editor.dom.classList.toggle("scholium-live-mode", nextMode === "livePreview");
+      editor.dom.classList.toggle("scholium-source-mode", nextMode !== "livePreview");
+      editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
+      editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
+      currentMode = nextMode;
       updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
+      scheduleEditorInteractionReport(true);
       recordEditorMetric("mode-toggle-work", startedAt, {
         documentLength: editor.state.doc.length
       });
@@ -32848,22 +33708,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       window.setTimeout(postCurrentScrollPosition, 0);
     },
     /** @param {string} css */
+    setPresentationCSS(css2) {
+      setDynamicStyle("scholium-presentation-css", css2);
+    },
+    /** @param {string} css */
     setUserCSS(css2) {
-      const style = document.getElementById("scholium-user-css");
-      if (!style) return;
-      style.textContent = css2;
-      const documentSnapshot = editor.state.doc;
-      const remeasure = () => {
-        if (editor.state.doc !== documentSnapshot) return;
-        editor.requestMeasure({
-          read: () => editor.state.doc === documentSnapshot,
-          write: (isCurrentDocument) => {
-            if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrentScrollPosition();
-          }
-        });
-      };
-      remeasure();
-      void document.fonts.ready.then(remeasure);
+      setDynamicStyle("scholium-user-css", css2);
     },
     /** @param {{label: string, insertion: string, detail: string, path: string}[]} candidates */
     setLinkCompletions(candidates) {
@@ -32871,6 +33721,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     },
     setLinkPreviews(value) {
       linkPreviews = validatedLinkPreviews(value, editor.state.doc.length);
+      linkPreviewIndexByRange = new Map(
+        linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index])
+      );
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
     },
     setResearcherComments(comments) {
@@ -32963,18 +33816,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       });
       exactSource = committedText;
       dirty = false;
-      post({
-        type: "stateChanged",
-        dirty: false,
-        line: editor.state.doc.lineAt(editor.state.selection.main.head).number,
-        column: editor.state.selection.main.head - editor.state.doc.lineAt(editor.state.selection.main.head).from + 1,
-        lineCount: editor.state.doc.lines
-      });
+      scheduleEditorInteractionReport(true);
       return true;
     },
     markClean() {
       dirty = false;
-      post({ type: "stateChanged", dirty: false });
     },
     focus() {
       editor.focus();

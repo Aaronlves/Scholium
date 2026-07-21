@@ -94,6 +94,13 @@ export function frontmatterEndLine(doc: Text) {
   return frontmatterBoundary(doc).endLine;
 }
 
+/** Returns the first body offset in CodeMirror's normalized UTF-16 space. */
+export function frontmatterBodyOffset(doc: Text) {
+  const endLine = frontmatterEndLine(doc);
+  if (endLine === 0) return 0;
+  return endLine < doc.lines ? doc.line(endLine + 1).from : doc.line(endLine).to;
+}
+
 export function hasUnclosedFrontmatter(doc: Text) {
   return frontmatterBoundary(doc).unclosed;
 }

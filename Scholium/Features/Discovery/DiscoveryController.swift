@@ -256,16 +256,18 @@ final class DiscoveryController: ObservableObject {
 
     func presentLifecycleListing(_ scope: NoteLocationScope) {
         activeLifecycleRequestID = nil
+        library.showsAttentionQueue = false
         library.lifecycleScope = scope
         library.lifecycleItems = []
         library.lifecycleError = nil
-        library.lifecycleIsLoading = false
+        library.lifecycleIsLoading = true
     }
 
     @discardableResult
     func beginLifecycleListing(_ scope: NoteLocationScope) -> DiscoveryLifecycleRequest {
         let request = DiscoveryLifecycleRequest(id: UUID(), scope: scope)
         activeLifecycleRequestID = request.id
+        library.showsAttentionQueue = false
         library.lifecycleScope = scope
         library.lifecycleItems = []
         library.lifecycleError = nil

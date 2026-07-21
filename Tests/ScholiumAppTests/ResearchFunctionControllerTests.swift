@@ -778,8 +778,15 @@ struct ResearchFunctionControllerTests {
             ),
             encoding: .utf8
         )
+        let designSystemSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
 
-        #expect(source.contains("frame(maxWidth: .infinity, minHeight: 44"))
+        #expect(source.contains("minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight"))
+        #expect(designSystemSource.contains("static let researchFunctionTargetHeight = foundationUnit * 11"))
         #expect(source.contains("Label(item.id.interfaceTitleResource"))
         #expect(source.contains(".fixedSize(horizontal: false, vertical: true)"))
         #expect(!source.contains("Menu {"))

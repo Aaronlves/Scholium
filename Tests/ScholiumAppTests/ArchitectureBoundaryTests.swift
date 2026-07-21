@@ -300,7 +300,7 @@ struct ArchitectureBoundaryTests {
         }
     }
 
-    @Test("Markdown editor exposes only the typed v3 dispatcher")
+    @Test("Markdown editor exposes only the typed v4 dispatcher")
     func markdownEditorBridgeBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

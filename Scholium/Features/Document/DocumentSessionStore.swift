@@ -15,6 +15,40 @@ enum EditorSaveOutcome: Equatable {
     case committedWithRefreshFailure(String)
 }
 
+struct ObservedScrollPosition: Equatable, Sendable {
+    var fraction: Double
+    var anchor: EditorScrollAnchor?
+
+    init(fraction: Double = 0, anchor: EditorScrollAnchor? = nil) {
+        self.fraction = Self.normalized(fraction)
+        self.anchor = anchor
+    }
+
+    mutating func updateFraction(_ value: Double) {
+        guard value.isFinite else { return }
+        fraction = Self.normalized(value)
+    }
+
+    private static func normalized(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return min(1, max(0, value))
+    }
+}
+
+enum ScrollRestoreReason: String, Equatable, Sendable {
+    case documentLoad
+    case modeHandoff
+    case webViewRebuild
+    case explicitNavigation
+}
+
+struct ScrollRestoreRequest: Equatable, Sendable {
+    let id: UInt64
+    let fingerprint: String
+    let position: ObservedScrollPosition
+    let reason: ScrollRestoreReason
+}
+
 /// The single owner for mutable, reconstruction-sensitive document UI state.
 /// The WKWebView remains an implementation detail of `MarkdownEditorSession`;
 /// CodeMirror remains authoritative while the session is editing.
@@ -37,8 +71,12 @@ final class DocumentSessionModel: ObservableObject {
     @Published var editError: String?
     @Published var isSavingEdit = false
     @Published var presentationMode: NotePresentationMode = .read
-    @Published var scrollFraction: Double = 0
-    @Published var scrollAnchor: EditorScrollAnchor?
+    /// Ordinary WebView scroll reports update this non-published observation.
+    /// They must not invalidate the document tree or become restoration input.
+    private(set) var observedScrollPosition = ObservedScrollPosition()
+    /// Only an explicit lifecycle or navigation transition creates a request.
+    /// Coordinators consume each monotonically increasing ID at most once.
+    @Published private(set) var scrollRestoreRequest: ScrollRestoreRequest?
     @Published var returnToReadAfterSave = false
     @Published var suppressAutosave = false
     @Published var renderedReadHTML = ""
@@ -55,6 +93,7 @@ final class DocumentSessionModel: ObservableObject {
     var activeSaveTask: Task<EditorSaveOutcome, Error>?
     var activeSaveToken: UUID?
     private var editorCancellable: AnyCancellable?
+    private var nextScrollRestoreRequestID: UInt64 = 0
 
     init(key: DocumentSessionKey?) {
         self.key = key
@@ -77,6 +116,59 @@ final class DocumentSessionModel: ObservableObject {
     /// both agree that the session is clean.
     var hasUnsavedChanges: Bool {
         editorSession.isDirty || editingSource != originalEditingSource
+    }
+
+    var scrollFraction: Double {
+        get { observedScrollPosition.fraction }
+        set { observedScrollPosition.updateFraction(newValue) }
+    }
+
+    var scrollAnchor: EditorScrollAnchor? {
+        get { observedScrollPosition.anchor }
+        set { observedScrollPosition.anchor = newValue }
+    }
+
+    func observeScrollFraction(_ fraction: Double) {
+        observedScrollPosition.updateFraction(fraction)
+    }
+
+    func observeScrollAnchor(_ anchor: EditorScrollAnchor?) {
+        observedScrollPosition.anchor = anchor
+    }
+
+    @discardableResult
+    func requestScrollRestore(
+        fingerprint: String,
+        reason: ScrollRestoreReason,
+        position: ObservedScrollPosition? = nil
+    ) -> ScrollRestoreRequest {
+        nextScrollRestoreRequestID &+= 1
+        let observed = position ?? observedScrollPosition
+        let matchingAnchor = observed.anchor.flatMap { anchor in
+            anchor.sourceFingerprint == fingerprint ? anchor : nil
+        }
+        let request = ScrollRestoreRequest(
+            id: nextScrollRestoreRequestID,
+            fingerprint: fingerprint,
+            position: ObservedScrollPosition(
+                fraction: observed.fraction,
+                anchor: matchingAnchor
+            ),
+            reason: reason
+        )
+        scrollRestoreRequest = request
+        return request
+    }
+
+    func resetScrollPosition() {
+        observedScrollPosition = ObservedScrollPosition()
+        scrollRestoreRequest = nil
+    }
+
+    func acknowledgeScrollRestoreRequest(id: UInt64, fingerprint: String) {
+        guard scrollRestoreRequest?.id == id,
+              scrollRestoreRequest?.fingerprint == fingerprint else { return }
+        scrollRestoreRequest = nil
     }
 }
 

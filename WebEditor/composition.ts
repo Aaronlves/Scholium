@@ -3,6 +3,24 @@ export interface DeferredCompositionRequest<Request, Result> {
   resolve: (result: Result) => void;
 }
 
+export type CompositionRequestPolicy = "allow" | "defer" | "reject";
+
+export function compositionRequestPolicy(operationType: string): CompositionRequestPolicy {
+  if (operationType === "initialize") return "reject";
+  if ([
+    "setMode",
+    "setPresentationCSS",
+    "setUserCSS",
+    "setLinkPreviews",
+    "setResearcherComments",
+    "goToLine",
+    "restoreRecovery",
+    "synchronizeCommittedText",
+    "command",
+  ].includes(operationType)) return "defer";
+  return "allow";
+}
+
 /**
  * Holds native requests while WebKit owns a marked-text composition.
  *

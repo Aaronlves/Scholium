@@ -1,6 +1,152 @@
 import AppKit
 import SwiftUI
 
+/// One opaque semantic plane for a native split item. The same background view
+/// fills the complete region beneath the transparent titlebar and any pane-local
+/// control, while foreground content remains a sibling in the live safe area.
+/// A flat color needs no background-extension effect, so AppKit cannot mirror,
+/// blur, or retint it at the toolbar edge.
+@MainActor
+final class ScholiumSurfaceContainerViewController: NSViewController {
+    let contentViewController: NSViewController
+    let backgroundView: NSView
+
+    init(
+        contentViewController: NSViewController,
+        backgroundRole: ScholiumSurfaceRole
+    ) {
+        self.contentViewController = contentViewController
+        let backgroundHost = NSHostingView(
+            rootView: backgroundRole.colorRole.color
+        )
+        // This host is the opaque color plane for the complete split item,
+        // including the full-size-content titlebar band. Letting SwiftUI consume
+        // AppKit's safe area here would leave that band to system chrome alone,
+        // producing a different tone above otherwise continuous pane content.
+        backgroundHost.safeAreaRegions = []
+        backgroundView = backgroundHost
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("ScholiumSurfaceContainerViewController is code-only")
+    }
+
+    override func loadView() {
+        let containerView = NSView()
+
+        addChild(contentViewController)
+        backgroundView.translatesAutoresizingMaskIntoConstraints = false
+
+        let contentView = contentViewController.view
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(backgroundView)
+        containerView.addSubview(contentView)
+
+        NSLayoutConstraint.activate([
+            backgroundView.leadingAnchor.constraint(
+                equalTo: containerView.leadingAnchor
+            ),
+            backgroundView.trailingAnchor.constraint(
+                equalTo: containerView.trailingAnchor
+            ),
+            backgroundView.topAnchor.constraint(
+                equalTo: containerView.topAnchor
+            ),
+            backgroundView.bottomAnchor.constraint(
+                equalTo: containerView.bottomAnchor
+            ),
+            contentView.leadingAnchor.constraint(
+                equalTo: containerView.safeAreaLayoutGuide.leadingAnchor
+            ),
+            contentView.trailingAnchor.constraint(
+                equalTo: containerView.safeAreaLayoutGuide.trailingAnchor
+            ),
+            contentView.topAnchor.constraint(
+                equalTo: containerView.safeAreaLayoutGuide.topAnchor
+            ),
+            contentView.bottomAnchor.constraint(
+                equalTo: containerView.safeAreaLayoutGuide.bottomAnchor
+            ),
+        ])
+        view = containerView
+    }
+
+    /// Installs one control inside the live titlebar safe-area band without
+    /// adding a row or defining a toolbar height. The control remains owned by
+    /// this split item and tracks its divider through ordinary Auto Layout.
+    func installTitlebarControl<Control: View>(
+        at edge: ScholiumPeripheralTitlebarEdge,
+        @ViewBuilder control: () -> Control
+    ) {
+        let containerView = view
+        let titlebarGuide = NSLayoutGuide()
+        let host = NSHostingView(rootView: control())
+        // The AppKit guide already places this host inside the titlebar band.
+        // Prevent SwiftUI from consuming the same window safe area a second
+        // time and inflating a 28pt control host by the toolbar height.
+        host.safeAreaRegions = []
+        host.sizingOptions = [.intrinsicContentSize]
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.wantsLayer = true
+        host.layer?.backgroundColor = NSColor.clear.cgColor
+
+        containerView.addLayoutGuide(titlebarGuide)
+        containerView.addSubview(host)
+
+        let edgeConstraint: NSLayoutConstraint = switch edge {
+        case .leading:
+            host.leadingAnchor.constraint(
+                equalTo: containerView.leadingAnchor,
+                constant: ScholiumGrid.Spacing.inlineControlGap
+            )
+        case .trailing:
+            host.trailingAnchor.constraint(
+                equalTo: containerView.trailingAnchor,
+                constant: -ScholiumGrid.Spacing.inlineControlGap
+            )
+        }
+
+        NSLayoutConstraint.activate([
+            titlebarGuide.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            titlebarGuide.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            titlebarGuide.topAnchor.constraint(equalTo: containerView.topAnchor),
+            titlebarGuide.bottomAnchor.constraint(
+                equalTo: containerView.safeAreaLayoutGuide.topAnchor
+            ),
+            host.centerYAnchor.constraint(equalTo: titlebarGuide.centerYAnchor),
+            edgeConstraint,
+        ])
+    }
+}
+
+enum ScholiumPeripheralTitlebarEdge {
+    case leading
+    case trailing
+}
+
+/// The permanent peripheral controls belong to their split items, not to the
+/// Document toolbar. Their clear hosts use the live AppKit titlebar safe area;
+/// the split item's existing semantic background remains the only color plane.
+private struct ScholiumPeripheralTitlebarControlView: View {
+    let title: String
+    let systemImage: String
+    let identifier: String
+    let action: () -> Void
+
+    var body: some View {
+        ScholiumInkIconControl(
+            title: title,
+            systemImage: systemImage,
+            identifier: identifier,
+            isActive: true,
+            action: action
+        )
+        .tint(ScholiumColorRole.accent.color)
+    }
+}
+
 /// One native three-region workspace. Library, Document, and Apparatus are
 /// siblings in a single NSSplitViewController; AppKit owns resizing, divider
 /// geometry, compression, collapse transitions, and live collapsed state.
@@ -100,6 +246,9 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
         private let libraryHost: NSHostingController<Library>
         private let documentTabsController: ScholiumDocumentTabsViewController<Document>
         private let apparatusHost: NSHostingController<Apparatus>
+        private let libraryBackgroundController: ScholiumSurfaceContainerViewController
+        private let documentBackgroundController: ScholiumSurfaceContainerViewController
+        private let apparatusBackgroundController: ScholiumSurfaceContainerViewController
         private var libraryItem: NSSplitViewItem!
         private var documentItem: NSSplitViewItem!
         private var apparatusItem: NSSplitViewItem!
@@ -153,6 +302,18 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             self.libraryHost = libraryHost
             self.documentTabsController = documentTabsController
             self.apparatusHost = apparatusHost
+            libraryBackgroundController = ScholiumSurfaceContainerViewController(
+                contentViewController: libraryHost,
+                backgroundRole: .navigation
+            )
+            documentBackgroundController = ScholiumSurfaceContainerViewController(
+                contentViewController: documentTabsController,
+                backgroundRole: .document
+            )
+            apparatusBackgroundController = ScholiumSurfaceContainerViewController(
+                contentViewController: apparatusHost,
+                backgroundRole: .apparatus
+            )
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -177,20 +338,49 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             splitView.isVertical = true
             splitView.dividerStyle = .thin
 
-            libraryItem = NSSplitViewItem(sidebarWithViewController: libraryHost)
+            libraryItem = NSSplitViewItem(
+                sidebarWithViewController: libraryBackgroundController
+            )
+            libraryItem.minimumThickness = ScholiumMetrics.Library.minimumReadableWidth
             libraryItem.canCollapse = true
             libraryItem.allowsFullHeightLayout = true
             libraryItem.titlebarSeparatorStyle = .line
+            libraryBackgroundController.installTitlebarControl(at: .trailing) {
+                ScholiumPeripheralTitlebarControlView(
+                    title: ScholiumL10n.dynamicString("Hide Sidebar"),
+                    systemImage: "sidebar.leading",
+                    identifier: "scholium.toggleSidebar"
+                ) { [weak self] in
+                    self?.setLibraryVisible(
+                        false,
+                        animated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                    )
+                }
+            }
 
-            documentItem = NSSplitViewItem(viewController: documentTabsController)
+            documentItem = NSSplitViewItem(
+                viewController: documentBackgroundController
+            )
             documentItem.canCollapse = false
             documentItem.canCollapseFromWindowResize = false
             documentItem.allowsFullHeightLayout = true
             documentItem.titlebarSeparatorStyle = .line
 
             apparatusItem = NSSplitViewItem(
-                inspectorWithViewController: apparatusHost
+                inspectorWithViewController: apparatusBackgroundController
             )
+            apparatusBackgroundController.installTitlebarControl(at: .leading) {
+                ScholiumPeripheralTitlebarControlView(
+                    title: ScholiumL10n.dynamicString("Hide Research Inspector"),
+                    systemImage: "sidebar.trailing",
+                    identifier: "scholium.toggleInspector"
+                ) { [weak self] in
+                    self?.setResearchInspectorVisible(
+                        false,
+                        animated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                    )
+                }
+            }
 
             addSplitViewItem(libraryItem)
             addSplitViewItem(documentItem)
@@ -308,12 +498,12 @@ enum ScholiumWorkspaceSplitViewIdentifier {
 }
 
 private enum ScholiumDocumentTabLayout {
-    static let stripHeight: CGFloat = 38
-    static let stripTopInset: CGFloat = 6
-    static let stripHorizontalInset: CGFloat = 18
-    static let tabHorizontalInset: CGFloat = 6
-    static let titleSpacing: CGFloat = 4
-    static let balancedControlWidth: CGFloat = 20
+    static let stripHeight = ScholiumGrid.Dimension.documentTabStripHeight
+    static let stripTopInset = ScholiumGrid.Spacing.inlineControlGap
+    static let stripHorizontalInset = ScholiumGrid.Spacing.regionContentInset
+    static let tabHorizontalInset = ScholiumGrid.Spacing.inlineControlGap
+    static let titleSpacing = ScholiumGrid.Spacing.labelAccessoryGap
+    static let balancedControlWidth = ScholiumGrid.Dimension.minimumCustomTarget
     static let selectionRuleHeight: CGFloat = 1
 }
 

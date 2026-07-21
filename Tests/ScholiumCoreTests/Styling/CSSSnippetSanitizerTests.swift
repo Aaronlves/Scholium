@@ -16,9 +16,10 @@ struct CSSSnippetSanitizerTests {
         #expect(result.readCSS.contains(".scholium-document h1"))
         #expect(result.readCSS.contains(".scholium-document p"))
         #expect(result.livePreviewCSS.contains(".cm-live-h1"))
-        #expect(result.livePreviewCSS.contains(".cm-line"))
+        #expect(result.livePreviewCSS.contains(".cm-live-paragraph"))
+        #expect(!result.livePreviewCSS.contains(".scholium-live-mode .cm-line"))
         #expect(result.livePreviewCSS.contains(".cm-live-code"))
-        #expect(result.livePreviewCSS.contains("#editor .scholium-live-mode .cm-content"))
+        #expect(result.livePreviewCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
     }
 
     @Test("Network, cascade escape, and HTML injection are rejected", arguments: [

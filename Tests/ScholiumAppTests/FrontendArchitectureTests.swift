@@ -190,7 +190,7 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("ScholiumWindowModelFocusedKey"))
     }
 
-    @Test("The native split owns Inspector visibility while protecting Document reachability")
+    @Test("The native split protects Document reachability and Library readability")
     func compactLibraryReachability() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -242,18 +242,20 @@ struct FrontendArchitectureTests {
         #expect(!contentSource.contains("updateLibraryVisibilityForDocumentChange"))
         #expect(splitSource.contains("NSSplitViewController"))
         #expect(splitSource.contains(
-            "libraryItem = NSSplitViewItem(sidebarWithViewController: libraryHost)"
+            "sidebarWithViewController: libraryBackgroundController"
         ))
         #expect(!splitSource.contains("libraryItem.canCollapseFromWindowResize = false"))
         #expect(splitSource.contains(
-            "inspectorWithViewController: apparatusHost"
+            "inspectorWithViewController: apparatusBackgroundController"
         ))
         #expect(!splitSource.contains("preferredThicknessFraction"))
         #expect(!splitSource.contains("libraryOpeningSize"))
         #expect(!splitSource.contains("libraryHost.sizingOptions = []"))
         #expect(!splitSource.contains("preferredContentSize"))
         #expect(!splitSource.contains("ScholiumWorkspaceSplitHoldingPriority"))
-        #expect(!splitSource.contains("libraryItem.minimumThickness"))
+        #expect(splitSource.contains(
+            "libraryItem.minimumThickness = ScholiumMetrics.Library.minimumReadableWidth"
+        ))
         #expect(!splitSource.contains("libraryItem.maximumThickness"))
         #expect(!splitSource.contains("libraryItem.automaticMaximumThickness"))
         #expect(!splitSource.contains("documentItem.minimumThickness"))
@@ -282,6 +284,25 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("rememberResearchInspectorWidth"))
         #expect(!splitSource.contains("splitView.adjustSubviews"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
+        #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
+        #expect(!splitSource.contains("NSBackgroundExtensionView"))
+        #expect(splitSource.contains("installTitlebarControl(at: .trailing)"))
+        #expect(splitSource.contains("installTitlebarControl(at: .leading)"))
+        #expect(splitSource.contains("host.safeAreaRegions = []"))
+        #expect(splitSource.contains("backgroundHost.safeAreaRegions = []"))
+        #expect(!splitSource.contains("NSSplitViewItemAccessoryViewController"))
+        #expect(splitSource.contains("identifier: \"scholium.toggleSidebar\""))
+        #expect(splitSource.contains("identifier: \"scholium.toggleInspector\""))
+        #expect(splitSource.contains(
+            "rootView: backgroundRole.colorRole.color"
+        ))
+        #expect(splitSource.contains(
+            "equalTo: containerView.topAnchor"
+        ))
+        #expect(splitSource.contains(
+            "equalTo: containerView.safeAreaLayoutGuide.topAnchor"
+        ))
+        #expect(contentSource.contains(".ignoresSafeArea(.container, edges: .top)"))
         #expect(!splitSource.contains("workspaceWindowDidBecomeKey"))
         #expect(splitSource.contains("researchInspectorVisibilityDidChange"))
         #expect(!contentSource.contains("availableSize: geometry.size"))
@@ -305,6 +326,10 @@ struct FrontendArchitectureTests {
             ".accessibilityIdentifier(\"scholium.triptychManagement\")"
         ))
         #expect(toolbarSource.contains("identifier: \"scholium.toggleSidebar\""))
+        #expect(toolbarSource.contains("private var desiredItemIdentifiers"))
+        #expect(toolbarSource.contains("if !appState.sidebarVisible"))
+        #expect(toolbarSource.contains("if !appState.researchInspectorVisible"))
+        #expect(toolbarSource.contains("toolbar.itemIdentifiers = desired"))
         #expect(toolbarSource.contains("NSTrackingSeparatorToolbarItem("))
         #expect(toolbarSource.contains("dividerIndex: 0"))
         #expect(toolbarSource.contains("dividerIndex: 1"))
@@ -320,26 +345,51 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("ScholiumWorkspaceDocumentActionsToolbarView"))
         #expect(!contentSource.contains("private func documentIdentityHeader"))
         #expect(!contentSource.contains("documentIdentityHeader(for:"))
-        #expect(toolbarSource.contains(".toggleInspector"))
-        #expect(toolbarSource.contains("item.target = self"))
-        #expect(toolbarSource.contains("item.action = #selector(toggleInspector(_:))"))
-        #expect(toolbarSource.contains("if let control = item.view as? NSControl"))
-        #expect(toolbarSource.contains("control.target = self"))
+        #expect(toolbarSource.contains("static let inspector = NSToolbarItem.Identifier"))
+        #expect(toolbarSource.contains("\"scholium.toolbar.inspector\""))
+        #expect(toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
+        #expect(toolbarSource.contains("identifier: \"scholium.toggleInspector\""))
         #expect(toolbarSource.contains(
-            "windowActions.setResearchInspectorVisible(!appState.researchInspectorVisible)"
+            "windowActions.setResearchInspectorVisible(true)"
         ))
-        #expect(toolbarSource.contains("item.autovalidates = false"))
-        #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
-        #expect(!toolbarSource.contains("static let inspector ="))
+        #expect(toolbarSource.contains(
+            ".disabled(appState.documentController.selectedDocument == nil)"
+        ))
+        #expect(toolbarSource.contains(
+            "title: ScholiumL10n.dynamicString(\"Show Research Inspector\")"
+        ))
+        #expect(!toolbarSource.contains("identifiers.append(.toggleInspector)"))
+        #expect(!toolbarSource.contains("case .toggleInspector"))
+        #expect(!toolbarSource.contains("updateStandardInspectorItem"))
+        #expect(!toolbarSource.contains("#selector(toggleInspector"))
+        #expect(toolbarSource.contains(
+            "let item = NSToolbarItem(itemIdentifier: identifier)"
+        ))
+        #expect(toolbarSource.contains(
+            "host.layer?.backgroundColor = NSColor.clear.cgColor"
+        ))
+        #expect(toolbarSource.contains(
+            "item.isBordered = false"
+        ))
+        #expect(toolbarSource.contains(
+            "item.style = .plain"
+        ))
         #expect(!toolbarSource.contains("glassEffect"))
         #expect(noteSource.contains("private var inspectorTabs"))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
+        #expect(windowManagementSource.contains("scholium.workspaceToolbar.loading"))
+        #expect(windowManagementSource.contains("installLoadingToolbarIfNeeded()"))
+        #expect(windowManagementSource.contains(
+            "loadingToolbar.itemIdentifiers = [.flexibleSpace]"
+        ))
         #expect(!windowManagementSource.contains("window.styleMask.remove(.fullSizeContentView)"))
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
-        #expect(!contentSource.contains(".toolbarBackgroundVisibility("))
+        #expect(contentSource.contains(
+            ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
+        ))
         #expect(!appSource.contains("Collapse Note"))
         #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.libraryHierarchy)"))
         #expect(sidebarSource.contains("ScholiumInterfaceTypography.metadata"))
@@ -351,6 +401,59 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Library.contentInset
                 == ScholiumMetrics.Peripheral.contentInset
         )
+        #expect(ScholiumMetrics.Library.minimumReadableWidth == 300)
+    }
+
+    @Test("The semantic Library sidebar receives the readable minimum without replacing AppKit behavior")
+    func librarySidebarReadableMinimum() throws {
+        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
+            initialLibraryVisible: true,
+            initialApparatusVisible: false,
+            documentTabs: [],
+            selectedDocumentTabID: nil,
+            selectDocumentTab: { _ in },
+            closeDocumentTab: { _ in },
+            libraryVisibilityDidChange: { _ in },
+            researchInspectorVisibilityDidChange: { _ in },
+            splitControllerDidAttach: { _ in },
+            splitControllerDidDetach: { _ in },
+            library: EmptyView(),
+            document: EmptyView(),
+            apparatus: EmptyView()
+        )
+
+        _ = controller.view
+        let libraryItem = try #require(controller.splitViewItems.first)
+
+        #expect(libraryItem.behavior == .sidebar)
+        #expect(libraryItem.minimumThickness == ScholiumMetrics.Library.minimumReadableWidth)
+        #expect(libraryItem.canCollapse)
+        #expect(libraryItem.canCollapseFromWindowResize)
+        #expect(libraryItem.topAlignedAccessoryViewControllers.isEmpty)
+        #expect(controller.splitViewItems[1].topAlignedAccessoryViewControllers.isEmpty)
+        #expect(controller.splitViewItems[2].topAlignedAccessoryViewControllers.isEmpty)
+        #expect(controller.minimumThicknessForInlineSidebars == NSSplitViewController.automaticDimension)
+    }
+
+    @Test("Native split backgrounds fill the titlebar without an extension effect")
+    func nativeSurfaceContainer() throws {
+        let contentController = NSViewController()
+        contentController.view = NSView()
+        let controller = ScholiumSurfaceContainerViewController(
+            contentViewController: contentController,
+            backgroundRole: .navigation
+        )
+
+        _ = controller.view
+        let background = controller.backgroundView
+
+        #expect(controller.children == [contentController])
+        #expect(background.superview === controller.view)
+        #expect(background !== contentController.view)
+        #expect(!background.translatesAutoresizingMaskIntoConstraints)
+        #expect(contentController.view.superview === controller.view)
+        #expect(controller.view.subviews.first === background)
+        #expect(controller.view.subviews.last === contentController.view)
     }
 
     @Test("Research Inspector uses AppKit's unmodified semantic item")
@@ -439,8 +542,9 @@ struct FrontendArchitectureTests {
         #expect(
             sidebarSource.components(
                 separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
-            ).count >= 5
+            ).count >= 4
         )
+        #expect(sidebarSource.contains("ScholiumInkIconControl("))
 
         for section in ["Review", "Integrity", "Metadata", "Properties", "Order", "Actions"] {
             #expect(sidebarSource.contains("Section(\"\(section)\")"))
@@ -448,7 +552,81 @@ struct FrontendArchitectureTests {
 
         #expect(sidebarSource.contains("SidebarRecommendedBibliographySection("))
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
-        #expect(sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
+        #expect(!sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
+        #expect(sidebarSource.contains("            sidebarBottomRegion\n        }"))
+    }
+
+    @Test("Lifecycle destinations reuse the Library grid without overlay chrome")
+    func lifecycleDestinationGridContract() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sidebarSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for required in [
+            "SidebarLifecycleDestinationView",
+            "ScholiumMetrics.Library.contentInset",
+            "ScholiumMetrics.Library.hierarchyRowHeight",
+            "ScholiumMetrics.Accessibility.preferredCustomTarget",
+            "ScholiumMetrics.Accessibility.minimumCustomTarget",
+            "ScholiumMetrics.Workspace.libraryFooterHeight",
+            "ScholiumGrid.Spacing.inlineControlGap",
+            "ScholiumGrid.Spacing.labelAccessoryGap",
+            "ScholiumGrid.Spacing.sectionSeparation",
+            "ScholiumMotion.disclosure(reduceMotion: reduceMotion)",
+            "ScholiumInkIconControl(",
+            ".accessibilityHidden(lifecycleDestinationScope != nil)",
+            ".overlay(alignment: .topLeading)",
+            "@AccessibilityFocusState private var putBackHasAccessibilityFocus",
+            "scholium.lifecycleDestination.setAside",
+            "scholium.lifecycleDestination.trash",
+            "scholium.lifecycleHeading.setAside",
+            "scholium.lifecycleHeading.trash",
+            "scholium.lifecycleBack",
+            "scholium.lifecyclePutBack.",
+        ] {
+            #expect(sidebarSource.contains(required), "Missing lifecycle destination contract: \(required)")
+        }
+
+        for removed in [
+            "SidebarLifecycleCard",
+            ".boundedPanel",
+            "0.48",
+            ".move(edge: .bottom)",
+            ".snappy(duration: 0.2)",
+            "HStack(spacing: 24)",
+            ".padding(.horizontal, 61)",
+            ".frame(minHeight: 170, idealHeight: 280, maxHeight: 360)",
+        ] {
+            #expect(!sidebarSource.contains(removed), "Retired lifecycle overlay remains: \(removed)")
+        }
+        #expect(!sidebarSource.contains("private enum SidebarSpacing"))
+        #expect(!sidebarSource.contains("private enum LifecycleSpacing"))
+    }
+
+    @Test("Attention search stays inside Library and does not mutate the native toolbar")
+    func attentionSearchOwnershipContract() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let attentionSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/AttentionQueueView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(attentionSource.contains("TextField(\"Search Attention\""))
+        #expect(attentionSource.contains("scholium.attentionSearch"))
+        #expect(!attentionSource.contains(".searchable("))
+        #expect(!attentionSource.contains("placement: .toolbar"))
     }
 
     @Test("Overview, Connections, and Functions share one Apparatus geometry")
@@ -597,11 +775,10 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.documentSearch\""))
         #expect(toolbar.contains("\"scholium.showResearchRecord\""))
         #expect(toolbar.contains("windowActions.showResearchRecord()"))
-        #expect(toolbar.contains(".toggleInspector"))
+        #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
+        #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(toolbar.contains("static let researchRecord"))
-        #expect(toolbar.contains(
-            "item.isEnabled = appState.documentController.selectedDocument != nil"
-        ))
+        #expect(toolbar.contains("selectedDocument == nil"))
         #expect(toolbar.contains(".disabled(!isAvailable)"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
@@ -1011,10 +1188,10 @@ struct FrontendArchitectureTests {
         )
 
         #expect(splitSource.contains(
-            "NSSplitViewItem(sidebarWithViewController: libraryHost)"
+            "sidebarWithViewController: libraryBackgroundController"
         ))
         #expect(splitSource.contains(
-            "inspectorWithViewController: apparatusHost"
+            "inspectorWithViewController: apparatusBackgroundController"
         ))
         #expect(splitSource.contains("splitControllerDidAttach(self)"))
         #expect(splitSource.contains("splitControllerDidDetach(self)"))
@@ -1027,6 +1204,8 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("dividerIndex: 0"))
         #expect(toolbarSource.contains("dividerIndex: 1"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
+        #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
+        #expect(!splitSource.contains("NSBackgroundExtensionView"))
         #expect(toolbarSource.contains("item.isBordered = false"))
     }
 
@@ -1048,7 +1227,7 @@ struct FrontendArchitectureTests {
         })
 
         #expect(cssNames == nativeNames)
-        #expect(Set(ScholiumWebDesignTokens.colorVariableNames) == nativeNames)
+        #expect(Set(ScholiumWebDesignTokens.resolvedColorRoleCSSVariableNames) == nativeNames)
 
         for declarations in [
             ScholiumWebDesignTokens.rootCSSDeclarations,
@@ -1114,6 +1293,53 @@ struct FrontendArchitectureTests {
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
     }
 
+    @Test("Adaptive editorial grid exposes semantic roles and explicit document units")
+    func adaptiveEditorialGridContract() throws {
+        #expect(ScholiumGrid.foundationUnit == 4)
+        #expect(ScholiumGrid.Spacing.opticalAlignmentAdjustment == 2)
+        #expect(ScholiumGrid.Spacing.labelAccessoryGap == 4)
+        #expect(ScholiumGrid.Spacing.inlineControlGap == 8)
+        #expect(ScholiumGrid.Spacing.nestedContentInset == 12)
+        #expect(ScholiumGrid.Spacing.sectionSeparation == 16)
+        #expect(ScholiumGrid.Spacing.regionContentInset == 20)
+        #expect(ScholiumGrid.Spacing.documentShellInsetCSSPixels == 32)
+        #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
+        #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
+        #expect(ScholiumGrid.Dimension.documentTabStripHeight == 40)
+        #expect(ScholiumGrid.Dimension.researchFunctionTargetHeight == 44)
+        #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
+        #expect(ScholiumGrid.Dimension.libraryFooterHeight == 52)
+        #expect(ScholiumGrid.Document.readableMeasureCharacters == 50)
+        #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
+
+        #expect(ScholiumMetrics.Peripheral.contentInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Peripheral.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
+        #expect(ScholiumMetrics.Library.hierarchyRowHeight == ScholiumGrid.Dimension.compactHierarchyRowHeight)
+        #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let foundation = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
+        let tabs = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(!foundation.contains("510.666"))
+        #expect(!foundation.contains("32.333"))
+        #expect(!foundation.contains("383 CSS-typographic-point"))
+        #expect(tabs.contains("ScholiumGrid.Dimension.documentTabStripHeight"))
+        #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
+    }
+
     @Test("Live Preview omits Source chrome and consumes shared document layout")
     func livePreviewPresentationContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
@@ -1150,7 +1376,7 @@ struct FrontendArchitectureTests {
         }
         #expect(editorSource.contains("const sourceMode = ["))
         #expect(editorSource.contains(
-            "modeCompartment.reconfigure(mode === \"livePreview\" ? livePreviewMode : sourceMode)"
+            "modeCompartment.reconfigure(nextMode === \"livePreview\" ? livePreviewMode : sourceMode)"
         ))
 
         #expect(editorStyles.contains(".scholium-live-mode .cm-lineNumbers"))
@@ -1160,8 +1386,10 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains("#editor .cm-scroller.scholium-source-scroller"))
         #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-live-scroller\""))
         #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-source-scroller\""))
-        #expect(editorStyles.contains("padding-inline: var(--scholium-rhythm-inline-regular)"))
-        #expect(editorStyles.contains(
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular)"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             "padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after)"
         ))
 
@@ -1169,8 +1397,8 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains("var(--scholium-document-readable-measure)"))
         #expect(editorStyles.contains("var(--scholium-document-content-top-inset)"))
         #expect(editorStyles.contains("var(--scholium-document-text-scale)"))
-        #expect(ScholiumWebDesignTokens.responsiveLayoutCSS.contains(
-            "max-width: \(ScholiumDocumentRhythm.narrowWidthThreshold)px"
+        #expect(ScholiumDocumentPresentationConfiguration(textScale: 1).css.contains(
+            "@media (max-width:"
         ))
     }
 
@@ -1195,8 +1423,8 @@ struct FrontendArchitectureTests {
                 "ScholiumColorRole.destructive",
             ],
             "Scholium/Views/Sidebar/SidebarView.swift": [
-                "scholiumEditorialSurface(",
-                ".boundedPanel",
+                ".background(ScholiumColorRole.surfaceBackground.color)",
+                "SidebarLifecycleDestinationView(",
                 "ScholiumColorRole.confirmed",
             ],
             "Scholium/Views/Note/NoteContentView.swift": [
@@ -1242,202 +1470,151 @@ struct FrontendArchitectureTests {
         #expect(!body.contains("withAnimation"))
     }
 
-    @Test("Light and dark appearances use the reviewed Scholium palettes")
+    @Test("Two color Variables resolve the approved light, dark, and contrast roles")
     func reviewedAppearancePalettes() throws {
         #expect(ScholiumInlineStatusKind.information.colorRole == .information)
+        #expect(ScholiumColorVariable.allCases == [.accent, .paper])
+        #expect(ScholiumColorVariables.editorialCopper[.accent] == 0xA94C22)
+        #expect(ScholiumColorVariables.editorialCopper[.paper] == 0xF8F0E2)
 
-        let expectedLight: [ScholiumLightPalette: UInt32] = [
-            .primary: 0xA94C22,
-            .primaryHover: 0x7A2917,
-            .notificationHighlight: 0xB47617,
-            .neutral: 0x706B65,
-            .background: 0xFFFCF5,
-            .navigation: 0xEFE9DF,
-            .surface: 0xF7F1E7,
-            .surfaceRaised: 0xDED3C5,
-            .textPrimary: 0x17191C,
-            .textSecondary: 0x514D48,
-            .border: 0xC8BCAE,
-            .confirmed: 0x2C7048,
-            .attention: 0x976015,
-            .destructive: 0xA13235,
-            .information: 0x315F88,
-            .agentAuthorship: 0x5D568F,
-            .connectionSupport: 0x276F68,
-            .connectionIncompatible: 0x6F4D83,
+        let expectedLight: [ScholiumColorRole: UInt32] = [
+            .documentBackground: 0xFFF9F0,
+            .surfaceBackground: 0xF2EADC,
+            .raisedSurfaceBackground: 0xE3DBCE,
+            .primaryText: 0x15110B,
+            .secondaryText: 0x423C31,
+            .mutedText: 0x5B5449,
+            .separator: 0xB7B0A3,
+            .accent: 0x9F4318,
+            .accentHover: 0x812F02,
+            .notificationHighlight: 0xAD7B3D,
+            .information: 0x3D6379,
+            .attention: 0x81520A,
+            .destructive: 0x8D453E,
+            .confirmed: 0x40684E,
+            .agentAuthorship: 0x61577C,
+            .connectionNeutral: 0x6F593F,
+            .connectionSupport: 0x326960,
+            .connectionIncompatible: 0x72516A,
         ]
-        #expect(Set(expectedLight.keys) == Set(ScholiumLightPalette.allCases))
-        for (role, value) in expectedLight {
-            #expect(role.rawValue == value)
-        }
+        let expectedDark: [ScholiumColorRole: UInt32] = [
+            .documentBackground: 0x2F2920,
+            .surfaceBackground: 0x3F3A30,
+            .raisedSurfaceBackground: 0x4E483E,
+            .primaryText: 0xF0EAE1,
+            .secondaryText: 0xD1CABC,
+            .mutedText: 0xBFB8AB,
+            .separator: 0x7D766A,
+            .accent: 0xFFA17B,
+            .accentHover: 0xFEAE8E,
+            .notificationHighlight: 0xDAA668,
+            .information: 0x95BED6,
+            .attention: 0xE3AF71,
+            .destructive: 0xF6A39A,
+            .confirmed: 0x99C4A6,
+            .agentAuthorship: 0xBDB3DD,
+            .connectionNeutral: 0xCCB396,
+            .connectionSupport: 0x8CC5BA,
+            .connectionIncompatible: 0xD2ADC8,
+        ]
+        let expectedIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
+            .documentBackground: 0xFFF9F0,
+            .surfaceBackground: 0xF2EADC,
+            .raisedSurfaceBackground: 0xE3DBCE,
+            .primaryText: 0x15110B,
+            .secondaryText: 0x423C31,
+            .mutedText: 0x494338,
+            .separator: 0x8C8579,
+            .accent: 0x6E2B0A,
+            .accentHover: 0x501A01,
+            .notificationHighlight: 0x95631E,
+            .information: 0x163C50,
+            .attention: 0x4E3107,
+            .destructive: 0x681212,
+            .confirmed: 0x1A4129,
+            .agentAuthorship: 0x3B3154,
+            .connectionNeutral: 0x48331A,
+            .connectionSupport: 0x01423A,
+            .connectionIncompatible: 0x4A2C43,
+        ]
+        let expectedIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
+            .documentBackground: 0x2F2920,
+            .surfaceBackground: 0x3F3A30,
+            .raisedSurfaceBackground: 0x4E483E,
+            .primaryText: 0xF0EAE1,
+            .secondaryText: 0xEBE4D6,
+            .mutedText: 0xEBE4D6,
+            .separator: 0xA59D91,
+            .accent: 0xFEDCCF,
+            .accentHover: 0xFDDED2,
+            .notificationHighlight: 0xF6BF7E,
+            .information: 0xC5E8FD,
+            .attention: 0xFEDFBC,
+            .destructive: 0xFFDBD6,
+            .confirmed: 0xC3EFD0,
+            .agentAuthorship: 0xE6E0FD,
+            .connectionNeutral: 0xFAE0C2,
+            .connectionSupport: 0xB6F0E5,
+            .connectionIncompatible: 0xFFDBF5,
+        ]
 
-        let expectedDark: [ScholiumDarkPalette: UInt32] = [
-            .primary: 0xEF8D5B,
-            .primaryHover: 0xF5AA7B,
-            .notificationHighlight: 0xE1B64F,
-            .neutral: 0xB6A38F,
-            .background: 0x302A26,
-            .navigation: 0x3A2B2B,
-            .surface: 0x3A322D,
-            .surfaceRaised: 0x423831,
-            .textPrimary: 0xF4E8D5,
-            .textSecondary: 0xD4C2AD,
-            .border: 0x807064,
-            .confirmed: 0x7FC39A,
-            .attention: 0xE0AB61,
-            .destructive: 0xEA817C,
-            .information: 0x84B0D4,
-            .agentAuthorship: 0xB5A6DC,
-            .connectionSupport: 0x79B9AB,
-            .connectionIncompatible: 0xC29CCF,
-        ]
-        #expect(Set(expectedDark.keys) == Set(ScholiumDarkPalette.allCases))
-        for (role, value) in expectedDark {
-            #expect(role.rawValue == value)
-        }
-
-        let expectedLightCSS = [
-            "--scholium-color-document-background: #fffcf5",
-            "--scholium-color-navigation-background: #efe9df",
-            "--scholium-color-surface-background: #f7f1e7",
-            "--scholium-color-raised-surface-background: #ded3c5",
-            "--scholium-color-primary-text: #17191c",
-            "--scholium-color-secondary-text: #514d48",
-            "--scholium-color-muted-text: #706b65",
-            "--scholium-color-separator: #c8bcae",
-            "--scholium-color-accent: #a94c22",
-            "--scholium-color-accent-hover: #7a2917",
-            "--scholium-color-notification-highlight: #b47617",
-            "--scholium-color-information: #315f88",
-            "--scholium-color-attention: #976015",
-            "--scholium-color-destructive: #a13235",
-            "--scholium-color-confirmed: #2c7048",
-            "--scholium-color-agent-authorship: #5d568f",
-            "--scholium-color-connection-support: #276f68",
-            "--scholium-color-connection-incompatible: #6f4d83",
-        ]
-        for declaration in expectedLightCSS {
-            #expect(ScholiumWebDesignTokens.rootCSSDeclarations.contains(declaration))
-        }
-
-        let expectedDarkCSS = [
-            "--scholium-color-document-background: #302a26",
-            "--scholium-color-navigation-background: #3a2b2b",
-            "--scholium-color-surface-background: #3a322d",
-            "--scholium-color-raised-surface-background: #423831",
-            "--scholium-color-primary-text: #f4e8d5",
-            "--scholium-color-secondary-text: #d4c2ad",
-            "--scholium-color-muted-text: #b6a38f",
-            "--scholium-color-separator: #807064",
-            "--scholium-color-accent: #ef8d5b",
-            "--scholium-color-accent-hover: #f5aa7b",
-            "--scholium-color-notification-highlight: #e1b64f",
-            "--scholium-color-information: #84b0d4",
-            "--scholium-color-attention: #e0ab61",
-            "--scholium-color-destructive: #ea817c",
-            "--scholium-color-confirmed: #7fc39a",
-            "--scholium-color-agent-authorship: #b5a6dc",
-            "--scholium-color-connection-support: #79b9ab",
-            "--scholium-color-connection-incompatible: #c29ccf",
-        ]
-        for declaration in expectedDarkCSS {
-            #expect(ScholiumWebDesignTokens.darkAppearanceCSSDeclarations.contains(declaration))
+        for palette in [
+            expectedLight,
+            expectedDark,
+            expectedIncreasedContrastLight,
+            expectedIncreasedContrastDark,
+        ] {
+            #expect(Set(palette.keys) == Set(ScholiumColorRole.allCases))
         }
 
         let aqua = try #require(NSAppearance(named: .aqua))
         let darkAqua = try #require(NSAppearance(named: .darkAqua))
-        let expectedNativeLightRoles: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0xFFFCF5,
-            .navigationBackground: 0xEFE9DF,
-            .surfaceBackground: 0xF7F1E7,
-            .raisedSurfaceBackground: 0xDED3C5,
-            .primaryText: 0x17191C,
-            .secondaryText: 0x514D48,
-            .mutedText: 0x706B65,
-            .separator: 0xC8BCAE,
-            .accent: 0xA94C22,
-            .accentHover: 0x7A2917,
-            .notificationHighlight: 0xB47617,
-            .information: 0x315F88,
-            .attention: 0x976015,
-            .attentionForeground: 0x976015,
-            .destructive: 0xA13235,
-            .destructiveForeground: 0xA13235,
-            .confirmed: 0x2C7048,
-            .confirmedForeground: 0x2C7048,
-            .agentAuthorship: 0x5D568F,
-            .connectionNeutral: 0xA94C22,
-            .connectionSupport: 0x276F68,
-            .connectionIncompatible: 0x6F4D83,
+        for role in ScholiumColorRole.allCases {
+            let light = try #require(expectedLight[role])
+            let dark = try #require(expectedDark[role])
+            let contrastLight = try #require(expectedIncreasedContrastLight[role])
+            let contrastDark = try #require(expectedIncreasedContrastDark[role])
+            #expect(role.resolvedRGBValue(for: aqua, increasedContrast: false) == light)
+            #expect(role.resolvedRGBValue(for: darkAqua, increasedContrast: false) == dark)
+            #expect(role.resolvedRGBValue(for: aqua, increasedContrast: true) == contrastLight)
+            #expect(role.resolvedRGBValue(for: darkAqua, increasedContrast: true) == contrastDark)
+            #expect(rgbValue(of: role.nsColor(increasedContrast: false), appearance: aqua) == light)
+            #expect(rgbValue(of: role.nsColor(increasedContrast: false), appearance: darkAqua) == dark)
+        }
+
+        for (palette, declarations) in [
+            (expectedLight, ScholiumWebDesignTokens.rootCSSDeclarations),
+            (expectedDark, ScholiumWebDesignTokens.darkAppearanceCSSDeclarations),
+            (expectedIncreasedContrastLight, ScholiumWebDesignTokens.increasedContrastCSSDeclarations),
+            (expectedIncreasedContrastDark, ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations),
+        ] {
+            for (role, value) in palette {
+                let declaration = "\(role.cssVariableName): \(String(format: "#%06x", value));"
+                #expect(declarations.contains(declaration))
+            }
+        }
+
+        let foregroundRoles: [ScholiumColorRole] = [
+            .primaryText, .secondaryText, .mutedText, .accent, .accentHover,
+            .information, .attention, .destructive, .confirmed, .agentAuthorship,
+            .connectionNeutral, .connectionSupport, .connectionIncompatible,
         ]
-        for (role, expectedValue) in expectedNativeLightRoles {
-            #expect(rgbValue(
-                of: role.nsColor(increasedContrast: false),
-                appearance: aqua
-            ) == expectedValue)
-        }
-
-        let expectedNativeDarkRoles: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0x302A26,
-            .navigationBackground: 0x3A2B2B,
-            .surfaceBackground: 0x3A322D,
-            .raisedSurfaceBackground: 0x423831,
-            .primaryText: 0xF4E8D5,
-            .secondaryText: 0xD4C2AD,
-            .mutedText: 0xB6A38F,
-            .separator: 0x807064,
-            .accent: 0xEF8D5B,
-            .accentHover: 0xF5AA7B,
-            .notificationHighlight: 0xE1B64F,
-            .information: 0x84B0D4,
-            .attention: 0xE0AB61,
-            .attentionForeground: 0xE0AB61,
-            .destructive: 0xEA817C,
-            .destructiveForeground: 0xEA817C,
-            .confirmed: 0x7FC39A,
-            .confirmedForeground: 0x7FC39A,
-            .agentAuthorship: 0xB5A6DC,
-            .connectionNeutral: 0xEF8D5B,
-            .connectionSupport: 0x79B9AB,
-            .connectionIncompatible: 0xC29CCF,
+        let backgroundRoles: [ScholiumColorRole] = [
+            .documentBackground, .surfaceBackground, .raisedSurfaceBackground,
         ]
-        for (role, expectedValue) in expectedNativeDarkRoles {
-            #expect(rgbValue(
-                of: role.nsColor(increasedContrast: false),
-                appearance: darkAqua
-            ) == expectedValue)
-        }
-
-        for foreground in [
-            0x17191C,
-            0x514D48,
-            0x706B65,
-            0xA94C22,
-            0x315F88,
-            0x976015,
-            0xA13235,
-            0x2C7048,
-            0x5D568F,
-            0x276F68,
-            0x6F4D83,
-        ] as [UInt32] {
-            #expect(contrastRatio(foreground, 0xF7F1E7) >= 4.5)
-        }
-
-        for foreground in [
-            0xF4E8D5,
-            0xD4C2AD,
-            0xB6A38F,
-            0xEF8D5B,
-            0x84B0D4,
-            0xE0AB61,
-            0xEA817C,
-            0x7FC39A,
-            0xB5A6DC,
-            0x79B9AB,
-            0xC29CCF,
-        ] as [UInt32] {
-            #expect(contrastRatio(foreground, 0x3A322D) >= 4.5)
+        for (palette, target) in [
+            (expectedLight, 4.5),
+            (expectedDark, 4.5),
+            (expectedIncreasedContrastLight, 7.0),
+            (expectedIncreasedContrastDark, 7.0),
+        ] {
+            for foregroundRole in foregroundRoles {
+                let foreground = try #require(palette[foregroundRole])
+                for backgroundRole in backgroundRoles {
+                    let background = try #require(palette[backgroundRole])
+                    #expect(contrastRatio(foreground, background) >= target)
+                }
+            }
         }
     }
 
@@ -1454,13 +1631,13 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
     }
 
-    @Test("Semantic surfaces, depth, and boundaries adapt without numbered scales")
+    @Test("Semantic surfaces, depth, and boundaries adapt without numbered visual scales")
     func semanticSurfaceRecipeContract() {
         #expect(Set(ScholiumSurfaceRole.allCases) == Set([
             .document, .navigation, .apparatus, .floatingControl,
             .boundedPanel, .searchOverlay, .denseEvidence,
         ]))
-        #expect(ScholiumSurfaceRole.navigation.colorRole == .navigationBackground)
+        #expect(ScholiumSurfaceRole.navigation.colorRole == .surfaceBackground)
         #expect(ScholiumSurfaceRole.document.colorRole == .documentBackground)
         #expect(ScholiumSurfaceRole.apparatus.colorRole == .surfaceBackground)
         #expect(ScholiumSurfaceRole.floatingControl.defaultBoundaryRole == .floatingBoundary)
@@ -1524,11 +1701,8 @@ struct FrontendArchitectureTests {
         ).opacity == 0.78)
     }
 
-    @Test("Document rhythm remains renderer-aware and is shared at runtime")
-    func provisionalDocumentRhythmContract() throws {
-        // The exact rhythm is intentionally provisional until the dedicated
-        // Editor pass. Keep testing the renderer contract without freezing a
-        // visual trial as a permanent acceptance value.
+    @Test("Document grid remains renderer-aware and is shared at runtime")
+    func documentGridContract() throws {
         for renderer in ScholiumDocumentRenderer.allCases {
             for widthClass in ScholiumDocumentWidthClass.allCases {
                 let insets = ScholiumDocumentRhythm.contentInsets(
@@ -1540,6 +1714,14 @@ struct FrontendArchitectureTests {
             }
         }
 
+        #expect(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline == 32)
+        #expect(ScholiumDocumentRhythm.contentInsets(for: .livePreview, widthClass: .regular).inline == 32)
+        #expect(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline == 40)
+        #expect(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline == 20)
+        #expect(ScholiumDocumentRhythm.paragraphGapCSSPixels == 12)
+        #expect(ScholiumDocumentRhythm.headingGapBeforeCSSPixels == 24)
+        #expect(ScholiumDocumentRhythm.headingGapAfterCSSPixels == 8)
+
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
@@ -1548,16 +1730,47 @@ struct FrontendArchitectureTests {
         }
         #expect(editorHTML.contains(sharedCSS))
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
-        #expect(sharedCSS.contains(ScholiumWebDesignTokens.responsiveLayoutCSS))
+        #expect(sharedCSS.contains("--scholium-document-readable-measure: 50.0ch"))
+        #expect(sharedCSS.contains("max-inline-size: calc("))
+        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
+        #expect(presentationCSS.contains("padding-inline: var(--scholium-rhythm-inline-narrow)"))
+        #expect(presentationCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
     }
 
-    @Test("Read mode injects the protected callout presentation")
+    @Test("Read and Live Preview inject one protected callout presentation")
     func readModeInjectsProtectedCalloutPresentation() {
         let css = SafeMarkdownReadWebView.Coordinator.baseCSS
+        let calloutCSS = ScholiumCalloutStyles.css
+        let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
 
         #expect(css.contains(".scholium-callout"))
-        #expect(css.contains(".cm-live-callout"))
         #expect(!css.contains("(ScholiumCalloutStyles.css)"))
+        #expect(css.contains(calloutCSS))
+        #expect(editorHTML.contains(calloutCSS))
+        #expect(editorHTML.contains(".cm-live-callout-widget"))
+        #expect(calloutCSS.contains(".scholium-callout-role,\n.scholium-callout-title"))
+        #expect(calloutCSS.contains(".scholium-callout-role {\n  position: absolute;"))
+        #expect(!calloutCSS.contains(".cm-live-callout-role"))
+        #expect(calloutCSS.contains("--scholium-callout-surface: color-mix("))
+        #expect(calloutCSS.contains("background: transparent;"))
+        #expect(calloutCSS.contains(".scholium-callout-cite,\n.scholium-callout-flag {"))
+        #expect(calloutCSS.contains("padding-block: .72rem .8rem;"))
+        #expect(calloutCSS.contains("background: var(--scholium-callout-surface);"))
+        #expect(calloutCSS.contains(".scholium-callout-flag {\n  background: var(--scholium-callout-surface-emphasis);"))
+        #expect(!calloutCSS.contains("border-inline-start:"))
+        #expect(calloutCSS.contains(".scholium-callout-orient > header .scholium-callout-heading,"))
+        #expect(calloutCSS.contains("aside.scholium-callout-state > header,"))
+        #expect(calloutCSS.contains("aside.scholium-callout-state .scholium-callout-heading {\n  display: inline;"))
+        #expect(calloutCSS.contains("aside.scholium-callout-illustrate {\n  display: grid;"))
+        #expect(calloutCSS.contains("aside.scholium-callout-quote > header {\n  order: 2;"))
+        #expect(calloutCSS.contains(".scholium-callout-quote .scholium-callout-quotation,"))
+        #expect(calloutCSS.contains("background: radial-gradient(circle,"))
+        #expect(!calloutCSS.contains("linear-gradient("))
+        #expect(!calloutCSS.contains("clip-path: polygon("))
+        #expect(!calloutCSS.contains("border-radius: 50%"))
+        #expect(calloutCSS.contains("text-align: start;"))
+        #expect(!calloutCSS.contains("text-align: justify;"))
+        #expect(!calloutCSS.contains("text-align-last:"))
     }
 
     @Test("Read and Live Preview share one offline mathematics runtime and font set")
@@ -1592,6 +1805,7 @@ struct FrontendArchitectureTests {
             selectionEnabled: false,
             researcherComments: [],
             linkPreviews: [],
+            presentationCSS: "",
             userCSS: ""
         ).contains(css))
     }
@@ -1615,6 +1829,7 @@ struct FrontendArchitectureTests {
             selectionEnabled: false,
             researcherComments: [],
             linkPreviews: [],
+            presentationCSS: "",
             userCSS: ""
         ).contains(css))
     }
@@ -1653,6 +1868,7 @@ struct FrontendArchitectureTests {
             selectionEnabled: false,
             researcherComments: [],
             linkPreviews: [preview],
+            presentationCSS: "",
             userCSS: ""
         )
         #expect(readHTML.contains(css))
@@ -1673,45 +1889,45 @@ struct FrontendArchitectureTests {
         let aqua = try #require(NSAppearance(named: .aqua))
         let darkAqua = try #require(NSAppearance(named: .darkAqua))
 
-        #expect(ScholiumColorRole.connectionSupport.resolvedCustomRGBValue(
+        #expect(ScholiumColorRole.connectionSupport.resolvedRGBValue(
             for: aqua,
             increasedContrast: false
-        ) == 0x276F68)
-        #expect(ScholiumColorRole.connectionSupport.resolvedCustomRGBValue(
+        ) == 0x326960)
+        #expect(ScholiumColorRole.connectionSupport.resolvedRGBValue(
             for: darkAqua,
             increasedContrast: false
-        ) == 0x79B9AB)
-        #expect(ScholiumColorRole.connectionSupport.resolvedCustomRGBValue(
+        ) == 0x8CC5BA)
+        #expect(ScholiumColorRole.connectionSupport.resolvedRGBValue(
             for: aqua,
             increasedContrast: true
-        ) == 0x195A54)
-        #expect(ScholiumColorRole.connectionSupport.resolvedCustomRGBValue(
+        ) == 0x01423A)
+        #expect(ScholiumColorRole.connectionSupport.resolvedRGBValue(
             for: darkAqua,
             increasedContrast: true
-        ) == 0x9CD5CA)
+        ) == 0xB6F0E5)
 
-        #expect(ScholiumColorRole.connectionIncompatible.resolvedCustomRGBValue(
+        #expect(ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
             for: aqua,
             increasedContrast: false
-        ) == 0x6F4D83)
-        #expect(ScholiumColorRole.connectionIncompatible.resolvedCustomRGBValue(
+        ) == 0x72516A)
+        #expect(ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
             for: darkAqua,
             increasedContrast: false
-        ) == 0xC29CCF)
-        #expect(ScholiumColorRole.connectionIncompatible.resolvedCustomRGBValue(
+        ) == 0xD2ADC8)
+        #expect(ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
             for: aqua,
             increasedContrast: true
-        ) == 0x50365F)
-        #expect(ScholiumColorRole.connectionIncompatible.resolvedCustomRGBValue(
+        ) == 0x4A2C43)
+        #expect(ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
             for: darkAqua,
             increasedContrast: true
-        ) == 0xDDBCE5)
+        ) == 0xFFDBF5)
 
-        #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#195a54"))
-        #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#50365f"))
-        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#9cd5ca"))
-        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#ddbce5"))
-        for value in ["#195a54", "#50365f", "#9cd5ca", "#ddbce5"] {
+        #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#01423a"))
+        #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#4a2c43"))
+        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#b6f0e5"))
+        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#ffdbf5"))
+        for value in ["#01423a", "#4a2c43", "#b6f0e5", "#ffdbf5"] {
             #expect(css.contains(value))
         }
     }

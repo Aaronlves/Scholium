@@ -159,6 +159,46 @@ struct AppCompositionRootTests {
         await Task.yield()
     }
 
+    @Test("Stopped document scrolling persists without invalidating the window model")
+    func stoppedDocumentScrollingDoesNotInvalidateWindowModel() async throws {
+        let fileManager = FileManager.default
+        let isolatedHome = fileManager.temporaryDirectory
+            .appendingPathComponent("Scholium-ScrollSession-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: isolatedHome, withIntermediateDirectories: true)
+        let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
+        setenv("SCHOLIUM_HOME", isolatedHome.path, 1)
+        defer {
+            if let previousHome {
+                setenv("SCHOLIUM_HOME", previousHome, 1)
+            } else {
+                unsetenv("SCHOLIUM_HOME")
+            }
+            try? fileManager.removeItem(at: isolatedHome)
+        }
+
+        let store = WorkspaceStore()
+        let window = WindowModel(workspaceStore: store)
+        let sessionID = UUID()
+        await window.restoreWindowSession(id: sessionID)
+        try await waitUntil("the initial window session was persisted") {
+            try await store.windowSession(id: sessionID) != nil
+        }
+        try await Task.sleep(for: .milliseconds(50))
+
+        var invalidationCount = 0
+        let observation = window.objectWillChange.sink {
+            invalidationCount += 1
+        }
+        window.rememberScrollPosition(0.42, for: "Fixtures/Scroll.md")
+        try await waitUntil("the stopped scroll position was persisted") {
+            try await store.windowSession(id: sessionID)?.scrollPositions["Fixtures/Scroll.md"] == 0.42
+        }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(invalidationCount == 0)
+        observation.cancel()
+    }
+
     @Test("Window close awaits its final session snapshot")
     func windowCloseAwaitsFinalSessionSnapshot() async throws {
         let fileManager = FileManager.default

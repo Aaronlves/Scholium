@@ -9,7 +9,7 @@ export interface Transformation {
 }
 export interface TransformOptions {
   argument?: string;
-  protectedRanges?: Array<{from: number; to: number}>;
+  protectedRanges?: readonly {from: number; to: number}[];
 }
 
 const inlineMarkers: Partial<Record<MarkdownEditorCommand, [string, string, string]>> = {

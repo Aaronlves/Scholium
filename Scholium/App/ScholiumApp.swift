@@ -2821,7 +2821,9 @@ final class WindowModel: ObservableObject {
             do {
                 try await workspaceStore.saveWindowSession(snapshot)
                 guard !Task.isCancelled else { return }
-                self?.windowSessionPersistenceError = nil
+                if self?.windowSessionPersistenceError != nil {
+                    self?.windowSessionPersistenceError = nil
+                }
                 if self?.refreshStatusText == "Window state not saved" {
                     self?.refreshStatusText = nil
                 }

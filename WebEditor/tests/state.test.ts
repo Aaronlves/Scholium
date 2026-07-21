@@ -1,6 +1,11 @@
 import {Text} from "@codemirror/state";
 import {describe, expect, it} from "vitest";
-import {frontmatterBoundary, frontmatterEndLine, hasUnclosedFrontmatter} from "../state";
+import {
+  frontmatterBodyOffset,
+  frontmatterBoundary,
+  frontmatterEndLine,
+  hasUnclosedFrontmatter,
+} from "../state";
 
 function documentText(source: string) {
   return Text.of(source.replaceAll("\r\n", "\n").split("\n"));
@@ -16,6 +21,7 @@ describe("frontmatter boundary", () => {
       const doc = documentText(source);
       expect(frontmatterBoundary(doc)).toEqual({endLine: 3, unclosed: false});
       expect(frontmatterEndLine(doc)).toBe(3);
+      expect(frontmatterBodyOffset(doc)).toBe(doc.line(4).from);
       expect(hasUnclosedFrontmatter(doc)).toBe(false);
     }
   });
@@ -31,5 +37,14 @@ describe("frontmatter boundary", () => {
       .toEqual({endLine: 0, unclosed: false});
     expect(frontmatterBoundary(documentText("---")))
       .toEqual({endLine: 0, unclosed: false});
+  });
+
+  it("owns the closing-delimiter newline and handles YAML-only source", () => {
+    const withBody = documentText("---\ntitle: Note\n---\n# Body");
+    expect(withBody.sliceString(0, frontmatterBodyOffset(withBody)))
+      .toBe("---\ntitle: Note\n---\n");
+
+    const yamlOnly = documentText("---\ntitle: Note\n---");
+    expect(frontmatterBodyOffset(yamlOnly)).toBe(yamlOnly.length);
   });
 });

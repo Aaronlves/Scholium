@@ -33,14 +33,21 @@ export function updateEditorAccessibility(
   context?: EditorContext,
 ) {
   const attributes = editorAccessibilityAttributes(mode);
-  for (const [name, value] of Object.entries(attributes)) content.setAttribute(name, value);
+  for (const [name, value] of Object.entries(attributes)) {
+    if (content.getAttribute(name) !== value) content.setAttribute(name, value);
+  }
   const description = mode === "livePreview" && context
     ? activeConstructAccessibilityDescription(context)
     : mode === "source"
       ? "Exact Markdown and YAML source"
       : undefined;
-  if (description) content.setAttribute("aria-description", description);
-  else content.removeAttribute("aria-description");
+  if (description) {
+    if (content.getAttribute("aria-description") !== description) {
+      content.setAttribute("aria-description", description);
+    }
+  } else if (content.hasAttribute("aria-description")) {
+    content.removeAttribute("aria-description");
+  }
 }
 
 export function announceEditorMessage(content: HTMLElement, message: string) {

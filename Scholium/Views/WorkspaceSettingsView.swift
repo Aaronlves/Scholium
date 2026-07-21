@@ -3347,6 +3347,9 @@ private struct CSSSnippetSettingsView: View {
                         fingerprint: String(store.readCSS.hashValue),
                         source: Self.previewSource,
                         htmlBody: Self.previewHTML,
+                        presentationCSS: ScholiumDocumentPresentationConfiguration(
+                            textScale: ScholiumMetrics.Document.defaultTextScale
+                        ).css,
                         userCSS: store.readCSS,
                         researcherComments: [],
                         onLinkClick: { _ in },

@@ -5,6 +5,19 @@ export interface EditorPerformanceSample {
 }
 
 const samples: EditorPerformanceSample[] = [];
+const sampleCapacity = 256;
+let sampleStart = 0;
+let sampleCount = 0;
+
+function appendSample(sample: EditorPerformanceSample) {
+  if (sampleCount < sampleCapacity) {
+    samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+    sampleCount += 1;
+    return;
+  }
+  samples[sampleStart] = sample;
+  sampleStart = (sampleStart + 1) % sampleCapacity;
+}
 
 export function recordEditorMetric(
   name: string,
@@ -13,11 +26,17 @@ export function recordEditorMetric(
 ) {
   const durationMilliseconds = Math.max(0, performance.now() - startedAt);
   const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-  samples.push({name, durationMilliseconds, observed: safeObserved});
-  if (samples.length > 256) samples.splice(0, samples.length - 256);
+  appendSample({name, durationMilliseconds, observed: safeObserved});
+  const measureName = `scholium-editor:${name}`;
   try {
-    performance.measure(`scholium-editor:${name}`, {start: startedAt, duration: durationMilliseconds});
+    performance.measure(measureName, {start: startedAt, duration: durationMilliseconds});
   } catch { /* User Timing is diagnostic-only. */ }
+  finally {
+    // The bounded Scholium ring is the diagnostic authority. Browser User
+    // Timing entries are cleared immediately so a long editing session cannot
+    // accumulate an independent, unbounded copy.
+    try { performance.clearMeasures(measureName); } catch { /* Diagnostic-only. */ }
+  }
 }
 
 export function sampleEditorMemory(documentLength: number) {
@@ -30,5 +49,14 @@ export function sampleEditorMemory(documentLength: number) {
 }
 
 export function editorPerformanceSamples() {
-  return samples.map((sample) => ({...sample, observed: {...sample.observed}}));
+  return Array.from({length: sampleCount}, (_, index) => {
+    const sample = samples[(sampleStart + index) % sampleCapacity];
+    return {...sample, observed: {...sample.observed}};
+  });
+}
+
+export function clearEditorPerformanceSamples() {
+  samples.length = 0;
+  sampleStart = 0;
+  sampleCount = 0;
 }

@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 3;
+export const EDITOR_PROTOCOL_VERSION = 4;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -80,6 +80,7 @@ export interface EditorPerformanceSample {
 export type EditorOperation =
   | {type: "initialize"; text: string; mode: EditorMode; dialect: MarkdownEditingDialect}
   | {type: "setMode"; mode: EditorMode}
+  | {type: "setPresentationCSS"; value: string}
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkCompletions"; value: unknown[]}
   | {type: "setLinkPreviews"; value: unknown[]}
@@ -123,7 +124,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setUserCSS", "setLinkCompletions", "setLinkPreviews", "setResearcherComments", "showPreview", "showPreviewAt", "announceStatus",
+  "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkCompletions", "setLinkPreviews", "setResearcherComments", "showPreview", "showPreviewAt", "announceStatus",
   "goToLine", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus", "blur",
 ]);
@@ -140,6 +141,33 @@ const commandTypes = new Set<MarkdownEditorCommand>([
 ]);
 function validMode(value: unknown): value is EditorMode {
   return value === "livePreview" || value === "source";
+}
+function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
+  if (!value || typeof value !== "object") return false;
+  const snapshot = value as Partial<RecoverySnapshot>;
+  if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4_096
+      || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256
+      || !Number.isSafeInteger(snapshot.generation) || snapshot.generation! < 0
+      || typeof snapshot.source !== "string"
+      || typeof snapshot.undoHistoryPreserved !== "boolean"
+      || typeof snapshot.dirty !== "boolean"
+      || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0
+      || snapshot.ranges.length > 256
+      || (snapshot.stateJSON !== undefined && typeof snapshot.stateJSON !== "string")) return false;
+  const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
+  return snapshot.ranges.every((range) => Boolean(range)
+    && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength
+    && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
+}
+
+/** A recovery snapshot may advance, but never rewind, source authority. */
+export function recoveryGenerationCanReplaceCurrent(
+  snapshotGeneration: number,
+  currentGeneration: number,
+) {
+  return Number.isSafeInteger(snapshotGeneration)
+    && Number.isSafeInteger(currentGeneration)
+    && snapshotGeneration >= currentGeneration;
 }
 function validDialect(value: unknown): value is MarkdownEditingDialect {
   if (!value || typeof value !== "object") return false;
@@ -181,6 +209,7 @@ function validOperation(operation: Record<string, unknown>) {
     return typeof operation.text === "string" && validMode(operation.mode)
       && validDialect(operation.dialect);
   case "setMode": return validMode(operation.mode);
+  case "setPresentationCSS":
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
   case "setLinkCompletions": case "setLinkPreviews": case "setResearcherComments": return Array.isArray(operation.value);
@@ -202,7 +231,7 @@ function validOperation(operation: Record<string, unknown>) {
       && Number.isFinite(anchor.fallbackFraction)
       && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
   }
-  case "restoreRecovery": return Boolean(operation.snapshot) && typeof operation.snapshot === "object";
+  case "restoreRecovery": return validRecoverySnapshot(operation.snapshot);
   case "synchronizeCommittedText":
     return typeof operation.expectedText === "string" && typeof operation.committedText === "string"
       && typeof operation.committedFingerprint === "string";

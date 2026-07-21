@@ -40,7 +40,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Bridge v3 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    @Test("Bridge v4 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
         // Let their short native-window journeys finish before this suite owns
@@ -48,7 +48,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await Task.sleep(for: .seconds(2))
         let frontmatter = "---\r\ntitle: Fixture\r\n---\r\n"
         let longTail = (1...40).map { "Research paragraph \($0)." }.joined(separator: "\r\n") + "\r\n"
-        let original = frontmatter + "[[Target]]\r\nThesis\r\nSecond\r\n\r\n| **Claim** | Status | Count |\r\n|:---|:---:|---:|\r\n| Fittingness | Open | 2 |\r\n\r\nInline $x^2 + y^2$.\r\n\r\n$$\r\n\\int_0^1 x\\,dx\r\n$$\r\nClaim[^note] and inline ^[Inline note].\r\n\r\n[^note]: **Named** note\r\n  continued\r\n\r\n  - Outer item\r\n    - Nested item\r\n\r\n  > Quoted reason.\r\n\r\n  > [!state] Nested claim\r\n  > Body with $z$.\r\n\r\n  | Term | Value |\r\n  |:---|---:|\r\n  | $z$ | 3 |\r\n\r\n  $$\r\n  z^2\r\n  $$\r\n\r\n  ```swift\r\n  let value = 1\r\n  ```\r\n" + longTail + "\r\n## Shared heading\r\n\r\nA shared paragraph establishes the editorial measure.\r\n\r\n> [!state] Shared claim\r\n> The same callout must retain its typographic hierarchy.\r\n"
+        let original = frontmatter + "[[Target]]\r\nThesis\r\nSecond\r\n\r\n| **Claim** | Status | Count |\r\n|:---|:---:|---:|\r\n| Fittingness | Open | 2 |\r\n\r\nInline $x^2 + y^2$.\r\n\r\n$$\r\n\\int_0^1 x\\,dx\r\n$$\r\nClaim[^note] and inline ^[Inline note].\r\n\r\n[^note]: **Named** note\r\n  continued\r\n\r\n  - Outer item\r\n    - Nested item\r\n\r\n  > Quoted reason.\r\n\r\n  > [!state] Nested claim\r\n  > Body with $z$.\r\n\r\n  | Term | Value |\r\n  |:---|---:|\r\n  | $z$ | 3 |\r\n\r\n  $$\r\n  z^2\r\n  $$\r\n\r\n  ```swift\r\n  let value = 1\r\n  ```\r\n" + longTail + "\r\n## Shared heading\r\n\r\nA shared paragraph establishes the editorial measure.\r\n\r\n> [!state] Shared claim\r\n> The same callout must retain its typographic hierarchy.\r\n\r\nAfter shared callout.\r\n"
         let linkOffset = frontmatter.utf16.count
         let harness = EditorHarness(
             source: original,
@@ -98,7 +98,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.renderedMathCount == 2)
         #expect(accessibility.mathErrorCount == 0)
         #expect(accessibility.displayMathOverflowX == "auto")
-        #expect(accessibility.frontmatterLineCount == 3)
+        #expect(accessibility.frontmatterLineCount == 0)
         #expect(accessibility.frontmatterVisibleHeight == 0)
         #expect(accessibility.unclosedFrontmatterNoticeCount == 0)
         #expect(accessibility.semanticTableCount == 1)
@@ -121,6 +121,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.footnoteDefinitionSourceCount == 0)
         #expect(accessibility.liveCalloutWidgetCount == 1)
         #expect(accessibility.liveCalloutSourceLineCount == 0)
+        #expect(accessibility.exactWikilinkSourceCount == 1)
+        #expect(accessibility.incompleteWikilinkSourceCount == 0)
         do {
             try await harness.session.testingPreviewFirstFootnote()
         } catch {
@@ -154,12 +156,48 @@ struct MarkdownEditorWebViewIntegrationTests {
         let sharedCalloutLine = try #require(
             normalizedLines.firstIndex(where: { $0 == "> [!state] Shared claim" }).map { $0 + 1 }
         )
-        harness.session.goToLine(sharedCalloutLine)
+        let calloutFrom = try #require(normalizedOriginal.range(of: "> [!state] Shared claim")?.lowerBound)
+            .utf16Offset(in: normalizedOriginal)
+        let calloutSource = "> [!state] Shared claim\n> The same callout must retain its typographic hierarchy."
+        let calloutTo = try #require(normalizedOriginal.range(of: calloutSource)?.upperBound)
+            .utf16Offset(in: normalizedOriginal)
+        try await harness.session.testingClickFirstCalloutText("same callout")
+        let pointerDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first?.head != calloutTo {
+            if ContinuousClock().now >= pointerDeadline {
+                Issue.record("The projected Callout click did not enter at its logical end; head=\(harness.session.context?.selections.first?.head ?? -1), expected=\(calloutTo).")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
         let activeCallout = try await harness.waitUntilPresentation(stage: "active callout source") {
-            $0.liveCalloutWidgetCount == 0 && $0.liveCalloutSourceLineCount > 0
+            $0.liveCalloutWidgetCount == 0
+                && $0.liveCalloutSourceLineCount == 0
+                && $0.exactCalloutSourceCount > 0
         }
         #expect(activeCallout.semanticTableCount == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+
+        harness.session.goToLine(sharedCalloutLine - 1)
+        _ = try await harness.waitUntilPresentation(stage: "callout restored before arrow navigation") {
+            $0.liveCalloutWidgetCount == 1
+        }
+        try await harness.session.testingPressArrow("ArrowDown")
+        try await harness.waitUntilSelection(head: calloutFrom)
+        _ = try await harness.waitUntilPresentation(stage: "arrow-revealed callout source") {
+            $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
+        }
+        harness.session.goToLine(sharedCalloutLine + 3)
+        _ = try await harness.waitUntilPresentation(stage: "callout restored below") {
+            $0.liveCalloutWidgetCount == 1
+        }
+        try await harness.session.testingPressArrow("ArrowUp")
+        try await harness.waitUntilSelection(head: calloutTo)
+        _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
+            $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
+        }
+        try await harness.session.testingPressArrow("ArrowUp")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
 
         let tableLine = try #require(
             normalizedLines.firstIndex(where: { $0 == "| **Claim** | Status | Count |" }).map { $0 + 1 }
@@ -194,20 +232,20 @@ struct MarkdownEditorWebViewIntegrationTests {
         let initialSelection = try #require(harness.session.context?.selections)
         let configuredTopInset: CGFloat = 36
         let expectedPadding = "\(Int(configuredTopInset))px"
-        harness.setUserCSS(ScholiumDocumentPresentationConfiguration(
+        harness.setPresentationCSS(ScholiumDocumentPresentationConfiguration(
             textScale: ScholiumMetrics.Document.defaultTextScale,
-            contentTopInset: configuredTopInset
+            contentTopInsetCSSPixels: configuredTopInset
         ).css)
 
         let live = try await harness.waitUntilPresentation(stage: "configured Live Preview") {
             $0.label == "Markdown live preview editor"
                 && $0.contentPaddingTop == expectedPadding
-                && ["0px", "24px"].contains($0.contentPaddingInlineStart)
+                && $0.contentPaddingInlineStart == "20px"
         }
         #expect(live.gutterCount == 0)
         #expect(live.lineNumberCount == 0)
         #expect(live.activeLineCount == 0)
-        #expect(["0px", "24px"].contains(live.contentPaddingInlineStart))
+        #expect(live.contentPaddingInlineStart == "20px")
         #expect(live.isFocused)
 
         harness.session.setMode(.source)
@@ -223,8 +261,22 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(sourceMode.footnoteReferenceCount == 0)
         #expect(sourceMode.previewPopoverHidden)
         #expect(sourceMode.contentPaddingTop == expectedPadding)
+        #expect(sourceMode.contentPaddingInlineStart == "20px")
         #expect(sourceMode.isFocused)
         #expect(harness.session.context?.selections == initialSelection)
+        let bodyStartEditorOffset = frontmatter.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: 4)
+        harness.session.setMode(.livePreview)
+        _ = try await harness.waitUntilPresentation(stage: "frontmatter-clamped Live Preview") {
+            $0.label == "Markdown live preview editor" && $0.frontmatterLineCount == 0
+        }
+        try await harness.waitUntilSelection(head: bodyStartEditorOffset)
+        harness.session.setMode(.source)
+        _ = try await harness.waitUntilPresentation(stage: "frontmatter selection restored Source") {
+            $0.label == "Markdown source editor" && $0.lineNumberCount > 0
+        }
+        try await harness.waitUntilSelection(head: 4)
         let bodyEditorOffset = (frontmatter.replacingOccurrences(of: "\r\n", with: "\n") + "[[Target]]\n").utf16.count
         let bodySourceOffset = (frontmatter + "[[Target]]\r\n").utf16.count
         harness.session.goToLine(5)
@@ -397,6 +449,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.durationMilliseconds.isFinite && $0.durationMilliseconds >= 0
                 && $0.observed.values.allSatisfy { $0.isFinite && $0 >= 0 }
         })
+        harness.resize(width: 1_080)
+        harness.session.setMode(.source)
+        let regularSourceGrid = try await harness.waitUntilPresentation(
+            stage: "regular-width Source grid"
+        ) {
+            $0.label == "Markdown source editor"
+                && $0.presentation.viewportWidth > 704
+                && $0.contentPaddingInlineStart == "40px"
+        }
+        #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
+        #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
         harness.close()
         try await Task.sleep(for: .milliseconds(500))
 
@@ -544,6 +607,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
+        func resize(width: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 520))
+        }
+
         func reconstructEditorView() async throws {
             sourceBox.showsEditor = false
             let clock = ContinuousClock()
@@ -600,6 +667,24 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
+        func waitUntilSelection(in expectedRange: Range<Int>) async throws -> Int {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                if let head = session.context?.selections.first?.head,
+                   expectedRange.contains(head) {
+                    return head
+                }
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not publish an insertion point inside \(expectedRange.lowerBound)..<\(expectedRange.upperBound)."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
         func waitUntilScrollAnchor() async throws -> EditorScrollAnchor {
             try await Task.sleep(for: .milliseconds(250))
             let anchor = try #require(try await session.currentScrollAnchor())
@@ -635,7 +720,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount).")
+                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -649,7 +734,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             for scenario in scenarios {
                 window.appearance = NSAppearance(named: scenario.appearanceName)
                 window.setContentSize(NSSize(width: scenario.width, height: 520))
-                sourceBox.userCSS = scenario.configuration.css
+                sourceBox.userCSS = scenario.liveUserCSS
+                sourceBox.presentationCSS = scenario.configuration.css
                 _ = try await waitUntilPresentation(stage: scenario.name) {
                     $0.label == "Markdown live preview editor"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
@@ -668,8 +754,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             return snapshots
         }
 
-        func setUserCSS(_ css: String) {
-            sourceBox.userCSS = css
+        func setPresentationCSS(_ css: String) {
+            sourceBox.presentationCSS = css
         }
 
         func close() {
@@ -705,6 +791,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var source: String
         @Published var showsEditor = true
         @Published var scrollAnchor: EditorScrollAnchor?
+        @Published var presentationCSS = ""
         @Published var userCSS = ""
         init(_ source: String) { self.source = source }
     }
@@ -739,6 +826,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     documentID: documentID,
                     source: sourceBox.source,
                     mode: .livePreview,
+                    presentationCSS: sourceBox.presentationCSS,
                     userCSS: sourceBox.userCSS,
                     linkCompletions: [],
                     linkPreviews: linkPreviews,

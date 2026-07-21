@@ -585,6 +585,10 @@ struct NoteContentView: View {
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint.sha256
+            documentSession.requestScrollRestore(
+                fingerprint: fingerprint,
+                reason: .documentLoad
+            )
             let html = await Task.detached(priority: .userInitiated) {
                 SafeMarkdownRenderer.render(
                     NoteDocument(relativePath: relativePath, rawContent: source)
@@ -676,7 +680,8 @@ struct NoteContentView: View {
             documentID: editorSession.bridgeDocumentID,
             source: editingSource,
             mode: documentSession.retainedEditorMode,
-            userCSS: scaledEditorCSS,
+            presentationCSS: documentPresentation.css,
+            userCSS: state.livePreviewCSS,
             linkCompletions: editorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             researcherComments: currentResearcherComments,
@@ -713,8 +718,11 @@ struct NoteContentView: View {
             onCommentActivation: commentingIsAvailable ? { commentID in
                 actions.requestComments(nil, commentID)
             } : nil,
-            onScrollFractionChange: { actions.rememberScrollPosition($0) },
-            onScrollAnchorChange: { documentSession.scrollAnchor = $0 }
+            onScrollFractionChange: {
+                documentSession.observeScrollFraction($0)
+                actions.rememberScrollPosition($0)
+            },
+            onScrollAnchorChange: { documentSession.observeScrollAnchor($0) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)
@@ -787,7 +795,9 @@ struct NoteContentView: View {
             fingerprint: noteFingerprint.sha256,
             source: note.rawContent,
             htmlBody: renderedReadHTML,
-            userCSS: scaledReadCSS,
+            presentationCSS: documentPresentation.css,
+            userCSS: state.readCSS,
+            configurationRevision: readConfigurationRevision,
             researcherComments: currentResearcherComments,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             onLinkClick: {
@@ -816,12 +826,19 @@ struct NoteContentView: View {
                 documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
                 PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
             },
-            initialScrollFraction: state.initialScrollFraction,
-            initialScrollAnchor: readScrollAnchor,
+            observedScrollPosition: documentSession.observedScrollPosition,
+            scrollRestoreRequest: documentSession.scrollRestoreRequest,
+            onScrollRestoreConsumed: { id, fingerprint in
+                documentSession.acknowledgeScrollRestoreRequest(
+                    id: id,
+                    fingerprint: fingerprint
+                )
+            },
             onScrollFractionChange: {
+                documentSession.observeScrollFraction($0)
                 actions.rememberScrollPosition($0)
             },
-            onScrollAnchorChange: { documentSession.scrollAnchor = $0 },
+            onScrollAnchorChange: { documentSession.observeScrollAnchor($0) },
             targetSourceLine: isEditing ? nil : state.pendingSourceLine,
             onSourceLineReached: {
                 guard !isEditing else { return }
@@ -842,25 +859,28 @@ struct NoteContentView: View {
         return documentSession.scrollAnchor
     }
 
-    private var readScrollAnchor: EditorScrollAnchor? {
-        guard documentSession.scrollAnchor?.sourceFingerprint == noteFingerprint.sha256 else { return nil }
-        return documentSession.scrollAnchor
-    }
-
-    private var scaledReadCSS: String {
-        state.readCSS
-            + "\n"
-            + documentPresentation.css
-    }
-
-    private var scaledEditorCSS: String {
-        state.livePreviewCSS
-            + "\n"
-            + documentPresentation.css
-    }
-
     private var documentPresentation: ScholiumDocumentPresentationConfiguration {
         ScholiumDocumentPresentationConfiguration(textScale: state.documentTextScale)
+    }
+
+    private var readConfigurationRevision: String {
+        let commentRevision = state.reviewRecord.map {
+            "\($0.id.uuidString):\($0.updatedAt.timeIntervalSinceReferenceDate)"
+        } ?? "no-comments"
+        let previewRevision = documentSession.previewCatalog.map { catalog in
+            let targets = catalog.links.map { link in
+                "\(link.sourceSpan.utf16LowerBound)-\(link.sourceSpan.utf16UpperBound):"
+                    + link.targetFingerprint.sha256
+            }.joined(separator: ",")
+            return "\(catalog.graphGeneration):\(catalog.sourceFingerprint.sha256):\(targets)"
+        } ?? "no-previews"
+        return [
+            noteFingerprint.sha256,
+            String(state.documentTextScale.bitPattern),
+            String(state.readCSS.hashValue),
+            commentRevision,
+            previewRevision,
+        ].joined(separator: ":")
     }
 
     private var editorLinkCompletions: [EditorLinkCompletion] {
@@ -989,7 +1009,13 @@ struct NoteContentView: View {
                         target: target
                     )
                     guard returnToReadAfterSave else { return }
-                    documentSession.scrollAnchor = try? await editorSession.currentScrollAnchor()
+                    let handoffAnchor = try? await editorSession.currentScrollAnchor()
+                    documentSession.observeScrollAnchor(handoffAnchor)
+                    documentSession.requestScrollRestore(
+                        fingerprint: handoffAnchor?.sourceFingerprint
+                            ?? DocumentFingerprint(content: editingSource).sha256,
+                        reason: .modeHandoff
+                    )
                     editorSession.resignFocus()
                     finishEditing()
                 } catch { /* Controller published the recoverable error state. */ }

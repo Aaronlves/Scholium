@@ -46,4 +46,15 @@ describe("editor accessibility contract", () => {
     expect(content.getAttribute("aria-description")).toBe("Heading level 3");
     vi.useRealTimers();
   });
+
+  it("does not rewrite unchanged accessibility attributes on every interaction", () => {
+    const {document} = parseHTML("<div id='editor'></div>");
+    const content = document.getElementById("editor") as unknown as HTMLElement;
+    updateEditorAccessibility(content, "livePreview", context(["Callout"]));
+    const setAttribute = vi.spyOn(content, "setAttribute");
+    const removeAttribute = vi.spyOn(content, "removeAttribute");
+    updateEditorAccessibility(content, "livePreview", context(["Callout"]));
+    expect(setAttribute).not.toHaveBeenCalled();
+    expect(removeAttribute).not.toHaveBeenCalled();
+  });
 });

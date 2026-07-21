@@ -81,6 +81,77 @@ private struct ScholiumComponentCatalog: View {
     }
 }
 
+private struct LifecycleDestinationCatalog: View {
+    enum Scenario: Equatable {
+        case populated
+        case loading
+        case empty
+        case error
+        case longTitle
+        case chinese
+    }
+
+    let scenario: Scenario
+
+    var body: some View {
+        SidebarLifecycleDestinationView(
+            scope: scenario == .chinese ? .setAside : .trash,
+            items: items,
+            isLoading: scenario == .loading,
+            errorMessage: scenario == .error ? "The lifecycle listing is temporarily unavailable." : nil,
+            requestedPutBackFocusPath: nil,
+            onFocusRequestHandled: {},
+            onRequestPutBackFocus: { _ in },
+            onReload: {},
+            onOpen: { _ in },
+            onPutBack: { _ in },
+            onReveal: { _ in },
+            onMoveToTrash: { _ in },
+            onDeletePermanently: { _ in }
+        )
+        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+        .frame(width: 300, height: 380, alignment: .topLeading)
+        .scholiumSurface(.navigation)
+    }
+
+    private var items: [LifecycleLocationItem] {
+        switch scenario {
+        case .loading, .empty, .error:
+            []
+        case .populated:
+            [
+                item(path: "Trash/Topics/Agency.md", title: "Agency"),
+                item(path: "Trash/Analyses/Attention.md", title: "Attention and Salience"),
+            ]
+        case .longTitle:
+            [
+                item(
+                    path: "Trash/Topics/Long Title.md",
+                    title: "A deliberately long lifecycle title that must truncate before the Put Back action"
+                ),
+            ]
+        case .chinese:
+            [
+                item(path: "Set Aside/Topics/注意与显著性.md", title: "关于注意、显著性与规范理由的长标题"),
+                item(path: "Set Aside/Works/第三章.md", title: "第三章：拟议论证结构"),
+            ]
+        }
+    }
+
+    private func item(path: String, title: String) -> LifecycleLocationItem {
+        let escapedTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
+        let document = NoteDocument(
+            relativePath: path,
+            rawContent: "---\ntitle: \"\(escapedTitle)\"\n---\n"
+        )
+        return LifecycleLocationItem(
+            note: .unclassified(document),
+            revision: document.fingerprint,
+            noteID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        )
+    }
+}
+
 private struct ScholiumMonoComparison: View {
     var body: some View {
         ScrollView {
@@ -445,6 +516,31 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
             \.scholiumVisualEnvironmentOverride,
             .init(reduceMotion: true)
         )
+}
+
+#Preview("Lifecycle Destination — Populated") {
+    LifecycleDestinationCatalog(scenario: .populated)
+}
+
+#Preview("Lifecycle Destination — Loading") {
+    LifecycleDestinationCatalog(scenario: .loading)
+}
+
+#Preview("Lifecycle Destination — Empty") {
+    LifecycleDestinationCatalog(scenario: .empty)
+}
+
+#Preview("Lifecycle Destination — Error") {
+    LifecycleDestinationCatalog(scenario: .error)
+}
+
+#Preview("Lifecycle Destination — Long Title") {
+    LifecycleDestinationCatalog(scenario: .longTitle)
+}
+
+#Preview("Lifecycle Destination — 简体中文") {
+    LifecycleDestinationCatalog(scenario: .chinese)
+        .environment(\.locale, Locale(identifier: "zh-Hans"))
 }
 
 #Preview("Victor Mono vs System Mono") {

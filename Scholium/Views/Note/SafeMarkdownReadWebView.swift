@@ -8,7 +8,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let fingerprint: String
     let source: String
     let htmlBody: String
+    let presentationCSS: String
     let userCSS: String
+    /// Stable caller-owned revisions avoid hashing bounded-but-nontrivial
+    /// comment and preview payloads during unrelated SwiftUI updates.
+    var configurationRevision: String? = nil
     let researcherComments: [ResearcherComment]
     var linkPreviews: [DocumentLinkPreview] = []
     let onLinkClick: (String) -> Void
@@ -19,15 +23,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
-    var initialScrollFraction: Double = 0
-    var initialScrollAnchor: EditorScrollAnchor? = nil
+    var observedScrollPosition = ObservedScrollPosition()
+    var scrollRestoreRequest: ScrollRestoreRequest? = nil
+    var onScrollRestoreConsumed: ((UInt64, String) -> Void)? = nil
     var onScrollFractionChange: ((Double) -> Void)? = nil
     var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)? = nil
     var targetSourceLine: Int? = nil
     var onSourceLineReached: (() -> Void)? = nil
+    #if DEBUG
+    var testingForcesFinalizationFailure = false
+    var testingScrollRestoreDelayMilliseconds = 0
+    #endif
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
+        let coordinator = Coordinator(
             documentID: documentID,
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
@@ -38,13 +47,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
-            initialScrollFraction: initialScrollFraction,
-            initialScrollAnchor: initialScrollAnchor,
+            observedScrollPosition: observedScrollPosition,
+            scrollRestoreRequest: scrollRestoreRequest,
+            onScrollRestoreConsumed: onScrollRestoreConsumed,
             onScrollFractionChange: onScrollFractionChange,
             onScrollAnchorChange: onScrollAnchorChange,
             targetSourceLine: targetSourceLine,
             onSourceLineReached: onSourceLineReached
         )
+        #if DEBUG
+        coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
+        coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
+        #endif
+        return coordinator
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -73,7 +88,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.loadIfNeeded(
             htmlBody,
             source: source,
+            presentationCSS: presentationCSS,
             userCSS: userCSS,
+            configurationRevision: configurationRevision,
             researcherComments: researcherComments,
             linkPreviews: linkPreviews,
             in: webView
@@ -82,6 +99,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        #if DEBUG
+        context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
+        context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
+        #endif
         context.coordinator.update(
             documentID: documentID,
             fingerprint: fingerprint,
@@ -93,8 +114,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
-            initialScrollFraction: initialScrollFraction,
-            initialScrollAnchor: initialScrollAnchor,
+            observedScrollPosition: observedScrollPosition,
+            scrollRestoreRequest: scrollRestoreRequest,
+            onScrollRestoreConsumed: onScrollRestoreConsumed,
             onScrollFractionChange: onScrollFractionChange,
             onScrollAnchorChange: onScrollAnchorChange,
             targetSourceLine: targetSourceLine,
@@ -104,7 +126,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.loadIfNeeded(
             htmlBody,
             source: source,
+            presentationCSS: presentationCSS,
             userCSS: userCSS,
+            configurationRevision: configurationRevision,
             researcherComments: researcherComments,
             linkPreviews: linkPreviews,
             in: webView
@@ -117,12 +141,33 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         )
         webView.navigationDelegate = nil
         coordinator.activeWebView = nil
+        coordinator.cancelPendingPageWork()
     }
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        private struct ScrollRestoreIdentity: Equatable {
+            let id: UInt64
+            let fingerprint: String
+        }
+
+        private struct ScrollRestoreClaim {
+            let token: UInt64
+            let request: ScrollRestoreRequest
+            let ownership: ScrollRestoreOwnership
+        }
+
+        private enum ScrollRestoreOwnership {
+            case caller
+            case coordinator
+        }
+
         static let messageHandlerName = "scholiumRead"
         private static let maximumSelectionLength = 2_000
+        /// SwiftUI can briefly replay an acknowledged value after a newer
+        /// WebView-rebuild request has completed. Keep a small, fixed history
+        /// so that old one-shot IDs cannot become restoration commands again.
+        private static let consumedScrollRestoreHistoryLimit = 64
         private static let vectorSymbolDataURIs = Dictionary(
             uniqueKeysWithValues: [
                 "link", "arrow.right.circle", "arrow.left.circle", "xmark.circle",
@@ -139,8 +184,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
-        private var initialScrollFraction: Double
-        private var initialScrollAnchor: EditorScrollAnchor?
+        private var scrollRestoreRequest: ScrollRestoreRequest?
+        private var scrollRestoreOwnership: ScrollRestoreOwnership?
+        private var observedScrollPosition: ObservedScrollPosition
+        private var onScrollRestoreConsumed: ((UInt64, String) -> Void)?
+        private var consumedScrollRestoreRequests: [ScrollRestoreIdentity] = []
+        private var inFlightScrollRestoreClaim: ScrollRestoreClaim?
+        private var nextScrollRestoreClaimToken: UInt64 = 0
+        private var nextInternalScrollRestoreRequestID = UInt64.max
+        private var hasLoadedPage = false
+        private var loadGeneration: UInt64 = 0
+        private var activeLoadSignature: String?
+        private var activeNavigation: WKNavigation?
+        private var loadFinalizationTask: Task<Void, Never>?
+        private var sourceLineNavigationTask: Task<Void, Never>?
         private var onScrollFractionChange: ((Double) -> Void)?
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
         private var sourceUTF16Length = 0
@@ -150,6 +207,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadedSignature: String?
         private var pageIsReady = false
         weak var activeWebView: WKWebView?
+        #if DEBUG
+        var testingForcesFinalizationFailure = false
+        var testingScrollRestoreDelayMilliseconds = 0
+        #endif
 
         init(
             documentID: String,
@@ -162,8 +223,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
-            initialScrollFraction: Double,
-            initialScrollAnchor: EditorScrollAnchor?,
+            observedScrollPosition: ObservedScrollPosition,
+            scrollRestoreRequest: ScrollRestoreRequest?,
+            onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
             onScrollFractionChange: ((Double) -> Void)?,
             onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?,
             targetSourceLine: Int?,
@@ -179,8 +241,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
-            self.initialScrollFraction = min(1, max(0, initialScrollFraction))
-            self.initialScrollAnchor = initialScrollAnchor
+            self.scrollRestoreRequest = scrollRestoreRequest
+            scrollRestoreOwnership = scrollRestoreRequest == nil ? nil : .caller
+            self.observedScrollPosition = observedScrollPosition
+            self.onScrollRestoreConsumed = onScrollRestoreConsumed
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             self.targetSourceLine = targetSourceLine
@@ -198,21 +262,22 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
-            initialScrollFraction: Double,
-            initialScrollAnchor: EditorScrollAnchor?,
+            observedScrollPosition: ObservedScrollPosition,
+            scrollRestoreRequest: ScrollRestoreRequest?,
+            onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
             onScrollFractionChange: ((Double) -> Void)?,
             onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?,
             targetSourceLine: Int?,
             onSourceLineReached: (() -> Void)?,
             webView: WKWebView
         ) {
-            let normalizedScrollFraction = min(1, max(0, initialScrollFraction))
-            let scrollRestorationChanged = self.initialScrollFraction != normalizedScrollFraction
-                || self.initialScrollAnchor != initialScrollAnchor
-            if self.documentID != documentID || self.fingerprint != fingerprint {
+            let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
+            if documentChanged {
                 loadedSignature = nil
                 lastReachedSourceLine = nil
                 pageIsReady = false
+                hasLoadedPage = false
+                cancelPendingPageWork()
                 webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
             }
             activeWebView = webView
@@ -226,45 +291,74 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
-            self.initialScrollFraction = normalizedScrollFraction
-            self.initialScrollAnchor = initialScrollAnchor
+            self.observedScrollPosition = observedScrollPosition
+            if self.observedScrollPosition.anchor?.sourceFingerprint != fingerprint {
+                self.observedScrollPosition.anchor = nil
+            }
+            self.onScrollRestoreConsumed = onScrollRestoreConsumed
+            adoptCallerScrollRestoreRequest(scrollRestoreRequest)
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
-            scrollToSourceLineIfNeeded(in: webView)
-            if pageIsReady, scrollRestorationChanged {
-                Task { @MainActor [weak self, weak webView] in
-                    guard let self, let webView, self.activeWebView === webView else { return }
-                    await self.restoreScrollPosition(in: webView)
+            schedulePostLoadPositioningIfNeeded(in: webView)
+        }
+
+        private func adoptCallerScrollRestoreRequest(_ request: ScrollRestoreRequest?) {
+            guard let request else {
+                guard scrollRestoreOwnership == .caller else { return }
+                if inFlightScrollRestoreClaim?.ownership == .caller {
+                    inFlightScrollRestoreClaim = nil
                 }
+                scrollRestoreRequest = nil
+                scrollRestoreOwnership = nil
+                return
             }
+            guard !hasConsumedScrollRestoreRequest(request) else {
+                if scrollRestoreOwnership == .caller,
+                   scrollRestoreRequest.map({ sameScrollRestoreIdentity($0, request) }) == true {
+                    scrollRestoreRequest = nil
+                    scrollRestoreOwnership = nil
+                }
+                return
+            }
+            scrollRestoreRequest = request
+            scrollRestoreOwnership = .caller
         }
 
         func loadIfNeeded(
             _ body: String,
             source: String,
+            presentationCSS: String,
             userCSS: String,
+            configurationRevision: String?,
             researcherComments: [ResearcherComment],
             linkPreviews: [DocumentLinkPreview],
             in webView: WKWebView
         ) {
-            sourceUTF16Length = source.utf16.count
-            let contentSignature = String(body.utf8.count)
-            let cssSignature = String(userCSS.hashValue)
-            let commentSignature = String(researcherComments.hashValue)
-            let previewSignature = String(linkPreviews.hashValue)
             let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
-            let signature = [
+            let signature = configurationRevision.map {
+                "revision:\($0):\(capabilitySignature)"
+            } ?? [
                 fingerprint,
-                contentSignature,
-                cssSignature,
-                commentSignature,
-                previewSignature,
+                String(body.utf8.count),
+                String(presentationCSS.hashValue),
+                String(userCSS.hashValue),
+                String(researcherComments.hashValue),
+                String(linkPreviews.hashValue),
                 capabilitySignature,
-            ]
-                .joined(separator: ":")
+            ].joined(separator: ":")
             guard loadedSignature != signature else { return }
+            sourceUTF16Length = source.utf16.count
+            ensureScrollRestoreRequest(
+                reason: hasLoadedPage ? .webViewRebuild : .documentLoad
+            )
+            hasLoadedPage = true
+            loadGeneration &+= 1
+            let expectedLoadGeneration = loadGeneration
+            activeLoadSignature = signature
+            activeNavigation = nil
+            cancelPendingPageWork(keepingLoadIdentity: true)
             loadedSignature = signature
             pageIsReady = false
             activeWebView = webView
@@ -273,10 +367,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 source: source,
                 documentID: documentID,
                 fingerprint: fingerprint,
+                loadGeneration: expectedLoadGeneration,
                 commentEnabled: onCommentSelection != nil,
                 selectionEnabled: onSelectionChange != nil,
                 researcherComments: researcherComments,
                 linkPreviews: linkPreviews,
+                presentationCSS: presentationCSS,
                 userCSS: userCSS
             )
             let expectedSignature = signature
@@ -287,8 +383,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 self.onRenderingLoading?()
                 await Task.yield()
                 guard self.activeWebView === webView,
-                      self.loadedSignature == expectedSignature else { return }
-                webView.loadHTMLString(html, baseURL: nil)
+                      self.loadedSignature == expectedSignature,
+                      self.activeLoadSignature == expectedSignature,
+                      self.loadGeneration == expectedLoadGeneration else { return }
+                let navigation = webView.loadHTMLString(html, baseURL: nil)
+                guard self.activeWebView === webView,
+                      self.loadedSignature == expectedSignature,
+                      self.activeLoadSignature == expectedSignature,
+                      self.loadGeneration == expectedLoadGeneration else { return }
+                self.activeNavigation = navigation
             }
         }
 
@@ -301,6 +404,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   payload["version"] as? Int == 1,
                   payload["documentID"] as? String == documentID,
                   payload["fingerprint"] as? String == fingerprint,
+                  (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
                   let type = payload["type"] as? String else { return }
 
             switch type {
@@ -353,14 +457,46 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             _ webView: WKWebView,
             didFinish navigation: WKNavigation!
         ) {
+            guard let activeNavigation,
+                  activeNavigation === navigation,
+                  let expectedSignature = activeLoadSignature,
+                  loadedSignature == expectedSignature else { return }
+            let expectedLoadGeneration = loadGeneration
             pageIsReady = true
-            scrollToSourceLineIfNeeded(in: webView)
+            let restoreClaim = claimScrollRestoreRequest()
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
-            Task { @MainActor [weak self, weak webView] in
+            loadFinalizationTask?.cancel()
+            loadFinalizationTask = Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView else { return }
+                var claimWasFinished = false
+                defer {
+                    if let restoreClaim, !claimWasFinished {
+                        self.finishScrollRestoreClaim(restoreClaim, consumed: false)
+                    }
+                }
                 do {
-                    await self.restoreScrollPosition(in: webView)
+                    guard self.isCurrentLoad(
+                        navigation: navigation,
+                        generation: expectedLoadGeneration,
+                        signature: expectedSignature,
+                        in: webView
+                    ) else { return }
+                    var restoreSucceeded = false
+                    if let restoreClaim {
+                        await self.waitForTestingScrollRestoreDelayIfNeeded()
+                        restoreSucceeded = await self.restoreScrollPosition(
+                            restoreClaim,
+                            generation: expectedLoadGeneration,
+                            signature: expectedSignature,
+                            in: webView
+                        )
+                    }
+                    #if DEBUG
+                    if self.testingForcesFinalizationFailure {
+                        throw TestingReadFinalizationError.forced
+                    }
+                    #endif
                     let result = try await webView.callAsyncJavaScript(
                         """
                         if (document.fonts?.ready) await document.fonts.ready;
@@ -371,30 +507,109 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         contentWorld: .page
                     )
                     guard result as? Bool == true,
-                          self.activeWebView === webView,
+                          self.isCurrentLoad(
+                              navigation: navigation,
+                              generation: expectedLoadGeneration,
+                              signature: expectedSignature,
+                              in: webView
+                          ),
                           self.documentID == expectedDocumentID,
                           self.fingerprint == expectedFingerprint else { return }
+                    await self.scrollToSourceLineIfNeeded(
+                        generation: expectedLoadGeneration,
+                        signature: expectedSignature,
+                        in: webView
+                    )
+                    guard self.isCurrentLoad(
+                        navigation: navigation,
+                        generation: expectedLoadGeneration,
+                        signature: expectedSignature,
+                        in: webView
+                    ) else { return }
+                    if let restoreClaim {
+                        self.finishScrollRestoreClaim(
+                            restoreClaim,
+                            consumed: restoreSucceeded
+                        )
+                        claimWasFinished = true
+                    }
                     webView.setAccessibilityIdentifier(
                         "scholium.renderedDocument.\(expectedDocumentID)"
                     )
                     self.onRenderingReady?()
                 } catch {
-                    return
+                    self.failCurrentLoadFinalization(
+                        navigation: navigation,
+                        generation: expectedLoadGeneration,
+                        signature: expectedSignature,
+                        in: webView,
+                        error: error
+                    )
                 }
             }
+        }
+
+        #if DEBUG
+        private enum TestingReadFinalizationError: LocalizedError {
+            case forced
+
+            var errorDescription: String? {
+                "The Read finalization failure was requested by the test harness."
+            }
+        }
+        #endif
+
+        private func failCurrentLoadFinalization(
+            navigation: WKNavigation,
+            generation: UInt64,
+            signature: String,
+            in webView: WKWebView,
+            error: any Error
+        ) {
+            guard isCurrentLoad(
+                navigation: navigation,
+                generation: generation,
+                signature: signature,
+                in: webView
+            ) else { return }
+            sourceLineNavigationTask?.cancel()
+            sourceLineNavigationTask = nil
+            inFlightScrollRestoreClaim = nil
+            loadFinalizationTask = nil
+            pageIsReady = false
+            loadedSignature = nil
+            loadGeneration &+= 1
+            activeLoadSignature = nil
+            activeNavigation = nil
+            webView.setAccessibilityIdentifier("scholium.renderedDocument.failed")
+            onRenderingFailure?(error.localizedDescription)
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             pageIsReady = false
             loadedSignature = nil
+            cancelPendingPageWork()
             webView.setAccessibilityIdentifier("scholium.renderedDocument.failed")
             onRenderingFailure?("The Read renderer stopped unexpectedly.")
         }
 
-        private func restoreScrollPosition(in webView: WKWebView) async {
-            let fraction = min(1, max(0, initialScrollFraction))
+        private func restoreScrollPosition(
+            _ claim: ScrollRestoreClaim,
+            generation: UInt64,
+            signature: String,
+            in webView: WKWebView
+        ) async -> Bool {
+            let request = claim.request
+            guard request.fingerprint == fingerprint,
+                  inFlightScrollRestoreClaim?.token == claim.token,
+                  isCurrentLoad(
+                      generation: generation,
+                      signature: signature,
+                      in: webView
+                  ) else { return false }
+            let fraction = request.position.fraction
             let anchorValue: Any
-            if let anchor = initialScrollAnchor,
+            if let anchor = request.position.anchor,
                anchor.sourceFingerprint == fingerprint,
                anchor.isValid(forUTF16Length: sourceUTF16Length) {
                 anchorValue = [
@@ -417,6 +632,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   await new Promise(resolve => setTimeout(resolve, 10));
                   extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                 }
+                window.scholiumReadScroll?.recordRestoreAttempt?.();
                 const restored = Boolean(anchor && window.scholiumReadScroll?.restore(anchor));
                 if (!restored) window.scrollTo({top: extent * fallbackFraction, behavior: 'auto'});
                 const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
@@ -434,13 +650,219 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 contentWorld: .page
             )
             guard activeWebView === webView,
+                  loadGeneration == generation,
+                  activeLoadSignature == signature,
+                  inFlightScrollRestoreClaim?.token == claim.token,
                   documentID == expectedDocumentID,
                   fingerprint == expectedFingerprint,
-                  let payload = result as? [String: Any] else { return }
-            receiveScrollPosition(
-                fractionValue: payload["fraction"],
-                anchorValue: payload["anchor"]
+                  let payload = result as? [String: Any] else { return false }
+            if payload["restored"] as? Bool == true,
+               let requestedAnchor = request.position.anchor {
+                receiveRestoredScrollPosition(
+                    requestedAnchor,
+                    fractionValue: payload["fraction"]
+                )
+            } else {
+                receiveScrollPosition(
+                    fractionValue: payload["fraction"],
+                    anchorValue: payload["anchor"]
+                )
+            }
+            return true
+        }
+
+        private func ensureScrollRestoreRequest(reason: ScrollRestoreReason) {
+            if let request = scrollRestoreRequest,
+               request.fingerprint == fingerprint,
+               !hasConsumedScrollRestoreRequest(request) {
+                return
+            }
+            let matchingAnchor = observedScrollPosition.anchor.flatMap { anchor in
+                anchor.sourceFingerprint == fingerprint ? anchor : nil
+            }
+            scrollRestoreRequest = ScrollRestoreRequest(
+                id: nextInternalScrollRestoreRequestID,
+                fingerprint: fingerprint,
+                position: ObservedScrollPosition(
+                    fraction: observedScrollPosition.fraction,
+                    anchor: matchingAnchor
+                ),
+                reason: reason
             )
+            scrollRestoreOwnership = .coordinator
+            nextInternalScrollRestoreRequestID &-= 1
+        }
+
+        private func claimScrollRestoreRequest() -> ScrollRestoreClaim? {
+            guard pageIsReady,
+                  let request = scrollRestoreRequest,
+                  let ownership = scrollRestoreOwnership,
+                  request.fingerprint == fingerprint,
+                  !hasConsumedScrollRestoreRequest(request),
+                  (inFlightScrollRestoreClaim?.request.id != request.id
+                      || inFlightScrollRestoreClaim?.request.fingerprint != request.fingerprint) else {
+                return nil
+            }
+            nextScrollRestoreClaimToken &+= 1
+            let claim = ScrollRestoreClaim(
+                token: nextScrollRestoreClaimToken,
+                request: request,
+                ownership: ownership
+            )
+            inFlightScrollRestoreClaim = claim
+            return claim
+        }
+
+        private func finishScrollRestoreClaim(
+            _ claim: ScrollRestoreClaim,
+            consumed: Bool
+        ) {
+            guard inFlightScrollRestoreClaim?.token == claim.token else { return }
+            inFlightScrollRestoreClaim = nil
+            guard consumed else { return }
+            recordConsumedScrollRestoreRequest(claim.request)
+            if scrollRestoreRequest.map({ sameScrollRestoreIdentity($0, claim.request) }) == true {
+                scrollRestoreRequest = nil
+                scrollRestoreOwnership = nil
+            }
+            if claim.ownership == .caller {
+                onScrollRestoreConsumed?(
+                    claim.request.id,
+                    claim.request.fingerprint
+                )
+            }
+        }
+
+        private func sameScrollRestoreIdentity(
+            _ lhs: ScrollRestoreRequest,
+            _ rhs: ScrollRestoreRequest
+        ) -> Bool {
+            lhs.id == rhs.id && lhs.fingerprint == rhs.fingerprint
+        }
+
+        private func hasConsumedScrollRestoreRequest(_ request: ScrollRestoreRequest) -> Bool {
+            let identity = ScrollRestoreIdentity(
+                id: request.id,
+                fingerprint: request.fingerprint
+            )
+            return consumedScrollRestoreRequests.contains(identity)
+        }
+
+        private func recordConsumedScrollRestoreRequest(_ request: ScrollRestoreRequest) {
+            let identity = ScrollRestoreIdentity(
+                id: request.id,
+                fingerprint: request.fingerprint
+            )
+            guard !consumedScrollRestoreRequests.contains(identity) else { return }
+            consumedScrollRestoreRequests.append(identity)
+            let overflow = consumedScrollRestoreRequests.count
+                - Self.consumedScrollRestoreHistoryLimit
+            if overflow > 0 {
+                consumedScrollRestoreRequests.removeFirst(overflow)
+            }
+        }
+
+        private func schedulePostLoadPositioningIfNeeded(in webView: WKWebView) {
+            guard pageIsReady,
+                  let navigation = activeNavigation,
+                  let signature = activeLoadSignature else { return }
+            let hasPendingRequest = scrollRestoreRequest.map { request in
+                request.fingerprint == fingerprint
+                    && !hasConsumedScrollRestoreRequest(request)
+                    && (inFlightScrollRestoreClaim?.request.id != request.id
+                        || inFlightScrollRestoreClaim?.request.fingerprint != request.fingerprint)
+            } == true
+            let hasPendingSourceLine = targetSourceLine.map {
+                $0 > 0 && $0 != lastReachedSourceLine
+            } == true
+            guard hasPendingRequest || hasPendingSourceLine else { return }
+
+            let generation = loadGeneration
+            let finalization = loadFinalizationTask
+            sourceLineNavigationTask?.cancel()
+            sourceLineNavigationTask = Task { @MainActor [weak self, weak webView] in
+                await finalization?.value
+                guard let self, let webView,
+                      self.isCurrentLoad(
+                          navigation: navigation,
+                          generation: generation,
+                          signature: signature,
+                          in: webView
+                      ) else { return }
+                let restoreClaim = self.claimScrollRestoreRequest()
+                var claimWasFinished = false
+                defer {
+                    if let restoreClaim, !claimWasFinished {
+                        self.finishScrollRestoreClaim(restoreClaim, consumed: false)
+                    }
+                }
+                var restoreSucceeded = false
+                if let restoreClaim {
+                    await self.waitForTestingScrollRestoreDelayIfNeeded()
+                    restoreSucceeded = await self.restoreScrollPosition(
+                       restoreClaim,
+                       generation: generation,
+                       signature: signature,
+                       in: webView
+                    )
+                }
+                await self.scrollToSourceLineIfNeeded(
+                    generation: generation,
+                    signature: signature,
+                    in: webView
+                )
+                guard self.isCurrentLoad(
+                    navigation: navigation,
+                    generation: generation,
+                    signature: signature,
+                    in: webView
+                ) else { return }
+                if let restoreClaim {
+                    self.finishScrollRestoreClaim(
+                        restoreClaim,
+                        consumed: restoreSucceeded
+                    )
+                    claimWasFinished = true
+                }
+            }
+        }
+
+        private func waitForTestingScrollRestoreDelayIfNeeded() async {
+            #if DEBUG
+            let delay = max(0, testingScrollRestoreDelayMilliseconds)
+            guard delay > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(delay))
+            #endif
+        }
+
+        private func isCurrentLoad(
+            navigation: WKNavigation? = nil,
+            generation: UInt64,
+            signature: String,
+            in webView: WKWebView
+        ) -> Bool {
+            guard activeWebView === webView,
+                  pageIsReady,
+                  loadGeneration == generation,
+                  activeLoadSignature == signature,
+                  loadedSignature == signature else { return false }
+            if let navigation {
+                return activeNavigation === navigation
+            }
+            return activeNavigation != nil
+        }
+
+        func cancelPendingPageWork(keepingLoadIdentity: Bool = false) {
+            loadFinalizationTask?.cancel()
+            loadFinalizationTask = nil
+            sourceLineNavigationTask?.cancel()
+            sourceLineNavigationTask = nil
+            inFlightScrollRestoreClaim = nil
+            pageIsReady = false
+            guard !keepingLoadIdentity else { return }
+            loadGeneration &+= 1
+            activeLoadSignature = nil
+            activeNavigation = nil
         }
 
         private func receiveScrollPosition(
@@ -450,6 +872,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard let fraction = (fractionValue as? NSNumber)?.doubleValue,
                   fraction.isFinite,
                   (0 ... 1).contains(fraction) else { return }
+            observedScrollPosition.updateFraction(fraction)
             onScrollFractionChange?(fraction)
             guard let raw = anchorValue as? [String: Any],
                   let sourceOffset = (raw["sourceUTF16Offset"] as? NSNumber)?.intValue,
@@ -467,32 +890,84 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fallbackFraction: fraction
             )
             if anchor.isValid(forUTF16Length: sourceUTF16Length) {
+                observedScrollPosition.anchor = anchor
                 onScrollAnchorChange?(anchor)
             }
         }
 
-        private func scrollToSourceLineIfNeeded(in webView: WKWebView) {
-            guard let line = targetSourceLine, line > 0, line != lastReachedSourceLine else { return }
-            let script = """
-            (() => {
-              const requested = \(line);
-              const items = Array.from(document.querySelectorAll('[data-source-line]'));
-              let target = items.find(item => Number(item.dataset.sourceLine) === requested);
-              if (!target) {
-                target = items.filter(item => Number(item.dataset.sourceLine) <= requested).pop() || items[0];
-              }
-              if (!target) return false;
-              target.scrollIntoView({block:'start', behavior:'auto'});
-              target.tabIndex = -1;
-              target.focus({preventScroll:true});
-              return true;
-            })();
-            """
-            webView.evaluateJavaScript(script) { [weak self] value, _ in
-                guard value as? Bool == true else { return }
-                self?.lastReachedSourceLine = line
-                self?.onSourceLineReached?()
-            }
+        private func receiveRestoredScrollPosition(
+            _ requestedAnchor: EditorScrollAnchor,
+            fractionValue: Any?
+        ) {
+            guard let fraction = (fractionValue as? NSNumber)?.doubleValue,
+                  fraction.isFinite,
+                  (0 ... 1).contains(fraction),
+                  requestedAnchor.sourceFingerprint == fingerprint,
+                  requestedAnchor.isValid(forUTF16Length: sourceUTF16Length) else { return }
+            observedScrollPosition.updateFraction(fraction)
+            onScrollFractionChange?(fraction)
+            let anchor = EditorScrollAnchor(
+                sourceFingerprint: requestedAnchor.sourceFingerprint,
+                sourceUTF16Offset: requestedAnchor.sourceUTF16Offset,
+                blockUTF16LowerBound: requestedAnchor.blockUTF16LowerBound,
+                blockUTF16UpperBound: requestedAnchor.blockUTF16UpperBound,
+                relativeBlockPosition: requestedAnchor.relativeBlockPosition,
+                fallbackFraction: fraction
+            )
+            observedScrollPosition.anchor = anchor
+            onScrollAnchorChange?(anchor)
+        }
+
+        private func scrollToSourceLineIfNeeded(
+            generation: UInt64,
+            signature: String,
+            in webView: WKWebView
+        ) async {
+            guard let line = targetSourceLine,
+                  line > 0,
+                  line != lastReachedSourceLine,
+                  isCurrentLoad(
+                      generation: generation,
+                      signature: signature,
+                      in: webView
+                  ) else { return }
+            let result = try? await webView.callAsyncJavaScript(
+                """
+                const items = Array.from(document.querySelectorAll('[data-source-line]'));
+                let target = items.find(item => Number(item.dataset.sourceLine) === requested);
+                if (!target) {
+                  target = items.filter(item => Number(item.dataset.sourceLine) <= requested).pop() || items[0];
+                }
+                if (!target) return false;
+                target.scrollIntoView({block:'start', behavior:'auto'});
+                target.tabIndex = -1;
+                target.focus({preventScroll:true});
+                const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+                return {
+                  reached: true,
+                  fraction,
+                  anchor: window.scholiumReadScroll?.current(fraction) ?? null
+                };
+                """,
+                arguments: ["requested": line],
+                in: nil,
+                contentWorld: .page
+            )
+            guard let payload = result as? [String: Any],
+                  payload["reached"] as? Bool == true,
+                  targetSourceLine == line,
+                  isCurrentLoad(
+                      generation: generation,
+                      signature: signature,
+                      in: webView
+                  ) else { return }
+            receiveScrollPosition(
+                fractionValue: payload["fraction"],
+                anchorValue: payload["anchor"]
+            )
+            lastReachedSourceLine = line
+            onSourceLineReached?()
         }
 
         func webView(
@@ -500,6 +975,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             didFail navigation: WKNavigation!,
             withError error: any Error
         ) {
+            guard activeNavigation === navigation else { return }
+            cancelPendingPageWork()
             onRenderingFailure?(error.localizedDescription)
         }
 
@@ -508,6 +985,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             didFailProvisionalNavigation navigation: WKNavigation!,
             withError error: any Error
         ) {
+            guard activeNavigation === navigation else { return }
+            cancelPendingPageWork()
             onRenderingFailure?(error.localizedDescription)
         }
 
@@ -537,16 +1016,39 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             source: String,
             documentID: String,
             fingerprint: String,
+            loadGeneration: UInt64 = 1,
             commentEnabled: Bool,
             selectionEnabled: Bool,
             researcherComments: [ResearcherComment],
             linkPreviews: [DocumentLinkPreview],
+            presentationCSS: String,
             userCSS: String
         ) -> String {
             let encodedDocumentID = jsonLiteral(documentID)
             let encodedFingerprint = jsonLiteral(fingerprint)
             let commentFlag = commentEnabled ? "true" : "false"
             let selectionFlag = selectionEnabled ? "true" : "false"
+            #if DEBUG
+            let readScrollTestingMembers = """
+                  restoreCount: 0,
+                  recordRestoreAttempt() { this.restoreCount += 1; },
+                  testingSnapshot() {
+                    var previousTop = Number.NEGATIVE_INFINITY;
+                    var visualOrderIsMonotonic = true;
+                    for (const entry of scrollBlockRegistry.entries) {
+                      const top = entry.element.getBoundingClientRect().top;
+                      if (top + 1 < previousTop) visualOrderIsMonotonic = false;
+                      previousTop = Math.max(previousTop, top);
+                    }
+                    return {
+                      registryCount: scrollBlockRegistry.entries.length,
+                      visualOrderIsMonotonic
+                    };
+                  },
+            """
+            #else
+            let readScrollTestingMembers = ""
+            #endif
             let noteDocument = NoteDocument(relativePath: documentID, rawContent: source)
             let renderedSpans = renderedSourceSpans(in: source, relativePath: documentID)
             let sourceLength = (source as NSString).length
@@ -612,6 +1114,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <meta name="viewport" content="width=device-width, initial-scale=1">
               <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src data:">
               <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
+              <style id="scholium-presentation-css">\(presentationCSS)</style>
               <style id="scholium-user-css">\(userCSS)</style>
             </head>
             <body>
@@ -628,6 +1131,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const version = 1;
                 const documentID = \(encodedDocumentID);
                 const fingerprint = \(encodedFingerprint);
+                const loadGeneration = \(loadGeneration);
                 const commentEnabled = \(commentFlag);
                 const selectionEnabled = \(selectionFlag);
                 const commentAnnotations = JSON.parse(new TextDecoder().decode(
@@ -637,7 +1141,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   Uint8Array.from(atob(\(jsonLiteral(previewPayload))), character => character.charCodeAt(0))
                 ));
                 const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(messageHandlerName);
-                const post = (type, extra = {}) => handler && handler.postMessage({version, documentID, fingerprint, type, ...extra});
+                const post = (type, extra = {}) => handler && handler.postMessage({version, documentID, fingerprint, loadGeneration, type, ...extra});
                 const popover = document.getElementById('scholium-preview-popover');
                 const previewTitle = popover.querySelector('.scholium-preview-title');
                 const previewMetadata = popover.querySelector('.scholium-preview-metadata');
@@ -971,38 +1475,174 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   });
                 }
 
-                function semanticScrollBlocks() {
+                const scrollBlockRegistry = (() => {
                   const root = document.getElementById('scholium-document');
-                  if (!root) return [];
-                  return Array.from(root.querySelectorAll('[data-source-utf16-start][data-source-utf16-end]'))
-                    .filter(element => {
-                      const style = getComputedStyle(element);
-                      if (style.display === 'inline' || style.display === 'contents' || style.visibility === 'hidden') return false;
-                      const rect = element.getBoundingClientRect();
-                      return rect.height > 0 && Number.isFinite(Number(element.dataset.sourceUtf16Start))
-                        && Number.isFinite(Number(element.dataset.sourceUtf16End));
-                    });
+                  const entries = [];
+                  const byElement = new WeakMap();
+                  const byExactRange = new Map();
+                  if (!root) return {
+                    root,
+                    entries,
+                    byElement,
+                    byExactRange,
+                    bySource: [],
+                    sourcePrefixMaximumUpper: []
+                  };
+                  const candidates = root.querySelectorAll('[data-source-utf16-start][data-source-utf16-end]');
+                  for (const element of candidates) {
+                    const lower = Number(element.dataset.sourceUtf16Start);
+                    const upper = Number(element.dataset.sourceUtf16End);
+                    if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper < lower) continue;
+                    const style = getComputedStyle(element);
+                    if (style.display === 'inline' || style.display === 'contents'
+                        || style.display === 'none' || style.visibility === 'hidden') continue;
+                    const initialRect = element.getBoundingClientRect();
+                    if (initialRect.height <= 0) continue;
+                    const entry = {element, lower, upper, span: Math.max(0, upper - lower)};
+                    element.dataset.scholiumScrollAnchor = String(entries.length);
+                    entries.push(entry);
+                    byElement.set(element, entry);
+                    const key = lower + ':' + upper;
+                    const existing = byExactRange.get(key);
+                    if (!existing || entry.span < existing.span) byExactRange.set(key, entry);
+                  }
+                  const bySource = entries.slice().sort((left, right) =>
+                    left.lower - right.lower || left.span - right.span);
+                  let maximumUpper = Number.NEGATIVE_INFINITY;
+                  const sourcePrefixMaximumUpper = bySource.map(entry => {
+                    maximumUpper = Math.max(maximumUpper, entry.upper);
+                    return maximumUpper;
+                  });
+                  return {
+                    root,
+                    entries,
+                    byElement,
+                    byExactRange,
+                    bySource,
+                    sourcePrefixMaximumUpper
+                  };
+                })();
+
+                function scrollEntryForNode(node) {
+                  const root = scrollBlockRegistry.root;
+                  let element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+                  while (element && element !== root) {
+                    const entry = scrollBlockRegistry.byElement.get(element);
+                    if (entry) return entry;
+                    element = element.parentElement;
+                  }
+                  return null;
+                }
+
+                function scrollEntryAtProbe(probe) {
+                  const registry = scrollBlockRegistry;
+                  if (!registry.root || !registry.entries.length) return null;
+                  const rootRect = registry.root.getBoundingClientRect();
+                  const probeX = Math.max(1, Math.min(window.innerWidth - 1,
+                    rootRect.left + Math.max(1, rootRect.width / 2)));
+                  let entry = scrollEntryForNode(document.elementFromPoint(probeX, probe));
+                  if (!entry && document.caretPositionFromPoint) {
+                    entry = scrollEntryForNode(document.caretPositionFromPoint(probeX, probe)?.offsetNode);
+                  }
+                  if (!entry && document.caretRangeFromPoint) {
+                    entry = scrollEntryForNode(document.caretRangeFromPoint(probeX, probe)?.startContainer);
+                  }
+                  if (entry) return entry;
+
+                  // Margins can leave the probe over the document background.
+                  // A logarithmic fallback reads only a bounded set of blocks.
+                  let low = 0;
+                  let high = registry.entries.length - 1;
+                  let nearestIndex = 0;
+                  let nearestDistance = Number.POSITIVE_INFINITY;
+                  while (low <= high) {
+                    const index = (low + high) >> 1;
+                    const candidate = registry.entries[index];
+                    const rect = candidate.element.getBoundingClientRect();
+                    const distance = rect.top <= probe && rect.bottom > probe
+                      ? 0
+                      : Math.min(Math.abs(rect.top - probe), Math.abs(rect.bottom - probe));
+                    if (distance < nearestDistance) {
+                      nearestDistance = distance;
+                      nearestIndex = index;
+                    }
+                    if (rect.bottom <= probe) low = index + 1;
+                    else if (rect.top > probe) high = index - 1;
+                    else return candidate;
+                  }
+                  const start = Math.max(0, nearestIndex - 2);
+                  const end = Math.min(registry.entries.length, nearestIndex + 3);
+                  let nearest = registry.entries[nearestIndex];
+                  for (let index = start; index < end; index += 1) {
+                    const candidate = registry.entries[index];
+                    const rect = candidate.element.getBoundingClientRect();
+                    const distance = rect.top <= probe && rect.bottom > probe
+                      ? 0
+                      : Math.min(Math.abs(rect.top - probe), Math.abs(rect.bottom - probe));
+                    if (distance < nearestDistance) {
+                      nearestDistance = distance;
+                      nearest = candidate;
+                    }
+                  }
+                  return nearest;
+                }
+
+                function scrollEntryForAnchor(anchor) {
+                  const offset = Number(anchor.sourceUTF16Offset);
+                  const lower = Number(anchor.blockUTF16LowerBound);
+                  const upper = Number(anchor.blockUTF16UpperBound);
+                  const exact = scrollBlockRegistry.byExactRange.get(lower + ':' + upper);
+                  if (exact) return exact;
+                  const entries = scrollBlockRegistry.bySource;
+                  let low = 0;
+                  let high = entries.length;
+                  while (low < high) {
+                    const middle = (low + high) >> 1;
+                    if (entries[middle].lower <= offset) low = middle + 1;
+                    else high = middle;
+                  }
+                  const insertion = low;
+                  let containing = null;
+                  for (let index = insertion - 1;
+                       index >= 0 && scrollBlockRegistry.sourcePrefixMaximumUpper[index] >= offset;
+                       index -= 1) {
+                    const candidate = entries[index];
+                    if (candidate.lower <= offset && candidate.upper >= offset
+                        && (!containing || candidate.span < containing.span)) containing = candidate;
+                  }
+                  if (containing) return containing;
+                  const before = entries[Math.max(0, insertion - 1)];
+                  const after = entries[Math.min(entries.length - 1, insertion)];
+                  if (!before) return after || null;
+                  if (!after) return before;
+                  return Math.abs(before.lower - offset) <= Math.abs(after.lower - offset) ? before : after;
+                }
+
+                function visibleScrollEntry(entry) {
+                  let candidate = entry;
+                  while (candidate) {
+                    if (candidate.element.getBoundingClientRect().height > 0) return candidate;
+                    var parent = candidate.element.parentElement;
+                    candidate = null;
+                    while (parent && parent !== scrollBlockRegistry.root) {
+                      const registered = scrollBlockRegistry.byElement.get(parent);
+                      if (registered) {
+                        candidate = registered;
+                        break;
+                      }
+                      parent = parent.parentElement;
+                    }
+                  }
+                  return null;
                 }
 
                 function currentReadScrollAnchor(fraction) {
                   const probe = 8;
-                  const candidates = semanticScrollBlocks();
-                  if (!candidates.length) return null;
-                  const ranked = candidates.map(element => {
-                    const rect = element.getBoundingClientRect();
-                    const lower = Number(element.dataset.sourceUtf16Start);
-                    const upper = Number(element.dataset.sourceUtf16End);
-                    const containsProbe = rect.top <= probe && rect.bottom > probe;
-                    const distance = containsProbe ? 0 : Math.min(Math.abs(rect.top - probe), Math.abs(rect.bottom - probe));
-                    return {element, rect, lower, upper, containsProbe, distance, span: Math.max(0, upper - lower)};
-                  }).sort((left, right) => {
-                    if (left.containsProbe !== right.containsProbe) return left.containsProbe ? -1 : 1;
-                    if (left.distance !== right.distance) return left.distance - right.distance;
-                    return left.span - right.span;
-                  });
-                  const selected = ranked[0];
+                  const selected = scrollEntryAtProbe(probe);
+                  if (!selected) return null;
+                  const rect = selected.element.getBoundingClientRect();
                   const relativeBlockPosition = Math.max(0, Math.min(1,
-                    (probe - selected.rect.top) / Math.max(1, selected.rect.height)));
+                    (probe - rect.top) / Math.max(1, rect.height)));
                   const sourceUTF16Offset = Math.max(selected.lower, Math.min(selected.upper,
                     Math.round(selected.lower + selected.span * relativeBlockPosition)));
                   return {
@@ -1021,30 +1661,30 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   const upper = Number(anchor.blockUTF16UpperBound);
                   const relative = Number(anchor.relativeBlockPosition);
                   if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
-                  const candidates = semanticScrollBlocks().map(element => ({
-                    element,
-                    lower: Number(element.dataset.sourceUtf16Start),
-                    upper: Number(element.dataset.sourceUtf16End)
-                  }));
-                  let target = candidates.find(candidate => candidate.lower === lower && candidate.upper === upper);
-                  if (!target) {
-                    target = candidates.filter(candidate => candidate.lower <= offset && candidate.upper >= offset)
-                      .sort((left, right) => (left.upper - left.lower) - (right.upper - right.lower))[0];
-                  }
-                  if (!target) {
-                    target = candidates.sort((left, right) => Math.abs(left.lower - offset) - Math.abs(right.lower - offset))[0];
-                  }
+                  const target = visibleScrollEntry(scrollEntryForAnchor(anchor));
                   if (!target) return false;
                   const rect = target.element.getBoundingClientRect();
+                  const height = Math.max(1, rect.height);
+                  const requestedOffset = Math.max(0, Math.min(1, relative)) * height;
+                  // WebKit can resolve a one-pixel boundary to the preceding
+                  // block after fractional layout or font substitution. Keep
+                  // the probe four CSS pixels inside the requested block so a
+                  // restore-generated scroll report resolves to that block.
+                  const interiorOffset = height > 8
+                    ? Math.max(4, Math.min(height - 4, requestedOffset))
+                    : requestedOffset;
                   const requestedTop = window.scrollY + rect.top
-                    + Math.max(0, Math.min(1, relative)) * Math.max(1, rect.height) - 8;
+                    + interiorOffset - 8;
                   window.scrollTo({top: Math.max(0, requestedTop), behavior: 'auto'});
                   return true;
                 }
 
                 window.scholiumReadScroll = {
+                \(readScrollTestingMembers)
                   current(fraction) { return currentReadScrollAnchor(fraction); },
-                  restore(anchor) { return restoreReadScrollAnchor(anchor); }
+                  restore(anchor) {
+                    return restoreReadScrollAnchor(anchor);
+                  }
                 };
 
                 var scrollTimer;
@@ -1144,10 +1784,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         static let baseCSS = """
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
-        .scholium-document { box-sizing: border-box; min-width: 0; max-width: var(--scholium-document-readable-measure); margin: 0 auto; padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll); font-size: var(--scholium-document-text-scale); overflow-wrap: anywhere; }
-        h1, h2, h3, h4, h5, h6 { line-height: var(--scholium-rhythm-heading-line-height); margin: var(--scholium-rhythm-heading-before) 0 var(--scholium-rhythm-heading-after); text-wrap: balance; }
-        .scholium-document > h1:first-child { margin-top: 0; margin-bottom: 40px; padding-bottom: 28px; border-bottom: 1px solid var(--scholium-color-separator); }
-        h1 { font-size: var(--scholium-document-h1-size); font-weight: 400; } h2 { font-size: var(--scholium-document-h2-size); } h3 { font-size: var(--scholium-document-h3-size); } h4, h5, h6 { font-size: var(--scholium-document-h4-size); }
         p { margin: var(--scholium-rhythm-paragraph-gap) 0; } a { color: LinkText; text-underline-offset: .12em; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }

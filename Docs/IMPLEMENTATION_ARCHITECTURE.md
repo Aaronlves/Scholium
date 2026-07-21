@@ -105,27 +105,39 @@ and mode. Only New Window creates a shell.
 tab/history fields decode only and vanish on encode.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
-`NSSplitViewController` with three direct `NSSplitViewItem`/
-`NSHostingController` siblings for Library, Document, and Apparatus. AppKit
-owns window resizing, compression, divider mechanics, automatic Sidebar
-collapse, collapse transitions, fullscreen, frame restoration, and drag limits.
-SwiftUI's Codable route is the sole scene identity. No wrappers, width
-bindings, global window searches, opening-frame corrections, or
-Scholium-defined split minima/maxima intervene. A numeric minimum may exist
-only once at scene level after the specification's complete adaptation matrix
-proves it necessary.
+`NSSplitViewController` with three direct `NSSplitViewItem` siblings for
+Library, Document, and Apparatus. The split and each item's one opaque semantic
+background fill the frame beneath AppKit's transparent titlebar. The standard
+SwiftUI toolbar background is hidden, with no background-extension effect or
+duplicate color source. Native titlebar behavior remains, and each content
+controller is a foreground sibling inside the system safe area.
 
-Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`. Production never mutates
-its thickness, fraction, priority, collapse policy, full-height layout, safe
-area, or separator. AppKit's standard item/
-`NSSplitViewController.toggleInspector(_:)` owns the
-transition. Because the nested split may be outside the responder chain, the
-toolbar bridges that standard command and View-menu intent to the exact
-per-window coordinator; selected-document state supplies availability. The
-split's collapsed state is authoritative. `WindowModel` mirrors visibility for
-commands/restoration but never reasserts it or stores Inspector width; the
-coordinator receives explicit visibility intents and holds weak references to
-the exact window and split.
+The one `NSWindow.toolbar` is Document-owned. Tracking separators bind it to the
+middle item without transferring semantic ownership. Before split attachment,
+`WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
+items in place. Visible peripheral Hide controls live in clear split-owned
+`NSHostingView`s. A titlebar layout guide and `safeAreaRegions = []` align them
+without a measured height, second safe-area inset, content row, or
+`NSSplitViewItemAccessoryViewController`. The toolbar controller diffs item
+identifiers from native collapsed state so only a collapsed pane's Show route
+enters the Document toolbar.
+
+AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
+restoration, and drag limits; the Codable route owns scene identity. No width
+binding, window search, opening correction, or persisted divider geometry
+intervenes. Library alone receives the specified 300pt native content minimum,
+without a preferred/maximum width or second geometry owner. Other split items
+receive no Scholium thickness, fraction, priority, or restoration state. A
+scene/window minimum remains contingent on the complete adaptation matrix.
+
+Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`; production does
+not mutate its geometry, safe area, separator, or collapse policy. The native item and
+`toggleInspector(_:)` own transitions. Because the nested split may sit outside
+the responder chain, the collapsed Show route is a borderless hosted item, not
+the platform-wrapped standard toolbar item, and bridges with the View command
+through the exact per-window coordinator. Selected-document state supplies
+availability. `WindowModel` mirrors native visibility for commands,
+restoration, and toolbar reconciliation but never reasserts it or stores width.
 
 The Inspector may project Connections, Research Status, metadata, provenance,
 Human Review or Critique status, and other current-note context. It may
@@ -300,15 +312,14 @@ not own document sessions.
 
 `ContentView` has one `.sheet(item:)`, one typed alert presentation, and one
 persistent `ScholiumWorkspaceSplitView` root for each configured workspace
-window. That bounded AppKit bridge creates one `NSSplitViewController`
-containing three sibling `NSHostingController` surfaces. Bootstrap and setup
-belong to their separate scene and never construct this split. Configured
-loading and document states replace hosted content only; they never replace the
-outer split. Its `WorkspaceWindowCoordinator` receives that exact native window
-and split directly, installs the toolbar and close delegate, and registers the
-route's readiness/flusher capability with the application-owned lifecycle
-registry. No singleton split registry, window-list search, notification,
-polling, delayed frame correction, or width calculation participates.
+window. Its bounded AppKit bridge creates the three-item split described above;
+role-owned backgrounds fill each container while Library, Document, and
+Apparatus content stays foreground in the live safe area. Bootstrap never
+constructs this split. Loading and document states replace hosted content, not
+the shell. `WorkspaceWindowCoordinator` receives the exact window and split,
+installs toolbar/delegate state, and registers readiness/flushing. No singleton,
+window search, notification, polling, delayed correction, or width calculation
+participates.
 
 Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
 receives the current native focused object observed at the app scene boundary;
@@ -498,17 +509,25 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v3 also exposes a bounded diagnostic-only performance snapshot. Its
-256-sample ring contains metric names, durations, and numeric counts only; it
-cannot carry Markdown, paths, titles, queries, preview content, or other
-research data. CodeMirror-visible paint boundaries use `requestMeasure` and a
-subsequent animation frame. Offscreen views may throttle those frames, so an
-absent paint sample is not replaced with an internal-work duration. External
-UI automation and process-set memory measurements remain the authority for
-visible-response and retained-WebKit acceptance. Process ownership must be
-resolved from the exact app originator's launchd service map and checked
-against every executable before RSS is summed; PPID or process-name matching
-is insufficient because WebKit XPC workers are launchd children.
+Bridge v4 sends source deltas immediately in generation order. It coalesces
+selection-only reports to the latest envelope per animation frame, with a 50 ms
+offscreen watchdog. Each envelope carries exact selection and coordinates but
+includes command availability only when changed. Swift keeps coordinates as
+non-Observable session state and publishes semantic or lifecycle changes only.
+Recovery capture follows document/history and lifecycle changes, not cursor
+motion. Every awaited request binds a session epoch and revalidates WebView,
+document, fingerprint, and nondecreasing generation. Selection snapshots are
+valid only for that identity and generation; a committed fingerprint rebases
+fallback recovery before scheduling bounded history capture.
+
+Its diagnostic snapshot is a fixed 256-sample buffer of metric names, durations,
+and counts only—never research content or identifiers. Scroll frames aggregate
+once per session and clear their User Timing entries. Visible-paint samples use
+`requestMeasure` plus the next animation frame; throttled missing samples are
+not replaced by internal-work durations. UI automation and exact process-set
+measurement remain the authorities for visible response and retained memory.
+Process attribution uses the originator's launchd service map and verifies each
+executable; PPID or process-name matching is insufficient for WebKit workers.
 
 The retained-memory scenario uses an app-owned, run-specific handshake rather
 than inferring readiness from XCUITest timing. The initial editor load and each
@@ -554,19 +573,22 @@ that snapshot is unavailable, it reconstructs from the checked mirror and last
 selection; it never rereads disk over a dirty buffer. Undo-history loss is
 reported separately from source loss.
 
-Scroll continuity is owned by the retained `DocumentSessionModel`, never by a
-path-keyed view or writable Markdown. `EditorScrollAnchor` binds a source UTF-16
-position, nearest semantic block bounds, block-relative position, normalized
-fallback, and document fingerprint. CodeMirror converts exact-source CRLF
-offsets at the typed bridge and uses its document geometry; Read maps the same
-contract onto source-located semantic DOM. A mismatched fingerprint or invalid
-range is discarded and falls back to the normalized fraction. Live Preview
-and Source additionally use CodeMirror's native scroll snapshot while sharing
-one `EditorState`. Reconstruction freezes a separate handoff anchor before the
-old surface can emit another scroll event, and delayed restoration is accepted
-only while the same immutable CodeMirror document remains installed. WebKit
-restoration must not depend solely on animation frames because offscreen or
-reconstructing views may throttle them.
+The retained `DocumentSessionModel`, never writable Markdown or a path-keyed
+view, owns scroll continuity. `EditorScrollAnchor` binds source position,
+semantic block, relative position, fallback fraction, and fingerprint.
+Ordinary reports update non-published `ObservedScrollPosition`; only load,
+mode handoff, WebView rebuild, or navigation creates a numbered
+`ScrollRestoreRequest`. Its single tokenized claim is acknowledged only after
+successful current-load restoration, so failure, cancellation, or the
+resulting scroll report cannot consume or recreate it.
+
+CodeMirror maps exact-source CRLF offsets to its geometry. Read maps the same
+contract through a load-time registry of source-located DOM blocks, using
+`elementFromPoint` and the range map rather than full-DOM measurement on every
+scroll. Invalid ranges or fingerprints fall back to the normalized fraction.
+Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
+handoff anchor, and delayed restoration requires the same document or Read-load
+generation. It never depends only on throttle-prone animation frames.
 
 Add Comment is not a Markdown transformation: it captures an exact source
 selection, opens the role-valid Review or Critique panel, and focuses its
@@ -618,14 +640,21 @@ opened block mathematics and comments produce fail-closed malformed
 diagnostics.
 
 Live block projections use direct CodeMirror `StateField` decorations because
-their replacement widgets change vertical geometry. Initial construction is
-fully indexed. When the index proves that a document contains no table,
-callout, or footnote constructs, pure selection changes and ordinary bounded
-insertions without a construct marker reuse the empty projection state;
-deletions, large insertions, marker-bearing insertions, and every
-construct-bearing document conservatively rebuild. This is a measured
-no-construct typing fast path, not a claim that every projection is already
-incremental.
+their replacement widgets change vertical geometry. One immutable
+`LiveProjectionIndex` owns sorted frontmatter, literal, code-block, table,
+Callout, and footnote ranges. A prefix-maximum interval index handles nested
+half-open overlap and containment without mutating StateField-owned arrays.
+Plain bounded insertions outside constructs map existing positions; deletions,
+structural markers, and uncertain block boundaries rebuild conservatively. A
+new background Lezer tree may refresh structure once; selection and viewport
+transactions reuse it.
+
+The inline `ViewPlugin` parses visible ranges plus a 2,000 UTF-16 buffer and
+reuses decorations while it still covers the viewport. Indexed literals and
+fenced-code ranges avoid scanning from line one. Selection changes replace only
+merged old/new neighborhoods within that margin, not the visible buffer or
+structural index. Widget equality preserves DOM; height work stays inside
+CodeMirror's measurement cycle.
 
 Read and Live Preview consume one app-owned presentation contract:
 
@@ -643,19 +672,21 @@ accessibility while keeping Live Preview an editor. Layout changes may update
 presentation variables and container size but must not reconstruct the retained
 `WKWebView` or `EditorState`.
 
-The Host remains the owner of presentation CSS. When that CSS changes text
-scale, measure, insets, appearance roles, or user styling, the bridge updates
-the one controlled style element and explicitly requests a CodeMirror measure;
-it reports the resulting scroll position only after that measure. Font-ready
-remeasurement is bound to the same immutable document. This prevents a visual
-configuration change from leaving CodeMirror's height map and semantic scroll
-anchor on different geometries.
+The Host owns three ordered CSS layers on both surfaces: app/protected
+components, dynamic presentation, then sanitized user CSS. The bridge keeps
+the latter two in distinct controlled elements, coalesces changes into one
+CodeMirror measure, and reports scroll only afterward. Font-ready measurement
+stays bound to the same document, preserving geometry and equal cascade
+authority across Read and Live.
 
-Inactive Live callouts use the same semantic `.scholium-callout` DOM and
-protected component stylesheet as Read. Entering a callout reveals its exact
-source and returns ownership to CodeMirror. Named footnote-definition ranges
-are excluded from top-level callout and table projection so nested blocks have
-one owner: the semantic footnote end-section widget.
+Inactive Live callouts share Read's `.scholium-callout` DOM and stylesheet.
+`LiveBlockActivation` records the half-open range and entry edge: downward
+entry selects `from`, while upward or rendered-body entry selects `to` before
+CodeMirror resumes ownership. The atomic replacement is noninclusive at both
+boundaries. Its slot uses measured padding, never block margins or fixed height;
+fold, style, and pointer changes measure before further coordinate mapping.
+Footnote definitions remain excluded so their end-section widget is the sole
+nested-block owner.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
 container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
@@ -721,31 +752,37 @@ framework.
 ## Design-system implementation
 
 [SCHOLIUM_SPEC.md §19](SCHOLIUM_SPEC.md#19-scholarly-editorialism-and-design-variables)
-owns palette meanings, typography, opaque surface language, motion, and
-accessibility rules. The app implements that contract through `ScholiumColorRole`,
-`ScholiumLightPalette`, `ScholiumDarkPalette`, `ScholiumMetrics`,
-`ScholiumMotion`, and `ScholiumInterfaceTypography` in
-`Scholium/UI/Foundation`.
+owns palette meanings, typography, opaque surface language, motion, the
+adaptive editorial grid, and accessibility rules. The app implements that
+contract in `Scholium/UI/Foundation` through `ScholiumColorVariables`,
+`ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
+`ScholiumMetrics`, `ScholiumMotion`, and `ScholiumInterfaceTypography`.
 
-Native SwiftUI/AppKit surfaces resolve semantic roles dynamically. WebKit uses
-the same kebab-case role vocabulary in
-`Scholium/Resources/Editor/editor.css`; `SafeMarkdownReadWebView` consumes the
-same declarations. Architecture tests enforce native/WebKit role parity,
-reviewed appearance mappings, contrast floors, and specialized relationship
-variants. The code and tests implement the specification values rather than
-making this document a second palette authority.
+Accent and Paper are the only configurable inputs. One resolver derives every
+appearance role, including the shared Library/Apparatus surface, for native and
+generated WebKit CSS. Matching `editor.css` fallbacks preserve deterministic
+first paint. Functional/status anchors stay private. Tests enforce the input
+boundary, mappings, parity, contrast, and relationship variants; no static
+appearance palette or JSON mirror exists.
 
-Stable geometry is named by meaning rather than number:
+`ScholiumGrid` is the single native authority for the 4pt rhythm, bounded 2pt
+optical exception, semantic spacing, and component anchors. `ScholiumMetrics`
+maps responsibilities to those roles without copying values; no geometry JSON
+mirror exists.
 
+- AppKit owns window, toolbar, split, divider, collapse, fullscreen, and frame
+  geometry. The Library's 300pt content minimum is native split-item state, not
+  grid spacing or persisted divider state;
 - `ScholiumMetrics.Onboarding` owns the separate Bootstrap window and setup-form
   measures;
-- `ScholiumMetrics.Triptych` owns the exact interface measures;
 - `ScholiumMetrics.Workspace` owns the configured-workspace initial size, not a
   minimum;
-- `ScholiumMetrics.Document` owns the provisional readable measure, scrolling
-  top inset, and per-window text-scale range; and
-- `ScholiumDocumentRhythm` and `ScholiumWebDesignTokens` supply one provisional
-  responsive typography/inset contract to Read, Live Preview, and Source.
+- `ScholiumMetrics.Document` names the font-relative readable measure, explicit
+  CSS-pixel top inset, and per-window text-scale range; and
+- `ScholiumDocumentRhythm`, the unit-explicit
+  `ScholiumDocumentPresentationConfiguration`, and `ScholiumWebDesignTokens`
+  supply one responsive `ch`/`rem`/CSS-pixel typography and inset contract to
+  Read, Live Preview, and Source.
 
 `ScholiumMotion` exposes purpose-named animations and returns no animation
 when Reduce Motion is active. It does not install a global animation policy.

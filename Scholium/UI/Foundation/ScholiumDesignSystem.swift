@@ -1,13 +1,37 @@
 import ScholiumContracts
 import AppKit
+import Foundation
 import SwiftUI
 
-/// Semantic interface colors shared by native call sites and the WebKit
-/// document surfaces. Call sites choose a role; each platform resolves that
-/// role through its own appearance-aware color system.
+/// The complete configurable color boundary.
+enum ScholiumColorVariable: String, CaseIterable, Sendable {
+    case accent
+    case paper
+}
+
+/// The only configurable color inputs. Every interface color is a resolved
+/// semantic role rather than another independently configurable swatch.
+struct ScholiumColorVariables: Equatable, Sendable {
+    let accent: UInt32
+    let paper: UInt32
+
+    static let editorialCopper = Self(
+        accent: 0xA94C22,
+        paper: 0xF8F0E2
+    )
+
+    subscript(variable: ScholiumColorVariable) -> UInt32 {
+        switch variable {
+        case .accent: accent
+        case .paper: paper
+        }
+    }
+}
+
+/// Semantic interface colors shared by native call sites and WebKit document
+/// surfaces. These are resolver outputs, not user-configurable Variables.
 enum ScholiumColorRole: String, CaseIterable, Sendable {
     case documentBackground
-    case navigationBackground
     case surfaceBackground
     case raisedSurfaceBackground
     case primaryText
@@ -19,11 +43,8 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     case notificationHighlight
     case information
     case attention
-    case attentionForeground
     case destructive
-    case destructiveForeground
     case confirmed
-    case confirmedForeground
     case agentAuthorship
     case connectionNeutral
     case connectionSupport
@@ -50,189 +71,8 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     }
 
     private func makeNSColor(increasedContrast: Bool?) -> NSColor {
-        let variants: DynamicColorVariants = switch self {
-        case .documentBackground:
-            Self.paletteVariants(
-                light: .background,
-                dark: .background
-            )
-        case .navigationBackground:
-            Self.paletteVariants(
-                light: .navigation,
-                dark: .navigation
-            )
-        case .surfaceBackground:
-            Self.paletteVariants(
-                light: .surface,
-                dark: .surface
-            )
-        case .raisedSurfaceBackground:
-            Self.paletteVariants(
-                light: .surfaceRaised,
-                dark: .surfaceRaised,
-                increasedContrastLight: ScholiumLightPalette.border.rawValue
-            )
-        case .primaryText:
-            Self.paletteVariants(
-                light: .textPrimary,
-                dark: .textPrimary
-            )
-        case .secondaryText:
-            Self.paletteVariants(
-                light: .textSecondary,
-                dark: .textSecondary,
-                increasedContrastLight: ScholiumLightPalette.textPrimary.rawValue,
-                increasedContrastDark: ScholiumDarkPalette.textPrimary.rawValue
-            )
-        case .mutedText:
-            Self.paletteVariants(
-                light: .neutral,
-                dark: .neutral,
-                increasedContrastLight: ScholiumLightPalette.textSecondary.rawValue,
-                increasedContrastDark: ScholiumDarkPalette.textSecondary.rawValue
-            )
-        case .separator:
-            Self.paletteVariants(
-                light: .border,
-                dark: .border,
-                increasedContrastLight: ScholiumLightPalette.neutral.rawValue,
-                increasedContrastDark: ScholiumDarkPalette.neutral.rawValue
-            )
-        case .accent:
-            Self.paletteVariants(
-                light: .primary,
-                dark: .primary,
-                increasedContrastLight: ScholiumLightPalette.primaryHover.rawValue,
-                increasedContrastDark: ScholiumDarkPalette.primaryHover.rawValue
-            )
-        case .accentHover:
-            Self.paletteVariants(
-                light: .primaryHover,
-                dark: .primaryHover
-            )
-        case .notificationHighlight:
-            Self.paletteVariants(
-                light: .notificationHighlight,
-                dark: .notificationHighlight,
-                increasedContrastLight: ScholiumLightPalette.attention.rawValue,
-                increasedContrastDark: 0xF1C96D
-            )
-        case .information:
-            Self.paletteVariants(
-                light: .information,
-                dark: .information,
-                increasedContrastLight: 0x214D68,
-                increasedContrastDark: 0xA7CCE6
-            )
-        case .attention:
-            Self.attentionVariants
-        case .attentionForeground:
-            Self.attentionVariants
-        case .destructive:
-            Self.destructiveVariants
-        case .destructiveForeground:
-            Self.destructiveVariants
-        case .confirmed:
-            Self.confirmedVariants
-        case .confirmedForeground:
-            Self.confirmedVariants
-        case .agentAuthorship:
-            Self.paletteVariants(
-                light: .agentAuthorship,
-                dark: .agentAuthorship,
-                increasedContrastLight: 0x493D72,
-                increasedContrastDark: 0xD0C3EA
-            )
-        case .connectionNeutral:
-            Self.paletteVariants(
-                light: .primary,
-                dark: .primary,
-                increasedContrastLight: ScholiumLightPalette.primaryHover.rawValue,
-                increasedContrastDark: ScholiumDarkPalette.primaryHover.rawValue
-            )
-        case .connectionSupport:
-            Self.connectionSupportVariants
-        case .connectionIncompatible:
-            Self.connectionIncompatibleVariants
-        }
-        return Self.dynamicColor(from: variants, increasedContrast: increasedContrast)
-    }
-
-    func resolvedCustomRGBValue(
-        for appearance: NSAppearance,
-        increasedContrast: Bool
-    ) -> UInt32? {
-        switch self {
-        case .connectionSupport:
-            Self.connectionSupportVariants.value(
-                for: appearance,
-                increasedContrast: increasedContrast
-            )
-        case .connectionIncompatible:
-            Self.connectionIncompatibleVariants.value(
-                for: appearance,
-                increasedContrast: increasedContrast
-            )
-        default:
-            nil
-        }
-    }
-
-    private static let connectionSupportVariants = DynamicColorVariants(
-        light: ScholiumLightPalette.connectionSupport.rawValue,
-        dark: ScholiumDarkPalette.connectionSupport.rawValue,
-        increasedContrastLight: 0x195A54,
-        increasedContrastDark: 0x9CD5CA
-    )
-
-    private static let connectionIncompatibleVariants = DynamicColorVariants(
-        light: ScholiumLightPalette.connectionIncompatible.rawValue,
-        dark: ScholiumDarkPalette.connectionIncompatible.rawValue,
-        increasedContrastLight: 0x50365F,
-        increasedContrastDark: 0xDDBCE5
-    )
-
-    private static let attentionVariants = paletteVariants(
-        light: .attention,
-        dark: .attention,
-        increasedContrastLight: 0x70420B,
-        increasedContrastDark: 0xF0C07A
-    )
-
-    private static let destructiveVariants = paletteVariants(
-        light: .destructive,
-        dark: .destructive,
-        increasedContrastLight: 0x7F2528,
-        increasedContrastDark: 0xF3A09C
-    )
-
-    private static let confirmedVariants = paletteVariants(
-        light: .confirmed,
-        dark: .confirmed,
-        increasedContrastLight: 0x1F5838,
-        increasedContrastDark: 0x9CD7AF
-    )
-
-    private static func paletteVariants(
-        light: ScholiumLightPalette,
-        dark: ScholiumDarkPalette,
-        increasedContrastLight: UInt32? = nil,
-        increasedContrastDark: UInt32? = nil
-    ) -> DynamicColorVariants {
-        DynamicColorVariants(
-            light: light.rawValue,
-            dark: dark.rawValue,
-            increasedContrastLight: increasedContrastLight ?? light.rawValue,
-            increasedContrastDark: increasedContrastDark ?? dark.rawValue
-        )
-    }
-
-    private static func dynamicColor(
-        from variants: DynamicColorVariants,
-        increasedContrast: Bool?
-    ) -> NSColor {
         NSColor(name: nil) { appearance in
-            rgb(variants.value(
+            Self.rgb(resolvedRGBValue(
                 for: appearance,
                 increasedContrast: increasedContrast
                     ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
@@ -240,20 +80,29 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
         }
     }
 
-    private struct DynamicColorVariants: Sendable {
-        let light: UInt32
-        let dark: UInt32
-        let increasedContrastLight: UInt32
-        let increasedContrastDark: UInt32
-
-        func value(for appearance: NSAppearance, increasedContrast: Bool) -> UInt32 {
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            if increasedContrast {
-                return isDark ? increasedContrastDark : increasedContrastLight
-            }
-            return isDark ? dark : light
-        }
+    func resolvedRGBValue(
+        for appearance: NSAppearance,
+        increasedContrast: Bool
+    ) -> UInt32 {
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return resolvedRGBValue(isDark: isDark, increasedContrast: increasedContrast)
     }
+
+    func resolvedRGBValue(isDark: Bool, increasedContrast: Bool) -> UInt32 {
+        let palette: ScholiumResolvedColorPalette = switch (isDark, increasedContrast) {
+        case (false, false): Self.lightPalette
+        case (false, true): Self.increasedContrastLightPalette
+        case (true, false): Self.darkPalette
+        case (true, true): Self.increasedContrastDarkPalette
+        }
+        return palette[self]
+    }
+
+    private static let resolver = ScholiumColorResolver(variables: .editorialCopper)
+    private static let lightPalette = resolver.resolve(isDark: false, increasedContrast: false)
+    private static let increasedContrastLightPalette = resolver.resolve(isDark: false, increasedContrast: true)
+    private static let darkPalette = resolver.resolve(isDark: true, increasedContrast: false)
+    private static let increasedContrastDarkPalette = resolver.resolve(isDark: true, increasedContrast: true)
 
     private static func rgb(_ value: UInt32) -> NSColor {
         NSColor(
@@ -262,6 +111,319 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
             blue: CGFloat(value & 0xFF) / 255,
             alpha: 1
         )
+    }
+}
+
+/// A complete appearance result generated from the two configurable inputs.
+/// Call sites consume `ScholiumColorRole`; this value never becomes a second
+/// configuration or persistence authority.
+struct ScholiumResolvedColorPalette: Equatable, Sendable {
+    let documentBackground: UInt32
+    let surfaceBackground: UInt32
+    let raisedSurfaceBackground: UInt32
+    let primaryText: UInt32
+    let secondaryText: UInt32
+    let mutedText: UInt32
+    let separator: UInt32
+    let accent: UInt32
+    let accentHover: UInt32
+    let notificationHighlight: UInt32
+    let information: UInt32
+    let attention: UInt32
+    let destructive: UInt32
+    let confirmed: UInt32
+    let agentAuthorship: UInt32
+    let connectionNeutral: UInt32
+    let connectionSupport: UInt32
+    let connectionIncompatible: UInt32
+
+    subscript(role: ScholiumColorRole) -> UInt32 {
+        switch role {
+        case .documentBackground: documentBackground
+        case .surfaceBackground: surfaceBackground
+        case .raisedSurfaceBackground: raisedSurfaceBackground
+        case .primaryText: primaryText
+        case .secondaryText: secondaryText
+        case .mutedText: mutedText
+        case .separator: separator
+        case .accent: accent
+        case .accentHover: accentHover
+        case .notificationHighlight: notificationHighlight
+        case .information: information
+        case .attention: attention
+        case .destructive: destructive
+        case .confirmed: confirmed
+        case .agentAuthorship: agentAuthorship
+        case .connectionNeutral: connectionNeutral
+        case .connectionSupport: connectionSupport
+        case .connectionIncompatible: connectionIncompatible
+        }
+    }
+}
+
+/// Resolves both native and WebKit roles from the same two sRGB variables.
+/// Fixed functional anchors supply semantic hue direction but aren't exposed
+/// as researcher configuration. Contrast is checked against every opaque
+/// surface before a foreground result is accepted.
+struct ScholiumColorResolver: Sendable {
+    let variables: ScholiumColorVariables
+
+    func resolve(isDark: Bool, increasedContrast: Bool) -> ScholiumResolvedColorPalette {
+        let paperSource = Self.oklch(from: variables.paper)
+        let accentSource = Self.oklch(from: variables.accent)
+        let contrastTarget = increasedContrast ? 7.0 : 4.5
+        let paperChroma = isDark ? 0.018 : 0.028
+
+        let documentBackground = Self.tone(
+            paperSource,
+            lightness: isDark ? 0.285 : 0.985,
+            chromaLimit: paperChroma
+        )
+        let surfaceBackground = Self.tone(
+            paperSource,
+            lightness: isDark ? 0.35 : 0.94,
+            chromaLimit: paperChroma
+        )
+        let raisedSurfaceBackground = Self.tone(
+            paperSource,
+            lightness: isDark ? 0.405 : 0.895,
+            chromaLimit: paperChroma
+        )
+        let backgrounds = [documentBackground, surfaceBackground, raisedSurfaceBackground]
+
+        let primaryText = Self.contrastColor(
+            paperSource,
+            startingLightness: isDark ? 0.94 : 0.18,
+            chromaLimit: 0.014,
+            backgrounds: backgrounds,
+            target: contrastTarget,
+            preferLight: isDark
+        )
+        let secondaryText = Self.contrastColor(
+            paperSource,
+            startingLightness: isDark ? 0.84 : 0.36,
+            chromaLimit: 0.020,
+            backgrounds: backgrounds,
+            target: contrastTarget,
+            preferLight: isDark
+        )
+        let mutedText = Self.contrastColor(
+            paperSource,
+            startingLightness: isDark ? 0.76 : 0.45,
+            chromaLimit: 0.020,
+            backgrounds: backgrounds,
+            target: contrastTarget,
+            preferLight: isDark
+        )
+        let separator = Self.tone(
+            paperSource,
+            lightness: isDark
+                ? (increasedContrast ? 0.70 : 0.57)
+                : (increasedContrast ? 0.62 : 0.76),
+            chromaLimit: 0.020
+        )
+        let accent = Self.contrastColor(
+            accentSource,
+            startingLightness: isDark
+                ? (increasedContrast ? 0.84 : 0.74)
+                : (increasedContrast ? 0.38 : 0.50),
+            chromaLimit: isDark ? 0.17 : 0.18,
+            backgrounds: backgrounds,
+            target: contrastTarget,
+            preferLight: isDark
+        )
+        let accentHover = Self.contrastColor(
+            accentSource,
+            startingLightness: isDark
+                ? (increasedContrast ? 0.90 : 0.82)
+                : (increasedContrast ? 0.30 : 0.42),
+            chromaLimit: isDark ? 0.16 : 0.17,
+            backgrounds: backgrounds,
+            target: contrastTarget,
+            preferLight: isDark
+        )
+        let notificationHighlight = Self.tone(
+            Self.oklch(from: FunctionalAnchor.attention),
+            lightness: isDark
+                ? (increasedContrast ? 0.84 : 0.76)
+                : (increasedContrast ? 0.54 : 0.62),
+            chromaLimit: increasedContrast ? 0.13 : 0.10
+        )
+        let semanticStart = isDark
+            ? (increasedContrast ? 0.88 : 0.78)
+            : (increasedContrast ? 0.34 : 0.48)
+
+        func semanticColor(_ anchor: UInt32) -> UInt32 {
+            Self.contrastColor(
+                Self.oklch(from: anchor),
+                startingLightness: semanticStart,
+                chromaLimit: increasedContrast ? 0.13 : 0.10,
+                backgrounds: backgrounds,
+                target: contrastTarget,
+                preferLight: isDark
+            )
+        }
+
+        return ScholiumResolvedColorPalette(
+            documentBackground: documentBackground,
+            surfaceBackground: surfaceBackground,
+            raisedSurfaceBackground: raisedSurfaceBackground,
+            primaryText: primaryText,
+            secondaryText: secondaryText,
+            mutedText: mutedText,
+            separator: separator,
+            accent: accent,
+            accentHover: accentHover,
+            notificationHighlight: notificationHighlight,
+            information: semanticColor(FunctionalAnchor.information),
+            attention: semanticColor(FunctionalAnchor.attention),
+            destructive: semanticColor(FunctionalAnchor.destructive),
+            confirmed: semanticColor(FunctionalAnchor.confirmed),
+            agentAuthorship: semanticColor(FunctionalAnchor.agentAuthorship),
+            connectionNeutral: semanticColor(FunctionalAnchor.connectionNeutral),
+            connectionSupport: semanticColor(FunctionalAnchor.connectionSupport),
+            connectionIncompatible: semanticColor(FunctionalAnchor.connectionIncompatible)
+        )
+    }
+
+    private enum FunctionalAnchor {
+        static let information: UInt32 = 0x466C82
+        static let attention: UInt32 = 0xA16E2C
+        static let destructive: UInt32 = 0xA34A43
+        static let confirmed: UInt32 = 0x4D755A
+        static let agentAuthorship: UInt32 = 0x665C82
+        static let connectionNeutral: UInt32 = 0x80694E
+        static let connectionSupport: UInt32 = 0x3D746B
+        static let connectionIncompatible: UInt32 = 0x77566F
+    }
+
+    private struct OKLCH: Sendable {
+        let lightness: Double
+        let chroma: Double
+        let hue: Double
+    }
+
+    private static func oklch(from value: UInt32) -> OKLCH {
+        let red = sRGBToLinear(Double((value >> 16) & 0xFF) / 255)
+        let green = sRGBToLinear(Double((value >> 8) & 0xFF) / 255)
+        let blue = sRGBToLinear(Double(value & 0xFF) / 255)
+        let l = 0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue
+        let m = 0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue
+        let s = 0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue
+        let lRoot = cbrt(l)
+        let mRoot = cbrt(m)
+        let sRoot = cbrt(s)
+        let lightness = 0.2104542553 * lRoot + 0.793617785 * mRoot - 0.0040720468 * sRoot
+        let a = 1.9779984951 * lRoot - 2.428592205 * mRoot + 0.4505937099 * sRoot
+        let b = 0.0259040371 * lRoot + 0.7827717662 * mRoot - 0.808675766 * sRoot
+        let chroma = hypot(a, b)
+        return OKLCH(
+            lightness: lightness,
+            chroma: chroma,
+            hue: chroma < 0.00001 ? 0 : atan2(b, a)
+        )
+    }
+
+    private static func tone(
+        _ source: OKLCH,
+        lightness: Double,
+        chromaLimit: Double
+    ) -> UInt32 {
+        rgbValue(from: OKLCH(
+            lightness: lightness,
+            chroma: min(source.chroma, chromaLimit),
+            hue: source.hue
+        ))
+    }
+
+    private static func contrastColor(
+        _ source: OKLCH,
+        startingLightness: Double,
+        chromaLimit: Double,
+        backgrounds: [UInt32],
+        target: Double,
+        preferLight: Bool
+    ) -> UInt32 {
+        var lightness = startingLightness
+        for _ in 0..<100 {
+            let candidate = tone(source, lightness: lightness, chromaLimit: chromaLimit)
+            if backgrounds.allSatisfy({ contrastRatio(candidate, $0) >= target }) {
+                return candidate
+            }
+            lightness = clamp(
+                lightness + (preferLight ? 0.008 : -0.008),
+                minimum: 0.04,
+                maximum: 0.97
+            )
+        }
+        return tone(source, lightness: lightness, chromaLimit: chromaLimit)
+    }
+
+    private static func rgbValue(from color: OKLCH) -> UInt32 {
+        var chroma = max(0, color.chroma)
+        var channels = [Double](repeating: 0, count: 3)
+        for _ in 0..<40 {
+            channels = sRGBChannels(from: OKLCH(
+                lightness: clamp(color.lightness, minimum: 0, maximum: 1),
+                chroma: chroma,
+                hue: color.hue
+            ))
+            if channels.allSatisfy({ $0 >= 0 && $0 <= 1 }) {
+                break
+            }
+            chroma *= 0.92
+        }
+        let encoded = channels.map {
+            UInt32((clamp($0, minimum: 0, maximum: 1) * 255).rounded())
+        }
+        return (encoded[0] << 16) | (encoded[1] << 8) | encoded[2]
+    }
+
+    private static func sRGBChannels(from color: OKLCH) -> [Double] {
+        let a = color.chroma * cos(color.hue)
+        let b = color.chroma * sin(color.hue)
+        let lRoot = color.lightness + 0.3963377774 * a + 0.2158037573 * b
+        let mRoot = color.lightness - 0.1055613458 * a - 0.0638541728 * b
+        let sRoot = color.lightness - 0.0894841775 * a - 1.291485548 * b
+        let l = pow(lRoot, 3)
+        let m = pow(mRoot, 3)
+        let s = pow(sRoot, 3)
+        return [
+            linearToSRGB(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+            linearToSRGB(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+            linearToSRGB(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+        ]
+    }
+
+    private static func relativeLuminance(_ value: UInt32) -> Double {
+        let red = sRGBToLinear(Double((value >> 16) & 0xFF) / 255)
+        let green = sRGBToLinear(Double((value >> 8) & 0xFF) / 255)
+        let blue = sRGBToLinear(Double(value & 0xFF) / 255)
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    }
+
+    private static func contrastRatio(_ first: UInt32, _ second: UInt32) -> Double {
+        let firstLuminance = relativeLuminance(first)
+        let secondLuminance = relativeLuminance(second)
+        let lighter = max(firstLuminance, secondLuminance)
+        let darker = min(firstLuminance, secondLuminance)
+        return (lighter + 0.05) / (darker + 0.05)
+    }
+
+    private static func sRGBToLinear(_ channel: Double) -> Double {
+        channel <= 0.04045
+            ? channel / 12.92
+            : pow((channel + 0.055) / 1.055, 2.4)
+    }
+
+    private static func linearToSRGB(_ channel: Double) -> Double {
+        channel <= 0.0031308
+            ? 12.92 * channel
+            : 1.055 * pow(channel, 1 / 2.4) - 0.055
+    }
+
+    private static func clamp(_ value: Double, minimum: Double, maximum: Double) -> Double {
+        min(maximum, max(minimum, value))
     }
 }
 
@@ -315,57 +477,13 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Reviewed light-appearance swatches. Feature code consumes semantic
-/// `ScholiumColorRole` values rather than these implementation colors.
-enum ScholiumLightPalette: UInt32, CaseIterable, Sendable {
-    case primary = 0xA94C22
-    case primaryHover = 0x7A2917
-    case notificationHighlight = 0xB47617
-    case neutral = 0x706B65
-    case background = 0xFFFCF5
-    case navigation = 0xEFE9DF
-    case surface = 0xF7F1E7
-    case surfaceRaised = 0xDED3C5
-    case textPrimary = 0x17191C
-    case textSecondary = 0x514D48
-    case border = 0xC8BCAE
-    case confirmed = 0x2C7048
-    case attention = 0x976015
-    case destructive = 0xA13235
-    case information = 0x315F88
-    case agentAuthorship = 0x5D568F
-    case connectionSupport = 0x276F68
-    case connectionIncompatible = 0x6F4D83
-}
-
-/// Reviewed dark-appearance swatches. The Cordovan navigation surface and
-/// walnut document surface form an evening-library counterpart to light mode.
-enum ScholiumDarkPalette: UInt32, CaseIterable, Sendable {
-    case primary = 0xEF8D5B
-    case primaryHover = 0xF5AA7B
-    case notificationHighlight = 0xE1B64F
-    case neutral = 0xB6A38F
-    case background = 0x302A26
-    case navigation = 0x3A2B2B
-    case surface = 0x3A322D
-    case surfaceRaised = 0x423831
-    case textPrimary = 0xF4E8D5
-    case textSecondary = 0xD4C2AD
-    case border = 0x807064
-    case confirmed = 0x7FC39A
-    case attention = 0xE0AB61
-    case destructive = 0xEA817C
-    case information = 0x84B0D4
-    case agentAuthorship = 0xB5A6DC
-    case connectionSupport = 0x79B9AB
-    case connectionIncompatible = 0xC29CCF
-}
-
 /// Contract names used by the CodeMirror and sanitized Read stylesheets.
-/// Values remain platform-specific while sharing the same reviewed light and
-/// dark semantic vocabulary.
+/// Custom properties transport resolved semantic roles into WebKit; they are
+/// not a second set of configurable color Variables.
 enum ScholiumWebDesignTokens {
-    static let colorVariableNames = Set(ScholiumColorRole.allCases.map(\.cssVariableName))
+    static let resolvedColorRoleCSSVariableNames = Set(
+        ScholiumColorRole.allCases.map(\.cssVariableName)
+    )
 
     static let rhythmCSSDeclarations = """
     --scholium-document-prose-font-size: \(ScholiumDocumentRhythm.proseFontSizePoints)pt;
@@ -376,10 +494,11 @@ enum ScholiumWebDesignTokens {
     --scholium-document-h4-size: \(ScholiumDocumentRhythm.heading4ScalePercent)%;
     --scholium-rhythm-prose-line-height: \(ScholiumDocumentRhythm.proseLineHeight);
     --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
-    --scholium-rhythm-paragraph-gap: \(ScholiumDocumentRhythm.paragraphGapEm)em;
+    --scholium-document-text-scale-factor: 1;
+    --scholium-rhythm-paragraph-gap: \(ScholiumDocumentRhythm.paragraphGapCSSPixels)px;
     --scholium-rhythm-heading-line-height: \(ScholiumDocumentRhythm.headingLineHeight);
-    --scholium-rhythm-heading-before: \(ScholiumDocumentRhythm.headingGapBeforeEm)em;
-    --scholium-rhythm-heading-after: \(ScholiumDocumentRhythm.headingGapAfterEm)em;
+    --scholium-rhythm-heading-before: \(ScholiumDocumentRhythm.headingGapBeforeCSSPixels)px;
+    --scholium-rhythm-heading-after: \(ScholiumDocumentRhythm.headingGapAfterCSSPixels)px;
     --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
     --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
     --scholium-rhythm-live-code-inline-inset: \(ScholiumDocumentRhythm.livePreviewCodeInlineInsetEm)em;
@@ -388,110 +507,43 @@ enum ScholiumWebDesignTokens {
     --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
     --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
-    --scholium-document-readable-measure: \(ScholiumMetrics.Document.readableMeasure)px;
-    --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInset)px;
+    --scholium-document-readable-measure: \(ScholiumMetrics.Document.readableMeasureCharacters)ch;
+    --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
     --scholium-document-text-scale: 1em;
     """
 
-    static let rootCSSDeclarations = """
-    --scholium-color-document-background: #fffcf5;
-    --scholium-color-navigation-background: #efe9df;
-    --scholium-color-surface-background: #f7f1e7;
-    --scholium-color-raised-surface-background: #ded3c5;
-    --scholium-color-primary-text: #17191c;
-    --scholium-color-secondary-text: #514d48;
-    --scholium-color-muted-text: #706b65;
-    --scholium-color-separator: #c8bcae;
-    --scholium-color-accent: #a94c22;
-    --scholium-color-accent-hover: #7a2917;
-    --scholium-color-notification-highlight: #b47617;
-    --scholium-color-information: #315f88;
-    --scholium-color-attention: #976015;
-    --scholium-color-attention-foreground: #976015;
-    --scholium-color-destructive: #a13235;
-    --scholium-color-destructive-foreground: #a13235;
-    --scholium-color-confirmed: #2c7048;
-    --scholium-color-confirmed-foreground: #2c7048;
-    --scholium-color-agent-authorship: #5d568f;
-    --scholium-color-connection-neutral: #a94c22;
-    --scholium-color-connection-support: #276f68;
-    --scholium-color-connection-incompatible: #6f4d83;
-    """
+    private static let colorResolver = ScholiumColorResolver(variables: .editorialCopper)
 
-    static let darkAppearanceCSSDeclarations = """
-    --scholium-color-document-background: #302a26;
-    --scholium-color-navigation-background: #3a2b2b;
-    --scholium-color-surface-background: #3a322d;
-    --scholium-color-raised-surface-background: #423831;
-    --scholium-color-primary-text: #f4e8d5;
-    --scholium-color-secondary-text: #d4c2ad;
-    --scholium-color-muted-text: #b6a38f;
-    --scholium-color-separator: #807064;
-    --scholium-color-accent: #ef8d5b;
-    --scholium-color-accent-hover: #f5aa7b;
-    --scholium-color-notification-highlight: #e1b64f;
-    --scholium-color-information: #84b0d4;
-    --scholium-color-attention: #e0ab61;
-    --scholium-color-attention-foreground: #e0ab61;
-    --scholium-color-destructive: #ea817c;
-    --scholium-color-destructive-foreground: #ea817c;
-    --scholium-color-confirmed: #7fc39a;
-    --scholium-color-confirmed-foreground: #7fc39a;
-    --scholium-color-agent-authorship: #b5a6dc;
-    --scholium-color-connection-neutral: #ef8d5b;
-    --scholium-color-connection-support: #79b9ab;
-    --scholium-color-connection-incompatible: #c29ccf;
-    """
+    static let rootCSSDeclarations = colorDeclarations(
+        isDark: false,
+        increasedContrast: false
+    )
+    static let darkAppearanceCSSDeclarations = colorDeclarations(
+        isDark: true,
+        increasedContrast: false
+    )
+    static let increasedContrastCSSDeclarations = colorDeclarations(
+        isDark: false,
+        increasedContrast: true
+    )
+    static let darkIncreasedContrastCSSDeclarations = colorDeclarations(
+        isDark: true,
+        increasedContrast: true
+    )
 
-    static let increasedContrastCSSDeclarations = """
-    --scholium-color-raised-surface-background: #c8bcae;
-    --scholium-color-secondary-text: #17191c;
-    --scholium-color-muted-text: #514d48;
-    --scholium-color-separator: #706b65;
-    --scholium-color-accent: #7a2917;
-    --scholium-color-notification-highlight: #976015;
-    --scholium-color-information: #214d68;
-    --scholium-color-attention: #70420b;
-    --scholium-color-attention-foreground: #70420b;
-    --scholium-color-destructive: #7f2528;
-    --scholium-color-destructive-foreground: #7f2528;
-    --scholium-color-confirmed: #1f5838;
-    --scholium-color-confirmed-foreground: #1f5838;
-    --scholium-color-agent-authorship: #493d72;
-    --scholium-color-connection-neutral: #7a2917;
-    --scholium-color-connection-support: #195a54;
-    --scholium-color-connection-incompatible: #50365f;
-    """
-
-    static let darkIncreasedContrastCSSDeclarations = """
-    \(darkAppearanceCSSDeclarations)
-    --scholium-color-secondary-text: #f4e8d5;
-    --scholium-color-muted-text: #d4c2ad;
-    --scholium-color-separator: #b6a38f;
-    --scholium-color-accent: #f5aa7b;
-    --scholium-color-notification-highlight: #f1c96d;
-    --scholium-color-information: #a7cce6;
-    --scholium-color-attention: #f0c07a;
-    --scholium-color-attention-foreground: #f0c07a;
-    --scholium-color-destructive: #f3a09c;
-    --scholium-color-destructive-foreground: #f3a09c;
-    --scholium-color-confirmed: #9cd7af;
-    --scholium-color-confirmed-foreground: #9cd7af;
-    --scholium-color-agent-authorship: #d0c3ea;
-    --scholium-color-connection-neutral: #f5aa7b;
-    --scholium-color-connection-support: #9cd5ca;
-    --scholium-color-connection-incompatible: #ddbce5;
-    """
-
-    static let responsiveLayoutCSS = """
-    @media (max-width: \(ScholiumDocumentRhythm.narrowWidthThreshold)px) {
-      .scholium-document,
-      #editor .scholium-live-mode .cm-content,
-      #editor .scholium-source-mode .cm-content {
-        padding-inline: var(--scholium-rhythm-inline-narrow);
-      }
+    private static func colorDeclarations(
+        isDark: Bool,
+        increasedContrast: Bool
+    ) -> String {
+        let palette = colorResolver.resolve(
+            isDark: isDark,
+            increasedContrast: increasedContrast
+        )
+        return ScholiumColorRole.allCases.map { role in
+            let value = String(format: "#%06x", palette[role])
+            return "\(role.cssVariableName): \(value);"
+        }.joined(separator: "\n")
     }
-    """
 
     /// One runtime presentation contract for every WebKit-backed document
     /// surface. Read and CodeMirror both append this Swift-owned block; the
@@ -503,6 +555,96 @@ enum ScholiumWebDesignTokens {
       \(rootCSSDeclarations)
       \(rhythmCSSDeclarations)
     }
+    .scholium-document,
+    .cm-editor.scholium-live-mode .cm-content {
+      box-sizing: border-box;
+      min-width: 0;
+      inline-size: 100%;
+      max-inline-size: calc(
+        var(--scholium-document-readable-measure)
+        + var(--scholium-rhythm-inline-regular)
+        + var(--scholium-rhythm-inline-regular)
+      );
+      margin: 0 auto;
+      padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll);
+      font-family: Alegreya, Georgia, serif;
+      font-size: var(--scholium-document-text-scale);
+      line-height: var(--scholium-rhythm-prose-line-height);
+      overflow-wrap: anywhere;
+    }
+    .scholium-document h1,
+    .scholium-document h2,
+    .scholium-document h3,
+    .scholium-document h4,
+    .scholium-document h5,
+    .scholium-document h6,
+    .scholium-live-mode .cm-live-heading {
+      font-family: Alegreya, Georgia, serif;
+      font-weight: 700;
+      line-height: var(--scholium-rhythm-heading-line-height);
+      text-decoration-line: none;
+      text-decoration: none;
+      text-wrap: balance;
+    }
+    .scholium-document h1,
+    .scholium-document h2,
+    .scholium-document h3,
+    .scholium-document h4,
+    .scholium-document h5,
+    .scholium-document h6 {
+      margin: var(--scholium-rhythm-heading-before) 0 var(--scholium-rhythm-heading-after);
+    }
+    .scholium-live-mode .cm-live-heading {
+      padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after);
+    }
+    .scholium-document h1,
+    .scholium-live-mode .cm-live-h1 {
+      font-size: var(--scholium-document-h1-size);
+      font-weight: 400;
+    }
+    .scholium-document h2,
+    .scholium-live-mode .cm-live-h2 {
+      font-size: var(--scholium-document-h2-size);
+    }
+    .scholium-document h3,
+    .scholium-live-mode .cm-live-h3 {
+      font-size: var(--scholium-document-h3-size);
+    }
+    .scholium-document h4,
+    .scholium-document h5,
+    .scholium-document h6,
+    .scholium-live-mode .cm-live-h4,
+    .scholium-live-mode .cm-live-h5,
+    .scholium-live-mode .cm-live-h6 {
+      font-size: var(--scholium-document-h4-size);
+    }
+    .scholium-document h1 a,
+    .scholium-document h2 a,
+    .scholium-document h3 a,
+    .scholium-document h4 a,
+    .scholium-document h5 a,
+    .scholium-document h6 a,
+    .scholium-live-mode .cm-live-heading .cm-live-link,
+    .scholium-live-mode .cm-live-heading .cm-live-wikilink,
+    .scholium-live-mode .cm-live-heading .cm-live-vector-link {
+      text-decoration: underline;
+    }
+    .scholium-document > h1:first-child,
+    .scholium-live-mode .cm-live-document-title {
+      margin-top: 0;
+      margin-bottom: var(--scholium-rhythm-heading-before);
+      padding-top: 0;
+      padding-bottom: var(--scholium-rhythm-heading-after);
+      border-bottom: 1px solid var(--scholium-color-separator);
+    }
+    .scholium-document .scholium-embed {
+      color: var(--scholium-color-accent);
+      font-weight: 650;
+      padding: 0.08em 0.3em;
+      border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
+      border-radius: 5px;
+      text-decoration: none;
+    }
     @media (prefers-color-scheme: dark) {
       :root { \(darkAppearanceCSSDeclarations) }
     }
@@ -512,14 +654,56 @@ enum ScholiumWebDesignTokens {
     @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
       :root { \(darkIncreasedContrastCSSDeclarations) }
     }
-    \(responsiveLayoutCSS)
     """
+}
+
+/// The approved adaptive editorial grid. Values are named by responsibility,
+/// not by scale position: AppKit still owns window and split geometry, while
+/// these roles govern Scholium-owned spacing and component dimensions.
+enum ScholiumGrid {
+    static let foundationUnit: CGFloat = 4
+
+    enum Spacing {
+        /// Reserved for baseline and symbol alignment, never ordinary spacing.
+        static let opticalAlignmentAdjustment = foundationUnit / 2
+        static let labelAccessoryGap = foundationUnit
+        static let inlineControlGap = foundationUnit * 2
+        static let nestedContentInset = foundationUnit * 3
+        static let sectionSeparation = foundationUnit * 4
+        static let regionContentInset = foundationUnit * 5
+        static let documentShellInsetCSSPixels = foundationUnit * 8
+        static let sourceShellInsetCSSPixels = foundationUnit * 10
+    }
+
+    enum Dimension {
+        static let minimumCustomTarget = foundationUnit * 5
+        static let compactHierarchyRowHeight = foundationUnit * 6
+        static let preferredCustomTarget = foundationUnit * 7
+        static let documentTabStripHeight = foundationUnit * 10
+        static let researchFunctionTargetHeight = foundationUnit * 11
+        static let regionHeaderHeight = foundationUnit * 12
+        static let libraryFooterHeight = foundationUnit * 13
+        static let iconTrackWidth = foundationUnit * 4
+    }
+
+    enum Document {
+        /// Alegreya-calibrated CSS `ch` measure. Real-WKWebView line probes
+        /// keep ordinary Latin/CJK prose within the approved 80/40 ceilings.
+        static let readableMeasureCharacters: CGFloat = 50
+        static let narrowWidthThresholdRootEms: CGFloat = 44
+        static let compactShellInsetCSSPixels = Spacing.regionContentInset
+        static let contentTopInsetCSSPixels = Spacing.documentShellInsetCSSPixels
+        static let paragraphGapCSSPixels = foundationUnit * 3
+        static let headingGapBeforeCSSPixels = foundationUnit * 6
+        static let headingGapAfterCSSPixels = foundationUnit * 2
+        static let trailingScrollViewportFraction: CGFloat = 0.45
+    }
 }
 
 enum ScholiumMetrics {
     enum Accessibility {
-        static let preferredCustomTarget: CGFloat = 28
-        static let minimumCustomTarget: CGFloat = 20
+        static let preferredCustomTarget = ScholiumGrid.Dimension.preferredCustomTarget
+        static let minimumCustomTarget = ScholiumGrid.Dimension.minimumCustomTarget
     }
 
     enum Onboarding {
@@ -533,30 +717,36 @@ enum ScholiumMetrics {
         /// Spacing between Scholium-owned controls hosted by the native
         /// toolbar. Toolbar height and window-control geometry remain owned by
         /// macOS and therefore are not Scholium metrics.
-        static let headerControlSpacing: CGFloat = 12
+        static let headerControlSpacing = ScholiumGrid.Spacing.nestedContentInset
         /// A region-owned row beneath the native titlebar. Unlike toolbar
         /// height, this is a Scholium component metric used by the Library
         /// identity and Apparatus mode row. Document identity and commands
         /// belong to the native toolbar and do not create a second row.
-        static let regionHeaderHeight: CGFloat = 48
+        static let regionHeaderHeight = ScholiumGrid.Dimension.regionHeaderHeight
         /// Library-owned footer action height. It does not constrain Document
         /// or align an unrelated bottom surface across split regions.
-        static let libraryFooterHeight: CGFloat = 52
+        static let libraryFooterHeight = ScholiumGrid.Dimension.libraryFooterHeight
     }
 
     /// Shared alignment and spacing for the two permanent peripheral regions.
     /// Library- or Apparatus-specific hierarchy may add semantic indentation,
     /// but ordinary sections and controls must begin from this common contract.
     enum Peripheral {
-        static let contentInset: CGFloat = 18
-        static let sectionSpacing: CGFloat = 15
-        static let sectionContentSpacing: CGFloat = 8
-        static let sectionContentInset: CGFloat = 12
-        static let iconColumnWidth: CGFloat = 16
-        static let iconToTextSpacing: CGFloat = 8
+        static let contentInset = ScholiumGrid.Spacing.regionContentInset
+        static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
+        static let sectionContentSpacing = ScholiumGrid.Spacing.inlineControlGap
+        static let sectionContentInset = ScholiumGrid.Spacing.nestedContentInset
+        static let iconColumnWidth = ScholiumGrid.Dimension.iconTrackWidth
+        static let iconToTextSpacing = ScholiumGrid.Spacing.inlineControlGap
     }
 
     enum Library {
+        /// Smallest width at which the complete Library remains readable while
+        /// expanded. The longest fixed English header, its count and action,
+        /// plus the 20-point region insets fit inside this boundary. AppKit
+        /// still owns resizing and collapse; this is not a preferred width or
+        /// a window minimum.
+        static let minimumReadableWidth: CGFloat = 300
         /// Ordinary Library content uses its own stable inset. It deliberately
         /// does not derive geometry from the traffic-light group, whose
         /// position and spacing remain owned by macOS.
@@ -565,18 +755,18 @@ enum ScholiumMetrics {
         static let navigationIconWidth = Peripheral.iconColumnWidth
         /// A compact but still auditable custom row height shared by folders
         /// and notes. It remains above Scholium's 20-point absolute minimum.
-        static let hierarchyRowHeight: CGFloat = 21
+        static let hierarchyRowHeight = ScholiumGrid.Dimension.compactHierarchyRowHeight
         static let scopeTopSpacing = Peripheral.sectionSpacing
         static let sectionSpacing = Peripheral.sectionSpacing
     }
 
     enum Document {
-        /// The approved 383 CSS-typographic-point browser proof translated to
-        /// macOS layout points (CSS uses 4/3 pixels per typographic point).
-        static let readableMeasure: CGFloat = 510.666_666_7
+        /// Maximum text measure in font-relative CSS `ch` units. The WebKit
+        /// shell adds renderer-specific padding outside this text column.
+        static let readableMeasureCharacters = ScholiumGrid.Document.readableMeasureCharacters
         /// Document-local breathing room below the system-owned toolbar. The
         /// toolbar safe area is not added again by document layout.
-        static let contentTopInset: CGFloat = 32.333_333_3
+        static let contentTopInsetCSSPixels = ScholiumGrid.Document.contentTopInsetCSSPixels
         static let defaultTextScale = 1.0
         static let minimumTextScale = 1.0
         static let maximumTextScale = 2.0
@@ -600,12 +790,12 @@ enum ScholiumMetrics {
         /// level inside their section heading while retaining the outer
         /// trailing alignment edge.
         static let sectionContentInset = Peripheral.sectionContentInset
-        static let rowSpacing: CGFloat = 2
+        static let rowSpacing = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         /// A fixed symbol track keeps every row's text on the same scan line,
         /// regardless of the optical width of its SF Symbol.
         static let iconColumnWidth = Peripheral.iconColumnWidth
         static let iconToTextSpacing = Peripheral.iconToTextSpacing
-        static let bottomInset: CGFloat = 20
+        static let bottomInset = ScholiumGrid.Spacing.regionContentInset
     }
 
     enum Search {
@@ -615,7 +805,7 @@ enum ScholiumMetrics {
         static let resultRowHeight: CGFloat = 64
         static let expandedHeight: CGFloat = 520
         static let scopeWidth: CGFloat = 320
-        static let responsiveMargin: CGFloat = 18
+        static let responsiveMargin = ScholiumGrid.Spacing.regionContentInset
         static let cornerRadius: CGFloat = 12
     }
 
@@ -626,20 +816,32 @@ enum ScholiumMetrics {
 /// rewrite authoritative Markdown from these values.
 struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
     let textScale: Double
-    let readableMeasure: CGFloat
-    let contentTopInset: CGFloat
+    let readableMeasureCharacters: CGFloat
+    let contentTopInsetCSSPixels: CGFloat
+    let regularInlineInsetCSSPixels: CGFloat
+    let sourceInlineInsetCSSPixels: CGFloat
+    let compactInlineInsetCSSPixels: CGFloat
+    let compactThresholdRootEms: CGFloat
 
     init(
         textScale: Double,
-        readableMeasure: CGFloat = ScholiumMetrics.Document.readableMeasure,
-        contentTopInset: CGFloat = ScholiumMetrics.Document.contentTopInset
+        readableMeasureCharacters: CGFloat = ScholiumMetrics.Document.readableMeasureCharacters,
+        contentTopInsetCSSPixels: CGFloat = ScholiumMetrics.Document.contentTopInsetCSSPixels,
+        regularInlineInsetCSSPixels: CGFloat = ScholiumGrid.Spacing.documentShellInsetCSSPixels,
+        sourceInlineInsetCSSPixels: CGFloat = ScholiumGrid.Spacing.sourceShellInsetCSSPixels,
+        compactInlineInsetCSSPixels: CGFloat = ScholiumGrid.Document.compactShellInsetCSSPixels,
+        compactThresholdRootEms: CGFloat = ScholiumGrid.Document.narrowWidthThresholdRootEms
     ) {
         self.textScale = min(
             ScholiumMetrics.Document.maximumTextScale,
             max(ScholiumMetrics.Document.minimumTextScale, textScale)
         )
-        self.readableMeasure = max(0, readableMeasure)
-        self.contentTopInset = max(0, contentTopInset)
+        self.readableMeasureCharacters = max(0, readableMeasureCharacters)
+        self.contentTopInsetCSSPixels = max(0, contentTopInsetCSSPixels)
+        self.regularInlineInsetCSSPixels = max(0, regularInlineInsetCSSPixels)
+        self.sourceInlineInsetCSSPixels = max(0, sourceInlineInsetCSSPixels)
+        self.compactInlineInsetCSSPixels = max(0, compactInlineInsetCSSPixels)
+        self.compactThresholdRootEms = max(0, compactThresholdRootEms)
     }
 
     var css: String {
@@ -648,14 +850,36 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
             format: """
             :root {
               --scholium-document-text-scale: %.6fem;
-              --scholium-document-readable-measure: %.6fpx;
+              --scholium-document-text-scale-factor: %.6f;
+              --scholium-document-readable-measure: %.6fch;
               --scholium-document-content-top-inset: %.6fpx;
+              --scholium-rhythm-inline-regular: %.6fpx;
+              --scholium-rhythm-inline-source: %.6fpx;
+              --scholium-rhythm-inline-narrow: %.6fpx;
+              --scholium-rhythm-paragraph-gap: %.6fpx;
+              --scholium-rhythm-heading-before: %.6fpx;
+              --scholium-rhythm-heading-after: %.6fpx;
+            }
+            @media (max-width: %.6frem) {
+              .scholium-document,
+              .cm-editor.scholium-live-mode .cm-content,
+              .cm-editor.scholium-source-mode .cm-content {
+                padding-inline: var(--scholium-rhythm-inline-narrow);
+              }
             }
             """,
             locale: locale,
             textScale,
-            Double(readableMeasure),
-            Double(contentTopInset)
+            textScale,
+            Double(readableMeasureCharacters),
+            Double(contentTopInsetCSSPixels),
+            Double(regularInlineInsetCSSPixels),
+            Double(sourceInlineInsetCSSPixels),
+            Double(compactInlineInsetCSSPixels),
+            Double(ScholiumDocumentRhythm.paragraphGapCSSPixels) * textScale,
+            Double(ScholiumDocumentRhythm.headingGapBeforeCSSPixels) * textScale,
+            Double(ScholiumDocumentRhythm.headingGapAfterCSSPixels) * textScale,
+            Double(compactThresholdRootEms)
         )
     }
 }
@@ -679,8 +903,8 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
     var colorRole: ScholiumColorRole {
         switch self {
         case .document: .documentBackground
-        case .navigation: .navigationBackground
-        case .apparatus, .floatingControl, .boundedPanel, .searchOverlay: .surfaceBackground
+        case .navigation, .apparatus, .floatingControl, .boundedPanel, .searchOverlay:
+            .surfaceBackground
         case .denseEvidence: .documentBackground
         }
     }
@@ -843,15 +1067,15 @@ enum ScholiumDocumentRhythm {
     static let heading2ScalePercent = 130
     static let heading3ScalePercent = 115
     static let heading4ScalePercent = 100
-    static let narrowWidthThreshold = 700
+    static let narrowWidthThresholdRootEms = ScholiumGrid.Document.narrowWidthThresholdRootEms
     static let proseLineHeight = 1.5
     static let sourceLineHeight = 1.5
-    static let paragraphGapEm = 2.0 / 3.0
+    static let paragraphGapCSSPixels = ScholiumGrid.Document.paragraphGapCSSPixels
     static let headingLineHeight = 1.18
-    static let headingGapBeforeEm = 1.45
-    static let headingGapAfterEm = 0.55
+    static let headingGapBeforeCSSPixels = ScholiumGrid.Document.headingGapBeforeCSSPixels
+    static let headingGapAfterCSSPixels = ScholiumGrid.Document.headingGapAfterCSSPixels
     static let codeBlockInset: CGFloat = 16
-    static let quoteInlineInset: CGFloat = 18
+    static let quoteInlineInset = ScholiumGrid.Spacing.sectionSeparation
     static let livePreviewCodeInlineInsetEm = 0.8
     static let livePreviewQuoteInlineInset: CGFloat = 12
 
@@ -860,11 +1084,15 @@ enum ScholiumDocumentRhythm {
         widthClass: ScholiumDocumentWidthClass
     ) -> ScholiumDocumentContentInsets {
         let inline: CGFloat = switch (renderer, widthClass) {
-        case (.source, .regular): 42
-        case (.read, .regular), (.livePreview, .regular): 0
-        case (_, .narrow): 24
+        case (.source, .regular): ScholiumGrid.Spacing.sourceShellInsetCSSPixels
+        case (.read, .regular), (.livePreview, .regular):
+            ScholiumGrid.Spacing.documentShellInsetCSSPixels
+        case (_, .narrow): ScholiumGrid.Document.compactShellInsetCSSPixels
         }
-        return .init(inline: inline, trailingViewportFraction: 0.45)
+        return .init(
+            inline: inline,
+            trailingViewportFraction: ScholiumGrid.Document.trailingScrollViewportFraction
+        )
     }
 }
 

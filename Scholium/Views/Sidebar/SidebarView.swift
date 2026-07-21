@@ -57,32 +57,41 @@ struct SidebarContext {
     let showError: (String) -> Void
 }
 
+private struct LifecycleDestinationFocusPlan: Equatable {
+    let originPath: String
+    let successorPath: String?
+}
+
 struct SidebarView: View {
     @ObservedObject private var controller: DiscoveryController
     @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.locale) private var locale
     let context: SidebarContext
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
     @FocusState private var libraryFocused: Bool
+    @FocusState private var lifecycleBackFocused: Bool
+    @State private var requestedLifecyclePutBackFocusPath: String?
+    @State private var pendingLifecycleFocusPlan: LifecycleDestinationFocusPlan?
 
     init(controller: DiscoveryController, context: SidebarContext) {
         self.controller = controller
         self.context = context
     }
 
-    private var lifecycleOverlayScope: NoteLocationScope? {
+    private var lifecycleDestinationScope: NoteLocationScope? {
         controller.library.lifecycleScope
     }
 
-    private var lifecycleOverlayItems: [LifecycleLocationItem] {
+    private var lifecycleDestinationItems: [LifecycleLocationItem] {
         controller.library.lifecycleItems
     }
 
-    private var lifecycleOverlayIsLoading: Bool {
+    private var lifecycleDestinationIsLoading: Bool {
         controller.library.lifecycleIsLoading
     }
 
-    private var lifecycleOverlayError: String? {
+    private var lifecycleDestinationError: String? {
         controller.library.lifecycleError
     }
 
@@ -144,7 +153,7 @@ struct SidebarView: View {
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                 .padding(.top, ScholiumMetrics.Library.sectionSpacing)
 
-            ZStack(alignment: .bottom) {
+            ZStack(alignment: .topLeading) {
                 Group {
                     if controller.library.showsAttentionQueue {
                         AttentionQueueView(
@@ -176,49 +185,55 @@ struct SidebarView: View {
                         .accessibilityIdentifier("scholium.noteList")
                     }
                 }
-                .opacity(lifecycleOverlayScope == nil ? 1 : 0.48)
-                .allowsHitTesting(lifecycleOverlayScope == nil)
-
-                if let scope = lifecycleOverlayScope {
-                    SidebarLifecycleCard(
-                        scope: scope,
-                        items: lifecycleOverlayItems,
-                        isLoading: lifecycleOverlayIsLoading,
-                        errorMessage: lifecycleOverlayError,
-                        onReload: { await reloadLifecycleOverlay(scope) },
-                        onOpen: { item in
-                            context.openLifecycleNote(item.note.relativePath, scope)
-                        },
-                        onPutBack: preparePutBack,
-                        onReveal: context.revealNote,
-                        onMoveToTrash: moveLifecycleItemToTrash,
-                        onDeletePermanently: deleteLifecycleItemPermanently,
-                        onClose: closeLifecycleOverlay
-                    )
-                    .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                    .padding(.bottom, 8)
-                    .transition(
-                        reduceMotion
-                            ? .identity
-                            : .move(edge: .bottom).combined(with: .opacity)
-                    )
+                .opacity(lifecycleDestinationScope == nil ? 1 : 0)
+                .allowsHitTesting(lifecycleDestinationScope == nil)
+                .accessibilityHidden(lifecycleDestinationScope != nil)
+                .overlay(alignment: .topLeading) {
+                    if let scope = lifecycleDestinationScope {
+                        SidebarLifecycleDestinationView(
+                            scope: scope,
+                            items: lifecycleDestinationItems,
+                            isLoading: lifecycleDestinationIsLoading,
+                            errorMessage: lifecycleDestinationError,
+                            requestedPutBackFocusPath: requestedLifecyclePutBackFocusPath,
+                            onFocusRequestHandled: {
+                                requestedLifecyclePutBackFocusPath = nil
+                            },
+                            onRequestPutBackFocus: {
+                                requestedLifecyclePutBackFocusPath = $0
+                            },
+                            onReload: { await reloadLifecycleDestination(scope) },
+                            onOpen: { item in
+                                context.openLifecycleNote(item.note.relativePath, scope)
+                            },
+                            onPutBack: preparePutBack,
+                            onReveal: context.revealNote,
+                            onMoveToTrash: moveLifecycleItemToTrash,
+                            onDeletePermanently: deleteLifecycleItemPermanently
+                        )
+                        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                        .transition(.opacity)
+                    }
                 }
             }
-            .padding(.top, 4)
+            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
             .frame(maxHeight: .infinity)
+            .background(ScholiumColorRole.surfaceBackground.color)
 
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
             sidebarBottomRegion
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
         .animation(
-            reduceMotion ? nil : .snappy(duration: 0.2),
-            value: lifecycleOverlayScope
+            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+            value: lifecycleDestinationScope
         )
         .onChange(of: context.libraryFocusRequestGeneration) { _, _ in
             libraryFocused = true
+        }
+        .onChange(of: lifecycleDestinationScope) { _, scope in
+            guard scope != nil else { return }
+            lifecycleBackFocused = true
         }
         .background {
             if context.catalogIsAvailable, !context.allNotes.isEmpty {
@@ -234,17 +249,24 @@ struct SidebarView: View {
         .onChange(of: context.allNotes.map(\.relativePath)) { _, _ in
             captureWorkspaceSnapshotIfNeeded()
         }
-        .task(id: lifecycleOverlayReloadID) {
-            guard let scope = lifecycleOverlayScope else { return }
-            await reloadLifecycleOverlay(scope)
+        .task(id: lifecycleDestinationReloadID) {
+            guard let scope = lifecycleDestinationScope else { return }
+            await reloadLifecycleDestination(scope)
         }
         .onChange(of: context.noteLifecycleRequest) { _, request in
             guard request == nil, let path = preparedLifecyclePath else { return }
             context.clearPreparedLifecycle(path)
             preparedLifecyclePath = nil
-            if let scope = lifecycleOverlayScope {
-                Task { await reloadLifecycleOverlay(scope) }
+            if let scope = lifecycleDestinationScope {
+                Task {
+                    await reloadLifecycleDestination(scope)
+                    restoreLifecycleFocusAfterMutation()
+                }
             }
+        }
+        .onExitCommand {
+            guard lifecycleDestinationScope != nil else { return }
+            closeLifecycleDestination()
         }
         .sheet(isPresented: showUnclassified, onDismiss: restoreWorkspaceAfterTransientScope) {
             UnclassifiedClassificationSheet(
@@ -300,7 +322,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             ScholiumStructuralRule()
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                .padding(.vertical, 8)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
 
             SidebarRecommendedBibliographySection(
                 controller: context.bibliographyController,
@@ -310,7 +332,7 @@ struct SidebarView: View {
                 repairMethod: context.repairRecommendedBibliographyMethod
             )
             .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-            .padding(.bottom, 8)
+            .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
 
             ScholiumStructuralRule()
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
@@ -320,7 +342,26 @@ struct SidebarView: View {
     }
 
     private var libraryHeader: some View {
-        HStack(spacing: 8) {
+        ZStack(alignment: .leading) {
+            ordinaryLibraryHeader
+                .opacity(lifecycleDestinationScope == nil ? 1 : 0)
+                .allowsHitTesting(lifecycleDestinationScope == nil)
+                .accessibilityHidden(lifecycleDestinationScope != nil)
+
+            lifecycleDestinationHeader
+                .opacity(lifecycleDestinationScope == nil ? 0 : 1)
+                .allowsHitTesting(lifecycleDestinationScope != nil)
+                .accessibilityHidden(lifecycleDestinationScope == nil)
+        }
+        .frame(height: ScholiumMetrics.Accessibility.preferredCustomTarget)
+        .animation(
+            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+            value: lifecycleDestinationScope
+        )
+    }
+
+    private var ordinaryLibraryHeader: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Button {
                 context.selectLocationScope(.workspace)
             } label: {
@@ -352,13 +393,60 @@ struct SidebarView: View {
             .help("New Note")
             .accessibilityIdentifier("scholium.newNote")
         }
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("scholium.libraryHeading")
+    }
+
+    private var lifecycleDestinationHeader: some View {
+        let scope = lifecycleDestinationScope ?? .setAside
+        let heading = lifecycleDestinationHeading(scope)
+
+        return HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Button(action: closeLifecycleDestination) {
+                Image(systemName: "chevron.backward")
+                    .frame(
+                        width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                        height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focused($lifecycleBackFocused)
+            .help("Back to Library")
+            .accessibilityLabel("Back to Library")
+            .accessibilityIdentifier("scholium.lifecycleBack")
+
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text(lifecycleDestinationVisualTitle(scope))
+                    .font(ScholiumInterfaceTypography.editorialLabel)
+                    .tracking(0.7)
+
+                if lifecycleDestinationShowsCount {
+                    Text(localizedNoteCount(lifecycleDestinationItems.count))
+                        .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                }
+            }
+            .lineLimit(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(heading)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier(lifecycleHeadingIdentifier(scope))
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var attentionNavigation: some View {
         Button {
-            controller.showAttentionQueue(!controller.library.showsAttentionQueue)
+            if lifecycleDestinationScope != nil {
+                controller.showAttentionQueue(true)
+            } else {
+                controller.showAttentionQueue(!controller.library.showsAttentionQueue)
+            }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: "tray.full")
                     .foregroundStyle(hasVisibleAttention ? Color.orange : Color.secondary)
                     .frame(width: ScholiumMetrics.Library.navigationIconWidth)
@@ -383,60 +471,44 @@ struct SidebarView: View {
         .accessibilityAddTraits(controller.library.showsAttentionQueue ? .isSelected : [])
         .help("Review derived warnings and recoverable research issues")
         .accessibilityValue(visibleAttentionCount.map { "\($0) items" } ?? "Loading")
+        .accessibilityIdentifier("scholium.location.attention")
     }
 
     private var lifecycleNavigation: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 0) {
             locationButton(.setAside, symbol: "archivebox")
+                .frame(maxWidth: .infinity)
             locationButton(.trash, symbol: "trash")
-            Button(action: context.openSettings) {
-                Image(systemName: "gearshape")
-                    .frame(
-                        width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                        height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .help("Settings")
-            .accessibilityLabel("Settings")
+                .frame(maxWidth: .infinity)
+            ScholiumInkIconControl(
+                title: "Settings",
+                systemImage: "gearshape",
+                identifier: "scholium.location.settings",
+                action: context.openSettings
+            )
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 61)
+        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
         .frame(height: ScholiumMetrics.Workspace.libraryFooterHeight)
     }
 
     private func locationButton(_ scope: NoteLocationScope, symbol: String) -> some View {
-        Button {
-            openLifecycleOverlay(scope)
-        } label: {
-            Image(systemName: symbol)
-                .frame(
-                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .background(
-            lifecycleOverlayScope == scope
-                ? ScholiumColorRole.raisedSurfaceBackground.color
-                : Color.clear,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
+        let isActive = lifecycleDestinationScope == scope
+        return ScholiumInkIconControl(
+            title: lifecycleDestinationName(scope),
+            systemImage: isActive ? "\(symbol).fill" : symbol,
+            identifier: scope == .setAside
+                ? "scholium.location.setAside"
+                : "scholium.location.trash",
+            isActive: isActive,
+            action: { openLifecycleDestination(scope) }
         )
-        .accessibilityAddTraits(lifecycleOverlayScope == scope ? .isSelected : [])
-        .help(scope.rawValue)
-        .accessibilityLabel(scope.rawValue)
-        .accessibilityIdentifier(
-            scope == .setAside ? "scholium.location.setAside" : "scholium.location.trash"
-        )
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private var displayedFolderTree: [TreeNode] {
-        if lifecycleOverlayScope != nil, !capturedWorkspaceNotes.isEmpty {
+        if lifecycleDestinationScope != nil, !capturedWorkspaceNotes.isEmpty {
             return buildTree(
                 from: capturedWorkspaceNotes,
                 notesAreOrdered: context.notesAreOrdered
@@ -445,8 +517,8 @@ struct SidebarView: View {
         return folderTree
     }
 
-    private var lifecycleOverlayReloadID: String {
-        "\(lifecycleOverlayScope?.rawValue ?? "closed"):\(context.lifecycleMutationGeneration)"
+    private var lifecycleDestinationReloadID: String {
+        "\(lifecycleDestinationScope?.rawValue ?? "closed"):\(context.lifecycleMutationGeneration)"
     }
 
     private func captureWorkspaceSnapshotIfNeeded() {
@@ -454,39 +526,125 @@ struct SidebarView: View {
         controller.captureWorkspaceNotes(filteredNotes)
     }
 
-    private func openLifecycleOverlay(_ scope: NoteLocationScope) {
+    private func openLifecycleDestination(_ scope: NoteLocationScope) {
         guard scope == .setAside || scope == .trash else { return }
-        if lifecycleOverlayScope == scope {
-            closeLifecycleOverlay()
+        if lifecycleDestinationScope == scope {
+            closeLifecycleDestination()
             return
         }
         captureWorkspaceSnapshotIfNeeded()
         controller.presentLifecycleListing(scope)
     }
 
-    private func closeLifecycleOverlay() {
+    private func closeLifecycleDestination() {
+        pendingLifecycleFocusPlan = nil
+        requestedLifecyclePutBackFocusPath = nil
         controller.dismissLifecycleListing()
         if controller.library.locationScope != .workspace {
             restoreWorkspaceAfterTransientScope()
         }
     }
 
-    private func reloadLifecycleOverlay(_ scope: NoteLocationScope) async {
+    private func reloadLifecycleDestination(_ scope: NoteLocationScope) async {
         let request = controller.beginLifecycleListing(scope)
         do {
             let items = try await context.lifecycleItems(scope)
-            guard lifecycleOverlayScope == scope, !Task.isCancelled else { return }
+            guard lifecycleDestinationScope == scope, !Task.isCancelled else { return }
             controller.receiveLifecycleItems(items, for: request)
         } catch {
-            guard lifecycleOverlayScope == scope, !Task.isCancelled else { return }
+            guard lifecycleDestinationScope == scope, !Task.isCancelled else { return }
             controller.failLifecycleListing(error.localizedDescription, for: request)
         }
     }
 
     private func preparePutBack(_ item: LifecycleLocationItem) {
+        pendingLifecycleFocusPlan = lifecycleFocusPlan(removing: item)
         context.prepareLifecycle(item)
         preparedLifecyclePath = item.note.relativePath
         controller.requestLifecycle(.putBack(item.note.relativePath))
+    }
+
+    private var lifecycleDestinationShowsCount: Bool {
+        !lifecycleDestinationIsLoading && lifecycleDestinationError == nil
+    }
+
+    private func lifecycleDestinationName(_ scope: NoteLocationScope) -> String {
+        switch scope {
+        case .setAside: ScholiumL10n.string("Set Aside", locale: locale)
+        case .trash: ScholiumL10n.string("Trash", locale: locale)
+        case .workspace: ScholiumL10n.string("Library", locale: locale)
+        case .unclassified: ScholiumL10n.string("Unclassified", locale: locale)
+        }
+    }
+
+    private func lifecycleDestinationVisualTitle(_ scope: NoteLocationScope) -> String {
+        switch scope {
+        case .setAside: ScholiumL10n.string("SET ASIDE", locale: locale)
+        case .trash: ScholiumL10n.string("TRASH", locale: locale)
+        case .workspace: ScholiumL10n.string("LIBRARY", locale: locale)
+        case .unclassified: ScholiumL10n.string("Unclassified", locale: locale)
+        }
+    }
+
+    private func lifecycleHeadingIdentifier(_ scope: NoteLocationScope) -> String {
+        scope == .trash
+            ? "scholium.lifecycleHeading.trash"
+            : "scholium.lifecycleHeading.setAside"
+    }
+
+    private func lifecycleDestinationHeading(_ scope: NoteLocationScope) -> String {
+        let name = lifecycleDestinationName(scope)
+        guard lifecycleDestinationShowsCount else { return name }
+        return "\(name), \(localizedNoteCount(lifecycleDestinationItems.count))"
+    }
+
+    private func localizedNoteCount(_ count: Int) -> String {
+        if count == 1 {
+            return ScholiumL10n.string("1 note", locale: locale)
+        }
+        return String(
+            format: ScholiumL10n.string("%lld notes", locale: locale),
+            locale: locale,
+            arguments: [Int64(count)]
+        )
+    }
+
+    private func lifecycleFocusPlan(
+        removing item: LifecycleLocationItem
+    ) -> LifecycleDestinationFocusPlan {
+        guard let index = lifecycleDestinationItems.firstIndex(where: { $0.id == item.id }) else {
+            return LifecycleDestinationFocusPlan(
+                originPath: item.note.relativePath,
+                successorPath: nil
+            )
+        }
+        let successor: LifecycleLocationItem? = if lifecycleDestinationItems.indices.contains(index + 1) {
+            lifecycleDestinationItems[index + 1]
+        } else if index > lifecycleDestinationItems.startIndex {
+            lifecycleDestinationItems[index - 1]
+        } else {
+            nil
+        }
+        return LifecycleDestinationFocusPlan(
+            originPath: item.note.relativePath,
+            successorPath: successor?.note.relativePath
+        )
+    }
+
+    private func restoreLifecycleFocusAfterMutation() {
+        guard let plan = pendingLifecycleFocusPlan else { return }
+        pendingLifecycleFocusPlan = nil
+
+        if lifecycleDestinationItems.contains(where: { $0.note.relativePath == plan.originPath }) {
+            requestedLifecyclePutBackFocusPath = plan.originPath
+        } else if let successorPath = plan.successorPath,
+                  lifecycleDestinationItems.contains(where: { $0.note.relativePath == successorPath }) {
+            requestedLifecyclePutBackFocusPath = successorPath
+        } else if let firstPath = lifecycleDestinationItems.first?.note.relativePath {
+            requestedLifecyclePutBackFocusPath = firstPath
+        } else {
+            lifecycleBackFocused = true
+        }
     }
 
     private func restoreWorkspaceAfterTransientScope() {
@@ -848,13 +1006,16 @@ struct SidebarView: View {
     }
 
     private func moveLifecycleItemToTrash(_ item: LifecycleLocationItem) {
+        pendingLifecycleFocusPlan = lifecycleFocusPlan(removing: item)
         Task {
             do {
                 context.prepareLifecycle(item)
                 defer { context.clearPreparedLifecycle(item.note.relativePath) }
                 try await context.moveToTrash(item.note.relativePath)
-                await reloadLifecycleOverlay(.setAside)
+                await reloadLifecycleDestination(.setAside)
+                restoreLifecycleFocusAfterMutation()
             } catch {
+                restoreLifecycleFocusAfterMutation()
                 context.showError(
                     "Could not move this note to Trash. \(error.localizedDescription)"
                 )
@@ -863,13 +1024,16 @@ struct SidebarView: View {
     }
 
     private func deleteLifecycleItemPermanently(_ item: LifecycleLocationItem) {
+        pendingLifecycleFocusPlan = lifecycleFocusPlan(removing: item)
         Task {
             do {
                 context.prepareLifecycle(item)
                 defer { context.clearPreparedLifecycle(item.note.relativePath) }
                 try await context.deletePermanently(item.note.relativePath)
-                await reloadLifecycleOverlay(.trash)
+                await reloadLifecycleDestination(.trash)
+                restoreLifecycleFocusAfterMutation()
             } catch {
+                restoreLifecycleFocusAfterMutation()
                 context.showError(
                     "Could not permanently delete this note. \(error.localizedDescription)"
                 )
@@ -898,150 +1062,49 @@ struct SidebarView: View {
     }
 }
 
-private struct SidebarLifecycleCard: View {
-    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
-
+struct SidebarLifecycleDestinationView: View {
+    @Environment(\.locale) private var locale
     let scope: NoteLocationScope
     let items: [LifecycleLocationItem]
     let isLoading: Bool
     let errorMessage: String?
+    let requestedPutBackFocusPath: String?
+    let onFocusRequestHandled: () -> Void
+    let onRequestPutBackFocus: (String) -> Void
     let onReload: () async -> Void
     let onOpen: (LifecycleLocationItem) -> Void
     let onPutBack: (LifecycleLocationItem) -> Void
     let onReveal: (String) -> Void
     let onMoveToTrash: (LifecycleLocationItem) -> Void
     let onDeletePermanently: (LifecycleLocationItem) -> Void
-    let onClose: () -> Void
 
     @State private var pendingPermanentDeletion: LifecycleLocationItem?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Button(action: onClose) {
-                Capsule()
-                    .fill(.secondary.opacity(0.5))
-                    .frame(width: 34, height: 4)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Collapse \(scope.rawValue)")
-            .accessibilityLabel("Collapse \(scope.rawValue)")
-
-            HStack {
-                Text(scope.rawValue)
-                    .font(ScholiumInterfaceTypography.rowTitle)
-                Spacer()
-                if !isLoading {
-                    Text(items.count.formatted())
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-
-            Divider()
-
-            Group {
-                if isLoading {
-                    ProgressView("Opening \(scope.rawValue)…")
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity, minHeight: 120)
-                } else if let errorMessage {
-                    ContentUnavailableView {
-                        Label("Could Not Open \(scope.rawValue)", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(errorMessage)
-                    } actions: {
-                        Button("Retry") { Task { await onReload() } }
-                    }
-                    .frame(minHeight: 150)
-                } else if items.isEmpty {
-                    ContentUnavailableView(
-                        scope.rawValue,
-                        systemImage: scope == .trash ? "trash" : "archivebox",
-                        description: Text("No notes are currently in \(scope.rawValue).")
-                    )
-                    .frame(minHeight: 150)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(items) { item in
-                                let note = item.note
-                                Button {
-                                    onOpen(item)
-                                } label: {
-                                    Text(note.title ?? note.displayName)
-                                        .font(.callout)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 7)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button {
-                                        onPutBack(item)
-                                    } label: {
-                                        Label("Put Back…", systemImage: "arrow.uturn.backward")
-                                    }
-                                    if scope == .setAside {
-                                        Button {
-                                            moveToTrash(item)
-                                        } label: {
-                                            Label("Move to Trash…", systemImage: "trash")
-                                        }
-                                    } else {
-                                        Button(role: .destructive) {
-                                            pendingPermanentDeletion = item
-                                        } label: {
-                                            Label("Delete Permanently…", systemImage: "trash.slash")
-                                        }
-                                    }
-                                    Divider()
-                                    Button {
-                                        onReveal(note.relativePath)
-                                    } label: {
-                                        Label("Reveal in Finder", systemImage: "folder")
-                                    }
-                                }
-                                .accessibilityLabel(note.title ?? note.displayName)
-                                .accessibilityHint("Open note in \(scope.rawValue)")
-
-                                if item.id != items.last?.id {
-                                    Divider().padding(.leading, 12)
-                                }
-                            }
-                        }
-                    }
-                }
+        Group {
+            if isLoading {
+                loadingState
+            } else if let errorMessage {
+                errorState(errorMessage)
+            } else if items.isEmpty {
+                emptyState
+            } else {
+                lifecycleList
             }
         }
-        .frame(minHeight: 170, idealHeight: 280, maxHeight: 360)
-        .clipShape(RoundedRectangle(
-            cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-            style: .continuous
-        ))
-        .scholiumEditorialSurface(
-            .boundedPanel,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(ScholiumColorRole.surfaceBackground.color)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(
-            scope == .setAside ? "scholium.lifecycleCard.setAside" : "scholium.lifecycleCard.trash"
-        )
+        .accessibilityIdentifier(destinationIdentifier)
         .confirmationDialog(
             "Delete Permanently?",
             isPresented: Binding(
                 get: { pendingPermanentDeletion != nil },
-                set: { if !$0 { pendingPermanentDeletion = nil } }
+                set: { isPresented in
+                    guard !isPresented, let item = pendingPermanentDeletion else { return }
+                    pendingPermanentDeletion = nil
+                    onRequestPutBackFocus(item.note.relativePath)
+                }
             ),
             titleVisibility: .visible
         ) {
@@ -1050,19 +1113,243 @@ private struct SidebarLifecycleCard: View {
                     deletePermanently(item)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingPermanentDeletion = nil }
+            Button("Cancel", role: .cancel) {
+                guard let item = pendingPermanentDeletion else { return }
+                pendingPermanentDeletion = nil
+                onRequestPutBackFocus(item.note.relativePath)
+            }
         } message: {
             Text("This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it.")
         }
     }
 
-    private func moveToTrash(_ item: LifecycleLocationItem) {
-        onMoveToTrash(item)
+    private var lifecycleList: some View {
+        ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(items) { item in
+                    SidebarLifecycleDestinationRow(
+                        scope: scope,
+                        item: item,
+                        requestedPutBackFocusPath: requestedPutBackFocusPath,
+                        onFocusRequestHandled: onFocusRequestHandled,
+                        onOpen: { onOpen(item) },
+                        onPutBack: { onPutBack(item) },
+                        onReveal: { onReveal(item.note.relativePath) },
+                        onMoveToTrash: { onMoveToTrash(item) },
+                        onRequestPermanentDeletion: {
+                            pendingPermanentDeletion = item
+                        }
+                    )
+                    if item.id != items.last?.id {
+                        ScholiumStructuralRule()
+                    }
+                }
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private var loadingState: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(openingLabel)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: scope == .trash ? "trash" : "archivebox")
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .accessibilityHidden(true)
+            Text(emptyTitle)
+                .font(ScholiumInterfaceTypography.rowTitle)
+            Text(emptyDetail)
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
+    }
+
+    private func errorState(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Label(errorTitle, systemImage: "exclamationmark.triangle")
+                .font(ScholiumInterfaceTypography.rowTitle)
+            Text(message)
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Retry") { Task { await onReload() } }
+                .accessibilityIdentifier("scholium.lifecycleRetry")
+        }
+        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
+    }
+
+    private var destinationIdentifier: String {
+        scope == .trash
+            ? "scholium.lifecycleDestination.trash"
+            : "scholium.lifecycleDestination.setAside"
+    }
+
+    private var openingLabel: String {
+        scope == .trash
+            ? ScholiumL10n.string("Opening Trash…", locale: locale)
+            : ScholiumL10n.string("Opening Set Aside…", locale: locale)
+    }
+
+    private var emptyTitle: String {
+        scope == .trash
+            ? ScholiumL10n.string("No Notes in Trash", locale: locale)
+            : ScholiumL10n.string("No Set Aside Notes", locale: locale)
+    }
+
+    private var emptyDetail: String {
+        scope == .trash
+            ? ScholiumL10n.string(
+                "Notes moved to Trash appear here until you put them back or delete them permanently.",
+                locale: locale
+            )
+            : ScholiumL10n.string(
+                "Notes you set aside appear here until you put them back.",
+                locale: locale
+            )
+    }
+
+    private var errorTitle: String {
+        scope == .trash
+            ? ScholiumL10n.string("Could Not Open Trash", locale: locale)
+            : ScholiumL10n.string("Could Not Open Set Aside", locale: locale)
     }
 
     private func deletePermanently(_ item: LifecycleLocationItem) {
         pendingPermanentDeletion = nil
         onDeletePermanently(item)
+    }
+}
+
+private struct SidebarLifecycleDestinationRow: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.locale) private var locale
+    let scope: NoteLocationScope
+    let item: LifecycleLocationItem
+    let requestedPutBackFocusPath: String?
+    let onFocusRequestHandled: () -> Void
+    let onOpen: () -> Void
+    let onPutBack: () -> Void
+    let onReveal: () -> Void
+    let onMoveToTrash: () -> Void
+    let onRequestPermanentDeletion: () -> Void
+
+    @State private var isHovering = false
+    @FocusState private var putBackHasKeyboardFocus: Bool
+    @AccessibilityFocusState private var putBackHasAccessibilityFocus: Bool
+
+    var body: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Button(action: onOpen) {
+                Text(verbatim: noteTitle)
+                    .font(ScholiumInterfaceTypography.libraryHierarchy)
+                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .leading
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(noteTitle)
+            .accessibilityHint(openHint)
+
+            Button(action: onPutBack) {
+                Image(systemName: "arrow.uturn.backward")
+                    .frame(
+                        width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                        height: ScholiumMetrics.Accessibility.minimumCustomTarget
+                    )
+                    .contentShape(Rectangle())
+                    .opacity(putBackGlyphIsVisible ? 1 : 0)
+                    .animation(
+                        ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                        value: putBackGlyphIsVisible
+                    )
+            }
+            .buttonStyle(.plain)
+            .focused($putBackHasKeyboardFocus)
+            .accessibilityFocused($putBackHasAccessibilityFocus)
+            .help("Put Back…")
+            .accessibilityLabel(putBackAccessibilityLabel)
+            .accessibilityIdentifier(putBackIdentifier)
+        }
+        .frame(height: ScholiumMetrics.Library.hierarchyRowHeight)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .contextMenu {
+            Button(action: onPutBack) {
+                Label("Put Back…", systemImage: "arrow.uturn.backward")
+            }
+            if scope == .setAside {
+                Button(action: onMoveToTrash) {
+                    Label("Move to Trash…", systemImage: "trash")
+                }
+            } else {
+                Button(role: .destructive, action: onRequestPermanentDeletion) {
+                    Label("Delete Permanently…", systemImage: "trash.slash")
+                }
+            }
+            Divider()
+            Button(action: onReveal) {
+                Label("Reveal in Finder", systemImage: "folder")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .onChange(of: requestedPutBackFocusPath) { _, requestedPath in
+            guard requestedPath == item.note.relativePath else { return }
+            putBackHasKeyboardFocus = true
+            onFocusRequestHandled()
+        }
+    }
+
+    private var noteTitle: String {
+        item.note.title ?? item.note.displayName
+    }
+
+    private var putBackGlyphIsVisible: Bool {
+        isHovering || putBackHasKeyboardFocus || putBackHasAccessibilityFocus
+    }
+
+    private var openHint: String {
+        let destination = scope == .trash
+            ? ScholiumL10n.string("Trash", locale: locale)
+            : ScholiumL10n.string("Set Aside", locale: locale)
+        return String(
+            format: ScholiumL10n.string("Open note in %@", locale: locale),
+            locale: locale,
+            arguments: [destination]
+        )
+    }
+
+    private var putBackAccessibilityLabel: String {
+        String(
+            format: ScholiumL10n.string("Put Back %@", locale: locale),
+            locale: locale,
+            arguments: [noteTitle]
+        )
+    }
+
+    private var putBackIdentifier: String {
+        let encodedPath = item.note.relativePath.addingPercentEncoding(
+            withAllowedCharacters: .alphanumerics
+        ) ?? item.note.relativePath
+        return "scholium.lifecyclePutBack.\(encodedPath)"
     }
 }
 
