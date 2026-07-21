@@ -846,7 +846,11 @@ private struct ScholiumCommands: Commands {
                 )
             }
             .keyboardShortcut("b", modifiers: [.command, .option])
-            .disabled(appState?.currentNote == nil || workspaceWindowActions == nil)
+            .disabled(
+                workspaceWindowActions == nil
+                    || (appState?.researchInspectorVisible != true
+                        && appState?.currentNote == nil)
+            )
             Menu("Document Mode") {
                 Button("Read") { appState?.requestDocumentMode(.read) }
                 Button("Live Preview") { appState?.requestDocumentMode(.livePreview) }

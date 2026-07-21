@@ -286,13 +286,10 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
         #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
         #expect(!splitSource.contains("NSBackgroundExtensionView"))
-        #expect(splitSource.contains("installTitlebarControl(at: .trailing)"))
-        #expect(splitSource.contains("installTitlebarControl(at: .leading)"))
-        #expect(splitSource.contains("host.safeAreaRegions = []"))
+        #expect(!splitSource.contains("installTitlebarControl"))
+        #expect(!splitSource.contains("ScholiumPeripheralTitlebarControlView"))
         #expect(splitSource.contains("backgroundHost.safeAreaRegions = []"))
         #expect(!splitSource.contains("NSSplitViewItemAccessoryViewController"))
-        #expect(splitSource.contains("identifier: \"scholium.toggleSidebar\""))
-        #expect(splitSource.contains("identifier: \"scholium.toggleInspector\""))
         #expect(splitSource.contains(
             "rootView: backgroundRole.colorRole.color"
         ))
@@ -327,8 +324,8 @@ struct FrontendArchitectureTests {
         ))
         #expect(toolbarSource.contains("identifier: \"scholium.toggleSidebar\""))
         #expect(toolbarSource.contains("private var desiredItemIdentifiers"))
-        #expect(toolbarSource.contains("if !appState.sidebarVisible"))
-        #expect(toolbarSource.contains("if !appState.researchInspectorVisible"))
+        #expect(toolbarSource.contains("static func itemIdentifiers("))
+        #expect(toolbarSource.contains("Self.itemIdentifiers("))
         #expect(toolbarSource.contains("toolbar.itemIdentifiers = desired"))
         #expect(toolbarSource.contains("NSTrackingSeparatorToolbarItem("))
         #expect(toolbarSource.contains("dividerIndex: 0"))
@@ -350,13 +347,19 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(toolbarSource.contains("identifier: \"scholium.toggleInspector\""))
         #expect(toolbarSource.contains(
-            "windowActions.setResearchInspectorVisible(true)"
+            "windowActions.setResearchInspectorVisible(!isVisible)"
         ))
         #expect(toolbarSource.contains(
-            ".disabled(appState.documentController.selectedDocument == nil)"
+            "!isVisible && appState.documentController.selectedDocument == nil"
         ))
         #expect(toolbarSource.contains(
-            "title: ScholiumL10n.dynamicString(\"Show Research Inspector\")"
+            "isVisible ? \"Hide Research Inspector\" : \"Show Research Inspector\""
+        ))
+        #expect(appSource.contains(
+            "appState?.researchInspectorVisible != true"
+        ))
+        #expect(appSource.contains(
+            "&& appState?.currentNote == nil"
         ))
         #expect(!toolbarSource.contains("identifiers.append(.toggleInspector)"))
         #expect(!toolbarSource.contains("case .toggleInspector"))
@@ -435,6 +438,46 @@ struct FrontendArchitectureTests {
         #expect(controller.minimumThicknessForInlineSidebars == NSSplitViewController.automaticDimension)
     }
 
+    @Test("Peripheral toolbar controls cross the correct tracking separator exactly once")
+    func peripheralToolbarTransferLayout() throws {
+        typealias Item = ScholiumWorkspaceToolbarController.Item
+
+        for sidebarVisible in [false, true] {
+            for researchInspectorVisible in [false, true] {
+                let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(
+                    sidebarVisible: sidebarVisible,
+                    researchInspectorVisible: researchInspectorVisible
+                )
+                let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
+                let libraryDividerIndex = try #require(
+                    identifiers.firstIndex(of: Item.libraryDivider)
+                )
+                let documentIndex = try #require(
+                    identifiers.firstIndex(of: Item.documentIdentity)
+                )
+                let apparatusDividerIndex = try #require(
+                    identifiers.firstIndex(of: Item.apparatusDivider)
+                )
+                let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
+
+                #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
+                #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
+                #expect(
+                    sidebarVisible
+                        ? sidebarIndex < libraryDividerIndex
+                        : sidebarIndex > libraryDividerIndex
+                )
+                #expect(libraryDividerIndex < documentIndex)
+                #expect(documentIndex < apparatusDividerIndex)
+                #expect(
+                    researchInspectorVisible
+                        ? inspectorIndex > apparatusDividerIndex
+                        : inspectorIndex < apparatusDividerIndex
+                )
+            }
+        }
+    }
+
     @Test("Native split backgrounds fill the titlebar without an extension effect")
     func nativeSurfaceContainer() throws {
         let contentController = NSViewController()
@@ -454,6 +497,7 @@ struct FrontendArchitectureTests {
         #expect(contentController.view.superview === controller.view)
         #expect(controller.view.subviews.first === background)
         #expect(controller.view.subviews.last === contentController.view)
+
     }
 
     @Test("Research Inspector uses AppKit's unmodified semantic item")

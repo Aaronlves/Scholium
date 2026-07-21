@@ -60,6 +60,7 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testNativeToolbarVisualProofAtDefaultWindowSize")
             || name.contains("testNoDocumentKeepsTrailingToolbarControlsVisibleAndDisabled")
             || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
+            || name.contains("testVisiblePeripheralTitlebarControlsCloseWithPointerCoordinates")
             || name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
@@ -128,9 +129,9 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(documentTitle.waitForExistence(timeout: 10))
         XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
         XCTAssertTrue(inspectorButton.exists)
-        if inspector.exists {
-            inspectorButton.click()
-            XCTAssertTrue(waitUntil(timeout: 3) { !inspector.exists })
+
+        XCTContext.runActivity(named: "Peripheral controls use the native pointer path") { _ in
+            exercisePeripheralVisibilityControls()
         }
 
         XCTContext.runActivity(named: "Search, properties, and inspector") { _ in
@@ -2519,6 +2520,11 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testVisiblePeripheralTitlebarControlsCloseWithPointerCoordinates() throws {
+        exercisePeripheralVisibilityControls()
+    }
+
+    @MainActor
     func testTwoHundredPercentDocumentTextPersistsAcrossEveryMode() throws {
         app.terminate()
         app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900)
@@ -4659,6 +4665,84 @@ final class ScholiumUITests: XCTestCase {
     private func waitForDocumentSurface() {
         let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
+    }
+
+    /// Exercises the actual toolbar hit-testing path. Direct controller calls
+    /// and accessibility-only activation cannot detect a visible control that
+    /// has accidentally been placed beneath the full-size window toolbar.
+    @MainActor
+    private func exercisePeripheralVisibilityControls() {
+        waitForDocumentSurface()
+        let toolbar = app.toolbars.firstMatch
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+
+        let library = app.descendants(matching: .any)["scholium.librarySurface"]
+        if !library.exists {
+            let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+            XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
+            showSidebar.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            XCTAssertTrue(library.waitForExistence(timeout: 5))
+        }
+
+        let hideSidebar = toolbar.buttons["Hide Sidebar"].firstMatch
+        XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
+        XCTAssertTrue(hideSidebar.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleSidebar").count,
+            1
+        )
+        hideSidebar.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !library.exists })
+
+        let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+        XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
+        XCTAssertTrue(showSidebar.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleSidebar").count,
+            1
+        )
+        showSidebar.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(library.waitForExistence(timeout: 5))
+
+        let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
+        if inspector.exists {
+            let hideInspector = toolbar.buttons["Hide Research Inspector"].firstMatch
+            XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
+            hideInspector.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        }
+
+        let showInspector = toolbar.buttons["Show Research Inspector"].firstMatch
+        XCTAssertTrue(showInspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(showInspector.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleInspector").count,
+            1
+        )
+        showInspector.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+
+        let hideInspector = toolbar.buttons["Hide Research Inspector"].firstMatch
+        XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(hideInspector.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleInspector").count,
+            1
+        )
+        hideInspector.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
     }
 
     @MainActor

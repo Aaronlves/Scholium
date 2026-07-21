@@ -112,15 +112,20 @@ SwiftUI toolbar background is hidden, with no background-extension effect or
 duplicate color source. Native titlebar behavior remains, and each content
 controller is a foreground sibling inside the system safe area.
 
-The one `NSWindow.toolbar` is Document-owned. Tracking separators bind it to the
-middle item without transferring semantic ownership. Before split attachment,
+The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
+sections by native tracking separators. Before split attachment,
 `WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
-items in place. Visible peripheral Hide controls live in clear split-owned
-`NSHostingView`s. A titlebar layout guide and `safeAreaRegions = []` align them
-without a measured height, second safe-area inset, content row, or
-`NSSplitViewItemAccessoryViewController`. The toolbar controller diffs item
-identifiers from native collapsed state so only a collapsed pane's Show route
-enters the Document toolbar.
+items in place. Each peripheral has one real `NSToolbarItem`: while its pane is
+visible, the item is ordered outside the corresponding separator and presents
+Hide in that pane's titlebar section; when collapsed, the same route moves
+inside the separators and presents Show in the Document section. The toolbar
+controller diffs item identifiers from native collapsed state, so no duplicate
+route or second toolbar exists. No split-content titlebar host remains in the
+current construction: under full-size content it rendered beneath the
+toolbar's pointer hit-testing layer even when accessibility could still
+discover it. This tracked-toolbar transfer is the current safe implementation,
+but it does not satisfy D-091's pane-ownership requirement; the status ledger
+records that migration debt without treating this workaround as target authority.
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
