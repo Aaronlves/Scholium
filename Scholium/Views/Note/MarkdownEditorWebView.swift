@@ -351,6 +351,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var qaTerminationObserverInstalled = false
     #endif
     var hasAttachedWebView: Bool { webView != nil }
+    var hasRecoverableBuffer: Bool {
+        isDirty || recoverySnapshot?.dirty == true
+    }
     var canAttemptPreview: Bool { pendingMode == .livePreview }
     var canShowPreviewAtSelection: Bool {
         guard pendingMode == .livePreview,
@@ -951,6 +954,35 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         updatePublished(\.isReady, to: false)
         updatePublished(\.isLoaded, to: false)
         removeQATerminationObserver()
+    }
+
+    /// Clears the retained editor mirror and callbacks only after AppKit has
+    /// detached the WebView and the session store proved there is no lease or
+    /// recovery pin. Closed documents intentionally do not retain undo state.
+    func shutdownDetachedSession() {
+        precondition(webView == nil)
+        invalidateRequestQueue()
+        startupTask?.cancel()
+        startupTask = nil
+        cancelScheduledRecoveryCapture()
+        committedTextSynchronizer = nil
+        sourceChangeHandler = nil
+        pendingSource = nil
+        pendingDocumentID = ""
+        pendingLinkCompletions = []
+        pendingLinkPreviews = []
+        pendingResearcherComments = []
+        pendingScrollFraction = nil
+        pendingScrollAnchor = nil
+        reconstructionScrollAnchor = nil
+        checkedSource = ""
+        checkedEditorUTF16Length = 0
+        sourceOffsetMap = EditorSourceOffsetMap(source: "")
+        recoverySnapshot = nil
+        lastKnownSelectionSnapshot = nil
+        updatePublished(\.isReady, to: false)
+        updatePublished(\.isLoaded, to: false)
+        updatePublished(\.isDirty, to: false)
     }
 
     fileprivate func editorBecameReady() {

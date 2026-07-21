@@ -51,7 +51,19 @@ enum DocumentEditingTarget: Hashable, Sendable {
     case unavailable(relativePath: String)
 }
 
-private extension WindowSelectedDocument {
+extension DocumentEditingTarget {
+    var isFallback: Bool {
+        if case .workspace = self { return false }
+        return true
+    }
+
+    var vaultID: UUID? {
+        guard case .workspace(let key) = self else { return nil }
+        return key.vaultID
+    }
+}
+
+extension WindowSelectedDocument {
     var editingTarget: DocumentEditingTarget {
         switch self {
         case .workspace(let descriptor): .workspace(descriptor.sessionKey)
@@ -64,6 +76,11 @@ private extension WindowSelectedDocument {
 struct DocumentPresentationSnapshot: Equatable, Sendable {
     let modes: [String: String]
     let scrollPositions: [String: Double]
+}
+
+enum DocumentMemoryPressureLevel: Sendable {
+    case warning
+    case critical
 }
 
 enum DocumentChromeDirtyState: Equatable, Sendable {
@@ -128,15 +145,25 @@ final class DocumentController: ObservableObject {
     private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
-    private var fallbackSessions: [DocumentEditingTarget: DocumentSessionModel] = [:]
     private var restoredModes: [String: String] = [:]
     private var restoredScrollPositions: [String: Double] = [:]
     private var restoredPresentationVaultID: UUID?
+    private struct ClosedPresentationEntry {
+        let relativePath: String
+        let mode: NotePresentationMode
+        let scrollPosition: ObservedScrollPosition
+        var access: UInt64
+    }
+    private var closedPresentations: [DocumentEditingTarget: ClosedPresentationEntry] = [:]
+    private var nextClosedPresentationAccess: UInt64 = 0
     private let intentHandler: IntentHandler
     private var operations: (any DocumentUseCases)?
     private var sessionCancellables: [ObjectIdentifier: AnyCancellable] = [:]
     private var pendingChromeRefreshes: Set<ObjectIdentifier> = []
     private var documentDidCommit: DocumentCommitHandler = { _ in }
+
+    var retainedSessionCount: Int { sessions.retainedSessions.count }
+    var closedPresentationCount: Int { closedPresentations.count }
 
     init(intentHandler: @escaping IntentHandler = { _ in }) {
         self.intentHandler = intentHandler
@@ -406,30 +433,22 @@ final class DocumentController: ObservableObject {
     }
 
     func session(for key: DocumentSessionKey) -> DocumentSessionModel {
-        let session = sessions.session(for: key)
+        let session = sessions.session(for: .workspace(key))
         observe(session)
         return session
     }
 
     func session(for target: DocumentEditingTarget) -> DocumentSessionModel {
-        switch target {
-        case .workspace(let key):
-            return session(for: key)
-        case .unclassified, .unavailable:
-            if let retained = fallbackSessions[target] {
-                observe(retained)
-                return retained
-            }
-            let created = DocumentSessionModel(key: nil)
-            fallbackSessions[target] = created
-            observe(created)
-            hydratePresentation(of: created, path: relativePath(for: target))
-            return created
+        let session = sessions.session(for: target)
+        observe(session)
+        if session.key == nil {
+            hydratePresentation(of: session, target: target, path: relativePath(for: target))
         }
+        return session
     }
 
     func retainedSession(for key: DocumentSessionKey) -> DocumentSessionModel? {
-        guard let session = sessions.retainedSession(for: key) else { return nil }
+        guard let session = sessions.retainedSession(for: .workspace(key)) else { return nil }
         observe(session)
         return session
     }
@@ -469,6 +488,7 @@ final class DocumentController: ObservableObject {
             retainedReferences[descriptor.sessionKey] = descriptor.reference
             hydratePresentation(
                 of: session(for: descriptor.sessionKey),
+                target: .workspace(descriptor.sessionKey),
                 path: descriptor.reference.relativePath
             )
         case .unclassified, .unavailable:
@@ -501,6 +521,64 @@ final class DocumentController: ObservableObject {
     func clearSelectionAfterClosingLastTab() {
         selectedDocument = nil
         refreshChromeProjection()
+    }
+
+    /// Reconciles the full editor-session leases from the authoritative tab
+    /// membership in one step. Acquisition precedes release inside the store,
+    /// so switching tabs can never transiently reap the destination session.
+    func reconcileSessionLeases(
+        leasedDocuments: [WindowSelectedDocument],
+        selectedDocument: WindowSelectedDocument?
+    ) {
+        let reaped = sessions.reconcileLeases(
+            openTargets: leasedDocuments.map(\.editingTarget),
+            foregroundTarget: selectedDocument?.editingTarget
+        )
+        cacheReapedPresentations(reaped)
+        pruneReapedSessionBookkeeping()
+    }
+
+    /// Captures the selected CodeMirror state before view reconstruction, but
+    /// does not make the view itself the owner of close safety.
+    func captureSelectedEditorForReconstruction() async throws {
+        guard let selectedDocument,
+              let session = sessions.retainedSession(for: selectedDocument.editingTarget),
+              session.editorSession.hasAttachedWebView else { return }
+        try await session.editorSession.captureStateForViewReconstruction()
+    }
+
+    /// Flushes every session that is still reachable from a tab or protected
+    /// by a safety pin. Ordering is stable to make close/quit diagnostics and
+    /// tests deterministic.
+    func flushLeasedOrPinnedSessions() async throws {
+        let candidates = sessions.leasedOrPinnedSessions.sorted {
+            relativePath(for: $0.0) < relativePath(for: $1.0)
+        }
+        for (target, session) in candidates {
+            guard session.hasUnsavedChanges || session.isSavingEdit || session.canRetrySave else {
+                continue
+            }
+            if session.editorSession.hasAttachedWebView {
+                try await session.editorSession.captureStateForViewReconstruction()
+            }
+            try await flushForExternalOperation(session: session, target: target)
+        }
+    }
+
+    /// A tab close is a document-specific safety transaction. Inactive tabs
+    /// cannot rely on the currently selected view's registration.
+    func flushBeforeClosing(_ document: WindowSelectedDocument) async throws {
+        guard let session = sessions.retainedSession(for: document.editingTarget) else { return }
+        if session.editorSession.hasAttachedWebView {
+            try await session.editorSession.captureStateForViewReconstruction()
+        }
+        guard session.hasUnsavedChanges || session.isSavingEdit || session.canRetrySave else { return }
+        try await flushForExternalOperation(session: session, target: document.editingTarget)
+    }
+
+    func reapDetachedSessions() {
+        cacheReapedPresentations(sessions.reapEligibleSessions())
+        pruneReapedSessionBookkeeping()
     }
 
     /// Installs the immutable Application read model and initializes this
@@ -656,6 +734,7 @@ final class DocumentController: ObservableObject {
         if let selectedDocument {
             hydratePresentation(
                 of: session(for: selectedDocument.editingTarget),
+                target: selectedDocument.editingTarget,
                 path: selectedDocument.relativePath
             )
         }
@@ -668,14 +747,18 @@ final class DocumentController: ObservableObject {
             : [:]
 
         for (key, reference) in retainedReferences where reference.vaultID == vaultID {
-            guard let session = sessions.retainedSession(for: key) else { continue }
+            guard let session = sessions.retainedSession(for: .workspace(key)) else { continue }
             modes[reference.relativePath] = session.presentationMode.rawValue
             scrollPositions[reference.relativePath] = min(1, max(0, session.scrollFraction))
         }
-        for (target, session) in fallbackSessions {
+        for (target, session) in sessions.retainedSessions where target.isFallback {
             let path = relativePath(for: target)
             modes[path] = session.presentationMode.rawValue
             scrollPositions[path] = min(1, max(0, session.scrollFraction))
+        }
+        for (target, entry) in closedPresentations where target.vaultID == vaultID {
+            modes[entry.relativePath] = entry.mode.rawValue
+            scrollPositions[entry.relativePath] = min(1, max(0, entry.scrollPosition.fraction))
         }
         return DocumentPresentationSnapshot(
             modes: modes,
@@ -709,6 +792,16 @@ final class DocumentController: ObservableObject {
                 stableNoteID: reference.stableNoteID
             )
         }
+        for (target, var entry) in closedPresentations
+        where target.vaultID == vaultID && entry.relativePath == sourcePath {
+            entry = ClosedPresentationEntry(
+                relativePath: destinationPath,
+                mode: entry.mode,
+                scrollPosition: entry.scrollPosition,
+                access: entry.access
+            )
+            closedPresentations[target] = entry
+        }
     }
 
     func resetPresentationState() {
@@ -719,10 +812,7 @@ final class DocumentController: ObservableObject {
             session.presentationMode = .read
             session.resetScrollPosition()
         }
-        for session in fallbackSessions.values {
-            session.presentationMode = .read
-            session.resetScrollPosition()
-        }
+        closedPresentations.removeAll(keepingCapacity: false)
     }
 
     func requestOpen(_ route: WindowDocumentRoute) {
@@ -737,11 +827,10 @@ final class DocumentController: ObservableObject {
         if !retainingSessions {
             sessions.removeAll()
             retainedReferences.removeAll()
-            fallbackSessions.values.forEach { $0.cancelScheduledWork() }
-            fallbackSessions.removeAll()
             restoredModes = [:]
             restoredScrollPositions = [:]
             restoredPresentationVaultID = nil
+            closedPresentations.removeAll(keepingCapacity: false)
             sessionCancellables.removeAll()
             pendingChromeRefreshes.removeAll()
         }
@@ -750,6 +839,19 @@ final class DocumentController: ObservableObject {
         snapshots = [:]
         editingDocumentPath = nil
         lastSaveError = nil
+    }
+
+    private func pruneReapedSessionBookkeeping() {
+        let retained = Set(sessions.retainedSessions.values.map(ObjectIdentifier.init))
+        sessionCancellables = sessionCancellables.filter { retained.contains($0.key) }
+        pendingChromeRefreshes.formIntersection(retained)
+        retainedReferences = retainedReferences.filter {
+            sessions.retainedSession(for: .workspace($0.key)) != nil
+        }
+        snapshots = snapshots.filter {
+            sessions.retainedSession(for: .workspace($0.key)) != nil
+                || selectedDocument?.sessionKey == $0.key
+        }
     }
 
     private func presentationSession(
@@ -764,10 +866,11 @@ final class DocumentController: ObservableObject {
         })?.key {
             return retainedSession(for: key)
         }
-        if let target = fallbackSessions.keys.first(where: {
-            relativePath(for: $0) == path
+        if let target = sessions.retainedSessions.keys.first(where: {
+            guard $0.isFallback else { return false }
+            return relativePath(for: $0) == path
         }) {
-            return fallbackSessions[target]
+            return sessions.retainedSession(for: target)
         }
         return nil
     }
@@ -805,13 +908,22 @@ final class DocumentController: ObservableObject {
         guard let selectedDocument else { return nil }
         switch selectedDocument.editingTarget {
         case .workspace(let key):
-            return sessions.retainedSession(for: key)
+            return sessions.retainedSession(for: .workspace(key))
         case .unclassified, .unavailable:
-            return fallbackSessions[selectedDocument.editingTarget]
+            return sessions.retainedSession(for: selectedDocument.editingTarget)
         }
     }
 
-    private func hydratePresentation(of session: DocumentSessionModel, path: String) {
+    private func hydratePresentation(
+        of session: DocumentSessionModel,
+        target: DocumentEditingTarget,
+        path: String
+    ) {
+        if let retained = closedPresentations.removeValue(forKey: target) {
+            session.presentationMode = retained.mode
+            session.scrollFraction = retained.scrollPosition.fraction
+            session.scrollAnchor = retained.scrollPosition.anchor
+        }
         if let rawMode = restoredModes.removeValue(forKey: path),
            let mode = NotePresentationMode(rawValue: rawMode) {
             session.presentationMode = mode
@@ -819,6 +931,39 @@ final class DocumentController: ObservableObject {
         if let restoredScroll = restoredScrollPositions.removeValue(forKey: path),
            restoredScroll.isFinite {
             session.scrollFraction = min(1, max(0, restoredScroll))
+        }
+    }
+
+    private func cacheReapedPresentations(
+        _ presentations: [DocumentSessionStore.ReapedPresentation]
+    ) {
+        for presentation in presentations {
+            nextClosedPresentationAccess &+= 1
+            closedPresentations[presentation.target] = ClosedPresentationEntry(
+                relativePath: relativePath(for: presentation.target),
+                mode: presentation.mode,
+                scrollPosition: presentation.scrollPosition,
+                access: nextClosedPresentationAccess
+            )
+        }
+        trimClosedPresentations(to: 64)
+    }
+
+    private func trimClosedPresentations(to limit: Int) {
+        while closedPresentations.count > limit,
+              let oldest = closedPresentations.min(by: { $0.value.access < $1.value.access }) {
+            closedPresentations[oldest.key] = nil
+        }
+    }
+
+    func handleMemoryPressure(_ level: DocumentMemoryPressureLevel) {
+        Task { await readProjectionCache.removeAll() }
+        Task { await linkCompletionIndex.removeAll() }
+        switch level {
+        case .warning:
+            trimClosedPresentations(to: 16)
+        case .critical:
+            closedPresentations.removeAll(keepingCapacity: false)
         }
     }
 

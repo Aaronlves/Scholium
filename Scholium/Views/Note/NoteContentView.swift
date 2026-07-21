@@ -41,13 +41,6 @@ struct DocumentFeatureActions {
     let retryIdentityRecovery: @MainActor () async -> Void
     let beginSearch: @MainActor (SearchInvocation) -> Void
     let clearRequestedPresentationMode: @MainActor () -> Void
-    let registerEditorFlush: @MainActor (
-        String,
-        UUID,
-        @escaping @MainActor () async throws -> Void,
-        @escaping @MainActor () async throws -> Void
-    ) -> Void
-    let unregisterEditorFlush: @MainActor (UUID) -> Void
     let clearPendingSourceLine: @MainActor () -> Void
     let requestComments: @MainActor (MarkdownReviewSelection?, UUID?) -> Void
     let rememberScrollPosition: @MainActor (Double) -> Void
@@ -423,7 +416,6 @@ struct NoteContentView: View {
         get { documentSession.showConflictComparison }
         nonmutating set { documentSession.showConflictComparison = newValue }
     }
-    private var editorFlushToken: UUID { documentSession.editorFlushToken }
     private var editorSession: MarkdownEditorSession { documentSession.editorSession }
 
     var body: some View {
@@ -551,11 +543,6 @@ struct NoteContentView: View {
             controller.observe(documentSession)
             restorePresentationModeIfAvailable()
             consumePendingPresentationRequest()
-            registerEditorFlush(for: note.relativePath)
-        }
-        .onChange(of: note.relativePath) { _, path in
-            actions.unregisterEditorFlush(editorFlushToken)
-            registerEditorFlush(for: path)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -567,12 +554,6 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
-        }
-        .onDisappear {
-            // The document session, not this reconstructed view, owns the
-            // pending autosave. Inspector and window-layout changes can
-            // temporarily detach this view while the session remains active.
-            actions.unregisterEditorFlush(editorFlushToken)
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded, let line = state.pendingSourceLine else { return }
@@ -605,22 +586,6 @@ struct NoteContentView: View {
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
-    }
-
-    private func registerEditorFlush(for relativePath: String) {
-        actions.registerEditorFlush(
-            relativePath,
-            editorFlushToken,
-            {
-                try await controller.flushForExternalOperation(
-                    session: documentSession,
-                    target: target
-                )
-            },
-            {
-                try await editorSession.captureStateForViewReconstruction()
-            }
-        )
     }
 
     private var readProjectionTaskIdentity: String {
@@ -2147,8 +2112,6 @@ private func dialogueTargetIDs(
         retryIdentityRecovery: {},
         beginSearch: { _ in },
         clearRequestedPresentationMode: {},
-        registerEditorFlush: { _, _, _, _ in },
-        unregisterEditorFlush: { _ in },
         clearPendingSourceLine: {},
         requestComments: { _, _ in },
         rememberScrollPosition: { _ in },

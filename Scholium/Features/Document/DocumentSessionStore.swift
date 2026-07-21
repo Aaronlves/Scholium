@@ -110,6 +110,29 @@ final class DocumentSessionModel: ObservableObject {
         activeSaveToken = nil
     }
 
+    /// Releases reconstruction-sensitive state after the owning tab lease and
+    /// every recovery pin are gone. A still-attached WebView is never torn
+    /// out from underneath AppKit; the store retries reaping after detach.
+    func shutdown() {
+        precondition(!editorSession.hasAttachedWebView)
+        cancelScheduledWork()
+        editorCancellable?.cancel()
+        editorCancellable = nil
+        editorSession.shutdownDetachedSession()
+        editingSource = ""
+        originalEditingSource = ""
+        editingRevision = nil
+        renderedReadHTML = ""
+        renderedReadFingerprint = ""
+        renderedReadReadyFingerprint = ""
+        failedReadFingerprint = nil
+        previewCatalog = nil
+        readSelection = nil
+        conflict = nil
+        editError = nil
+        canRetrySave = false
+    }
+
     /// A dirty decision must include both the Swift mirror and CodeMirror's
     /// bridge state. Either side can be newer while an editor message is in
     /// flight, so an external publication may replace the buffer only when
@@ -177,25 +200,122 @@ final class DocumentSessionModel: ObservableObject {
 /// or saves.
 @MainActor
 final class DocumentSessionStore {
-    private var sessions: [DocumentSessionKey: DocumentSessionModel] = [:]
-
-    var retainedSessions: [DocumentSessionKey: DocumentSessionModel] {
-        sessions
+    enum PinReason: Hashable, Sendable {
+        case dirty
+        case conflict
+        case saveInFlight
+        case retryableRecovery
+        case recoveryBuffer
     }
 
-    func session(for key: DocumentSessionKey) -> DocumentSessionModel {
-        if let existing = sessions[key] { return existing }
+    private struct Entry {
+        let session: DocumentSessionModel
+        var leaseCount = 0
+        var isForeground = false
+    }
+
+    struct ReapedPresentation: Sendable {
+        let target: DocumentEditingTarget
+        let mode: NotePresentationMode
+        let scrollPosition: ObservedScrollPosition
+    }
+
+    private var entries: [DocumentEditingTarget: Entry] = [:]
+
+    var retainedSessions: [DocumentEditingTarget: DocumentSessionModel] {
+        entries.mapValues(\.session)
+    }
+
+    func session(for target: DocumentEditingTarget) -> DocumentSessionModel {
+        if let existing = entries[target]?.session { return existing }
+        let key: DocumentSessionKey? = if case .workspace(let key) = target { key } else { nil }
         let session = DocumentSessionModel(key: key)
-        sessions[key] = session
+        entries[target] = Entry(session: session)
         return session
     }
 
+    func session(for key: DocumentSessionKey) -> DocumentSessionModel {
+        session(for: .workspace(key))
+    }
+
+    func retainedSession(for target: DocumentEditingTarget) -> DocumentSessionModel? {
+        entries[target]?.session
+    }
+
     func retainedSession(for key: DocumentSessionKey) -> DocumentSessionModel? {
-        sessions[key]
+        retainedSession(for: .workspace(key))
+    }
+
+    func reconcileLeases(
+        openTargets: [DocumentEditingTarget],
+        foregroundTarget: DocumentEditingTarget?
+    ) -> [ReapedPresentation] {
+        let counts = Dictionary(grouping: openTargets, by: { $0 }).mapValues(\.count)
+        for target in counts.keys where entries[target] == nil {
+            _ = session(for: target)
+        }
+        for target in entries.keys {
+            entries[target]?.leaseCount = counts[target, default: 0]
+            entries[target]?.isForeground = target == foregroundTarget
+        }
+        return reapEligibleSessions()
+    }
+
+    func pinReasons(for session: DocumentSessionModel) -> Set<PinReason> {
+        var reasons: Set<PinReason> = []
+        if session.hasUnsavedChanges { reasons.insert(.dirty) }
+        if session.conflict != nil { reasons.insert(.conflict) }
+        if session.isSavingEdit || session.activeSaveTask != nil { reasons.insert(.saveInFlight) }
+        if session.canRetrySave { reasons.insert(.retryableRecovery) }
+        if session.editorSession.hasRecoverableBuffer { reasons.insert(.recoveryBuffer) }
+        return reasons
+    }
+
+    var leasedOrPinnedSessions: [(DocumentEditingTarget, DocumentSessionModel)] {
+        entries.compactMap { target, entry in
+            guard entry.leaseCount > 0 || !pinReasons(for: entry.session).isEmpty else {
+                return nil
+            }
+            return (target, entry.session)
+        }
+    }
+
+    var dirtyOrPinnedSessions: [(DocumentEditingTarget, DocumentSessionModel)] {
+        entries.compactMap { target, entry in
+            guard entry.session.hasUnsavedChanges || !pinReasons(for: entry.session).isEmpty else {
+                return nil
+            }
+            return (target, entry.session)
+        }
+    }
+
+    @discardableResult
+    func reapEligibleSessions() -> [ReapedPresentation] {
+        let eligible = entries.compactMap { target, entry -> ReapedPresentation? in
+            guard entry.leaseCount == 0,
+                  pinReasons(for: entry.session).isEmpty,
+                  !entry.session.editorSession.hasAttachedWebView else { return nil }
+            return ReapedPresentation(
+                target: target,
+                mode: entry.session.presentationMode,
+                scrollPosition: entry.session.observedScrollPosition
+            )
+        }
+        for presentation in eligible {
+            entries[presentation.target]?.session.shutdown()
+            entries[presentation.target] = nil
+        }
+        return eligible
     }
 
     func removeAll() {
-        sessions.values.forEach { $0.cancelScheduledWork() }
-        sessions.removeAll()
+        for entry in entries.values {
+            if entry.session.editorSession.hasAttachedWebView {
+                entry.session.cancelScheduledWork()
+            } else {
+                entry.session.shutdown()
+            }
+        }
+        entries.removeAll()
     }
 }

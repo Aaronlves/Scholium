@@ -82,7 +82,7 @@ struct AppCompositionRootTests {
             firstWindowChangeCount += 1
         }
         firstSession.editingSource = "first window exact bytes\n"
-        #expect(firstWindowChangeCount > 0)
+        #expect(firstWindowChangeCount == 0)
         #expect(firstSession !== secondSession)
         #expect(secondSession.editingSource.isEmpty)
         _ = firstWindowObservation
@@ -679,7 +679,7 @@ struct AppCompositionRootTests {
             vaultName: analysesVault.name,
             vaultRole: analysesVault.role
         )
-        let firstSession = try #require(
+        var firstSession = try #require(
             firstWindow!.documentController.retainedSession(for: sessionKey)
         )
         let secondSession = try #require(
@@ -711,9 +711,10 @@ struct AppCompositionRootTests {
         let windowIDBeforeOpeningTab = firstWindow!.nativeWindowID
         let existingTabCount = firstWindow!.documentTabController.tabs.count
         firstWindow!.requestOpenNote(visibleReference, disposition: .newTab)
-        try await waitUntil("the document opened in a second tab of the same window") {
-            firstWindow?.documentTabController.tabs.count == existingTabCount + 1
+        try await waitUntil("the existing document tab was selected") {
+            firstWindow?.documentTabController.selectedTab?.document.sessionKey == sessionKey
         }
+        #expect(firstWindow!.documentTabController.tabs.count == existingTabCount)
         #expect(firstWindow!.nativeWindowID == windowIDBeforeOpeningTab)
         #expect(firstWindow!.documentTabController.selectedTab?.document.sessionKey == sessionKey)
         #expect(firstWindow!.documentTabController.selectedTab?.document.relativePath == "Shared.md")
@@ -729,7 +730,11 @@ struct AppCompositionRootTests {
 
         firstWindow!.openNote("Shared.md")
         #expect(firstWindow!.selectedDocument == originalID)
-        #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
+        let reopenedFirstSession = try #require(
+            firstWindow!.documentController.retainedSession(for: sessionKey)
+        )
+        #expect(reopenedFirstSession !== firstSession)
+        firstSession = reopenedFirstSession
 
         firstWindow!.requestWorkspaceVault(.paperAnalysis)
         try await waitUntil("the first Library returned to Analyses") {

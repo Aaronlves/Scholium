@@ -363,15 +363,6 @@ struct ContentView: View {
             retryIdentityRecovery: { await appState.retryIdentityRecovery() },
             beginSearch: { appState.beginSearch($0) },
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
-            registerEditorFlush: { path, token, flush, captureForReconstruction in
-                appState.registerEditorFlush(
-                    for: path,
-                    token: token,
-                    flush: flush,
-                    captureForReconstruction: captureForReconstruction
-                )
-            },
-            unregisterEditorFlush: { appState.unregisterEditorFlush(token: $0) },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             requestComments: { selection, commentID in
                 guard let path = documentPath else { return }

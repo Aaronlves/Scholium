@@ -90,7 +90,11 @@ struct WindowControllerArchitectureTests {
         )
         await Task.yield()
         await Task.yield()
-        try? await Task.sleep(for: .milliseconds(20))
+        // WindowModel also loads saved-search presentation once at startup.
+        // Drain that unrelated initialization before measuring source-only
+        // invalidations so parallel suite scheduling cannot contaminate the
+        // hot-path assertion.
+        try? await Task.sleep(for: .milliseconds(300))
 
         var invalidations = 0
         let observation = window.objectWillChange.sink { invalidations += 1 }

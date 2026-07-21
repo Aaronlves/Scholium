@@ -19,6 +19,13 @@ actor EditorLinkCompletionIndex {
     private var stemGroups: [String: [Int]] = [:]
     private var pathGroups: [String: [Int]] = [:]
 
+    func removeAll() {
+        generation = -1
+        notes.removeAll(keepingCapacity: false)
+        stemGroups.removeAll(keepingCapacity: false)
+        pathGroups.removeAll(keepingCapacity: false)
+    }
+
     func replace(notes catalogNotes: [WorkspaceCatalogNote], generation: Int) {
         guard generation != self.generation else { return }
         self.generation = generation

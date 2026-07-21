@@ -1385,6 +1385,8 @@ final class WindowModel: ObservableObject {
     /// `workspaceAssignment` publication.
     @Published private(set) var activeTriptychServicesID: UUID?
     private var editorFlushRegistration: EditorFlushRegistration?
+    private let stableEditorFlushToken = UUID()
+    private var stableEditorFlushTriptychID: UUID?
     private var workspaceProjectionTail: Task<Void, Never>?
     private var projectionRefreshToken: UInt64 = 0
     private var attemptedVaultRestore = false
@@ -2039,20 +2041,26 @@ final class WindowModel: ObservableObject {
     }
 
     private func flushRegisteredEditorIfNeeded() async throws {
-        guard let registration = editorFlushRegistration else { return }
-        if let selectedDocumentPath,
-           selectedDocumentPath != registration.relativePath {
-            throw DocumentTransitionError.staleEditorRegistration(
-                expected: selectedDocumentPath,
-                registered: registration.relativePath
-            )
+        if let registration = editorFlushRegistration {
+            if let selectedDocumentPath,
+               selectedDocumentPath != registration.relativePath {
+                throw DocumentTransitionError.staleEditorRegistration(
+                    expected: selectedDocumentPath,
+                    registered: registration.relativePath
+                )
+            }
+            try await registration.flush()
+            return
         }
-        try await registration.flush()
+        try await documentController.flushLeasedOrPinnedSessions()
     }
 
     private func captureRegisteredEditorForReconstructionIfNeeded() async throws {
-        guard let registration = editorFlushRegistration else { return }
-        try await registration.captureForReconstruction()
+        if let registration = editorFlushRegistration {
+            try await registration.captureForReconstruction()
+            return
+        }
+        try await documentController.captureSelectedEditorForReconstruction()
     }
 
     func prepareForWindowClose() async throws -> ClosePreparationOutcome {
@@ -2078,6 +2086,10 @@ final class WindowModel: ObservableObject {
             throw ScholiumWindowLifecycleError.cancelled
         }
         clearEditorFlushRegistration()
+        if stableEditorFlushTriptychID != nil {
+            workspaceStore.unregisterEditorFlush(token: stableEditorFlushToken)
+            stableEditorFlushTriptychID = nil
+        }
         return ClosePreparationOutcome(presentationWarning: presentationWarning)
     }
 
@@ -2689,6 +2701,7 @@ final class WindowModel: ObservableObject {
                 tabActivation: .preserveTabMembership
             )
             self.documentTabController.selectTab(withID: id)
+            self.reconcileDocumentSessionLeases()
         }
     }
 
@@ -2696,12 +2709,12 @@ final class WindowModel: ObservableObject {
         guard let plan = documentTabController.closePlan(forTabWithID: id) else {
             return
         }
-        guard documentTabController.selectedTabID == id else {
-            documentTabController.apply(plan)
+        guard let closingDocument = documentTabController.tabs.first(where: { $0.id == id })?.document else {
             return
         }
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
+            try await self.documentController.flushBeforeClosing(closingDocument)
             if let documentToActivate = plan.documentToActivate {
                 try self.activateDocument(
                     documentToActivate,
@@ -2711,6 +2724,11 @@ final class WindowModel: ObservableObject {
                 self.documentController.clearSelectionAfterClosingLastTab()
             }
             self.documentTabController.apply(plan)
+            self.reconcileDocumentSessionLeases()
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                self?.documentController.reapDetachedSessions()
+            }
         }
     }
 
@@ -3205,6 +3223,7 @@ final class WindowModel: ObservableObject {
             to: activation.capabilities,
             snapshot: activation.snapshot
         )
+        installStableEditorFlushCapability(for: activation.workspaceID)
 
         if let previousVault {
             let previousSlot = WorkspaceVaultSlot.allCases.first(where: { slot in
@@ -4505,6 +4524,31 @@ final class WindowModel: ObservableObject {
                 toolTip: presentation.toolTip
             )
         }
+        reconcileDocumentSessionLeases()
+    }
+
+    private func reconcileDocumentSessionLeases() {
+        documentController.reconcileSessionLeases(
+            leasedDocuments: documentTabController.tabs.map(\.document),
+            selectedDocument: documentTabController.selectedTab?.document
+        )
+    }
+
+    private func installStableEditorFlushCapability(for triptychID: UUID) {
+        if stableEditorFlushTriptychID != triptychID {
+            workspaceStore.unregisterEditorFlush(token: stableEditorFlushToken)
+        }
+        stableEditorFlushTriptychID = triptychID
+        workspaceStore.registerEditorFlush(
+            token: stableEditorFlushToken,
+            triptychID: triptychID,
+            windowID: windowSessionID,
+            relativePath: "",
+            flush: { [weak self] in
+                guard let self else { return }
+                try await self.documentController.flushLeasedOrPinnedSessions()
+            }
+        )
     }
 
     private func removeDocumentTabs(
@@ -4523,6 +4567,7 @@ final class WindowModel: ObservableObject {
             if currentDocumentVaultID == vaultID {
                 documentController.clearSelection(forRemovedPaths: removedPaths)
             }
+            reconcileDocumentSessionLeases()
             return
         }
 
@@ -4536,6 +4581,7 @@ final class WindowModel: ObservableObject {
         guard let selectedID = documentTabController.selectedTabID,
               matchingIDs.contains(selectedID),
               let plan = documentTabController.closePlan(forTabWithID: selectedID) else {
+            reconcileDocumentSessionLeases()
             return
         }
         if let documentToActivate = plan.documentToActivate {
@@ -4547,6 +4593,7 @@ final class WindowModel: ObservableObject {
             documentController.clearSelectionAfterClosingLastTab()
         }
         documentTabController.apply(plan)
+        reconcileDocumentSessionLeases()
     }
 
     private func refreshDocumentTabProjections() {
