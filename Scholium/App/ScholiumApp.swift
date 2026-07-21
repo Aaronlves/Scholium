@@ -127,7 +127,11 @@ struct ScholiumApp: App {
         )
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.automatic)
+        .restorationBehavior(
+            ScholiumRuntimeIsolation.disablesSystemWindowRestoration()
+                ? .disabled
+                : .automatic
+        )
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ScholiumCommands() }
 

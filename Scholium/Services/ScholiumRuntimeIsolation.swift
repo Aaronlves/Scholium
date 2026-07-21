@@ -81,6 +81,22 @@ enum ScholiumRuntimeIsolation {
 #endif
     }
 
+    /// Prevents AppKit's process-wide saved scene state from leaking between
+    /// isolated QA journeys. Scholium's own `WindowSession` snapshots remain
+    /// active; the one journey that verifies native multiwindow restoration
+    /// opts back in explicitly.
+    static func disablesSystemWindowRestoration(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> Bool {
+#if DEBUG
+        guard bundleIdentifier == qaBundleIdentifier else { return false }
+        return environment["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"] != "1"
+#else
+        return false
+#endif
+    }
+
     private static func nonempty(_ value: String?) -> String? {
         guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil

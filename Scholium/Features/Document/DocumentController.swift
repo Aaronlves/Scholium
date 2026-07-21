@@ -535,15 +535,40 @@ final class DocumentController: ObservableObject {
     /// by a safety pin. Ordering is stable to make close/quit diagnostics and
     /// tests deterministic.
     func flushLeasedOrPinnedSessions() async throws {
-        let candidates = sessions.leasedOrPinnedSessions.sorted {
+        var candidatesByTarget = Dictionary(
+            uniqueKeysWithValues: sessions.leasedOrPinnedSessions.map {
+                ($0.0, $0.1)
+            }
+        )
+        // Selection is an independent ownership fact. During tab projection
+        // reconstruction it can briefly precede lease reconciliation, but it
+        // must still participate in every navigation, command, and window
+        // flush. Otherwise newly accepted WebKit input can be skipped merely
+        // because the tab lease publication is one main-actor turn behind.
+        if let selectedDocument,
+           let selectedSession = sessions.retainedSession(
+            for: selectedDocument.editingTarget
+           ) {
+            candidatesByTarget[selectedDocument.editingTarget] = selectedSession
+        }
+        let candidates = candidatesByTarget.sorted {
             relativePath(for: $0.0) < relativePath(for: $1.0)
         }
         for (target, session) in candidates {
-            guard session.hasUnsavedChanges || session.isSavingEdit || session.canRetrySave else {
-                continue
-            }
             if session.editorSession.hasAttachedWebView {
                 try await session.editorSession.captureStateForViewReconstruction()
+            }
+            // An attached CodeMirror surface can contain input whose bridge
+            // delta is still queued on the main actor. Never use the Swift
+            // mirror's clean bit to skip that authoritative buffer. The save
+            // path retrieves the complete text and returns cheaply when it is
+            // genuinely unchanged. Detached sessions can use their retained
+            // mirror because no newer WebKit state exists.
+            guard session.isEditing && session.editorSession.hasAttachedWebView
+                    || session.hasUnsavedChanges
+                    || session.isSavingEdit
+                    || session.canRetrySave else {
+                continue
             }
             try await flushForExternalOperation(session: session, target: target)
         }
@@ -556,7 +581,10 @@ final class DocumentController: ObservableObject {
         if session.editorSession.hasAttachedWebView {
             try await session.editorSession.captureStateForViewReconstruction()
         }
-        guard session.hasUnsavedChanges || session.isSavingEdit || session.canRetrySave else { return }
+        guard session.isEditing && session.editorSession.hasAttachedWebView
+                || session.hasUnsavedChanges
+                || session.isSavingEdit
+                || session.canRetrySave else { return }
         try await flushForExternalOperation(session: session, target: document.editingTarget)
     }
 
@@ -1230,12 +1258,17 @@ final class DocumentController: ObservableObject {
         guard DocumentFingerprint(content: sourceBeingSaved)
                 == DocumentFingerprint(content: session.editingSource) else {
             // CodeMirror is authoritative. Recover its complete exact buffer,
-            // keep the revision gate unchanged, and require a fresh save.
+            // keep the revision gate unchanged, and let the caller's bounded
+            // save loop retry against the repaired mirror. This race is
+            // expected when a transition follows input before the incremental
+            // bridge message reaches the main actor; it is not a user-facing
+            // save failure because the complete authoritative buffer is
+            // already available and no disk mutation has happened yet.
             session.suppressAutosave = true
             session.editingSource = sourceBeingSaved
             session.suppressAutosave = false
             editingDocumentPath = path
-            throw DocumentControllerError.deltaMirrorMismatch
+            return .changedDuringSave
         }
 
         session.suppressAutosave = true
@@ -1490,7 +1523,6 @@ enum DocumentControllerError: LocalizedError, Equatable {
     case saveFailed(String)
     case editorUnavailable
     case changedDuringSave
-    case deltaMirrorMismatch
     case documentUnavailable
 
     var errorDescription: String? {
@@ -1501,8 +1533,6 @@ enum DocumentControllerError: LocalizedError, Equatable {
             String(localized: "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer.", table: "Localizable", bundle: .module)
         case .changedDuringSave:
             String(localized: "Scholium kept the current editor open because the note continued changing while it was being saved.", table: "Localizable", bundle: .module)
-        case .deltaMirrorMismatch:
-            String(localized: "Scholium kept the current editor open because an editor update did not reach the autosave mirror. The complete editor buffer was recovered; retry the save.", table: "Localizable", bundle: .module)
         case .documentUnavailable:
             String(localized: "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.", table: "Localizable", bundle: .module)
         }

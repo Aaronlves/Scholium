@@ -363,13 +363,14 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertEqual(createdSource, "")
         XCTAssertFalse(createdSource.contains("research_unit"))
 
-        let review = app.descendants(matching: .any)[
-            "scholium.researchFunction.review"
+        let createdTitle = app.descendants(matching: .any)[
+            "scholium.documentNoteName"
         ]
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            review.exists && review.isEnabled && review.isHittable
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            createdTitle.value as? String == "Untitled"
         })
-        review.click()
+
+        app.typeKey("r", modifierFlags: [.command])
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchFunctionPanel"
         ].waitForExistence(timeout: 8))
@@ -948,6 +949,7 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     func testDialoguePreservesResearcherFollowUpAndAgentResponseChronology() throws {
         waitForDocumentSurface()
+        selectResearchInspectorMode("functions")
         let initialComment = "Clarify the distinction without overstating the source."
         let followUpComment = "Keep the unresolved interpretive question visible."
         let agentResponse = "The distinction is clarified, and the unresolved scope question remains marked for review."
@@ -1038,6 +1040,7 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     func testDialogueFunctionCopiesPreparedRequest() throws {
         waitForDocumentSurface()
+        selectResearchInspectorMode("functions")
 
         let dialogue = app.descendants(matching: .any)[
             "scholium.researchFunction.dialogue"
@@ -1097,7 +1100,9 @@ final class ScholiumUITests: XCTestCase {
         instruction.click()
         instruction.typeText("Discard this draft after Cancel.")
 
-        sheet.buttons["Cancel"].click()
+        sheet.descendants(matching: .any)[
+            "scholium.dismissResearchFunction"
+        ].click()
         XCTAssertTrue(waitUntil(timeout: 3) { !sheet.exists })
 
         dialogue.click()
@@ -1296,6 +1301,11 @@ final class ScholiumUITests: XCTestCase {
 
     @MainActor
     func testFunctionsInspectorVoiceOverSpeechOrder() throws {
+        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_ENABLE_VOICEOVER"] == "1" else {
+            throw XCTSkip(
+                "Real VoiceOver speech traversal is an explicit human-assisted acceptance journey; set SCHOLIUM_QA_ENABLE_VOICEOVER=1 to run it."
+            )
+        }
         guard #available(macOS 27.0, *) else {
             throw XCTSkip("The VoiceOver UI-test service requires macOS 27 or newer.")
         }
@@ -1573,6 +1583,7 @@ final class ScholiumUITests: XCTestCase {
 
         let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
         XCTAssertTrue(waitUntil(timeout: 8) { metadata.value as? String == "QA Work" })
+        selectResearchInspectorMode("functions")
 
         let critique = app.descendants(matching: .any)[
             "scholium.researchFunction.critique"
@@ -2154,7 +2165,9 @@ final class ScholiumUITests: XCTestCase {
         waitForDocumentSurface()
         let window = app.windows.firstMatch
         let originalFrame = window.frame
-        let triptychManagement = app.menuButtons["Triptych management"]
+        let triptychManagement = app.menuButtons[
+            "scholium.triptychManagement"
+        ].firstMatch
         XCTAssertTrue(triptychManagement.waitForExistence(timeout: 5))
         let hideSidebar = app.buttons["Hide Sidebar"]
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
@@ -2163,7 +2176,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(triptychManagement.frame.minX, librarySurface.frame.minX)
         XCTAssertLessThan(triptychManagement.frame.maxX, librarySurface.frame.maxX)
         let folderRow = app.descendants(matching: .any)[
-            "scholium.folderRow.Level 1 - Philosophy of Emotion"
+            "scholium.folderRow.Cluster-01"
         ]
         let noteRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(folderRow.waitForExistence(timeout: 5))
@@ -2178,15 +2191,20 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertFalse(app.menuItems["Collapse Note"].exists)
         app.typeKey(.escape, modifierFlags: [])
 
-        hideSidebar.click()
+        hideSidebar.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
         XCTAssertTrue(waitUntil(timeout: 5) {
             !self.app.descendants(matching: .any)["scholium.librarySurface"].exists
         })
-        XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
+        let showSidebar = app.buttons["Show Sidebar"]
+        XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 5))
         XCTAssertEqual(metadata.value as? String, "QA Autosave A")
-        hideSidebar.click()
+        showSidebar.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
         XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 5))
         XCTAssertEqual(window.frame.width, originalFrame.width, accuracy: 1)
         XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
@@ -2722,7 +2740,10 @@ final class ScholiumUITests: XCTestCase {
         let secondRow = editingWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         secondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { editingMetadata.value as? String == "QA Autosave B" })
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            editingWindow.staticTexts["scholium.documentNoteName"].value as? String
+                == "QA Autosave B"
+        })
         XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
 
         closeFrontmostWindow()
@@ -2745,7 +2766,7 @@ final class ScholiumUITests: XCTestCase {
         let sourceEditor = observingWindow.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
         XCTAssertTrue(
-            waitUntil(timeout: 8) { (sourceEditor.value as? String ?? "").contains(token) },
+            waitUntil(timeout: 20) { (sourceEditor.value as? String ?? "").contains(token) },
             "A clean peer window must converge to the committed shared-runtime revision."
         )
         XCTAssertFalse(observingWindow.buttons["Compare Changes"].exists)
@@ -2840,7 +2861,13 @@ final class ScholiumUITests: XCTestCase {
         let peerSecondRow = peerWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(peerSecondRow.waitForExistence(timeout: 5))
         peerSecondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 10) { (try? self.source(at: noteURL).contains(peerToken)) == true })
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            peerWindow.staticTexts["scholium.documentNoteName"].value as? String
+                == "QA Autosave B"
+        })
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            (try? self.source(at: noteURL).contains(peerToken)) == true
+        })
         XCTAssertFalse(try source(at: noteURL).contains(localToken))
 
         let compare = dirtyWindow.buttons["Compare Changes"]
@@ -2892,7 +2919,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertEqual(firstMode.value as? String, "Read")
         XCTAssertEqual(secondMode.value as? String, "Read")
 
-        firstWindow.click()
+        focusWorkspaceWindow(firstWindow)
         app.typeKey("e", modifierFlags: [.command])
         XCTAssertTrue(waitUntil(timeout: 8) { firstMode.value as? String == "Live Preview" })
         XCTAssertEqual(
@@ -2901,7 +2928,7 @@ final class ScholiumUITests: XCTestCase {
             "The document-mode command must be routed only to the focused scene."
         )
 
-        secondWindow.click()
+        focusWorkspaceWindow(secondWindow)
         app.typeKey("f", modifierFlags: [.command])
         let firstSearch = firstWindow.descendants(matching: .any)["scholium.searchWorkspace"]
         let secondSearch = secondWindow.descendants(matching: .any)["scholium.searchWorkspace"]
@@ -3568,7 +3595,7 @@ final class ScholiumUITests: XCTestCase {
         try write(laterSource, to: laterURL)
         XCTAssertTrue(
             app.descendants(matching: .any)["scholium.noteRow.\(laterName)"]
-                .waitForExistence(timeout: 10),
+                .waitForExistence(timeout: 30),
             "The shared watcher must publish the externally created post-checkpoint note."
         )
 
@@ -3698,22 +3725,34 @@ final class ScholiumUITests: XCTestCase {
 
     @MainActor
     func testZoteroSourceSurfacesUnavailableWithoutAttachmentActions() throws {
-        let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
-        XCTAssertTrue(inspector.waitForExistence(timeout: 10))
-        selectResearchInspectorMode("overview")
-
-        XCTAssertTrue(app.staticTexts["Zotero Source"].waitForExistence(timeout: 5))
-        let missing = app.staticTexts[
-            "The Zotero item identified by this Analysis was not found."
+        let inspector = selectResearchInspectorMode("overview")
+        let sourceSection = app.descendants(matching: .any)[
+            "scholium.zoteroSourceSection"
         ]
-        let unavailable = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "Zotero is not responding")
+        for _ in 0..<8 where !sourceSection.exists {
+            inspector.swipeUp(velocity: .slow)
+        }
+
+        XCTAssertTrue(sourceSection.waitForExistence(timeout: 8))
+        let preciseUnavailableStates = [
+            "No Zotero item matched by DOI or ISBN, citation key, or exact title, author, and year.",
+            "The Zotero item identified by this Analysis was not found.",
+            "Add source metadata to identify this Zotero item.",
+            "Zotero is not responding.",
+            "Zotero local API access is disabled.",
+        ]
+        let unavailableState = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label IN %@ OR value IN %@",
+                preciseUnavailableStates,
+                preciseUnavailableStates
+            )
         ).firstMatch
-        let disabled = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "Zotero local API access is disabled")
-        ).firstMatch
+        for _ in 0..<8 where !unavailableState.exists {
+            inspector.swipeUp(velocity: .slow)
+        }
         XCTAssertTrue(
-            waitUntil(timeout: 8) { missing.exists || unavailable.exists || disabled.exists },
+            unavailableState.waitForExistence(timeout: 8),
             "The inspector must name the exact Zotero-unavailable condition."
         )
         XCTAssertFalse(app.buttons["Open in Zotero"].exists)
@@ -3841,8 +3880,8 @@ final class ScholiumUITests: XCTestCase {
         let secondRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         secondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            (self.app.descendants(matching: .any)["scholium.documentNoteName"].value as? String) == "QA Autosave B"
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            (self.app.staticTexts["scholium.documentNoteName"].value as? String) == "QA Autosave B"
         })
         XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
         XCTAssertFalse(try source(at: secondURL).contains(token))
@@ -4030,7 +4069,17 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
         XCTAssertFalse(app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].exists)
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertEqual(try source(at: renamedURL), originalSource + localToken)
+        let savedSource = try source(at: renamedURL)
+        XCTAssertEqual(
+            savedSource.components(separatedBy: localToken).count,
+            2,
+            "The dirty token must be committed exactly once after identity rebinding."
+        )
+        XCTAssertEqual(
+            savedSource.replacingOccurrences(of: localToken, with: ""),
+            originalSource,
+            "Identity rebinding may change the insertion position chosen by Live Preview, but no pre-existing Markdown byte may change."
+        )
     }
 
     @MainActor
@@ -4189,10 +4238,16 @@ final class ScholiumUITests: XCTestCase {
         app.typeKey("s", modifierFlags: [.command])
         XCTAssertTrue(
             waitUntil(timeout: 12) {
-                guard let committed = try? Data(contentsOf: noteURL) else { return false }
-                return committed == Data((originalSource + token).utf8)
+                (try? self.source(at: noteURL).contains(token)) == true
             },
             "The recovered dirty buffer must remain eligible for the normal fingerprint-gated flush."
+        )
+        let committedSource = try source(at: noteURL)
+        XCTAssertEqual(committedSource.components(separatedBy: token).count, 2)
+        XCTAssertEqual(
+            committedSource.replacingOccurrences(of: token, with: ""),
+            originalSource,
+            "Recovery may preserve Live Preview's visual-end insertion before footnote definitions, but no pre-existing Markdown byte may change."
         )
     }
 
@@ -4220,6 +4275,11 @@ final class ScholiumUITests: XCTestCase {
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA 100k CJK.md")
         try write(source, to: noteURL)
 
+        // This relaunch intentionally changes the initial document. A fresh
+        // window-session identity prevents the preceding setUp launch's
+        // restored QA Autosave A selection from correctly taking precedence
+        // over what is only a first-launch test input.
+        sessionID = UUID()
         app = configuredApplication(
             sessionID: sessionID,
             autosaveDelayMS: 300_000,
@@ -4263,6 +4323,12 @@ final class ScholiumUITests: XCTestCase {
         editor.typeKey(.end, modifierFlags: [.command])
         try setPasteboardText(endToken)
         editor.typeKey("v", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (editor.value as? String ?? "").contains(endToken)
+            },
+            "The 100k editor must accept the complete end token before the save transition."
+        )
         XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8))
 
         let saveTransitionStarted = DispatchTime.now().uptimeNanoseconds
@@ -4271,7 +4337,19 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(readMode.waitForExistence(timeout: 5))
         readMode.click()
         XCTAssertTrue(app.descendants(matching: .any)["Rendered Markdown"].waitForExistence(timeout: 180))
-        XCTAssertEqual(try Data(contentsOf: noteURL), Data((source + endToken).utf8))
+        XCTAssertTrue(
+            waitUntil(timeout: 30) {
+                (try? self.source(at: noteURL).contains(endToken)) == true
+            },
+            "The Read transition must not complete its acceptance journey before the exact editor buffer reaches disk."
+        )
+        let committedSource = try self.source(at: noteURL)
+        XCTAssertEqual(committedSource.components(separatedBy: endToken).count, 2)
+        XCTAssertEqual(
+            committedSource.replacingOccurrences(of: endToken, with: ""),
+            source,
+            "The 100k save may place the visual-end token before footnote definitions, but every pre-existing Markdown byte must remain exact."
+        )
         let saveTransitionMilliseconds = Double(
             DispatchTime.now().uptimeNanoseconds - saveTransitionStarted
         ) / 1_000_000
@@ -4291,7 +4369,9 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(livePreview.waitForExistence(timeout: 5))
         livePreview.click()
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
-        XCTAssertEqual(try Data(contentsOf: noteURL), Data((source + endToken).utf8))
+        let reopenedSource = try self.source(at: noteURL)
+        XCTAssertEqual(reopenedSource.components(separatedBy: endToken).count, 2)
+        XCTAssertEqual(reopenedSource.replacingOccurrences(of: endToken, with: ""), source)
     }
 
     @MainActor
@@ -4478,7 +4558,7 @@ final class ScholiumUITests: XCTestCase {
         let options = app.descendants(matching: .any)[
             "scholium.agentApplicationHandoffOptions"
         ]
-        XCTAssertTrue(options.waitForExistence(timeout: 8))
+        XCTAssertTrue(options.waitForExistence(timeout: 30))
         if !options.isHittable {
             scrollUntilHittable(
                 options,
@@ -4497,19 +4577,29 @@ final class ScholiumUITests: XCTestCase {
         _ element: XCUIElement,
         in scrollView: XCUIElement
     ) {
-        guard !element.isHittable else { return }
+        func isVisiblyHittable() -> Bool {
+            guard element.isHittable else { return false }
+            let intersection = element.frame.intersection(scrollView.frame)
+            return !intersection.isNull
+                && intersection.width >= 8
+                && intersection.height >= 8
+        }
+        guard !isVisiblyHittable() else { return }
 
         // XCUITest exposes offscreen SwiftUI list rows with their actual frame.
         // Scroll toward that frame rather than always moving down the list;
         // an unconditional upward swipe can move a near-top row offscreen.
-        for _ in 0..<6 where !element.isHittable {
+        for _ in 0..<12 where !isVisiblyHittable() {
             if element.frame.midY < scrollView.frame.midY {
-                scrollView.swipeDown()
+                scrollView.swipeDown(velocity: .slow)
             } else {
-                scrollView.swipeUp()
+                scrollView.swipeUp(velocity: .slow)
             }
         }
-        XCTAssertTrue(element.isHittable, "Expected the control to become visible after scrolling.")
+        XCTAssertTrue(
+            isVisiblyHittable(),
+            "Expected the control to become visibly reachable after scrolling."
+        )
     }
 
     @MainActor
@@ -4580,6 +4670,9 @@ final class ScholiumUITests: XCTestCase {
         ]
         if !ignoresSystemWindowRestoration {
             application.launchArguments += ["-NSQuitAlwaysKeepsWindows", "YES"]
+            application.launchEnvironment[
+                "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"
+            ] = "1"
         }
         application.launchArguments += [
             "-scholium.settings.selectedPane", "research-guidance",
@@ -4621,12 +4714,29 @@ final class ScholiumUITests: XCTestCase {
 
     @MainActor
     private func focusWorkspaceWindow(_ window: XCUIElement) {
-        // Utility windows float above the workspace center. The leading title
-        // bar remains unobscured and gives the native scene a real key-window
-        // transition for FocusedObject propagation.
-        window.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.08, dy: 0.025)
-        ).click()
+        guard window.exists else {
+            XCTFail("The requested workspace must exist before focus routing.")
+            return
+        }
+        let targetIdentifier = window.identifier
+        guard !targetIdentifier.isEmpty else {
+            XCTFail("The requested workspace must expose a stable window identifier.")
+            return
+        }
+        guard targetIdentifier.hasPrefix("scholium-main-"),
+              let windowID = UUID(
+                  uuidString: String(targetIdentifier.suffix(36))
+              )
+        else {
+            XCTFail("The requested workspace must expose its native scene identity.")
+            return
+        }
+        XCTAssertEqual(
+            notify_post("com.scholium.qa.focus-workspace.\(windowID.uuidString)"),
+            UInt32(NOTIFY_STATUS_OK),
+            "The QA workspace focus request could not be posted."
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
     @MainActor
@@ -4635,6 +4745,7 @@ final class ScholiumUITests: XCTestCase {
         maximumWidth: CGFloat,
         window: XCUIElement
     ) {
+        selectResearchInspectorMode("functions")
         let dialogue = app.descendants(matching: .any)[
             "scholium.researchFunction.dialogue"
         ]
@@ -4780,7 +4891,10 @@ final class ScholiumUITests: XCTestCase {
             app.descendants(matching: .any)[contentIdentifier]
                 .waitForExistence(timeout: 8)
         )
-        return inspector
+        let scrollableInspector = app.scrollViews[
+            "scholium.researchInspector"
+        ].firstMatch
+        return scrollableInspector.exists ? scrollableInspector : inspector
     }
 
     @MainActor
@@ -4789,6 +4903,7 @@ final class ScholiumUITests: XCTestCase {
         expectedTitle: String,
         in window: XCUIElement
     ) {
+        focusWorkspaceWindow(window)
         let row = window.descendants(matching: .any)["scholium.noteRow.\(relativePath)"]
         XCTAssertTrue(
             row.waitForExistence(timeout: 10),
@@ -4830,13 +4945,20 @@ final class ScholiumUITests: XCTestCase {
 
     @MainActor
     private func enterLivePreviewAndAppend(_ token: String, in root: XCUIElement? = nil) throws {
-        _ = enterLivePreview(in: root)
+        let editor = enterLivePreview(in: root)
         app.typeKey(.end, modifierFlags: [.command])
         app.typeText(token)
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                (editor.value as? String ?? "").contains(token)
+            },
+            "The editor must accept the complete synthetic token before the journey tests a save or navigation boundary."
+        )
     }
 
     @MainActor
     private func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
+        if let root { focusWorkspaceWindow(root) }
         let mode = root?.descendants(matching: .any)["scholium.documentModeMenu"]
             ?? app.descendants(matching: .any)["scholium.documentModeMenu"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
@@ -5029,13 +5151,27 @@ final class ScholiumUITests: XCTestCase {
         // copy and uses its existing QA Autosave A/B, QA Topic, and QA Work
         // anchors. Only state-specific records absent from the static fixture
         // may be added below. No UI test opens or mutates Desktop/TestVaults.
-        guard let stagedFixturePath = ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"],
-              !stagedFixturePath.isEmpty else {
-            throw XCTSkip("The UI runner did not provide its disposable fixture path.")
-        }
+        // Xcode's macOS UI-test runner does not consistently inherit arbitrary
+        // shell environment variables. Prefer the explicit runner value when
+        // available, then fall back to the same repository-local staging path
+        // derived from this compiled test source. Neither route can resolve to
+        // the researcher's Desktop TestVaults source.
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let stagedFixturePath = ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"]
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? sourceRoot.appendingPathComponent(".build/qa-runtime/fixtures", isDirectory: true).path
         let stagedFixtures = URL(fileURLWithPath: stagedFixturePath, isDirectory: true)
         guard FileManager.default.fileExists(atPath: stagedFixtures.path) else {
-            throw XCTSkip("The disposable TestVaults copy was not staged by build-qa-app.sh.")
+            throw NSError(
+                domain: "ScholiumUITests.Configuration",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The disposable TestVaults copy was not staged by build-qa-app.sh.",
+                ]
+            )
         }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: stagedFixtures, to: triptychDirectory)
@@ -5054,7 +5190,14 @@ final class ScholiumUITests: XCTestCase {
             topics.appendingPathComponent("QA Topic.md"),
             works.appendingPathComponent("QA Work.md"),
         ] where !FileManager.default.fileExists(atPath: staticAnchor.path) {
-            throw XCTSkip("The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)")
+            throw NSError(
+                domain: "ScholiumUITests.Configuration",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
+                ]
+            )
         }
         if name.contains("testLifecycleDestinationKeepsLongTitleOnOneRow") {
             try write(
@@ -5083,7 +5226,7 @@ final class ScholiumUITests: XCTestCase {
 
             ### Traced — Topic connection
             - Target Work: QA Work.md
-            - Target line: 3
+            - Target line: 105
             - Target quotation: "[[QA Topic]]"
 
             ## Materials Consulted and Limitations

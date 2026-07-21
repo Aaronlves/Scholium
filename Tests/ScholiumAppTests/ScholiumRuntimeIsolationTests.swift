@@ -87,4 +87,20 @@ struct ScholiumRuntimeIsolationTests {
             bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
         ) == nil)
     }
+
+    @Test("QA scene restoration is disabled unless one journey explicitly enables it")
+    func qaSceneRestorationIsOptIn() {
+        #expect(ScholiumRuntimeIsolation.disablesSystemWindowRestoration(
+            environment: [:],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ))
+        #expect(!ScholiumRuntimeIsolation.disablesSystemWindowRestoration(
+            environment: ["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1"],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ))
+        #expect(!ScholiumRuntimeIsolation.disablesSystemWindowRestoration(
+            environment: [:],
+            bundleIdentifier: "com.scholium.app"
+        ))
+    }
 }

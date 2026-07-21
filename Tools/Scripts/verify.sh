@@ -106,6 +106,7 @@ while IFS= read -r file; do
   [[ -z "${file}" ]] && continue
   case "${file}" in
     "${ROOT}/Scholium/App/ScholiumApp.swift"|\
+    "${ROOT}/Scholium/App/Window/WindowWorkspaceController.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
     "${ROOT}/ScholiumCLI/CLIContext.swift") ;;
     *)

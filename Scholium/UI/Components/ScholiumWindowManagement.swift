@@ -1,4 +1,5 @@
 import AppKit
+import notify
 import SwiftUI
 
 enum ScholiumWindowLifecycleError: LocalizedError, Equatable, Sendable {
@@ -359,6 +360,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
     private var researchRecordPresenter: @MainActor () -> Void = {}
+    #if DEBUG
+    private var qaFocusNotificationToken: Int32?
+    #endif
 
     init(
         windowID: UUID,
@@ -378,6 +382,15 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         self.loadingToolbar = loadingToolbar
         super.init()
         registerLifecycle()
+        registerQAFocusRequest()
+    }
+
+    deinit {
+        #if DEBUG
+        if let qaFocusNotificationToken {
+            notify_cancel(qaFocusNotificationToken)
+        }
+        #endif
     }
 
     var actions: WorkspaceWindowActions {
@@ -413,6 +426,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         removeToolbar()
         detachWindow()
         self.window = window
+        window.identifier = NSUserInterfaceItemIdentifier(
+            "scholium-main-\(windowID.uuidString)"
+        )
         window.titleVisibility = .hidden
         window.tabbingMode = .disallowed
         applyWindowChrome(to: window)
@@ -474,6 +490,24 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             _ = try await appState.prepareForWindowClose()
         }
         isRegistered = true
+    }
+
+    private func registerQAFocusRequest() {
+        #if DEBUG
+        guard Bundle.main.bundleIdentifier == "com.scholium.qa" else { return }
+        var token: Int32 = 0
+        let name = "com.scholium.qa.focus-workspace.\(windowID.uuidString)"
+        let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let window = self?.window else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+        if status == NOTIFY_STATUS_OK {
+            qaFocusNotificationToken = token
+        }
+        #endif
     }
 
     private func setLibraryVisible(_ visible: Bool) {

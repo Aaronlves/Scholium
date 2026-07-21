@@ -1024,8 +1024,16 @@ private struct ZoteroSourceSection: View {
                     .accessibilityHidden(true)
             },
             content: {
-                Text("Source")
-                    .font(ScholiumInterfaceTypography.apparatusBody)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Source")
+                        .font(ScholiumInterfaceTypography.apparatusBody)
+                    if let compactSourceStatus = compactSourceStatus(for: request) {
+                        Text(compactSourceStatus)
+                            .font(ScholiumInterfaceTypography.apparatusMetadata)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             },
             trailing: {
                 if case let .some(.matched(citation, _)) = outcomes[request.id] {
@@ -1036,10 +1044,31 @@ private struct ZoteroSourceSection: View {
                 } else {
                     Image(systemName: "questionmark.circle")
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Zotero source unavailable")
+                        .accessibilityLabel(
+                            compactSourceStatus(for: request)
+                                ?? "Zotero source unavailable"
+                        )
                 }
             }
         )
+    }
+
+    private func compactSourceStatus(for request: SourceRequest) -> String? {
+        if let stateText { return stateText }
+        switch outcomes[request.id] {
+        case .matched:
+            return nil
+        case .ambiguous:
+            return "Multiple Zotero items match this Analysis."
+        case .notFound:
+            return request.source.itemKey == nil
+                ? "No Zotero item matched by DOI or ISBN, citation key, or exact title, author, and year."
+                : "The Zotero item identified by this Analysis was not found."
+        case .insufficientMetadata:
+            return "Add source metadata to identify this Zotero item."
+        case nil:
+            return isLoading ? "Checking Zotero…" : "Zotero source unavailable."
+        }
     }
 
     @ViewBuilder

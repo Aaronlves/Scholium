@@ -151,7 +151,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilFailure()
         #expect(!harness.isReady)
         #expect(harness.hasPendingRestoreRequest)
-        #expect(try await harness.restoreInvocationCount() == 1)
+        try await harness.waitUntilRestoreInvocationCount(1)
 
         harness.retryAfterFinalizationFailure()
         try await harness.waitUntilReady()
@@ -578,10 +578,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func retryAfterFinalizationFailure() {
-            failure = nil
             #if DEBUG
             testingForcesFinalizationFailure = false
             #endif
+            failure = nil
         }
     }
 
@@ -717,6 +717,13 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func retryAfterFinalizationFailure() {
             sourceBox.retryAfterFinalizationFailure()
+            // Recreate the failed native surface explicitly. Production
+            // failure recovery changes the safe-mode configuration and gets a
+            // new render identity through that route; the focused harness has
+            // no CSS-safe-mode owner, so it must model the same retry boundary
+            // rather than depend on a late SwiftUI update racing the failed
+            // coordinator's nil load signature.
+            sourceBox.surfaceIdentity += 1
         }
 
         func recreateSurface(targetSourceLine: Int? = nil) {
@@ -839,6 +846,21 @@ extension MarkdownEditorWebViewIntegrationTests {
                 throw ReadHarnessError.invalidSnapshot
             }
             return count
+        }
+
+        func waitUntilRestoreInvocationCount(_ expected: Int) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while clock.now < deadline {
+                if (try? await restoreInvocationCount()) == expected {
+                    return
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+            Issue.record(
+                "Read mode did not retain the expected restoration invocation count \(expected)."
+            )
+            throw ReadHarnessError.timedOut
         }
 
         func scroll(toFraction fraction: Double) async throws {

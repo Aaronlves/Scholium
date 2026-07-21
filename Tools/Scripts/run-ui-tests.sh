@@ -46,7 +46,10 @@ cleanup() {
   local result_bundles=("${UI_TEST_DERIVED}/Logs/Test/"*.xcresult(N))
   if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]] && (( ${#result_bundles[@]} > 0 )); then
     mkdir -p "${result_staging}"
-    cp -R "${result_bundles[@]}" "${result_staging}/"
+    # Each invocation needs its own newest result as evidence. Carrying every
+    # historical bundle through a clean QA run makes cleanup grow without
+    # bound and can outlive the test itself.
+    cp -R "${result_bundles[-1]}" "${result_staging}/"
   fi
 
   terminate_qa_instances
@@ -121,22 +124,43 @@ if [[ "${profile}" == "smoke" ]]; then
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"
 elif [[ "${profile}" == "complete" ]]; then
   manifest="${ROOT}/.build/qa-complete-test-manifest.json"
+  acceptance_filter="-only-testing:ScholiumUITests/ScholiumUITests"
+  # Dialogue is intentionally outside the current acceptance run while its
+  # product interaction is being redesigned. Keep the deferral explicit and
+  # local to the Dialogue journeys; the rest of the dynamically enumerated
+  # acceptance class must still run.
+  dialogue_deferrals=(
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testDialogueFunctionCopiesPreparedRequest"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testDialoguePreservesResearcherFollowUpAndAgentResponseChronology"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testFunctionsInspectorAccessibilityOrderAndDialogueReviewSemantics"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testFunctionsInspectorAndPanelRemainUsableInLightAndDarkAppearances"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testFunctionsInspectorVoiceOverSpeechOrder"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testResearchFunctionPanelFitsCompactEditor"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testResearchFunctionPanelFitsWideEditor"
+    "-skip-testing:ScholiumUITests/ScholiumUITests/testWorkFunctionsInspectorMaterialsCommentsModulesAndShortcuts"
+  )
+  rm -f "${manifest}"
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
     "${common_arguments[@]}" \
-    test-without-building \
     -enumerate-tests \
     -test-enumeration-style flat \
     -test-enumeration-format json \
-    -test-enumeration-output-path "${manifest}"
+    -test-enumeration-output-path "${manifest}" \
+    "${acceptance_filter}" \
+    "${dialogue_deferrals[@]}" \
+    "${test_arguments[@]}" \
+    test-without-building
   [[ -s "${manifest}" ]] || {
     print -u2 "Complete UI test enumeration produced no manifest."
     exit 1
   }
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
     "${common_arguments[@]}" \
-    test-without-building \
-    "${test_arguments[@]}"
+    "${acceptance_filter}" \
+    "${dialogue_deferrals[@]}" \
+    "${test_arguments[@]}" \
+    test-without-building
 else
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"
 fi

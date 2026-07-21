@@ -373,6 +373,7 @@ struct SidebarView: View {
             .accessibilityAddTraits(
                 controller.library.locationScope == .workspace ? .isSelected : []
             )
+            .accessibilityIdentifier("scholium.libraryHeading")
 
             Spacer()
 
@@ -394,7 +395,6 @@ struct SidebarView: View {
             .accessibilityIdentifier("scholium.newNote")
         }
         .frame(maxWidth: .infinity)
-        .accessibilityIdentifier("scholium.libraryHeading")
     }
 
     private var lifecycleDestinationHeader: some View {
