@@ -149,6 +149,36 @@ struct WindowLifecycleTests {
         }
     }
 
+    @Test("Route readiness has an injectable nonblocking deadline")
+    func readinessDeadlineIsBounded() async {
+        var policy = ScholiumLifecyclePolicy()
+        policy.routeReadiness = .milliseconds(30)
+        let registry = ScholiumWindowLifecycleRegistry(policy: policy)
+        let id = UUID()
+        registry.register(id: id) {}
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        do {
+            try await registry.waitUntilReady(id: id)
+            Issue.record("A route without native content incorrectly became ready")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.routeReadiness))
+        } catch {
+            Issue.record("Unexpected readiness deadline error: \(error)")
+        }
+        #expect(started.duration(to: clock.now) < .seconds(1))
+
+        // The timed-out waiter was removed; readiness can still be established
+        // for a later, independent routing attempt.
+        registry.markReady(id: id)
+        do {
+            try await registry.waitUntilReady(id: id)
+        } catch {
+            Issue.record("A timed-out waiter poisoned later route readiness: \(error)")
+        }
+    }
+
     @Test("Application flush visits every registered window")
     func flushAllRegisteredWindows() async {
         let registry = ScholiumWindowLifecycleRegistry()
@@ -189,6 +219,37 @@ struct WindowLifecycleTests {
             Issue.record("Unexpected aggregate flush error: \(error)")
         }
         #expect(didVisitSurvivingWindow)
+    }
+
+    @Test("A hanging window flush is bounded and does not starve a healthy peer")
+    func hangingFlushIsBoundedAndPeerStillRuns() async {
+        var policy = ScholiumLifecyclePolicy()
+        policy.contentFlush = .milliseconds(30)
+        policy.applicationTermination = .milliseconds(200)
+        let registry = ScholiumWindowLifecycleRegistry(policy: policy)
+        var didFlushHealthyWindow = false
+        registry.register(id: UUID()) {
+            await withUnsafeContinuation {
+                (_: UnsafeContinuation<Void, Never>) in
+            }
+        }
+        registry.register(id: UUID()) {
+            didFlushHealthyWindow = true
+        }
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        do {
+            try await registry.flushAll()
+            Issue.record("A hanging window incorrectly allowed termination")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.contentFlush))
+        } catch {
+            Issue.record("Unexpected bounded flush error: \(error)")
+        }
+
+        #expect(didFlushHealthyWindow)
+        #expect(started.duration(to: clock.now) < .seconds(1))
     }
 
     @Test("The workspace coordinator retains, forwards, and restores the native delegate")

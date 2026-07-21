@@ -238,7 +238,39 @@ private struct EditorBridgeMessage: Codable {
 }
 
 @MainActor
+protocol MarkdownEditorBridgeDispatching: AnyObject {
+    func dispatch(
+        requestJSON: String,
+        in webView: WKWebView
+    ) async throws -> Any?
+}
+
+@MainActor
+final class WKWebViewMarkdownEditorBridgeDispatcher: MarkdownEditorBridgeDispatching {
+    func dispatch(
+        requestJSON: String,
+        in webView: WKWebView
+    ) async throws -> Any? {
+        try await webView.callAsyncJavaScript(
+            "return await window.scholiumEditor.dispatch(JSON.parse(requestJSON))",
+            arguments: ["requestJSON": requestJSON],
+            in: nil,
+            contentWorld: .page
+        )
+    }
+}
+
+@MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
+    private struct BridgeRequestContext {
+        let requestEpoch: UInt64
+        let sessionID: UUID
+        let documentID: String
+        let startingFingerprint: String
+        let generation: Int
+        let webView: WKWebView
+    }
+
     private struct RecoveryCaptureKey: Equatable {
         let requestEpoch: UInt64
         let generation: Int
@@ -248,6 +280,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         case unavailable
         case invalidResult
         case selectionTooLong
+        case staleRequest
         case bridgeRejected(String)
 
         var errorDescription: String? {
@@ -255,6 +288,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             case .unavailable: "The Markdown editor is not ready."
             case .invalidResult: "The Markdown editor returned an invalid document."
             case .selectionTooLong: "Select at most 2,000 characters for one source-anchored comment."
+            case .staleRequest: "The Markdown editor request belonged to a replaced document or session."
             case .bridgeRejected(let message): message
             }
         }
@@ -297,7 +331,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var scheduledRecoveryCaptureKey: RecoveryCaptureKey?
     private var recoveryCaptureToken: UInt64 = 0
     private var requestBarrier: Task<Void, Never>?
+    private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
     private var requestEpoch: UInt64 = 0
+    private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
+    private let lifecyclePolicy: ScholiumLifecyclePolicy
     private var committedTextSynchronizer: ((String, String) -> Void)?
     private var sourceChangeHandler: ((String) -> Void)?
     private var checkedSource = ""
@@ -356,7 +393,19 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
-    override init() {
+    override convenience init() {
+        self.init(
+            bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+            lifecyclePolicy: ScholiumLifecyclePolicy()
+        )
+    }
+
+    init(
+        bridgeDispatcher: any MarkdownEditorBridgeDispatching,
+        lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()
+    ) {
+        self.bridgeDispatcher = bridgeDispatcher
+        self.lifecyclePolicy = lifecyclePolicy
         super.init()
     }
 
@@ -1714,24 +1763,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         requiringRequestEpoch requiredRequestEpoch: UInt64? = nil
     ) async throws -> MarkdownEditorCommandResult {
         let previous = requestBarrier
-        let intendedSessionID = sessionID
-        let intendedDocumentID = documentID
-        let intendedFingerprint = startingFingerprint
-        let intendedRequestEpoch = requiredRequestEpoch ?? requestEpoch
+        let context = BridgeRequestContext(
+            requestEpoch: requiredRequestEpoch ?? requestEpoch,
+            sessionID: sessionID,
+            documentID: documentID,
+            startingFingerprint: startingFingerprint,
+            generation: generation,
+            webView: webView
+        )
+        let trackingID = UUID()
         let task = Task { @MainActor in
             await previous?.value
-            guard intendedRequestEpoch == requestEpoch,
-                  intendedSessionID == sessionID,
-                  intendedDocumentID == documentID,
-                  intendedFingerprint == startingFingerprint,
-                  self.webView === webView else {
-                throw SessionError.bridgeRejected("The editor identity changed while a request was queued.")
+            guard isCurrent(context) else {
+                throw SessionError.staleRequest
             }
             let request = MarkdownEditorRequest(
-                sessionID: intendedSessionID,
-                documentID: intendedDocumentID,
-                startingFingerprint: intendedFingerprint,
-                expectedGeneration: generation,
+                sessionID: context.sessionID,
+                documentID: context.documentID,
+                startingFingerprint: context.startingFingerprint,
+                expectedGeneration: context.generation,
                 operation: operation
             )
             let encoder = JSONEncoder()
@@ -1740,19 +1790,24 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                   let requestJSON = String(data: requestData, encoding: .utf8) else {
                 throw SessionError.invalidResult
             }
-            let rawResult = try await webView.callAsyncJavaScript(
-                "return await window.scholiumEditor.dispatch(JSON.parse(requestJSON))",
-                arguments: ["requestJSON": requestJSON],
-                in: nil,
-                contentWorld: .page
-            )
-            guard intendedRequestEpoch == requestEpoch,
-                  intendedSessionID == sessionID,
-                  intendedDocumentID == documentID,
-                  intendedFingerprint == startingFingerprint,
-                  self.webView === webView else {
-                throw SessionError.bridgeRejected("The editor identity changed while a request was in flight.")
+            let rawResult: Any?
+            do {
+                var dispatchedResult: Any?
+                try await withScholiumLifecycleDeadline(
+                    phase: .bridgeRequest,
+                    timeout: lifecyclePolicy.bridgeRequest
+                ) { [bridgeDispatcher] in
+                    dispatchedResult = try await bridgeDispatcher.dispatch(
+                        requestJSON: requestJSON,
+                        in: webView
+                    )
+                }
+                rawResult = dispatchedResult
+            } catch {
+                guard isCurrent(context) else { throw SessionError.staleRequest }
+                throw error
             }
+            guard isCurrent(context) else { throw SessionError.staleRequest }
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
                   let resultData = try? JSONSerialization.data(withJSONObject: rawResult as Any),
                   resultData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
@@ -1804,8 +1859,19 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             }
             return result
         }
+        inFlightRequestTasks[trackingID] = task
         requestBarrier = Task { @MainActor in _ = try? await task.value }
+        defer { inFlightRequestTasks[trackingID] = nil }
         return try await task.value
+    }
+
+    private func isCurrent(_ context: BridgeRequestContext) -> Bool {
+        context.requestEpoch == requestEpoch
+            && context.sessionID == sessionID
+            && context.documentID == documentID
+            && context.startingFingerprint == startingFingerprint
+            && context.generation == generation
+            && self.webView === context.webView
     }
 
     #if DEBUG
@@ -1855,6 +1921,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         requestEpoch &+= 1
         requestBarrier?.cancel()
         requestBarrier = nil
+        for task in inFlightRequestTasks.values {
+            task.cancel()
+        }
+        inFlightRequestTasks.removeAll()
     }
 
     private func cancelScheduledRecoveryCapture() {

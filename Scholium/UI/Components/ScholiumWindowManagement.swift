@@ -5,6 +5,7 @@ enum ScholiumWindowLifecycleError: LocalizedError, Equatable, Sendable {
     case failed(String)
     case unregisteredBeforeReady
     case cancelled
+    case timedOut(ScholiumLifecyclePhase)
 
     var errorDescription: String? {
         switch self {
@@ -14,8 +15,120 @@ enum ScholiumWindowLifecycleError: LocalizedError, Equatable, Sendable {
             "The destination window closed before its native content became ready."
         case .cancelled:
             "Waiting for the destination window was cancelled."
+        case .timedOut(let phase):
+            "Scholium timed out while waiting for \(phase.description)."
         }
     }
+}
+
+enum ScholiumLifecyclePhase: String, Equatable, Sendable {
+    case bridgeRequest
+    case routeReadiness
+    case contentFlush
+    case presentationSnapshot
+    case applicationTermination
+
+    var description: String {
+        switch self {
+        case .bridgeRequest: "the editor bridge"
+        case .routeReadiness: "the destination window"
+        case .contentFlush: "document content to save"
+        case .presentationSnapshot: "window state to save"
+        case .applicationTermination: "all windows to finish saving"
+        }
+    }
+}
+
+struct ScholiumLifecyclePolicy: Sendable {
+    var bridgeRequest: Duration = .seconds(8)
+    var routeReadiness: Duration = .seconds(8)
+    var contentFlush: Duration = .seconds(10)
+    var presentationSnapshot: Duration = .seconds(2)
+    var applicationTermination: Duration = .seconds(12)
+    var maximumConcurrentWindowFlushes = 4
+}
+
+@MainActor
+private final class ScholiumLifecycleDeadlineRace {
+    typealias Outcome = Result<Void, any Error>
+
+    private var continuation: CheckedContinuation<Outcome, Never>?
+    private var operationTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+    private var wasCancelled = false
+
+    func start(
+        continuation: CheckedContinuation<Outcome, Never>,
+        phase: ScholiumLifecyclePhase,
+        timeout: Duration,
+        operation: @escaping @MainActor () async throws -> Void
+    ) {
+        self.continuation = continuation
+        if wasCancelled {
+            finish(.failure(CancellationError()), cancelling: nil)
+            return
+        }
+        operationTask = Task { [self] in
+            do {
+                try await operation()
+                finish(.success(()), cancelling: timeoutTask)
+            } catch {
+                finish(.failure(error), cancelling: timeoutTask)
+            }
+        }
+        timeoutTask = Task { [self] in
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return
+            }
+            finish(
+                .failure(ScholiumWindowLifecycleError.timedOut(phase)),
+                cancelling: operationTask
+            )
+        }
+    }
+
+    private func finish(
+        _ outcome: Outcome,
+        cancelling loser: Task<Void, Never>?
+    ) {
+        guard let continuation else { return }
+        self.continuation = nil
+        loser?.cancel()
+        operationTask = nil
+        timeoutTask = nil
+        continuation.resume(returning: outcome)
+    }
+
+    func cancel() {
+        wasCancelled = true
+        finish(.failure(CancellationError()), cancelling: operationTask)
+        timeoutTask?.cancel()
+    }
+}
+
+@MainActor
+func withScholiumLifecycleDeadline(
+    phase: ScholiumLifecyclePhase,
+    timeout: Duration,
+    operation: @escaping @MainActor () async throws -> Void
+) async throws {
+    let race = ScholiumLifecycleDeadlineRace()
+    let outcome = await withTaskCancellationHandler {
+        await withCheckedContinuation {
+            (continuation: CheckedContinuation<Result<Void, any Error>, Never>) in
+            race.start(
+                continuation: continuation,
+                phase: phase,
+                timeout: timeout,
+                operation: operation
+            )
+        }
+    } onCancel: {
+        Task { @MainActor in race.cancel() }
+    }
+    try outcome.get()
 }
 
 /// Application-owned coordination for exact scene identities. The registry
@@ -41,6 +154,11 @@ final class ScholiumWindowLifecycleRegistry {
     }
 
     private var entries: [UUID: Entry] = [:]
+    private let policy: ScholiumLifecyclePolicy
+
+    init(policy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()) {
+        self.policy = policy
+    }
 
     var hasRegisteredWindows: Bool {
         entries.values.contains(where: \.isRegistered)
@@ -72,6 +190,16 @@ final class ScholiumWindowLifecycleRegistry {
     }
 
     func waitUntilReady(id: UUID) async throws {
+        try await withScholiumLifecycleDeadline(
+            phase: .routeReadiness,
+            timeout: policy.routeReadiness
+        ) { [weak self] in
+            guard let self else { throw ScholiumWindowLifecycleError.cancelled }
+            try await self.waitUntilReadyWithoutDeadline(id: id)
+        }
+    }
+
+    private func waitUntilReadyWithoutDeadline(id: UUID) async throws {
         try Task.checkCancellation()
         let waiterID = UUID()
         let result = await withTaskCancellationHandler {
@@ -127,15 +255,33 @@ final class ScholiumWindowLifecycleRegistry {
         let flushers = entries.values.compactMap { entry in
             entry.isRegistered ? entry.flusher : nil
         }
-        var firstError: (any Error)?
-        for flusher in flushers {
-            do {
-                try await flusher()
-            } catch {
-                if firstError == nil { firstError = error }
+        try await withScholiumLifecycleDeadline(
+            phase: .applicationTermination,
+            timeout: policy.applicationTermination
+        ) { [policy] in
+            let concurrency = max(1, policy.maximumConcurrentWindowFlushes)
+            var firstError: (any Error)?
+            for start in stride(from: 0, to: flushers.count, by: concurrency) {
+                let end = min(start + concurrency, flushers.count)
+                let tasks = flushers[start..<end].map { flusher in
+                    Task { @MainActor in
+                        try await withScholiumLifecycleDeadline(
+                            phase: .contentFlush,
+                            timeout: policy.contentFlush,
+                            operation: flusher
+                        )
+                    }
+                }
+                for task in tasks {
+                    do {
+                        try await task.value
+                    } catch {
+                        if firstError == nil { firstError = error }
+                    }
+                }
             }
+            if let firstError { throw firstError }
         }
-        if let firstError { throw firstError }
     }
 
     private func entry(for id: UUID) -> Entry {
@@ -207,6 +353,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var reduceMotion = false
     private var closeIsAuthorized = false
     private var flushInFlight = false
+    private var closeAttemptGeneration: UInt64 = 0
     private var readinessWasMarked = false
     private var isRegistered = false
     private var pendingLibraryVisibility: Bool?
@@ -304,6 +451,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func detach() {
+        closeAttemptGeneration &+= 1
+        flushInFlight = false
+        closeIsAuthorized = false
         removeToolbar()
         splitController = nil
         detachWindow()
@@ -321,7 +471,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             guard let appState else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
-            try await appState.prepareForWindowClose()
+            _ = try await appState.prepareForWindowClose()
         }
         isRegistered = true
     }
@@ -432,14 +582,26 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         }
         guard !flushInFlight else { return false }
         flushInFlight = true
+        closeAttemptGeneration &+= 1
+        let attempt = closeAttemptGeneration
         Task { @MainActor [weak self, weak sender] in
             guard let self, let sender else { return }
             do {
-                try await appState.prepareForWindowClose()
+                let outcome = try await appState.prepareForWindowClose()
+                guard attempt == closeAttemptGeneration,
+                      self.window === sender else { return }
                 closeIsAuthorized = true
                 flushInFlight = false
+                if let warning = outcome.presentationWarning {
+                    appState.showToast(
+                        "The document was saved, but window state could not be saved. \(warning)",
+                        kind: .warning
+                    )
+                }
                 sender.performClose(nil)
             } catch {
+                guard attempt == closeAttemptGeneration,
+                      self.window === sender else { return }
                 flushInFlight = false
                 appState.lastSaveError = error.localizedDescription
                 appState.showToast(

@@ -2383,8 +2383,14 @@ final class ScholiumUITests: XCTestCase {
         add(screenshot)
 
         let untabbedHeaderTop = documentIdentity.frame.minY - window.frame.minY
-        app.menuBars.menuBarItems["File"].click()
-        let openInNewTab = app.menuItems["Open in New Tab"]
+        let secondRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave B.md"
+        ]
+        XCTAssertTrue(secondRow.waitForExistence(timeout: 10))
+        secondRow.rightClick()
+        let noteContextMenu = app.menus["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(noteContextMenu.waitForExistence(timeout: 3))
+        let openInNewTab = noteContextMenu.menuItems["Open in New Tab"]
         XCTAssertTrue(openInNewTab.waitForExistence(timeout: 3))
         openInNewTab.click()
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
@@ -4382,7 +4388,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testFileMenuOpensTheCurrentDocumentInADocumentTab() throws {
+    func testFileMenuDoesNotOfferDuplicateCurrentDocumentTab() throws {
         let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
         XCTAssertEqual(metadata.value as? String, "QA Autosave A")
@@ -4391,24 +4397,16 @@ final class ScholiumUITests: XCTestCase {
         fileMenuItem.click()
         let fileMenu = fileMenuItem.menus.firstMatch
         let openInNewTab = fileMenu.menuItems["Open in New Tab"]
-        XCTAssertTrue(
-            openInNewTab.waitForExistence(timeout: 3),
-            "The File menu must expose Open in New Tab."
+        XCTAssertFalse(
+            openInNewTab.exists,
+            "The current document cannot be duplicated through the File menu."
         )
-        XCTAssertTrue(openInNewTab.isEnabled)
-        openInNewTab.click()
+        app.typeKey(.escape, modifierFlags: [])
 
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
-        XCTAssertTrue(documentTabs.waitForExistence(timeout: 8))
-        let closeButtons = documentTabs.buttons.matching(
-            NSPredicate(format: "label == %@", "Close QA Autosave A")
-        )
-        XCTAssertEqual(closeButtons.count, 2)
-        closeButtons.element(boundBy: 1).click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            self.app.windows.firstMatch.exists
-                && !documentTabs.exists
-        })
+        XCTAssertFalse(documentTabs.exists)
+        XCTAssertTrue(app.windows.firstMatch.exists)
+        XCTAssertEqual(metadata.value as? String, "QA Autosave A")
     }
 
     @MainActor

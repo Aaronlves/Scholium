@@ -160,10 +160,12 @@ hierarchy and **This Vault** Search; it does not replace the open document.
 **File → New Triptych…** opens setup for three new locations; **File → Open
 Triptych** opens a registered Triptych separately; **File → New Window** creates
 another workspace for the focused Triptych. **Open in New Tab** adds a page
-only to the current window's central Document region. Switching tabs changes
-the active document and its Apparatus projection, while Library disclosure and
-selection, Sidebar visibility, Apparatus visibility, and Apparatus mode remain
-stable.
+only to the current window's central Document region. One stable document may
+appear at most once in that window; opening it again selects its existing page
+rather than creating another editor surface. Other windows retain independent
+document sessions. Switching tabs changes the active document and its
+Apparatus projection, while Library disclosure and selection, Sidebar
+visibility, Apparatus visibility, and Apparatus mode remain stable.
 
 **New Triptych…** and missing registration use Bootstrap. Expired access stays
 in the configured workspace under one **Restore Access** sheet. The workspace
@@ -688,6 +690,12 @@ A clean open note refreshes quietly after an external change. If the local
 buffer is dirty, Scholium retains it and presents conflict instead of
 overwriting either version.
 
+Before replacing an existing research file, Scholium must durably retain the
+expected and candidate bytes and use a volume-supported commit mechanism that
+can preserve and verify the displaced file. If that boundary is unavailable or
+the observed displaced bytes differ, the mutation fails closed, retains every
+available version for recovery, and never reports **Saved**.
+
 ## 9. Analyses workflow
 
 1. Create or import an Analysis and write or revise it against the available
@@ -849,6 +857,11 @@ Undo remains editor-session only.
 There is no checkpoint-management screen or proprietary backup format. Finder
 manages folders. Document, HTML, PDF, and DOCX export is deferred, not
 permanently prohibited.
+
+Invisible pre-write recovery state may support exact save/conflict recovery,
+but it is not Document history, a user-visible version browser, or an
+alternative to checkpoints. Corrupt legacy recovery metadata must not cause
+unrelated recoverable bytes to be deleted or silently attributed to a note.
 
 ## 15. Zotero integration
 
@@ -1074,9 +1087,18 @@ disabled without a Target; a visible Inspector can always be hidden.
 With two or more documents, a Document-owned strip appears only in the middle
 item. Each tab references one retained editor session. `.unspecified`
 `NSTabViewController` owns containment; Scholium supplies equal-width selection
-and save-before-transition. Close flushes and selects a retained neighbor; last
-close returns no-note. Tabs create no window group, parallel state, or toolbar
-owner. Prototype styling has no authority; selector styling is provisional.
+and save-before-transition. One stable document has at most one tab in a
+window; repeated open or **Open in New Tab** selects that tab in place. Close
+flushes and selects a retained neighbor; last close returns no-note. Tabs
+create no window group, parallel state, or toolbar owner. Prototype styling
+has no authority; selector styling is provisional.
+
+Window close, route handoff, and application termination are bounded. A
+content flush, save, or conflict failure keeps the affected window and exact
+buffer available with a retry path. Machine-local window-session or layout
+persistence is best-effort after content is safe; its failure is diagnosed but
+does not veto close or misreport a source-save failure. Late lifecycle work may
+not act on a newer route, window, document, or close attempt.
 
 The Library identity row sits below window controls; its Scholium disclosure
 and content share the 20pt region-content alignment. Traffic-light alignment
@@ -1472,6 +1494,9 @@ prototype coordinates remain evidence only.
   their own containers.
 - Synthetic events cannot certify real VoiceOver, Voice Control, Dictation,
   Full Keyboard Access, or CJK IME; retain manual gates where required.
+- A lifecycle timeout preserves the affected editor buffer, restores a useful
+  focus target, and exposes retry without treating local presentation-state
+  persistence as research-content failure.
 
 Beta and 1.0 require complete keyboard and VoiceOver coverage for the declared
 core and no unresolved critical/high-severity accessibility defects. A medium-
@@ -1564,6 +1589,8 @@ only in Git history.
 | **D-088** | 18.3, 19.1, 19.3–19.4, 20 | **D-089** | 18.7 |
 | **D-090** | 18.2, 19.3–19.4, 20 | **D-091** | 18.2, 18.4–18.5, 19.1, 20 |
 | **D-092** | 19.2–19.3, 20 | **D-093** | 18.2, 18.4, 19.2–19.4, 20 |
+| **D-094** | 3.2, 18.2 | **D-095** | 18.2, 20 |
+| **D-096** | 8.5, 14 |  |  |
 
 Clean-cutover inventory:
 
@@ -1589,6 +1616,15 @@ Clean-cutover inventory:
   configurations; retain no generated CSS preview or maximum document measure.
   Keep protected semantic component structure, shared mathematics/code/table
   roles, additive sanitized CSS compatibility, and minimum divider separation.
+- **D-094:** one stable document appears at most once in one window's Document
+  tabs; repeated open selects the retained page while other windows stay
+  independent.
+- **D-095:** content safety may veto a bounded close or termination attempt;
+  machine-local presentation persistence may not, and late work is attempt-
+  scoped.
+- **D-096:** existing-file mutation requires durable expected/candidate bytes
+  plus a verifiable displaced-file-preserving commit boundary; otherwise fail
+  closed without a **Saved** claim.
 
 Unresolved work must not be described as complete:
 

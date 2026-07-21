@@ -222,7 +222,7 @@ struct AppCompositionRootTests {
         await window.restoreWindowSession(id: sessionID)
         window.setDocumentTextScale(1.7)
 
-        try await window.prepareForWindowClose()
+        _ = try await window.prepareForWindowClose()
 
         let saved = try #require(try await store.windowSession(id: sessionID))
         #expect(saved.documentTextScale == 1.7)
@@ -252,7 +252,7 @@ struct AppCompositionRootTests {
             flushCount == 1
         }
 
-        try await window.prepareForWindowClose()
+        _ = try await window.prepareForWindowClose()
         #expect(flushCount == 2)
 
         // A successful close releases the workspace-wide registration rather
@@ -260,6 +260,94 @@ struct AppCompositionRootTests {
         window.beginSearch(.general)
         try await Task.sleep(for: .milliseconds(50))
         #expect(flushCount == 2)
+    }
+
+    @Test("A hanging content flush keeps the window retryable")
+    func hangingContentFlushKeepsWindowRetryable() async throws {
+        var policy = ScholiumLifecyclePolicy()
+        policy.contentFlush = .milliseconds(30)
+        let window = WindowModel(
+            workspaceStore: WorkspaceStore(),
+            lifecyclePolicy: policy
+        )
+        window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
+        let token = UUID()
+        window.registerEditorFlush(
+            for: "Active.md",
+            token: token,
+            flush: {
+                await withUnsafeContinuation {
+                    (_: UnsafeContinuation<Void, Never>) in
+                }
+            },
+            captureForReconstruction: {}
+        )
+
+        do {
+            _ = try await window.prepareForWindowClose()
+            Issue.record("A hanging content flush incorrectly allowed close")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.contentFlush))
+        } catch {
+            Issue.record("Unexpected content deadline error: \(error)")
+        }
+
+        var retryFlushCount = 0
+        window.registerEditorFlush(
+            for: "Active.md",
+            token: token,
+            flush: { retryFlushCount += 1 },
+            captureForReconstruction: {}
+        )
+        _ = try await window.prepareForWindowClose()
+        #expect(retryFlushCount == 1)
+    }
+
+    @Test("Presentation persistence failure does not block a content-safe close")
+    func presentationPersistenceDeadlineDoesNotBlockClose() async throws {
+        let fileManager = FileManager.default
+        let isolatedHome = fileManager.temporaryDirectory
+            .appendingPathComponent("Scholium-PresentationDeadline-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: isolatedHome, withIntermediateDirectories: true)
+        let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
+        setenv("SCHOLIUM_HOME", isolatedHome.path, 1)
+        defer {
+            if let previousHome {
+                setenv("SCHOLIUM_HOME", previousHome, 1)
+            } else {
+                unsetenv("SCHOLIUM_HOME")
+            }
+            try? fileManager.removeItem(at: isolatedHome)
+        }
+
+        var policy = ScholiumLifecyclePolicy()
+        policy.presentationSnapshot = .milliseconds(30)
+        let window = WindowModel(
+            workspaceStore: WorkspaceStore(),
+            lifecyclePolicy: policy,
+            finalWindowSessionSaver: { _ in
+                await withUnsafeContinuation {
+                    (_: UnsafeContinuation<Void, Never>) in
+                }
+            }
+        )
+        await window.restoreWindowSession(id: UUID())
+        window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
+        let token = UUID()
+        var contentFlushCount = 0
+        window.registerEditorFlush(
+            for: "Active.md",
+            token: token,
+            flush: { contentFlushCount += 1 },
+            captureForReconstruction: {}
+        )
+
+        let outcome = try await window.prepareForWindowClose()
+
+        #expect(contentFlushCount == 1)
+        #expect(outcome.presentationWarning != nil)
+        #expect(window.windowSessionPersistenceError != nil)
+        #expect(window.refreshStatusText == "Window state not saved")
     }
 
     @Test("Removing one window does not shut down the shared Application runtime")

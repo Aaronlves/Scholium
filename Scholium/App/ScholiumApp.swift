@@ -657,12 +657,6 @@ private struct ScholiumCommands: Commands {
             Button("Import Markdown…") { appState?.showMarkdownImporter = true }
                 .disabled(appState?.workspaceAssignment == nil)
             Divider()
-            Button("Open in New Tab") {
-                guard let reference = appState?.currentDocumentDescriptor?.reference else { return }
-                appState?.requestOpenNote(reference, disposition: .newTab)
-            }
-            .disabled(appState?.currentDocumentDescriptor == nil)
-            Divider()
             Button("Duplicate Note…") {
                 guard let note = appState?.currentNote,
                       let target = NoteLifecycleTarget(note) else { return }
@@ -1029,6 +1023,10 @@ struct WindowPropertyFilterOptions: Equatable {
 
 @MainActor
 final class WindowModel: ObservableObject {
+    struct ClosePreparationOutcome: Sendable {
+        let presentationWarning: String?
+    }
+
     private struct EditorFlushRegistration {
         let token: UUID
         let relativePath: String
@@ -1062,8 +1060,7 @@ final class WindowModel: ObservableObject {
     }
 
     enum DocumentTabActivation {
-        case replaceSelectedTab
-        case appendTab
+        case place(DocumentTabPlacement)
         case preserveTabMembership
     }
     private(set) var windowSessionID = UUID()
@@ -1392,6 +1389,8 @@ final class WindowModel: ObservableObject {
     private var projectionRefreshToken: UInt64 = 0
     private var attemptedVaultRestore = false
     private let workspaceStore: WorkspaceStore
+    private let lifecyclePolicy: ScholiumLifecyclePolicy
+    private let finalWindowSessionSaver: @MainActor (WindowSessionSnapshot) async throws -> Void
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var windowSessionSaveTask: Task<Void, Never>?
     private var isFinalizingWindowSession = false
@@ -1400,6 +1399,7 @@ final class WindowModel: ObservableObject {
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
     private var transitionGeneration: UInt64 = 0
+    private var closeAttemptGeneration: UInt64 = 0
     private var libraryBrowseGeneration: UInt64 = 0
     private var identityReviewRefreshGeneration: UInt64 = 0
     private var transitionTail: Task<Void, Never>?
@@ -1413,12 +1413,18 @@ final class WindowModel: ObservableObject {
         workspaceStore: WorkspaceStore,
         nativeWindowID: UUID? = nil,
         requestedTriptychID: UUID? = nil,
-        requestedInitialDocument: VaultNoteReference? = nil
+        requestedInitialDocument: VaultNoteReference? = nil,
+        lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
+        finalWindowSessionSaver: (@MainActor (WindowSessionSnapshot) async throws -> Void)? = nil
     ) {
         let resolvedWindowID = nativeWindowID ?? UUID()
         self.nativeWindowID = resolvedWindowID
         windowSessionID = resolvedWindowID
         self.workspaceStore = workspaceStore
+        self.lifecyclePolicy = lifecyclePolicy
+        self.finalWindowSessionSaver = finalWindowSessionSaver ?? { [workspaceStore] snapshot in
+            try await workspaceStore.saveWindowSession(snapshot)
+        }
         self.requestedTriptychID = requestedTriptychID
         self.requestedInitialDocument = requestedInitialDocument
         cssSnippetStore = workspaceStore.cssSnippetStore
@@ -2049,10 +2055,30 @@ final class WindowModel: ObservableObject {
         try await registration.captureForReconstruction()
     }
 
-    func prepareForWindowClose() async throws {
-        try await flushRegisteredEditorIfNeeded()
-        try await persistWindowSessionBeforeClose()
+    func prepareForWindowClose() async throws -> ClosePreparationOutcome {
+        closeAttemptGeneration &+= 1
+        let attempt = closeAttemptGeneration
+        try await withScholiumLifecycleDeadline(
+            phase: .contentFlush,
+            timeout: lifecyclePolicy.contentFlush
+        ) { [weak self] in
+            guard let self else {
+                throw ScholiumWindowLifecycleError.unregisteredBeforeReady
+            }
+            try await self.flushRegisteredEditorIfNeeded()
+        }
+        guard attempt == closeAttemptGeneration else {
+            throw ScholiumWindowLifecycleError.cancelled
+        }
+
+        let presentationWarning = await persistWindowSessionBeforeClose(
+            attempt: attempt
+        )
+        guard attempt == closeAttemptGeneration else {
+            throw ScholiumWindowLifecycleError.cancelled
+        }
         clearEditorFlushRegistration()
+        return ClosePreparationOutcome(presentationWarning: presentationWarning)
     }
 
     /// Serializes every transition that can replace the active document view.
@@ -2224,7 +2250,7 @@ final class WindowModel: ObservableObject {
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,
-                tabActivation: .replaceSelectedTab
+                tabActivation: .place(.replaceSelected)
             )
         }
     }
@@ -2646,7 +2672,7 @@ final class WindowModel: ObservableObject {
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,
-                tabActivation: .appendTab
+                tabActivation: .place(.newTab)
             )
         }
     }
@@ -2842,32 +2868,44 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    /// A close or termination decision must not race the final per-window
-    /// snapshot. Cancel and await any debounced predecessor, then propagate a
-    /// final save failure so AppKit can keep the native tab open.
-    private func persistWindowSessionBeforeClose() async throws {
+    /// Window state is recoverable presentation data, not document content.
+    /// A bounded failure is recorded for the next launch but cannot turn a
+    /// content-safe close into an unbounded or permanently blocked close.
+    private func persistWindowSessionBeforeClose(attempt: UInt64) async -> String? {
         guard didRestoreWindowSession,
-              !isRestoringWindowSession,
-              !isFinalizingWindowSession else { return }
+              !isRestoringWindowSession else { return nil }
         isFinalizingWindowSession = true
-        defer { isFinalizingWindowSession = false }
 
+        var pendingTasks: [Task<Void, Never>] = []
         while let pending = windowSessionSaveTask {
             windowSessionSaveTask = nil
             pending.cancel()
-            _ = await pending.result
+            pendingTasks.append(pending)
         }
         let snapshot = currentWindowSessionSnapshot()
         do {
-            try await workspaceStore.saveWindowSession(snapshot)
+            try await withScholiumLifecycleDeadline(
+                phase: .presentationSnapshot,
+                timeout: lifecyclePolicy.presentationSnapshot
+            ) { [finalWindowSessionSaver] in
+                for pending in pendingTasks {
+                    _ = await pending.result
+                }
+                try await finalWindowSessionSaver(snapshot)
+            }
+            guard attempt == closeAttemptGeneration else { return nil }
+            isFinalizingWindowSession = false
             windowSessionPersistenceError = nil
             if refreshStatusText == "Window state not saved" {
                 refreshStatusText = nil
             }
+            return nil
         } catch {
+            guard attempt == closeAttemptGeneration else { return nil }
+            isFinalizingWindowSession = false
             windowSessionPersistenceError = error.localizedDescription
             refreshStatusText = "Window state not saved"
-            throw error
+            return error.localizedDescription
         }
     }
 
@@ -4346,7 +4384,7 @@ final class WindowModel: ObservableObject {
 
     func openNote(
         _ path: String,
-        tabActivation: DocumentTabActivation = .replaceSelectedTab
+        tabActivation: DocumentTabActivation = .place(.replaceSelected)
     ) {
         guard let location = notes.first(where: { $0.relativePath == path }) else {
             showToast(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
@@ -4378,7 +4416,7 @@ final class WindowModel: ObservableObject {
             vaultName: vault.name,
             vaultRole: vault.role
         )
-        synchronizeDocumentTabs(after: .replaceSelectedTab)
+        synchronizeDocumentTabs(after: .place(.replaceSelected))
     }
 
     private func activateDocument(
@@ -4453,17 +4491,12 @@ final class WindowModel: ObservableObject {
         guard let document = documentController.selectedDocument else { return }
         let presentation = documentTabPresentation(for: document)
         switch activation {
-        case .replaceSelectedTab:
-            documentTabController.replaceSelectedTab(
-                with: document,
+        case .place(let placement):
+            documentTabController.activate(
+                document: document,
                 title: presentation.title,
-                toolTip: presentation.toolTip
-            )
-        case .appendTab:
-            documentTabController.appendTab(
-                for: document,
-                title: presentation.title,
-                toolTip: presentation.toolTip
+                toolTip: presentation.toolTip,
+                placement: placement
             )
         case .preserveTabMembership:
             documentTabController.updateDocumentProjection(
@@ -4723,7 +4756,7 @@ final class WindowModel: ObservableObject {
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,
-                tabActivation: .replaceSelectedTab
+                tabActivation: .place(.replaceSelected)
             )
             if let line {
                 self.pendingSourceLine = max(1, line)

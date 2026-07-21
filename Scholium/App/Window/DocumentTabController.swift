@@ -29,6 +29,34 @@ struct DocumentTabClosePlan: Equatable, Sendable {
     let documentToActivate: WindowSelectedDocument?
 }
 
+enum DocumentTabPlacement: Equatable, Sendable {
+    case replaceSelected
+    case newTab
+}
+
+enum DocumentTabActivationResult: Equatable, Sendable {
+    case created(UUID)
+    case replaced(UUID)
+    case selectedExisting(UUID)
+}
+
+private enum DocumentTabKey: Hashable, Sendable {
+    case workspace(DocumentSessionKey)
+    case unclassified(String)
+    case unavailable(vaultID: UUID, relativePath: String)
+
+    init(_ document: WindowSelectedDocument) {
+        switch document {
+        case .workspace(let descriptor):
+            self = .workspace(descriptor.sessionKey)
+        case .unclassified(let relativePath):
+            self = .unclassified(relativePath)
+        case .unavailable(let vaultID, let relativePath):
+            self = .unavailable(vaultID: vaultID, relativePath: relativePath)
+        }
+    }
+}
+
 /// Window-local owner of document-tab order, selection, and document
 /// references. It deliberately owns no editor, Library, Inspector, split-view,
 /// toolbar, repository, or persistence state.
@@ -42,27 +70,33 @@ final class DocumentTabController: ObservableObject {
         return tabs.first { $0.id == selectedTabID }
     }
 
-    func replaceSelectedTab(
-        with document: WindowSelectedDocument,
-        title: String,
-        toolTip: String
-    ) {
-        guard let selectedTabID,
-              let index = tabs.firstIndex(where: { $0.id == selectedTabID }) else {
-            appendTab(for: document, title: title, toolTip: toolTip)
-            return
-        }
-        tabs[index].document = document
-        tabs[index].title = title
-        tabs[index].toolTip = toolTip
-    }
-
     @discardableResult
-    func appendTab(
-        for document: WindowSelectedDocument,
+    func activate(
+        document: WindowSelectedDocument,
         title: String,
-        toolTip: String
-    ) -> UUID {
+        toolTip: String,
+        placement: DocumentTabPlacement
+    ) -> DocumentTabActivationResult {
+        let key = DocumentTabKey(document)
+        if let existingIndex = tabs.firstIndex(where: {
+            DocumentTabKey($0.document) == key
+        }) {
+            tabs[existingIndex].document = document
+            tabs[existingIndex].title = title
+            tabs[existingIndex].toolTip = toolTip
+            selectedTabID = tabs[existingIndex].id
+            return .selectedExisting(tabs[existingIndex].id)
+        }
+
+        if placement == .replaceSelected,
+           let selectedTabID,
+           let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
+            tabs[selectedIndex].document = document
+            tabs[selectedIndex].title = title
+            tabs[selectedIndex].toolTip = toolTip
+            return .replaced(selectedTabID)
+        }
+
         let tab = DocumentTabItem(
             document: document,
             title: title,
@@ -70,7 +104,7 @@ final class DocumentTabController: ObservableObject {
         )
         tabs.append(tab)
         selectedTabID = tab.id
-        return tab.id
+        return .created(tab.id)
     }
 
     func selectTab(withID id: UUID) {
@@ -121,16 +155,8 @@ final class DocumentTabController: ObservableObject {
         title: String,
         toolTip: String
     ) {
-        guard let sessionKey = document.sessionKey else {
-            guard let index = tabs.firstIndex(where: {
-                $0.document.relativePath == document.relativePath
-            }) else { return }
-            tabs[index].document = document
-            tabs[index].title = title
-            tabs[index].toolTip = toolTip
-            return
-        }
-        for index in tabs.indices where tabs[index].document.sessionKey == sessionKey {
+        let key = DocumentTabKey(document)
+        for index in tabs.indices where DocumentTabKey(tabs[index].document) == key {
             tabs[index].document = document
             tabs[index].title = title
             tabs[index].toolTip = toolTip

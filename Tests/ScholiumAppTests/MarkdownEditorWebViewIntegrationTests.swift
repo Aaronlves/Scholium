@@ -2,11 +2,122 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 import Testing
+import WebKit
 @testable import ScholiumApp
 
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("A delayed bridge success cannot mutate or block a replacement document")
+    func delayedBridgeSuccessIsRejectedAfterReplacement() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        let harness = EditorHarness(
+            source: "Original A\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let delayed = Task {
+            try await harness.session.currentText(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+
+        harness.session.loadDocument(
+            "Replacement B\n",
+            documentID: "Replacement.md",
+            mode: .livePreview
+        )
+        try await harness.waitUntilLoaded(documentID: "Replacement.md")
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+
+        dispatcher.resumeSuccessfully()
+        do {
+            _ = try await delayed.value
+            Issue.record("The stale A request unexpectedly succeeded after B loaded.")
+        } catch MarkdownEditorSession.SessionError.staleRequest {
+            // Expected: identity validation owns the result, not transport order.
+        } catch {
+            Issue.record("The stale A request returned the wrong error: \(error).")
+        }
+
+        #expect(harness.session.documentID == "Replacement.md")
+        #expect(harness.session.errorMessage == nil)
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("A delayed bridge transport error is hidden from a replacement document")
+    func delayedBridgeErrorIsRejectedAfterReplacement() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        let harness = EditorHarness(
+            source: "Original A\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let delayed = Task {
+            try await harness.session.currentText(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+
+        harness.session.loadDocument(
+            "Replacement B\n",
+            documentID: "Replacement.md",
+            mode: .livePreview
+        )
+        try await harness.waitUntilLoaded(documentID: "Replacement.md")
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+
+        dispatcher.resumeWithTransportError()
+        do {
+            _ = try await delayed.value
+            Issue.record("The stale A transport failure unexpectedly succeeded.")
+        } catch MarkdownEditorSession.SessionError.staleRequest {
+            // Expected: B must not inherit A's transport failure.
+        } catch {
+            Issue.record("The stale A transport failure escaped identity validation: \(error).")
+        }
+
+        #expect(harness.session.documentID == "Replacement.md")
+        #expect(harness.session.errorMessage == nil)
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("A hanging bridge request times out without poisoning the editor")
+    func hangingBridgeRequestIsBoundedAndRetryable() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        var policy = ScholiumLifecyclePolicy()
+        policy.bridgeRequest = .milliseconds(30)
+        let harness = EditorHarness(
+            source: "Retryable\n",
+            bridgeDispatcher: dispatcher,
+            lifecyclePolicy: policy
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let request = Task {
+            try await harness.session.currentText(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+        do {
+            _ = try await request.value
+            Issue.record("A hanging editor bridge request incorrectly succeeded")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.bridgeRequest))
+        } catch {
+            Issue.record("Unexpected editor bridge deadline error: \(error)")
+        }
+
+        dispatcher.resumeSuccessfully()
+        #expect(try await harness.session.currentText(for: harness.documentID) == "Retryable\n")
+        #expect(harness.session.errorMessage == nil)
+        await harness.closeAndDrain()
+    }
+
     @Test("One hundred thousand CJK characters preserve an exact appended edit across modes")
     func largeCJKExactRoundTrip() async throws {
         let seed = "研究性能边界输入选择撤销渲染滚动保存恢复"
@@ -556,7 +667,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @MainActor
     private final class EditorHarness {
-        let session = MarkdownEditorSession()
+        let session: MarkdownEditorSession
         let documentID: String
         private let sourceBox: SourceBox
         var latestSource: String { sourceBox.source }
@@ -568,9 +679,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         init(
             documentID: String = "Argument.md",
             source: String,
-            linkPreviews: [DocumentLinkPreview] = []
+            linkPreviews: [DocumentLinkPreview] = [],
+            bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
+            lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()
         ) {
             _ = NSApplication.shared
+            session = bridgeDispatcher.map {
+                MarkdownEditorSession(
+                    bridgeDispatcher: $0,
+                    lifecyclePolicy: lifecyclePolicy
+                )
+            } ?? MarkdownEditorSession()
             self.documentID = documentID
             sourceBox = SourceBox(source)
             window = NSWindow(
@@ -604,6 +723,18 @@ struct MarkdownEditorWebViewIntegrationTests {
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+
+        func waitUntilLoaded(documentID: String) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while session.documentID != documentID || !session.isLoaded {
+                if clock.now >= deadline {
+                    Issue.record("The replacement editor document did not finish loading.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
             }
         }
 
@@ -781,6 +912,90 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
             #expect(!session.hasAttachedWebView)
             try? await Task.sleep(for: .milliseconds(300))
+        }
+    }
+
+    @MainActor
+    private final class SuspendingBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private enum ProbeError: Error {
+            case transportFailure
+        }
+
+        private enum ResumeOutcome: Equatable {
+            case success
+            case failure
+        }
+
+        private let targetDocumentID: String
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var didSuspend = false
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var outcome: ResumeOutcome = .success
+
+        init(targetDocumentID: String) {
+            self.targetDocumentID = targetDocumentID
+        }
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if !didSuspend,
+               request.documentID == targetDocumentID,
+               case .queryText = request.operation {
+                didSuspend = true
+                await withCheckedContinuation { continuation = $0 }
+                if outcome == .failure {
+                    throw ProbeError.transportFailure
+                }
+                let result = MarkdownEditorCommandResult(
+                    requestID: request.requestID,
+                    resultingGeneration: request.expectedGeneration,
+                    sourceChanged: false,
+                    selections: [MarkdownEditorSelectionRange(anchor: 0, head: 0)],
+                    undoLabel: nil,
+                    text: "Stale A\n",
+                    context: nil,
+                    selection: nil,
+                    recovery: nil,
+                    scrollAnchor: nil,
+                    performanceSamples: nil,
+                    accepted: true,
+                    error: nil
+                )
+                return try JSONSerialization.jsonObject(
+                    with: JSONEncoder().encode(result)
+                )
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+
+        func waitUntilSuspended() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                if clock.now >= deadline {
+                    Issue.record("The bridge request did not reach the deterministic suspension point.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resumeSuccessfully() {
+            outcome = .success
+            continuation?.resume()
+            continuation = nil
+        }
+
+        func resumeWithTransportError() {
+            outcome = .failure
+            continuation?.resume()
+            continuation = nil
         }
     }
 
