@@ -335,22 +335,6 @@ final class DocumentController: ObservableObject {
         )
     }
 
-    func versions(for id: VaultQualifiedNoteID) async throws -> [VaultVersion] {
-        try await requireOperations().versions(for: id)
-    }
-
-    func restore(
-        _ id: VaultQualifiedNoteID,
-        versionID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> SaveResult {
-        try await requireOperations().restore(
-            id,
-            versionID: versionID,
-            expectedRevision: expectedRevision
-        )
-    }
-
     func move(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,

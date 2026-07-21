@@ -300,7 +300,6 @@ public struct WorkspaceSnapshotEvent: Sendable {
 
 public enum WorkspaceSourceCommitKind: Sendable {
     case save
-    case restore(versionID: UUID)
     case checkpointRestore(checkpointID: UUID)
 }
 

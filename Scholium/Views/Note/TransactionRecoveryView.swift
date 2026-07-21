@@ -169,6 +169,7 @@ struct TransactionRecoveryView: View {
 
     private func operationName(_ operation: TriptychMutationOperation) -> String {
         switch operation {
+        case .noteSave: "Save Note"
         case .noteMove: "Move or Rename Note"
         case .unclassifiedClassification: "Classify Imported Note"
         case .permanentDeletion: "Permanent Deletion"
@@ -219,6 +220,7 @@ private struct RecoveryFileRow: View {
 
     private var roleName: String {
         switch file.role {
+        case .savedNote: "Saved note"
         case .movedNote: "Moved note"
         case .incomingLinkRewrite: "Incoming link rewrite"
         case .classifiedSource: "Unclassified source"

@@ -1,22 +1,16 @@
-import CryptoKit
 import Foundation
 import ScholiumContracts
 
 public actor VaultRepository {
-    private struct VersionIndex: Codable {
-        var entries: [String: [VaultVersion]]
-    }
-
     public let identity: VaultIdentity
     public let vaultRole: VaultRole
     public let vaultURL: URL
     public let storageURL: URL
 
     private let canonicalRoot: URL
-    private let versionsURL: URL
-    private let indexURL: URL
-    private var versionIndex: VersionIndex
-    private let versionIndexLoadFailure: String?
+    private let pathResolver: VaultPathResolver
+    private let mutationCoordinator: VaultMutationCoordinator
+    private let recoveryLedger: PrewriteRecoveryLedger
     private let fileManager = FileManager.default
 
     public init(
@@ -29,32 +23,16 @@ public actor VaultRepository {
         self.vaultRole = vaultRole
         self.vaultURL = vaultURL.standardizedFileURL
         self.canonicalRoot = vaultURL.resolvingSymlinksInPath().standardizedFileURL
+        self.pathResolver = try VaultPathResolver(rootURL: vaultURL)
+        self.mutationCoordinator = VaultMutationCoordinator(resolver: pathResolver)
         self.storageURL = applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
-        self.versionsURL = storageURL.appendingPathComponent("versions", isDirectory: true)
-        self.indexURL = versionsURL.appendingPathComponent("index.json")
-        try fileManager.createDirectory(at: versionsURL, withIntermediateDirectories: true)
-        if fileManager.fileExists(atPath: indexURL.path) {
-            do {
-                let data = try Data(contentsOf: indexURL, options: [.mappedIfSafe])
-                let decoded = try JSONDecoder().decode(VersionIndex.self, from: data)
-                self.versionIndex = decoded
-                self.versionIndexLoadFailure = Self.versionIndexValidationError(decoded)
-            } catch {
-                self.versionIndex = VersionIndex(entries: [:])
-                self.versionIndexLoadFailure = error.localizedDescription
-            }
-        } else {
-            self.versionIndex = VersionIndex(entries: [:])
-            self.versionIndexLoadFailure = nil
-        }
+        self.recoveryLedger = try PrewriteRecoveryLedger(storageURL: storageURL)
     }
 
-    public func versionHistoryHealthError() -> String? {
-        versionIndexLoadFailure.map {
-            VaultRepositoryError.versionHistoryUnavailable($0).localizedDescription
-        }
+    public func recoveryLedgerHealthDiagnostic() -> String? {
+        recoveryLedger.healthDiagnostic
     }
 
     public func load(relativePath: String) throws -> NoteDocument {
@@ -152,7 +130,12 @@ public actor VaultRepository {
                 try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.conflict(expected: expectedRevision, current: recheckedFingerprint)
             }
-            try Data(updatedContent.utf8).write(to: fileURL, options: .atomic)
+            let candidateData = Data(updatedContent.utf8)
+            try mutationCoordinator.updateExisting(
+                path: markdownRelativePath(relativePath),
+                expected: currentData,
+                candidate: candidateData
+            )
             let readback = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
             let expectedFingerprint = DocumentFingerprint(content: updatedContent)
             let readbackFingerprint = DocumentFingerprint(data: readback)
@@ -165,7 +148,9 @@ public actor VaultRepository {
             }
             try commitPreparedSnapshot(snapshot)
         } catch {
-            if !(error is VaultRepositoryError) {
+            if case VaultRepositoryError.commitUncertain = error {
+                try? commitPreparedSnapshot(snapshot)
+            } else {
                 let observed = try? Data(contentsOf: fileURL)
                 if observed.map(DocumentFingerprint.init(data:)) == currentFingerprint {
                     try? discardPreparedSnapshot(snapshot)
@@ -175,7 +160,7 @@ public actor VaultRepository {
             }
             throw error
         }
-        return SaveResult(document: updated, snapshot: snapshot)
+        return SaveResult(document: updated)
     }
 
     /// Creates a new Markdown note without replacing an existing path.
@@ -184,15 +169,12 @@ public actor VaultRepository {
         if proposed.rawFrontmatter != nil, !proposed.validationWarnings.isEmpty {
             throw VaultRepositoryError.invalidFrontmatter(proposed.validationWarnings.joined(separator: "\n"))
         }
-        let destination = try newFileURL(relativePath: relativePath)
-        let temporary = destination.deletingLastPathComponent()
-            .appendingPathComponent(".scholium-create-\(UUID().uuidString).tmp")
+        _ = try newFileURL(relativePath: relativePath)
         do {
-            try Data(content.utf8).write(to: temporary, options: .atomic)
-            guard !fileManager.fileExists(atPath: destination.path) else {
-                throw VaultRepositoryError.fileAlreadyExists(relativePath)
-            }
-            try fileManager.moveItem(at: temporary, to: destination)
+            try mutationCoordinator.create(
+                path: markdownRelativePath(relativePath),
+                data: Data(content.utf8)
+            )
             let readback = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == proposed.fingerprint else {
@@ -202,10 +184,7 @@ public actor VaultRepository {
                 )
             }
             return NoteDocument(relativePath: relativePath, rawContent: content)
-        } catch {
-            try? fileManager.removeItem(at: temporary)
-            throw error
-        }
+        } catch { throw error }
     }
 
     /// Duplicates exact source bytes into a new note path.
@@ -251,7 +230,11 @@ public actor VaultRepository {
                 try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.fileAlreadyExists(destinationRelativePath)
             }
-            try fileManager.moveItem(at: sourceURL, to: destinationURL)
+            try mutationCoordinator.move(
+                source: markdownRelativePath(relativePath),
+                destination: markdownRelativePath(destinationRelativePath),
+                expected: currentData
+            )
             let readback = try Data(contentsOf: try existingFileURL(relativePath: destinationRelativePath))
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == currentFingerprint else {
@@ -269,8 +252,7 @@ public actor VaultRepository {
             return NoteMoveResult(
                 document: NoteDocument(relativePath: destinationRelativePath, rawContent: content),
                 previousRelativePath: relativePath,
-                relativePath: destinationRelativePath,
-                snapshot: snapshot
+                relativePath: destinationRelativePath
             )
         } catch {
             if fileManager.fileExists(atPath: sourceURL.path) {
@@ -304,9 +286,9 @@ public actor VaultRepository {
         )
     }
 
-    /// Permanently removes a note and every repository-owned recoverable
-    /// version of that path. A provisional snapshot protects the mutation
-    /// only while it is in flight and is never committed to Note History.
+    /// Permanently removes a note and every repository-owned recovery entry
+    /// for that path. A provisional entry protects the mutation only while it
+    /// is in flight and is never exposed as a delivery-facing history item.
     public func deletePermanently(
         relativePath: String,
         expectedRevision: DocumentFingerprint
@@ -326,9 +308,12 @@ public actor VaultRepository {
                 try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.conflict(expected: expectedRevision, current: rechecked)
             }
-            try fileManager.removeItem(at: fileURL)
+            try mutationCoordinator.delete(
+                path: markdownRelativePath(relativePath),
+                expected: data
+            )
             sourceWasDeleted = true
-            try purgeVersionHistory(relativePath: relativePath)
+            try purgeRecoveryEntries(relativePath: relativePath)
             try discardPreparedSnapshot(snapshot)
             removeEmptyParentDirectories(startingAt: fileURL.deletingLastPathComponent())
             return NoteDeletionResult(
@@ -341,14 +326,14 @@ public actor VaultRepository {
             } else {
                 // Permanent deletion must never publish a new recovery copy.
                 // Retry cleanup best-effort before surfacing the failure.
-                try? purgeVersionHistory(relativePath: relativePath)
+                try? purgeRecoveryEntries(relativePath: relativePath)
                 try? discardPreparedSnapshot(snapshot)
             }
             throw error
         }
     }
 
-    /// Creates a committed recovery version before a higher-level multi-file
+    /// Creates a committed recovery entry before a higher-level multi-file
     /// deletion starts. The source remains untouched until `apply` repeats the
     /// path and revision checks. A durable coordinator journal owns the token.
     func preparePermanentDeletion(
@@ -367,7 +352,7 @@ public actor VaultRepository {
             return PreparedPermanentDeletion(
                 relativePath: relativePath,
                 fingerprint: current,
-                recoveryVersion: version
+                recoveryReference: version
             )
         } catch {
             try? discardPreparedSnapshot(version)
@@ -376,7 +361,7 @@ public actor VaultRepository {
     }
 
     /// Removes the prepared source only after a fresh authorization and
-    /// fingerprint check. The recovery version remains committed until the
+    /// fingerprint check. The recovery entry remains committed until the
     /// enclosing transaction either rolls back or finalizes.
     func applyPreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
         let fileURL = try existingFileURL(relativePath: prepared.relativePath)
@@ -384,7 +369,10 @@ public actor VaultRepository {
         guard current == prepared.fingerprint else {
             throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
         }
-        try fileManager.removeItem(at: fileURL)
+        try mutationCoordinator.delete(
+            path: markdownRelativePath(prepared.relativePath),
+            expected: try recoveryLedger.content(entryID: prepared.recoveryReference.id)
+        )
         removeEmptyParentDirectories(startingAt: fileURL.deletingLastPathComponent())
     }
 
@@ -396,13 +384,12 @@ public actor VaultRepository {
             guard current == prepared.fingerprint else {
                 throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
             }
-            try discardCommittedSnapshot(prepared.recoveryVersion)
+            try discardCommittedSnapshot(prepared.recoveryReference)
             return
         }
 
         let candidate = try prospectiveNewFileURL(relativePath: prepared.relativePath)
-        let recoveryURL = versionFileURL(prepared.recoveryVersion)
-        let data = try Data(contentsOf: recoveryURL)
+        let data = try recoveryLedger.content(entryID: prepared.recoveryReference.id)
         guard DocumentFingerprint(data: data) == prepared.fingerprint else {
             throw VaultRepositoryError.readbackMismatch(
                 expected: prepared.fingerprint,
@@ -410,18 +397,21 @@ public actor VaultRepository {
             )
         }
         try ensureSafeDirectory(candidate.deletingLastPathComponent())
-        try data.write(to: candidate, options: .atomic)
+        try mutationCoordinator.create(
+            path: markdownRelativePath(prepared.relativePath),
+            data: data
+        )
         let observed = DocumentFingerprint(data: try Data(contentsOf: try existingFileURL(
             relativePath: prepared.relativePath
         )))
         guard observed == prepared.fingerprint else {
             throw VaultRepositoryError.readbackMismatch(expected: prepared.fingerprint, current: observed)
         }
-        try discardCommittedSnapshot(prepared.recoveryVersion)
+        try discardCommittedSnapshot(prepared.recoveryReference)
     }
 
-    /// Makes a prepared deletion permanent by removing all path-keyed history,
-    /// including the temporary recovery version. Repeating it is safe.
+    /// Makes a prepared deletion permanent by removing all path-keyed recovery
+    /// evidence, including the temporary entry. Repeating it is safe.
     func finalizePreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
         let candidate = try prospectiveNewFileURL(relativePath: prepared.relativePath)
         if fileManager.fileExists(atPath: candidate.path) {
@@ -430,7 +420,7 @@ public actor VaultRepository {
             )))
             throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
         }
-        try purgeVersionHistory(relativePath: prepared.relativePath)
+        try purgeRecoveryEntries(relativePath: prepared.relativePath)
     }
 
     /// Removes a file created by the same higher-level transaction when that
@@ -448,126 +438,45 @@ public actor VaultRepository {
             throw VaultRepositoryError.conflict(expected: createdRevision, current: current)
         }
         let recheckedURL = try existingFileURL(relativePath: relativePath)
-        let rechecked = DocumentFingerprint(data: try Data(contentsOf: recheckedURL))
+        let recheckedData = try Data(contentsOf: recheckedURL)
+        let rechecked = DocumentFingerprint(data: recheckedData)
         guard rechecked == createdRevision else {
             throw VaultRepositoryError.conflict(expected: createdRevision, current: rechecked)
         }
-        try fileManager.removeItem(at: recheckedURL)
+        try mutationCoordinator.delete(
+            path: markdownRelativePath(relativePath),
+            expected: recheckedData
+        )
         removeEmptyParentDirectories(startingAt: recheckedURL.deletingLastPathComponent())
     }
 
-    public func versions(relativePath: String) -> [VaultVersion] {
-        (versionIndex.entries[relativePath] ?? []).sorted { $0.sequence > $1.sequence }
+    func recoveryEntries(relativePath: String) -> [PrewriteRecoveryReference] {
+        (try? recoveryLedger.entries(relativePath: relativePath)) ?? []
     }
 
-    /// Preserves path-keyed Note History after a confirmed identity move.
-    ///
-    /// Version blobs are copied to their new path-derived directory before the
-    /// index is atomically replaced. The original blobs remain in place until
-    /// the new index is durable, so interruption before or during the index
-    /// write leaves the previous history readable. A destination with unrelated
-    /// history is rejected rather than merged into the confirmed note.
-    public func migrateVersionHistory(
+    /// Remaps machine-local pre-write evidence after a stable-identity move.
+    public func migrateRecoveryLedger(
         from sourceRelativePath: String,
         to destinationRelativePath: String
     ) throws {
-        try requireVersionHistory()
         try validateMarkdownRelativePath(sourceRelativePath)
         try validateMarkdownRelativePath(destinationRelativePath)
         guard sourceRelativePath != destinationRelativePath else { return }
-        let sourceEntries = versionIndex.entries[sourceRelativePath] ?? []
+        let sourceEntries = try recoveryLedger.entries(relativePath: sourceRelativePath)
         guard !sourceEntries.isEmpty else { return }
-        if let destinationEntries = versionIndex.entries[destinationRelativePath],
-           !destinationEntries.isEmpty {
-            let sourceIDs = Set(sourceEntries.map(\.id))
-            let destinationIDs = Set(destinationEntries.map(\.id))
-            if sourceIDs == destinationIDs {
-                var updatedIndex = versionIndex
-                updatedIndex.entries[sourceRelativePath] = nil
-                try persistIndex(updatedIndex)
-                versionIndex = updatedIndex
-                return
-            }
-            throw VaultRepositoryError.versionHistoryPathConflict(destinationRelativePath)
+        let destinationEntries = try recoveryLedger.entries(relativePath: destinationRelativePath)
+        guard destinationEntries.isEmpty else {
+            throw VaultRepositoryError.recoveryPathConflict(destinationRelativePath)
         }
-
-        let destinationDirectory = versionsURL.appendingPathComponent(
-            Self.pathDigest(destinationRelativePath),
-            isDirectory: true
-        )
-        try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-        let migrated = try sourceEntries.map { version -> VaultVersion in
-            let sourceURL = versionFileURL(version)
-            let destinationURL = destinationDirectory
-                .appendingPathComponent(version.id.uuidString + ".md", isDirectory: false)
-            let sourceData = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
-            guard DocumentFingerprint(data: sourceData) == version.fingerprint else {
-                throw VaultRepositoryError.readbackMismatch(
-                    expected: version.fingerprint,
-                    current: DocumentFingerprint(data: sourceData)
-                )
-            }
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                let existing = try Data(contentsOf: destinationURL, options: [.mappedIfSafe])
-                guard existing == sourceData else {
-                    throw VaultRepositoryError.versionHistoryPathConflict(destinationRelativePath)
-                }
-            } else {
-                try sourceData.write(to: destinationURL, options: .atomic)
-            }
-            return VaultVersion(
-                id: version.id,
-                relativePath: destinationRelativePath,
-                sequence: version.sequence,
-                createdAt: version.createdAt,
-                fingerprint: version.fingerprint
-            )
-        }
-
-        var updatedIndex = versionIndex
-        updatedIndex.entries[sourceRelativePath] = nil
-        updatedIndex.entries[destinationRelativePath] = migrated
-        try persistIndex(updatedIndex)
-        versionIndex = updatedIndex
-
-        let sourceDirectory = versionsURL.appendingPathComponent(
-            Self.pathDigest(sourceRelativePath),
-            isDirectory: true
-        )
-        if sourceDirectory != destinationDirectory,
-           fileManager.fileExists(atPath: sourceDirectory.path) {
-            try? fileManager.removeItem(at: sourceDirectory)
-        }
+        try recoveryLedger.remap(from: sourceRelativePath, to: destinationRelativePath)
     }
 
-    public func content(versionID: UUID) throws -> String {
-        try requireVersionHistory()
-        guard let version = versionIndex.entries.values.joined().first(where: { $0.id == versionID }) else {
-            throw VaultRepositoryError.versionNotFound(versionID)
-        }
-        let data = try Data(contentsOf: versionFileURL(version))
-        let observed = DocumentFingerprint(data: data)
-        guard observed == version.fingerprint else {
-            throw VaultRepositoryError.readbackMismatch(
-                expected: version.fingerprint,
-                current: observed
-            )
-        }
+    func recoveryContent(entryID: UUID) throws -> String {
+        let data = try recoveryLedger.content(entryID: entryID)
         guard let content = NoteDocument.decodeUTF8PreservingBOM(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
         return content
-    }
-
-    public func restore(
-        versionID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) throws -> SaveResult {
-        guard let version = versionIndex.entries.values.joined().first(where: { $0.id == versionID }) else {
-            throw VaultRepositoryError.versionNotFound(versionID)
-        }
-        let content = try self.content(versionID: versionID)
-        return try save(relativePath: version.relativePath, changeSet: .exactContent(content), expectedRevision: expectedRevision)
     }
 
     private func existingFileURL(relativePath: String) throws -> URL {
@@ -606,8 +515,8 @@ public actor VaultRepository {
     }
 
     private func prospectiveNewFileURL(relativePath: String) throws -> URL {
-        try validateMarkdownRelativePath(relativePath)
-        let candidate = canonicalRoot.appendingPathComponent(relativePath).standardizedFileURL
+        let typedPath = try markdownRelativePath(relativePath)
+        let candidate = try pathResolver.unresolvedURL(for: typedPath)
         let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
         guard candidate.path.hasPrefix(rootPath) else {
             throw VaultRepositoryError.outsideVault(relativePath)
@@ -615,6 +524,7 @@ public actor VaultRepository {
         guard !fileManager.fileExists(atPath: candidate.path) else {
             throw VaultRepositoryError.fileAlreadyExists(relativePath)
         }
+        try pathResolver.validateNoCollision(for: typedPath, fileManager: fileManager)
 
         // Find the nearest existing ancestor without creating the missing
         // suffix. A symlinked ancestor is never an authorized destination.
@@ -642,14 +552,16 @@ public actor VaultRepository {
     }
 
     private func validateMarkdownRelativePath(_ relativePath: String) throws {
-        guard !relativePath.isEmpty,
-              !relativePath.hasPrefix("/"),
-              !relativePath.split(separator: "/", omittingEmptySubsequences: false).contains(".."),
-              !relativePath.split(separator: "/", omittingEmptySubsequences: false).contains("") else {
-            throw VaultRepositoryError.invalidRelativePath(relativePath)
-        }
-        guard URL(fileURLWithPath: relativePath).pathExtension.caseInsensitiveCompare("md") == .orderedSame else {
+        _ = try markdownRelativePath(relativePath)
+    }
+
+    private func markdownRelativePath(_ relativePath: String) throws -> MarkdownRelativePath {
+        do {
+            return try MarkdownRelativePath(relativePath)
+        } catch MarkdownRelativePathError.markdownRequired {
             throw VaultRepositoryError.markdownRequired(relativePath)
+        } catch {
+            throw VaultRepositoryError.invalidRelativePath(relativePath)
         }
     }
 
@@ -678,106 +590,24 @@ public actor VaultRepository {
         try fileManager.createDirectory(at: standardized, withIntermediateDirectories: false)
     }
 
-    private func prepareSnapshot(relativePath: String, data: Data) throws -> VaultVersion {
-        try requireVersionHistory()
-        let entries = versionIndex.entries[relativePath] ?? []
-        let version = VaultVersion(
-            id: UUID(),
-            relativePath: relativePath,
-            sequence: (entries.map(\.sequence).max() ?? 0) + 1,
-            createdAt: Date(),
-            fingerprint: DocumentFingerprint(data: data)
-        )
-        let pending = versionsURL.appendingPathComponent("pending", isDirectory: true)
-        try fileManager.createDirectory(at: pending, withIntermediateDirectories: true)
-        try data.write(to: preparedVersionFileURL(version), options: .atomic)
-        return version
+    private func prepareSnapshot(relativePath: String, data: Data) throws -> PrewriteRecoveryReference {
+        try recoveryLedger.prepare(relativePath: relativePath, data: data)
     }
 
-    private func commitPreparedSnapshot(_ version: VaultVersion) throws {
-        try requireVersionHistory()
-        var entries = (versionIndex.entries[version.relativePath] ?? [])
-            .filter { $0.id != version.id }
-        let directory = versionsURL.appendingPathComponent(Self.pathDigest(version.relativePath), isDirectory: true)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let pendingURL = preparedVersionFileURL(version)
-        let committedURL = versionFileURL(version)
-        if fileManager.fileExists(atPath: pendingURL.path) {
-            try fileManager.moveItem(at: pendingURL, to: committedURL)
-        }
-        entries.append(version)
-        let removed: [VaultVersion]
-        if entries.count > 10 {
-            removed = Array(entries.prefix(entries.count - 10))
-            entries.removeFirst(entries.count - 10)
-        } else {
-            removed = []
-        }
-        var updatedIndex = versionIndex
-        updatedIndex.entries[version.relativePath] = entries
-        try persistIndex(updatedIndex)
-        versionIndex = updatedIndex
-        for old in removed { try? fileManager.removeItem(at: versionFileURL(old)) }
+    private func commitPreparedSnapshot(_ version: PrewriteRecoveryReference) throws {
+        try recoveryLedger.commit(version)
     }
 
-    private func discardPreparedSnapshot(_ version: VaultVersion) throws {
-        let url = preparedVersionFileURL(version)
-        if fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
-        }
+    private func discardPreparedSnapshot(_ version: PrewriteRecoveryReference) throws {
+        try recoveryLedger.discard(version)
     }
 
-    private func discardCommittedSnapshot(_ version: VaultVersion) throws {
-        var updatedIndex = versionIndex
-        var entries = updatedIndex.entries[version.relativePath] ?? []
-        entries.removeAll { $0.id == version.id }
-        updatedIndex.entries[version.relativePath] = entries.isEmpty ? nil : entries
-        try persistIndex(updatedIndex)
-        versionIndex = updatedIndex
-        let url = versionFileURL(version)
-        if fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
-        }
-        let directory = url.deletingLastPathComponent()
-        if fileManager.fileExists(atPath: directory.path),
-           (try fileManager.contentsOfDirectory(atPath: directory.path)).isEmpty {
-            try fileManager.removeItem(at: directory)
-        }
+    private func discardCommittedSnapshot(_ version: PrewriteRecoveryReference) throws {
+        try recoveryLedger.discard(version)
     }
 
-    private func purgeVersionHistory(relativePath: String) throws {
-        try requireVersionHistory()
-        let entries = versionIndex.entries[relativePath] ?? []
-        var updatedIndex = versionIndex
-        updatedIndex.entries[relativePath] = nil
-        try persistIndex(updatedIndex)
-        versionIndex = updatedIndex
-
-        for version in entries {
-            let url = versionFileURL(version)
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
-            }
-        }
-        let directory = versionsURL.appendingPathComponent(
-            Self.pathDigest(relativePath),
-            isDirectory: true
-        )
-        if fileManager.fileExists(atPath: directory.path) {
-            try fileManager.removeItem(at: directory)
-        }
-    }
-
-    private func versionFileURL(_ version: VaultVersion) -> URL {
-        versionsURL
-            .appendingPathComponent(Self.pathDigest(version.relativePath), isDirectory: true)
-            .appendingPathComponent(version.id.uuidString + ".md")
-    }
-
-    private func preparedVersionFileURL(_ version: VaultVersion) -> URL {
-        versionsURL
-            .appendingPathComponent("pending", isDirectory: true)
-            .appendingPathComponent(version.id.uuidString + ".md")
+    private func purgeRecoveryEntries(relativePath: String) throws {
+        try recoveryLedger.tombstoneAndPurge(relativePath: relativePath)
     }
 
     private func removeEmptyParentDirectories(startingAt directory: URL) {
@@ -787,49 +617,6 @@ public actor VaultRepository {
             try? fileManager.removeItem(at: current)
             current.deleteLastPathComponent()
         }
-    }
-
-    private func requireVersionHistory() throws {
-        if let versionIndexLoadFailure {
-            throw VaultRepositoryError.versionHistoryUnavailable(versionIndexLoadFailure)
-        }
-    }
-
-    private func persistIndex(_ index: VersionIndex) throws {
-        try requireVersionHistory()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(index).write(to: indexURL, options: .atomic)
-    }
-
-    private static func pathDigest(_ path: String) -> String {
-        SHA256.hash(data: Data(path.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func versionIndexValidationError(_ index: VersionIndex) -> String? {
-        var ids: Set<UUID> = []
-        for (path, entries) in index.entries {
-            let components = path.split(separator: "/", omittingEmptySubsequences: false)
-            guard !path.isEmpty,
-                  !path.hasPrefix("/"),
-                  !components.contains(".."),
-                  !components.contains(""),
-                  URL(fileURLWithPath: path).pathExtension.caseInsensitiveCompare("md") == .orderedSame else {
-                return "The version index contains an invalid note path."
-            }
-            guard entries.count <= 10 else {
-                return "The version index contains more than ten visible versions for \(path)."
-            }
-            for entry in entries {
-                guard entry.relativePath == path else {
-                    return "The version index contains a path mismatch for \(path)."
-                }
-                guard ids.insert(entry.id).inserted else {
-                    return "The version index contains a duplicate version identity."
-                }
-            }
-        }
-        return nil
     }
 
     private static func lifecycleDestination(folder: String, relativePath: String) -> String {

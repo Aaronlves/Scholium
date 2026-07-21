@@ -662,13 +662,13 @@ private struct ScholiumCommands: Commands {
                       let target = NoteLifecycleTarget(note) else { return }
                 appState?.noteLifecycleRequest = .duplicate(target)
             }
-            .disabled(appState?.canEditCurrentNote != true || appState?.currentNoteIdentityIsResolved != true)
+            .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
             Button("Move or Rename Note…") {
                 guard let note = appState?.currentNote,
                       let target = NoteLifecycleTarget(note) else { return }
                 appState?.noteLifecycleRequest = .move(target)
             }
-            .disabled(appState?.canEditCurrentNote != true || appState?.currentNoteIdentityIsResolved != true)
+            .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
             Divider()
             Button("Create Checkpoint…") { appState?.showCreateCheckpoint = true }
                 .disabled(appState?.workspaceAssignment == nil)
@@ -1736,7 +1736,7 @@ final class WindowModel: ObservableObject {
     var currentResearchFunctionTarget: ResearchFunctionTarget? {
         guard let descriptor = currentDocumentDescriptor,
               let note = currentNote,
-              !CritiquePlacement.isManagedCritiquePath(note.relativePath),
+              currentDocumentCapabilities.canUseResearchFunctions,
               let role = ResearchFunctionTargetRole(vaultRole: descriptor.reference.vaultRole) else {
             return nil
         }
@@ -1817,13 +1817,7 @@ final class WindowModel: ObservableObject {
     }
 
     var canEditCurrentNote: Bool {
-        if case .unclassified = documentController.selectedDocument {
-            return currentNote != nil
-        }
-        guard let note = currentNote, currentDocumentDescriptor != nil else { return false }
-        let isCritique = currentDocumentVaultRole.allowsCritique
-            && (note.relativePath == "Critiques" || note.relativePath.hasPrefix("Critiques/"))
-        return !isCritique
+        currentDocumentCapabilities.canEditSource
     }
 
     var currentNoteIdentityIsResolved: Bool {
@@ -1831,17 +1825,44 @@ final class WindowModel: ObservableObject {
     }
 
     var canCommentCurrentNote: Bool {
-        guard currentDocumentDescriptor != nil else { return false }
-        switch currentDocumentVaultRole {
-        case .sourceCorpus, .topicKnowledge:
-            return true
-        case .draftProject:
-            // Critique source remains read-only in Scholium, but the
-            // researcher may attach app-owned comments to its rendered text.
-            return true
-        case .other:
-            return false
+        currentDocumentCapabilities.canComment
+    }
+
+    var currentDocumentCapabilities: DocumentCapabilities {
+        if case .unclassified = documentController.selectedDocument {
+            return DocumentCapabilities(
+                role: .other,
+                lifecycle: .active,
+                identity: .unresolved,
+                isManagedCritique: false,
+                isUnclassified: currentNote != nil
+            )
         }
+        guard let note = currentNote else {
+            return DocumentCapabilities(
+                role: currentDocumentVaultRole,
+                lifecycle: .active,
+                identity: .unresolved,
+                isManagedCritique: false
+            )
+        }
+        let identity: DocumentIdentityResolution
+        if identityAmbiguity(for: note.relativePath) != nil {
+            identity = .ambiguous
+        } else if pendingIdentityRebindings.contains(where: { $0.relativePath == note.relativePath }) {
+            identity = .pending
+        } else if currentDocumentDescriptor != nil {
+            identity = .resolved
+        } else {
+            identity = .unresolved
+        }
+        return DocumentCapabilities(
+            role: currentDocumentVaultRole,
+            lifecycle: WorkspaceDocumentLifecycle(relativePath: note.relativePath),
+            identity: identity,
+            isManagedCritique: currentDocumentVaultRole.allowsCritique
+                && CritiquePlacement.isManagedCritiquePath(note.relativePath)
+        )
     }
 
     func identityAmbiguity(for path: String) -> NoteIdentityAmbiguity? {
@@ -4001,7 +4022,7 @@ final class WindowModel: ObservableObject {
     }
 
     func clearPreparedLifecycleOperation(at path: String) {
-        guard path.hasPrefix("Set Aside/") || path.hasPrefix("Trash/") else { return }
+        guard WorkspaceDocumentLifecycle(relativePath: path) != .active else { return }
         noteIdentityByPath[path] = nil
         documentRevisions[path] = nil
     }
@@ -4137,7 +4158,7 @@ final class WindowModel: ObservableObject {
     func deleteNotePermanently(_ path: String) async throws {
         try await flushRegisteredEditorIfNeeded()
         try requireResolvedIdentity(for: path)
-        guard path.hasPrefix("Trash/"),
+        guard WorkspaceDocumentLifecycle(relativePath: path) == .trash,
               let expected = documentRevisions[path],
               let vaultID = currentRegisteredVault?.id else {
             throw WorkspaceRegistryError.incompleteWorkspace
@@ -4229,10 +4250,8 @@ final class WindowModel: ObservableObject {
             identityResolved: true,
             vaultID: vaultID
         )
-        if sourcePath.hasPrefix("Set Aside/")
-            || sourcePath.hasPrefix("Trash/")
-            || destinationPath.hasPrefix("Set Aside/")
-            || destinationPath.hasPrefix("Trash/") {
+        if WorkspaceDocumentLifecycle(relativePath: sourcePath) != .active
+            || WorkspaceDocumentLifecycle(relativePath: destinationPath) != .active {
             lifecycleMutationGeneration &+= 1
         }
     }
@@ -4719,7 +4738,9 @@ final class WindowModel: ObservableObject {
 
     func reviewNote(at path: String) {
         guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsHumanReview else { return }
+              context.vaultRole.allowsHumanReview,
+              currentNote?.relativePath == path,
+              currentDocumentCapabilities.canHumanReview else { return }
         openResearchFunction(.dialogue, permitsUnavailablePresentation: true)
     }
 
@@ -4744,7 +4765,9 @@ final class WindowModel: ObservableObject {
         reviewNote: String
     ) async throws {
         guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsHumanReview else {
+              context.vaultRole.allowsHumanReview,
+              currentNote?.relativePath == path,
+              currentDocumentCapabilities.canHumanReview else {
             throw HumanReviewWorkflowError.unavailableForOutput
         }
         guard context.fingerprint == fingerprint else {
@@ -4766,7 +4789,9 @@ final class WindowModel: ObservableObject {
         reviewNote: String
     ) async throws {
         guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsHumanReview else {
+              context.vaultRole.allowsHumanReview,
+              currentNote?.relativePath == path,
+              currentDocumentCapabilities.canHumanReview else {
             throw HumanReviewWorkflowError.unavailableForOutput
         }
         guard context.fingerprint == fingerprint else {

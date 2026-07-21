@@ -132,7 +132,7 @@ struct PermanentDeletionTests {
         #expect(!FileManager.default.fileExists(atPath: sourceURL.path))
         #expect(await reviewStore.record(noteID: identity.id) == nil)
         #expect(await dialogueStore.entries(noteID: identity.id).isEmpty)
-        #expect(await repository.versions(relativePath: path).isEmpty)
+        #expect(await repository.recoveryEntries(relativePath: path).isEmpty)
         #expect(await checkpointStore.checkpoints().isEmpty)
         #expect(try await control.identity(
             forVaultID: vaultID,
@@ -161,8 +161,8 @@ struct PermanentDeletionTests {
             .sorted { $0.uuidString < $1.uuidString })
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
-        #expect(await fixture.repository.versions(relativePath: fixture.workPath).isEmpty)
-        #expect(await fixture.repository.versions(relativePath: fixture.critiquePath).isEmpty)
+        #expect(await fixture.repository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
+        #expect(await fixture.repository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id) == nil)
         #expect(await fixture.humanReviewStore.record(noteID: fixture.critiqueIdentity.id) == nil)
         #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).isEmpty)
@@ -285,8 +285,8 @@ struct PermanentDeletionTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
         let reopenedRepository = try fixture.reopenedRepository()
-        #expect(await reopenedRepository.versions(relativePath: fixture.workPath).isEmpty)
-        #expect(await reopenedRepository.versions(relativePath: fixture.critiquePath).isEmpty)
+        #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
+        #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.checkpointStore.checkpoints().isEmpty)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }

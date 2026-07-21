@@ -10,9 +10,12 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
     case conflict(expected: DocumentFingerprint, current: DocumentFingerprint)
     case readbackMismatch(expected: DocumentFingerprint, current: DocumentFingerprint)
     case invalidFrontmatter(String)
-    case versionNotFound(UUID)
-    case versionHistoryPathConflict(String)
-    case versionHistoryUnavailable(String)
+    case recoveryEntryNotFound(UUID)
+    case recoveryPathConflict(String)
+    case recoveryLedgerUnavailable(String)
+    case pathCollision(existing: String, requested: String)
+    case commitUncertain(String)
+    case atomicCommitUnsupported(String)
 
     public var errorDescription: String? {
         switch self {
@@ -26,16 +29,22 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         case .readbackMismatch:
             return "Scholium could not verify the saved bytes. The previous version remains available for recovery."
         case .invalidFrontmatter(let message): return "Invalid YAML frontmatter: \(message)"
-        case .versionNotFound(let id): return "Version not found: \(id.uuidString)"
-        case .versionHistoryPathConflict(let path):
-            return "Note History already belongs to another note at: \(path)"
-        case .versionHistoryUnavailable(let reason):
-            return "Note History is unavailable, so Scholium did not modify the note. The existing history files remain unchanged. \(reason)"
+        case .recoveryEntryNotFound(let id): return "Recovery entry not found: \(id.uuidString)"
+        case .recoveryPathConflict(let path):
+            return "Prewrite recovery already belongs to another note at: \(path)"
+        case .recoveryLedgerUnavailable(let reason):
+            return "Prewrite recovery is unavailable, so Scholium did not modify the note. Existing recovery evidence remains unchanged. \(reason)"
+        case .pathCollision(let existing, let requested):
+            return "The requested note path collides with an existing path on this volume: \(requested) (existing: \(existing))"
+        case .commitUncertain(let reason):
+            return "Scholium could not prove which bytes are canonical after the commit. It preserved recovery evidence and did not report the note as saved. \(reason)"
+        case .atomicCommitUnsupported(let reason):
+            return "This volume cannot provide Scholium's displaced-byte-preserving commit guarantee. The note remains open and unchanged. \(reason)"
         }
     }
 }
 
-public struct VaultVersion: Codable, Hashable, Identifiable, Sendable {
+public struct PrewriteRecoveryReference: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let relativePath: String
     public let sequence: Int
@@ -59,11 +68,9 @@ public struct VaultVersion: Codable, Hashable, Identifiable, Sendable {
 
 public struct SaveResult: Sendable {
     public let document: NoteDocument
-    public let snapshot: VaultVersion
 
-    public init(document: NoteDocument, snapshot: VaultVersion) {
+    public init(document: NoteDocument) {
         self.document = document
-        self.snapshot = snapshot
     }
 }
 
@@ -71,18 +78,15 @@ public struct NoteMoveResult: Sendable {
     public let document: NoteDocument
     public let previousRelativePath: String
     public let relativePath: String
-    public let snapshot: VaultVersion
 
     public init(
         document: NoteDocument,
         previousRelativePath: String,
-        relativePath: String,
-        snapshot: VaultVersion
+        relativePath: String
     ) {
         self.document = document
         self.previousRelativePath = previousRelativePath
         self.relativePath = relativePath
-        self.snapshot = snapshot
     }
 }
 

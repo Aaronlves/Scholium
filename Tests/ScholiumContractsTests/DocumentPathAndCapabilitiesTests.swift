@@ -1,0 +1,155 @@
+import Foundation
+import Testing
+@testable import ScholiumContracts
+
+@Suite("Document paths and capabilities")
+struct DocumentPathAndCapabilitiesTests {
+    @Test(
+        "Markdown paths reject unsafe components",
+        arguments: ["", "/Absolute.md", "A//B.md", "./A.md", "A/../B.md", "A\0B.md"]
+    )
+    func rejectsUnsafePaths(_ raw: String) {
+        #expect(throws: MarkdownRelativePathError.self) {
+            _ = try MarkdownRelativePath(raw)
+        }
+    }
+
+    @Test("Backslash remains a literal character")
+    func backslashIsLiteral() throws {
+        let path = try MarkdownRelativePath(#"Folder\Note.md"#)
+        #expect(path.components.count == 1)
+        #expect(path.rawValue == #"Folder\Note.md"#)
+    }
+
+    @Test("Comparison keys obey volume case and normalization rules")
+    func comparisonKeys() throws {
+        let uppercase = try MarkdownRelativePath("CAFÉ.md")
+        let decomposed = try MarkdownRelativePath("cafe\u{301}.md")
+        #expect(VaultPathComparisonKey(
+            uppercase,
+            caseSensitive: false,
+            normalizationSensitive: false
+        ) == VaultPathComparisonKey(
+            decomposed,
+            caseSensitive: false,
+            normalizationSensitive: false
+        ))
+        #expect(VaultPathComparisonKey(
+            uppercase,
+            caseSensitive: true,
+            normalizationSensitive: false
+        ) != VaultPathComparisonKey(
+            decomposed,
+            caseSensitive: true,
+            normalizationSensitive: false
+        ))
+    }
+
+    @Test(
+        "Unresolved identity fails closed",
+        arguments: [
+            DocumentIdentityResolution.unresolved,
+            .pending,
+            .ambiguous,
+        ]
+    )
+    func unresolvedFailsClosed(_ identity: DocumentIdentityResolution) {
+        let capabilities = DocumentCapabilities(
+            role: .topicKnowledge,
+            lifecycle: .active,
+            identity: identity,
+            isManagedCritique: false
+        )
+        #expect(!capabilities.canEditSource)
+        #expect(!capabilities.canComment)
+        #expect(!capabilities.canHumanReview)
+        #expect(!capabilities.canUseResearchFunctions)
+        #expect(!capabilities.isManagedCritique)
+        #expect(capabilities.lifecycleActions.isEmpty)
+    }
+
+    @Test("Unclassified documents permit only edit and classify")
+    func unclassifiedBoundary() {
+        let capabilities = DocumentCapabilities(
+            role: .other,
+            lifecycle: .active,
+            identity: .unresolved,
+            isManagedCritique: false,
+            isUnclassified: true
+        )
+        #expect(capabilities.canEditSource)
+        #expect(capabilities.lifecycleActions == [.classify])
+        #expect(!capabilities.canComment)
+        #expect(!capabilities.canHumanReview)
+        #expect(!capabilities.canUseResearchFunctions)
+    }
+
+    @Test("Managed Critique is commentable but not editable, reviewable, duplicable, or agent-writable")
+    func critiqueBoundary() {
+        let capabilities = DocumentCapabilities(
+            role: .draftProject,
+            lifecycle: .active,
+            identity: .resolved,
+            isManagedCritique: true
+        )
+        #expect(!capabilities.canEditSource)
+        #expect(capabilities.canComment)
+        #expect(!capabilities.canHumanReview)
+        #expect(!capabilities.canUseResearchFunctions)
+        #expect(capabilities.isManagedCritique)
+        #expect(!capabilities.allows(.duplicate))
+        #expect(capabilities.allows(.moveToTrash))
+    }
+
+    @Test("Lifecycle projects only relevant actions")
+    func lifecycleMatrix() {
+        let active = DocumentCapabilities(
+            role: .topicKnowledge,
+            lifecycle: .active,
+            identity: .resolved,
+            isManagedCritique: false
+        )
+        let setAside = DocumentCapabilities(
+            role: .topicKnowledge,
+            lifecycle: .setAside,
+            identity: .resolved,
+            isManagedCritique: false
+        )
+        let trash = DocumentCapabilities(
+            role: .topicKnowledge,
+            lifecycle: .trash,
+            identity: .resolved,
+            isManagedCritique: false
+        )
+        #expect(active.lifecycleActions == [.duplicate, .move, .setAside, .moveToTrash])
+        #expect(setAside.lifecycleActions == [.putBack, .moveToTrash])
+        #expect(trash.lifecycleActions == [.putBack, .deletePermanently])
+        #expect(!setAside.canComment)
+        #expect(!trash.canComment)
+    }
+
+    @Test("Prepared deletion decodes the legacy recoveryVersion key")
+    func preparedDeletionLegacyDecoding() throws {
+        let fingerprint = DocumentFingerprint(data: Data("before".utf8))
+        let reference = PrewriteRecoveryReference(
+            id: UUID(),
+            relativePath: "Trash/Note.md",
+            sequence: 1,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            fingerprint: fingerprint
+        )
+        let prepared = PreparedPermanentDeletion(
+            relativePath: "Trash/Note.md",
+            fingerprint: fingerprint,
+            recoveryReference: reference
+        )
+        let encoded = try JSONEncoder().encode(prepared)
+        let legacyJSON = try #require(String(data: encoded, encoding: .utf8))
+            .replacingOccurrences(of: "recoveryReference", with: "recoveryVersion")
+        let decoded = try JSONDecoder().decode(
+            PreparedPermanentDeletion.self,
+            from: Data(legacyJSON.utf8)
+        )
+        #expect(decoded == prepared)
+    }
+}

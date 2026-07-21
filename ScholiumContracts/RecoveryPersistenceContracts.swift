@@ -3,16 +3,47 @@ import Foundation
 public struct PreparedPermanentDeletion: Codable, Hashable, Sendable {
     public let relativePath: String
     public let fingerprint: DocumentFingerprint
-    public let recoveryVersion: VaultVersion
+    public let recoveryReference: PrewriteRecoveryReference
 
     public init(
         relativePath: String,
         fingerprint: DocumentFingerprint,
-        recoveryVersion: VaultVersion
+        recoveryReference: PrewriteRecoveryReference
     ) {
         self.relativePath = relativePath
         self.fingerprint = fingerprint
-        self.recoveryVersion = recoveryVersion
+        self.recoveryReference = recoveryReference
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case relativePath
+        case fingerprint
+        case recoveryReference
+        case recoveryVersion
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relativePath = try container.decode(String.self, forKey: .relativePath)
+        fingerprint = try container.decode(DocumentFingerprint.self, forKey: .fingerprint)
+        if let reference = try container.decodeIfPresent(
+            PrewriteRecoveryReference.self,
+            forKey: .recoveryReference
+        ) {
+            recoveryReference = reference
+        } else {
+            recoveryReference = try container.decode(
+                PrewriteRecoveryReference.self,
+                forKey: .recoveryVersion
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(relativePath, forKey: .relativePath)
+        try container.encode(fingerprint, forKey: .fingerprint)
+        try container.encode(recoveryReference, forKey: .recoveryReference)
     }
 }
 

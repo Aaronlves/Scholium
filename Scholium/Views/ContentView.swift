@@ -339,6 +339,7 @@ struct ContentView: View {
             changedSinceReview: appState.currentDocumentChangedSinceReview,
             canComment: appState.canCommentCurrentNote,
             canEdit: appState.canEditCurrentNote,
+            isManagedCritique: appState.currentDocumentCapabilities.isManagedCritique,
             documentTextScale: appState.documentTextScale,
             appearanceCSS: appState.cssSnippetStore.appearanceCSS,
             readCSS: appState.cssSnippetStore.readCSS,

@@ -100,8 +100,8 @@ struct NoteIdentityRecoveryTests {
         #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
         #expect(session.selectedDocument?.relativePath == "Folder/New.md")
-        #expect((await repository.versions(relativePath: "Old.md")).isEmpty)
-        #expect((await repository.versions(relativePath: "Folder/New.md")).count == 1)
+        #expect((await repository.recoveryEntries(relativePath: "Old.md")).isEmpty)
+        #expect((await repository.recoveryEntries(relativePath: "Folder/New.md")).count == 1)
     }
 
     @Test("Same names and bytes in two vaults migrate only the confirmed vault")

@@ -1187,10 +1187,9 @@ public enum CritiquePlacementError: LocalizedError, Sendable {
 
 public enum CritiquePlacement {
     public static func isActiveCritiquePath(_ relativePath: String) -> Bool {
-        let path = relativePath.replacingOccurrences(of: "\\", with: "/")
-        return path.hasPrefix("Critiques/")
-            && path.lowercased().hasSuffix(".md")
-            && !path.dropFirst("Critiques/".count).isEmpty
+        return relativePath.hasPrefix("Critiques/")
+            && relativePath.lowercased().hasSuffix(".md")
+            && !relativePath.dropFirst("Critiques/".count).isEmpty
     }
 
     public static func isManagedCritiquePath(_ relativePath: String) -> Bool {

@@ -300,7 +300,7 @@ struct ArchitectureBoundaryTests {
         }
     }
 
-    @Test("Markdown editor exposes only the typed v4 dispatcher")
+    @Test("Markdown editor exposes the typed v4 dispatcher and completion response callback")
     func markdownEditorBridgeBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -317,7 +317,9 @@ struct ArchitectureBoundaryTests {
             encoding: .utf8
         )
 
-        #expect(editor.contains("webkitWindow.scholiumEditor = {dispatch: dispatchEditorRequest}"))
+        #expect(editor.contains("webkitWindow.scholiumEditor = {"))
+        #expect(editor.contains("dispatch: dispatchEditorRequest,"))
+        #expect(editor.contains("resolveLinkCompletionQuery,"))
         #expect(!editor.contains("bridgeVersion"))
         #expect(!editor.contains("searchKeymap"))
         #expect(!editor.contains("indentWithTab"))

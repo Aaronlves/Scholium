@@ -124,7 +124,7 @@ public actor NoteIdentityRecoveryCoordinator {
 
         // Every operation below is idempotent. Completion is persisted only
         // after all stores succeed.
-        try await repository.migrateVersionHistory(
+        try await repository.migrateRecoveryLedger(
             from: rebinding.previousRelativePath,
             to: rebinding.relativePath
         )

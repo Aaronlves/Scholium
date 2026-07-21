@@ -210,7 +210,7 @@ enum WorkspaceSnapshotBuilder {
         }
         for loaded in loadedVaults {
             if let repository = services.repositories[loaded.vault.id],
-               let issue = await repository.versionHistoryHealthError() {
+               let issue = await repository.recoveryLedgerHealthDiagnostic() {
                 healthIssues.append("\(loaded.vault.name): \(issue)")
             }
         }

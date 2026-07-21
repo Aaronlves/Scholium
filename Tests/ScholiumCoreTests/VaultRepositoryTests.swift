@@ -15,8 +15,8 @@ struct VaultRepositoryTests {
         return (root, support, note)
     }
 
-    @Test("Save snapshots first and restore is a real write")
-    func saveAndRestore() async throws {
+    @Test("Save records immutable prewrite recovery without exposing delivery restore")
+    func saveRecordsPrewriteRecovery() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
@@ -29,11 +29,16 @@ struct VaultRepositoryTests {
         )
         let savedContent = try String(contentsOf: f.note, encoding: .utf8)
         #expect(savedContent.contains("Changed"))
-        #expect((await repository.versions(relativePath: "topics/note.md")).count == 1)
+        let firstRecovery = await repository.recoveryEntries(relativePath: "topics/note.md")
+        #expect(firstRecovery.count == 1)
+        #expect(try await repository.recoveryContent(entryID: firstRecovery[0].id) == original.rawContent)
 
-        _ = try await repository.restore(versionID: saved.snapshot.id, expectedRevision: saved.document.fingerprint)
-        #expect(try String(contentsOf: f.note, encoding: .utf8) == original.rawContent)
-        #expect((await repository.versions(relativePath: "topics/note.md")).count == 2)
+        _ = try await repository.save(
+            relativePath: "topics/note.md",
+            changeSet: .body("Changed again\n"),
+            expectedRevision: saved.document.fingerprint
+        )
+        #expect((await repository.recoveryEntries(relativePath: "topics/note.md")).count == 2)
     }
 
     @Test("External changes cause a conflict")
@@ -88,14 +93,14 @@ struct VaultRepositoryTests {
             )
             document = result.document
         }
-        #expect((await first.versions(relativePath: "topics/note.md")).count == 10)
+        #expect((await first.recoveryEntries(relativePath: "topics/note.md")).count == 10)
 
         let secondID = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
         let second = try VaultRepository(vaultURL: f.root, identity: secondID, applicationSupportURL: f.support)
-        #expect((await second.versions(relativePath: "topics/note.md")).isEmpty)
+        #expect((await second.recoveryEntries(relativePath: "topics/note.md")).isEmpty)
     }
 
-    @Test("A corrupt repository-history index blocks snapshot-dependent writes without replacing history")
+    @Test("A corrupt legacy recovery index blocks writes without replacing evidence")
     func corruptVersionIndexIsPreserved() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
@@ -114,7 +119,7 @@ struct VaultRepositoryTests {
             identity: identity,
             applicationSupportURL: f.support
         )
-        #expect(await repository.versionHistoryHealthError() != nil)
+        #expect(await repository.recoveryLedgerHealthDiagnostic() != nil)
         let original = try await repository.load(relativePath: "topics/note.md")
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await repository.save(
@@ -128,8 +133,8 @@ struct VaultRepositoryTests {
         #expect(try await repository.load(relativePath: original.relativePath).rawContent == original.rawContent)
     }
 
-    @Test("A tampered version blob is rejected before comparison or restore")
-    func tamperedVersionBlobIsRejected() async throws {
+    @Test("A tampered recovery blob is rejected before use")
+    func tamperedRecoveryBlobIsRejected() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
@@ -144,19 +149,19 @@ struct VaultRepositoryTests {
             changeSet: .body("Changed\n"),
             expectedRevision: original.fingerprint
         )
+        let recovery = try #require(await repository.recoveryEntries(relativePath: original.relativePath).first)
         let versionsRoot = f.support
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
-            .appendingPathComponent("versions", isDirectory: true)
-        let enumerator = try #require(FileManager.default.enumerator(at: versionsRoot, includingPropertiesForKeys: nil))
-        let blobCandidate = enumerator.compactMap { $0 as? URL }.first {
-            $0.lastPathComponent == saved.snapshot.id.uuidString + ".md"
-        }
-        let blob = try #require(blobCandidate)
+            .appendingPathComponent("recovery-v2", isDirectory: true)
+            .appendingPathComponent("objects", isDirectory: true)
+            .appendingPathComponent(recovery.id.uuidString.lowercased(), isDirectory: true)
+        let blob = versionsRoot.appendingPathComponent("source.md")
+        #expect(FileManager.default.fileExists(atPath: blob.path))
         try Data("tampered".utf8).write(to: blob, options: .atomic)
 
         await #expect(throws: VaultRepositoryError.self) {
-            _ = try await repository.content(versionID: saved.snapshot.id)
+            _ = try await repository.recoveryContent(entryID: recovery.id)
         }
         #expect(try await repository.load(relativePath: original.relativePath).rawContent == saved.document.rawContent)
     }
@@ -207,7 +212,7 @@ struct VaultRepositoryTests {
         )
 
         #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent(relativePath).path))
-        #expect((await repository.versions(relativePath: relativePath)).isEmpty)
+        #expect((await repository.recoveryEntries(relativePath: relativePath)).isEmpty)
     }
 
     @Test("Creation rollback preserves a concurrently changed file")
@@ -265,8 +270,8 @@ struct VaultRepositoryTests {
         #expect(try await repository.load(relativePath: trashed.relativePath).rawContent == original.rawContent)
     }
 
-    @Test("Confirmed moves preserve repository history at the destination path")
-    func movedVersionHistory() async throws {
+    @Test("Confirmed moves preserve prewrite recovery at the destination path")
+    func movedRecoveryLedger() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
@@ -281,33 +286,32 @@ struct VaultRepositoryTests {
             changeSet: .body("Changed\n"),
             expectedRevision: original.fingerprint
         )
+        let savedRecovery = try #require(
+            await repository.recoveryEntries(relativePath: original.relativePath).first
+        )
         let moved = try await repository.move(
             relativePath: saved.document.relativePath,
             to: "Knowledge/Renamed.md",
             expectedRevision: saved.document.fingerprint
         )
 
-        try await repository.migrateVersionHistory(
+        try await repository.migrateRecoveryLedger(
             from: "topics/note.md",
             to: "Knowledge/Renamed.md"
         )
 
-        #expect((await repository.versions(relativePath: "topics/note.md")).isEmpty)
-        let versions = await repository.versions(relativePath: "Knowledge/Renamed.md")
-        #expect(versions.count == 2)
-        #expect(try await repository.content(versionID: saved.snapshot.id) == original.rawContent)
-        _ = try await repository.restore(
-            versionID: saved.snapshot.id,
-            expectedRevision: moved.document.fingerprint
-        )
-        #expect(try await repository.load(relativePath: "Knowledge/Renamed.md").rawContent == original.rawContent)
+        #expect((await repository.recoveryEntries(relativePath: "topics/note.md")).isEmpty)
+        let recoveryEntries = await repository.recoveryEntries(relativePath: "Knowledge/Renamed.md")
+        #expect(recoveryEntries.count == 2)
+        #expect(try await repository.recoveryContent(entryID: savedRecovery.id) == original.rawContent)
+        #expect(try await repository.load(relativePath: "Knowledge/Renamed.md").rawContent == moved.document.rawContent)
 
         // Retrying after an interrupted caller is idempotent.
-        try await repository.migrateVersionHistory(
+        try await repository.migrateRecoveryLedger(
             from: "topics/note.md",
             to: "Knowledge/Renamed.md"
         )
-        #expect((await repository.versions(relativePath: "Knowledge/Renamed.md")).count == 3)
+        #expect((await repository.recoveryEntries(relativePath: "Knowledge/Renamed.md")).count == 2)
     }
 
     @Test("Permanent deletion is revision checked and purges repository recovery bytes")
@@ -324,7 +328,7 @@ struct VaultRepositoryTests {
         )
         #expect(!FileManager.default.fileExists(atPath: f.note.path))
         #expect(deletion.fingerprint == original.fingerprint)
-        #expect(await repository.versions(relativePath: "topics/note.md").isEmpty)
+        #expect(await repository.recoveryEntries(relativePath: "topics/note.md").isEmpty)
     }
 
     @Test("Prepared deletion never replaces a concurrently recreated path and retains recovery bytes")
@@ -350,14 +354,14 @@ struct VaultRepositoryTests {
         }
 
         #expect(try String(contentsOf: f.note, encoding: .utf8) == "Concurrent replacement\n")
-        #expect(await repository.versions(relativePath: original.relativePath).contains {
-            $0.id == prepared.recoveryVersion.id && $0.fingerprint == original.fingerprint
+        #expect(await repository.recoveryEntries(relativePath: original.relativePath).contains {
+            $0.id == prepared.recoveryReference.id && $0.fingerprint == original.fingerprint
         })
 
         try FileManager.default.removeItem(at: f.note)
         try await repository.rollbackPreparedPermanentDeletion(prepared)
         #expect(try String(contentsOf: f.note, encoding: .utf8) == original.rawContent)
-        #expect(await repository.versions(relativePath: original.relativePath).isEmpty)
+        #expect(await repository.recoveryEntries(relativePath: original.relativePath).isEmpty)
     }
 
     @Test("Lifecycle paths reject traversal, non-Markdown targets, and symlink parents")

@@ -121,24 +121,6 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    public func versions(for id: VaultQualifiedNoteID) async throws -> [VaultVersion] {
-        let handle = try await reference.requireHandle()
-        return try await handle.versions(for: id)
-    }
-
-    public func restore(
-        _ id: VaultQualifiedNoteID,
-        versionID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> SaveResult {
-        let handle = try await reference.requireHandle()
-        return try await handle.restoreDocument(
-            id,
-            versionID: versionID,
-            expectedRevision: expectedRevision
-        )
-    }
-
     public func move(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,

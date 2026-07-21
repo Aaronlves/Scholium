@@ -11,8 +11,6 @@ public protocol DocumentUseCases: Sendable {
     func create(_ request: DocumentCreationRequest) async throws -> NoteDocument
     func duplicate(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> NoteDocument
     func save(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
-    func versions(for id: VaultQualifiedNoteID) async throws -> [VaultVersion]
-    func restore(_ id: VaultQualifiedNoteID, versionID: UUID, expectedRevision: DocumentFingerprint) async throws -> SaveResult
     func move(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
     func setAside(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
     func moveToTrash(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit

@@ -23,6 +23,7 @@ struct DocumentFeatureState {
     let changedSinceReview: Bool
     let canComment: Bool
     let canEdit: Bool
+    let isManagedCritique: Bool
     let documentTextScale: Double
     let appearanceCSS: String
     let readCSS: String
@@ -438,7 +439,7 @@ struct NoteContentView: View {
                 .padding(.vertical, 8)
             }
 
-            if isCritiqueDocument {
+            if state.isManagedCritique {
                 CritiqueProvenanceView(
                     note: note,
                     context: critiqueProvenanceContext
@@ -632,12 +633,7 @@ struct NoteContentView: View {
     }
 
     private var editingIsAvailable: Bool {
-        state.canEdit && !isCritiqueDocument
-    }
-
-    private var isCritiqueDocument: Bool {
-        state.vaultRole.allowsCritique
-            && (note.relativePath == "Critiques" || note.relativePath.hasPrefix("Critiques/"))
+        state.canEdit
     }
 
     private var noteFingerprint: DocumentFingerprint {
@@ -2095,6 +2091,7 @@ private func dialogueTargetIDs(
         changedSinceReview: false,
         canComment: false,
         canEdit: false,
+        isManagedCritique: false,
         documentTextScale: 1,
         appearanceCSS: "",
         readCSS: "",

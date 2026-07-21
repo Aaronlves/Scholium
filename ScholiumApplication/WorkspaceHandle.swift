@@ -591,12 +591,6 @@ public actor WorkspaceHandle {
         return document
     }
 
-    func versions(for id: VaultQualifiedNoteID) async throws -> [VaultVersion] {
-        try requireActive()
-        let repository = try repository(vaultID: id.vaultID)
-        return await repository.versions(relativePath: id.relativePath)
-    }
-
     func saveDocument(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
@@ -604,45 +598,50 @@ public actor WorkspaceHandle {
     ) async throws -> SaveResult {
         try requireActive()
         let repository = try repository(vaultID: id.vaultID)
-        let result = try await repository.save(
-            relativePath: id.relativePath,
-            changeSet: changeSet,
-            expectedRevision: expectedRevision
-        )
+        let result: SaveResult
+        do {
+            result = try await repository.save(
+                relativePath: id.relativePath,
+                changeSet: changeSet,
+                expectedRevision: expectedRevision
+            )
+        } catch let error as VaultRepositoryError {
+            guard case .commitUncertain = error else { throw error }
+            let observed = try? await repository.load(relativePath: id.relativePath).fingerprint
+            let state: TriptychMutationRecoveryState
+            if let observed {
+                state = observed == expectedRevision ? .restored : .externallyChanged
+            } else {
+                state = .unreadable
+            }
+            let record = TriptychMutationRecoveryRecord(
+                triptychID: self.id,
+                operation: .noteSave,
+                failure: error.localizedDescription,
+                files: [TriptychMutationRecoveryFile(
+                    vaultID: id.vaultID,
+                    path: id.relativePath,
+                    role: .savedNote,
+                    beforeRevision: expectedRevision,
+                    intendedRevision: nil,
+                    observedRevision: observed,
+                    state: state,
+                    detail: "The coordinated save could not prove both canonical and displaced bytes. Recovery evidence remains machine-local."
+                )]
+            )
+            do {
+                try await services.transactionRecoveryStore.record(record)
+            } catch {
+                throw TriptychTransactionError.recoveryPersistenceFailed(
+                    record,
+                    error.localizedDescription
+                )
+            }
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
         do {
             _ = try await refresh(
                 publication: .sourceCommitted(id, .save),
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [id.vaultID]
-                )
-            )
-        } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                result.document.fingerprint,
-                error.localizedDescription
-            )
-        }
-        return result
-    }
-
-    func restoreDocument(
-        _ id: VaultQualifiedNoteID,
-        versionID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> SaveResult {
-        try requireActive()
-        let repository = try repository(vaultID: id.vaultID)
-        let versions = await repository.versions(relativePath: id.relativePath)
-        guard versions.contains(where: { $0.id == versionID }) else {
-            throw VaultRepositoryError.versionNotFound(versionID)
-        }
-        let result = try await repository.restore(
-            versionID: versionID,
-            expectedRevision: expectedRevision
-        )
-        do {
-            _ = try await refresh(
-                publication: .sourceCommitted(id, .restore(versionID: versionID)),
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: [id.vaultID]
                 )
