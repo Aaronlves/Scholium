@@ -362,7 +362,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     #if DEBUG
     struct TestingPresentationSnapshot: Decodable, Sendable {
-        let rootReadableMeasure: String
         let rootContentTopInset: String
         let rootTextScale: String
         let rootProseLineHeight: String
@@ -661,7 +660,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 exactCalloutSourceCount: Array.from(document.querySelectorAll('.cm-line'))
                     .filter(line => line.textContent?.includes('[!')).length,
                 presentation: {
-                    rootReadableMeasure: rootStyle.getPropertyValue('--scholium-document-readable-measure').trim(),
                     rootContentTopInset: rootStyle.getPropertyValue('--scholium-document-content-top-inset').trim(),
                     rootTextScale: rootStyle.getPropertyValue('--scholium-document-text-scale').trim(),
                     rootProseLineHeight: rootStyle.getPropertyValue('--scholium-rhythm-prose-line-height').trim(),

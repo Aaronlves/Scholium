@@ -660,6 +660,9 @@ Read and Live Preview consume one app-owned presentation contract:
 
 - `ScholiumWebDesignTokens.documentPresentationCSS` supplies appearance and
   document-rhythm variables to both WebKit surfaces;
+- `StyleOperations` persists typed, named Appearance configurations under
+  Application Support and the frontend projects the selected configuration to
+  deterministic CSS without placing configuration in a research vault;
 - protected render-component CSS owns common callout, link, table, footnote,
   and mathematics roles;
 - Read emits static semantic DOM from the committed semantic document; and
@@ -673,11 +676,15 @@ presentation variables and container size but must not reconstruct the retained
 `WKWebView` or `EditorState`.
 
 The Host owns three ordered CSS layers on both surfaces: app/protected
-components, dynamic presentation, then sanitized user CSS. The bridge keeps
-the latter two in distinct controlled elements, coalesces changes into one
-CodeMirror measure, and reports scroll only afterward. Font-ready measurement
-stays bound to the same document, preserving geometry and equal cascade
-authority across Read and Live.
+components, dynamic presentation (including the selected typed Appearance),
+then sanitized advanced user CSS. The bridge keeps the latter two in distinct
+controlled elements, coalesces changes into one CodeMirror measure, and reports
+scroll only afterward. Font-ready measurement stays bound to the same document,
+preserving geometry and equal cascade authority across Read and Live.
+Each Window forwards the shared style store's change signal into its existing
+view model, so selecting or saving an Appearance updates open Read and Live
+surfaces through those controlled style elements without replacing the retained
+WebView, EditorState, buffer, selection, composition, or undo history.
 
 Inactive Live callouts share Read's `.scholium-callout` DOM and stylesheet.
 `LiveBlockActivation` records the half-open range and entry edge: downward
@@ -777,12 +784,12 @@ mirror exists.
   measures;
 - `ScholiumMetrics.Workspace` owns the configured-workspace initial size, not a
   minimum;
-- `ScholiumMetrics.Document` names the font-relative readable measure, explicit
-  CSS-pixel top inset, and per-window text-scale range; and
+- `ScholiumMetrics.Document` names the explicit CSS-pixel top inset and
+  per-window text-scale range; and
 - `ScholiumDocumentRhythm`, the unit-explicit
   `ScholiumDocumentPresentationConfiguration`, and `ScholiumWebDesignTokens`
-  supply one responsive `ch`/`rem`/CSS-pixel typography and inset contract to
-  Read, Live Preview, and Source.
+  supply one responsive `rem`/CSS-pixel typography and minimum-inset contract
+  to Read, Live Preview, and Source. The Document has no maximum measure.
 
 `ScholiumMotion` exposes purpose-named animations and returns no animation
 when Reduce Motion is active. It does not install a global animation policy.

@@ -4,7 +4,7 @@ import Foundation
 
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case vaults
-    case documentStyles = "document-styles"
+    case appearance
     case properties
     case researchGuidance = "research-guidance"
     case attention

@@ -90,6 +90,41 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(declarations.allSatisfy { $0.contains("WorkspaceSettingsModel") })
     }
 
+    @Test("Appearance owns named structured profiles without a generated CSS preview")
+    func appearanceProfileSurface() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let appearanceStart = try #require(
+            source.range(of: "private struct AppearanceSettingsView: View")
+        )
+        let rowStart = try #require(
+            source.range(
+                of: "private struct CSSSnippetRow: View",
+                range: appearanceStart.upperBound..<source.endIndex
+            )
+        )
+        let appearanceSource = String(source[appearanceStart.lowerBound..<rowStart.lowerBound])
+
+        #expect(appearanceSource.contains("store.createAppearance()"))
+        #expect(appearanceSource.contains("store.duplicateAppearance"))
+        #expect(appearanceSource.contains("store.renameAppearance"))
+        #expect(appearanceSource.contains("store.removeAppearance"))
+        #expect(appearanceSource.contains("AppearanceProfileEditor"))
+        #expect(appearanceSource.contains("Section(\"Body\")"))
+        #expect(appearanceSource.contains("Section(\"Headings\")"))
+        #expect(appearanceSource.contains("Section(\"Callouts\")"))
+        #expect(appearanceSource.contains("Section(\"Advanced CSS\")"))
+        #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
+    }
+
     @Test("Research Guidance local editors cannot register a window sidebar")
     func researchGuidanceUsesPageLocalSplits() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

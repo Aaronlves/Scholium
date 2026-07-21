@@ -17,18 +17,15 @@ struct ScholiumSettingsView: View {
 
             Group {
                 if let store = settingsModel.cssSnippetStore {
-                    CSSSnippetSettingsView(
-                        store: store,
-                        onOpenExternalURL: settingsModel.openExternal
-                    )
+                    AppearanceSettingsView(store: store)
                 } else {
-                    ContentUnavailableView("Document Styles Unavailable", systemImage: "paintbrush")
+                    ContentUnavailableView("Appearance Unavailable", systemImage: "paintbrush")
                 }
             }
                 .tabItem {
-                    Label(ScholiumL10n.Settings.documentStyles, systemImage: "paintbrush")
+                    Label(ScholiumL10n.Settings.appearance, systemImage: "paintbrush")
                 }
-                .tag(WorkspaceSettingsPane.documentStyles)
+                .tag(WorkspaceSettingsPane.appearance)
 
             PropertiesSettingsView()
                 .tabItem {
@@ -76,7 +73,10 @@ struct ScholiumSettingsView: View {
             settingsModel.dismissToast(message)
         }
         .onAppear {
-            settingsModel.selectPane(WorkspaceSettingsPane(rawValue: persistedPane) ?? .vaults)
+            let restoredPane = persistedPane == "document-styles"
+                ? WorkspaceSettingsPane.appearance
+                : WorkspaceSettingsPane(rawValue: persistedPane) ?? .vaults
+            settingsModel.selectPane(restoredPane)
         }
         .onChange(of: settingsModel.selectedPane) { _, pane in
             persistedPane = pane.rawValue
@@ -3251,37 +3251,20 @@ struct WorkspaceSettingsView: View {
     }
 }
 
-private struct CSSSnippetSettingsView: View {
+private struct AppearanceSettingsView: View {
     @ObservedObject var store: CSSSnippetStore
-    let onOpenExternalURL: (URL) -> Void
-    @State private var selectedSnippetID: UUID?
+    @State private var draft: DocumentAppearanceProfile?
     @State private var importError: String?
-
-    private static let previewSource = """
-        # A Philosophical Question
-
-        Clear prose should remain the center of the reading experience, with **emphasis**, *distinctions*, and [[Internal Links]].
-
-        > A restrained quotation can carry an objection or a source passage.
-
-        `Conceptual notation` uses the configured monospace treatment.
-
-        > [!state] Semantic distinction
-        > Callouts remain protected research signals while ordinary document styles can change.
-
-        > [!flag] Source-status limit
-        > A warning stays explicit in text and never depends on color alone.
-        """
-    private static let previewHTML = SafeMarkdownRenderer.render(
-        NoteDocument(relativePath: "Style Preview.md", rawContent: previewSource)
-    ).htmlBody
+    @State private var showRename = false
+    @State private var showDeleteConfirmation = false
+    @State private var nameDraft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Document Styles")
+                Text("Appearance")
                     .font(.title2.weight(.semibold))
-                Text("Import a limited CSS snippet for Read and Live Preview. Scholium protects callouts, footnotes, review annotations, diagnostics, and provenance warnings.")
+                Text("Choose a named document configuration, then adjust typography and each semantic callout independently. Changes apply to Read and Live Preview after saving.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -3291,82 +3274,89 @@ private struct CSSSnippetSettingsView: View {
 
             Divider()
 
-            HSplitView {
-                VStack(spacing: 0) {
-                    List(selection: $selectedSnippetID) {
-                        ForEach(store.snippets) { snippet in
-                            CSSSnippetRow(
-                                snippet: snippet,
-                                error: store.validationErrors[snippet.id],
-                                store: store
-                            )
-                            .tag(snippet.id)
+            Form {
+                Section("Configuration") {
+                    HStack {
+                        Picker("Configuration", selection: selectedProfileID) {
+                            ForEach(store.appearanceProfiles) { profile in
+                                Text(profile.name).tag(Optional(profile.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 280)
+
+                        Button("New") { store.createAppearance() }
+                        Button("Duplicate") {
+                            guard let id = store.selectedAppearanceProfileID else { return }
+                            store.duplicateAppearance(id)
+                        }
+                        .disabled(store.selectedAppearanceProfileID == nil)
+                        Button("Rename…") { beginRename() }
+                            .disabled(store.selectedAppearanceProfileID == nil)
+                        Button("Delete…", role: .destructive) {
+                            showDeleteConfirmation = true
+                        }
+                        .disabled(store.appearanceProfiles.count <= 1)
+                    }
+                    Text("Exactly one configuration is active. Configurations are stored in Scholium’s Application Support folder, not in the research vault.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let draftBinding {
+                    AppearanceProfileEditor(profile: draftBinding)
+
+                    Section {
+                        HStack {
+                            Button("Save Appearance") {
+                                guard let draft else { return }
+                                store.updateAppearance(draft)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!hasUnsavedChanges || !store.canModify)
+
+                            if hasUnsavedChanges {
+                                Text("Unsaved changes")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .disabled(!store.canModify)
-                    .overlay {
-                        if store.snippets.isEmpty {
-                            ContentUnavailableView(
-                                "No CSS Snippets",
-                                systemImage: "paintbrush",
-                                description: Text("Import a CSS file to style document typography and ordinary Markdown content.")
-                            )
-                        }
+                }
+
+                Section("Advanced CSS") {
+                    Text("Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(store.snippets) { snippet in
+                        CSSSnippetRow(
+                            snippet: snippet,
+                            error: store.validationErrors[snippet.id],
+                            store: store
+                        )
                     }
 
-                    Divider()
+                    if store.snippets.isEmpty {
+                        Text("No CSS snippets imported.")
+                            .foregroundStyle(.secondary)
+                    }
 
-                    HStack(spacing: 8) {
+                    HStack {
                         Button("Import CSS Snippet…") { importSnippet() }
                             .disabled(!store.canModify)
                         Button {
                             store.revealManagedFolder()
                         } label: {
-                            Label("Reveal Snippets in Finder", systemImage: "folder")
+                            Label("Reveal Styles in Finder", systemImage: "folder")
                         }
-                        .help("Reveal Scholium’s managed snippet copies in Finder")
-
                         Spacer()
-
                         Button("Disable All Snippets") { store.disableAll() }
                             .disabled(store.enabledCount == 0 || !store.canModify)
                     }
-                    .padding(12)
                 }
-                .frame(minWidth: 330, idealWidth: 390)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Preview")
-                        .font(.headline)
-                    Text("Enabled snippets update this sample and the open document immediately.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    SafeMarkdownReadWebView(
-                        documentID: "style-preview",
-                        fingerprint: String(store.readCSS.hashValue),
-                        source: Self.previewSource,
-                        htmlBody: Self.previewHTML,
-                        presentationCSS: ScholiumDocumentPresentationConfiguration(
-                            textScale: ScholiumMetrics.Document.defaultTextScale
-                        ).css,
-                        userCSS: store.readCSS,
-                        researcherComments: [],
-                        onLinkClick: { _ in },
-                        onOpenExternalURL: onOpenExternalURL,
-                        onCommentSelection: nil,
-                        onCommentActivation: nil,
-                        onRenderingFailure: { reason in store.enterSafeMode(after: reason) }
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    }
-                }
-                .padding(16)
-                .frame(minWidth: 270, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .formStyle(.grouped)
 
             if let reason = store.safeModeReason {
                 Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
@@ -3391,6 +3381,63 @@ private struct CSSSnippetSettingsView: View {
                     .padding(.vertical, 8)
             }
         }
+        .onAppear { loadSelectedDraft() }
+        .onChange(of: store.selectedAppearanceProfileID) { _, _ in loadSelectedDraft() }
+        .alert("Rename Appearance", isPresented: $showRename) {
+            TextField("Configuration name", text: $nameDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                guard let id = store.selectedAppearanceProfileID else { return }
+                store.renameAppearance(id, to: nameDraft)
+                draft?.name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .disabled(nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .alert("Delete Appearance?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                guard let id = store.selectedAppearanceProfileID else { return }
+                store.removeAppearance(id)
+            }
+        } message: {
+            Text("This removes the selected configuration from this Mac. Research documents are not changed.")
+        }
+    }
+
+    private var selectedProfileID: Binding<UUID?> {
+        Binding(
+            get: { store.selectedAppearanceProfileID },
+            set: { id in
+                guard let id else { return }
+                store.selectAppearance(id)
+                if let profile = store.appearanceProfiles.first(where: { $0.id == id }) {
+                    draft = profile
+                }
+            }
+        )
+    }
+
+    private var draftBinding: Binding<DocumentAppearanceProfile>? {
+        guard draft != nil else { return nil }
+        return Binding(
+            get: { draft! },
+            set: { draft = $0 }
+        )
+    }
+
+    private var hasUnsavedChanges: Bool {
+        guard let draft, let selected = store.selectedAppearanceProfile else { return false }
+        return draft != selected
+    }
+
+    private func loadSelectedDraft() {
+        draft = store.selectedAppearanceProfile
+    }
+
+    private func beginRename() {
+        guard let selected = store.selectedAppearanceProfile else { return }
+        nameDraft = selected.name
+        showRename = true
     }
 
     private func importSnippet() {
@@ -3409,11 +3456,274 @@ private struct CSSSnippetSettingsView: View {
             defer { if secured { url.stopAccessingSecurityScopedResource() } }
             do {
                 try await store.importSnippet(from: url)
-                selectedSnippetID = store.snippets.last?.id
                 importError = nil
             } catch {
                 importError = error.localizedDescription
             }
+        }
+    }
+}
+
+private struct AppearanceProfileEditor: View {
+    @Binding var profile: DocumentAppearanceProfile
+
+    var body: some View {
+        Section("Body") {
+            Picker("Typeface", selection: $profile.settings.body.fontFamily) {
+                ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { family in
+                    Text(family.label).tag(family)
+                }
+            }
+            AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
+            AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+            AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
+            AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
+            AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+            AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
+            Picker("Alignment", selection: $profile.settings.body.alignment) {
+                ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
+                    Text(alignment.label).tag(alignment)
+                }
+            }
+            Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
+                ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
+                    Text(hyphenation.label).tag(hyphenation)
+                }
+            }
+            Toggle("Kerning", isOn: $profile.settings.body.kerning)
+            Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
+        }
+
+        Section("Headings") {
+            Picker("Typeface", selection: $profile.settings.headings.fontFamily) {
+                ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { family in
+                    Text(family.label).tag(family)
+                }
+            }
+            Picker("Style", selection: $profile.settings.headings.style) {
+                ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
+            AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
+            AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+
+            DisclosureGroup("Document title (H1)") {
+                HeadingLevelAppearanceEditor(level: $profile.settings.headings.title)
+            }
+            DisclosureGroup("Section heading (H2)") {
+                HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
+            }
+            DisclosureGroup("Lower headings (H3–H6)") {
+                HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
+            }
+        }
+
+        Section("Callouts") {
+            Text("Typography is inherited from Body. These controls adjust the role’s spacing and composition without changing its semantic identity.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
+                if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
+                    DisclosureGroup(role.label) {
+                        CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
+                    }
+                }
+            }
+        }
+
+        Section("Mathematics") {
+            LabeledContent("Display equations") {
+                Text("Centered · italic · numbered at right")
+                    .foregroundStyle(.secondary)
+            }
+            Text("Mathematics, code, and tables use Scholium’s shared restrained styles so their semantics and Read/Live parity remain stable across configurations.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct HeadingLevelAppearanceEditor: View {
+    @Binding var level: DocumentHeadingLevelAppearance
+
+    var body: some View {
+        AppearanceDoubleControl("Scale", value: $level.scale, range: 0.8...3, step: 0.05, suffix: "×")
+        Picker("Alignment", selection: $level.alignment) {
+            ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
+                Text(alignment.label).tag(alignment)
+            }
+        }
+        AppearanceDoubleControl("Space before", value: $level.spaceBeforeEm, range: 0...4, step: 0.1, suffix: "em")
+        AppearanceDoubleControl("Space after", value: $level.spaceAfterEm, range: 0...4, step: 0.1, suffix: "em")
+    }
+}
+
+private struct CalloutAppearanceEditor: View {
+    @Binding var callout: DocumentCalloutAppearance
+
+    var body: some View {
+        AppearanceDoubleControl("Horizontal inset", value: $callout.inlineInsetEm, range: 0...4, step: 0.1, suffix: "em")
+        AppearanceDoubleControl("Block spacing", value: $callout.blockGapEm, range: 0...4, step: 0.1, suffix: "em")
+        AppearanceDoubleControl("Text scale", value: $callout.fontScale, range: 0.8...1.4, step: 0.05, suffix: "×")
+        AppearanceDoubleControl("Paragraph spacing", value: $callout.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
+        AppearanceWeightPicker("Title weight", weight: $callout.titleWeight)
+
+        switch callout.role {
+        case .orientation:
+            AppearanceDoubleControl("Start inset", value: optional($callout.startInsetEm, fallback: 3), range: 0...6, step: 0.1, suffix: "em")
+            AppearanceDoubleControl("End inset", value: optional($callout.endInsetEm, fallback: 3), range: 0...6, step: 0.1, suffix: "em")
+            AppearanceDoubleControl("Line spacing", value: optional($callout.lineHeight, fallback: 1.3), range: 1.1...2.4, step: 0.05, suffix: "×")
+        case .connections:
+            AppearanceDoubleControl("Content indent", value: optional($callout.contentIndentEm, fallback: 0.72), range: 0...4, step: 0.1, suffix: "em")
+        case .statement:
+            AppearanceDoubleControl("Title gap", value: optional($callout.titleGapEm, fallback: 0.32), range: 0...2, step: 0.05, suffix: "em")
+        case .illustration:
+            AppearanceDoubleControl("Title column", value: optional($callout.titleColumnEm, fallback: 6.5), range: 3...16, step: 0.5, suffix: "em")
+            AppearanceDoubleControl("Column gap", value: optional($callout.columnGapEm, fallback: 1), range: 0...4, step: 0.1, suffix: "em")
+        case .caution, .source:
+            AppearanceDoubleControl("Vertical padding", value: optional($callout.paddingBlockEm, fallback: 0.9), range: 0...3, step: 0.1, suffix: "em")
+            AppearanceDoubleControl("Horizontal padding", value: optional($callout.paddingInlineEm, fallback: 1), range: 0...4, step: 0.1, suffix: "em")
+        case .folded:
+            AppearanceDoubleControl("Content indent", value: optional($callout.contentIndentEm, fallback: 1.05), range: 0...4, step: 0.1, suffix: "em")
+        case .quotation:
+            AppearanceDoubleControl("Quotation scale", value: optional($callout.quotationScale, fallback: 1.06), range: 0.8...1.5, step: 0.05, suffix: "×")
+            AppearanceDoubleControl("Attribution scale", value: optional($callout.attributionScale, fallback: 0.85), range: 0.6...1.2, step: 0.05, suffix: "×")
+        }
+    }
+
+    private func optional(_ value: Binding<Double?>, fallback: Double) -> Binding<Double> {
+        Binding(
+            get: { value.wrappedValue ?? fallback },
+            set: { value.wrappedValue = $0 }
+        )
+    }
+}
+
+private struct AppearanceDoubleControl: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let suffix: String
+    let precision: Int
+
+    init(
+        _ title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        suffix: String,
+        precision: Int = 2
+    ) {
+        self.title = title
+        _value = value
+        self.range = range
+        self.step = step
+        self.suffix = suffix
+        self.precision = precision
+    }
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                Slider(value: $value, in: range, step: step)
+                    .frame(minWidth: 150, idealWidth: 220)
+                Text(value.formatted(.number.precision(.fractionLength(0...precision))))
+                    .monospacedDigit()
+                    .frame(width: 52, alignment: .trailing)
+                Text(suffix)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct AppearanceWeightPicker: View {
+    let title: String
+    @Binding var weight: Int
+
+    init(_ title: String, weight: Binding<Int>) {
+        self.title = title
+        _weight = weight
+    }
+
+    var body: some View {
+        Picker(title, selection: $weight) {
+            Text("Regular · 400").tag(400)
+            Text("Medium · 500").tag(500)
+            Text("Semibold · 600").tag(600)
+            Text("Bold · 700").tag(700)
+        }
+    }
+}
+
+private extension DocumentAppearanceFontFamily {
+    var label: String {
+        switch self {
+        case .alegreya: "Alegreya"
+        case .iowan: "Iowan Old Style"
+        case .palatino: "Palatino"
+        case .georgia: "Georgia"
+        case .times: "Times New Roman"
+        case .systemSerif: "System Serif"
+        }
+    }
+}
+
+private extension DocumentHeadingFontFamily {
+    var label: String {
+        switch self {
+        case .body: "Inherit Body"
+        case .alegreya: "Alegreya"
+        case .systemSerif: "System Serif"
+        case .systemSans: "System Sans"
+        }
+    }
+}
+
+private extension DocumentHeadingStyle {
+    var label: String {
+        switch self {
+        case .upright: "Upright"
+        case .italic: "Italic"
+        case .smallCaps: "Small Caps"
+        }
+    }
+}
+
+private extension DocumentTextAlignment {
+    var label: String {
+        switch self {
+        case .start: "Leading"
+        case .center: "Centered"
+        case .justify: "Justified"
+        }
+    }
+}
+
+private extension DocumentHyphenation {
+    var label: String {
+        switch self {
+        case .none: "Off"
+        case .automatic: "Automatic"
+        }
+    }
+}
+
+private extension DocumentCalloutAppearanceRole {
+    var label: String {
+        switch self {
+        case .orientation: "Orientation"
+        case .connections: "Connections"
+        case .statement: "Statement"
+        case .illustration: "Illustration"
+        case .caution: "Caution"
+        case .folded: "Folded"
+        case .quotation: "Quotation"
+        case .source: "Source"
         }
     }
 }

@@ -325,20 +325,20 @@
         }
       }
     },
-    "settings.tab.documentStyles" : {
-      "comment" : "Settings tab for document appearance and CSS snippets.",
+    "settings.tab.appearance" : {
+      "comment" : "Settings tab for named document appearance profiles and advanced CSS.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Document Styles"
+            "value" : "Appearance"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "文稿样式"
+            "value" : "外观"
           }
         }
       }

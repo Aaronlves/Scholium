@@ -17,38 +17,6 @@
         }
       }
     },
-    "%lld notes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%lld notes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 篇文档"
-          }
-        }
-      }
-    },
-    "1 note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "1 note"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 篇文档"
-          }
-        }
-      }
-    },
     "%@ changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again." : {
       "localizations" : {
         "en" : {
@@ -543,6 +511,22 @@
         }
       }
     },
+    "%lld notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 篇文档"
+          }
+        }
+      }
+    },
     "%lld recommendations" : {
       "localizations" : {
         "en" : {
@@ -699,6 +683,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 个引导设置需要修复"
+          }
+        }
+      }
+    },
+    "1 note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "1 note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 篇文档"
           }
         }
       }
@@ -1153,6 +1153,22 @@
         }
       }
     },
+    "Advanced CSS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Advanced CSS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级 CSS"
+          }
+        }
+      }
+    },
     "Agent Application Handoff Options" : {
       "localizations" : {
         "en" : {
@@ -1390,6 +1406,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "右对齐"
+          }
+        }
+      }
+    },
+    "Alignment" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Alignment"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对齐"
           }
         }
       }
@@ -1648,6 +1680,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "外观"
+          }
+        }
+      }
+    },
+    "Appearance Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Appearance Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外观不可用"
           }
         }
       }
@@ -2007,6 +2055,22 @@
         }
       }
     },
+    "Body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Body"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正文"
+          }
+        }
+      }
+    },
     "Bold" : {
       "localizations" : {
         "en" : {
@@ -2019,6 +2083,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "粗体"
+          }
+        }
+      }
+    },
+    "Bold · 700" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bold · 700"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粗体 · 700"
           }
         }
       }
@@ -2217,6 +2297,22 @@
         }
       }
     },
+    "Callouts" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Callouts"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Callout"
+          }
+        }
+      }
+    },
     "Cancel" : {
       "localizations" : {
         "en" : {
@@ -2310,6 +2406,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "注意"
+          }
+        }
+      }
+    },
+    "Centered · italic · numbered at right" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Centered · italic · numbered at right"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "居中 · 斜体 · 序号靠右"
           }
         }
       }
@@ -2443,7 +2555,6 @@
       }
     },
     "Checkpoint" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2879,6 +2990,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择一个 macOS 应用程序。"
+          }
+        }
+      }
+    },
+    "Choose a named document configuration, then adjust typography and each semantic callout independently. Changes apply to Read and Live Preview after saving." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose a named document configuration, then adjust typography and each semantic callout independently. Changes apply to Read and Live Preview after saving."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一项命名的文稿配置，然后分别调整排版和每种语义 Callout。保存后，修改将应用于阅读和实时预览。"
           }
         }
       }
@@ -3366,6 +3493,22 @@
         }
       }
     },
+    "Common ligatures" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Common ligatures"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常用连字"
+          }
+        }
+      }
+    },
     "Compare" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -3476,6 +3619,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "概念、辩论和综合。"
+          }
+        }
+      }
+    },
+    "Configuration" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Configuration"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置"
+          }
+        }
+      }
+    },
+    "Configuration name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Configuration name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置名称"
           }
         }
       }
@@ -4706,6 +4881,22 @@
         }
       }
     },
+    "Delete Appearance?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete Appearance?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除外观配置？"
+          }
+        }
+      }
+    },
     "Delete Column" : {
       "localizations" : {
         "en" : {
@@ -4878,6 +5069,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除脉络技能？"
+          }
+        }
+      }
+    },
+    "Delete…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除…"
           }
         }
       }
@@ -5320,6 +5527,22 @@
         }
       }
     },
+    "Display equations" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Display equations"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "陈列公式"
+          }
+        }
+      }
+    },
     "Document" : {
       "localizations" : {
         "en" : {
@@ -5461,6 +5684,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文档模式：%arg"
+          }
+        }
+      }
+    },
+    "Document title (H1)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Document title (H1)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文稿标题（H1）"
           }
         }
       }
@@ -5798,6 +6037,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "演进…"
+          }
+        }
+      }
+    },
+    "Exactly one configuration is active. Configurations are stored in Scholium’s Application Support folder, not in the research vault." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Exactly one configuration is active. Configurations are stored in Scholium’s Application Support folder, not in the research vault."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终仅有一项配置处于启用状态。配置储存在 Scholium 的 Application Support 文件夹中，而非研究库中。"
           }
         }
       }
@@ -6413,6 +6668,22 @@
         }
       }
     },
+    "Headings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Headings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题"
+          }
+        }
+      }
+    },
     "Hidden" : {
       "localizations" : {
         "en" : {
@@ -6652,6 +6923,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "人类可编辑字段"
+          }
+        }
+      }
+    },
+    "Hyphenation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Hyphenation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "断词"
           }
         }
       }
@@ -7366,6 +7653,22 @@
         }
       }
     },
+    "Kerning" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Kerning"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字距微调"
+          }
+        }
+      }
+    },
     "Kind" : {
       "localizations" : {
         "en" : {
@@ -7932,6 +8235,22 @@
         }
       }
     },
+    "Lower headings (H3–H6)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Lower headings (H3–H6)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下级标题（H3–H6）"
+          }
+        }
+      }
+    },
     "Maintenance instruction" : {
       "localizations" : {
         "en" : {
@@ -8073,6 +8392,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "材料对于准备好的指令是固定的。"
+          }
+        }
+      }
+    },
+    "Mathematics" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mathematics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数学"
+          }
+        }
+      }
+    },
+    "Mathematics, code, and tables use Scholium’s shared restrained styles so their semantics and Read/Live parity remain stable across configurations." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mathematics, code, and tables use Scholium’s shared restrained styles so their semantics and Read/Live parity remain stable across configurations."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数学、代码和表格采用 Scholium 克制的公共样式，从而在不同配置间保持语义以及阅读与实时预览的一致性。"
+          }
+        }
+      }
+    },
+    "Medium · 500" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Medium · 500"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中等 · 500"
           }
         }
       }
@@ -8463,6 +8830,22 @@
         }
       }
     },
+    "New" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "New"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建"
+          }
+        }
+      }
+    },
     "New %@ Template" : {
       "localizations" : {
         "en" : {
@@ -8657,6 +9040,22 @@
         }
       }
     },
+    "No CSS snippets imported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No CSS snippets imported."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未导入 CSS 片段。"
+          }
+        }
+      }
+    },
     "No Changes" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -8835,23 +9234,6 @@
         }
       }
     },
-    "No Outgoing Links" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Outgoing Links"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本笔记没有指向其他笔记的链接"
-          }
-        }
-      }
-    },
     "No Notes in Trash" : {
       "localizations" : {
         "en" : {
@@ -8868,18 +9250,19 @@
         }
       }
     },
-    "No Set Aside Notes" : {
+    "No Outgoing Links" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "No Set Aside Notes"
+            "value" : "No Outgoing Links"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有搁置的文档"
+            "value" : "本笔记没有指向其他笔记的链接"
           }
         }
       }
@@ -8960,6 +9343,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此评析没有关联的 Scholium 请求记录。"
+          }
+        }
+      }
+    },
+    "No Set Aside Notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Set Aside Notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有搁置的文档"
           }
         }
       }
@@ -9253,38 +9652,6 @@
         }
       }
     },
-    "Notes moved to Trash appear here until you put them back or delete them permanently." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Notes moved to Trash appear here until you put them back or delete them permanently."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移至纸篓的文档会保留在这里，直到你将其放回或永久删除。"
-          }
-        }
-      }
-    },
-    "Notes you set aside appear here until you put them back." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Notes you set aside appear here until you put them back."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搁置的文档会保留在这里，直到你将其放回。"
-          }
-        }
-      }
-    },
     "Not Yet" : {
       "localizations" : {
         "en" : {
@@ -9410,6 +9777,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未找到笔记：%@"
+          }
+        }
+      }
+    },
+    "Notes moved to Trash appear here until you put them back or delete them permanently." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Notes moved to Trash appear here until you put them back or delete them permanently."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至纸篓的文档会保留在这里，直到你将其放回或永久删除。"
+          }
+        }
+      }
+    },
+    "Notes you set aside appear here until you put them back." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Notes you set aside appear here until you put them back."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搁置的文档会保留在这里，直到你将其放回。"
           }
         }
       }
@@ -9976,6 +10375,22 @@
         }
       }
     },
+    "Opening Scholium" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Opening Scholium"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在打开 Scholium"
+          }
+        }
+      }
+    },
     "Opening Set Aside…" : {
       "localizations" : {
         "en" : {
@@ -10004,22 +10419,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在打开纸篓…"
-          }
-        }
-      }
-    },
-    "Opening Scholium" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opening Scholium"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在打开 Scholium"
           }
         }
       }
@@ -10164,6 +10563,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作"
+          }
+        }
+      }
+    },
+    "Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选的 CSS 片段用于高级兼容。它们以叠加方式应用，不会取代所选的结构化配置。"
           }
         }
       }
@@ -11656,6 +12071,22 @@
         }
       }
     },
+    "Regular · 400" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Regular · 400"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常规 · 400"
+          }
+        }
+      }
+    },
     "Related" : {
       "localizations" : {
         "en" : {
@@ -11864,6 +12295,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名"
+          }
+        }
+      }
+    },
+    "Rename Appearance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rename Appearance"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外观配置重命名"
           }
         }
       }
@@ -13028,6 +13475,22 @@
         }
       }
     },
+    "Reveal Styles in Finder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reveal Styles in Finder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Finder 中显示样式"
+          }
+        }
+      }
+    },
     "Reveal in Finder" : {
       "localizations" : {
         "en" : {
@@ -13301,6 +13764,22 @@
         }
       }
     },
+    "SET ASIDE" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SET ASIDE"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搁置"
+          }
+        }
+      }
+    },
     "SHA-256 %@…" : {
       "localizations" : {
         "en" : {
@@ -13362,6 +13841,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存"
+          }
+        }
+      }
+    },
+    "Save Appearance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Appearance"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存外观配置"
           }
         }
       }
@@ -14314,6 +14809,22 @@
         }
       }
     },
+    "Section heading (H2)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Section heading (H2)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "章节标题（H2）"
+          }
+        }
+      }
+    },
     "Select All" : {
       "localizations" : {
         "en" : {
@@ -14494,6 +15005,22 @@
         }
       }
     },
+    "Semibold · 600" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Semibold · 600"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "半粗体 · 600"
+          }
+        }
+      }
+    },
     "Serious learning does not obey this logic. Research advances through failed specifications, incomplete drafts, and conversations whose value becomes clear only months later." : {
       "localizations" : {
         "en" : {
@@ -14506,22 +15033,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "认真的学习并不遵循这个逻辑。研究通过失败的规范、不完整的草稿和几个月后其价值才变得清晰的对话来取得进展。"
-          }
-        }
-      }
-    },
-    "SET ASIDE" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "SET ASIDE"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搁置"
           }
         }
       }
@@ -15138,6 +15649,22 @@
         }
       }
     },
+    "Style" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Style"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "样式"
+          }
+        }
+      }
+    },
     "Suggested Only" : {
       "localizations" : {
         "en" : {
@@ -15265,6 +15792,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支持目标"
+          }
+        }
+      }
+    },
+    "TRASH" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TRASH"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "纸篓"
           }
         }
       }
@@ -16480,6 +17023,22 @@
         }
       }
     },
+    "This removes the selected configuration from this Mac. Research documents are not changed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This removes the selected configuration from this Mac. Research documents are not changed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会从这台 Mac 移除所选配置。研究文稿不会更改。"
+          }
+        }
+      }
+    },
     "This snapshot" : {
       "localizations" : {
         "en" : {
@@ -16695,22 +17254,6 @@
         }
       }
     },
-    "TRASH" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "TRASH"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "纸篓"
-          }
-        }
-      }
-    },
     "Trash" : {
       "localizations" : {
         "en" : {
@@ -16857,6 +17400,38 @@
         }
       }
     },
+    "Typeface" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Typeface"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字体"
+          }
+        }
+      }
+    },
+    "Typography is inherited from Body. These controls adjust the role’s spacing and composition without changing its semantic identity." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Typography is inherited from Body. These controls adjust the role’s spacing and composition without changing its semantic identity."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Callout 的字体排版继承自“正文”。这些控件只调整该角色的间距与结构，不会更改其语义身份。"
+          }
+        }
+      }
+    },
     "Unavailable for this note." : {
       "localizations" : {
         "en" : {
@@ -16949,6 +17524,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未审阅"
+          }
+        }
+      }
+    },
+    "Unsaved changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Unsaved changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存的更改"
           }
         }
       }

@@ -1093,7 +1093,7 @@ Menus follow researcher tasks:
 - **Research:** role-valid functions and **Show Research Record**, never
   Attention or Checkpoints.
 - **Settings:** Triptychs, Property profiles, Research Guidance, Attention,
-  Zotero, and Document Styles.
+  Zotero, and Appearance.
 
 ### 18.3 Library and Search
 
@@ -1139,15 +1139,31 @@ Read, Live Preview, and Source are modes, not tabs, and follow Section 5.1.
 Ordinary scrolling space clears initial editor content from chrome; there is no
 floating context surface.
 
-All modes use one adaptive editorial-grid configuration for measure, insets,
-responsive threshold, trailing space, text scale, and semantic typography.
-The provisional v0.1 values are **50ch** measure; **32 CSS px** Read/Live and
-**40 CSS px** Source regular inline insets; **20 CSS px** below **44rem**; and a
-**32 CSS px** top inset. CSS lengths never convert to macOS points. Shared
-ownership and units are approved; these values still require the adaptation
-matrix and side-by-side Editor review. Live Preview and Source reconfigure one
-retained CodeMirror state; window, split, theme, or text-size changes never
-replace it or create an Editor window.
+All modes use one adaptive editorial-grid configuration for insets, responsive
+threshold, trailing space, text scale, and semantic typography. Document prose
+has **no maximum measure**: it occupies the available Document width while
+retaining a minimum separation from the Library's right divider and the
+Inspector's left divider. The provisional minimum inline insets are **32 CSS
+px** in Read/Live and **40 CSS px** in Source, reducing to **20 CSS px** below
+**44rem**, with a **32 CSS px** top inset. CSS lengths never convert to macOS
+points. Shared ownership and units are approved; these values still require the
+adaptation matrix and side-by-side Editor review. Live Preview and Source
+reconfigure one retained CodeMirror state; window, split, theme, or text-size
+changes never replace it or create an Editor window.
+
+Appearance is machine-local configuration and never Markdown or vault state.
+It stores multiple named configurations, keeps exactly one selected, and
+supports save, rename, duplicate, and deletion while retaining at least one.
+Structured controls independently configure Body, headings, and each semantic
+Callout for Read and Live Preview. The default configuration uses the values in
+§19.2; Callout controls map presentation parameters without changing protected
+role structure, generated accessible role names, or source-controlled fold
+state. Mathematics remains centered and italic, with automatic numbering on the
+physical right scoped per document; code and tables retain their shared
+app-owned styles.
+Advanced sanitized CSS snippets remain an additive compatibility path inside
+Appearance, but Appearance displays no generated CSS preview. Source typography
+and the application interface are not changed by a document configuration.
 
 Subject to the transfer rule in §18.2, Document toolbar order is conditional
 Show Sidebar; Heading Outline and compact identity; mode and Search; Research
@@ -1344,9 +1360,12 @@ native safe area once; the titlebar owns vertical alignment.
   density, scaling, and mixed-script fallback remain legible.
 - **Victor Mono** is for Source, code, exact excerpts, anchored review content,
   revision identities, and diffs.
-- Document Body is **12pt**; approved H1 is **22.5pt**; H2/H3/H4–H6 are
-  provisionally **130/115/100%** of Body. Callouts inherit Body unless an
-  approved role requires otherwise.
+- The default Appearance uses **Alegreya 12pt**, **2.0** line spacing, **1em**
+  paragraph spacing, **0.02em** tracking, justified text, and no hyphenation.
+  Its H1/H2/H3–H6 scales are provisionally **200/150/115%**, with centered H1
+  and medium shared heading weight. These document typography values are
+  user-configurable. Callouts inherit Body typography and expose independent
+  role spacing/composition parameters without acquiring a separate palette.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#F8F0E2`. One resolver derives every Light, Dark, and Increase
@@ -1414,11 +1433,12 @@ preferred/maximum width or persisted divider position.
 Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, Research
 Record **760 × 680**, and fixed Settings content **700 × 560**. Regions scroll
 independently; Document takes remaining space without a fixed size. AppKit
-geometry stays outside the grid. WebKit uses `ch`, `rem`, CSS px, and viewport
-units without point conversion. The **50ch**, **20/32/40 CSS px**, and
-typographic rhythm values remain provisional pending ordinary, narrow,
-mixed-script, and 200% testing. Fractional browser-proof translations are
-superseded; screenshots and prototype coordinates remain evidence only.
+geometry stays outside the grid. WebKit uses `rem`, CSS px, and viewport units
+without point conversion. Document content has no maximum width; the
+**20/32/40 CSS px** minimum border separations and typographic rhythm values
+remain provisional pending ordinary, narrow, mixed-script, and 200% testing.
+Fractional browser-proof translations are superseded; screenshots and
+prototype coordinates remain evidence only.
 
 ## 20. Accessibility and adaptation
 
@@ -1446,10 +1466,10 @@ superseded; screenshots and prototype coordinates remain evidence only.
   state is forbidden; the three Triptych scopes and longest fixed Library
   heading remain single-line at the threshold in English, with localized and
   right-to-left variants covered by the adaptation matrix.
-- Keep ordinary prose within the v0.1 **50ch** measure and verify no more than
-  80 Latin characters or 40 CJK glyphs per line. At 200% document text, prose
-  must reflow without page-level horizontal reading scroll; only wide tables,
-  code, and mathematics may scroll inside their own containers.
+- Keep the configured minimum inline separation from both structural dividers.
+  At 200% document text, prose must reflow without page-level horizontal
+  reading scroll; only wide tables, code, and mathematics may scroll inside
+  their own containers.
 - Synthetic events cannot certify real VoiceOver, Voice Control, Dictation,
   Full Keyboard Access, or CJK IME; retain manual gates where required.
 
@@ -1543,7 +1563,7 @@ only in Git history.
 | **D-086** | 5.1 | **D-087** | 18.2–18.5, 19.3–19.4, 20 |
 | **D-088** | 18.3, 19.1, 19.3–19.4, 20 | **D-089** | 18.7 |
 | **D-090** | 18.2, 19.3–19.4, 20 | **D-091** | 18.2, 18.4–18.5, 19.1, 20 |
-| **D-092** | 19.2–19.3, 20 |  |  |
+| **D-092** | 19.2–19.3, 20 | **D-093** | 18.2, 18.4, 19.2–19.4, 20 |
 
 Clean-cutover inventory:
 
@@ -1565,6 +1585,10 @@ Clean-cutover inventory:
 - **D-092:** retain no static appearance palette, Navigation input, duplicate
   status role, renderer-owned color, or public functional/status hue. Accent
   and Paper remain the only inputs to the shared native/WebKit resolver.
+- **D-093:** replace Document Styles with machine-local named Appearance
+  configurations; retain no generated CSS preview or maximum document measure.
+  Keep protected semantic component structure, shared mathematics/code/table
+  roles, additive sanitized CSS compatibility, and minimum divider separation.
 
 Unresolved work must not be described as complete:
 

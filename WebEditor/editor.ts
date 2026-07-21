@@ -1802,8 +1802,11 @@ function buildLiveDecorations(
           lineQueryTo,
         )[0];
         if (parsedParagraph && !parsedCallout && !heading) {
+          const paragraphClasses = ["cm-live-paragraph"];
+          if (line.from <= parsedParagraph.from) paragraphClasses.push("cm-live-paragraph-start");
+          if (line.to >= parsedParagraph.to) paragraphClasses.push("cm-live-paragraph-end");
           decorations.push(Decoration.line({
-            attributes: {class: "cm-live-paragraph"},
+            attributes: {class: paragraphClasses.join(" ")},
           }).range(line.from));
         }
         const quote = /^(\s*>\s?)/.exec(linePrefix);

@@ -54,13 +54,13 @@ enum ScholiumL10n {
             )
         }
 
-        static var documentStyles: LocalizedStringResource {
+        static var appearance: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.documentStyles",
-                defaultValue: "Document Styles",
+                "settings.tab.appearance",
+                defaultValue: "Appearance",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for document appearance and CSS snippets."
+                comment: "Settings tab for named document appearance profiles and advanced CSS."
             )
         }
 

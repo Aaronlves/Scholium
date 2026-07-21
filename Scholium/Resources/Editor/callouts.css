@@ -117,7 +117,6 @@
 }
 
 .scholium-callout-body {
-  max-width: 72ch;
   margin-top: .44rem;
   font-size: 100%;
   line-height: 1.62;
@@ -256,7 +255,6 @@
 }
 
 .scholium-callout-cite .scholium-callout-content > p {
-  max-width: 72ch;
   margin: 0;
   padding-inline-start: 1.15em;
   text-indent: -1.15em;

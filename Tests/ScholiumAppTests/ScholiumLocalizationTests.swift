@@ -23,9 +23,9 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.documentStyles,
+                ScholiumL10n.Settings.appearance,
                 locale: simplifiedChinese
-            ) == "文稿样式"
+            ) == "外观"
         )
         #expect(
             ScholiumL10n.localized(

@@ -183,6 +183,12 @@ public protocol SettingsUseCases: Sendable {
 
 public protocol StyleUseCases: Sendable {
     func styleSnapshot() async throws -> StyleSnapshot
+    func createAppearanceProfile(named name: String) async throws -> StyleSnapshot
+    func selectAppearanceProfile(_ id: UUID) async throws -> StyleSnapshot
+    func updateAppearanceProfile(_ profile: DocumentAppearanceProfile) async throws -> StyleSnapshot
+    func renameAppearanceProfile(_ id: UUID, to name: String) async throws -> StyleSnapshot
+    func duplicateAppearanceProfile(_ id: UUID) async throws -> StyleSnapshot
+    func removeAppearanceProfile(_ id: UUID) async throws -> StyleSnapshot
     func importStyleSnippet(from sourceURL: URL) async throws -> StyleSnapshot
     func setStyleSnippetEnabled(_ enabled: Bool, id: UUID) async throws -> StyleSnapshot
     func moveStyleSnippet(_ id: UUID, by offset: Int) async throws -> StyleSnapshot
@@ -239,6 +245,8 @@ public protocol WorkspaceEventStreaming: Sendable {
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {
+    public let appearanceProfiles: [DocumentAppearanceProfile]
+    public let selectedAppearanceProfileID: UUID?
     public let snippets: [CSSSnippetRecord]
     public let validationErrors: [UUID: String]
     public let readCSS: String
@@ -248,6 +256,8 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
     public let canModify: Bool
 
     public init(
+        appearanceProfiles: [DocumentAppearanceProfile],
+        selectedAppearanceProfileID: UUID?,
         snippets: [CSSSnippetRecord],
         validationErrors: [UUID: String],
         readCSS: String,
@@ -256,6 +266,8 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
         storeError: String?,
         canModify: Bool
     ) {
+        self.appearanceProfiles = appearanceProfiles
+        self.selectedAppearanceProfileID = selectedAppearanceProfileID
         self.snippets = snippets
         self.validationErrors = validationErrors
         self.readCSS = readCSS
@@ -297,7 +309,7 @@ public enum StyleUseCaseError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .unavailable(let reason):
-            "CSS snippet settings are unavailable: \(reason) Reveal the managed folder in Finder and repair or remove snippets.json before making changes."
+            "Appearance settings are unavailable: \(reason) Reveal the managed Styles folder in Finder and repair or remove the invalid settings file before making changes."
         }
     }
 }

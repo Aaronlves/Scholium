@@ -1,14 +1,18 @@
 import Foundation
 import ScholiumContracts
 
-/// Owns every persisted CSS-snippet byte under Application Support. The
-/// frontend receives immutable snapshots and may only present returned URLs.
+/// Owns named Appearance profiles and every persisted CSS-snippet byte under
+/// Application Support. The frontend receives immutable snapshots and may
+/// only present returned URLs.
 public actor StyleOperations: StyleUseCases {
     private let fileManager: FileManager
     private let directoryURL: URL
     private let manifestURL: URL
+    private let appearanceManifestURL: URL
     private let safeModeURL: URL
 
+    private var appearanceProfiles: [DocumentAppearanceProfile] = []
+    private var selectedAppearanceProfileID: UUID?
     private var snippets: [CSSSnippetRecord] = []
     private var validationErrors: [UUID: String] = [:]
     private var readCSS = ""
@@ -26,12 +30,81 @@ public actor StyleOperations: StyleUseCases {
             .appendingPathComponent("Snippets", isDirectory: true)
         manifestURL = directoryURL.deletingLastPathComponent()
             .appendingPathComponent("snippets.json")
+        appearanceManifestURL = directoryURL.deletingLastPathComponent()
+            .appendingPathComponent("appearances.json")
         safeModeURL = directoryURL.deletingLastPathComponent()
             .appendingPathComponent("css-safe-mode.txt")
     }
 
     public func styleSnapshot() throws -> StyleSnapshot {
         ensureLoaded()
+        return snapshot()
+    }
+
+    public func createAppearanceProfile(named requestedName: String) throws -> StyleSnapshot {
+        ensureLoaded()
+        try requireWritableManifest()
+        let name = normalizedName(requestedName, fallback: "Untitled Appearance")
+        let profile = DocumentAppearanceProfile(name: name)
+        try commitAppearance(appearanceProfiles + [profile], selectedID: profile.id)
+        return snapshot()
+    }
+
+    public func selectAppearanceProfile(_ id: UUID) throws -> StyleSnapshot {
+        ensureLoaded()
+        guard appearanceProfiles.contains(where: { $0.id == id }) else { return snapshot() }
+        try commitAppearance(appearanceProfiles, selectedID: id)
+        return snapshot()
+    }
+
+    public func updateAppearanceProfile(_ profile: DocumentAppearanceProfile) throws -> StyleSnapshot {
+        ensureLoaded()
+        guard let index = appearanceProfiles.firstIndex(where: { $0.id == profile.id }) else {
+            return snapshot()
+        }
+        var candidate = appearanceProfiles
+        candidate[index] = normalized(profile)
+        try commitAppearance(candidate, selectedID: selectedAppearanceProfileID)
+        return snapshot()
+    }
+
+    public func renameAppearanceProfile(_ id: UUID, to requestedName: String) throws -> StyleSnapshot {
+        ensureLoaded()
+        let name = normalizedName(requestedName, fallback: "")
+        guard !name.isEmpty,
+              let index = appearanceProfiles.firstIndex(where: { $0.id == id }) else {
+            return snapshot()
+        }
+        var candidate = appearanceProfiles
+        candidate[index].name = name
+        try commitAppearance(candidate, selectedID: selectedAppearanceProfileID)
+        return snapshot()
+    }
+
+    public func duplicateAppearanceProfile(_ id: UUID) throws -> StyleSnapshot {
+        ensureLoaded()
+        guard let source = appearanceProfiles.first(where: { $0.id == id }) else {
+            return snapshot()
+        }
+        let copy = DocumentAppearanceProfile(
+            name: source.name + " Copy",
+            settings: source.settings
+        )
+        try commitAppearance(appearanceProfiles + [copy], selectedID: copy.id)
+        return snapshot()
+    }
+
+    public func removeAppearanceProfile(_ id: UUID) throws -> StyleSnapshot {
+        ensureLoaded()
+        guard appearanceProfiles.count > 1,
+              appearanceProfiles.contains(where: { $0.id == id }) else {
+            return snapshot()
+        }
+        let candidate = appearanceProfiles.filter { $0.id != id }
+        let nextSelectedID = selectedAppearanceProfileID == id
+            ? candidate.first?.id
+            : selectedAppearanceProfileID
+        try commitAppearance(candidate, selectedID: nextSelectedID)
         return snapshot()
     }
 
@@ -239,6 +312,28 @@ public actor StyleOperations: StyleUseCases {
                     from: Data(contentsOf: manifestURL)
                 )
             }
+            if fileManager.fileExists(atPath: appearanceManifestURL.path) {
+                let manifest = try JSONDecoder().decode(
+                    AppearanceManifest.self,
+                    from: Data(contentsOf: appearanceManifestURL)
+                )
+                appearanceProfiles = manifest.profiles.map(normalized)
+                selectedAppearanceProfileID = manifest.selectedProfileID
+            } else {
+                let profile = DocumentAppearanceProfile(name: "Custom")
+                appearanceProfiles = [profile]
+                selectedAppearanceProfileID = profile.id
+                try writeAppearanceManifest(
+                    AppearanceManifest(selectedProfileID: profile.id, profiles: [profile])
+                )
+            }
+            if appearanceProfiles.isEmpty {
+                let profile = DocumentAppearanceProfile(name: "Custom")
+                appearanceProfiles = [profile]
+                selectedAppearanceProfileID = profile.id
+            } else if !appearanceProfiles.contains(where: { $0.id == selectedAppearanceProfileID }) {
+                selectedAppearanceProfileID = appearanceProfiles.first?.id
+            }
             if fileManager.fileExists(atPath: safeModeURL.path),
                let persisted = String(data: try Data(contentsOf: safeModeURL), encoding: .utf8),
                !persisted.isEmpty {
@@ -249,6 +344,8 @@ public actor StyleOperations: StyleUseCases {
         } catch {
             manifestLoadFailure = error
             snippets = []
+            appearanceProfiles = []
+            selectedAppearanceProfileID = nil
             validationErrors = [:]
             readCSS = ""
             livePreviewCSS = ""
@@ -259,6 +356,8 @@ public actor StyleOperations: StyleUseCases {
 
     private func snapshot() -> StyleSnapshot {
         StyleSnapshot(
+            appearanceProfiles: appearanceProfiles,
+            selectedAppearanceProfileID: selectedAppearanceProfileID,
             snippets: snippets,
             validationErrors: validationErrors,
             readCSS: readCSS,
@@ -296,6 +395,100 @@ public actor StyleOperations: StyleUseCases {
         livePreviewCSS = build.livePreviewCSS
         if clearingSafeMode { safeModeReason = nil }
         storeError = nil
+    }
+
+    private struct AppearanceManifest: Codable {
+        var selectedProfileID: UUID
+        var profiles: [DocumentAppearanceProfile]
+    }
+
+    private func commitAppearance(
+        _ profiles: [DocumentAppearanceProfile],
+        selectedID: UUID?
+    ) throws {
+        try requireWritableManifest()
+        try ensureDirectory()
+        let normalizedProfiles = profiles.map(normalized)
+        guard let firstID = normalizedProfiles.first?.id else { return }
+        let resolvedSelectedID: UUID
+        if let selectedID,
+           normalizedProfiles.contains(where: { $0.id == selectedID }) {
+            resolvedSelectedID = selectedID
+        } else {
+            resolvedSelectedID = firstID
+        }
+        try writeAppearanceManifest(
+            AppearanceManifest(
+                selectedProfileID: resolvedSelectedID,
+                profiles: normalizedProfiles
+            )
+        )
+        appearanceProfiles = normalizedProfiles
+        selectedAppearanceProfileID = resolvedSelectedID
+        storeError = nil
+    }
+
+    private func writeAppearanceManifest(_ manifest: AppearanceManifest) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(manifest).write(to: appearanceManifestURL, options: [.atomic])
+    }
+
+    private func normalized(_ profile: DocumentAppearanceProfile) -> DocumentAppearanceProfile {
+        var profile = profile
+        profile.name = normalizedName(profile.name, fallback: "Untitled Appearance")
+        profile.settings.body.fontSizePoints = profile.settings.body.fontSizePoints.clamped(to: 9...24)
+        profile.settings.body.lineHeight = profile.settings.body.lineHeight.clamped(to: 1.2...2.4)
+        profile.settings.body.paragraphSpacingEm = profile.settings.body.paragraphSpacingEm.clamped(to: 0...2)
+        profile.settings.body.firstLineIndentEm = profile.settings.body.firstLineIndentEm.clamped(to: 0...4)
+        profile.settings.body.letterSpacingEm = profile.settings.body.letterSpacingEm.clamped(to: -0.05...0.1)
+        profile.settings.body.wordSpacingEm = profile.settings.body.wordSpacingEm.clamped(to: -0.1...0.5)
+        profile.settings.headings.weight = profile.settings.headings.weight.clamped(to: 400...700)
+        profile.settings.headings.lineHeight = profile.settings.headings.lineHeight.clamped(to: 1...2.4)
+        profile.settings.headings.letterSpacingEm = profile.settings.headings.letterSpacingEm.clamped(to: -0.05...0.1)
+        profile.settings.headings.title = normalized(profile.settings.headings.title)
+        profile.settings.headings.level1 = normalized(profile.settings.headings.level1)
+        profile.settings.headings.level2 = normalized(profile.settings.headings.level2)
+        profile.settings.callouts = DocumentCalloutAppearanceRole.allCases.map { role in
+            normalized(profile.settings.callout(role))
+        }
+        return profile
+    }
+
+    private func normalized(
+        _ level: DocumentHeadingLevelAppearance
+    ) -> DocumentHeadingLevelAppearance {
+        var level = level
+        level.scale = level.scale.clamped(to: 0.8...3)
+        level.spaceBeforeEm = level.spaceBeforeEm.clamped(to: 0...4)
+        level.spaceAfterEm = level.spaceAfterEm.clamped(to: 0...4)
+        return level
+    }
+
+    private func normalized(_ callout: DocumentCalloutAppearance) -> DocumentCalloutAppearance {
+        var callout = callout
+        callout.inlineInsetEm = callout.inlineInsetEm.clamped(to: 0...4)
+        callout.blockGapEm = callout.blockGapEm.clamped(to: 0...4)
+        callout.fontScale = callout.fontScale.clamped(to: 0.8...1.4)
+        callout.paragraphSpacingEm = callout.paragraphSpacingEm.clamped(to: 0...2)
+        callout.titleWeight = callout.titleWeight.clamped(to: 400...700)
+        callout.lineHeight = callout.lineHeight?.clamped(to: 1.1...2.4)
+        callout.startInsetEm = callout.startInsetEm?.clamped(to: 0...6)
+        callout.endInsetEm = callout.endInsetEm?.clamped(to: 0...6)
+        callout.titleGapEm = callout.titleGapEm?.clamped(to: 0...2)
+        callout.titleColumnEm = callout.titleColumnEm?.clamped(to: 3...16)
+        callout.columnGapEm = callout.columnGapEm?.clamped(to: 0...4)
+        callout.paddingBlockEm = callout.paddingBlockEm?.clamped(to: 0...3)
+        callout.paddingInlineEm = callout.paddingInlineEm?.clamped(to: 0...4)
+        callout.contentIndentEm = callout.contentIndentEm?.clamped(to: 0...4)
+        callout.quotationScale = callout.quotationScale?.clamped(to: 0.8...1.5)
+        callout.attributionScale = callout.attributionScale?.clamped(to: 0.6...1.2)
+        return callout
+    }
+
+    private func normalizedName(_ requestedName: String, fallback: String) -> String {
+        let trimmed = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String((trimmed.isEmpty ? fallback : trimmed).prefix(120))
     }
 
     private func rebuildCSS() {
@@ -356,5 +549,11 @@ public actor StyleOperations: StyleUseCases {
 
     private func ensureDirectory() throws {
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(range.upperBound, max(range.lowerBound, self))
     }
 }

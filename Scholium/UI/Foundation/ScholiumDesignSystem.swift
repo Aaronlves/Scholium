@@ -507,7 +507,6 @@ enum ScholiumWebDesignTokens {
     --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
     --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
-    --scholium-document-readable-measure: \(ScholiumMetrics.Document.readableMeasureCharacters)ch;
     --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
     --scholium-document-text-scale: 1em;
     """
@@ -560,12 +559,7 @@ enum ScholiumWebDesignTokens {
       box-sizing: border-box;
       min-width: 0;
       inline-size: 100%;
-      max-inline-size: calc(
-        var(--scholium-document-readable-measure)
-        + var(--scholium-rhythm-inline-regular)
-        + var(--scholium-rhythm-inline-regular)
-      );
-      margin: 0 auto;
+      margin: 0;
       padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll);
       font-family: Alegreya, Georgia, serif;
       font-size: var(--scholium-document-text-scale);
@@ -687,9 +681,6 @@ enum ScholiumGrid {
     }
 
     enum Document {
-        /// Alegreya-calibrated CSS `ch` measure. Real-WKWebView line probes
-        /// keep ordinary Latin/CJK prose within the approved 80/40 ceilings.
-        static let readableMeasureCharacters: CGFloat = 50
         static let narrowWidthThresholdRootEms: CGFloat = 44
         static let compactShellInsetCSSPixels = Spacing.regionContentInset
         static let contentTopInsetCSSPixels = Spacing.documentShellInsetCSSPixels
@@ -761,9 +752,6 @@ enum ScholiumMetrics {
     }
 
     enum Document {
-        /// Maximum text measure in font-relative CSS `ch` units. The WebKit
-        /// shell adds renderer-specific padding outside this text column.
-        static let readableMeasureCharacters = ScholiumGrid.Document.readableMeasureCharacters
         /// Document-local breathing room below the system-owned toolbar. The
         /// toolbar safe area is not added again by document layout.
         static let contentTopInsetCSSPixels = ScholiumGrid.Document.contentTopInsetCSSPixels
@@ -816,7 +804,6 @@ enum ScholiumMetrics {
 /// rewrite authoritative Markdown from these values.
 struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
     let textScale: Double
-    let readableMeasureCharacters: CGFloat
     let contentTopInsetCSSPixels: CGFloat
     let regularInlineInsetCSSPixels: CGFloat
     let sourceInlineInsetCSSPixels: CGFloat
@@ -825,7 +812,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
 
     init(
         textScale: Double,
-        readableMeasureCharacters: CGFloat = ScholiumMetrics.Document.readableMeasureCharacters,
         contentTopInsetCSSPixels: CGFloat = ScholiumMetrics.Document.contentTopInsetCSSPixels,
         regularInlineInsetCSSPixels: CGFloat = ScholiumGrid.Spacing.documentShellInsetCSSPixels,
         sourceInlineInsetCSSPixels: CGFloat = ScholiumGrid.Spacing.sourceShellInsetCSSPixels,
@@ -836,7 +822,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
             ScholiumMetrics.Document.maximumTextScale,
             max(ScholiumMetrics.Document.minimumTextScale, textScale)
         )
-        self.readableMeasureCharacters = max(0, readableMeasureCharacters)
         self.contentTopInsetCSSPixels = max(0, contentTopInsetCSSPixels)
         self.regularInlineInsetCSSPixels = max(0, regularInlineInsetCSSPixels)
         self.sourceInlineInsetCSSPixels = max(0, sourceInlineInsetCSSPixels)
@@ -851,7 +836,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
             :root {
               --scholium-document-text-scale: %.6fem;
               --scholium-document-text-scale-factor: %.6f;
-              --scholium-document-readable-measure: %.6fch;
               --scholium-document-content-top-inset: %.6fpx;
               --scholium-rhythm-inline-regular: %.6fpx;
               --scholium-rhythm-inline-source: %.6fpx;
@@ -871,7 +855,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
             locale: locale,
             textScale,
             textScale,
-            Double(readableMeasureCharacters),
             Double(contentTopInsetCSSPixels),
             Double(regularInlineInsetCSSPixels),
             Double(sourceInlineInsetCSSPixels),

@@ -6,6 +6,9 @@ import Foundation
 /// Observable macOS adapter over Application-owned style persistence.
 @MainActor
 final class CSSSnippetStore: ObservableObject {
+    @Published private(set) var appearanceProfiles: [DocumentAppearanceProfile] = []
+    @Published private(set) var selectedAppearanceProfileID: UUID?
+    @Published private(set) var appearanceCSS = ""
     @Published private(set) var snippets: [CSSSnippetRecord] = []
     @Published private(set) var validationErrors: [UUID: String] = [:]
     @Published private(set) var readCSS = ""
@@ -22,6 +25,9 @@ final class CSSSnippetStore: ObservableObject {
     }
 
     var enabledCount: Int { snippets.lazy.filter(\.isEnabled).count }
+    var selectedAppearanceProfile: DocumentAppearanceProfile? {
+        appearanceProfiles.first { $0.id == selectedAppearanceProfileID }
+    }
 
     func refresh() async {
         do {
@@ -33,6 +39,30 @@ final class CSSSnippetStore: ObservableObject {
 
     func importSnippet(from sourceURL: URL) async throws {
         apply(try await operations.importStyleSnippet(from: sourceURL))
+    }
+
+    func createAppearance(named name: String = "Untitled Appearance") {
+        perform { try await self.operations.createAppearanceProfile(named: name) }
+    }
+
+    func selectAppearance(_ id: UUID) {
+        perform { try await self.operations.selectAppearanceProfile(id) }
+    }
+
+    func updateAppearance(_ profile: DocumentAppearanceProfile) {
+        perform { try await self.operations.updateAppearanceProfile(profile) }
+    }
+
+    func renameAppearance(_ id: UUID, to name: String) {
+        perform { try await self.operations.renameAppearanceProfile(id, to: name) }
+    }
+
+    func duplicateAppearance(_ id: UUID) {
+        perform { try await self.operations.duplicateAppearanceProfile(id) }
+    }
+
+    func removeAppearance(_ id: UUID) {
+        perform { try await self.operations.removeAppearanceProfile(id) }
     }
 
     func setEnabled(_ enabled: Bool, for id: UUID) {
@@ -103,6 +133,11 @@ final class CSSSnippetStore: ObservableObject {
     }
 
     private func apply(_ snapshot: StyleSnapshot) {
+        appearanceProfiles = snapshot.appearanceProfiles
+        selectedAppearanceProfileID = snapshot.selectedAppearanceProfileID
+        appearanceCSS = DocumentAppearanceStyles.css(
+            for: snapshot.appearanceProfiles.first { $0.id == snapshot.selectedAppearanceProfileID }
+        )
         snippets = snapshot.snippets
         validationErrors = snapshot.validationErrors
         readCSS = snapshot.readCSS

@@ -24,6 +24,7 @@ struct DocumentFeatureState {
     let canComment: Bool
     let canEdit: Bool
     let documentTextScale: Double
+    let appearanceCSS: String
     let readCSS: String
     let livePreviewCSS: String
     let initialScrollFraction: Double
@@ -680,7 +681,7 @@ struct NoteContentView: View {
             documentID: editorSession.bridgeDocumentID,
             source: editingSource,
             mode: documentSession.retainedEditorMode,
-            presentationCSS: documentPresentation.css,
+            presentationCSS: documentPresentationCSS,
             userCSS: state.livePreviewCSS,
             linkCompletions: editorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
@@ -795,7 +796,7 @@ struct NoteContentView: View {
             fingerprint: noteFingerprint.sha256,
             source: note.rawContent,
             htmlBody: renderedReadHTML,
-            presentationCSS: documentPresentation.css,
+            presentationCSS: documentPresentationCSS,
             userCSS: state.readCSS,
             configurationRevision: readConfigurationRevision,
             researcherComments: currentResearcherComments,
@@ -863,6 +864,10 @@ struct NoteContentView: View {
         ScholiumDocumentPresentationConfiguration(textScale: state.documentTextScale)
     }
 
+    private var documentPresentationCSS: String {
+        documentPresentation.css + "\n" + state.appearanceCSS
+    }
+
     private var readConfigurationRevision: String {
         let commentRevision = state.reviewRecord.map {
             "\($0.id.uuidString):\($0.updatedAt.timeIntervalSinceReferenceDate)"
@@ -877,6 +882,7 @@ struct NoteContentView: View {
         return [
             noteFingerprint.sha256,
             String(state.documentTextScale.bitPattern),
+            String(state.appearanceCSS.hashValue),
             String(state.readCSS.hashValue),
             commentRevision,
             previewRevision,
@@ -2201,6 +2207,7 @@ private func dialogueTargetIDs(
         canComment: false,
         canEdit: false,
         documentTextScale: 1,
+        appearanceCSS: "",
         readCSS: "",
         livePreviewCSS: "",
         initialScrollFraction: 0,

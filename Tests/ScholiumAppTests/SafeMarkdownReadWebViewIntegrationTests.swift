@@ -187,14 +187,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             String(format: "%.6fem", locale: Locale(identifier: "en_US_POSIX"), configuration.textScale)
         }
 
-        var expectedReadableMeasure: String {
-            String(
-                format: "%.6fch",
-                locale: Locale(identifier: "en_US_POSIX"),
-                Double(configuration.readableMeasureCharacters)
-            )
-        }
-
         func expectedInlineInset(viewportWidth: Double) -> String {
             let compactBoundary = Double(configuration.compactThresholdRootEms) * 16
             let value = viewportWidth <= compactBoundary
@@ -275,7 +267,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             let liveSnapshot = try #require(liveScenarios.first { $0.0.name == scenario.name }?.1)
             expectSharedPresentationParity(read: readSnapshot, live: liveSnapshot)
             #expect(readSnapshot.rootTextScale == scenario.expectedTextScale)
-            #expect(readSnapshot.rootReadableMeasure == scenario.expectedReadableMeasure)
             #expect(readSnapshot.rootContentTopInset == "32.000000px")
             #expect(readSnapshot.rootInlineRegular == "32.000000px")
             #expect(readSnapshot.rootInlineSource == "40.000000px")
@@ -284,10 +275,16 @@ extension MarkdownEditorWebViewIntegrationTests {
             #expect(readSnapshot.documentPaddingInlineStart == scenario.expectedInlineInset(
                 viewportWidth: readSnapshot.viewportWidth
             ))
-            #expect(readSnapshot.latinGlyphsPerLine <= 80)
-            #expect(readSnapshot.cjkGlyphsPerLine <= 40)
+            if scenario.readUserCSS.isEmpty {
+                #expect(abs(readSnapshot.documentWidth - readSnapshot.viewportWidth) <= 1)
+            }
             #expect(readSnapshot.pageHorizontalOverflow <= 1)
         }
+        // Responsive full-width presentation legitimately changes which block
+        // occupies the viewport while the scenario matrix resizes the window.
+        // Reapply the semantic request at the final geometry before asserting
+        // the exact source block restored by that request.
+        harness.apply(initialAnchor: requestedAnchor, fallbackFraction: 0.65)
         let captured = try await harness.waitUntilCapturedAnchor(stage: "initial") {
             $0.blockUTF16LowerBound == fixture.anchorLowerBound
                 && $0.blockUTF16UpperBound == fixture.anchorUpperBound
@@ -397,7 +394,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         read: MarkdownEditorSession.TestingPresentationSnapshot,
         live: MarkdownEditorSession.TestingPresentationSnapshot
     ) {
-        #expect(live.rootReadableMeasure == read.rootReadableMeasure)
         #expect(live.rootContentTopInset == read.rootContentTopInset)
         #expect(live.rootTextScale == read.rootTextScale)
         #expect(live.rootProseLineHeight == read.rootProseLineHeight)
@@ -423,10 +419,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(abs(live.firstGlyphLeft - read.firstGlyphLeft) <= 1)
         #expect(live.pageHorizontalOverflow <= 1)
         #expect(read.pageHorizontalOverflow <= 1)
-        #expect(live.latinGlyphsPerLine <= 80)
-        #expect(read.latinGlyphsPerLine <= 80)
-        #expect(live.cjkGlyphsPerLine <= 40)
-        #expect(read.cjkGlyphsPerLine <= 40)
 
         #expect(live.headingFontFamily == read.headingFontFamily)
         #expect(live.headingFontSize == read.headingFontSize)
@@ -969,7 +961,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const footnoteListStyle = style('.scholium-document > .footnotes > ol');
                 const mathStyle = style('.scholium-document > .scholium-math-display');
                 return {
-                    rootReadableMeasure: rootStyle.getPropertyValue('--scholium-document-readable-measure').trim(),
                     rootContentTopInset: rootStyle.getPropertyValue('--scholium-document-content-top-inset').trim(),
                     rootTextScale: rootStyle.getPropertyValue('--scholium-document-text-scale').trim(),
                     rootProseLineHeight: rootStyle.getPropertyValue('--scholium-rhythm-prose-line-height').trim(),
@@ -1088,12 +1079,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                 while true {
                     let snapshot = try await presentationSnapshot()
                     if snapshot.rootTextScale == scenario.expectedTextScale,
-                       snapshot.rootReadableMeasure == scenario.expectedReadableMeasure,
                        snapshot.documentWidth > 0 {
                         try await Task.sleep(for: .milliseconds(100))
                         let stableSnapshot = try await presentationSnapshot()
                         guard stableSnapshot.rootTextScale == scenario.expectedTextScale,
-                              stableSnapshot.rootReadableMeasure == scenario.expectedReadableMeasure,
                               stableSnapshot.documentWidth > 0 else { continue }
                         snapshots.append((scenario, stableSnapshot))
                         break

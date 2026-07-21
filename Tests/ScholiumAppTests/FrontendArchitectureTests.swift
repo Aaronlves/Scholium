@@ -1309,7 +1309,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Dimension.researchFunctionTargetHeight == 44)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Dimension.libraryFooterHeight == 52)
-        #expect(ScholiumGrid.Document.readableMeasureCharacters == 50)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
         #expect(ScholiumMetrics.Peripheral.contentInset == ScholiumGrid.Spacing.regionContentInset)
@@ -1394,7 +1393,7 @@ struct FrontendArchitectureTests {
         ))
 
         #expect(noteSource.contains("ScholiumDocumentPresentationConfiguration"))
-        #expect(editorStyles.contains("var(--scholium-document-readable-measure)"))
+        #expect(!editorStyles.contains("--scholium-document-readable-measure"))
         #expect(editorStyles.contains("var(--scholium-document-content-top-inset)"))
         #expect(editorStyles.contains("var(--scholium-document-text-scale)"))
         #expect(ScholiumDocumentPresentationConfiguration(textScale: 1).css.contains(
@@ -1730,8 +1729,9 @@ struct FrontendArchitectureTests {
         }
         #expect(editorHTML.contains(sharedCSS))
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
-        #expect(sharedCSS.contains("--scholium-document-readable-measure: 50.0ch"))
-        #expect(sharedCSS.contains("max-inline-size: calc("))
+        #expect(!sharedCSS.contains("--scholium-document-readable-measure"))
+        #expect(!sharedCSS.contains("max-inline-size:"))
+        #expect(sharedCSS.contains("inline-size: 100%;"))
         let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
         #expect(presentationCSS.contains("padding-inline: var(--scholium-rhythm-inline-narrow)"))
         #expect(presentationCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
@@ -1768,6 +1768,7 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("linear-gradient("))
         #expect(!calloutCSS.contains("clip-path: polygon("))
         #expect(!calloutCSS.contains("border-radius: 50%"))
+        #expect(!calloutCSS.contains("max-width: 72ch"))
         #expect(calloutCSS.contains("text-align: start;"))
         #expect(!calloutCSS.contains("text-align: justify;"))
         #expect(!calloutCSS.contains("text-align-last:"))
@@ -1783,7 +1784,32 @@ struct FrontendArchitectureTests {
         #expect(css.contains("data:font/woff2;base64,"))
         #expect(!css.contains("url(fonts/"))
         #expect(css.contains(".scholium-math-display"))
+        #expect(css.contains("grid-template-columns: minmax(2.5em, 1fr) minmax(0, auto) minmax(2.5em, 1fr)"))
+        #expect(css.contains("counter-increment: scholium-equation"))
+        #expect(css.contains("content: \"(\" counter(scholium-equation) \")\""))
+        #expect(css.contains(".scholium-math-display .katex { font-style: italic; }"))
         #expect(editorHTML.contains(css))
+    }
+
+    @Test("Structured Appearance CSS maps the exported typography and callout profile")
+    func structuredAppearanceCSS() {
+        let profile = DocumentAppearanceProfile(name: "Custom")
+        let css = DocumentAppearanceStyles.css(for: profile)
+
+        #expect(css.contains("--scholium-document-prose-font-size: 12pt"))
+        #expect(css.contains("--scholium-rhythm-prose-line-height: 2"))
+        #expect(css.contains("--scholium-appearance-title-before: 0em"))
+        #expect(css.contains("font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor))"))
+        #expect(css.contains("letter-spacing: 0.02em"))
+        #expect(css.contains("text-align: justify"))
+        #expect(css.contains("margin-inline-start: 3em"))
+        #expect(css.contains("margin-inline-end: 3em"))
+        #expect(css.contains(".scholium-callout-connect"))
+        #expect(css.contains("margin-inline-start: 0.72em"))
+        #expect(css.contains("grid-template-columns: 6.5em minmax(0, 1fr)"))
+        #expect(css.contains("details.scholium-callout > .scholium-callout-body"))
+        #expect(!css.contains("readable-measure"))
+        #expect(!css.contains("max-inline-size"))
     }
 
     @Test("Read and Live Preview share semantic table presentation")

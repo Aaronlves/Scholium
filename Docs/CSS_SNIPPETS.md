@@ -1,6 +1,6 @@
 # Scholium CSS Snippet Contract
 
-Scholium imports CSS into a managed Application Support copy. It never loads a snippet directly from a research vault. Snippets style document content in Read and Live Preview only; Source mode and the application interface are fixed.
+Appearance provides typed, named document configurations. Its Advanced CSS section can additionally import CSS into a managed Application Support copy. Scholium never loads a snippet directly from a research vault. Snippets style document content in Read and Live Preview only; Source mode and the application interface are fixed.
 
 ## Supported surface
 
@@ -26,7 +26,7 @@ The sanitizer rejects:
 
 ## App-owned Callout styles
 
-Semantic Callout presentation, including the role-specific motifs and disclosure chevron, is maintained separately in `Scholium/Resources/Editor/callouts.css`. The app injects this resource into both Read and Live Preview, while `editor.css` and `SafeMarkdownReadWebView.swift` retain only their non-Callout presentation code and resource-loading hooks. It is not a managed user snippet, is not exposed through Document Styles, and must not be edited through the user CSS path. Fold state remains source-controlled: `+` starts expanded, `-` starts collapsed, and no marker remains fixed.
+Semantic Callout presentation, including the role-specific motifs and disclosure chevron, is maintained separately in `Scholium/Resources/Editor/callouts.css`. The app injects this resource into both Read and Live Preview, while `editor.css` and `SafeMarkdownReadWebView.swift` retain only their non-Callout presentation code and resource-loading hooks. Appearance may map typed spacing, type, and composition parameters onto that protected structure; Advanced CSS cannot edit it. Fold state remains source-controlled: `+` starts expanded, `-` starts collapsed, and no marker remains fixed.
 
 ## Failure and recovery
 

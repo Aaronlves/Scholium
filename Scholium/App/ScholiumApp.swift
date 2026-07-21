@@ -1435,6 +1435,9 @@ final class WindowModel: ObservableObject {
         documentTabController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
+        cssSnippetStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
         workspaceStore.$latestWorkspaceActivation
             .compactMap { $0 }
             .sink { [weak self] activation in

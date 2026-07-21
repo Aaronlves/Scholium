@@ -867,6 +867,7 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("putBackDestination"))
         #expect(windowModelSource.contains("documentController.putBack("))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
+        #expect(windowModelSource.contains("cssSnippetStore.objectWillChange"))
 
         for documentOwnedState in [
             "@Published private(set) var lifecycleMutationGeneration",

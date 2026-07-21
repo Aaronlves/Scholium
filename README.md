@@ -325,7 +325,7 @@ Docs/IMPLEMENTATION_STATUS.md
                            Current evidence and migration ledger
 Docs/IMPLEMENTATION_ARCHITECTURE.md
                            Module, runtime, state, and editor ownership
-Docs/CSS_SNIPPETS.md       Supported document-style customization contract
+Docs/CSS_SNIPPETS.md       Appearance and advanced CSS customization contract
 ScholiumCore/Resources/Skills/README.md
                            Bundled product-skill architecture and evidence boundary
 Docs/BETA_RELEASE.md       Source-first beta policy and release gates

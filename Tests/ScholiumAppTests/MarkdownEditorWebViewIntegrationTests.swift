@@ -739,14 +739,12 @@ struct MarkdownEditorWebViewIntegrationTests {
                 _ = try await waitUntilPresentation(stage: scenario.name) {
                     $0.label == "Markdown live preview editor"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
-                        && $0.presentation.rootReadableMeasure == scenario.expectedReadableMeasure
                         && $0.presentation.documentWidth > 0
                 }
                 try await Task.sleep(for: .milliseconds(100))
                 let snapshot = try await waitUntilPresentation(stage: "stable \(scenario.name)") {
                     $0.label == "Markdown live preview editor"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
-                        && $0.presentation.rootReadableMeasure == scenario.expectedReadableMeasure
                         && $0.presentation.documentWidth > 0
                 }
                 snapshots.append((scenario, snapshot.presentation))

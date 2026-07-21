@@ -33,14 +33,45 @@ enum ScholiumMathAssets {
       max-inline-size: 100%;
     }
     .scholium-math-inline { display: inline; }
+    .scholium-document,
+    .cm-editor.scholium-live-mode .cm-content {
+      counter-reset: scholium-equation;
+    }
     .scholium-math-display {
-      display: block;
+      display: grid;
+      grid-template-columns: minmax(2.5em, 1fr) minmax(0, auto) minmax(2.5em, 1fr);
+      align-items: baseline;
       overflow-x: auto;
       overflow-y: hidden;
       margin-block: var(--scholium-rhythm-paragraph-gap);
       padding-block: 0.12em;
+      direction: ltr;
+      counter-increment: scholium-equation;
       scrollbar-width: thin;
     }
+    .scholium-math-display > .scholium-math-output,
+    .scholium-math-display > .katex-display,
+    .scholium-math-display > .scholium-math-source {
+      grid-column: 2;
+      min-inline-size: 0;
+      margin: 0;
+      justify-self: center;
+    }
+    .scholium-math-display::after {
+      grid-column: 3;
+      justify-self: end;
+      align-self: baseline;
+      content: "(" counter(scholium-equation) ")";
+      font: normal 0.82em/1 Alegreya, Georgia, serif;
+      font-variant-numeric: tabular-nums;
+    }
+    .scholium-math-display .katex { font-style: italic; }
+    .scholium-math-display .katex .mop,
+    .scholium-math-display .katex .mbin,
+    .scholium-math-display .katex .mrel,
+    .scholium-math-display .katex .mopen,
+    .scholium-math-display .katex .mclose,
+    .scholium-math-display .katex .mpunct { font-style: normal; }
     .cm-live-math.scholium-math-display { inline-size: 100%; }
     .cm-line.cm-live-math-display-line { padding-block: 0; }
     .cm-line.cm-live-math-collapsed-line {

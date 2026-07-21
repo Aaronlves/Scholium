@@ -340,6 +340,7 @@ struct ContentView: View {
             canComment: appState.canCommentCurrentNote,
             canEdit: appState.canEditCurrentNote,
             documentTextScale: appState.documentTextScale,
+            appearanceCSS: appState.cssSnippetStore.appearanceCSS,
             readCSS: appState.cssSnippetStore.readCSS,
             livePreviewCSS: appState.cssSnippetStore.livePreviewCSS,
             initialScrollFraction: path.map { appState.scrollPosition(for: $0) } ?? 0,
