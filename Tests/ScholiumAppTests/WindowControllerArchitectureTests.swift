@@ -73,6 +73,45 @@ struct WindowControllerArchitectureTests {
         #expect(second.selectedDocument == .workspace(descriptor))
     }
 
+    @Test("Source deltas do not invalidate WindowModel after the dirty chrome transition")
+    func sourceDeltasStayBelowTheChromeBoundary() async {
+        let window = WindowModel(workspaceStore: WorkspaceStore())
+        let reference = fixtureReference(path: "Topics/Hot Path.md")
+        let key = DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID())
+        let descriptor = WindowDocumentDescriptor(sessionKey: key, reference: reference)
+        window.documentController.installOpenedDocument(descriptor)
+        let session = window.documentController.session(for: key)
+        window.documentController.beginEditing(
+            session: session,
+            target: .workspace(key),
+            source: "clean\n",
+            revision: DocumentFingerprint(content: "clean\n"),
+            mode: .livePreview
+        )
+        await Task.yield()
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(20))
+
+        var invalidations = 0
+        let observation = window.objectWillChange.sink { invalidations += 1 }
+        session.editingSource = "dirty 0\n"
+        await Task.yield()
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(20))
+        #expect(invalidations <= 1)
+        #expect(window.documentController.chromeProjection.dirtyState == .dirty)
+
+        invalidations = 0
+        for index in 1...100 {
+            session.editingSource = "dirty \(index)\n"
+        }
+        await Task.yield()
+        await Task.yield()
+
+        #expect(invalidations == 0)
+        observation.cancel()
+    }
+
     @Test("Document tabs borrow one window peripheral presentation")
     func documentTabsBorrowWindowPeripheralPresentation() {
         let presentation = WindowPeripheralPresentationState()

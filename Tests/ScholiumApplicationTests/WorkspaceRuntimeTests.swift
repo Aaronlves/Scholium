@@ -5,6 +5,46 @@ import Testing
 
 @Suite("Headless workspace runtime")
 struct WorkspaceRuntimeTests {
+    @Test("Document preview API is source-revision and graph-generation checked")
+    func revisionCheckedDocumentPreviewCatalog() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        try Data("# Agency\n\n[[Freedom]]\n".utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Agency.md"),
+            options: .atomic
+        )
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.discovery.refresh()
+        let graph = try #require(snapshot.discovery.catalog.graph)
+        let source = try #require(snapshot.document(id: fixture.analysisNoteID)?.document)
+
+        let catalog = try await handle.documents.documentPreviewCatalog(
+            source: fixture.analysisNoteID,
+            sourceFingerprint: source.fingerprint,
+            graphGeneration: graph.generation
+        )
+        let staleRevision = try await handle.documents.documentPreviewCatalog(
+            source: fixture.analysisNoteID,
+            sourceFingerprint: DocumentFingerprint(content: "stale"),
+            graphGeneration: graph.generation
+        )
+        let staleGraph = try await handle.documents.documentPreviewCatalog(
+            source: fixture.analysisNoteID,
+            sourceFingerprint: source.fingerprint,
+            graphGeneration: graph.generation - 1
+        )
+
+        #expect(catalog.links.count == 1)
+        #expect(catalog.links.first?.title == "Freedom")
+        #expect(staleRevision.links.isEmpty)
+        #expect(staleGraph.links.isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Snapshot mode reuses handle identity and publishes complete generations")
     func snapshotIdentityAndEvents() async throws {
         let fixture = try await ApplicationFixture.make()

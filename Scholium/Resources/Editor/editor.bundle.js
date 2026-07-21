@@ -30961,6 +30961,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var documentVersion = 0;
   var exactSource = "";
   var linkCandidates = [];
+  var nextLinkCompletionRequest = 0;
+  var pendingLinkCompletionQueries = /* @__PURE__ */ new Map();
   var linkPreviews = [];
   var linkPreviewIndexByRange = /* @__PURE__ */ new Map();
   var editingDialect = null;
@@ -32885,14 +32887,36 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
     const match = /\[\[[^\]\n]*$/.exec(beforeCursor);
     if (!match) return null;
-    const typed = match[0].slice(2).toLocaleLowerCase();
-    const options = linkCandidates.filter((candidate) => !typed || candidate.label.toLocaleLowerCase().includes(typed) || candidate.path.toLocaleLowerCase().includes(typed)).slice(0, 100).map((candidate) => ({
-      label: candidate.label,
-      detail: candidate.detail,
-      type: "text",
-      apply: candidate.isAmbiguous ? () => void 0 : candidate.insertion + "]]"
+    const typed = match[0].slice(2);
+    const from = scanFrom + match.index + 2;
+    const requestID = crypto.randomUUID?.() ?? `link-${Date.now()}-${nextLinkCompletionRequest++}`;
+    const candidates = new Promise((resolve) => {
+      pendingLinkCompletionQueries.set(requestID, resolve);
+      const cancel = () => {
+        if (!pendingLinkCompletionQueries.delete(requestID)) return;
+        resolve([]);
+      };
+      context.addEventListener("abort", cancel, { onDocChange: true });
+      window.setTimeout(cancel, 3e3);
+      post({ type: "linkCompletionQuery", requestID, query: typed });
+    });
+    return candidates.then((resolved) => ({
+      from,
+      options: resolved.slice(0, 100).map((candidate) => ({
+        label: candidate.label,
+        detail: candidate.detail,
+        type: "text",
+        apply: candidate.isAmbiguous ? () => void 0 : candidate.insertion + "]]"
+      })),
+      filter: false
     }));
-    return { from: scanFrom + match.index + 2, options, filter: false };
+  }
+  function resolveLinkCompletionQuery(requestID, value) {
+    const resolve = pendingLinkCompletionQueries.get(requestID);
+    if (!resolve) return;
+    pendingLinkCompletionQueries.delete(requestID);
+    const candidates = Array.isArray(value) ? value.slice(0, 100).filter((candidate) => candidate !== null && typeof candidate === "object" && typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && typeof candidate.isAmbiguous === "boolean") : [];
+    resolve(candidates);
   }
   function calloutCompletionSource(context) {
     const line = context.state.doc.lineAt(context.pos);
@@ -33833,7 +33857,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       editor.contentDOM.blur();
     }
   };
-  webkitWindow.scholiumEditor = { dispatch: dispatchEditorRequest };
+  webkitWindow.scholiumEditor = {
+    dispatch: dispatchEditorRequest,
+    resolveLinkCompletionQuery
+  };
   recordEditorMetric("startup", editorStartupStartedAt, { documentLength: editor.state.doc.length });
   post({ type: "ready" });
 })();

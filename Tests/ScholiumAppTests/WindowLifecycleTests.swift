@@ -376,6 +376,51 @@ struct WindowLifecycleTests {
         window.close()
     }
 
+    @Test("Document tab updates preserve page hosts and selector identities")
+    func documentTabAdapterUpdatesIncrementally() {
+        let firstID = UUID()
+        let secondID = UUID()
+        let first = DocumentTabItem(
+            id: firstID,
+            document: .unclassified(relativePath: "First.md"),
+            title: "First",
+            toolTip: "First.md"
+        )
+        let second = DocumentTabItem(
+            id: secondID,
+            document: .unclassified(relativePath: "Second.md"),
+            title: "Second",
+            toolTip: "Second.md"
+        )
+        let controller = ScholiumDocumentTabsViewController(
+            document: Text("First projection"),
+            tabs: [first, second],
+            selectedTabID: firstID,
+            selectTab: { _ in },
+            closeTab: { _ in }
+        )
+        controller.loadViewIfNeeded()
+        let firstHost = controller.testingPageHost(for: firstID)
+        let firstItem = controller.testingPageItem(for: firstID)
+        let firstSelector = controller.testingSelectorView(for: firstID)
+        var renamed = first
+        renamed.title = "Renamed"
+        renamed.toolTip = "Renamed.md"
+
+        controller.update(
+            document: Text("Updated projection"),
+            tabs: [renamed, second],
+            selectedTabID: firstID,
+            selectTab: { _ in },
+            closeTab: { _ in }
+        )
+
+        #expect(controller.testingPageHost(for: firstID) === firstHost)
+        #expect(controller.testingPageItem(for: firstID) === firstItem)
+        #expect(controller.testingSelectorView(for: firstID) === firstSelector)
+        #expect(controller.testingPageLabel(for: firstID) == "Renamed")
+    }
+
     private func makeWorkspaceSplit(
         libraryChanges: @escaping (Bool) -> Void,
         inspectorChanges: @escaping (Bool) -> Void

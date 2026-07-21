@@ -333,6 +333,37 @@ public actor WorkspaceHandle {
         return currentSnapshot
     }
 
+    func documentPreviewCatalog(
+        source: VaultQualifiedNoteID,
+        sourceFingerprint: DocumentFingerprint,
+        graphGeneration: Int
+    ) throws -> DocumentPreviewCatalog {
+        try requireActive()
+        guard let graph = currentSnapshot.discovery.catalog.graph,
+              graph.generation == graphGeneration,
+              let sourceDocument = currentSnapshot.document(id: source)?.document,
+              sourceDocument.fingerprint == sourceFingerprint else {
+            return DocumentPreviewCatalog(
+                graphGeneration: graphGeneration,
+                source: source,
+                sourceFingerprint: sourceFingerprint,
+                links: []
+            )
+        }
+        let targetIDs = Set((graph.outgoing[source] ?? []).compactMap {
+            $0.destination?.note
+        })
+        let targetDocuments = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
+            currentSnapshot.document(id: id).map { (id, $0.document) }
+        })
+        return DocumentPreviewCatalogBuilder.build(
+            source: source,
+            sourceFingerprint: sourceFingerprint,
+            graph: graph,
+            documents: targetDocuments
+        )
+    }
+
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true

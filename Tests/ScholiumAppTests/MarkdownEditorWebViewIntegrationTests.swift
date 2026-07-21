@@ -1042,6 +1042,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     presentationCSS: sourceBox.presentationCSS,
                     userCSS: sourceBox.userCSS,
                     linkCompletions: [],
+                    linkCompletionQuery: { _ in [] },
                     linkPreviews: linkPreviews,
                     researcherComments: [],
                     initialScrollFraction: 0,

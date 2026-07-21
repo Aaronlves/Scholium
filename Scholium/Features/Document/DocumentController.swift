@@ -66,6 +66,36 @@ struct DocumentPresentationSnapshot: Equatable, Sendable {
     let scrollPositions: [String: Double]
 }
 
+enum DocumentChromeDirtyState: Equatable, Sendable {
+    case clean
+    case dirty
+}
+
+enum DocumentChromeFailureState: Equatable, Sendable {
+    case none
+    case save
+    case conflict
+}
+
+/// Equatable, low-frequency state consumed outside the document surface.
+/// Exact source, cursor, selection, and undo state remain session-owned and
+/// never travel through the window composition root.
+struct DocumentChromeProjection: Equatable, Sendable {
+    let document: WindowSelectedDocument?
+    let mode: NotePresentationMode
+    let dirtyState: DocumentChromeDirtyState
+    let isSaving: Bool
+    let failureState: DocumentChromeFailureState
+
+    static let empty = DocumentChromeProjection(
+        document: nil,
+        mode: .read,
+        dirtyState: .clean,
+        isSaving: false,
+        failureState: .none
+    )
+}
+
 /// Per-window owner for the selected document and retained editor sessions. Repository writes,
 /// lifecycle transactions, and conflict recovery remain Application calls;
 /// this controller owns only window and editor-session state.
@@ -75,6 +105,7 @@ final class DocumentController: ObservableObject {
     typealias DocumentCommitHandler = @MainActor (NoteDocument) async -> Void
 
     @Published private(set) var selectedDocument: WindowSelectedDocument?
+    @Published private(set) var chromeProjection = DocumentChromeProjection.empty
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
@@ -94,6 +125,8 @@ final class DocumentController: ObservableObject {
     @Published var identityResolutionError: String?
 
     private let sessions = DocumentSessionStore()
+    private let readProjectionCache = DocumentReadProjectionCache()
+    private let linkCompletionIndex = EditorLinkCompletionIndex()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
     private var fallbackSessions: [DocumentEditingTarget: DocumentSessionModel] = [:]
     private var restoredModes: [String: String] = [:]
@@ -102,6 +135,7 @@ final class DocumentController: ObservableObject {
     private let intentHandler: IntentHandler
     private var operations: (any DocumentUseCases)?
     private var sessionCancellables: [ObjectIdentifier: AnyCancellable] = [:]
+    private var pendingChromeRefreshes: Set<ObjectIdentifier> = []
     private var documentDidCommit: DocumentCommitHandler = { _ in }
 
     init(intentHandler: @escaping IntentHandler = { _ in }) {
@@ -151,6 +185,64 @@ final class DocumentController: ObservableObject {
         try await workspaceSnapshot(vaultID: id.vaultID)?.documents.first(where: {
             $0.id.relativePath == id.relativePath
         })
+    }
+
+    func documentPreviewCatalog(
+        source: VaultQualifiedNoteID,
+        sourceFingerprint: DocumentFingerprint,
+        graphGeneration: Int
+    ) async throws -> DocumentPreviewCatalog {
+        try await requireOperations().documentPreviewCatalog(
+            source: source,
+            sourceFingerprint: sourceFingerprint,
+            graphGeneration: graphGeneration
+        )
+    }
+
+    func readProjectionHTML(
+        target: DocumentEditingTarget,
+        relativePath: String,
+        source: String,
+        fingerprint: DocumentFingerprint,
+        workspaceID: UUID?
+    ) async -> String {
+        let stableTarget: String
+        switch target {
+        case .workspace(let key):
+            stableTarget = "\(key.vaultID.uuidString.lowercased()):\(key.noteID.uuidString.lowercased())"
+        case .unclassified(let path):
+            stableTarget = "unclassified:\(path)"
+        case .unavailable(let path):
+            stableTarget = "unavailable:\(path)"
+        }
+        return await readProjectionCache.html(
+            for: DocumentReadProjectionKey(
+                workspaceID: workspaceID,
+                stableTarget: stableTarget,
+                relativePath: relativePath,
+                fingerprint: fingerprint
+            ),
+            source: source
+        )
+    }
+
+    func editorLinkCompletions(
+        matching query: String,
+        sourcePath: String,
+        currentVaultID: UUID,
+        catalogNotes: [WorkspaceCatalogNote],
+        graphGeneration: Int
+    ) async -> [EditorLinkCompletion] {
+        await linkCompletionIndex.replace(
+            notes: catalogNotes,
+            generation: graphGeneration
+        )
+        return (try? await linkCompletionIndex.query(
+            query,
+            sourcePath: sourcePath,
+            currentVaultID: currentVaultID,
+            generation: graphGeneration
+        )) ?? []
     }
 
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {
@@ -342,13 +434,21 @@ final class DocumentController: ObservableObject {
         return session
     }
 
-    /// Makes one controller the observable boundary even when a temporary
-    /// path-addressed fallback session is required during identity recovery.
+    /// Observes a session only to publish an equatable chrome projection. The
+    /// controller never forwards the session's broad objectWillChange stream.
     func observe(_ session: DocumentSessionModel) {
         let identifier = ObjectIdentifier(session)
         guard sessionCancellables[identifier] == nil else { return }
-        sessionCancellables[identifier] = session.objectWillChange.sink { [weak self] in
-            self?.objectWillChange.send()
+        sessionCancellables[identifier] = session.objectWillChange.sink { [weak self, weak session] in
+            guard let self, let session,
+                  pendingChromeRefreshes.insert(identifier).inserted else { return }
+            Task { @MainActor [weak self, weak session] in
+                await Task.yield()
+                guard let self else { return }
+                self.pendingChromeRefreshes.remove(identifier)
+                guard let session else { return }
+                self.refreshChromeProjection(ifOwnedBy: session)
+            }
         }
     }
 
@@ -374,6 +474,7 @@ final class DocumentController: ObservableObject {
         case .unclassified, .unavailable:
             _ = session(for: document.editingTarget)
         }
+        refreshChromeProjection()
     }
 
     func selectUnclassifiedDocument(relativePath: String) {
@@ -391,6 +492,7 @@ final class DocumentController: ObservableObject {
             return
         }
         selectedDocument = nil
+        refreshChromeProjection()
     }
 
     /// Leaves the Document region in its no-note state after the researcher
@@ -398,6 +500,7 @@ final class DocumentController: ObservableObject {
     /// later reopen can preserve the existing exact-source safety boundary.
     func clearSelectionAfterClosingLastTab() {
         selectedDocument = nil
+        refreshChromeProjection()
     }
 
     /// Installs the immutable Application read model and initializes this
@@ -640,8 +743,10 @@ final class DocumentController: ObservableObject {
             restoredScrollPositions = [:]
             restoredPresentationVaultID = nil
             sessionCancellables.removeAll()
+            pendingChromeRefreshes.removeAll()
         }
         selectedDocument = nil
+        chromeProjection = .empty
         snapshots = [:]
         editingDocumentPath = nil
         lastSaveError = nil
@@ -665,6 +770,45 @@ final class DocumentController: ObservableObject {
             return fallbackSessions[target]
         }
         return nil
+    }
+
+    private func refreshChromeProjection(ifOwnedBy session: DocumentSessionModel) {
+        guard selectedSessionWithoutCreation() === session else { return }
+        refreshChromeProjection()
+    }
+
+    private func refreshChromeProjection() {
+        guard let selectedDocument,
+              let session = selectedSessionWithoutCreation() else {
+            if chromeProjection != .empty { chromeProjection = .empty }
+            return
+        }
+        let failureState: DocumentChromeFailureState
+        if session.conflict != nil {
+            failureState = .conflict
+        } else if session.editError != nil {
+            failureState = .save
+        } else {
+            failureState = .none
+        }
+        let next = DocumentChromeProjection(
+            document: selectedDocument,
+            mode: session.presentationMode,
+            dirtyState: session.hasUnsavedChanges ? .dirty : .clean,
+            isSaving: session.isSavingEdit,
+            failureState: failureState
+        )
+        if chromeProjection != next { chromeProjection = next }
+    }
+
+    private func selectedSessionWithoutCreation() -> DocumentSessionModel? {
+        guard let selectedDocument else { return nil }
+        switch selectedDocument.editingTarget {
+        case .workspace(let key):
+            return sessions.retainedSession(for: key)
+        case .unclassified, .unavailable:
+            return fallbackSessions[selectedDocument.editingTarget]
+        }
     }
 
     private func hydratePresentation(of session: DocumentSessionModel, path: String) {

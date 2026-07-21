@@ -21,6 +21,26 @@ public protocol DocumentUseCases: Sendable {
     func recoverInterruptedTransactions() async throws -> [String]
     func classifyUnclassified(_ relativePath: String, into slot: WorkspaceVaultSlot, destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> UnclassifiedClassificationCommit
     func resolveIdentity(_ ambiguity: NoteIdentityAmbiguity, candidateID: UUID?) async throws -> NoteIdentityRecord
+    func documentPreviewCatalog(
+        source: VaultQualifiedNoteID,
+        sourceFingerprint: DocumentFingerprint,
+        graphGeneration: Int
+    ) async throws -> DocumentPreviewCatalog
+}
+
+public extension DocumentUseCases {
+    func documentPreviewCatalog(
+        source: VaultQualifiedNoteID,
+        sourceFingerprint: DocumentFingerprint,
+        graphGeneration: Int
+    ) async throws -> DocumentPreviewCatalog {
+        return DocumentPreviewCatalog(
+            graphGeneration: graphGeneration,
+            source: source,
+            sourceFingerprint: sourceFingerprint,
+            links: []
+        )
+    }
 }
 
 public protocol DiscoveryUseCases: Sendable {

@@ -176,6 +176,7 @@ interface LiveProjectionIndex {
 }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
+  resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
 }
 
 const webkitWindow = window as ScholiumWindow;
@@ -186,6 +187,11 @@ let bridgeFingerprint = "";
 let documentVersion = 0;
 let exactSource = "";
 let linkCandidates: LinkCandidate[] = [];
+let nextLinkCompletionRequest = 0;
+const pendingLinkCompletionQueries = new Map<
+  string,
+  (candidates: LinkCandidate[]) => void
+>();
 let linkPreviews: LinkPreview[] = [];
 let linkPreviewIndexByRange = new Map<string, number>();
 let editingDialect: MarkdownEditingDialect | null = null;
@@ -2436,19 +2442,50 @@ function wikilinkCompletionSource(context: CompletionContext) {
   const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
   const match = /\[\[[^\]\n]*$/.exec(beforeCursor);
   if (!match) return null;
-  const typed = match[0].slice(2).toLocaleLowerCase();
-  const options = linkCandidates
-    .filter((candidate) => !typed || candidate.label.toLocaleLowerCase().includes(typed) || candidate.path.toLocaleLowerCase().includes(typed))
-    .slice(0, 100)
-    .map((candidate) => ({
+  const typed = match[0].slice(2);
+  const from = scanFrom + match.index + 2;
+  const requestID = crypto.randomUUID?.()
+    ?? `link-${Date.now()}-${nextLinkCompletionRequest++}`;
+  const candidates = new Promise<LinkCandidate[]>((resolve) => {
+    pendingLinkCompletionQueries.set(requestID, resolve);
+    const cancel = () => {
+      if (!pendingLinkCompletionQueries.delete(requestID)) return;
+      resolve([]);
+    };
+    context.addEventListener("abort", cancel, {onDocChange: true});
+    window.setTimeout(cancel, 3000);
+    post({type: "linkCompletionQuery", requestID, query: typed});
+  });
+  return candidates.then((resolved) => ({
+    from,
+    options: resolved.slice(0, 100).map((candidate) => ({
       label: candidate.label,
       detail: candidate.detail,
       type: "text",
       apply: candidate.isAmbiguous
         ? () => undefined
         : candidate.insertion + "]]",
-    }));
-  return { from: scanFrom + match.index + 2, options, filter: false };
+    })),
+    filter: false,
+  }));
+}
+
+function resolveLinkCompletionQuery(requestID: string, value: unknown) {
+  const resolve = pendingLinkCompletionQueries.get(requestID);
+  if (!resolve) return;
+  pendingLinkCompletionQueries.delete(requestID);
+  const candidates = Array.isArray(value)
+    ? value.slice(0, 100).filter((candidate): candidate is LinkCandidate => (
+      candidate !== null
+      && typeof candidate === "object"
+      && typeof candidate.label === "string"
+      && typeof candidate.insertion === "string"
+      && typeof candidate.detail === "string"
+      && typeof candidate.path === "string"
+      && typeof candidate.isAmbiguous === "boolean"
+    ))
+    : [];
+  resolve(candidates);
 }
 
 /** @param {import("@codemirror/autocomplete").CompletionContext} context */
@@ -3408,7 +3445,10 @@ const editorOperations = {
   },
 };
 
-webkitWindow.scholiumEditor = {dispatch: dispatchEditorRequest};
+webkitWindow.scholiumEditor = {
+  dispatch: dispatchEditorRequest,
+  resolveLinkCompletionQuery,
+};
 
 recordEditorMetric("startup", editorStartupStartedAt, {documentLength: editor.state.doc.length});
 post({ type: "ready" });

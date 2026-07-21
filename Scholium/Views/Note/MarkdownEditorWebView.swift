@@ -234,6 +234,8 @@ private struct EditorBridgeMessage: Codable {
     let scrollAnchor: MarkdownEditorWireScrollAnchor?
     let commentID: String?
     let target: String?
+    let requestID: String?
+    let query: String?
     let context: MarkdownEditorContext?
 }
 
@@ -339,6 +341,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var sourceChangeHandler: ((String) -> Void)?
     private var checkedSource = ""
     private var checkedEditorUTF16Length = 0
+    private var sourceOffsetMap = EditorSourceOffsetMap(source: "")
     private var recoverySnapshot: MarkdownEditorRecoverySnapshot?
     private var lastKnownSelectionSnapshot: MarkdownEditorSelectionSnapshot?
     #if DEBUG
@@ -902,7 +905,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func testingApplyScrollAnchor(_ anchor: EditorScrollAnchor) async throws {
         guard isReady, isLoaded, let webView,
-              let wireAnchor = Self.wireAnchor(from: anchor, in: checkedSource) else {
+              let wireAnchor = wireAnchor(from: anchor, in: checkedSource) else {
             throw SessionError.invalidResult
         }
         pendingScrollAnchor = anchor
@@ -1020,7 +1023,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startingFingerprint = retainedStartingFingerprint
             ?? DocumentFingerprint(content: source).sha256
         checkedSource = source
-        checkedEditorUTF16Length = Self.normalizedEditorUTF16Length(of: source)
+        sourceOffsetMap = EditorSourceOffsetMap(source: source)
+        checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
         pendingMode = mode
         updatePublished(\.isLoaded, to: false)
@@ -1087,7 +1091,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard isReady, isLoaded, let webView else { return }
         Task {
             if let anchor,
-               let wireAnchor = Self.wireAnchor(from: anchor, in: checkedSource) {
+               let wireAnchor = wireAnchor(from: anchor, in: checkedSource) {
                 _ = try? await send(.setScrollAnchor(wireAnchor), in: webView)
             } else {
                 _ = try? await send(.setScrollFraction(normalized), in: webView)
@@ -1107,17 +1111,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let fraction = min(1, max(0, fallbackFraction))
         pendingScrollFraction = fraction
         guard let wireAnchor,
-              let sourceOffset = Self.sourceUTF16Offset(
-                forEditorUTF16Offset: wireAnchor.sourceUTF16Offset,
-                in: checkedSource
+              let sourceOffset = sourceOffsetMap.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.sourceUTF16Offset
               ),
-              let lowerBound = Self.sourceUTF16Offset(
-                forEditorUTF16Offset: wireAnchor.blockUTF16LowerBound,
-                in: checkedSource
+              let lowerBound = sourceOffsetMap.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.blockUTF16LowerBound
               ),
-              let upperBound = Self.sourceUTF16Offset(
-                forEditorUTF16Offset: wireAnchor.blockUTF16UpperBound,
-                in: checkedSource
+              let upperBound = sourceOffsetMap.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.blockUTF16UpperBound
               ) else {
             pendingScrollAnchor = nil
             return nil
@@ -1155,13 +1156,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func setLinkPreviews(_ previews: [DocumentLinkPreview], in source: String) {
+        let offsetMap = source == checkedSource
+            ? sourceOffsetMap
+            : EditorSourceOffsetMap(source: source)
         pendingLinkPreviews = previews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).compactMap { preview in
-            guard let from = Self.editorUTF16Offset(
-                forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound,
-                in: source
-            ), let to = Self.editorUTF16Offset(
-                forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound,
-                in: source
+            guard let from = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound
+            ), let to = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound
             ), to > from else { return nil }
             return MarkdownEditorLinkPreview(
                 from: from,
@@ -1198,17 +1200,18 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setResearcherComments(_ comments: [ResearcherComment], in source: String) {
         let fingerprint = DocumentFingerprint(content: source)
+        let offsetMap = source == checkedSource
+            ? sourceOffsetMap
+            : EditorSourceOffsetMap(source: source)
         pendingResearcherComments = comments.compactMap { comment in
             let anchor = comment.anchor
             guard anchor.state == .attached,
                   anchor.fingerprint == fingerprint,
-                  let from = Self.editorUTF16Offset(
-                    forSourceUTF16Offset: anchor.utf16Range.lowerBound,
-                    in: source
+                  let from = offsetMap.editorUTF16Offset(
+                    forSourceUTF16Offset: anchor.utf16Range.lowerBound
                   ),
-                  let to = Self.editorUTF16Offset(
-                    forSourceUTF16Offset: anchor.utf16Range.upperBound,
-                    in: source
+                  let to = offsetMap.editorUTF16Offset(
+                    forSourceUTF16Offset: anchor.utf16Range.upperBound
                   ),
                   to > from else { return nil }
             return MarkdownEditorCommentAnnotation(
@@ -1386,8 +1389,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let editorLower = min(range.anchor, range.head)
         let editorUpper = max(range.anchor, range.head)
         guard editorUpper > editorLower else { return nil }
-        guard let lower = Self.sourceUTF16Offset(forEditorUTF16Offset: editorLower, in: exactSource),
-              let upper = Self.sourceUTF16Offset(forEditorUTF16Offset: editorUpper, in: exactSource),
+        guard let lower = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: editorLower),
+              let upper = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: editorUpper),
               upper > lower,
               upper - lower <= 2_000 else { throw SessionError.selectionTooLong }
         let units = exactSource.utf16
@@ -1541,13 +1544,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 - (raw.to - raw.from)
             guard insertedUTF16Count <= 2_000_000,
                   resultingEditorUTF16Length >= 0,
-                  let from = Self.sourceUTF16Offset(
-                    forEditorUTF16Offset: raw.from,
-                    in: sourceBeforeChanges
+                  let from = sourceOffsetMap.sourceUTF16Offset(
+                    forEditorUTF16Offset: raw.from
                   ),
-                  let to = Self.sourceUTF16Offset(
-                    forEditorUTF16Offset: raw.to,
-                    in: sourceBeforeChanges
+                  let to = sourceOffsetMap.sourceUTF16Offset(
+                    forEditorUTF16Offset: raw.to
                   ) else { return nil }
             changes.append(MarkdownEditorDelta(
                 fromUTF16: from,
@@ -1560,6 +1561,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard let nextSource = try? MarkdownEditorDeltaApplier.apply(changes, to: checkedSource) else {
             return nil
         }
+        sourceOffsetMap.apply(changes, resultingSource: nextSource)
         checkedSource = nextSource
         checkedEditorUTF16Length = resultingEditorUTF16Length
         generation = resultingGeneration
@@ -1665,7 +1667,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         : nil
                 }
                 checkedSource = source
-                checkedEditorUTF16Length = Self.normalizedEditorUTF16Length(of: source)
+                sourceOffsetMap = EditorSourceOffsetMap(source: source)
+                checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
                 generation = 0
                 _ = try await send(
                     .initialize(text: source, mode: mode, dialect: .current),
@@ -1715,7 +1718,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 // Recovery replaces the complete EditorState and can reset the
                 // scroller. Apply the retained position only after restoration.
                 if let anchor = pendingScrollAnchor,
-                   let wireAnchor = Self.wireAnchor(from: anchor, in: checkedSource) {
+                   let wireAnchor = wireAnchor(from: anchor, in: checkedSource) {
                     _ = try await send(
                         .setScrollAnchor(wireAnchor),
                         in: webView,
@@ -1807,7 +1810,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 guard isCurrent(context) else { throw SessionError.staleRequest }
                 throw error
             }
-            guard isCurrent(context) else { throw SessionError.staleRequest }
+            guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
                   let resultData = try? JSONSerialization.data(withJSONObject: rawResult as Any),
                   resultData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
@@ -1866,11 +1869,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     private func isCurrent(_ context: BridgeRequestContext) -> Bool {
+        isCurrentIdentity(context)
+            && context.generation == generation
+    }
+
+    private func isCurrentIdentity(_ context: BridgeRequestContext) -> Bool {
         context.requestEpoch == requestEpoch
             && context.sessionID == sessionID
             && context.documentID == documentID
             && context.startingFingerprint == startingFingerprint
-            && context.generation == generation
             && self.webView === context.webView
     }
 
@@ -1983,7 +1990,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             insertion: text
         )
         checkedSource = try MarkdownEditorDeltaApplier.apply([replacement], to: checkedSource)
-        checkedEditorUTF16Length = Self.normalizedEditorUTF16Length(of: checkedSource)
+        sourceOffsetMap = EditorSourceOffsetMap(source: checkedSource)
+        checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         if publish { sourceChangeHandler?(checkedSource) }
     }
 
@@ -2006,67 +2014,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return length
     }
 
-    private static func sourceUTF16Offset(
-        forEditorUTF16Offset requestedOffset: Int,
-        in source: String
-    ) -> Int? {
-        guard requestedOffset >= 0 else { return nil }
-        let units = Array(source.utf16)
-        var sourceOffset = 0
-        var editorOffset = 0
-        while sourceOffset < units.count, editorOffset < requestedOffset {
-            if units[sourceOffset] == 13,
-               sourceOffset + 1 < units.count,
-               units[sourceOffset + 1] == 10 {
-                sourceOffset += 2
-            } else {
-                sourceOffset += 1
-            }
-            editorOffset += 1
-        }
-        guard editorOffset == requestedOffset else { return nil }
-        return sourceOffset
-    }
-
-    private static func editorUTF16Offset(
-        forSourceUTF16Offset requestedOffset: Int,
-        in source: String
-    ) -> Int? {
-        let units = Array(source.utf16)
-        guard requestedOffset >= 0, requestedOffset <= units.count else { return nil }
-        var sourceOffset = 0
-        var editorOffset = 0
-        while sourceOffset < requestedOffset {
-            if units[sourceOffset] == 13,
-               sourceOffset + 1 < units.count,
-               units[sourceOffset + 1] == 10 {
-                guard sourceOffset + 2 <= requestedOffset else { return nil }
-                sourceOffset += 2
-            } else {
-                sourceOffset += 1
-            }
-            editorOffset += 1
-        }
-        return editorOffset
-    }
-
-    private static func wireAnchor(
+    private func wireAnchor(
         from anchor: EditorScrollAnchor,
         in source: String
     ) -> MarkdownEditorWireScrollAnchor? {
         guard anchor.sourceFingerprint == DocumentFingerprint(content: source).sha256,
               anchor.isValid(forUTF16Length: source.utf16.count),
-              let sourceOffset = editorUTF16Offset(
-                forSourceUTF16Offset: anchor.sourceUTF16Offset,
-                in: source
+              let sourceOffset = sourceOffsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: anchor.sourceUTF16Offset
               ),
-              let lowerBound = editorUTF16Offset(
-                forSourceUTF16Offset: anchor.blockUTF16LowerBound,
-                in: source
+              let lowerBound = sourceOffsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: anchor.blockUTF16LowerBound
               ),
-              let upperBound = editorUTF16Offset(
-                forSourceUTF16Offset: anchor.blockUTF16UpperBound,
-                in: source
+              let upperBound = sourceOffsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: anchor.blockUTF16UpperBound
               ) else { return nil }
         return MarkdownEditorWireScrollAnchor(
             sourceUTF16Offset: sourceOffset,
@@ -2086,6 +2047,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let presentationCSS: String
     let userCSS: String
     let linkCompletions: [EditorLinkCompletion]
+    let linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
     let linkPreviews: [DocumentLinkPreview]
     let researcherComments: [ResearcherComment]
     let initialScrollFraction: Double
@@ -2105,6 +2067,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentChange: onDocumentChange,
             onRequestSave: onRequestSave,
             onRequestSearch: onRequestSearch,
+            linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
             onCommentActivation: onCommentActivation,
             onScrollFractionChange: onScrollFractionChange,
@@ -2197,6 +2160,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onDocumentChange = onDocumentChange
         context.coordinator.onRequestSave = onRequestSave
         context.coordinator.onRequestSearch = onRequestSearch
+        context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onCommentActivation = onCommentActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
@@ -2310,6 +2274,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onDocumentChange: (String) -> Void
         var onRequestSave: () -> Void
         var onRequestSearch: () -> Void
+        var linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
         var onLinkActivation: (String) -> Void
         var onCommentActivation: ((UUID) -> Void)?
         var onScrollFractionChange: (Double) -> Void
@@ -2335,6 +2300,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentChange: @escaping (String) -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestSearch: @escaping () -> Void,
+            linkCompletionQuery: @escaping @MainActor (String) async -> [EditorLinkCompletion],
             onLinkActivation: @escaping (String) -> Void,
             onCommentActivation: ((UUID) -> Void)?,
             onScrollFractionChange: @escaping (Double) -> Void,
@@ -2344,6 +2310,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onDocumentChange = onDocumentChange
             self.onRequestSave = onRequestSave
             self.onRequestSearch = onRequestSearch
+            self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
             self.onCommentActivation = onCommentActivation
             self.onScrollFractionChange = onScrollFractionChange
@@ -2406,6 +2373,41 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "requestSearch":
                 guard validEnvelope(payload) else { return }
                 onRequestSearch()
+            case "linkCompletionQuery":
+                guard validEnvelope(payload),
+                      let requestID = payload.requestID,
+                      UUID(uuidString: requestID) != nil,
+                      let query = payload.query,
+                      query.utf16.count <= 512 else { return }
+                let requestedDocumentID = documentID
+                let requestedFingerprint = startingFingerprint
+                let requestedVersion = lastDocumentVersion
+                Task { @MainActor [weak self, weak webView = message.webView] in
+                    guard let self, let webView else { return }
+                    let candidates = await linkCompletionQuery(query)
+                    guard requestedDocumentID == documentID,
+                          requestedFingerprint == startingFingerprint,
+                          requestedVersion == lastDocumentVersion,
+                          webView.navigationDelegate === self else { return }
+                    let payload = candidates.prefix(100).map { candidate in
+                        [
+                            "label": candidate.label,
+                            "insertion": candidate.insertion,
+                            "detail": candidate.detail,
+                            "path": candidate.path,
+                            "isAmbiguous": candidate.isAmbiguous,
+                        ] as [String: Any]
+                    }
+                    _ = try? await webView.callAsyncJavaScript(
+                        "window.scholiumEditor.resolveLinkCompletionQuery(requestID, candidates)",
+                        arguments: [
+                            "requestID": requestID,
+                            "candidates": payload,
+                        ],
+                        in: nil,
+                        contentWorld: .page
+                    )
+                }
             case "linkActivated":
                 guard validEnvelope(payload), let target = payload.target, !target.isEmpty else { return }
                 onLinkActivation(target)

@@ -420,12 +420,27 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         var tabID: UUID?
     }
 
+    private final class TabSelectorViews {
+        let container: NSView
+        let title: TabButton
+        let close: TabButton
+        let selectionRule: NSView
+
+        init(container: NSView, title: TabButton, close: TabButton, selectionRule: NSView) {
+            self.container = container
+            self.title = title
+            self.close = close
+            self.selectionRule = selectionRule
+        }
+    }
+
     private let tabViewController = NSTabViewController()
     private let tabButtonStack = NSStackView()
     private let tabStrip = NSView()
     private var tabStripHeightConstraint: NSLayoutConstraint!
     private var pageHosts: [UUID: NSHostingController<Document>] = [:]
     private var pageItems: [UUID: NSTabViewItem] = [:]
+    private var selectorViews: [UUID: TabSelectorViews] = [:]
     private var placeholderHost: NSHostingController<Document>
     private var placeholderItem: NSTabViewItem
     private var tabs: [DocumentTabItem]
@@ -530,32 +545,50 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     private func synchronize(document: Document) {
         if tabs.isEmpty {
             placeholderHost.rootView = document
-            tabViewController.tabViewItems = [placeholderItem]
+            for item in tabViewController.tabViewItems where item !== placeholderItem {
+                tabViewController.removeTabViewItem(item)
+            }
+            if !tabViewController.tabViewItems.contains(where: { $0 === placeholderItem }) {
+                tabViewController.addTabViewItem(placeholderItem)
+            }
             tabViewController.selectedTabViewItemIndex = 0
         } else {
+            if tabViewController.tabViewItems.contains(where: { $0 === placeholderItem }) {
+                tabViewController.removeTabViewItem(placeholderItem)
+            }
             let currentIDs = Set(tabs.map(\.id))
             for staleID in Set(pageHosts.keys).subtracting(currentIDs) {
+                if let staleItem = pageItems[staleID] {
+                    tabViewController.removeTabViewItem(staleItem)
+                }
                 pageHosts[staleID] = nil
                 pageItems[staleID] = nil
             }
-            for tab in tabs where pageHosts[tab.id] == nil {
-                let host = NSHostingController(rootView: document)
-                host.sizingOptions = []
-                let item = NSTabViewItem(viewController: host)
-                item.identifier = tab.id
-                pageHosts[tab.id] = host
-                pageItems[tab.id] = item
+            for (index, tab) in tabs.enumerated() {
+                if pageHosts[tab.id] == nil {
+                    let host = NSHostingController(rootView: document)
+                    host.sizingOptions = []
+                    let item = NSTabViewItem(viewController: host)
+                    item.identifier = tab.id
+                    pageHosts[tab.id] = host
+                    pageItems[tab.id] = item
+                    tabViewController.insertTabViewItem(
+                        item,
+                        at: min(index, tabViewController.tabViewItems.count)
+                    )
+                } else if let item = pageItems[tab.id],
+                          let currentIndex = tabViewController.tabViewItems.firstIndex(
+                            where: { $0 === item }
+                          ), currentIndex != index {
+                    tabViewController.removeTabViewItem(item)
+                    tabViewController.insertTabViewItem(item, at: index)
+                }
+                pageItems[tab.id]?.label = tab.title
+                pageItems[tab.id]?.toolTip = tab.toolTip
             }
             if let selectedTabID, let selectedHost = pageHosts[selectedTabID] {
                 selectedHost.rootView = document
             }
-            let orderedItems = tabs.compactMap { tab -> NSTabViewItem? in
-                guard let item = pageItems[tab.id] else { return nil }
-                item.label = tab.title
-                item.toolTip = tab.toolTip
-                return item
-            }
-            tabViewController.tabViewItems = orderedItems
             if let selectedTabID,
                let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
                 tabViewController.selectedTabViewItemIndex = selectedIndex
@@ -565,15 +598,24 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     }
 
     private func rebuildSelector() {
-        for arrangedView in tabButtonStack.arrangedSubviews {
-            tabButtonStack.removeArrangedSubview(arrangedView)
-            arrangedView.removeFromSuperview()
+        let currentIDs = Set(tabs.map(\.id))
+        for staleID in Set(selectorViews.keys).subtracting(currentIDs) {
+            guard let stale = selectorViews.removeValue(forKey: staleID) else { continue }
+            tabButtonStack.removeArrangedSubview(stale.container)
+            stale.container.removeFromSuperview()
         }
-        for tab in tabs {
-            tabButtonStack.addArrangedSubview(makeTabItem(
-                for: tab,
-                isSelected: tab.id == selectedTabID
-            ))
+        for (index, tab) in tabs.enumerated() {
+            let selector = selectorViews[tab.id] ?? makeTabItem(for: tab)
+            selectorViews[tab.id] = selector
+            if !tabButtonStack.arrangedSubviews.contains(where: { $0 === selector.container }) {
+                tabButtonStack.insertArrangedSubview(selector.container, at: index)
+            } else if let currentIndex = tabButtonStack.arrangedSubviews.firstIndex(
+                where: { $0 === selector.container }
+            ), currentIndex != index {
+                tabButtonStack.removeArrangedSubview(selector.container)
+                tabButtonStack.insertArrangedSubview(selector.container, at: index)
+            }
+            update(selector, for: tab, isSelected: tab.id == selectedTabID)
         }
         let showsTabStrip = tabs.count > 1
         tabStrip.isHidden = !showsTabStrip
@@ -582,7 +624,7 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
             : 0
     }
 
-    private func makeTabItem(for tab: DocumentTabItem, isSelected: Bool) -> NSView {
+    private func makeTabItem(for tab: DocumentTabItem) -> TabSelectorViews {
         let item = NSView()
 
         let leadingBalance = NSView()
@@ -599,15 +641,15 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         titleButton.alignment = .center
         titleButton.font = .systemFont(
             ofSize: NSFont.systemFontSize,
-            weight: isSelected ? .medium : .regular
+            weight: .regular
         )
-        titleButton.contentTintColor = isSelected ? .labelColor : .secondaryLabelColor
+        titleButton.contentTintColor = .secondaryLabelColor
         titleButton.toolTip = tab.toolTip
         titleButton.lineBreakMode = .byTruncatingTail
         titleButton.translatesAutoresizingMaskIntoConstraints = false
         titleButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleButton.setAccessibilityLabel(tab.title)
-        titleButton.setAccessibilityValue(isSelected ? "Selected" : "")
+        titleButton.setAccessibilityValue("")
 
         let closeLabel = "Close \(tab.title)"
         let closeButton = TabButton(
@@ -629,9 +671,7 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
 
         let selectionRule = NSView()
         selectionRule.wantsLayer = true
-        selectionRule.layer?.backgroundColor = isSelected
-            ? NSColor.labelColor.withAlphaComponent(0.72).cgColor
-            : NSColor.clear.cgColor
+        selectionRule.layer?.backgroundColor = NSColor.clear.cgColor
         selectionRule.translatesAutoresizingMaskIntoConstraints = false
 
         item.addSubview(leadingBalance)
@@ -674,8 +714,42 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
                 equalToConstant: ScholiumDocumentTabLayout.selectionRuleHeight
             ),
         ])
-        return item
+        return TabSelectorViews(
+            container: item,
+            title: titleButton,
+            close: closeButton,
+            selectionRule: selectionRule
+        )
     }
+
+    private func update(
+        _ selector: TabSelectorViews,
+        for tab: DocumentTabItem,
+        isSelected: Bool
+    ) {
+        selector.title.title = tab.title
+        selector.title.toolTip = tab.toolTip
+        selector.title.font = .systemFont(
+            ofSize: NSFont.systemFontSize,
+            weight: isSelected ? .medium : .regular
+        )
+        selector.title.contentTintColor = isSelected ? .labelColor : .secondaryLabelColor
+        selector.title.setAccessibilityLabel(tab.title)
+        selector.title.setAccessibilityValue(isSelected ? "Selected" : "")
+        let closeLabel = "Close \(tab.title)"
+        selector.close.toolTip = closeLabel
+        selector.close.setAccessibilityLabel(closeLabel)
+        selector.selectionRule.layer?.backgroundColor = isSelected
+            ? NSColor.labelColor.withAlphaComponent(0.72).cgColor
+            : NSColor.clear.cgColor
+    }
+
+    #if DEBUG
+    func testingPageHost(for id: UUID) -> AnyObject? { pageHosts[id] }
+    func testingPageItem(for id: UUID) -> AnyObject? { pageItems[id] }
+    func testingSelectorView(for id: UUID) -> AnyObject? { selectorViews[id]?.container }
+    func testingPageLabel(for id: UUID) -> String? { pageItems[id]?.label }
+    #endif
 
     @objc
     private func selectDocumentTab(_ sender: NSButton) {

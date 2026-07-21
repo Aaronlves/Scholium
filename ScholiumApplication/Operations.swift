@@ -39,6 +39,19 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.loadDocument(id)
     }
 
+    public func documentPreviewCatalog(
+        source: VaultQualifiedNoteID,
+        sourceFingerprint: DocumentFingerprint,
+        graphGeneration: Int
+    ) async throws -> DocumentPreviewCatalog {
+        let handle = try await reference.requireHandle()
+        return try await handle.documentPreviewCatalog(
+            source: source,
+            sourceFingerprint: sourceFingerprint,
+            graphGeneration: graphGeneration
+        )
+    }
+
     public func loadUnclassified(relativePath: String) async throws -> NoteDocument {
         let handle = try await reference.requireHandle()
         return try await handle.loadUnclassifiedDocument(relativePath: relativePath)

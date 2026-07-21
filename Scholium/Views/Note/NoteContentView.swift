@@ -427,7 +427,7 @@ struct NoteContentView: View {
     private var editorSession: MarkdownEditorSession { documentSession.editorSession }
 
     var body: some View {
-        VStack(spacing: 0) {
+        AnyView(VStack(spacing: 0) {
             if let ambiguity = state.identityAmbiguity {
                 IdentityAmbiguityNotice(ambiguity: ambiguity) {
                     actions.requestIdentityResolution()
@@ -496,7 +496,7 @@ struct NoteContentView: View {
                 },
                 addComment: requestResearcherCommentsFromDocument
             ) : nil
-        )
+        ))
         .sheet(isPresented: Binding(
             get: { showConflictComparison },
             set: { showConflictComparison = $0 }
@@ -579,25 +579,28 @@ struct NoteContentView: View {
             editorSession.goToLine(line)
             actions.clearPendingSourceLine()
         }
-        .task(id: noteFingerprint.sha256) {
+        .task(id: readProjectionTaskIdentity) {
+            guard presentationMode == .read else { return }
             failedReadFingerprint = nil
             documentSession.renderedReadReadyFingerprint = ""
             documentSession.readSelection = nil
             let source = note.rawContent
             let relativePath = note.relativePath
-            let fingerprint = noteFingerprint.sha256
+            let fingerprint = noteFingerprint
             documentSession.requestScrollRestore(
-                fingerprint: fingerprint,
+                fingerprint: fingerprint.sha256,
                 reason: .documentLoad
             )
-            let html = await Task.detached(priority: .userInitiated) {
-                SafeMarkdownRenderer.render(
-                    NoteDocument(relativePath: relativePath, rawContent: source)
-                ).htmlBody
-            }.value
-            guard !Task.isCancelled, fingerprint == noteFingerprint.sha256 else { return }
+            let html = await controller.readProjectionHTML(
+                target: target,
+                relativePath: relativePath,
+                source: source,
+                fingerprint: fingerprint,
+                workspaceID: state.currentVaultID
+            )
+            guard !Task.isCancelled, fingerprint == noteFingerprint else { return }
             renderedReadHTML = html
-            renderedReadFingerprint = fingerprint
+            renderedReadFingerprint = fingerprint.sha256
         }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
@@ -620,15 +623,22 @@ struct NoteContentView: View {
         )
     }
 
+    private var readProjectionTaskIdentity: String {
+        "\(noteFingerprint.sha256):\(presentationMode.rawValue)"
+    }
+
     private var previewTaskIdentity: String {
         let generation = state.workspaceCatalog?.graph?.generation ?? -1
-        return "\(state.currentVaultID?.uuidString ?? "unclassified"):\(noteFingerprint.sha256):\(generation)"
+        return "\(state.currentVaultID?.uuidString ?? "unclassified"):\(noteFingerprint.sha256):\(generation):\(presentationMode.rawValue):\(hasUnsavedChanges)"
     }
 
     @MainActor
     private func rebuildPreviewCatalog() async {
         guard let vaultID = state.currentVaultID,
-              let graph = state.workspaceCatalog?.graph else {
+              let graph = state.workspaceCatalog?.graph,
+              state.selectedDocumentPath == note.relativePath,
+              presentationMode != .source,
+              !hasUnsavedChanges else {
             documentSession.previewCatalog = nil
             return
         }
@@ -636,21 +646,15 @@ struct NoteContentView: View {
         let expectedFingerprint = noteFingerprint
         let expectedGeneration = graph.generation
         do {
-            let vaults = try await controller.workspaceSnapshots()
-            let documents = Dictionary(uniqueKeysWithValues: vaults.flatMap { vault in
-                vault.documents.map { ($0.id, $0.document) }
-            })
-            let catalog = await Task.detached(priority: .utility) {
-                DocumentPreviewCatalogBuilder.build(
-                    source: sourceID,
-                    sourceFingerprint: expectedFingerprint,
-                    graph: graph,
-                    documents: documents
-                )
-            }.value
+            let catalog = try await controller.documentPreviewCatalog(
+                source: sourceID,
+                sourceFingerprint: expectedFingerprint,
+                graphGeneration: expectedGeneration
+            )
             guard !Task.isCancelled,
                   noteFingerprint == expectedFingerprint,
-                  state.workspaceCatalog?.graph?.generation == expectedGeneration else { return }
+                  state.workspaceCatalog?.graph?.generation == expectedGeneration,
+                  !hasUnsavedChanges else { return }
             documentSession.previewCatalog = catalog
         } catch {
             guard !Task.isCancelled else { return }
@@ -675,15 +679,16 @@ struct NoteContentView: View {
         state.documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
     }
 
-    private var bodyEditor: some View {
-        MarkdownEditorWebView(
+    private var bodyEditor: AnyView {
+        AnyView(MarkdownEditorWebView(
             session: editorSession,
             documentID: editorSession.bridgeDocumentID,
             source: editingSource,
             mode: documentSession.retainedEditorMode,
             presentationCSS: documentPresentationCSS,
             userCSS: state.livePreviewCSS,
-            linkCompletions: editorLinkCompletions,
+            linkCompletions: [],
+            linkCompletionQuery: queryEditorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             researcherComments: currentResearcherComments,
             initialScrollFraction: state.initialScrollFraction,
@@ -726,7 +731,7 @@ struct NoteContentView: View {
             onScrollAnchorChange: { documentSession.observeScrollAnchor($0) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .layoutPriority(1)
+        .layoutPriority(1))
     }
 
     @ViewBuilder
@@ -889,107 +894,26 @@ struct NoteContentView: View {
         ].joined(separator: ":")
     }
 
-    private var editorLinkCompletions: [EditorLinkCompletion] {
-        guard let currentVaultID = state.currentVaultID,
-              let catalogNotes = state.workspaceCatalog?.notes,
-              !catalogNotes.isEmpty else {
-            let stemCounts = Dictionary(grouping: state.notes, by: \.displayName).mapValues(\.count)
-            return state.notes.map { candidate in
-                let needsPath = (stemCounts[candidate.displayName] ?? 0) > 1
-                return EditorLinkCompletion(
-                    label: candidate.title ?? candidate.displayName,
-                    insertion: needsPath
-                        ? (candidate.relativePath as NSString).deletingPathExtension
-                        : candidate.displayName,
-                        detail: "Current Vault — \(candidate.relativePath)",
-                    path: candidate.relativePath,
-                    isAmbiguous: false
-                )
-            }.sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
-        }
-
-        func stem(_ path: String) -> String {
-            ((path as NSString).lastPathComponent as NSString).deletingPathExtension
-        }
-        func folder(_ path: String) -> String {
-            (path as NSString).deletingLastPathComponent
-        }
-        let stemGroups = Dictionary(grouping: catalogNotes) {
-            stem($0.reference.relativePath).folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: .current
-            )
-        }
-        let pathGroups = Dictionary(grouping: catalogNotes) {
-            (($0.reference.relativePath as NSString).deletingPathExtension).folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: .current
-            )
-        }
-        let currentFolder = folder(note.relativePath)
-
-        return catalogNotes.map { candidate in
-            let candidateStem = stem(candidate.reference.relativePath)
-            let stemKey = candidateStem.folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: .current
-            )
-            let relativeWithoutExtension = (candidate.reference.relativePath as NSString)
-                .deletingPathExtension
-            let pathKey = relativeWithoutExtension.folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: .current
-            )
-            let sameFolderMatches = stemGroups[stemKey, default: []].filter {
-                $0.reference.vaultID == currentVaultID
-                    && folder($0.reference.relativePath) == currentFolder
-            }
-            let currentVaultMatches = stemGroups[stemKey, default: []].filter {
-                $0.reference.vaultID == currentVaultID
-            }
-            let allStemMatches = stemGroups[stemKey, default: []]
-            let allPathMatches = pathGroups[pathKey, default: []]
-
-            let insertion: String
-            let isAmbiguous: Bool
-            if candidate.reference.vaultID == currentVaultID,
-               folder(candidate.reference.relativePath) == currentFolder,
-               sameFolderMatches.count == 1 {
-                insertion = candidateStem
-                isAmbiguous = false
-            } else if candidate.reference.vaultID == currentVaultID,
-                      currentVaultMatches.count == 1 {
-                insertion = candidateStem
-                isAmbiguous = false
-            } else if allStemMatches.count == 1 {
-                insertion = candidateStem
-                isAmbiguous = false
-            } else if candidate.reference.vaultID == currentVaultID || allPathMatches.count == 1 {
-                insertion = relativeWithoutExtension
-                isAmbiguous = false
-            } else {
-                insertion = ""
-                isAmbiguous = true
-            }
-
-            let ambiguity = isAmbiguous
-                ? " — Ambiguous: no unique Obsidian-compatible target"
-                : ""
-            return EditorLinkCompletion(
-                label: candidate.title,
-                insertion: insertion,
-                detail: "\(candidate.reference.vaultName) — \(candidate.reference.vaultRole.displayName) — \(candidate.reference.relativePath)\(ambiguity)",
-                path: "\(candidate.reference.vaultName)/\(candidate.reference.relativePath)",
-                isAmbiguous: isAmbiguous
-            )
-        }.sorted {
-            if $0.label != $1.label { return $0.label.localizedStandardCompare($1.label) == .orderedAscending }
-            return $0.path < $1.path
-        }
-    }
-
     private var hasUnsavedChanges: Bool {
         documentSession.hasUnsavedChanges
+    }
+
+    @MainActor
+    private func queryEditorLinkCompletions(
+        _ query: String
+    ) async -> [EditorLinkCompletion] {
+        guard let currentVaultID = state.currentVaultID,
+              let catalogNotes = state.workspaceCatalog?.notes,
+              let generation = state.workspaceCatalog?.graph?.generation else {
+            return []
+        }
+        return await controller.editorLinkCompletions(
+            matching: query,
+            sourcePath: note.relativePath,
+            currentVaultID: currentVaultID,
+            catalogNotes: catalogNotes,
+            graphGeneration: generation
+        )
     }
 
     private var editorIsComposing: Bool {
