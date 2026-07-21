@@ -1392,19 +1392,17 @@ final class WindowModel: ObservableObject {
     private var attemptedVaultRestore = false
     private let workspaceStore: WorkspaceStore
     private let lifecyclePolicy: ScholiumLifecyclePolicy
-    private let finalWindowSessionSaver: @MainActor (WindowSessionSnapshot) async throws -> Void
+    private let documentTransitionCoordinator = DocumentTransitionCoordinator()
+    private let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
+    private let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
-    private var windowSessionSaveTask: Task<Void, Never>?
-    private var isFinalizingWindowSession = false
     private var workspaceCatalogRefreshTask: Task<Void, Never>?
     private var workspaceCatalogNeedsAnotherRefresh = false
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
-    private var transitionGeneration: UInt64 = 0
     private var closeAttemptGeneration: UInt64 = 0
     private var libraryBrowseGeneration: UInt64 = 0
     private var identityReviewRefreshGeneration: UInt64 = 0
-    private var transitionTail: Task<Void, Never>?
     private var savedSearchMutationTail: Task<Void, Never>?
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
     #if DEBUG
@@ -1424,9 +1422,17 @@ final class WindowModel: ObservableObject {
         windowSessionID = resolvedWindowID
         self.workspaceStore = workspaceStore
         self.lifecyclePolicy = lifecyclePolicy
-        self.finalWindowSessionSaver = finalWindowSessionSaver ?? { [workspaceStore] snapshot in
+        let resolvedSessionSaver = finalWindowSessionSaver ?? { [workspaceStore] snapshot in
             try await workspaceStore.saveWindowSession(snapshot)
         }
+        self.windowSessionPersistenceCoordinator = WindowSessionPersistenceCoordinator(
+            lifecyclePolicy: lifecyclePolicy,
+            finalSaver: resolvedSessionSaver
+        )
+        self.windowWorkspaceController = WindowWorkspaceController(
+            workspaceStore: workspaceStore,
+            requestedTriptychID: requestedTriptychID
+        )
         self.requestedTriptychID = requestedTriptychID
         self.requestedInitialDocument = requestedInitialDocument
         cssSnippetStore = workspaceStore.cssSnippetStore
@@ -1838,6 +1844,9 @@ final class WindowModel: ObservableObject {
                 isUnclassified: currentNote != nil
             )
         }
+        if let capabilities = currentNote?.workspaceSnapshot?.capabilities {
+            return capabilities
+        }
         guard let note = currentNote else {
             return DocumentCapabilities(
                 role: currentDocumentVaultRole,
@@ -1846,22 +1855,11 @@ final class WindowModel: ObservableObject {
                 isManagedCritique: false
             )
         }
-        let identity: DocumentIdentityResolution
-        if identityAmbiguity(for: note.relativePath) != nil {
-            identity = .ambiguous
-        } else if pendingIdentityRebindings.contains(where: { $0.relativePath == note.relativePath }) {
-            identity = .pending
-        } else if currentDocumentDescriptor != nil {
-            identity = .resolved
-        } else {
-            identity = .unresolved
-        }
         return DocumentCapabilities(
             role: currentDocumentVaultRole,
             lifecycle: WorkspaceDocumentLifecycle(relativePath: note.relativePath),
-            identity: identity,
-            isManagedCritique: currentDocumentVaultRole.allowsCritique
-                && CritiquePlacement.isManagedCritiquePath(note.relativePath)
+            identity: .unresolved,
+            isManagedCritique: false
         )
     }
 
@@ -2121,29 +2119,26 @@ final class WindowModel: ObservableObject {
     private func enqueueDocumentTransition(
         _ operation: @escaping @MainActor () async throws -> Void
     ) {
-        transitionGeneration &+= 1
-        let generation = transitionGeneration
-        let previous = transitionTail
-        transitionTail = Task { [weak self] in
-            _ = await previous?.value
-            guard let self, generation == self.transitionGeneration else { return }
-            do {
+        documentTransitionCoordinator.enqueue(
+            prepare: { [weak self] in
+                guard let self else { throw CancellationError() }
                 try await self.flushRegisteredEditorIfNeeded()
                 try await self.captureRegisteredEditorForReconstructionIfNeeded()
-                guard generation == self.transitionGeneration else { return }
-                try await operation()
-            } catch is CancellationError {
-                return
-            } catch let navigationError as WindowNavigationError {
-                self.showToast(navigationError.localizedDescription, kind: .warning)
-            } catch {
-                self.lastSaveError = error.localizedDescription
-                self.showToast(
-                    "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
-                    kind: .error
-                )
+            },
+            operation: operation,
+            didFail: { [weak self] error in
+                guard let self else { return }
+                if let navigationError = error as? WindowNavigationError {
+                    self.showToast(navigationError.localizedDescription, kind: .warning)
+                } else {
+                    self.lastSaveError = error.localizedDescription
+                    self.showToast(
+                        "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
+                        kind: .error
+                    )
+                }
             }
-        }
+        )
     }
 
     var ordinarySearchScope: SearchPresentationScope {
@@ -2886,25 +2881,29 @@ final class WindowModel: ObservableObject {
     func persistWindowSessionNow() {
         guard didRestoreWindowSession,
               !isRestoringWindowSession,
-              !isFinalizingWindowSession else { return }
-        windowSessionSaveTask?.cancel()
+              !windowSessionPersistenceCoordinator.isFinalizing else { return }
         let snapshot = currentWindowSessionSnapshot()
-        windowSessionSaveTask = Task { [weak self, workspaceStore] in
-            do {
+        windowSessionPersistenceCoordinator.schedule(
+            snapshot: snapshot,
+            save: { [workspaceStore] snapshot in
                 try await workspaceStore.saveWindowSession(snapshot)
-                guard !Task.isCancelled else { return }
-                if self?.windowSessionPersistenceError != nil {
-                    self?.windowSessionPersistenceError = nil
+            },
+            completion: { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    if self.windowSessionPersistenceError != nil {
+                        self.windowSessionPersistenceError = nil
+                    }
+                    if self.refreshStatusText == "Window state not saved" {
+                        self.refreshStatusText = nil
+                    }
+                case .failure(let error):
+                    self.windowSessionPersistenceError = error.localizedDescription
+                    self.refreshStatusText = "Window state not saved"
                 }
-                if self?.refreshStatusText == "Window state not saved" {
-                    self?.refreshStatusText = nil
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                self?.windowSessionPersistenceError = error.localizedDescription
-                self?.refreshStatusText = "Window state not saved"
             }
-        }
+        )
     }
 
     /// Window state is recoverable presentation data, not document content.
@@ -2913,38 +2912,26 @@ final class WindowModel: ObservableObject {
     private func persistWindowSessionBeforeClose(attempt: UInt64) async -> String? {
         guard didRestoreWindowSession,
               !isRestoringWindowSession else { return nil }
-        isFinalizingWindowSession = true
-
-        var pendingTasks: [Task<Void, Never>] = []
-        while let pending = windowSessionSaveTask {
-            windowSessionSaveTask = nil
-            pending.cancel()
-            pendingTasks.append(pending)
-        }
         let snapshot = currentWindowSessionSnapshot()
-        do {
-            try await withScholiumLifecycleDeadline(
-                phase: .presentationSnapshot,
-                timeout: lifecyclePolicy.presentationSnapshot
-            ) { [finalWindowSessionSaver] in
-                for pending in pendingTasks {
-                    _ = await pending.result
-                }
-                try await finalWindowSessionSaver(snapshot)
+        let result = await windowSessionPersistenceCoordinator.finalize(
+            snapshot: snapshot,
+            attemptIsCurrent: { [weak self] in
+                self?.closeAttemptGeneration == attempt
             }
-            guard attempt == closeAttemptGeneration else { return nil }
-            isFinalizingWindowSession = false
+        )
+        switch result {
+        case .saved:
             windowSessionPersistenceError = nil
             if refreshStatusText == "Window state not saved" {
                 refreshStatusText = nil
             }
             return nil
-        } catch {
-            guard attempt == closeAttemptGeneration else { return nil }
-            isFinalizingWindowSession = false
-            windowSessionPersistenceError = error.localizedDescription
+        case .failed(let message):
+            windowSessionPersistenceError = message
             refreshStatusText = "Window state not saved"
-            return error.localizedDescription
+            return message
+        case .superseded:
+            return nil
         }
     }
 
@@ -3004,46 +2991,22 @@ final class WindowModel: ObservableObject {
     }
 
     func refreshWorkspaceAssignment(preferredTriptychID: UUID? = nil) async {
-        let assignments: [TriptychAssignment]
-        do {
-            assignments = try await workspaceStore.registeredTriptychs()
-        } catch {
+        let resolution = await windowWorkspaceController.resolveAssignment(
+            preferredTriptychID: preferredTriptychID,
+            currentTriptychID: workspaceAssignment?.id
+        )
+        switch resolution {
+        case .unavailable(let assignments, let message):
+            registeredTriptychs = assignments
             workspaceAssignment = nil
-            workspaceRecoveryMessage = error.localizedDescription
-            return
-        }
-        registeredTriptychs = assignments
-        let selectedID = preferredTriptychID
-            ?? workspaceAssignment?.id
-            ?? requestedTriptychID
-        let stored: TriptychAssignment?
-        if let selectedID {
-            stored = assignments.first(where: { $0.id == selectedID })
-            if stored == nil {
-                workspaceAssignment = nil
-                workspaceRecoveryMessage = "This Triptych is no longer registered on this Mac. Open an existing Triptych or choose its three folders again."
-                return
-            }
-        } else {
-            stored = try? await workspaceStore.defaultTriptych()
-        }
-        guard let stored else {
-            workspaceAssignment = nil
-            return
-        }
-        do {
-            let repaired = try await workspaceStore.reconcileTriptychIdentity(id: stored.id)
-            workspaceAssignment = repaired
-            try await activateTriptychServices(assignment: repaired)
-            if repaired != stored {
-                registeredTriptychs = (try? await workspaceStore.registeredTriptychs())
-                    ?? registeredTriptychs
-            }
-        } catch {
-            workspaceAssignment = stored
-            let repairFailure = error.localizedDescription
-            let activated = await activateTriptychServicesReportingFailure(assignment: stored)
-            if activated {
+            workspaceRecoveryMessage = message
+        case .selected(let assignments, let assignment, let repairFailure):
+            registeredTriptychs = assignments
+            workspaceAssignment = assignment
+            let activated = await activateTriptychServicesReportingFailure(
+                assignment: assignment
+            )
+            if activated, let repairFailure {
                 workspaceRecoveryMessage = "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
             }
         }

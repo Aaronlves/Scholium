@@ -4,24 +4,24 @@ set -euo pipefail
 ROOT="${0:A:h:h:h}"
 XCODE="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 DERIVED="${ROOT}/.build/qa-swiftpm"
-APP="/tmp/Scholium-QA.app"
+QA_ROOT="${ROOT}/.build/qa-runtime"
+APP="${QA_ROOT}/Scholium-QA.app"
 FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${HOME}/Desktop/TestVaults}"
-FIXTURE_COPY="/tmp/scholium-workbench-qa"
-QA_HOME="/tmp/scholium-workbench-home"
+FIXTURE_COPY="${QA_ROOT}/fixtures"
+QA_HOME="${QA_ROOT}/home"
 
 [[ -d "${FIXTURE_SOURCE}" ]] || { print -u2 "Missing fixture vault root: ${FIXTURE_SOURCE}"; exit 1; }
 
 terminate_qa_instances() {
   pkill -f "${APP}/Contents/MacOS/Scholium" 2>/dev/null || true
-  pkill -f "/private${APP}/Contents/MacOS/Scholium" 2>/dev/null || true
-  pkill -f "${HOME}/Applications/Scholium-Codex-QA-Do-Not-Use.app/Contents/MacOS/Scholium" 2>/dev/null || true
+  pkill -f "${QA_ROOT}/registered/Scholium-Codex-QA-Do-Not-Use.app/Contents/MacOS/Scholium" 2>/dev/null || true
 }
 
 # Rebuilding a running bundle can leave several stale QA processes alive.
 # Terminate only known test-owned bundle paths before replacing the artifact.
 terminate_qa_instances
 rm -rf "${DERIVED}" "${APP}" "${FIXTURE_COPY}" "${QA_HOME}"
-mkdir -p "${FIXTURE_COPY}"
+mkdir -p "${FIXTURE_COPY}" "${QA_HOME}"
 for vault_root in 01-analyses 02-topics 03-works; do
   [[ -d "${FIXTURE_SOURCE}/${vault_root}" ]] || {
     print -u2 "Missing static fixture vault: ${FIXTURE_SOURCE}/${vault_root}"

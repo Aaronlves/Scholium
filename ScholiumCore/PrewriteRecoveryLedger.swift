@@ -23,9 +23,19 @@ final class PrewriteRecoveryLedger {
         var state: State
     }
 
+    struct MutationTransaction: Codable, Hashable, Sendable {
+        let id: UUID
+        let relativePath: String
+        let expected: DocumentFingerprint
+        let candidate: DocumentFingerprint
+        let createdAt: Date
+        var retainedReason: String?
+    }
+
     private let rootURL: URL
     private let objectsURL: URL
     private let transactionsURL: URL
+    private let mutationTransactionsURL: URL
     private let remapsURL: URL
     private let tombstonesURL: URL
     private let quarantineURL: URL
@@ -39,12 +49,14 @@ final class PrewriteRecoveryLedger {
 
     init(
         storageURL: URL,
+        vaultURL: URL? = nil,
         fileManager: FileManager = .default
     ) throws {
         self.fileManager = fileManager
         rootURL = storageURL.appendingPathComponent("recovery-v2", isDirectory: true)
         objectsURL = rootURL.appendingPathComponent("objects", isDirectory: true)
         transactionsURL = rootURL.appendingPathComponent("transactions", isDirectory: true)
+        mutationTransactionsURL = transactionsURL.appendingPathComponent("mutations", isDirectory: true)
         remapsURL = rootURL.appendingPathComponent("remaps", isDirectory: true)
         tombstonesURL = rootURL.appendingPathComponent("tombstones", isDirectory: true)
         quarantineURL = rootURL.appendingPathComponent("quarantine", isDirectory: true)
@@ -52,7 +64,8 @@ final class PrewriteRecoveryLedger {
         legacyVersionsURL = storageURL.appendingPathComponent("versions", isDirectory: true)
         migrationMarkerURL = rootURL.appendingPathComponent("v1-migration-complete.json")
         for directory in [
-            rootURL, objectsURL, transactionsURL, remapsURL, tombstonesURL, quarantineURL,
+            rootURL, objectsURL, transactionsURL, mutationTransactionsURL,
+            remapsURL, tombstonesURL, quarantineURL,
         ] {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
@@ -70,6 +83,9 @@ final class PrewriteRecoveryLedger {
         }
         try applyTombstonesBeforeRebuild()
         try migrateLegacyV1IfNeeded()
+        if let vaultURL {
+            try replayMutationTransactions(vaultURL: vaultURL)
+        }
     }
 
     deinit { closeDatabase() }
@@ -187,6 +203,71 @@ final class PrewriteRecoveryLedger {
         return data
     }
 
+    func beginMutation(
+        relativePath: String,
+        expected: Data,
+        candidate: Data
+    ) throws -> MutationTransaction {
+        let path = try MarkdownRelativePath(relativePath)
+        let transaction = MutationTransaction(
+            id: UUID(),
+            relativePath: path.rawValue,
+            expected: DocumentFingerprint(data: expected),
+            candidate: DocumentFingerprint(data: candidate),
+            createdAt: Date(),
+            retainedReason: nil
+        )
+        let directory = mutationTransactionURL(transaction.id)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: false)
+        do {
+            let expectedURL = directory.appendingPathComponent("expected.md")
+            let candidateURL = directory.appendingPathComponent("candidate.md")
+            try expected.write(to: expectedURL, options: .atomic)
+            try candidate.write(to: candidateURL, options: .atomic)
+            guard DocumentFingerprint(data: try Data(contentsOf: expectedURL)) == transaction.expected,
+                  DocumentFingerprint(data: try Data(contentsOf: candidateURL)) == transaction.candidate else {
+                throw VaultRepositoryError.recoveryLedgerUnavailable(
+                    "A mutation transaction failed exact-byte readback."
+                )
+            }
+            try writeJSON(transaction, to: directory.appendingPathComponent("manifest.json"))
+            return transaction
+        } catch {
+            try? fileManager.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    func completeMutation(_ transaction: MutationTransaction) throws {
+        let directory = mutationTransactionURL(transaction.id)
+        if fileManager.fileExists(atPath: directory.path) {
+            try fileManager.removeItem(at: directory)
+        }
+    }
+
+    func retainMutation(_ transaction: MutationTransaction, reason: String) throws {
+        let directory = mutationTransactionURL(transaction.id)
+        guard fileManager.fileExists(atPath: directory.path) else { return }
+        var retained = transaction
+        retained.retainedReason = reason
+        try writeJSON(retained, to: directory.appendingPathComponent("manifest.json"))
+        healthDiagnostic = "A save transaction requires researcher-visible recovery: \(reason)"
+    }
+
+    func pendingMutations() throws -> [MutationTransaction] {
+        try fileManager.contentsOfDirectory(
+            at: mutationTransactionsURL,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ).compactMap { directory in
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try? decoder.decode(
+                MutationTransaction.self,
+                from: Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+            )
+        }.sorted { $0.createdAt < $1.createdAt }
+    }
+
     func remap(from source: String, to destination: String) throws {
         _ = try MarkdownRelativePath(source)
         _ = try MarkdownRelativePath(destination)
@@ -235,6 +316,50 @@ final class PrewriteRecoveryLedger {
         if fileManager.fileExists(atPath: tombstone.path) {
             try fileManager.removeItem(at: tombstone)
         }
+    }
+
+    private func replayMutationTransactions(vaultURL: URL) throws {
+        let canonicalRoot = vaultURL.resolvingSymlinksInPath().standardizedFileURL
+        for transaction in try pendingMutations() {
+            let directory = mutationTransactionURL(transaction.id)
+            do {
+                let expected = try Data(contentsOf: directory.appendingPathComponent("expected.md"))
+                let candidate = try Data(contentsOf: directory.appendingPathComponent("candidate.md"))
+                guard DocumentFingerprint(data: expected) == transaction.expected,
+                      DocumentFingerprint(data: candidate) == transaction.candidate else {
+                    throw VaultRepositoryError.recoveryLedgerUnavailable(
+                        "A pending mutation's preserved bytes failed fingerprint verification."
+                    )
+                }
+                let path = try MarkdownRelativePath(transaction.relativePath)
+                let target = canonicalRoot.appendingPathComponent(path.rawValue).standardizedFileURL
+                let rootPrefix = canonicalRoot.path.hasSuffix("/")
+                    ? canonicalRoot.path
+                    : canonicalRoot.path + "/"
+                guard target.path.hasPrefix(rootPrefix),
+                      fileManager.fileExists(atPath: target.path) else {
+                    healthDiagnostic = "A pending save transaction has no unambiguous canonical file and was retained."
+                    continue
+                }
+                let values = try target.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+                guard values.isSymbolicLink != true, values.isRegularFile == true else {
+                    healthDiagnostic = "A pending save transaction resolved to an unsafe file identity and was retained."
+                    continue
+                }
+                let observed = DocumentFingerprint(data: try Data(contentsOf: target))
+                if observed == transaction.expected || observed == transaction.candidate {
+                    try completeMutation(transaction)
+                } else {
+                    healthDiagnostic = "A pending save transaction observed bytes other than its expected or candidate revision and was retained."
+                }
+            } catch {
+                healthDiagnostic = "A pending save transaction could not be verified and was retained: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func mutationTransactionURL(_ id: UUID) -> URL {
+        mutationTransactionsURL.appendingPathComponent(id.uuidString.lowercased(), isDirectory: true)
     }
 
     private func migrateLegacyV1IfNeeded() throws {

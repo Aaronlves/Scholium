@@ -152,4 +152,28 @@ struct DocumentPathAndCapabilitiesTests {
         )
         #expect(decoded == prepared)
     }
+
+    @Test("Workspace snapshots publish the Application capability projection")
+    func workspaceSnapshotCapabilities() {
+        let vaultID = UUID()
+        let snapshot = WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Critiques/Current.md"),
+            vaultRole: .draftProject,
+            stableIdentity: .resolved(UUID()),
+            document: NoteDocument(relativePath: "Critiques/Current.md", rawContent: "Critique"),
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: 8,
+                creationDate: nil,
+                modificationDate: nil
+            ),
+            lifecycle: .active,
+            review: nil,
+            graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
+        )
+
+        #expect(snapshot.capabilities.isManagedCritique)
+        #expect(snapshot.capabilities.canComment)
+        #expect(!snapshot.capabilities.canEditSource)
+        #expect(!snapshot.capabilities.canUseResearchFunctions)
+    }
 }

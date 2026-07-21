@@ -171,7 +171,7 @@ Scenario-only smoke run:
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" \
   ./Tools/Scripts/run-performance-benchmarks.sh \
-  --app /tmp/Scholium-QA.app \
+  --app .build/qa-runtime/Scholium-QA.app \
   --fixture /tmp/scholium-rdf1 \
   --output /tmp/scholium-performance-scenario \
   --scenario

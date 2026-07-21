@@ -87,6 +87,21 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
 
     public var fingerprint: DocumentFingerprint { document.fingerprint }
     public var validationWarnings: [String] { document.validationWarnings }
+    public var capabilities: DocumentCapabilities {
+        let identity: DocumentIdentityResolution = switch stableIdentity {
+        case .resolved: .resolved
+        case .ambiguous: .ambiguous
+        case .pending: .pending
+        case .unresolved: .unresolved
+        }
+        return DocumentCapabilities(
+            role: vaultRole,
+            lifecycle: lifecycle,
+            identity: identity,
+            isManagedCritique: vaultRole.allowsCritique
+                && CritiquePlacement.isManagedCritiquePath(document.relativePath)
+        )
+    }
     public var schemaProfile: SchemaProfileID {
         WorkflowProfileResolver.resolve(
             vaultRole: vaultRole,

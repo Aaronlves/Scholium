@@ -40,6 +40,9 @@ WorkspaceRuntime (one live runtime for the app delivery)
 └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
     └── SwiftUI WindowGroup (one Codable route per scene)
         ├── WindowModel (one per complete workspace window)
+        │   ├── WindowWorkspaceController
+        │   ├── WindowSessionPersistenceCoordinator
+        │   ├── DocumentTransitionCoordinator
         │   ├── DiscoveryController
         │   ├── DocumentTabController
         │   ├── DocumentController
@@ -80,9 +83,13 @@ small mode-0600 Application Support preference, never Triptych or vault state.
 No Application or Core use case receives the selected application or launch
 result, and no Function record treats launch as execution state.
 
-`WindowModel` is the per-window composition and focused-command root. It owns
-Triptych assignment, Search/temporary Find, restoration, presentation, and
-typed cross-feature intents. `DocumentController` alone owns selection and
+`WindowModel` is the per-window composition and focused-command root.
+`WindowWorkspaceController` resolves the requested Triptych and stable vault
+identities, `WindowSessionPersistenceCoordinator` owns replaceable and final
+presentation saves, and `DocumentTransitionCoordinator` owns transition
+generation plus flush/capture ordering. `WindowModel` applies their typed
+results, routes Search/temporary Find, presentation, and cross-feature intents,
+but no longer owns those three state machines. `DocumentController` alone owns selection and
 document workflow state; `ResearchController` owns research generations,
 initial Dialogue projection, checkpoint-list failures, and durable-recovery
 listing. `WindowModel` exposes computed projections, not duplicated storage.
@@ -295,7 +302,9 @@ rows. Prior results remain visible through refresh and failure.
 - `Scholium/Features` contains the Discovery, Document, Research, Properties,
   and Settings delivery controllers and per-window editor sessions.
 - `Scholium/App/Window` contains mutually exclusive window presentation
-  routing.
+  routing plus the document-transition, presentation-persistence, and
+  workspace-resolution coordinators. These coordinators do not duplicate a
+  feature controller or writable document owner.
 - Feature-root view files remain inside `Scholium/Views`. The application and
   window roots may receive the complete `WindowModel`; feature roots receive
   their one controller, and reusable leaves receive immutable values and
@@ -438,6 +447,33 @@ package installation. An existing displaced package becomes a new undo
 snapshot before replacement; a missing package has no displaced state. The UI
 confirms complete-package replacement before invoking this authority.
 
+## Vault write and prewrite-recovery boundary
+
+`MarkdownRelativePath` is the typed authorization input for research Markdown.
+It preserves display spelling, treats backslash as a literal character, and
+rejects absolute paths, empty or dot components, NUL, and non-Markdown targets.
+`VaultPathResolver` scopes lookup to one canonical root and uses a
+volume-sensitive `VaultPathComparisonKey` only for case/Unicode collision
+decisions; neither rewrites Markdown or stored display paths.
+
+`VaultMutationCoordinator` performs short `NSFileCoordinator` accessors while
+walking parent directories through no-follow descriptors. Create and move use
+exclusive rename. Existing-file update writes a same-directory candidate,
+rechecks the exact preimage, uses displaced-byte-preserving swap, and verifies
+both canonical and displaced bytes. Unsupported swap fails closed. Any
+post-swap identity, readback, permission, or synchronization uncertainty keeps
+observed staging evidence and returns `commitUncertain`; Application persists a
+`.noteSave` Transaction Recovery record and never reports Saved.
+
+`PrewriteRecoveryLedger` is Core-only machine state under
+`Vaults/<vault-id>/recovery-v2/`. Immutable fingerprinted objects are indexed by
+SQLite WAL with full synchronization, bounded to ten entries per path, and
+protected by remap journals and permanent-delete tombstones. A damaged database
+is quarantined and rebuilt from verified objects. Legacy `versions/` bytes stay
+unchanged during all-or-nothing v1 migration and become read-only after the
+completion marker. This ledger has no delivery-facing versions/restore API;
+Checkpoint restore remains the only visible recovery mechanism.
+
 ## Shared read models and metadata
 
 `WorkspaceNoteSnapshot` is the shared immutable read model for a workspace
@@ -462,6 +498,14 @@ by `DocumentSessionKey`, which
 contains the registered vault UUID and stable note UUID. Path and title changes
 therefore do not replace editor state. Separate windows receive separate
 stores, even when they open the same stable document identity.
+
+The store reconciles full-session leases before releasing the previous target.
+Dirty, conflict, save-in-flight, retryable-recovery, and recovery-buffer states
+pin a session. Closing any tab flushes its target before membership removal;
+clean zero-lease, zero-pin sessions detach WebKit and discard full editor,
+source, undo, HTML, and preview state immediately. Only a 64-entry lightweight
+presentation LRU survives close; memory pressure reduces it to 16 or clears it
+without evicting leased or pinned safety state.
 
 Each retained `DocumentSessionModel` owns:
 

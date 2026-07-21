@@ -35,10 +35,7 @@ struct ScholiumRuntimeIsolationTests {
             bundleIdentifier: "com.scholium.app",
             qaHomeURL: qaHome
         ) == nil)
-        #expect(
-            ScholiumRuntimeIsolation.defaultQAHomeURL.standardizedFileURL.path
-                == "/tmp/scholium-workbench-home"
-        )
+        #expect(ScholiumRuntimeIsolation.defaultQAHomeURL.lastPathComponent == "home")
     }
 
     @Test("A fixture opens only when the test explicitly supplies its root")

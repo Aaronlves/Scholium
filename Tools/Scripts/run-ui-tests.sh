@@ -2,15 +2,17 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-QA_APP="/tmp/Scholium-QA.app"
-FIXTURES="/tmp/scholium-workbench-qa"
-QA_HOME="/tmp/scholium-workbench-home"
+QA_ROOT="${ROOT}/.build/qa-runtime"
+QA_APP="${QA_ROOT}/Scholium-QA.app"
+FIXTURES="${QA_ROOT}/fixtures"
+QA_HOME="${QA_ROOT}/home"
 QA_BUILD_DERIVED="${ROOT}/.build/qa-swiftpm"
 UI_TEST_DERIVED="${ROOT}/.build/qa-ui-derived-data"
-REGISTERED_QA="${HOME}/Applications/Scholium-Codex-QA-Do-Not-Use.app"
+REGISTERED_QA="${QA_ROOT}/registered/Scholium-Codex-QA-Do-Not-Use.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-QA_RUN_LOCK="/tmp/com.scholium.qa.ui-tests.lock"
+QA_RUN_LOCK="${ROOT}/.build/com.scholium.qa.ui-tests.lock"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
+export SCHOLIUM_QA_FIXTURES="${FIXTURES}"
 
 acquire_qa_run_lock() {
   if mkdir "${QA_RUN_LOCK}" 2>/dev/null; then
@@ -40,7 +42,7 @@ terminate_qa_instances() {
 }
 
 cleanup() {
-  local result_staging="/tmp/Scholium-XCResults-$$"
+  local result_staging="${ROOT}/.build/qa-xcresult-staging-$$"
   local result_bundles=("${UI_TEST_DERIVED}/Logs/Test/"*.xcresult(N))
   if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]] && (( ${#result_bundles[@]} > 0 )); then
     mkdir -p "${result_staging}"
@@ -89,27 +91,52 @@ if [[ -d "${REGISTERED_QA}" ]]; then
   "${LSREGISTER}" -u "${REGISTERED_QA}" || true
   rm -rf "${REGISTERED_QA}"
 fi
-mkdir -p "${HOME}/Applications"
+mkdir -p "${REGISTERED_QA:h}"
 cp -R "${QA_APP}" "${REGISTERED_QA}"
 "${LSREGISTER}" -f -R -trusted "${REGISTERED_QA}"
 # Register the disposable bundle so XCUIApplication can resolve its bundle
 # identifier. The test process must perform the only launch; pre-opening the
 # app here would create a second window before launchEnvironment is applied.
-test_arguments=("$@")
-if (( ${#test_arguments[@]} == 0 )); then
-  # The default acceptance run deliberately launches one QA application once.
-  # Individual journeys remain addressable with an explicit xcodebuild selector
-  # when a failing behavior needs focused diagnosis.
-  test_arguments=(
-    "-only-testing:ScholiumUITests/ScholiumUITests/testCanonicalAcceptanceJourney"
-  )
+profile="${1:-smoke}"
+if [[ "${profile}" == "smoke" || "${profile}" == "complete" ]]; then
+  shift $(( $# > 0 ? 1 : 0 ))
+else
+  profile="focused"
 fi
-DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
+test_arguments=("$@")
+common_arguments=(
   -project "${ROOT}/ScholiumUITests.xcodeproj" \
   -scheme ScholiumUITests \
   -destination "platform=macOS" \
   -parallel-testing-enabled NO \
   -maximum-parallel-testing-workers 1 \
-  -derivedDataPath "${UI_TEST_DERIVED}" \
-  test \
-  "${test_arguments[@]}"
+  -derivedDataPath "${UI_TEST_DERIVED}"
+)
+
+if [[ "${profile}" == "smoke" ]]; then
+  test_arguments=(
+    "-only-testing:ScholiumUITests/ScholiumUITests/testCanonicalAcceptanceJourney"
+    "${test_arguments[@]}"
+  )
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"
+elif [[ "${profile}" == "complete" ]]; then
+  manifest="${ROOT}/.build/qa-complete-test-manifest.json"
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
+    "${common_arguments[@]}" \
+    test-without-building \
+    -enumerate-tests \
+    -test-enumeration-style flat \
+    -test-enumeration-format json \
+    -test-enumeration-output-path "${manifest}"
+  [[ -s "${manifest}" ]] || {
+    print -u2 "Complete UI test enumeration produced no manifest."
+    exit 1
+  }
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
+    "${common_arguments[@]}" \
+    test-without-building \
+    "${test_arguments[@]}"
+else
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"
+fi

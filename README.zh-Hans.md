@@ -161,7 +161,7 @@ CloudStorage 和其他 File Provider 管理位置之外。不要把构建缓存�
 ```
 
 这些命令使用 bundle identifier 为 `com.scholium.qa` 的
-`/tmp/Scholium-QA.app`，并复制 `SCHOLIUM_TEST_VAULTS` 所指目录作为一次性
+`.build/qa-runtime/Scholium-QA.app`，并复制 `SCHOLIUM_TEST_VAULTS` 所指目录作为一次性
 fixture（默认 `~/Desktop/TestVaults`）。它们不会打包发布版本，也不会打开
 真实研究库。
 
@@ -171,7 +171,7 @@ fixture（默认 `~/Desktop/TestVaults`）。它们不会打包发布版本，�
 ```bash
 ./Tools/Scripts/verify-qa-upgrade-safety.sh \
   --baseline /tmp/Scholium-Previous-QA.app \
-  --candidate /tmp/Scholium-QA.app \
+  --candidate .build/qa-runtime/Scholium-QA.app \
   --output /tmp/Scholium-Upgrade-Evidence
 ```
 

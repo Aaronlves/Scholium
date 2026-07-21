@@ -103,6 +103,39 @@ struct PrewriteRecoveryLedgerTests {
         #expect(try ledger.content(entryID: entry.id) == Data("exact".utf8))
     }
 
+    @Test("Startup replay cleans only expected or candidate save transactions")
+    func mutationReplay() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let note = fixture.vault.appendingPathComponent("Note.md")
+        let expected = Data("expected".utf8)
+        let candidate = Data("candidate".utf8)
+        try expected.write(to: note)
+
+        var ledger: PrewriteRecoveryLedger? = try PrewriteRecoveryLedger(
+            storageURL: fixture.storage
+        )
+        _ = try ledger?.beginMutation(
+            relativePath: "Note.md",
+            expected: expected,
+            candidate: candidate
+        )
+        ledger = nil
+        ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+        #expect(try ledger?.pendingMutations().isEmpty == true)
+
+        let uncertain = try #require(try ledger?.beginMutation(
+            relativePath: "Note.md",
+            expected: expected,
+            candidate: candidate
+        ))
+        try Data("external".utf8).write(to: note)
+        ledger = nil
+        ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+        #expect(try ledger?.pendingMutations().map(\.id) == [uncertain.id])
+        #expect(ledger?.healthDiagnostic != nil)
+    }
+
     @Test("Verified v1 bytes migrate without modifying the legacy store")
     func verifiedLegacyMigration() throws {
         let fixture = try Fixture()
@@ -144,13 +177,16 @@ struct PrewriteRecoveryLedgerTests {
     private final class Fixture {
         let root: URL
         let storage: URL
+        let vault: URL
         var recovery: URL { storage.appendingPathComponent("recovery-v2", isDirectory: true) }
 
         init() throws {
             root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("Scholium-RecoveryLedger-\(UUID().uuidString)")
             storage = root.appendingPathComponent("Vault", isDirectory: true)
+            vault = root.appendingPathComponent("Research", isDirectory: true)
             try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
         }
 
         func remove() { try? FileManager.default.removeItem(at: root) }

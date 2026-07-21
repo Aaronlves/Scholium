@@ -28,7 +28,10 @@ public actor VaultRepository {
         self.storageURL = applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
-        self.recoveryLedger = try PrewriteRecoveryLedger(storageURL: storageURL)
+        self.recoveryLedger = try PrewriteRecoveryLedger(
+            storageURL: storageURL,
+            vaultURL: self.vaultURL
+        )
     }
 
     public func recoveryLedgerHealthDiagnostic() -> String? {
@@ -122,7 +125,19 @@ public actor VaultRepository {
             throw VaultRepositoryError.invalidFrontmatter(updated.validationWarnings.joined(separator: "\n"))
         }
 
+        let candidateData = Data(updatedContent.utf8)
         let snapshot = try prepareSnapshot(relativePath: relativePath, data: currentData)
+        let mutation: PrewriteRecoveryLedger.MutationTransaction
+        do {
+            mutation = try recoveryLedger.beginMutation(
+                relativePath: relativePath,
+                expected: currentData,
+                candidate: candidateData
+            )
+        } catch {
+            try? discardPreparedSnapshot(snapshot)
+            throw error
+        }
         do {
             let recheckedData = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
@@ -130,7 +145,6 @@ public actor VaultRepository {
                 try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.conflict(expected: expectedRevision, current: recheckedFingerprint)
             }
-            let candidateData = Data(updatedContent.utf8)
             try mutationCoordinator.updateExisting(
                 path: markdownRelativePath(relativePath),
                 expected: currentData,
@@ -147,15 +161,19 @@ public actor VaultRepository {
                 )
             }
             try commitPreparedSnapshot(snapshot)
+            try? recoveryLedger.completeMutation(mutation)
         } catch {
             if case VaultRepositoryError.commitUncertain = error {
                 try? commitPreparedSnapshot(snapshot)
+                try? recoveryLedger.retainMutation(mutation, reason: error.localizedDescription)
             } else {
                 let observed = try? Data(contentsOf: fileURL)
                 if observed.map(DocumentFingerprint.init(data:)) == currentFingerprint {
                     try? discardPreparedSnapshot(snapshot)
+                    try? recoveryLedger.completeMutation(mutation)
                 } else {
                     try? commitPreparedSnapshot(snapshot)
+                    try? recoveryLedger.retainMutation(mutation, reason: error.localizedDescription)
                 }
             }
             throw error

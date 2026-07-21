@@ -398,6 +398,7 @@ final class ScholiumUITests: XCTestCase {
         app = XCUIApplication(bundleIdentifier: "com.scholium.qa")
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
+        app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
         app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
         app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"] = triptychDirectory.path
         app.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = String(
@@ -500,6 +501,7 @@ final class ScholiumUITests: XCTestCase {
         app = XCUIApplication(bundleIdentifier: "com.scholium.qa")
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
+        app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
         app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
         app.launch()
 
@@ -4587,6 +4589,7 @@ final class ScholiumUITests: XCTestCase {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
         }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeDirectory.path
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeDirectory.path
         application.launchEnvironment["SCHOLIUM_CLI_INSTALL_PATH"] = testDirectory
             .appendingPathComponent("cli-bin/scholium")
             .path
@@ -5026,10 +5029,11 @@ final class ScholiumUITests: XCTestCase {
         // copy and uses its existing QA Autosave A/B, QA Topic, and QA Work
         // anchors. Only state-specific records absent from the static fixture
         // may be added below. No UI test opens or mutates Desktop/TestVaults.
-        let stagedFixtures = URL(
-            fileURLWithPath: "/tmp/scholium-workbench-qa",
-            isDirectory: true
-        )
+        guard let stagedFixturePath = ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"],
+              !stagedFixturePath.isEmpty else {
+            throw XCTSkip("The UI runner did not provide its disposable fixture path.")
+        }
+        let stagedFixtures = URL(fileURLWithPath: stagedFixturePath, isDirectory: true)
         guard FileManager.default.fileExists(atPath: stagedFixtures.path) else {
             throw XCTSkip("The disposable TestVaults copy was not staged by build-qa-app.sh.")
         }
@@ -5228,6 +5232,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "--scholium-performance-editor-mode-notifications",
         ]
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "memory-\(runID)"
         application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
@@ -5299,6 +5304,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         )
         application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "performance-\(runID)-\(sample)"
         application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
@@ -5634,6 +5640,7 @@ final class ScholiumUpgradeSafetyUITests: XCTestCase {
         )
         application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "upgrade-safety-\(label)"
         application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "paper_analysis"

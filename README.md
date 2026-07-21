@@ -62,7 +62,7 @@ use-case protocols live in `ScholiumContracts`, internal I/O lives in
 macOS app and CLI. Core is not a public product and neither delivery target can
 import it. Reachable behavior includes multi-Triptych registration
 and window routing, Triptych control, safe note lifecycle, Human Review,
-Dialogue, Critique, Note History, whole-Triptych checkpoints, direct
+Dialogue, Critique, machine-local prewrite recovery, whole-Triptych checkpoints, direct
 revision-checked CLI writes, vault-wide Properties, Unclassified import,
 unified search, protected CSS snippets, localhost-only Zotero reading, and a
 first-party optional Zotero MCP service for external agents. The Canvas feature
@@ -100,7 +100,14 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" swift build
 DEVELOPER_DIR="$developer_dir" swift test
 ./Tools/Scripts/run-debug-app.sh
+./Tools/Scripts/run-ui-tests.sh smoke
+./Tools/Scripts/run-ui-tests.sh complete
 ```
+
+The UI runner uses repository-local ignored `.build/` state. `smoke` runs the
+single canonical journey; `complete` dynamically enumerates the current UI-test
+class, builds once, and executes it serially without rebuilding. Neither mode
+is human visual, assistive-technology, performance, or release evidence.
 
 The Debug launcher assembles an ignored `.build/debug-app/Scholium-Debug.app`
 and opens it through LaunchServices. Use it for GUI work so scene launch,
@@ -184,7 +191,7 @@ For deterministic interface work, use only the isolated QA app and disposable fi
 ./Tools/Scripts/run-ui-tests.sh
 ```
 
-These commands use `/tmp/Scholium-QA.app` with bundle identifier
+These commands use `.build/qa-runtime/Scholium-QA.app` with bundle identifier
 `com.scholium.qa` and a disposable copy of the directory selected by
 `SCHOLIUM_TEST_VAULTS` (default: `~/Desktop/TestVaults`). They do not package a
 release or open a real research vault.
@@ -195,7 +202,7 @@ one disposable Triptych and one isolated application home:
 ```bash
 ./Tools/Scripts/verify-qa-upgrade-safety.sh \
   --baseline /tmp/Scholium-Previous-QA.app \
-  --candidate /tmp/Scholium-QA.app \
+  --candidate .build/qa-runtime/Scholium-QA.app \
   --output /tmp/Scholium-Upgrade-Evidence
 ```
 

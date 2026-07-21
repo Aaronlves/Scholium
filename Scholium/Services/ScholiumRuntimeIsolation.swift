@@ -4,12 +4,15 @@ import Foundation
 /// QA bundle. A fixture is opened only when automation supplies it explicitly.
 enum ScholiumRuntimeIsolation {
     static let qaBundleIdentifier = "com.scholium.qa"
-    // Keep this exact path synchronized with build-qa-app.sh so every rebuild
-    // clears the state that a manually launched QA bundle will actually use.
-    static let defaultQAHomeURL = URL(
-        fileURLWithPath: "/tmp/scholium-workbench-home",
-        isDirectory: true
-    )
+    // The ignored QA bundle lives under `.build/qa-runtime`; derive its
+    // fallback home from the bundle rather than escaping to global /tmp.
+    static let defaultQAHomeURL: URL = {
+        let container = Bundle.main.bundleURL.deletingLastPathComponent()
+        let qaRoot = container.lastPathComponent == "registered"
+            ? container.deletingLastPathComponent()
+            : container
+        return qaRoot.appendingPathComponent("home", isDirectory: true)
+    }()
 
     static func homeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
