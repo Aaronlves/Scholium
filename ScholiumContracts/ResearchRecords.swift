@@ -606,27 +606,17 @@ public struct HumanReviewRecord: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Compatibility errors for lifecycle migration of the read-only Human Review
+/// archive. The retired Review workflow has no creation or editing errors.
 public enum HumanReviewError: LocalizedError, Sendable {
-    case recordNotFound(UUID)
-    case commentNotFound(UUID)
-    case emptyComment
-    case missingQualification
-    case emptyReviewNote
-    case reviewNoteTooLong
     case recordVaultMismatch
     case recordPathMismatch(expected: String, actual: String)
 
     public var errorDescription: String? {
         switch self {
-        case .recordNotFound(let id): return "Human Review record not found: \(id.uuidString)"
-        case .commentNotFound(let id): return "Researcher comment not found: \(id.uuidString)"
-        case .emptyComment: return "A comment cannot be empty."
-        case .missingQualification: return "Choose Qualified or Unqualified to complete Review."
-        case .emptyReviewNote: return "Write a Review Note before completing Review."
-        case .reviewNoteTooLong: return "The Review Note must be 500 characters or fewer."
-        case .recordVaultMismatch: return "The Human Review record belongs to a different vault."
+        case .recordVaultMismatch: return "The earlier Review archive record belongs to a different vault."
         case .recordPathMismatch(let expected, let actual):
-            return "The Human Review record is at '\(actual)', not the expected path '\(expected)'."
+            return "The earlier Review archive record is at '\(actual)', not the expected path '\(expected)'."
         }
     }
 }
@@ -997,17 +987,68 @@ public enum DialogueError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .emptyInstruction: return "Write an instruction before copying it for an agent."
-        case .noSelectedNotes: return "Select at least one note for Dialogue."
+        case .noSelectedNotes: return "Select at least one note for Discuss."
         case .invalidCommentOwner: return "Every included comment must identify one selected source note."
-        case .entryNotFound(let id): return "Dialogue entry not found: \(id.uuidString)"
-        case .invalidReplyTarget: return "The selected target is not part of this Dialogue entry."
-        case .emptyFollowUpComment: return "Write a follow-up Comment before adding it to Dialogue."
+        case .entryNotFound(let id): return "Discussion record not found: \(id.uuidString)"
+        case .invalidReplyTarget: return "The selected target is not part of this Discussion."
+        case .emptyFollowUpComment: return "Write a follow-up before adding it to Discuss."
         case .emptyReply: return "An agent reply cannot be empty."
         case .emptyAgentName: return "Identify the agent before recording its reply."
-        case .duplicateFollowUpComment(let id): return "Dialogue follow-up Comment already recorded: \(id.uuidString)"
-        case .duplicateReply(let id): return "Dialogue reply already recorded: \(id.uuidString)"
+        case .duplicateFollowUpComment(let id): return "Discuss follow-up already recorded: \(id.uuidString)"
+        case .duplicateReply(let id): return "Discuss reply already recorded: \(id.uuidString)"
         case .noteReferencePathMismatch(let expected, let actual):
-            return "The Dialogue note reference is at '\(actual)', not the expected path '\(expected)'."
+            return "The Discussion note reference is at '\(actual)', not the expected path '\(expected)'."
+        }
+    }
+}
+
+public enum CritiqueFindingDispositionDecision: String, Codable, CaseIterable, Hashable, Sendable {
+    case accept
+    case reject
+    case rebut
+}
+
+public struct CritiqueFindingDisposition: Codable, Hashable, Identifiable, Sendable {
+    public var id: String { findingID }
+    public let findingID: String
+    public let decision: CritiqueFindingDispositionDecision
+    public let rationale: String?
+    /// Exact Work revision observed when an accepted finding was recorded
+    /// after a text change. This does not claim which bytes addressed it.
+    public let acceptedRevision: DocumentFingerprint?
+    /// Researcher-authored explanation used only when Accept requires no text
+    /// change. It is mutually exclusive with `acceptedRevision`.
+    public let noTextChangeRationale: String?
+    public let disposedAt: Date
+
+    public init(
+        findingID: String,
+        decision: CritiqueFindingDispositionDecision,
+        rationale: String? = nil,
+        acceptedRevision: DocumentFingerprint? = nil,
+        noTextChangeRationale: String? = nil,
+        disposedAt: Date = Date()
+    ) {
+        self.findingID = findingID
+        self.decision = decision
+        let normalizedRationale = rationale?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.rationale = normalizedRationale?.isEmpty == false ? normalizedRationale : nil
+        self.acceptedRevision = acceptedRevision
+        let normalizedNoChange = noTextChangeRationale?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        self.noTextChangeRationale = normalizedNoChange?.isEmpty == false
+            ? normalizedNoChange
+            : nil
+        self.disposedAt = disposedAt
+    }
+
+    public var satisfiesRoundCompletion: Bool {
+        switch decision {
+        case .accept:
+            (acceptedRevision != nil) != (noTextChangeRationale != nil)
+        case .reject, .rebut:
+            true
         }
     }
 }
@@ -1021,6 +1062,9 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     public let functionSnapshot: ResearchFunctionSnapshot?
     public let functionCompletion: ResearchFunctionCompletion?
     public let functionInstructions: String?
+    public let actionableFindings: [CritiqueFinding]
+    public let findingDispositions: [CritiqueFindingDisposition]
+    public let completedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -1030,7 +1074,10 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         scope: CritiqueRequestScope,
         functionSnapshot: ResearchFunctionSnapshot? = nil,
         functionCompletion: ResearchFunctionCompletion? = nil,
-        functionInstructions: String? = nil
+        functionInstructions: String? = nil,
+        actionableFindings: [CritiqueFinding] = [],
+        findingDispositions: [CritiqueFindingDisposition] = [],
+        completedAt: Date? = nil
     ) {
         self.id = id
         self.requestedAt = requestedAt
@@ -1043,6 +1090,90 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
             in: .whitespacesAndNewlines
         )
         self.functionInstructions = normalized?.isEmpty == false ? normalized : nil
+        self.actionableFindings = Self.uniqueFindings(actionableFindings)
+        let actionableIDs = Set(self.actionableFindings.map(\.id))
+        self.findingDispositions = Dictionary(
+            findingDispositions
+                .filter { actionableIDs.contains($0.findingID) }
+                .map { ($0.findingID, $0) },
+            uniquingKeysWith: { _, newest in newest }
+        ).values.sorted { $0.findingID < $1.findingID }
+        self.completedAt = completedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, requestedAt, targetFingerprint, checkpointID, scope
+        case functionSnapshot, functionCompletion, functionInstructions
+        case actionableFindings, findingDispositions, completedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(UUID.self, forKey: .id),
+            requestedAt: try container.decode(Date.self, forKey: .requestedAt),
+            targetFingerprint: try container.decode(
+                DocumentFingerprint.self,
+                forKey: .targetFingerprint
+            ),
+            checkpointID: try container.decodeIfPresent(UUID.self, forKey: .checkpointID),
+            scope: try container.decode(CritiqueRequestScope.self, forKey: .scope),
+            functionSnapshot: try container.decodeIfPresent(
+                ResearchFunctionSnapshot.self,
+                forKey: .functionSnapshot
+            ),
+            functionCompletion: try container.decodeIfPresent(
+                ResearchFunctionCompletion.self,
+                forKey: .functionCompletion
+            ),
+            functionInstructions: try container.decodeIfPresent(
+                String.self,
+                forKey: .functionInstructions
+            ),
+            actionableFindings: try container.decodeIfPresent(
+                [CritiqueFinding].self,
+                forKey: .actionableFindings
+            ) ?? [],
+            findingDispositions: try container.decodeIfPresent(
+                [CritiqueFindingDisposition].self,
+                forKey: .findingDispositions
+            ) ?? [],
+            completedAt: try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(requestedAt, forKey: .requestedAt)
+        try container.encode(targetFingerprint, forKey: .targetFingerprint)
+        try container.encodeIfPresent(checkpointID, forKey: .checkpointID)
+        try container.encode(scope, forKey: .scope)
+        try container.encodeIfPresent(functionSnapshot, forKey: .functionSnapshot)
+        try container.encodeIfPresent(functionCompletion, forKey: .functionCompletion)
+        try container.encodeIfPresent(functionInstructions, forKey: .functionInstructions)
+        if !actionableFindings.isEmpty {
+            try container.encode(actionableFindings, forKey: .actionableFindings)
+        }
+        if !findingDispositions.isEmpty {
+            try container.encode(findingDispositions, forKey: .findingDispositions)
+        }
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
+    }
+
+    public var isReadyToComplete: Bool {
+        guard completedAt == nil, !actionableFindings.isEmpty else { return false }
+        let dispositions = Dictionary(
+            uniqueKeysWithValues: findingDispositions.map { ($0.findingID, $0) }
+        )
+        return actionableFindings.allSatisfy {
+            dispositions[$0.id]?.satisfiesRoundCompletion == true
+        }
+    }
+
+    private static func uniqueFindings(_ findings: [CritiqueFinding]) -> [CritiqueFinding] {
+        var seen: Set<String> = []
+        return findings.filter { seen.insert($0.id).inserted }
     }
 }
 
@@ -1574,6 +1705,13 @@ public enum CritiqueDocumentContract {
 public enum CritiqueRegistryError: LocalizedError, Sendable {
     case destinationAlreadyAssociated(String)
     case workPathMismatch(expected: String, actual: String)
+    case roundNotFound(UUID)
+    case roundNotReady(UUID)
+    case roundAlreadyCompleted(UUID)
+    case findingSetAlreadyCaptured(UUID)
+    case findingNotFound(String)
+    case acceptRequiresChangeOrRationale(String)
+    case incompleteDispositions(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -1581,6 +1719,20 @@ public enum CritiqueRegistryError: LocalizedError, Sendable {
             "The Critique at \(path) is already associated with another Work."
         case .workPathMismatch(let expected, let actual):
             "The Critique association expected its Work at \(expected), but it currently records \(actual)."
+        case .roundNotFound(let id):
+            "Critique round was not found: \(id.uuidString)"
+        case .roundNotReady(let id):
+            "Critique round is not ready for finding disposition: \(id.uuidString)"
+        case .roundAlreadyCompleted(let id):
+            "Critique round is already complete: \(id.uuidString)"
+        case .findingSetAlreadyCaptured(let id):
+            "The actionable finding set is already fixed for Critique round \(id.uuidString)."
+        case .findingNotFound(let id):
+            "Critique finding was not found in the fixed round: \(id)"
+        case .acceptRequiresChangeOrRationale(let id):
+            "Accept requires a changed Work revision or an explicit no-text-change rationale for finding \(id)."
+        case .incompleteDispositions(let id):
+            "Every actionable finding must be disposed before completing Critique round \(id.uuidString)."
         }
     }
 }

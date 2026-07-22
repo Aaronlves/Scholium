@@ -19,6 +19,8 @@ struct WorkspaceServices: Sendable {
     let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
     let humanReviewStore: HumanReviewStore
+    let researchActivityStore: ResearchActivityStore
+    let pageAnnotationStore: PageAnnotationStore
     let dialogueStore: DialogueStore
     let critiqueRegistry: CritiqueRegistry
     let checkpointStore: TriptychCheckpointStore
@@ -101,6 +103,10 @@ public actor WorkspaceHandle {
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     private var didCompleteActivationReconciliation = false
+    /// Plaintext activity keys live only for this open WorkspaceHandle. The
+    /// durable grant store keeps a digest, so reopening never reconstructs a
+    /// credential from persisted state.
+    var activeResearchActivityKeys: [UUID: String] = [:]
 
     private init(
         assignment: TriptychAssignment,
@@ -219,6 +225,36 @@ public actor WorkspaceHandle {
                     isDirectory: true
                 )
             )
+            let researchActivityStore = ResearchActivityStore(
+                storageURL: triptychStorage.appendingPathComponent(
+                    "research-activity",
+                    isDirectory: true
+                )
+            )
+            let pageAnnotationStore = PageAnnotationStore(
+                storageURL: triptychStorage.appendingPathComponent(
+                    "page-annotations",
+                    isDirectory: true
+                )
+            )
+            try await pageAnnotationStore.importLegacyAnnotations(
+                await humanReviewStore.allRecords().flatMap { record in
+                    record.comments.map { comment in
+                        AnnotationRecord(
+                            id: comment.id,
+                            noteID: record.id,
+                            vaultID: record.vaultID,
+                            relativePath: record.relativePath,
+                            author: comment.author,
+                            text: comment.text,
+                            anchor: comment.anchor,
+                            createdAt: comment.createdAt,
+                            updatedAt: comment.updatedAt,
+                            resolvedAt: comment.resolvedAt
+                        )
+                    }
+                }
+            )
             let dialogueStore = DialogueStore(
                 storageURL: triptychStorage.appendingPathComponent(
                     "dialogue",
@@ -251,6 +287,8 @@ public actor WorkspaceHandle {
                 ),
                 zotero: zotero,
                 humanReviewStore: humanReviewStore,
+                researchActivityStore: researchActivityStore,
+                pageAnnotationStore: pageAnnotationStore,
                 dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
                 checkpointStore: TriptychCheckpointStore(
@@ -436,18 +474,37 @@ public actor WorkspaceHandle {
             relativePath: id.relativePath,
             content: content
         )
+        let identity: NoteIdentityRecord
         do {
-            _ = try await services.controlStore.identity(
+            guard let createdIdentity = try await services.controlStore.identity(
                 forVaultID: id.vaultID,
                 relativePath: id.relativePath,
                 fingerprint: document.fingerprint
-            )
+            ) else {
+                throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
+            }
+            identity = createdIdentity
         } catch {
             try? await repository.removeCreatedFileForRollback(
                 relativePath: id.relativePath,
                 createdRevision: document.fingerprint
             )
             throw error
+        }
+        if let role = ResearchFunctionTargetRole(vaultRole: registeredVault.role) {
+            let title = document.parsedFrontmatter["title"]?.displayScalar
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackTitle = (id.relativePath as NSString)
+                .deletingPathExtension
+                .components(separatedBy: "/")
+                .last ?? id.relativePath
+            let reference = ResearchActivityNoteReference(
+                noteID: identity.id,
+                note: id,
+                role: role,
+                title: title?.isEmpty == false ? title! : fallbackTitle
+            )
+            _ = try await services.researchActivityStore.recordCreated(note: reference)
         }
         do {
             _ = try await refresh(
@@ -747,7 +804,8 @@ public actor WorkspaceHandle {
             critiqueRegistry: services.critiqueRegistry,
             checkpointStore: services.checkpointStore,
             controlStore: services.controlStore,
-            recoveryStore: services.transactionRecoveryStore
+            recoveryStore: services.transactionRecoveryStore,
+            pageAnnotationStore: services.pageAnnotationStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
@@ -788,7 +846,8 @@ public actor WorkspaceHandle {
                 critiqueRegistry: services.critiqueRegistry,
                 checkpointStore: services.checkpointStore,
                 controlStore: services.controlStore,
-                recoveryStore: services.transactionRecoveryStore
+                recoveryStore: services.transactionRecoveryStore,
+                pageAnnotationStore: services.pageAnnotationStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -1338,11 +1397,11 @@ public actor WorkspaceHandle {
         return await services.humanReviewStore.record(noteID: noteID)
     }
 
-    func dialogues(noteID: UUID) async throws -> [DialogueEntry] {
+    func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
         try requireActive()
         return await services.dialogueStore.entries(noteID: noteID).filter {
             $0.functionSnapshot == nil
-                || $0.functionSnapshot?.request.function == .dialogue
+                || $0.functionSnapshot?.request.function == .discuss
         }
     }
 
@@ -1351,9 +1410,9 @@ public actor WorkspaceHandle {
         return await services.critiqueRegistry.association(workNoteID: workNoteID)
     }
 
-    func dialogueResponseProfile() async throws -> DialogueResponseProfile {
+    func discussResponseProfile() async throws -> DialogueResponseProfile {
         try requireActive()
-        return try await services.controlStore.dialogueResponseProfile()
+        return try await services.controlStore.discussResponseProfile()
     }
 
     func triptychSettings() async throws -> TriptychSettings {
@@ -1370,40 +1429,40 @@ public actor WorkspaceHandle {
         )
     }
 
-    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws {
+    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
         try requireActive()
-        try await services.controlStore.saveDialogueResponseProfile(profile)
+        try await services.controlStore.saveDiscussResponseProfile(profile)
         try await refreshAfterCommittedOperation(
-            "The Dialogue response profile",
+            "The Discuss response profile",
             publication: .researchRecords
         )
     }
 
-    func dialogueEntries() async throws -> [DialogueEntry] {
+    func discussionRecords() async throws -> [DialogueEntry] {
         try requireActive()
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
         return await services.dialogueStore.allEntries().filter {
             $0.functionSnapshot == nil
-                || $0.functionSnapshot?.request.function == .dialogue
+                || $0.functionSnapshot?.request.function == .discuss
         }
     }
 
-    func dialogue(id: UUID) async throws -> DialogueEntry {
+    func discussion(id: UUID) async throws -> DialogueEntry {
         try requireActive()
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
         let entry = try await services.dialogueStore.entry(id: id)
         guard entry.functionSnapshot == nil
-                || entry.functionSnapshot?.request.function == .dialogue else {
+                || entry.functionSnapshot?.request.function == .discuss else {
             throw DialogueError.entryNotFound(id)
         }
         return entry
     }
 
-    func appendDialogueReply(
+    func appendDiscussionReply(
         _ reply: DialogueReply,
         to entryID: UUID
     ) async throws -> DialogueEntry {
@@ -1413,7 +1472,7 @@ public actor WorkspaceHandle {
         }
         let entry = try await services.dialogueStore.appendReply(reply, to: entryID)
         try await refreshAfterCommittedOperation(
-            "The Dialogue reply",
+            "The Discuss reply",
             publication: .researchRecords
         )
         return entry

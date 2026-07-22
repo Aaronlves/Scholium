@@ -234,9 +234,9 @@ public struct DialogueResponseContract: Codable, Hashable, Sendable {
 /// Renders the bounded locator attached to copied Dialogue instructions.
 /// The locator exposes the immutable request snapshot without persisting a
 /// workflow contract or presenting the snapshot as file-edit authorization.
-public enum DialogueResponseTransport {
+public enum DiscussResponseTransport {
     public static func locator(
-        dialogueID: UUID,
+        discussionID: UUID,
         triptychID: UUID,
         contract: DialogueResponseContract
     ) -> String {
@@ -244,8 +244,8 @@ public enum DialogueResponseTransport {
             ? "None selected."
             : contract.modules.joined(separator: ", ")
         return """
-        Scholium Dialogue locator
-        Dialogue ID: \(dialogueID.uuidString)
+        Scholium Discuss locator
+        Discussion ID: \(discussionID.uuidString)
         Triptych selector: \(triptychID.uuidString)
         Response contract: request-snapshot
         Required base: \(contract.base)
@@ -253,7 +253,7 @@ public enum DialogueResponseTransport {
         Concision: \(contract.concision)
         Comment preservation: \(contract.commentPreservation)
         Retrieve the exact request and response contract with:
-        scholium dialogue show \(dialogueID.uuidString) --triptych \(triptychID.uuidString) --format json
+        scholium discuss show \(discussionID.uuidString) --triptych \(triptychID.uuidString) --format json
         """
     }
 }

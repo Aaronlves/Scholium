@@ -207,18 +207,50 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
 }
 
 public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
+    public static let defaultLineWidthCharacterUnits: Double = 72
+    public static let lineWidthCharacterUnitsRange: ClosedRange<Double> = 48...96
+
+    public var lineWidthCharacterUnits: Double
     public var body: DocumentBodyAppearance
     public var headings: DocumentHeadingAppearance
     public var callouts: [DocumentCalloutAppearance]
 
     public init(
+        lineWidthCharacterUnits: Double = Self.defaultLineWidthCharacterUnits,
         body: DocumentBodyAppearance = .init(),
         headings: DocumentHeadingAppearance = .init(),
         callouts: [DocumentCalloutAppearance] = Self.defaultCallouts
     ) {
+        self.lineWidthCharacterUnits = lineWidthCharacterUnits
         self.body = body
         self.headings = headings
         self.callouts = callouts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case lineWidthCharacterUnits
+        case body
+        case headings
+        case callouts
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lineWidthCharacterUnits = try container.decodeIfPresent(
+            Double.self,
+            forKey: .lineWidthCharacterUnits
+        ) ?? Self.defaultLineWidthCharacterUnits
+        body = try container.decode(DocumentBodyAppearance.self, forKey: .body)
+        headings = try container.decode(DocumentHeadingAppearance.self, forKey: .headings)
+        callouts = try container.decode([DocumentCalloutAppearance].self, forKey: .callouts)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(lineWidthCharacterUnits, forKey: .lineWidthCharacterUnits)
+        try container.encode(body, forKey: .body)
+        try container.encode(headings, forKey: .headings)
+        try container.encode(callouts, forKey: .callouts)
     }
 
     public static let defaultCallouts: [DocumentCalloutAppearance] = [

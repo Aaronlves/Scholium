@@ -13,7 +13,7 @@ struct ResearchFunctionClient {
         ResearchFunctionTarget,
         ResearchFunctionID
     ) async throws -> [ResearchFunctionMaterialCandidate]
-    let dialogueResponseProfile: @MainActor () async throws -> DialogueResponseProfile
+    let discussResponseProfile: @MainActor () async throws -> DialogueResponseProfile
     let prepare: @MainActor (
         ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation
@@ -396,11 +396,10 @@ final class ResearchFunctionController: ObservableObject {
     @Published var scopeKind: ResearchFunctionScopeKind = .whole
     @Published var selectedCommentIDs: Set<UUID> = []
     @Published var fidelityChecks: Set<FidelityCheck> = [.content]
-    @Published var dialogueResponseModules: Set<DialogueResponseModule> = []
-    @Published private(set) var dialogueResponseDefaultsLoaded = false
-    @Published private(set) var humanReviewRevision: DocumentFingerprint?
-    @Published var humanReviewQualification: NoteQualification?
-    @Published var humanReviewNote = ""
+    @Published var discussResponseModules: Set<DialogueResponseModule> = []
+    @Published private(set) var discussResponseDefaultsLoaded = false
+    @Published var writeScope: ResearchWriteScope = .currentNote
+    @Published private(set) var selectedWriteTargetIDs: Set<UUID> = []
 
     private var passageSelection: ResearcherCommentAnchor?
     private var client: ResearchFunctionClient?
@@ -440,7 +439,56 @@ final class ResearchFunctionController: ObservableObject {
     }
 
     var selectedMaterials: [ResearchFunctionMaterial] {
-        materialsState.selectedMaterials
+        let writeIDs = Set(authorizedWriteTargets.map(\.noteID))
+        return materialsState.selectedMaterials.filter {
+            !writeIDs.contains($0.noteID)
+        }
+    }
+
+    var isWriteFunction: Bool {
+        guard let activeFunction else { return false }
+        return [.develop, .revise].contains(activeFunction)
+    }
+
+    var writeTargetCandidates: [ResearchFunctionMaterialCandidate] {
+        materialsState.candidates
+    }
+
+    var authorizedWriteTargets: [ResearchFunctionTarget] {
+        guard isWriteFunction, let target else { return [] }
+        let candidateTargets = writeTargetCandidates.map {
+            ResearchFunctionTarget(
+                noteID: $0.material.noteID,
+                note: $0.material.note,
+                role: $0.material.role,
+                lifecycle: $0.material.lifecycle,
+                fingerprint: $0.material.fingerprint,
+                title: $0.material.title
+            )
+        }
+        let targets: [ResearchFunctionTarget]
+        switch writeScope {
+        case .currentNote:
+            targets = [target]
+        case .selectedNotes:
+            targets = ([target] + candidateTargets).filter {
+                selectedWriteTargetIDs.contains($0.noteID)
+            }
+        case .analysesAndTopics:
+            targets = ([target] + candidateTargets).filter {
+                $0.role == .analysis || $0.role == .topic
+            }
+        case .entireTriptych:
+            targets = [target] + candidateTargets
+        }
+        var seen: Set<UUID> = []
+        return targets.filter { seen.insert($0.noteID).inserted }.sorted {
+            if $0.role != $1.role { return $0.role.rawValue < $1.role.rawValue }
+            if $0.title != $1.title {
+                return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+            }
+            return $0.note < $1.note
+        }
     }
 
     var scope: ResearchFunctionScope? {
@@ -459,12 +507,14 @@ final class ResearchFunctionController: ObservableObject {
               materialsState.permitsPreparation,
               !materialsState.isFrozen,
               !isBusy,
-              phase != .prepared,
-              function != .review else { return false }
+              phase != .prepared else { return false }
         if function == .fidelity { return !fidelityChecks.isEmpty }
-        if function == .dialogue {
-            return dialogueResponseDefaultsLoaded
+        if function == .discuss {
+            return discussResponseDefaultsLoaded
                 && !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if [.develop, .revise].contains(function) {
+            return !authorizedWriteTargets.isEmpty
         }
         return true
     }
@@ -509,8 +559,8 @@ final class ResearchFunctionController: ObservableObject {
     }
 
     /// Receives immutable durable projections from the current workspace
-    /// generation. These survive panel dismissal and never merge Dialogue,
-    /// Critique, Human Review, Comments, or Fidelity findings into one record.
+    /// generation. These survive panel dismissal and never merge Discuss,
+    /// Critique, legacy Review, Comments, or Fidelity findings into one record.
     func receive(
         _ runs: [ResearchFunctionRecordProjection],
         targetNoteID: UUID?
@@ -552,17 +602,12 @@ final class ResearchFunctionController: ObservableObject {
         scopeKind = selection == nil ? .whole : .passage
         fidelityChecks = [.content]
         instruction = ""
-        if function == .review {
-            // Human Review is a judgment record, not an agent instruction
-            // packet. Keep its hidden Materials state empty and never cross
-            // the candidate boundary for this presentation.
-            materialsState.receive([], target: target.note, passage: nil)
-        } else {
-            materialsState.beginLoading()
-        }
+        materialsState.beginLoading()
         selectedCommentIDs = []
-        dialogueResponseModules = []
-        dialogueResponseDefaultsLoaded = false
+        discussResponseModules = []
+        discussResponseDefaultsLoaded = false
+        writeScope = .currentNote
+        selectedWriteTargetIDs = []
         phase = .loading
 
         let token = generation
@@ -571,8 +616,8 @@ final class ResearchFunctionController: ObservableObject {
             do {
                 async let available = client.availableFunctions(target)
                 let profile: DialogueResponseProfile?
-                if function == .dialogue {
-                    profile = try await client.dialogueResponseProfile()
+                if function == .discuss {
+                    profile = try await client.discussResponseProfile()
                 } else {
                     profile = nil
                 }
@@ -588,8 +633,8 @@ final class ResearchFunctionController: ObservableObject {
                 self.availability = Dictionary(
                     uniqueKeysWithValues: availability.map { ($0.function, $0) }
                 )
-                self.dialogueResponseModules = Set(profile?.knownModules ?? [])
-                self.dialogueResponseDefaultsLoaded = function == .dialogue && profile != nil
+                self.discussResponseModules = Set(profile?.knownModules ?? [])
+                self.discussResponseDefaultsLoaded = function == .discuss && profile != nil
                 self.phase = .editing
                 self.errorMessage = nil
             } catch is CancellationError {
@@ -600,56 +645,13 @@ final class ResearchFunctionController: ObservableObject {
                 self.errorMessage = error.localizedDescription
             }
         }
-        if function != .review {
-            loadMaterials(
-                client: client,
-                target: target,
-                function: function,
-                presentationID: presentationID,
-                passage: selection
-            )
-        }
-    }
-
-    /// Loads the fingerprint-bound Human Review into the same per-window
-    /// feature model that owns the panel presentation. The view only binds to
-    /// these values, so a temporary Properties handoff cannot reconstruct or
-    /// discard an in-progress judgment.
-    func beginHumanReviewDraft(
-        revision: DocumentFingerprint,
-        record: HumanReviewRecord?
-    ) {
-        guard activeFunction == .review
-                || (activeFunction == .dialogue
-                    && (target?.role == .analysis || target?.role == .topic))
-        else { return }
-        humanReviewRevision = revision
-        if let draft = record?.draft, draft.fingerprint == revision {
-            humanReviewQualification = draft.qualification
-            humanReviewNote = draft.reviewNote
-        } else if let completed = record?.review(for: revision) {
-            humanReviewQualification = completed.qualification
-            humanReviewNote = completed.reviewNote
-        } else {
-            humanReviewQualification = nil
-            humanReviewNote = ""
-        }
-    }
-
-    /// Continues the same Review after an intentional Properties mutation.
-    /// Only the exact presentation and stable note identity may advance to the
-    /// new fingerprint; the researcher's unsaved judgment remains untouched.
-    func resumeHumanReviewDraft(
-        presentationID: UUID,
-        target: ResearchFunctionTarget
-    ) {
-        guard self.presentationID == presentationID,
-              (activeFunction == .review || activeFunction == .dialogue),
-              let previousTarget = self.target,
-              previousTarget.noteID == target.noteID,
-              previousTarget.note == target.note else { return }
-        self.target = target
-        humanReviewRevision = target.fingerprint
+        loadMaterials(
+            client: client,
+            target: target,
+            function: function,
+            presentationID: presentationID,
+            passage: selection
+        )
     }
 
     func setScope(_ kind: ResearchFunctionScopeKind) {
@@ -661,8 +663,28 @@ final class ResearchFunctionController: ObservableObject {
         switch action {
         case .retry:
             retryMaterials()
+        case .setSelected(let id, let selected):
+            if selected { selectedWriteTargetIDs.remove(id) }
+            materialsState.apply(action)
         default:
             materialsState.apply(action)
+        }
+    }
+
+    func setWriteScope(_ scope: ResearchWriteScope) {
+        guard isWriteFunction, !materialsState.isFrozen else { return }
+        writeScope = scope
+    }
+
+    func setWriteTargetSelected(_ id: UUID, isSelected: Bool) {
+        guard isWriteFunction,
+              writeScope == .selectedNotes,
+              !materialsState.isFrozen else { return }
+        if isSelected {
+            selectedWriteTargetIDs.insert(id)
+            materialsState.apply(.remove(id))
+        } else {
+            selectedWriteTargetIDs.remove(id)
         }
     }
 
@@ -739,15 +761,15 @@ final class ResearchFunctionController: ObservableObject {
         }
     }
 
-    func setDialogueResponseModule(
+    func setDiscussResponseModule(
         _ module: DialogueResponseModule,
         isSelected: Bool
     ) {
-        guard activeFunction == .dialogue, dialogueResponseDefaultsLoaded else { return }
+        guard activeFunction == .discuss, discussResponseDefaultsLoaded else { return }
         if isSelected {
-            dialogueResponseModules.insert(module)
+            discussResponseModules.insert(module)
         } else {
-            dialogueResponseModules.remove(module)
+            discussResponseModules.remove(module)
         }
     }
 
@@ -772,8 +794,12 @@ final class ResearchFunctionController: ObservableObject {
             scope: scope,
             checks: function == .fidelity ? fidelityChecks : [],
             commentIDs: selectedCommentIDs.sorted { $0.uuidString < $1.uuidString },
-            dialogueResponseModules: function == .dialogue
-                ? DialogueResponseModule.allCases.filter(dialogueResponseModules.contains)
+            dialogueResponseModules: function == .discuss
+                ? DialogueResponseModule.allCases.filter(discussResponseModules.contains)
+                : nil,
+            writeScope: [.develop, .revise].contains(function) ? writeScope : nil,
+            authorizedWriteTargets: [.develop, .revise].contains(function)
+                ? authorizedWriteTargets
                 : nil
         )
         do {
@@ -868,11 +894,10 @@ final class ResearchFunctionController: ObservableObject {
         passageSelection = nil
         selectedCommentIDs = []
         fidelityChecks = [.content]
-        dialogueResponseModules = []
-        dialogueResponseDefaultsLoaded = false
-        humanReviewRevision = nil
-        humanReviewQualification = nil
-        humanReviewNote = ""
+        discussResponseModules = []
+        discussResponseDefaultsLoaded = false
+        writeScope = .currentNote
+        selectedWriteTargetIDs = []
         phase = .idle
         if clearAvailability { availability = [:] }
     }
@@ -928,8 +953,6 @@ extension ResearchFunctionRepairReason {
             ScholiumL10n.string("Install and bind a matching Researcher Skill in Settings.")
         case .malformedBinding:
             ScholiumL10n.string("The Researcher Skill binding needs repair in Settings.")
-        case .humanReviewOnly:
-            ScholiumL10n.string("Review is completed by the researcher in Scholium.")
         }
     }
 }

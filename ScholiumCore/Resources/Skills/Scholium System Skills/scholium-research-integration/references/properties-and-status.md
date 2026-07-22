@@ -15,7 +15,7 @@ Creation and modification time are app-owned History data. Never add, infer, ref
 
 ## 2. Research Unit
 
-Research Unit declares the domain within which a note's claims apply. It is stored in YAML and presented by Scholium as **Research Status**. It is not a note type, task, progress tracker, completeness score, or relation graph.
+Research Unit declares the domain within which a note's claims apply. It is stored in YAML and presented in About as **Scope** and **Limitations**. It is not a note type, task, progress tracker, completeness score, or relation graph.
 
 Use exactly this shape:
 
@@ -37,7 +37,7 @@ Apply the declaration by role:
 - **Topic** — conceptual, problematic, or debate domain of the synthesis;
 - **Work** — project question, argumentative domain, or bounded part of the Work.
 
-Dialogue has no YAML frontmatter. Its app-owned selected notes, selection, Comments, and request scope form its Research Unit.
+Discuss has no YAML frontmatter. Its app-owned selected notes, selection, Comments, and request scope form its Research Unit.
 
 ### Requiredness and authorization
 
@@ -45,9 +45,8 @@ Dialogue has no YAML frontmatter. Its app-owned selected notes, selection, Comme
   `research_unit` mapping and no sentinel value; do not infer or add a
   declaration merely because the note is new.
 - When the researcher chooses **Declare Now**, state the available segment and
-  its limitations even when access is partial. Completing Human Review requires
-  this declaration, but editing, Comments, Dialogue, Develop, and a Review draft
-  do not.
+  its limitations even when access is partial. The declaration records the
+  claim boundary; it does not gate editing, Comments, Discuss, Develop, or Settle.
 - Any Analysis without `research_unit` remains valid and is **Not Yet**, not malformed.
 - Topic and Work Research Units are optional. Do not add YAML merely to create one.
 - Add or revise `research_unit` only when that key is in the exact write set. Otherwise preserve it and report a scope problem separately.
@@ -58,12 +57,12 @@ Dialogue has no YAML frontmatter. Its app-owned selected notes, selection, Comme
 Normally maintain one source-level Analysis for a long book.
 
 1. Declare a bounded analysis unit for the current session.
-2. Complete the Orientation, Analytical, and Review passes over that unit.
+2. Complete the Orientation, Analytical, and verification passes over that unit.
 3. Update the existing Analysis in place.
 4. Expand `research_unit.scope` only to material actually inspected and represented in the resulting file.
-5. Use `limitations` for unread, excluded, unreliable, or incompletely reviewed material.
+5. Use `limitations` for unread, excluded, unreliable, or incompletely checked material.
 
-Do not create one Analysis per chapter by default. Create a separate Analysis only when the researcher requests it or the segment needs an independently durable scholarly identity. Use `scope: "Entire source"` only after source-wide analysis and review. Completion of one session unit never licenses a whole-book claim.
+Do not create one Analysis per chapter by default. Create a separate Analysis only when the researcher requests it or the segment needs an independently durable scholarly identity. Use `scope: "Entire source"` only after source-wide analysis and verification. Completion of one session unit never licenses a whole-book claim.
 
 ## 3. Default property profiles
 

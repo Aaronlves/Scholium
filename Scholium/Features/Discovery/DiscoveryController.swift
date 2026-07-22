@@ -3,9 +3,6 @@ import Combine
 import Foundation
 
 struct DiscoveryFilterState: Equatable, Sendable {
-    var isReviewed = false
-    var isUnqualified = false
-    var isChangedSinceReview = false
     var needsAttention = false
     var hasExplicitConnections = false
     var hasMalformedMetadata = false

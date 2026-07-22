@@ -4,15 +4,15 @@ import Foundation
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     case overview
-    case connections
-    case functions
+    case connect
+    case actions
 
     var id: Self { self }
 
     init(restoring rawValue: String?) {
         switch rawValue?.lowercased() {
-        case "connections", "incoming", "outgoing": self = .connections
-        case "functions": self = .functions
+        case "connect", "connections", "incoming", "outgoing": self = .connect
+        case "actions", "functions": self = .actions
         case "overview", "research", "relationships", .none: self = .overview
         default: self = .overview
         }
@@ -21,8 +21,8 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
         case .overview: "Overview"
-        case .connections: "Connections"
-        case .functions: "Functions"
+        case .connect: "Connect"
+        case .actions: "Actions"
         }
     }
 }
@@ -97,30 +97,39 @@ final class ResearchController: ObservableObject {
         try await requireOperations().snapshot()
     }
 
-    func humanReview(noteID: UUID) async throws -> HumanReviewRecord? {
-        try await requireOperations().humanReview(noteID: noteID)
+    @discardableResult
+    func settle(
+        _ note: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint,
+        rationale: String?
+    ) async throws -> SettlementRecord {
+        try await requireOperations().settle(
+            note,
+            expectedRevision: expectedRevision,
+            rationale: rationale
+        )
     }
 
-    func dialogueHistory(noteID: UUID) async throws -> [DialogueEntry] {
-        try await requireOperations().dialogues(noteID: noteID)
+    func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
+        try await requireOperations().discussionHistory(noteID: noteID)
     }
 
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
         try await requireOperations().critique(workNoteID: workNoteID)
     }
 
-    func comments(noteID: UUID) async throws -> [ResearcherComment] {
-        try await requireOperations().comments(noteID: noteID)
+    func annotations(noteID: UUID) async throws -> [AnnotationRecord] {
+        try await requireOperations().annotations(noteID: noteID)
     }
 
     @discardableResult
-    func addComment(
+    func addAnnotation(
         to note: VaultQualifiedNoteID,
         text: String,
         anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().addComment(
+    ) async throws -> AnnotationRecord {
+        try await requireOperations().addAnnotation(
             to: note,
             text: text,
             anchor: anchor,
@@ -129,97 +138,136 @@ final class ResearchController: ObservableObject {
     }
 
     @discardableResult
-    func updateComment(
+    func updateAnnotation(
         noteID: UUID,
-        commentID: UUID,
+        annotationID: UUID,
         text: String
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().updateComment(
+    ) async throws -> AnnotationRecord {
+        try await requireOperations().updateAnnotation(
             noteID: noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             text: text
         )
     }
 
     @discardableResult
-    func setCommentResolved(
+    func setAnnotationResolved(
         noteID: UUID,
-        commentID: UUID,
+        annotationID: UUID,
         resolved: Bool
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().setCommentResolved(
+    ) async throws -> AnnotationRecord {
+        try await requireOperations().setAnnotationResolved(
             noteID: noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             resolved: resolved
         )
     }
 
     @discardableResult
-    func deleteComment(
+    func deleteAnnotation(
         noteID: UUID,
-        commentID: UUID
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().deleteComment(noteID: noteID, commentID: commentID)
+        annotationID: UUID
+    ) async throws -> AnnotationRecord {
+        try await requireOperations().deleteAnnotation(
+            noteID: noteID,
+            annotationID: annotationID
+        )
     }
 
     @discardableResult
-    func reattachComment(
+    func reattachAnnotation(
         to note: VaultQualifiedNoteID,
-        commentID: UUID,
+        annotationID: UUID,
         anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().reattachComment(
+    ) async throws -> AnnotationRecord {
+        try await requireOperations().reattachAnnotation(
             to: note,
-            commentID: commentID,
+            annotationID: annotationID,
             anchor: anchor,
             expectedRevision: expectedRevision
         )
     }
 
     @discardableResult
-    func reattachComments(
+    func reattachAnnotations(
         to note: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().reattachComments(
+    ) async throws -> [AnnotationRecord] {
+        try await requireOperations().reattachAnnotations(
             to: note,
             expectedRevision: expectedRevision
         )
     }
 
+    func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
+        try await requireOperations().commentExchanges(noteID: noteID)
+    }
+
     @discardableResult
-    func saveHumanReviewDraft(
-        for note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().saveHumanReviewDraft(
-            for: note,
-            expectedRevision: expectedRevision,
-            qualification: qualification,
-            reviewNote: reviewNote
+    func createCommentExchange(
+        _ exchange: CommentExchange
+    ) async throws -> CommentExchange {
+        try await requireOperations().createCommentExchange(exchange)
+    }
+
+    @discardableResult
+    func appendCommentExchangeTurn(
+        exchangeID: UUID,
+        turn: CommentExchangeTurn
+    ) async throws -> CommentExchange {
+        try await requireOperations().appendCommentExchangeTurn(
+            exchangeID: exchangeID,
+            turn: turn
         )
     }
 
     @discardableResult
-    func completeHumanReview(
-        for note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws -> HumanReviewRecord {
-        try await requireOperations().completeHumanReview(
-            for: note,
-            expectedRevision: expectedRevision,
-            qualification: qualification,
-            reviewNote: reviewNote
-        )
+    func finishCommentExchange(exchangeID: UUID) async throws -> CommentExchange {
+        try await requireOperations().finishCommentExchange(exchangeID: exchangeID)
+    }
+
+    @discardableResult
+    func finishDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
+        try await requireOperations().finishDiscussion(runID: runID)
     }
 
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
         try await requireOperations().critique(critiqueRelativePath: critiqueRelativePath)
+    }
+
+    @discardableResult
+    func setCritiqueFindingDisposition(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        findingID: String,
+        decision: CritiqueFindingDispositionDecision,
+        rationale: String?,
+        noTextChangeRationale: String?,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation {
+        try await requireOperations().setCritiqueFindingDisposition(
+            workNote: workNote,
+            roundID: roundID,
+            findingID: findingID,
+            decision: decision,
+            rationale: rationale,
+            noTextChangeRationale: noTextChangeRationale,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    @discardableResult
+    func completeCritiqueRound(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation {
+        try await requireOperations().completeCritiqueRound(
+            workNote: workNote,
+            roundID: roundID,
+            expectedRevision: expectedRevision
+        )
     }
 
     @discardableResult
@@ -274,8 +322,8 @@ final class ResearchController: ObservableObject {
         try await requireOperations().restoreCheckpoint(checkpointID, selection: selection)
     }
 
-    func dialogueResponseProfile() async throws -> DialogueResponseProfile {
-        try await requireOperations().dialogueResponseProfile()
+    func discussResponseProfile() async throws -> DialogueResponseProfile {
+        try await requireOperations().discussResponseProfile()
     }
 
     func settings() async throws -> TriptychSettings {
@@ -286,32 +334,32 @@ final class ResearchController: ObservableObject {
         try await requireOperations().saveSettings(settings)
     }
 
-    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws {
-        try await requireOperations().saveDialogueResponseProfile(profile)
+    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
+        try await requireOperations().saveDiscussResponseProfile(profile)
     }
 
-    func dialogueEntries() async throws -> [DialogueEntry] {
-        try await requireOperations().dialogueEntries()
+    func discussionRecords() async throws -> [DialogueEntry] {
+        try await requireOperations().discussionRecords()
     }
 
-    func dialogue(id: UUID) async throws -> DialogueEntry {
-        try await requireOperations().dialogue(id: id)
+    func discussion(id: UUID) async throws -> DialogueEntry {
+        try await requireOperations().discussion(id: id)
     }
 
     @discardableResult
-    func appendDialogueReply(
+    func appendDiscussionReply(
         _ reply: DialogueReply,
         to entryID: UUID
     ) async throws -> DialogueEntry {
-        try await requireOperations().appendDialogueReply(reply, to: entryID)
+        try await requireOperations().appendDiscussionReply(reply, to: entryID)
     }
 
     @discardableResult
-    func appendDialogueFollowUpComment(
+    func appendDiscussionFollowUp(
         _ comment: DialogueFollowUpComment,
         to entryID: UUID
     ) async throws -> DialogueEntry {
-        try await requireOperations().appendDialogueFollowUpComment(comment, to: entryID)
+        try await requireOperations().appendDiscussionFollowUp(comment, to: entryID)
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
@@ -397,7 +445,7 @@ final class ResearchController: ObservableObject {
     }
 
     func skillInstructionAssembly(
-        mode: ResearchSkillMode = .dialogue,
+        mode: ResearchSkillMode = .discuss,
         requestedSkillIDs: [String] = [],
         mixedPhases: [ResearchSkillAssemblyPhase] = []
     ) async throws -> String {

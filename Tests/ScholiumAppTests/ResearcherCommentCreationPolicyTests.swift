@@ -3,7 +3,7 @@ import ScholiumContracts
 import Testing
 @testable import ScholiumApp
 
-@Suite("Passage Comment creation policy")
+@Suite("Passage Annotation and Comment selection policy")
 struct ResearcherCommentCreationPolicyTests {
     @Test("A Comment cannot be created without a selected passage")
     func missingSelectionHasNoAnchor() {
@@ -12,7 +12,11 @@ struct ResearcherCommentCreationPolicyTests {
             rawContent: "# Analysis\n\nA bounded claim.\n"
         ))
 
-        #expect(ResearcherCommentCreationPolicy.anchor(for: nil, in: note) == nil)
+        #expect(ResearchFunctionSelectionCapture.anchor(
+            for: nil,
+            in: note.document.rawContent,
+            relativePath: note.relativePath
+        ) == nil)
     }
 
     @Test("An exact editor selection creates a fingerprint-bound anchor")
@@ -33,7 +37,11 @@ struct ResearcherCommentCreationPolicyTests {
         )
 
         let anchor = try #require(
-            ResearcherCommentCreationPolicy.anchor(for: selection, in: note)
+            ResearchFunctionSelectionCapture.anchor(
+                for: selection,
+                in: note.document.rawContent,
+                relativePath: note.relativePath
+            )
         )
         #expect(anchor.fingerprint == note.document.fingerprint)
         #expect(anchor.quotation == selectedText)
@@ -52,6 +60,10 @@ struct ResearcherCommentCreationPolicyTests {
             excerpt: "A claim."
         )
 
-        #expect(ResearcherCommentCreationPolicy.anchor(for: selection, in: note) == nil)
+        #expect(ResearchFunctionSelectionCapture.anchor(
+            for: selection,
+            in: note.document.rawContent,
+            relativePath: note.relativePath
+        ) == nil)
     }
 }

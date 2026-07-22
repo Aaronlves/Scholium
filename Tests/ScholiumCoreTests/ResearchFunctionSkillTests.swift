@@ -25,9 +25,6 @@ struct ResearchFunctionSkillTests {
             #expect(resolution.package?.supportedFunctions == [function])
             #expect(resolution.issue == nil)
         }
-        let review = try await store.functionBindingResolution(for: .review)
-        #expect(review.source == .none)
-        #expect(review.package == nil)
     }
 
     @Test("Citation status distinguishes template, installed candidate, active binding, and style mismatch")

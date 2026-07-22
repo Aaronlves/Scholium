@@ -1,6 +1,6 @@
 ---
 name: scholium-manuscript
-description: Coordinate an exact current Work through a declared plan of independently prepared Revise, Fidelity, and optional Critique phases while keeping that Work as the only document Target. Use for the Manuscript function when several role-valid Work functions are needed. Do not require every phase, embed their methods, write to Materials, perform Source Analysis, treat Human Review as an agent skill, or authorize circulation or submission.
+description: Coordinate an exact current Work through a declared plan of independently prepared Revise, Fidelity, and optional Critique phases while keeping that Work as the only document Target. Use for the Manuscript function when several role-valid Work functions are needed. Do not require every phase, embed their methods, write to Materials, perform Source Analysis, Settle the Work for the researcher, or authorize circulation or submission.
 ---
 
 # Scholium Manuscript
@@ -33,7 +33,7 @@ The coordinator declares the smallest phase plan warranted by the actual work; i
 - Fidelity for revision-specific Content and optional bound Citations checks;
 - Critique for independent read-only assessment with a separate Critique record.
 
-Dialogue may transport instructions and record responses, but it is not a manuscript phase or write permission. Human Review is performed by the researcher and has no skill. Source Analysis remains outside this Strip function set.
+Discuss may transport instructions and record responses, but it is not a manuscript phase or write permission. Settle is a separate researcher action, not an agent skill or a manuscript phase. Source Analysis remains outside this Actions function set.
 
 ## Execute
 

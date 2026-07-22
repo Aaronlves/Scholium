@@ -98,10 +98,10 @@ extension ScholiumCLI {
                 )
             }
         }
-        if key == "dialogue reply",
+        if (key == "discuss reply" || key == "comment reply"),
            counts["--text", default: 0] > 0,
            counts["--from", default: 0] > 0 {
-            throw CLIError.usage("Choose either --text or --from for a Dialogue reply, not both.")
+            throw CLIError.usage("Choose either --text or --from for a reply, not both.")
         }
     }
 
@@ -209,9 +209,19 @@ extension ScholiumCLI {
             "note set-aside": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),
             "note trash": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),
             "note delete": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--permanent": .flag, "--expected": .value]),
-            "dialogue list": .init(pathLength: 2, options: ["--triptych": .value, "--note": .value, "--format": .value]),
-            "dialogue show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
-            "dialogue reply": .init(
+            "comment reply": .init(
+                pathLength: 2,
+                positionalCount: 1 ... 1,
+                options: [
+                    "--triptych": .value,
+                    "--agent": .value,
+                    "--text": .value,
+                    "--from": .value,
+                ]
+            ),
+            "discuss list": .init(pathLength: 2, options: ["--triptych": .value, "--note": .value, "--format": .value]),
+            "discuss show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
+            "discuss reply": .init(
                 pathLength: 2,
                 positionalCount: 1 ... 1,
                 options: [

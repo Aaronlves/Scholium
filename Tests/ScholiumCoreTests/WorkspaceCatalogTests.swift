@@ -231,17 +231,16 @@ struct WorkspaceCatalogTests {
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [source, work],
             documents: [source.id: [sourceDoc], work.id: [malformed]],
-            reviewStates: [
-                ref(source, sourceDoc).id: WorkspaceReviewState(
-                    qualification: "qualified",
-                    reviewedFingerprint: DocumentFingerprint(content: "previous"),
-                    changedSinceReview: true
+            settlementStates: [
+                ref(source, sourceDoc).id: WorkspaceSettlementState(
+                    settledFingerprint: DocumentFingerprint(content: "previous"),
+                    changedSinceSettled: true
                 ),
             ]
         )
 
         #expect(snapshot.attention.contains { $0.kind == .possibleOrphan })
-        #expect(snapshot.attention.contains { $0.kind == .changedSinceReview })
+        #expect(snapshot.attention.contains { $0.kind == .changedSinceSettled })
         #expect(snapshot.attention.contains { $0.kind == .malformedMetadata })
         let broken = snapshot.attention.first { $0.kind == .brokenConnection }
         #expect(broken?.note.relativePath == "Claim.md")
@@ -279,7 +278,7 @@ struct WorkspaceCatalogTests {
             relativePath: "Reasons.md"
         )
         let item = AttentionQueueItem(
-            kind: .changedSinceReview,
+            kind: .changedSinceSettled,
             severity: .warning,
             note: reference,
             message: "The committed source changed.",
@@ -292,7 +291,7 @@ struct WorkspaceCatalogTests {
             message: "Possible orphan."
         )
 
-        #expect(AttentionQueueFilter(kind: .changedSinceReview, query: "line 12")
+        #expect(AttentionQueueFilter(kind: .changedSinceSettled, query: "line 12")
             .apply(to: [item, other]) == [item])
 
         let now = Date(timeIntervalSince1970: 1_000_000)
@@ -312,11 +311,10 @@ struct WorkspaceCatalogTests {
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [topics],
             documents: [topics.id: [setAside, trash]],
-            reviewStates: [
-                ref(topics, setAside).id: WorkspaceReviewState(
-                    qualification: "qualified",
-                    reviewedFingerprint: DocumentFingerprint(content: "older"),
-                    changedSinceReview: true
+            settlementStates: [
+                ref(topics, setAside).id: WorkspaceSettlementState(
+                    settledFingerprint: DocumentFingerprint(content: "older"),
+                    changedSinceSettled: true
                 ),
             ]
         )
@@ -355,104 +353,6 @@ struct WorkspaceCatalogTests {
         #expect(item?.note.relativePath == document.relativePath)
         #expect(item?.message.contains("Earlier Name.md") == true)
         #expect(item?.severity == .warning)
-    }
-
-    @Test("Target-to-containing support from an Unqualified Analysis creates source-anchored Attention")
-    func unqualifiedAnalysisSupportUse() {
-        let source = vault("Analyses", .sourceCorpus)
-        let topic = vault("Topics", .topicKnowledge)
-        let analysis = note("Papers/Foot.md", "---\ntitle: The Problem of Abortion\n---\nAnalysis")
-        let synthesis = note(
-            "Abortion.md",
-            "A claim needing support.\n-[[The Problem of Abortion]]\n"
-        )
-        let sourceReference = ref(source, analysis)
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [source, topic],
-            documents: [source.id: [analysis], topic.id: [synthesis]],
-            reviewStates: [sourceReference.id: WorkspaceReviewState(qualification: "unqualified")]
-        )
-
-        let item = snapshot.attention.first { $0.kind == .unqualifiedAnalysisReliance }
-        #expect(item?.note.relativePath == "Abortion.md")
-        #expect(item?.locator?.line == 2)
-        #expect(item?.severity == .warning)
-        #expect(item?.message.contains("explicitly supported by") == true)
-    }
-
-    @Test("Neutral, opposite-direction, incompatible, and legacy links are not scholarly reliance")
-    func neutralAnalysisConnectionsAreNotReliance() {
-        let source = vault("Analyses", .sourceCorpus)
-        let topic = vault("Topics", .topicKnowledge)
-        let analysis = note("Paper.md", "---\ntitle: Paper Analysis\n---\nAnalysis")
-        let synthesis = note(
-            "Topic.md",
-            """
-            [[Paper Analysis]]
-            +[[Paper Analysis]]
-            ?[[Paper Analysis]]
-            [[Paper Analysis|:supports]]
-            """
-        )
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [source, topic],
-            documents: [source.id: [analysis], topic.id: [synthesis]],
-            reviewStates: [
-                ref(source, analysis).id: WorkspaceReviewState(qualification: "unqualified"),
-            ]
-        )
-
-        #expect(snapshot.attention.allSatisfy { $0.kind != .unqualifiedAnalysisReliance })
-    }
-
-    @Test("A neutral Analysis link in a Source callout is an explicit citation")
-    func unqualifiedAnalysisCitationUse() {
-        let source = vault("Analyses", .sourceCorpus)
-        let work = vault("Works", .draftProject)
-        let analysis = note("Paper.md", "---\ntitle: Paper Analysis\n---\nAnalysis")
-        let draft = note(
-            "Argument.md",
-            """
-            A draft claim.
-
-            > [!cite] Source
-            > [[Paper Analysis]]
-            """
-        )
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [source, work],
-            documents: [source.id: [analysis], work.id: [draft]],
-            reviewStates: [
-                ref(source, analysis).id: WorkspaceReviewState(qualification: "unqualified"),
-            ]
-        )
-
-        let item = snapshot.attention.first { $0.kind == .unqualifiedAnalysisReliance }
-        #expect(item?.note.relativePath == "Argument.md")
-        #expect(item?.locator?.line == 4)
-        #expect(item?.message.contains("Source callout") == true)
-    }
-
-    @Test("A neutral Analysis link in a footnote is an explicit citation")
-    func unqualifiedAnalysisFootnoteUse() {
-        let source = vault("Analyses", .sourceCorpus)
-        let topic = vault("Topics", .topicKnowledge)
-        let analysis = note("Paper.md", "---\ntitle: Paper Analysis\n---\nAnalysis")
-        let synthesis = note(
-            "Topic.md",
-            "Claim text.[^source]\n\n[^source]: See [[Paper Analysis]].\n"
-        )
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [source, topic],
-            documents: [source.id: [analysis], topic.id: [synthesis]],
-            reviewStates: [
-                ref(source, analysis).id: WorkspaceReviewState(qualification: "unqualified"),
-            ]
-        )
-
-        let item = snapshot.attention.first { $0.kind == .unqualifiedAnalysisReliance }
-        #expect(item?.locator?.line == 3)
-        #expect(item?.message.contains("footnote") == true)
     }
 
     @Test("Zotero source selection includes only Analyses linked from the opened Topic")

@@ -164,6 +164,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let width: CGFloat
         let configuration: ScholiumDocumentPresentationConfiguration
         let appearanceName: NSAppearance.Name
+        let lineWidthCharacterUnits: Double?
         let readUserCSS: String
         let liveUserCSS: String
 
@@ -172,6 +173,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             width: CGFloat,
             configuration: ScholiumDocumentPresentationConfiguration,
             appearanceName: NSAppearance.Name,
+            lineWidthCharacterUnits: Double? = nil,
             readUserCSS: String = "",
             liveUserCSS: String = ""
         ) {
@@ -179,6 +181,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             self.width = width
             self.configuration = configuration
             self.appearanceName = appearanceName
+            self.lineWidthCharacterUnits = lineWidthCharacterUnits
             self.readUserCSS = readUserCSS
             self.liveUserCSS = liveUserCSS
         }
@@ -187,12 +190,33 @@ extension MarkdownEditorWebViewIntegrationTests {
             String(format: "%.6fem", locale: Locale(identifier: "en_US_POSIX"), configuration.textScale)
         }
 
-        func expectedInlineInset(viewportWidth: Double) -> String {
+        var expectedRootLineWidth: String {
+            let value = lineWidthCharacterUnits
+                ?? DocumentAppearanceSettings.defaultLineWidthCharacterUnits
+            return "\(Int(value))ch"
+        }
+
+        func minimumInlineInset(viewportWidth: Double) -> Double {
             let compactBoundary = Double(configuration.compactThresholdRootEms) * 16
-            let value = viewportWidth <= compactBoundary
+            return viewportWidth <= compactBoundary
                 ? configuration.compactInlineInsetCSSPixels
                 : configuration.regularInlineInsetCSSPixels
-            return "\(Int(value))px"
+        }
+
+        var presentationCSS: String {
+            guard let lineWidthCharacterUnits else { return configuration.css }
+            return configuration.css + String(
+                format: """
+
+                :root {
+                  --scholium-document-line-width: %.15gch;
+                  --scholium-document-half-line-width: %.15gch;
+                }
+                """,
+                locale: Locale(identifier: "en_US_POSIX"),
+                lineWidthCharacterUnits,
+                lineWidthCharacterUnits / 2
+            )
         }
 
         var expectedParagraphGap: String {
@@ -217,6 +241,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         ),
         .init(name: "workspace-900", width: 900, configuration: .init(textScale: 1), appearanceName: .aqua),
         .init(name: "wide", width: 1_080, configuration: .init(textScale: 1), appearanceName: .aqua),
+        .init(
+            name: "custom-line-width",
+            width: 1_080,
+            configuration: .init(textScale: 1),
+            appearanceName: .aqua,
+            lineWidthCharacterUnits: 84
+        ),
         .init(name: "ordinary-restored", width: 720, configuration: .init(textScale: 1), appearanceName: .aqua),
         .init(
             name: "sanitized-user-css",
@@ -263,6 +294,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(registry.visualOrderIsMonotonic)
         let readScenarios = try await harness.presentationSnapshots(for: Self.testingPresentationScenarios)
         #expect(readScenarios.count == liveScenarios.count)
+        let cssPixels: (String) -> Double? = { value in
+            guard value.hasSuffix("px") else { return nil }
+            return Double(value.dropLast(2))
+        }
         for (scenario, readSnapshot) in readScenarios {
             let liveSnapshot = try #require(liveScenarios.first { $0.0.name == scenario.name }?.1)
             expectSharedPresentationParity(read: readSnapshot, live: liveSnapshot)
@@ -271,8 +306,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             #expect(readSnapshot.rootInlineRegular == "32.000000px")
             #expect(readSnapshot.rootInlineSource == "40.000000px")
             #expect(readSnapshot.rootInlineNarrow == "20.000000px")
+            #expect(readSnapshot.rootLineWidth == scenario.expectedRootLineWidth)
             #expect(readSnapshot.rootParagraphGap == scenario.expectedParagraphGap)
-            #expect(readSnapshot.documentPaddingInlineStart == scenario.expectedInlineInset(
+            let actualInset = try #require(cssPixels(readSnapshot.documentPaddingInlineStart))
+            #expect(actualInset + 0.5 >= scenario.minimumInlineInset(
                 viewportWidth: readSnapshot.viewportWidth
             ))
             if scenario.readUserCSS.isEmpty {
@@ -280,6 +317,13 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
             #expect(readSnapshot.pageHorizontalOverflow <= 1)
         }
+        let wide = try #require(readScenarios.first { $0.0.name == "wide" }?.1)
+        let custom = try #require(readScenarios.first { $0.0.name == "custom-line-width" }?.1)
+        let wideInset = try #require(cssPixels(wide.documentPaddingInlineStart))
+        let customInset = try #require(cssPixels(custom.documentPaddingInlineStart))
+        #expect(wide.rootLineWidth == "72ch")
+        #expect(custom.rootLineWidth == "84ch")
+        #expect(customInset < wideInset)
         // Responsive full-width presentation legitimately changes which block
         // occupies the viewport while the scenario matrix resizes the window.
         // Reapply the semantic request at the final geometry before asserting
@@ -402,6 +446,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(live.rootInlineRegular == read.rootInlineRegular)
         #expect(live.rootInlineSource == read.rootInlineSource)
         #expect(live.rootInlineNarrow == read.rootInlineNarrow)
+        #expect(live.rootLineWidth == read.rootLineWidth)
         #expect(abs(live.viewportWidth - read.viewportWidth) <= 1)
         #expect(live.pageColor == read.pageColor)
         #expect(live.pageBackgroundColor == read.pageBackgroundColor)
@@ -991,6 +1036,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                     rootInlineRegular: rootStyle.getPropertyValue('--scholium-rhythm-inline-regular').trim(),
                     rootInlineSource: rootStyle.getPropertyValue('--scholium-rhythm-inline-source').trim(),
                     rootInlineNarrow: rootStyle.getPropertyValue('--scholium-rhythm-inline-narrow').trim(),
+                    rootLineWidth: rootStyle.getPropertyValue('--scholium-document-line-width').trim(),
                     viewportWidth: document.documentElement.clientWidth,
                     pageColor: documentStyle?.color || '',
                     pageBackgroundColor: style('body')?.backgroundColor || '',
@@ -1089,7 +1135,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 window.appearance = NSAppearance(named: scenario.appearanceName)
                 window.setContentSize(NSSize(width: scenario.width, height: 420))
                 sourceBox.userCSS = scenario.readUserCSS
-                let nextCSS = scenario.configuration.css
+                let nextCSS = scenario.presentationCSS
                 if sourceBox.presentationCSS != nextCSS {
                     sourceBox.isReady = false
                     sourceBox.presentationCSS = nextCSS
@@ -1163,11 +1209,11 @@ extension MarkdownEditorWebViewIntegrationTests {
                 htmlBody: htmlBody,
                 presentationCSS: sourceBox.presentationCSS,
                 userCSS: sourceBox.userCSS,
-                researcherComments: [],
+                annotations: [],
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
-                onCommentSelection: nil,
-                onCommentActivation: nil,
+                onAnnotationSelection: nil,
+                onAnnotationActivation: nil,
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },

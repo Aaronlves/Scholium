@@ -97,10 +97,10 @@ struct FunctionCLIExecutableLifecycleTests {
             [ResearchFunctionAvailability].self,
             from: availability.stdout
         )
-        #expect(available.contains { $0.function == .dialogue && $0.isEnabled })
+        #expect(available.contains { $0.function == .discuss && $0.isEnabled })
 
         let dialogueRequest = ResearchFunctionRequest(
-            function: .dialogue,
+            function: .discuss,
             target: fixture.analysisTarget,
             instruction: "State the synthetic fixture's bounded academic outcome.",
             dialogueResponseModules: [
@@ -340,7 +340,7 @@ struct FunctionCLIExecutableLifecycleTests {
             from: try cli.run([
                 "function", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .dialogue,
+                function: .discuss,
                 target: ResearchFunctionTarget(
                     noteID: fixture.workTarget.noteID,
                     note: fixture.workTarget.note,
@@ -366,7 +366,7 @@ struct FunctionCLIExecutableLifecycleTests {
         let markdown = try cli.run([
             "function", "prepare", "--from", "-", "--format", "markdown",
         ], stdin: try encoder.encode(ResearchFunctionRequest(
-            function: .dialogue,
+            function: .discuss,
             target: ResearchFunctionTarget(
                 noteID: fixture.workTarget.noteID,
                 note: fixture.workTarget.note,
@@ -402,7 +402,7 @@ struct FunctionCLIExecutableLifecycleTests {
         try cli.expectFailure(
             ["function", "prepare", "--from", "-", "--format", "json"],
             stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .dialogue,
+                function: .discuss,
                 target: fixture.analysisTarget,
                 materials: [duplicateMaterial],
                 instruction: "Reject Target duplication."

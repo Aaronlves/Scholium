@@ -6,7 +6,7 @@ Advance one Analysis or Topic by resolving the philosophical burden actually pre
 
 ## Fix status and basis
 
-Classify the target item as source-explicit, source-reported, source-supported reconstruction, charitable repair, researcher commitment, researcher hypothesis, agent proposal, or unresolved material. Identify which primary sources, verified passages, Analyses, Topics, Dialogue records, or Comments bear on it and what each may establish.
+Classify the target item as source-explicit, source-reported, source-supported reconstruction, charitable repair, researcher commitment, researcher hypothesis, agent proposal, or unresolved material. Identify which primary sources, verified passages, Analyses, Topics, Discussion records, or Comments bear on it and what each may establish.
 
 A note records content and commitments; it is not independent evidence for what a source says. If a load-bearing attribution depends on unavailable source text, narrow the result or stop. Do not recreate Source Analysis as a hidden function.
 
@@ -41,4 +41,3 @@ Compare source fidelity, conceptual cost, inferential strength, explanatory gain
 ## Stop conditions
 
 Stop or return candidates when evidence is missing, source and researcher positions cannot be separated, a dependent Target lies outside the write set, the task has become Work revision or Critique, or partial adoption would leave the research record misleading.
-

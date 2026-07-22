@@ -1,6 +1,6 @@
 ---
 name: scholium-critique
-description: Critique an exact Work or selected passage through independent, genre-sensitive philosophical assessment and write only the separate Critique record. Use for the Work Research Strip Critique function with Whole or Passage scope. Do not revise the Work, perform Human Review, process received feedback as authoritative, or claim submission readiness.
+description: Critique an exact Work or selected passage through independent, genre-sensitive philosophical assessment and write only the separate Critique record. Use for the Work Actions Critique function with Whole or Passage scope. Do not revise the Work, Settle it for the researcher, process received feedback as authoritative, or claim submission readiness.
 ---
 
 # Scholium Critique
@@ -32,4 +32,4 @@ If Reviewer is selected, load the Philosophical Practices package entry and that
 
 ## Return
 
-Lead with scope, exact Work version, strongest contribution, decisive concerns, ordered revision burden, source limitations, and researcher decisions. A Critique is evidence for later judgment; it is not Human Review, Fidelity, accepted feedback, an authorized revision, or publication approval.
+Lead with scope, exact Work version, strongest contribution, decisive concerns, ordered revision burden, source limitations, and researcher decisions. A Critique is evidence for later judgment; it is not Settlement, Fidelity, accepted feedback, an authorized revision, or publication approval.

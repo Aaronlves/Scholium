@@ -76,7 +76,6 @@ struct WorkspaceRuntimeTests {
             let analysis = try #require(event.snapshot.document(id: fixture.analysisNoteID))
             #expect(analysis.document.rawContent.contains("Freedom enables action"))
             #expect(analysis.fileMetadata.byteCount == analysis.document.sourceBytes.count)
-            #expect(analysis.review == nil)
             #expect(analysis.graphCounts.incoming == 0)
         } else {
             Issue.record("The first event was not the initial complete snapshot.")

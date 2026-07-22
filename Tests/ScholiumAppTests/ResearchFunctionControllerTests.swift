@@ -6,89 +6,6 @@ import Testing
 @Suite("Research Function controller")
 @MainActor
 struct ResearchFunctionControllerTests {
-    @Test("Human Review draft survives a Properties handoff and advances revision")
-    func humanReviewDraftHandoff() {
-        let original = target(title: "Agency", path: "Topics/Agency.md")
-        let persistedDraft = HumanReviewDraft(
-            fingerprint: original.fingerprint,
-            qualification: .qualified,
-            reviewNote: "Persisted judgment"
-        )
-        let record = HumanReviewRecord(
-            noteID: original.noteID,
-            vaultID: original.note.vaultID,
-            relativePath: original.note.relativePath,
-            draft: persistedDraft
-        )
-        let presentationID = UUID()
-        let controller = ResearchFunctionController()
-        controller.begin(
-            target: original,
-            function: .review,
-            selection: nil,
-            presentationID: presentationID
-        )
-        controller.beginHumanReviewDraft(
-            revision: original.fingerprint,
-            record: record
-        )
-
-        #expect(controller.humanReviewRevision == original.fingerprint)
-        #expect(controller.humanReviewQualification == .qualified)
-        #expect(controller.humanReviewNote == "Persisted judgment")
-        controller.humanReviewQualification = .unqualified
-        controller.humanReviewNote = "Unsaved judgment retained across Properties"
-
-        let updated = ResearchFunctionTarget(
-            noteID: original.noteID,
-            note: original.note,
-            role: original.role,
-            lifecycle: original.lifecycle,
-            fingerprint: DocumentFingerprint(content: "# Agency\nresearch status declared\n"),
-            title: original.title
-        )
-        controller.resumeHumanReviewDraft(
-            presentationID: UUID(),
-            target: updated
-        )
-        #expect(controller.humanReviewRevision == original.fingerprint)
-
-        controller.resumeHumanReviewDraft(
-            presentationID: presentationID,
-            target: updated
-        )
-        #expect(controller.target == updated)
-        #expect(controller.humanReviewRevision == updated.fingerprint)
-        #expect(controller.humanReviewQualification == .unqualified)
-        #expect(controller.humanReviewNote == "Unsaved judgment retained across Properties")
-
-        controller.dismiss(presentationID: presentationID)
-        #expect(controller.humanReviewRevision == nil)
-        #expect(controller.humanReviewQualification == nil)
-        #expect(controller.humanReviewNote.isEmpty)
-    }
-
-    @Test("Human Review never loads hidden agent Materials")
-    func humanReviewSkipsMaterials() async {
-        let controller = ResearchFunctionController()
-        var materialCandidateCalls = 0
-        controller.bind(client(materialCandidates: { _, _ in
-            materialCandidateCalls += 1
-            return []
-        }))
-        controller.begin(
-            target: target(title: "Agency", path: "Topics/Agency.md"),
-            function: .review,
-            selection: nil,
-            presentationID: UUID()
-        )
-        await waitUntil { controller.phase == .editing }
-
-        #expect(materialCandidateCalls == 0)
-        #expect(controller.materialsState.phase == .empty)
-        #expect(controller.materialCandidates.isEmpty)
-    }
-
     @Test("A superseded asynchronous panel load cannot replace the current Target")
     func staleLoadIsRejected() async throws {
         let controller = ResearchFunctionController()
@@ -101,7 +18,7 @@ struct ResearchFunctionControllerTests {
 
         controller.begin(
             target: first,
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: UUID()
         )
@@ -128,12 +45,12 @@ struct ResearchFunctionControllerTests {
         #expect(controller.materialCandidates.first?.material.title == "Material for Second")
     }
 
-    @Test("Dialogue defaults become an explicit request-scoped module selection")
-    func dialogueDefaultsAndRequestConstruction() async throws {
+    @Test("Discuss defaults become an explicit request-scoped module selection")
+    func discussDefaultsAndRequestConstruction() async throws {
         let controller = ResearchFunctionController()
         var capturedRequest: ResearchFunctionRequest?
         controller.bind(client(
-            dialogueResponseProfile: {
+            discussResponseProfile: {
                 DialogueResponseProfile(modules: [
                     .researchDirections,
                     .criticalReflection,
@@ -144,7 +61,7 @@ struct ResearchFunctionControllerTests {
                 return ResearchFunctionPreparation(
                     snapshot: ResearchFunctionSnapshot(
                         request: request,
-                        recordKind: .dialogue
+                        recordKind: .discuss
                     ),
                     instructions: "Prepared"
                 )
@@ -152,23 +69,23 @@ struct ResearchFunctionControllerTests {
         ))
         controller.begin(
             target: target(title: "Agency", path: "Topics/Agency.md"),
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: UUID()
         )
         await waitUntil {
             controller.phase == .editing
-                && controller.dialogueResponseDefaultsLoaded
+                && controller.discussResponseDefaultsLoaded
                 && controller.materialCandidates.count == 1
         }
 
-        #expect(controller.dialogueResponseDefaultsLoaded)
-        #expect(controller.dialogueResponseModules == [
+        #expect(controller.discussResponseDefaultsLoaded)
+        #expect(controller.discussResponseModules == [
             .criticalReflection,
             .researchDirections,
         ])
-        controller.setDialogueResponseModule(.researchDirections, isSelected: false)
-        controller.setDialogueResponseModule(.remainingQuestions, isSelected: true)
+        controller.setDiscussResponseModule(.researchDirections, isSelected: false)
+        controller.setDiscussResponseModule(.remainingQuestions, isSelected: true)
         controller.instruction = "Which distinction needs further development?"
         #expect(controller.canPrepare)
         controller.prepare()
@@ -180,12 +97,12 @@ struct ResearchFunctionControllerTests {
         ])
     }
 
-    @Test("Dialogue permits an explicit Academic Outcome only request and resets it")
-    func dialogueExplicitEmptyAndReset() async throws {
+    @Test("Discuss permits an explicit Academic Outcome only request and resets it")
+    func discussExplicitEmptyAndReset() async throws {
         let controller = ResearchFunctionController()
         var capturedRequest: ResearchFunctionRequest?
         controller.bind(client(
-            dialogueResponseProfile: {
+            discussResponseProfile: {
                 DialogueResponseProfile(modules: [.remainingQuestions])
             },
             prepare: { request in
@@ -193,7 +110,7 @@ struct ResearchFunctionControllerTests {
                 return ResearchFunctionPreparation(
                     snapshot: ResearchFunctionSnapshot(
                         request: request,
-                        recordKind: .dialogue
+                        recordKind: .discuss
                     ),
                     instructions: "Prepared"
                 )
@@ -201,16 +118,16 @@ struct ResearchFunctionControllerTests {
         ))
         controller.begin(
             target: target(title: "Agency", path: "Topics/Agency.md"),
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: UUID()
         )
         await waitUntil {
             controller.phase == .editing
-                && controller.dialogueResponseDefaultsLoaded
+                && controller.discussResponseDefaultsLoaded
                 && controller.materialCandidates.count == 1
         }
-        controller.setDialogueResponseModule(.remainingQuestions, isSelected: false)
+        controller.setDiscussResponseModule(.remainingQuestions, isSelected: false)
         controller.instruction = "Give the bounded academic outcome."
         #expect(controller.canPrepare)
         controller.prepare()
@@ -218,56 +135,56 @@ struct ResearchFunctionControllerTests {
 
         #expect(capturedRequest?.dialogueResponseModules == [])
         controller.dismiss()
-        #expect(controller.dialogueResponseModules.isEmpty)
-        #expect(!controller.dialogueResponseDefaultsLoaded)
+        #expect(controller.discussResponseModules.isEmpty)
+        #expect(!controller.discussResponseDefaultsLoaded)
     }
 
-    @Test("Dialogue default loading fails closed and exposes the error")
-    func dialogueDefaultLoadingFailure() async {
+    @Test("Discuss default loading fails closed and exposes the error")
+    func discussDefaultLoadingFailure() async {
         let controller = ResearchFunctionController()
-        controller.bind(client(dialogueResponseProfile: {
-            throw TestFailure.dialogueDefaultsUnavailable
+        controller.bind(client(discussResponseProfile: {
+            throw TestFailure.discussDefaultsUnavailable
         }))
         controller.begin(
             target: target(title: "Agency", path: "Topics/Agency.md"),
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: UUID()
         )
         await waitUntil { controller.phase == .failed }
 
-        #expect(!controller.dialogueResponseDefaultsLoaded)
+        #expect(!controller.discussResponseDefaultsLoaded)
         #expect(!controller.canPrepare)
-        #expect(controller.errorMessage == TestFailure.dialogueDefaultsUnavailable.localizedDescription)
+        #expect(controller.errorMessage == TestFailure.discussDefaultsUnavailable.localizedDescription)
     }
 
-    @Test("A superseded Dialogue-default response cannot replace a new function draft")
-    func staleDialogueDefaultsAreRejected() async {
+    @Test("A superseded Discuss-default response cannot replace a new function draft")
+    func staleDiscussDefaultsAreRejected() async {
         let controller = ResearchFunctionController()
         let gate = LoadGate()
-        controller.bind(client(dialogueResponseProfile: {
-            await gate.wait("Dialogue profile")
+        controller.bind(client(discussResponseProfile: {
+            await gate.wait("Discuss profile")
             return DialogueResponseProfile(modules: [.researchDirections])
         }))
         controller.begin(
             target: target(title: "First", path: "Topics/First.md"),
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: UUID()
         )
-        await gate.waitUntilArrived("Dialogue profile", count: 1)
+        await gate.waitUntilArrived("Discuss profile", count: 1)
         controller.begin(
             target: target(title: "Second", path: "Topics/Second.md"),
             function: .develop,
             selection: nil,
             presentationID: UUID()
         )
-        gate.release("Dialogue profile")
+        gate.release("Discuss profile")
         await waitUntil { controller.canPrepare }
 
         #expect(controller.activeFunction == .develop)
-        #expect(controller.dialogueResponseModules.isEmpty)
-        #expect(!controller.dialogueResponseDefaultsLoaded)
+        #expect(controller.discussResponseModules.isEmpty)
+        #expect(!controller.discussResponseDefaultsLoaded)
     }
 
     @Test("Target identity and revision remain locked for one presentation")
@@ -306,14 +223,14 @@ struct ResearchFunctionControllerTests {
 
         first.functions.begin(
             target: target,
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: UUID()
         )
         first.functions.instruction = "Question the distinction."
         first.functions.sendMaterials(.setQuery("agency"))
 
-        #expect(first.functions.activeFunction == .dialogue)
+        #expect(first.functions.activeFunction == .discuss)
         #expect(first.functions.instruction == "Question the distinction.")
         #expect(first.functions.materialsViewState.query == "agency")
         #expect(second.functions.activeFunction == nil)
@@ -515,7 +432,7 @@ struct ResearchFunctionControllerTests {
         ))
         let researchMenu = String(appSource[menuStart.lowerBound..<menuEnd.lowerBound])
 
-        #expect(researchMenu.contains("researchFunctionActions?.open(.dialogue)"))
+        #expect(researchMenu.contains("researchFunctionActions?.open(.discuss)"))
         #expect(!researchMenu.contains("researchFunctionActions?.open(.review)"))
         #expect(researchMenu.contains("researchFunctionActions?.open(.critique)"))
         #expect(!researchMenu.contains("appState?.openResearchFunction"))
@@ -766,7 +683,7 @@ struct ResearchFunctionControllerTests {
         }
     }
 
-    @Test("The Functions Inspector keeps every role-valid function visible and wrapping")
+    @Test("Actions keeps role-valid launchers quiet, readable, and fully wrapping")
     func functionsInspectorUsesFullWidthNativeLaunchers() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -785,9 +702,13 @@ struct ResearchFunctionControllerTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight"))
-        #expect(designSystemSource.contains("static let researchFunctionTargetHeight = foundationUnit * 11"))
-        #expect(source.contains("Label(item.id.interfaceTitleResource"))
+        #expect(source.contains("Text(item.actionTitleResource)"))
+        #expect(source.contains("ScholiumMetrics.Apparatus.actionRowVerticalInset"))
+        #expect(source.contains("ScholiumMetrics.Apparatus.actionCopySpacing"))
+        #expect(source.contains("ScrollView(.horizontal)"))
+        #expect(source.contains("Button(\"Discuss\")"))
+        #expect(source.contains("Button(\"Write\")"))
+        #expect(designSystemSource.contains("static let actionRowVerticalInset"))
         #expect(source.contains(".fixedSize(horizontal: false, vertical: true)"))
         #expect(!source.contains("Menu {"))
     }
@@ -826,11 +747,13 @@ struct ResearchFunctionControllerTests {
             activeFunction: nil,
             runs: []
         )
-        #expect(topicPresentation.items.map(\.id) == [.dialogue, .develop, .fidelity])
+        #expect(topicPresentation.items.map(\.id) == [.discuss, .fidelity])
         #expect(topicPresentation.items.allSatisfy { !$0.isEnabled })
         #expect(topicPresentation.items.allSatisfy {
             $0.disabledReason == "Checking availability…"
         })
+        #expect(topicPresentation.items.first(where: { $0.id == .fidelity })?.statusSummary
+            == "Read-only. Current revision \(topic.fingerprint.sha256.prefix(8)) has no Fidelity result.")
 
         let work = target(
             title: "Chapter",
@@ -846,14 +769,18 @@ struct ResearchFunctionControllerTests {
             runs: []
         )
         #expect(workPresentation.items.map(\.id) == [
-            .critique, .revise, .dialogue, .fidelity, .manuscript,
+            .discuss, .critique, .fidelity, .manuscript,
         ])
-        #expect(workPresentation.items.first?.isEnabled == true)
-        #expect(workPresentation.items.dropFirst().allSatisfy { !$0.isEnabled })
+        #expect(workPresentation.items[1].isEnabled == true)
+        #expect(workPresentation.items[1].statusSummary
+            == "Read-only. No Critique has been recorded.")
+        #expect(workPresentation.items.enumerated().allSatisfy { index, item in
+            index == 1 ? item.isEnabled : !item.isEnabled
+        })
     }
 
-    @Test("Current Activity keeps only the newest actionable run")
-    func functionsProjectionSelectsCurrentActivity() {
+    @Test("Actions projection does not turn pending runs into activity history")
+    func functionsProjectionDoesNotInferActivity() {
         let target = target(title: "Agency", path: "Topics/Agency.md")
         let origin = Date(timeIntervalSince1970: 1_000)
         let runs = [
@@ -870,45 +797,13 @@ struct ResearchFunctionControllerTests {
             activeFunction: nil,
             runs: runs
         )
-        #expect(presentation.currentActivity?.state == .unverified)
-        #expect(presentation.additionalActionableRunCount == 2)
+        #expect(presentation.activityEvents.isEmpty)
+        #expect(presentation.pendingStates.isEmpty)
     }
 
-    @Test("Overview projection summarizes review and visible Attention without duplicating records")
-    func overviewProjectionSummaries() {
+    @Test("Overview projection keeps visible Attention without reconstructing status")
+    func overviewProjectionKeepsVisibleAttention() {
         let target = target(title: "Agency", path: "Topics/Agency.md")
-        let fingerprint = target.fingerprint
-        let attachedAnchor = ResearcherCommentAnchor(
-            fingerprint: fingerprint,
-            utf8Range: 0..<1,
-            utf16Range: 0..<1,
-            line: 1,
-            endLine: 1,
-            quotation: "#"
-        )
-        let detachedAnchor = ResearcherCommentAnchor(
-            fingerprint: fingerprint,
-            utf8Range: 0..<1,
-            utf16Range: 0..<1,
-            line: 1,
-            endLine: 1,
-            quotation: "#",
-            state: .needsReattachment
-        )
-        let review = HumanReviewRecord(
-            noteID: target.noteID,
-            vaultID: target.note.vaultID,
-            relativePath: target.note.relativePath,
-            comments: [
-                ResearcherComment(text: "Open", anchor: attachedAnchor),
-                ResearcherComment(text: "Reattach", anchor: detachedAnchor),
-                ResearcherComment(
-                    text: "Resolved",
-                    anchor: attachedAnchor,
-                    resolvedAt: Date(timeIntervalSince1970: 2_000)
-                ),
-            ]
-        )
         let noteReference = VaultNoteReference(
             vaultID: target.note.vaultID,
             vaultName: "Topics",
@@ -917,7 +812,7 @@ struct ResearchFunctionControllerTests {
         )
         let attention = [
             AttentionQueueItem(
-                kind: .changedSinceReview,
+                kind: .changedSinceSettled,
                 severity: .warning,
                 note: noteReference,
                 message: "Changed"
@@ -940,21 +835,12 @@ struct ResearchFunctionControllerTests {
             currentVault: nil,
             analysesVaultID: nil,
             catalog: nil,
-            reviewDisplayState: .notReviewed,
-            reviewRecord: review,
-            currentRevision: fingerprint,
-            critique: nil,
             visibleAttentionItems: attention,
-            freshness: .current
+            freshness: .current,
+            propertiesConfiguration: nil
         )
 
-        #expect(presentation.commentCount == 3)
-        #expect(presentation.unresolvedCommentCount == 2)
-        #expect(presentation.commentsNeedingReattachmentCount == 1)
-        #expect(presentation.attentionKinds == [
-            AttentionQueueKind.changedSinceReview,
-            AttentionQueueKind.possibleOrphan,
-        ])
+        #expect(presentation.visibleAttentionItems == attention)
     }
 
     @Test("Guided Evolution requires two passes bound to the exact proposal")
@@ -1039,7 +925,7 @@ struct ResearchFunctionControllerTests {
         availableFunctions: (@MainActor (
             ResearchFunctionTarget
         ) async throws -> [ResearchFunctionAvailability])? = nil,
-        dialogueResponseProfile: @escaping @MainActor () async throws -> DialogueResponseProfile = {
+        discussResponseProfile: @escaping @MainActor () async throws -> DialogueResponseProfile = {
             DialogueResponseProfile(modules: [.remainingQuestions])
         },
         materialCandidates: (@MainActor (
@@ -1054,7 +940,7 @@ struct ResearchFunctionControllerTests {
                 return target.role == .work
                     ? [.init(function: .critique, isEnabled: true)]
                     : [
-                        .init(function: .dialogue, isEnabled: true),
+                        .init(function: .discuss, isEnabled: true),
                         .init(function: .develop, isEnabled: true),
                         .init(
                             function: .fidelity,
@@ -1075,7 +961,7 @@ struct ResearchFunctionControllerTests {
                     vaultID: target.note.vaultID
                 )]
             },
-            dialogueResponseProfile: dialogueResponseProfile,
+            discussResponseProfile: discussResponseProfile,
             prepare: prepare ?? { request in
                 let snapshot = ResearchFunctionSnapshot(
                     request: request,
@@ -1091,7 +977,8 @@ struct ResearchFunctionControllerTests {
                     runID: submission.runID,
                     function: .develop,
                     state: .complete,
-                    targetFingerprint: submission.finalTargetFingerprint,
+                    targetFingerprint: submission.finalTargetFingerprint
+                        ?? DocumentFingerprint(content: "fixture completion"),
                     materialFingerprints: submission.finalMaterialFingerprints,
                     summary: submission.summary,
                     didModifyTarget: submission.didModifyTarget,
@@ -1211,15 +1098,15 @@ struct ResearchFunctionControllerTests {
 
     private enum TestFailure: LocalizedError {
         case availabilityUnavailable
-        case dialogueDefaultsUnavailable
+        case discussDefaultsUnavailable
         case materialsUnavailable
 
         var errorDescription: String? {
             switch self {
             case .availabilityUnavailable:
                 "Function availability unavailable"
-            case .dialogueDefaultsUnavailable:
-                "Dialogue defaults are unavailable."
+            case .discussDefaultsUnavailable:
+                "Discuss defaults are unavailable."
             case .materialsUnavailable:
                 "Materials are unavailable."
             }

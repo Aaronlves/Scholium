@@ -23,7 +23,7 @@ Output:
 Stop condition:
 ```
 
-Use `scholium-zotero-integration` when bounded Zotero retrieval is needed, but do not treat a Zotero record as source evidence. If the source itself must be analyzed, request the necessary source material outside the Research Strip. Use `scholium-content-fidelity` when the larger question is whether prose stays within verified scope and assigns the source a warranted philosophical role.
+Use `scholium-zotero-integration` when bounded Zotero retrieval is needed, but do not treat a Zotero record as source evidence. If the source itself must be analyzed, request the necessary source material outside Actions. Use `scholium-content-fidelity` when the larger question is whether prose stays within verified scope and assigns the source a warranted philosophical role.
 
 ## Load the method
 

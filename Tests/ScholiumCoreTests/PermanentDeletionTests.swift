@@ -47,15 +47,19 @@ struct PermanentDeletionTests {
         let reviewStore = HumanReviewStore(
             storageURL: support.appendingPathComponent("Reviews", isDirectory: true)
         )
-        _ = try await reviewStore.addComment(
-            noteID: identity.id,
-            vaultID: vaultID,
-            relativePath: path,
-            comment: ResearcherComment(
-                text: "Delete this private comment too.",
-                anchor: testCommentAnchor(fingerprint: fingerprint)
-            )
-        )
+        try await reviewStore.seedLegacyArchiveForTesting([
+            HumanReviewRecord(
+                noteID: identity.id,
+                vaultID: vaultID,
+                relativePath: path,
+                comments: [
+                    ResearcherComment(
+                        text: "Delete this private historical comment too.",
+                        anchor: testCommentAnchor(fingerprint: fingerprint)
+                    ),
+                ]
+            ),
+        ])
         let dialogueStore = DialogueStore(
             storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
         )
@@ -368,26 +372,32 @@ struct PermanentDeletionTests {
             humanReviewStore = HumanReviewStore(
                 storageURL: support.appendingPathComponent("Reviews", isDirectory: true)
             )
-            _ = try await humanReviewStore.addComment(
-                noteID: workIdentity.id,
-                vaultID: vaultID,
-                relativePath: workPath,
-                comment: ResearcherComment(
-                    text: "Private deletion rollback fixture.",
-                    anchor: testCommentAnchor(fingerprint: workFingerprint)
-                )
-            )
-            _ = try await humanReviewStore.addComment(
-                noteID: critiqueIdentity.id,
-                vaultID: vaultID,
-                relativePath: critiquePath,
-                comment: ResearcherComment(
-                    text: "Critique-local comment.",
-                    anchor: testCommentAnchor(
-                        fingerprint: DocumentFingerprint(content: critiqueSource)
-                    )
-                )
-            )
+            try await humanReviewStore.seedLegacyArchiveForTesting([
+                HumanReviewRecord(
+                    noteID: workIdentity.id,
+                    vaultID: vaultID,
+                    relativePath: workPath,
+                    comments: [
+                        ResearcherComment(
+                            text: "Private historical deletion rollback fixture.",
+                            anchor: testCommentAnchor(fingerprint: workFingerprint)
+                        ),
+                    ]
+                ),
+                HumanReviewRecord(
+                    noteID: critiqueIdentity.id,
+                    vaultID: vaultID,
+                    relativePath: critiquePath,
+                    comments: [
+                        ResearcherComment(
+                            text: "Historical Critique-local comment.",
+                            anchor: testCommentAnchor(
+                                fingerprint: DocumentFingerprint(content: critiqueSource)
+                            )
+                        ),
+                    ]
+                ),
+            ])
             dialogueStore = DialogueStore(
                 storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
             )

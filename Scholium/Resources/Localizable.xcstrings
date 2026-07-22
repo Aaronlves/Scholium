@@ -17,18 +17,18 @@
         }
       }
     },
-    "%@ changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again." : {
+    "%@ (%lld)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%@ changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again."
+            "value" : "%1$@ (%2$lld)"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 在对话打开时更改或移动。重新加载笔记列表，查看当前文本，然后再次复制说明。"
+            "value" : "%1$@（%2$lld）"
           }
         }
       }
@@ -125,23 +125,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@：%@"
-          }
-        }
-      }
-    },
-    "%arg changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again." : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%arg changed or moved while Dialogue was open. Reload the note list, review the current text, and copy the instructions again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%arg 在对话打开时更改或移动。重新加载笔记列表，查看当前文本，然后再次复制说明。"
           }
         }
       }
@@ -398,18 +381,18 @@
         }
       }
     },
-    "%lld comments · %lld unresolved · %lld need reattachment" : {
+    "%lld current issues" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$lld comments · %2$lld unresolved · %3$lld need reattachment"
+            "value" : "%lld current issues"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld 条评论 · %2$lld 条未解决 · %3$lld 条需重新附着"
+            "value" : "当前问题：%lld 项"
           }
         }
       }
@@ -603,6 +586,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 个验证错误%@"
+          }
+        }
+      }
+    },
+    "%lld writable note%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld writable note%2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld 篇可写笔记%2$@"
           }
         }
       }
@@ -831,18 +830,98 @@
         }
       }
     },
-    "A verdict is required only when completing Review" : {
+    "ABOUT THIS ANALYSIS" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "A verdict is required only when completing Review"
+            "value" : "ABOUT THIS ANALYSIS"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅当完成审阅时才需要填写评审结论"
+            "value" : "关于此分析"
+          }
+        }
+      }
+    },
+    "ABOUT THIS NOTE" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ABOUT THIS NOTE"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于此笔记"
+          }
+        }
+      }
+    },
+    "ABOUT THIS TOPIC" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ABOUT THIS TOPIC"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于此议题"
+          }
+        }
+      }
+    },
+    "ABOUT THIS WORK" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ABOUT THIS WORK"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于此写作"
+          }
+        }
+      }
+    },
+    "ACTIONS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ACTIONS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作"
+          }
+        }
+      }
+    },
+    "AGENT REPLY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "AGENT REPLY"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AGENT 回应"
           }
         }
       }
@@ -928,6 +1007,22 @@
         }
       }
     },
+    "Accept" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Accept"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受"
+          }
+        }
+      }
+    },
     "Access" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -993,66 +1088,18 @@
         }
       }
     },
-    "Add Comment" : {
+    "Add Annotation…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Add Comment"
+            "value" : "Add Annotation…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加注释"
-          }
-        }
-      }
-    },
-    "Add Comment…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Add Comment…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加注释…"
-          }
-        }
-      }
-    },
-    "Add Follow-up Comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Add Follow-up Comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加后续注释"
-          }
-        }
-      }
-    },
-    "Add Follow-up Comment…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Add Follow-up Comment…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加后续注释…"
+            "value" : "添加批注…"
           }
         }
       }
@@ -1085,22 +1132,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加可见字段"
-          }
-        }
-      }
-    },
-    "Add a Passage Comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Add a Passage Comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加段落注释"
           }
         }
       }
@@ -1265,6 +1296,22 @@
         }
       }
     },
+    "Agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Agent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent"
+          }
+        }
+      }
+    },
     "Agent Application Handoff Options" : {
       "localizations" : {
         "en" : {
@@ -1373,6 +1420,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "智能体提案请求已复制"
+          }
+        }
+      }
+    },
+    "Agent reply" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Agent reply"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 回应"
           }
         }
       }
@@ -1668,6 +1731,22 @@
         }
       }
     },
+    "An agent response is ready for your review." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "An agent response is ready for your review."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 回应已可供你审阅。"
+          }
+        }
+      }
+    },
     "Analyses" : {
       "localizations" : {
         "en" : {
@@ -1696,6 +1775,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分析"
+          }
+        }
+      }
+    },
+    "Annotation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Annotation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批注"
+          }
+        }
+      }
+    },
+    "Annotation Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Annotation Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法使用批注"
+          }
+        }
+      }
+    },
+    "Annotations are unavailable until Scholium can identify this Analysis, Topic, or Work reliably." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Annotations are unavailable until Scholium can identify this Analysis, Topic, or Work reliably."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Scholium 能够可靠识别此分析、议题或写作之前，无法使用批注。"
           }
         }
       }
@@ -1906,6 +2033,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关注…"
+          }
+        }
+      }
+    },
+    "Attribution scale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attribution scale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归属比例"
           }
         }
       }
@@ -2151,6 +2294,22 @@
         }
       }
     },
+    "Block spacing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Block spacing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "区块间距"
+          }
+        }
+      }
+    },
     "Body" : {
       "localizations" : {
         "en" : {
@@ -2183,18 +2342,34 @@
         }
       }
     },
-    "Bold · 700" : {
+    "Bold 700" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Bold · 700"
+            "value" : "Bold 700"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "粗体 · 700"
+            "value" : "粗体 700"
+          }
+        }
+      }
+    },
+    "Bold, 700" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bold, 700"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粗体，700"
           }
         }
       }
@@ -2393,22 +2568,6 @@
         }
       }
     },
-    "CURRENT ACTIVITY" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "CURRENT ACTIVITY"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前活动"
-          }
-        }
-      }
-    },
     "Callout" : {
       "localizations" : {
         "en" : {
@@ -2538,18 +2697,34 @@
         }
       }
     },
-    "Centered · italic · numbered at right" : {
+    "Centered, italic, numbered at right" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Centered · italic · numbered at right"
+            "value" : "Centered, italic, numbered at right"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "居中 · 斜体 · 序号靠右"
+            "value" : "居中，斜体，序号靠右"
+          }
+        }
+      }
+    },
+    "Change Attribution Needed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change Attribution Needed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要确认修改归属"
           }
         }
       }
@@ -2570,34 +2745,18 @@
         }
       }
     },
-    "Changed Since Review" : {
+    "Changed Since Settled" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Changed Since Review"
+            "value" : "Changed Since Settled"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "审阅后有更改"
-          }
-        }
-      }
-    },
-    "Changed since review" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Changed since review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅后有更改"
+            "value" : "暂定后有更改"
           }
         }
       }
@@ -3138,18 +3297,18 @@
         }
       }
     },
-    "Choose a named document configuration, then adjust typography and each semantic callout independently. Changes apply to Read and Live Preview after saving." : {
+    "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Read, Live Preview, and Source." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Choose a named document configuration, then adjust typography and each semantic callout independently. Changes apply to Read and Live Preview after saving."
+            "value" : "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Read, Live Preview, and Source."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择一项命名的文稿配置，然后分别调整排版和每种语义 Callout。保存后，修改将应用于阅读和实时预览。"
+            "value" : "选择一项命名的文稿配置，然后分别调整行宽、排版和每种语义 Callout。保存后修改生效；阅读、实时预览和源码模式共用行宽。"
           }
         }
       }
@@ -3202,18 +3361,18 @@
         }
       }
     },
-    "Choose the optional scholarly modules included in newly prepared Dialogue requests. This setting does not change existing Dialogue records." : {
+    "Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests or the earlier Dialogue archive." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Choose the optional scholarly modules included in newly prepared Dialogue requests. This setting does not change existing Dialogue records."
+            "value" : "Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests or the earlier Dialogue archive."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择新准备的对话请求中包含的可选学术模块。此设置不会更改现有的对话记录。"
+            "value" : "选择新讨论请求包含的可选学术模块。此设置不会更改现有请求或早期对话档案。"
           }
         }
       }
@@ -3396,6 +3555,22 @@
         }
       }
     },
+    "Clear Integrity Filters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Clear Integrity Filters"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除完整性筛选"
+          }
+        }
+      }
+    },
     "Clear Metadata Filters" : {
       "localizations" : {
         "en" : {
@@ -3408,22 +3583,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除元数据过滤器"
-          }
-        }
-      }
-    },
-    "Clear Review and Integrity Filters" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Clear Review and Integrity Filters"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除审阅与完整性筛选"
           }
         }
       }
@@ -3508,18 +3667,18 @@
         }
       }
     },
-    "Collapses this Dialogue entry" : {
+    "Column gap" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Collapses this Dialogue entry"
+            "value" : "Column gap"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "折叠此对话条目"
+            "value" : "栏间距"
           }
         }
       }
@@ -3535,23 +3694,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "注释"
-          }
-        }
-      }
-    },
-    "Comment Applies To" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Comment Applies To"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "注释适用对象"
+            "value" : "评论"
           }
         }
       }
@@ -3567,72 +3710,23 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "注释保留方式"
+            "value" : "评论保留方式"
           }
         }
       }
     },
-    "Comment Unavailable" : {
+    "Comment on Selection…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Comment Unavailable"
+            "value" : "Comment on Selection…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法添加注释"
-          }
-        }
-      }
-    },
-    "Comment on selected passage" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Comment on selected passage"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "批注所选段落"
-          }
-        }
-      }
-    },
-    "Comments" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Comments"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "注释"
-          }
-        }
-      }
-    },
-    "Comments are unavailable until Scholium can identify this Analysis, Topic, or Work reliably." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Comments are unavailable until Scholium can identify this Analysis, Topic, or Work reliably."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Scholium 能可靠识别这篇分析、议题或写作笔记之前，无法使用注释。"
+            "value" : "评论所选内容…"
           }
         }
       }
@@ -3718,18 +3812,34 @@
         }
       }
     },
-    "Complete Review" : {
+    "Complete Round" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Complete Review"
+            "value" : "Complete Round"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "完成审阅"
+            "value" : "完成本轮"
+          }
+        }
+      }
+    },
+    "Complete Round is available only after every finding has a valid disposition." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Complete Round is available only after every finding has a valid disposition."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有每项发现都有有效处置后，才能完成本轮。"
           }
         }
       }
@@ -3831,18 +3941,34 @@
         }
       }
     },
-    "Confirming a previous note moves its comments, Human Review, Dialogue references, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file." : {
+    "Confirming a previous note moves its page annotations, earlier Review and Dialogue archives, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Confirming a previous note moves its comments, Human Review, Dialogue references, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file."
+            "value" : "Confirming a previous note moves its page annotations, earlier Review and Dialogue archives, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认先前的笔记后，其注释、研究者评审、对话引用、评析关联、研究记录和窗口状态将迁移到当前位置。Scholium 不会更改 Markdown 文件。"
+            "value" : "确认先前笔记会将其页边批注、早期审阅与对话档案、评析关联、研究记录和窗口状态移至当前位置。Scholium 不会更改 Markdown 文件。"
+          }
+        }
+      }
+    },
+    "Connect" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Connect"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接"
           }
         }
       }
@@ -3908,6 +4034,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "内容指纹"
+          }
+        }
+      }
+    },
+    "Content indent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Content indent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内容缩进"
           }
         }
       }
@@ -4072,6 +4214,22 @@
         }
       }
     },
+    "Copy and Open Agent App…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Copy and Open Agent App…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制并打开 Agent 应用…"
+          }
+        }
+      }
+    },
     "Copy the complete current package, its revision, and the maintenance purpose to an external agent. Import the returned complete package JSON before structural validation." : {
       "localizations" : {
         "en" : {
@@ -4149,22 +4307,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法 %arg"
-          }
-        }
-      }
-    },
-    "Could Not Add Follow-up Comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could Not Add Follow-up Comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法添加后续注释"
           }
         }
       }
@@ -4297,34 +4439,18 @@
         }
       }
     },
-    "Could Not Save Dialogue Defaults" : {
+    "Could Not Save Discuss Defaults" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Could Not Save Dialogue Defaults"
+            "value" : "Could Not Save Discuss Defaults"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法保存对话默认值"
-          }
-        }
-      }
-    },
-    "Could Not Save Human Review" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could Not Save Human Review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法保存研究者评审"
+            "value" : "无法保存讨论默认设置"
           }
         }
       }
@@ -4763,18 +4889,18 @@
         }
       }
     },
-    "DERIVED STATE" : {
+    "Customize" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "DERIVED STATE"
+            "value" : "Customize"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "派生状态"
+            "value" : "自定义"
           }
         }
       }
@@ -4928,22 +5054,6 @@
         }
       }
     },
-    "Declare Research Status…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Declare Research Status…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "填写内容状态…"
-          }
-        }
-      }
-    },
     "Declare the scope within which this note's claims apply. Limitations are optional and should describe material boundaries." : {
       "localizations" : {
         "en" : {
@@ -5053,38 +5163,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除列"
-          }
-        }
-      }
-    },
-    "Delete Comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Delete Comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除注释"
-          }
-        }
-      }
-    },
-    "Delete Comment?" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Delete Comment?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除注释？"
           }
         }
       }
@@ -5233,38 +5311,6 @@
         }
       }
     },
-    "Derived State Stale" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Derived State Stale"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "派生状态已过期"
-          }
-        }
-      }
-    },
-    "Derived State Unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Derived State Unavailable"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "派生状态不可用"
-          }
-        }
-      }
-    },
     "Derived reminders only; they do not judge evidence or philosophical quality." : {
       "localizations" : {
         "en" : {
@@ -5277,22 +5323,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅派生提醒；他们不判断证据或哲学质量。"
-          }
-        }
-      }
-    },
-    "Derived state: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Derived state: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "派生状态：%@"
           }
         }
       }
@@ -5378,87 +5408,6 @@
         }
       }
     },
-    "Dialogue" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Dialogue"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对话"
-          }
-        }
-      }
-    },
-    "Dialogue Defaults" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Dialogue Defaults"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对话默认值"
-          }
-        }
-      }
-    },
-    "Dialogue Defaults saved" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Dialogue Defaults saved"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对话已保存默认值"
-          }
-        }
-      }
-    },
-    "Dialogue from %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Dialogue from %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对话来自 %@"
-          }
-        }
-      }
-    },
-    "Dialogue from %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Dialogue from %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对话来自 %arg"
-          }
-        }
-      }
-    },
     "Different revision" : {
       "localizations" : {
         "en" : {
@@ -5519,6 +5468,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已停用"
+          }
+        }
+      }
+    },
+    "Discuss" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Discuss"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讨论"
+          }
+        }
+      }
+    },
+    "Discuss Defaults" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Discuss Defaults"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讨论默认设置"
+          }
+        }
+      }
+    },
+    "Discuss Defaults saved" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Discuss Defaults saved"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讨论默认设置已保存"
           }
         }
       }
@@ -5683,6 +5680,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "陈列公式"
+          }
+        }
+      }
+    },
+    "Disposition" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Disposition"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处置"
           }
         }
       }
@@ -5912,6 +5925,22 @@
         }
       }
     },
+    "EXCHANGE" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "EXCHANGE"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交流"
+          }
+        }
+      }
+    },
     "Earlier Work version" : {
       "localizations" : {
         "en" : {
@@ -5992,38 +6021,6 @@
         }
       }
     },
-    "Edit Research Status" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit Research Status"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑内容状态"
-          }
-        }
-      }
-    },
-    "Edit Research Status…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit Research Status…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑研究状态…"
-          }
-        }
-      }
-    },
     "Edit in Live Preview" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -6037,22 +6034,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在实时预览中编辑"
-          }
-        }
-      }
-    },
-    "Edit researcher comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit researcher comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑研究者注释"
           }
         }
       }
@@ -6137,6 +6118,22 @@
         }
       }
     },
+    "End inset" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "End inset"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "末端内边距"
+          }
+        }
+      }
+    },
     "Enter one material boundary per line" : {
       "localizations" : {
         "en" : {
@@ -6153,18 +6150,18 @@
         }
       }
     },
-    "Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, Human Review, or qualification." : {
+    "Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, or research activity records." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, Human Review, or qualification."
+            "value" : "Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, or research activity records."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每个关注项都可以暂时忽略。忽略后只会在所选时段隐藏这条派生提醒；不会更改笔记、关联、研究者评审或评审结论。"
+            "value" : "每个关注项都可忽略。忽略只会在所选时段内隐藏派生提醒；它不会更改笔记、连接或研究活动记录。"
           }
         }
       }
@@ -6293,22 +6290,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "扩展"
-          }
-        }
-      }
-    },
-    "Expands this Dialogue entry" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Expands this Dialogue entry"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "扩展此对话条目"
           }
         }
       }
@@ -6442,6 +6423,38 @@
         }
       }
     },
+    "Fidelity Results (%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fidelity Results (%lld)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核查结果（%lld）"
+          }
+        }
+      }
+    },
+    "Fidelity is still awaiting a check for this revision." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fidelity is still awaiting a check for this revision."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此修订仍在等待核查。"
+          }
+        }
+      }
+    },
     "Filter" : {
       "localizations" : {
         "en" : {
@@ -6539,6 +6552,54 @@
         }
       }
     },
+    "Finish Discussion" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Finish Discussion"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束讨论"
+          }
+        }
+      }
+    },
+    "Finished" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Finished"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已结束"
+          }
+        }
+      }
+    },
+    "First-line indent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "First-line indent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首行缩进"
+          }
+        }
+      }
+    },
     "Focus a Scholium workspace and open a note to view its Research Record." : {
       "localizations" : {
         "en" : {
@@ -6587,22 +6648,6 @@
         }
       }
     },
-    "Follow-up Comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Follow-up Comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "后续注释"
-          }
-        }
-      }
-    },
     "Follow-up Exchange" : {
       "localizations" : {
         "en" : {
@@ -6615,6 +6660,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "后续交流"
+          }
+        }
+      }
+    },
+    "Font size" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Font size"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字号"
           }
         }
       }
@@ -6695,6 +6756,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "前置元数据已保存"
+          }
+        }
+      }
+    },
+    "Frozen write set (%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Frozen write set (%lld)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冻结写入集合（%lld）"
           }
         }
       }
@@ -7071,66 +7148,34 @@
         }
       }
     },
-    "Human Review" : {
+    "Horizontal inset" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Human Review"
+            "value" : "Horizontal inset"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "研究者评审"
+            "value" : "水平内边距"
           }
         }
       }
     },
-    "Human Review and Comments remain separate app-owned records even though this panel presents them together. Neither alters the Markdown file." : {
+    "Horizontal padding" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Human Review and Comments remain separate app-owned records even though this panel presents them together. Neither alters the Markdown file."
+            "value" : "Horizontal padding"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "虽然此面板同时显示研究者评审和注释，但两者仍是由应用分别管理的记录，且都不会更改 Markdown 文件。"
-          }
-        }
-      }
-    },
-    "Human Review is unavailable in Works. Request a Critique for an ordinary Work note instead." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Human Review is unavailable in Works. Request a Critique for an ordinary Work note instead."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“写作”不适用研究者评审。普通写作笔记请改用评析。"
-          }
-        }
-      }
-    },
-    "Human review" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Human review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究者评审"
+            "value" : "水平内边距"
           }
         }
       }
@@ -7344,22 +7389,6 @@
         }
       }
     },
-    "Import a limited CSS snippet for Read and Live Preview. Scholium protects callouts, footnotes, review annotations, diagnostics, and provenance warnings." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Import a limited CSS snippet for Read and Live Preview. Scholium protects callouts, footnotes, review annotations, diagnostics, and provenance warnings."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导入受限的 CSS 片段，用于“阅读”和“实时预览”模式。Scholium 会保护 Callout、脚注、审阅标记、诊断信息和来源警告。"
-          }
-        }
-      }
-    },
     "Imported %arg files" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -7457,50 +7486,34 @@
         }
       }
     },
-    "Include this app-owned Comment as read-only context for Critique" : {
+    "In progress" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Include this app-owned Comment as read-only context for Critique"
+            "value" : "In progress"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将这条由应用管理的注释作为评析的只读上下文"
+            "value" : "进行中"
           }
         }
       }
     },
-    "Include this app-owned Comment as read-only evidence for the function request" : {
+    "Include this existing note in the frozen Write authorization." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Include this app-owned Comment as read-only evidence for the function request"
+            "value" : "Include this existing note in the frozen Write authorization."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将这条由应用管理的注释作为研究功能请求的只读材料"
-          }
-        }
-      }
-    },
-    "Included Comments" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Included Comments"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "包含的注释"
+            "value" : "将这篇现有笔记纳入冻结的写入授权。"
           }
         }
       }
@@ -8039,6 +8052,22 @@
         }
       }
     },
+    "Layout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Layout"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "布局"
+          }
+        }
+      }
+    },
     "Least Recently Modified" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -8068,6 +8097,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "留空以进行以中立源为中心的筛选。"
+          }
+        }
+      }
+    },
+    "Letter spacing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Letter spacing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字距"
           }
         }
       }
@@ -8217,6 +8262,54 @@
         }
       }
     },
+    "Line spacing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line spacing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行距"
+          }
+        }
+      }
+    },
+    "Line width" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line width"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行宽"
+          }
+        }
+      }
+    },
+    "Line width is measured in CSS character-width units; the exact number of characters varies by typeface." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line width is measured in CSS character-width units; the exact number of characters varies by typeface."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行宽以 CSS 字符宽度单位计量；每行的实际字符数会随字体而变化。"
+          }
+        }
+      }
+    },
     "Lines %arg–%arg" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -8278,6 +8371,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "由 %@ 链接"
+          }
+        }
+      }
+    },
+    "Linked notes may be recommended, but Scholium never selects them automatically. Materials remain read-only and cannot also be Write targets." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Linked notes may be recommended, but Scholium never selects them automatically. Materials remain read-only and cannot also be Write targets."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以推荐关联笔记，但 Scholium 绝不会自动选择它们。材料始终只读，不能同时成为写入目标。"
+          }
+        }
+      }
+    },
+    "Linked recommendation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Linked recommendation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关联笔记推荐"
           }
         }
       }
@@ -8780,18 +8905,34 @@
         }
       }
     },
-    "Medium · 500" : {
+    "Medium 500" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Medium · 500"
+            "value" : "Medium 500"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "中等 · 500"
+            "value" : "中等 500"
+          }
+        }
+      }
+    },
+    "Medium, 500" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Medium, 500"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中等，500"
           }
         }
       }
@@ -9118,6 +9259,22 @@
         }
       }
     },
+    "NEEDS ATTENTION" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "NEEDS ATTENTION"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要关注"
+          }
+        }
+      }
+    },
     "Name" : {
       "localizations" : {
         "en" : {
@@ -9231,18 +9388,18 @@
         }
       }
     },
-    "New Dialogue Requests" : {
+    "New Discuss Requests" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "New Dialogue Requests"
+            "value" : "New Discuss Requests"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新的对话请求"
+            "value" : "新讨论请求"
           }
         }
       }
@@ -9360,6 +9517,22 @@
         }
       }
     },
+    "No Actions are available for this note." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Actions are available for this note."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此笔记没有可用操作。"
+          }
+        }
+      }
+    },
     "No Active Document" : {
       "localizations" : {
         "en" : {
@@ -9437,38 +9610,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有恢复点"
-          }
-        }
-      }
-    },
-    "No Comments" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Comments"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂无注释"
-          }
-        }
-      }
-    },
-    "No Comments are attached to this note." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Comments are attached to this note."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此笔记没有任何注释。"
           }
         }
       }
@@ -9667,22 +9808,6 @@
         }
       }
     },
-    "No Research Status is written. You can edit, comment, use Dialogue or Develop, and save a Review draft; completing Review waits until you declare it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Research Status is written. You can edit, comment, use Dialogue or Develop, and save a Review draft; completing Review waits until you declare it."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未填写内容状态。您仍可编辑、添加注释、使用“对话”或“发展”，并保存审阅草稿；填写内容状态后才可完成审阅。"
-          }
-        }
-      }
-    },
     "No Scholium request history is associated with this Critique." : {
       "localizations" : {
         "en" : {
@@ -9695,6 +9820,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此评析没有关联的 Scholium 请求记录。"
+          }
+        }
+      }
+    },
+    "No Scope or Limitations have been declared." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Scope or Limitations have been declared."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未声明范围或限制。"
           }
         }
       }
@@ -9860,6 +10001,22 @@
         }
       }
     },
+    "No current research issues." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No current research issues."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前没有研究整理问题。"
+          }
+        }
+      }
+    },
     "No fields are shown when Properties is opened." : {
       "localizations" : {
         "en" : {
@@ -9888,6 +10045,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文件内容没有变化"
+          }
+        }
+      }
+    },
+    "No fixed actionable findings are available for this round. Older rounds are kept as read-only history and are not inferred as addressed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No fixed actionable findings are available for this round. Older rounds are kept as read-only history and are not inferred as addressed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本轮没有固定且可操作的发现。较早轮次保留为只读历史，不会被推断为已经处理。"
           }
         }
       }
@@ -9940,6 +10113,22 @@
         }
       }
     },
+    "No recorded activity yet." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No recorded activity yet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚无研究活动记录。"
+          }
+        }
+      }
+    },
     "No safe revision" : {
       "localizations" : {
         "en" : {
@@ -9952,6 +10141,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有安全修订"
+          }
+        }
+      }
+    },
+    "No scope declaration is written. You can edit, annotate, comment, or use Work with Agent, then add Scope and Limitations later." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No scope declaration is written. You can edit, annotate, comment, or use Work with Agent, then add Scope and Limitations later."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未写入范围声明。你可以继续编辑、批注、评论或与 Agent 协作，之后再添加范围和限制。"
           }
         }
       }
@@ -10036,22 +10241,6 @@
         }
       }
     },
-    "Not reviewed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Not reviewed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未审阅"
-          }
-        }
-      }
-    },
     "Not yet checked" : {
       "localizations" : {
         "en" : {
@@ -10064,6 +10253,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未检查"
+          }
+        }
+      }
+    },
+    "Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记"
           }
         }
       }
@@ -10278,6 +10483,22 @@
         }
       }
     },
+    "Open" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开"
+          }
+        }
+      }
+    },
     "Open %@" : {
       "localizations" : {
         "en" : {
@@ -10419,22 +10640,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开研究记录"
-          }
-        }
-      }
-    },
-    "Open Review" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open Review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开审阅"
           }
         }
       }
@@ -11018,6 +11223,22 @@
         }
       }
     },
+    "Optional rationale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Optional rationale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选理由"
+          }
+        }
+      }
+    },
     "Optional response presentation. Does not change Materials, workflow routing, checkpoints, or write permissions." : {
       "localizations" : {
         "en" : {
@@ -11296,6 +11517,22 @@
         }
       }
     },
+    "Paragraph spacing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Paragraph spacing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "段落间距"
+          }
+        }
+      }
+    },
     "Passage" : {
       "localizations" : {
         "en" : {
@@ -11360,18 +11597,18 @@
         }
       }
     },
-    "Possible orphan structure, Changed Since Review, broken or ambiguous Connections, explicit reliance on an Unqualified Analysis, malformed metadata, and unresolved note identity." : {
+    "Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Possible orphan structure, Changed Since Review, broken or ambiguous Connections, explicit reliance on an Unqualified Analysis, malformed metadata, and unresolved note identity."
+            "value" : "Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "可能存在孤立结构、审阅后更改、损坏或有歧义的关联、明确依赖未通过评审的分析、格式错误的元数据，或尚未解决的笔记身份。"
+            "value" : "可能的孤立结构、暂定后有更改、断裂或歧义连接、格式错误的元数据，以及未解决的笔记身份。"
           }
         }
       }
@@ -11515,7 +11752,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留方式会影响外部智能体如何呈现所选注释，但不会授予笔记编辑权限。"
+            "value" : "保留方式会影响外部 Agent 如何呈现所选评论，但绝不会授予笔记编辑权限。"
           }
         }
       }
@@ -11597,22 +11834,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "之前在 %arg"
-          }
-        }
-      }
-    },
-    "Production Victor Mono beside the macOS system monospace. Review at normal and 200% document text sizes." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Production Victor Mono beside the macOS system monospace. Review at normal and 200% document text sizes."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生产 Victor Mono 位于 macOS 系统等宽字体旁边。 评审在正常和 200% 文档文本大小下。"
           }
         }
       }
@@ -11860,38 +12081,6 @@
         }
       }
     },
-    "Qualification" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Qualification"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "评审结论"
-          }
-        }
-      }
-    },
-    "Qualified" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Qualified"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "通过评审"
-          }
-        }
-      }
-    },
     "Quotation" : {
       "localizations" : {
         "en" : {
@@ -11904,6 +12093,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "引用"
+          }
+        }
+      }
+    },
+    "Quotation scale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Quotation scale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引文比例"
           }
         }
       }
@@ -11924,6 +12129,22 @@
         }
       }
     },
+    "RESEARCH ACTIVITY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "RESEARCH ACTIVITY"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究活动"
+          }
+        }
+      }
+    },
     "RESEARCH FUNCTIONS" : {
       "localizations" : {
         "en" : {
@@ -11940,34 +12161,18 @@
         }
       }
     },
-    "RESEARCH STATUS" : {
+    "Rationale (optional)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "RESEARCH STATUS"
+            "value" : "Rationale (optional)"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "内容状态"
-          }
-        }
-      }
-    },
-    "REVIEW STATUS" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "REVIEW STATUS"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅状态"
+            "value" : "理由（可选）"
           }
         }
       }
@@ -12036,6 +12241,38 @@
         }
       }
     },
+    "Read-only compatibility history. Earlier Review and Qualification do not become Settlement or current research activity." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read-only compatibility history. Earlier Review and Qualification do not become Settlement or current research activity."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读兼容历史。早期审阅和评审结论不会转为暂定或当前研究活动。"
+          }
+        }
+      }
+    },
+    "Read-only compatibility history. Scholium does not infer Commented or Discussed activity from these records." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read-only compatibility history. Scholium does not infer Commented or Discussed activity from these records."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读兼容历史。Scholium 不会根据这些记录推断已评论或已讨论活动。"
+          }
+        }
+      }
+    },
     "Reattach Here" : {
       "localizations" : {
         "en" : {
@@ -12048,6 +12285,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在这里重新连接"
+          }
+        }
+      }
+    },
+    "Rebut" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rebut"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反驳"
           }
         }
       }
@@ -12133,6 +12386,22 @@
         }
       }
     },
+    "Recommended from a direct connection. It is not selected automatically." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recommended from a direct connection. It is not selected automatically."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由直接连接推荐，不会自动选中。"
+          }
+        }
+      }
+    },
     "Recommended literature" : {
       "localizations" : {
         "en" : {
@@ -12161,6 +12430,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "推荐…"
+          }
+        }
+      }
+    },
+    "Record Agent Reply" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record Agent Reply"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录 Agent 回应"
           }
         }
       }
@@ -12209,6 +12494,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "记录回应"
+          }
+        }
+      }
+    },
+    "Record that this saved revision is sufficiently stable for current research." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record that this saved revision is sufficiently stable for current research."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录当前已保存修订对目前研究而言足够稳定。"
+          }
+        }
+      }
+    },
+    "Record this saved revision as sufficiently stable for current research." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record this saved revision as sufficiently stable for current research."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将当前已保存修订记录为对目前研究而言足够稳定。"
           }
         }
       }
@@ -12391,6 +12708,22 @@
         }
       }
     },
+    "Refresh Needed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Refresh Needed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要刷新"
+          }
+        }
+      }
+    },
     "Refresh Recommended Bibliography" : {
       "localizations" : {
         "en" : {
@@ -12403,6 +12736,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刷新推荐文献"
+          }
+        }
+      }
+    },
+    "Refresh Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Refresh Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法刷新"
           }
         }
       }
@@ -12455,34 +12804,50 @@
         }
       }
     },
-    "Refreshing derived state…" : {
+    "Regular 400" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Refreshing derived state…"
+            "value" : "Regular 400"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在刷新派生状态…"
+            "value" : "常规 400"
           }
         }
       }
     },
-    "Regular · 400" : {
+    "Regular, 400" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Regular · 400"
+            "value" : "Regular, 400"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "常规 · 400"
+            "value" : "常规，400"
+          }
+        }
+      }
+    },
+    "Reject" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reject"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝"
           }
         }
       }
@@ -12875,18 +13240,18 @@
         }
       }
     },
-    "Repair the Triptych Dialogue Defaults in Settings" : {
+    "Repair the Triptych Discuss Defaults in Settings" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Repair the Triptych Dialogue Defaults in Settings"
+            "value" : "Repair the Triptych Discuss Defaults in Settings"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在设置中修复此脉络的对话默认值"
+            "value" : "在设置中修复此脉络的讨论默认设置"
           }
         }
       }
@@ -13278,6 +13643,22 @@
         }
       }
     },
+    "Researcher" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Researcher"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究者"
+          }
+        }
+      }
+    },
     "Researcher Properties" : {
       "localizations" : {
         "en" : {
@@ -13290,39 +13671,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究者属性"
-          }
-        }
-      }
-    },
-    "Researcher comment, %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Researcher comment, %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究者注释，%@"
-          }
-        }
-      }
-    },
-    "Researcher comment, %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Researcher comment, %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究者注释，%arg"
           }
         }
       }
@@ -13971,54 +14319,6 @@
         }
       }
     },
-    "Review" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅"
-          }
-        }
-      }
-    },
-    "Review Note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review Note"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅笔记"
-          }
-        }
-      }
-    },
-    "Review State" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review State"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅状态"
-          }
-        }
-      }
-    },
     "Review derived warnings and recoverable research issues" : {
       "localizations" : {
         "en" : {
@@ -14035,82 +14335,34 @@
         }
       }
     },
-    "Review draft" : {
+    "Review the agent response above. Finish records one Discussed activity; leaving it open records no activity." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Review draft"
+            "value" : "Review the agent response above. Finish records one Discussed activity; leaving it open records no activity."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "审阅草稿"
+            "value" : "审阅上方的 Agent 回应。结束后会记录一次已讨论活动；保持打开则不记录活动。"
           }
         }
       }
     },
-    "Review draft saved" : {
+    "Review the reply. Finish records one Commented activity; Follow Up keeps this exchange open." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Review draft saved"
+            "value" : "Review the reply. Finish records one Commented activity; Follow Up keeps this exchange open."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "审阅草稿已保存"
-          }
-        }
-      }
-    },
-    "Review is completed by the researcher in Scholium." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review is completed by the researcher in Scholium."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅由研究者在 Scholium 中完成。"
-          }
-        }
-      }
-    },
-    "Reviewed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reviewed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已审阅"
-          }
-        }
-      }
-    },
-    "Reviewed %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reviewed %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已审阅 %@"
+            "value" : "审阅回应。结束后会记录一次已评论活动；继续沟通会保持本次交流打开。"
           }
         }
       }
@@ -14147,6 +14399,22 @@
         }
       }
     },
+    "Revision SHA-256 %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Revision SHA-256 %@…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修订 SHA-256 %@…"
+          }
+        }
+      }
+    },
     "Root" : {
       "localizations" : {
         "en" : {
@@ -14159,6 +14427,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "根目录"
+          }
+        }
+      }
+    },
+    "Round completed %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Round completed %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本轮完成于 %@"
           }
         }
       }
@@ -14212,34 +14496,34 @@
         }
       }
     },
-    "Run state is shown here without merging Dialogue, Critique, Human Review, Comments, or Fidelity findings." : {
+    "Run envelopes remain distinct from durable activity and communication records." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Run state is shown here without merging Dialogue, Critique, Human Review, Comments, or Fidelity findings."
+            "value" : "Run envelopes remain distinct from durable activity and communication records."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此处只显示运行状态，不会合并对话、评析、研究者评审、注释或核查结果。"
+            "value" : "运行封套与持久研究活动及沟通记录保持分离。"
           }
         }
       }
     },
-    "SCHOLARLY STATUS" : {
+    "SELECTED PASSAGE" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "SCHOLARLY STATUS"
+            "value" : "SELECTED PASSAGE"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "学术状态"
+            "value" : "所选段落"
           }
         }
       }
@@ -14309,6 +14593,22 @@
         }
       }
     },
+    "SOURCE FRESHNESS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SOURCE FRESHNESS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源时效"
+          }
+        }
+      }
+    },
     "Save" : {
       "localizations" : {
         "en" : {
@@ -14357,22 +14657,6 @@
         }
       }
     },
-    "Save Comment" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Save Comment"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存注释"
-          }
-        }
-      }
-    },
     "Save Current Search…" : {
       "localizations" : {
         "en" : {
@@ -14389,18 +14673,34 @@
         }
       }
     },
-    "Save Dialogue Defaults" : {
+    "Save Discuss Defaults" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Save Dialogue Defaults"
+            "value" : "Save Discuss Defaults"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保存对话默认值"
+            "value" : "保存讨论默认设置"
+          }
+        }
+      }
+    },
+    "Save Disposition" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Disposition"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存处置"
           }
         }
       }
@@ -14533,22 +14833,6 @@
         }
       }
     },
-    "Saved Comments" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Saved Comments"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已保存的注释"
-          }
-        }
-      }
-    },
     "Saved Searches" : {
       "localizations" : {
         "en" : {
@@ -14565,6 +14849,22 @@
         }
       }
     },
+    "Saved as %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saved as %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存为 %@"
+          }
+        }
+      }
+    },
     "Saved searches remain in Scholium’s Application Support folder and never modify a vault." : {
       "localizations" : {
         "en" : {
@@ -14577,6 +14877,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存的搜索位于 Scholium 的 Application Support 文件夹中，绝不会修改研究库。"
+          }
+        }
+      }
+    },
+    "Scale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "比例"
           }
         }
       }
@@ -15064,6 +15380,22 @@
         }
       }
     },
+    "Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会记录并复制请求，然后打开所选 Agent 应用。请自行粘贴并提交。"
+          }
+        }
+      }
+    },
     "Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault." : {
       "localizations" : {
         "en" : {
@@ -15418,22 +15750,6 @@
         }
       }
     },
-    "Select a passage in Read, Live Preview, or Source to add a Comment." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Select a passage in Read, Live Preview, or Source to add a Comment."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在“阅读”“实时预览”或“源文本”模式中选择一个文本片段，以添加注释。"
-          }
-        }
-      }
-    },
     "Select an Analysis to open Recommended Bibliography" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -15463,6 +15779,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "比较论题价值前，请先选择一个论域"
+          }
+        }
+      }
+    },
+    "Selectable Write targets" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Selectable Write targets"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选择的写入目标"
           }
         }
       }
@@ -15533,18 +15865,34 @@
         }
       }
     },
-    "Semibold · 600" : {
+    "Semibold 600" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Semibold · 600"
+            "value" : "Semibold 600"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "半粗体 · 600"
+            "value" : "半粗体 600"
+          }
+        }
+      }
+    },
+    "Semibold, 600" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Semibold, 600"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "半粗体，600"
           }
         }
       }
@@ -15645,6 +15993,22 @@
         }
       }
     },
+    "Settle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Settle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂定"
+          }
+        }
+      }
+    },
     "Setup progress" : {
       "localizations" : {
         "en" : {
@@ -15657,6 +16021,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置进度"
+          }
+        }
+      }
+    },
+    "Show All" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show All"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示全部"
           }
         }
       }
@@ -16015,6 +16395,38 @@
         }
       }
     },
+    "Space after" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Space after"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "后间距"
+          }
+        }
+      }
+    },
+    "Space before" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Space before"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前间距"
+          }
+        }
+      }
+    },
     "Specific Findings" : {
       "localizations" : {
         "en" : {
@@ -16059,6 +16471,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已过期"
+          }
+        }
+      }
+    },
+    "Start inset" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Start inset"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起始内边距"
           }
         }
       }
@@ -16141,22 +16569,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 的步骤 %lld"
-          }
-        }
-      }
-    },
-    "Store a response returned outside the local Scholium CLI in this Dialogue entry." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Store a response returned outside the local Scholium CLI in this Dialogue entry."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将本地 Scholium CLI 之外返回的回应存入此对话条目。"
           }
         }
       }
@@ -16615,6 +17027,22 @@
         }
       }
     },
+    "Text scale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Text scale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字比例"
+          }
+        }
+      }
+    },
     "The %@ vault is not available in this Triptych. Scholium kept the current document open." : {
       "localizations" : {
         "en" : {
@@ -16696,18 +17124,18 @@
         }
       }
     },
-    "The Work changed while Scholium was creating Before Agent Work. Review the current Work and request its Critique again." : {
+    "The Work still matches the Critique target revision, so Accept requires this explanation." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "The Work changed while Scholium was creating Before Agent Work. Review the current Work and request its Critique again."
+            "value" : "The Work still matches the Critique target revision, so Accept requires this explanation."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 创建“智能体工作前”恢复点时，写作已经发生更改。请检查当前写作并重新请求评析。"
+            "value" : "此写作仍与评析目标修订一致，因此接受该发现需要填写此说明。"
           }
         }
       }
@@ -16825,6 +17253,22 @@
         }
       }
     },
+    "The exchange is waiting for an agent reply. No activity is added until you review a reply and choose Finish." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The exchange is waiting for an agent reply. No activity is added until you review a reply and choose Finish."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次交流正在等待 Agent 回应。只有在你审阅回应并选择结束后，才会添加活动。"
+          }
+        }
+      }
+    },
     "The existing Research Status is not valid. Source mode preserves its exact YAML; enabling this editor will replace it with a valid declaration." : {
       "localizations" : {
         "en" : {
@@ -16905,34 +17349,18 @@
         }
       }
     },
-    "The note changed before the Comment could be attached. Reopen the Review or Critique panel and select the current passage." : {
+    "The note changed before the Annotation could be attached. Select the current passage again." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "The note changed before the Comment could be attached. Reopen the Review or Critique panel and select the current passage."
+            "value" : "The note changed before the Annotation could be attached. Select the current passage again."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加注释前笔记已经发生更改。请重新打开审阅或评析面板，并选择当前文本片段。"
-          }
-        }
-      }
-    },
-    "The note changed while this review was open. Reopen Review and check the current text before saving." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The note changed while this review was open. Reopen Review and check the current text before saving."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅期间笔记已经发生更改。请重新打开审阅面板，并在保存前检查当前文本。"
+            "value" : "批注附着前笔记已经更改。请重新选择当前段落。"
           }
         }
       }
@@ -17081,18 +17509,18 @@
         }
       }
     },
-    "The required base of every Dialogue response" : {
+    "The required base of every Discuss response" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "The required base of every Dialogue response"
+            "value" : "The required base of every Discuss response"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次对话回应都必须包含的内容"
+            "value" : "每次讨论回应都必须包含的基础部分"
           }
         }
       }
@@ -17178,22 +17606,6 @@
         }
       }
     },
-    "The reviewed revision is unavailable. Close Review and reopen the note." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The reviewed revision is unavailable. Close Review and reopen the note."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已审阅的版本不可用。请关闭审阅面板并重新打开笔记。"
-          }
-        }
-      }
-    },
     "The saved window layout could not be restored. Scholium opened a clean window instead." : {
       "localizations" : {
         "en" : {
@@ -17206,39 +17618,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法恢复保存的窗口布局。Scholium 打开了一个干净的窗口。"
-          }
-        }
-      }
-    },
-    "The selected Dialogue response contract is unavailable. %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The selected Dialogue response contract is unavailable. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选的对话回应格式不可用。%@"
-          }
-        }
-      }
-    },
-    "The selected Dialogue response contract is unavailable. %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The selected Dialogue response contract is unavailable. %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选的对话回应格式不可用。%arg"
           }
         }
       }
@@ -17340,18 +17719,18 @@
         }
       }
     },
-    "These are attributed Function-run outcomes, not Human Review or Critique." : {
+    "These are attributed Function-run outcomes, separate from Critique and settlement." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "These are attributed Function-run outcomes, not Human Review or Critique."
+            "value" : "These are attributed Function-run outcomes, separate from Critique and settlement."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这些是署名的研究功能运行结果，不属于研究者评审或评析。"
+            "value" : "这些是带有归属的功能运行结果，与评析和暂定彼此独立。"
           }
         }
       }
@@ -17384,6 +17763,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这些文件夹共享一个父文件夹。"
+          }
+        }
+      }
+    },
+    "These records show the frozen authorization and the changes Scholium observed. They do not claim that the agent authored every changed byte." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "These records show the frozen authorization and the changes Scholium observed. They do not claim that the agent authored every changed byte."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些记录显示冻结的授权范围及 Scholium 观察到的更改，并不声称每个更改字节都由 Agent 写入。"
+          }
+        }
+      }
+    },
+    "This Comment is finished." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Comment is finished."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此评论已结束。"
           }
         }
       }
@@ -17468,18 +17879,34 @@
         }
       }
     },
-    "This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it." : {
+    "This cannot be undone. Scholium removes the note, its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it."
+            "value" : "This cannot be undone. Scholium removes the note, its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此操作无法撤销。Scholium 会移除该笔记、研究者评审与注释、对话记录、评析关联、稳定身份、研究记录，以及所有包含该笔记的脉络恢复点。"
+            "value" : "此操作无法撤销。Scholium 会移除该笔记、页边批注、早期审阅与对话档案、评析关联、稳定身份、研究记录，以及包含它的每个脉络恢复点。"
+          }
+        }
+      }
+    },
+    "This draft remains read-only and creates no current state." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This draft remains read-only and creates no current state."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此草稿保持只读，不产生当前状态。"
           }
         }
       }
@@ -17597,22 +18024,6 @@
         }
       }
     },
-    "This note changed since its latest completed Review." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This note changed since its latest completed Review."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此笔记在最近一次完成审阅后发生了更改。"
-          }
-        }
-      }
-    },
     "This note is read-only in Scholium." : {
       "localizations" : {
         "en" : {
@@ -17629,35 +18040,18 @@
         }
       }
     },
-    "This note remains readable, but Review, comments, History restore, and file changes are unavailable until its records finish moving from %@ to %@." : {
+    "This note remains readable, but Annotation, Comment, Research Record, restore, and file changes are unavailable until its records finish moving from %@ to %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This note remains readable, but Review, comments, History restore, and file changes are unavailable until its records finish moving from %@ to %@."
+            "value" : "This note remains readable, but Annotation, Comment, Research Record, restore, and file changes are unavailable until its records finish moving from %1$@ to %2$@."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此笔记仍可阅读，但在记录完成从 %@ 迁移到 %@ 之前，审阅、注释、历史恢复和文件更改均不可用。"
-          }
-        }
-      }
-    },
-    "This note remains readable, but Review, comments, History restore, and file changes are unavailable until its records finish moving from %arg to %arg." : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This note remains readable, but Review, comments, History restore, and file changes are unavailable until its records finish moving from %1$arg to %2$arg."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此笔记仍可阅读，但在记录完成从 %1$arg 迁移到 %2$arg 之前，审阅、注释、历史恢复和文件更改均不可用。"
+            "value" : "此笔记仍可阅读，但在其记录从 %1$@ 移至 %2$@ 完成之前，批注、评论、研究记录、恢复和文件更改均不可用。"
           }
         }
       }
@@ -17727,22 +18121,6 @@
         }
       }
     },
-    "This removes the app-owned comment. It does not change the Markdown note." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This removes the app-owned comment. It does not change the Markdown note."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这会删除由应用管理的注释，但不会更改 Markdown 笔记。"
-          }
-        }
-      }
-    },
     "This removes the selected configuration from this Mac. Research documents are not changed." : {
       "localizations" : {
         "en" : {
@@ -17755,6 +18133,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此操作会从这台 Mac 移除所选配置。研究文稿不会更改。"
+          }
+        }
+      }
+    },
+    "This saved revision is settled." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This saved revision is settled."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此已保存修订已暂定。"
           }
         }
       }
@@ -17836,6 +18230,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标题"
+          }
+        }
+      }
+    },
+    "Title column" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Title column"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题栏"
+          }
+        }
+      }
+    },
+    "Title gap" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Title gap"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题间距"
           }
         }
       }
@@ -18216,34 +18642,18 @@
         }
       }
     },
-    "Unqualified" : {
+    "Unfinished earlier Review" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Unqualified"
+            "value" : "Unfinished earlier Review"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未通过评审"
-          }
-        }
-      }
-    },
-    "Unqualified Analysis Reliance" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Unqualified Analysis Reliance"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "依赖未合格分析"
+            "value" : "未完成的早期审阅"
           }
         }
       }
@@ -18260,22 +18670,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "身份未解决"
-          }
-        }
-      }
-    },
-    "Unreviewed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Unreviewed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未审阅"
           }
         }
       }
@@ -18340,6 +18734,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新"
+          }
+        }
+      }
+    },
+    "Update Disposition" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Update Disposition"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新处置"
           }
         }
       }
@@ -18800,6 +19210,22 @@
         }
       }
     },
+    "Vertical padding" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Vertical padding"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垂直内边距"
+          }
+        }
+      }
+    },
     "What Attention Can Report" : {
       "localizations" : {
         "en" : {
@@ -18865,6 +19291,22 @@
         }
       }
     },
+    "Why no text change is required" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Why no text change is required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为何无需修改文本"
+          }
+        }
+      }
+    },
     "Wikilink" : {
       "localizations" : {
         "en" : {
@@ -18881,8 +19323,23 @@
         }
       }
     },
+    "Word spacing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Word spacing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词距"
+          }
+        }
+      }
+    },
     "Work" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -18894,6 +19351,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "写作"
+          }
+        }
+      }
+    },
+    "Work with Agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Work with Agent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Agent 协作"
           }
         }
       }
@@ -19013,6 +19486,54 @@
         }
       }
     },
+    "Writable notes: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Writable notes: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可写笔记：%lld 篇"
+          }
+        }
+      }
+    },
+    "Writable range" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Writable range"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可写范围"
+          }
+        }
+      }
+    },
+    "Write" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Write"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写入"
+          }
+        }
+      }
+    },
     "Year" : {
       "localizations" : {
         "en" : {
@@ -19025,22 +19546,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "年份"
-          }
-        }
-      }
-    },
-    "You can keep editing this Review and save it as a draft. Complete Review becomes available after this Analysis has a declared Research Status." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "You can keep editing this Review and save it as a draft. Complete Review becomes available after this Analysis has a declared Research Status."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "您可以继续编辑本次审阅并保存为草稿。这篇分析填写内容状态后，才可完成审阅。"
           }
         }
       }
@@ -19185,6 +19690,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标注块"
+          }
+        }
+      }
+    },
+    "character-width units" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "character-width units"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字符宽度单位"
           }
         }
       }
@@ -19382,6 +19903,22 @@
         }
       }
     },
+    "— %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "— %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "— %@"
+          }
+        }
+      }
+    },
     "— Before Agent Work %@" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -19445,6 +19982,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "• %arg"
+          }
+        }
+      }
+    },
+    "›" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "›"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "›"
+          }
+        }
+      }
+    },
+    "↗" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "↗"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↗"
           }
         }
       }

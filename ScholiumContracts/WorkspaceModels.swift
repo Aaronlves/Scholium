@@ -82,7 +82,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let document: NoteDocument
     public let fileMetadata: WorkspaceFileMetadata
     public let lifecycle: WorkspaceDocumentLifecycle
-    public let review: WorkspaceReviewState?
     public let graphCounts: WorkspaceGraphCounts
 
     public var fingerprint: DocumentFingerprint { document.fingerprint }
@@ -117,7 +116,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
         lifecycle: WorkspaceDocumentLifecycle,
-        review: WorkspaceReviewState?,
         graphCounts: WorkspaceGraphCounts
     ) {
         self.id = id
@@ -126,7 +124,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.document = document
         self.fileMetadata = fileMetadata
         self.lifecycle = lifecycle
-        self.review = review
         self.graphCounts = graphCounts
     }
 
@@ -137,7 +134,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             && lhs.fingerprint == rhs.fingerprint
             && lhs.fileMetadata == rhs.fileMetadata
             && lhs.lifecycle == rhs.lifecycle
-            && lhs.review == rhs.review
             && lhs.graphCounts == rhs.graphCounts
     }
 
@@ -148,7 +144,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(fingerprint)
         hasher.combine(fileMetadata)
         hasher.combine(lifecycle)
-        hasher.combine(review)
         hasher.combine(graphCounts)
     }
 }
@@ -206,7 +201,15 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
 /// mutations are performed only through `ResearchOperations`; this value is
 /// immutable delivery-neutral state for GUI, CLI, and future snapshot readers.
 public struct WorkspaceResearchSnapshot: Sendable {
-    public let humanReviews: [HumanReviewRecord]
+    /// Compatibility-only archive. New product behavior never creates or
+    /// projects Human Review records as current research state.
+    public let legacyHumanReviews: [HumanReviewRecord]
+    public let activityEvents: [ResearchActivityEvent]
+    public let settlements: [SettlementRecord]
+    public let annotations: [AnnotationRecord]
+    public let commentExchanges: [CommentExchange]
+    public let pendingResearchStates: [PendingResearchState]
+    public let activityGrants: [ResearchActivityGrant]
     public let dialogues: [DialogueEntry]
     public let critiques: [CritiqueAssociation]
     public let functionRuns: [ResearchFunctionRecordProjection]
@@ -215,7 +218,13 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let healthIssues: [String]
 
     public init(
-        humanReviews: [HumanReviewRecord],
+        legacyHumanReviews: [HumanReviewRecord] = [],
+        activityEvents: [ResearchActivityEvent] = [],
+        settlements: [SettlementRecord] = [],
+        annotations: [AnnotationRecord] = [],
+        commentExchanges: [CommentExchange] = [],
+        pendingResearchStates: [PendingResearchState] = [],
+        activityGrants: [ResearchActivityGrant] = [],
         dialogues: [DialogueEntry],
         critiques: [CritiqueAssociation],
         functionRuns: [ResearchFunctionRecordProjection] = [],
@@ -223,7 +232,13 @@ public struct WorkspaceResearchSnapshot: Sendable {
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         healthIssues: [String]
     ) {
-        self.humanReviews = humanReviews
+        self.legacyHumanReviews = legacyHumanReviews
+        self.activityEvents = activityEvents
+        self.settlements = settlements
+        self.annotations = annotations
+        self.commentExchanges = commentExchanges
+        self.pendingResearchStates = pendingResearchStates
+        self.activityGrants = activityGrants
         self.dialogues = dialogues
         self.critiques = critiques
         self.functionRuns = functionRuns
@@ -620,8 +635,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
 /// they already describe the violated invariant precisely.
 public enum ResearchOperationError: LocalizedError, Sendable {
     case noteUnavailable(VaultQualifiedNoteID)
-    case humanReviewUnavailable(VaultRole)
-    case researchStatusRequiredForReview
     case commentUnavailable(VaultRole)
     case critiqueUnavailable(VaultRole)
     case critiqueTargetMustBeOrdinaryWork(String)
@@ -636,10 +649,6 @@ public enum ResearchOperationError: LocalizedError, Sendable {
         switch self {
         case .noteUnavailable(let id):
             "The note at \(id.relativePath) is not available in this workspace generation."
-        case .humanReviewUnavailable:
-            "Human Review is available only for Analyses and Topics."
-        case .researchStatusRequiredForReview:
-            "Declare Research Status before completing this Analysis Review. You can keep editing or save the Review as a draft in the meantime."
         case .commentUnavailable:
             "Comments require a reliably identified Analysis, Topic, or Work."
         case .critiqueUnavailable:
@@ -649,9 +658,9 @@ public enum ResearchOperationError: LocalizedError, Sendable {
         case .staleCommentRevision:
             "The note changed before the Comment could be attached. Reload the current source and select the passage again."
         case .dialogueContextChanged(let title):
-            "\(title) changed, moved, or lost its stable identity while Dialogue was being prepared. Reload the current note list and review the source again."
+            "\(title) changed, moved, or lost its stable identity while Discuss was being prepared. Reload the current note list and review the source again."
         case .invalidDialogueResponseContract(let issues):
-            "The selected Dialogue response contract is unavailable. \(issues.joined(separator: " "))"
+            "The selected Discuss response contract is unavailable. \(issues.joined(separator: " "))"
         case .critiqueRegistryUnavailable(let reason):
             reason
         case .critiqueTargetChanged:

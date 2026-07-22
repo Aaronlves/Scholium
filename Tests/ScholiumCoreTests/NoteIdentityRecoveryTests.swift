@@ -23,15 +23,19 @@ struct NoteIdentityRecoveryTests {
             fingerprint: saved.document.fingerprint
         ))
 
-        _ = try await stores.reviews.addComment(
-            noteID: identity.id,
-            vaultID: fixture.worksID,
-            relativePath: "Old.md",
-            comment: ResearcherComment(
-                text: "Keep this distinction.",
-                anchor: testCommentAnchor(fingerprint: saved.document.fingerprint)
-            )
-        )
+        try await stores.reviews.seedLegacyArchiveForTesting([
+            HumanReviewRecord(
+                noteID: identity.id,
+                vaultID: fixture.worksID,
+                relativePath: "Old.md",
+                comments: [
+                    ResearcherComment(
+                        text: "Keep this historical distinction.",
+                        anchor: testCommentAnchor(fingerprint: saved.document.fingerprint)
+                    ),
+                ]
+            ),
+        ])
         let reference = DialogueNoteReference(
             noteID: identity.id,
             vaultID: fixture.worksID,
@@ -123,24 +127,30 @@ struct NoteIdentityRecoveryTests {
             relativePath: "Shared.md",
             fingerprint: topicDocument.fingerprint
         ))
-        _ = try await stores.reviews.addComment(
-            noteID: analysisIdentity.id,
-            vaultID: fixture.analysesID,
-            relativePath: "Shared.md",
-            comment: ResearcherComment(
-                text: "Analysis comment",
-                anchor: testCommentAnchor(fingerprint: analysisDocument.fingerprint)
-            )
-        )
-        _ = try await stores.reviews.addComment(
-            noteID: topicIdentity.id,
-            vaultID: fixture.topicsID,
-            relativePath: "Shared.md",
-            comment: ResearcherComment(
-                text: "Topic comment",
-                anchor: testCommentAnchor(fingerprint: topicDocument.fingerprint)
-            )
-        )
+        try await stores.reviews.seedLegacyArchiveForTesting([
+            HumanReviewRecord(
+                noteID: analysisIdentity.id,
+                vaultID: fixture.analysesID,
+                relativePath: "Shared.md",
+                comments: [
+                    ResearcherComment(
+                        text: "Historical Analysis comment",
+                        anchor: testCommentAnchor(fingerprint: analysisDocument.fingerprint)
+                    ),
+                ]
+            ),
+            HumanReviewRecord(
+                noteID: topicIdentity.id,
+                vaultID: fixture.topicsID,
+                relativePath: "Shared.md",
+                comments: [
+                    ResearcherComment(
+                        text: "Historical Topic comment",
+                        anchor: testCommentAnchor(fingerprint: topicDocument.fingerprint)
+                    ),
+                ]
+            ),
+        ])
         let references = [
             DialogueNoteReference(
                 noteID: analysisIdentity.id,

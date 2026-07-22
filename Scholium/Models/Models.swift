@@ -295,11 +295,6 @@ extension WindowDocumentLocation {
   var created: Date? { property(at: "created")?.appDateValue }
   var modified: Date? { property(at: "updated")?.appDateValue }
 
-  var isReviewed: Bool {
-    guard let snapshot = workspaceSnapshot,
-          let reviewed = snapshot.review?.reviewedFingerprint else { return false }
-    return reviewed == snapshot.fingerprint
-  }
   var fileModifiedAt: Date {
     workspaceSnapshot?.fileMetadata.modificationDate ?? .distantPast
   }

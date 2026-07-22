@@ -21,8 +21,6 @@ struct SidebarContext {
     let lifecycleMutationGeneration: UInt64
     let catalogIsAvailable: Bool
     let graphIsAvailable: Bool
-    let hasUnqualifiedReview: Bool
-    let changedSinceReviewCount: Int
     let tags: [String]
     let statuses: [String]
     let authors: [String]
@@ -32,7 +30,6 @@ struct SidebarContext {
     let resolvedIdentityPaths: Set<String>
     let bibliographyController: RecommendedBibliographyController
     let attentionQueueContext: AttentionQueueContext
-    let reviewDisplayState: (String) -> HumanReviewDisplayState
     let notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
     let selectLocationScope: (NoteLocationScope) -> Void
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
@@ -704,19 +701,6 @@ struct SidebarView: View {
 
     private var libraryFilterMenu: some View {
         Menu {
-            Section("Review") {
-                Menu("Review State") {
-                    if context.currentVaultRole.allowsHumanReview {
-                        Toggle("Unreviewed", isOn: filterBinding(\.isReviewed))
-                        if context.hasUnqualifiedReview {
-                            Toggle("Unqualified", isOn: filterBinding(\.isUnqualified))
-                        }
-                    }
-                    Toggle("Changed Since Review", isOn: filterBinding(\.isChangedSinceReview))
-                        .accessibilityIdentifier("scholium.researchFilter.changedSinceReview")
-                }
-            }
-
             Section("Integrity") {
                 Menu("Integrity Checks") {
                     Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
@@ -873,7 +857,7 @@ struct SidebarView: View {
 
             Section("Actions") {
                 if activeResearchFilterCount > 0 {
-                    Button("Clear Review and Integrity Filters", action: clearResearchFilters)
+                    Button("Clear Integrity Filters", action: clearResearchFilters)
                 }
                 if activeMetadataFilterCount > 0 {
                     Button("Clear Metadata Filters", action: clearMetadataFilters)
@@ -923,9 +907,6 @@ struct SidebarView: View {
     private var activeResearchFilterCount: Int {
         let filters = controller.library.filters
         return [
-            filters.isReviewed,
-            filters.isUnqualified,
-            filters.isChangedSinceReview,
             filters.needsAttention,
             filters.hasExplicitConnections,
             filters.hasMalformedMetadata,
@@ -967,9 +948,6 @@ struct SidebarView: View {
 
     private func clearResearchFilters() {
         updateFilters {
-            $0.isReviewed = false
-            $0.isUnqualified = false
-            $0.isChangedSinceReview = false
             $0.needsAttention = false
             $0.hasExplicitConnections = false
             $0.hasMalformedMetadata = false
@@ -994,7 +972,6 @@ struct SidebarView: View {
             currentVaultRole: context.currentVaultRole,
             locationScope: controller.library.locationScope,
             resolvedIdentityPaths: context.resolvedIdentityPaths,
-            reviewDisplayState: context.reviewDisplayState,
             openNote: context.openNote,
             requestLifecycle: { controller.requestLifecycle($0) },
             revealNote: context.revealNote,
@@ -1119,7 +1096,7 @@ struct SidebarLifecycleDestinationView: View {
                 onRequestPutBackFocus(item.note.relativePath)
             }
         } message: {
-            Text("This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it.")
+            Text("This cannot be undone. Scholium removes the note, its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it.")
         }
     }
 
@@ -1579,7 +1556,6 @@ private struct SidebarTreeContext {
     let currentVaultRole: VaultRole
     let locationScope: NoteLocationScope
     let resolvedIdentityPaths: Set<String>
-    let reviewDisplayState: (String) -> HumanReviewDisplayState
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let requestLifecycle: (NoteLifecycleRequest) -> Void
     let revealNote: (String) -> Void
@@ -1665,8 +1641,7 @@ private struct TreeNodeView: View {
                 NoteCardRow(
                     note: note,
                     isActive: selectedDocumentPath == note.relativePath,
-                    vaultRole: context.currentVaultRole,
-                    reviewDisplayState: context.reviewDisplayState(note.relativePath)
+                    vaultRole: context.currentVaultRole
                 )
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -1680,7 +1655,7 @@ private struct TreeNodeView: View {
                         ? "Agent-authored Critique"
                         : context.currentVaultRole.allowsCritique
                         ? "Work"
-                        : context.reviewDisplayState(note.relativePath).badgeLabel
+                        : "Note"
                 )
                 .contextMenu {
                     Button {
@@ -1796,7 +1771,7 @@ private struct TreeNodeView: View {
         switch action {
         case .setAside: "Move ‘\(note.title ?? note.displayName)’ out of the active Workspace?"
         case .trash: "Move ‘\(note.title ?? note.displayName)’ to Trash?"
-        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes its comments, Human Review, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it. This cannot be undone."
+        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it. This cannot be undone."
         case nil: ""
         }
     }
@@ -1830,25 +1805,9 @@ struct NoteCardRow: View {
     let note: WindowDocumentLocation
     let isActive: Bool
     let vaultRole: VaultRole
-    let reviewDisplayState: HumanReviewDisplayState
 
     var body: some View {
         HStack(spacing: 6) {
-            if vaultRole.allowsHumanReview {
-                Image(systemName: reviewBadgeSymbol)
-                    .font(.system(size: 10))
-                    .foregroundStyle(reviewBadgeColor)
-                    .help(reviewBadgeLabel)
-                    .accessibilityLabel(reviewBadgeLabel)
-            } else if let status = note.status,
-                      !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Image(systemName: "circle.fill")
-                    .font(.system(size: 6))
-                    .foregroundStyle(ScholiumColorRole.information.color)
-                    .help(status.capitalized)
-                    .accessibilityLabel(status.capitalized)
-            }
-
             Text(note.title ?? note.displayName)
                 .font(ScholiumInterfaceTypography.libraryNoteTitle)
                 .fontWeight(isActive ? .semibold : .regular)
@@ -1878,45 +1837,4 @@ struct NoteCardRow: View {
         .help(note.title ?? note.displayName)
     }
 
-    private var reviewBadgeSymbol: String {
-        reviewDisplayState.badgeSymbol
-    }
-
-    private var reviewBadgeColor: Color {
-        reviewDisplayState.badgeColor
-    }
-
-    private var reviewBadgeLabel: String {
-        reviewDisplayState.badgeLabel
-    }
-
-}
-
-private extension HumanReviewDisplayState {
-    var badgeSymbol: String {
-        switch self {
-        case .notReviewed: "circle"
-        case .reviewed: "checkmark.circle.fill"
-        case .qualified: "checkmark.seal.fill"
-        case .unqualified: "xmark.seal.fill"
-        }
-    }
-
-    var badgeColor: Color {
-        switch self {
-        case .notReviewed: ScholiumColorRole.mutedText.color.opacity(0.4)
-        case .reviewed: ScholiumColorRole.secondaryText.color
-        case .qualified: ScholiumColorRole.confirmed.color
-        case .unqualified: ScholiumColorRole.destructive.color
-        }
-    }
-
-    var badgeLabel: String {
-        switch self {
-        case .notReviewed: "Not reviewed"
-        case .reviewed: "Reviewed"
-        case .qualified: "Qualified"
-        case .unqualified: "Unqualified"
-        }
-    }
 }

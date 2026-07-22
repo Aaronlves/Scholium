@@ -178,7 +178,7 @@ struct ArchitectureBoundaryTests {
             ("Triptych Search index authority", #"\bTriptychSearchIndex\b"#),
             ("portable control-store authority", #"\bTriptychControlStore\b"#),
             ("research-skill store authority", #"\bResearchSkillStore\b"#),
-            ("Human Review store authority", #"\bHumanReviewStore\b"#),
+            ("legacy Review archive authority", #"\bHumanReviewStore\b"#),
             ("Dialogue store authority", #"\bDialogueStore\b"#),
             ("Critique registry authority", #"\bCritiqueRegistry\b"#),
             ("checkpoint store authority", #"\bTriptychCheckpointStore\b"#),

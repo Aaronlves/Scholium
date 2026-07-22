@@ -59,10 +59,10 @@ Prefer `nextActions` from JSON preparation and completion results. Each action
 contains an argument-vector `command`, not a shell string. Execute the
 arguments without interpolation and supply `inputTemplate` through stdin only
 after replacing every `REPLACE_WITH` marker with checked evidence.
-For Dialogue, the typed `promote` action carries the fixed Target, Materials,
+For Discuss, the typed `promote` action carries the fixed Target, Materials,
 scope, and Comments into Develop or Revise. Use it when an explicitly
 authorized request would change the note; do not reconstruct that request or
-mutate the note through Dialogue.
+mutate the note through Discuss.
 
 The normal lifecycle is:
 
@@ -77,7 +77,7 @@ and Materials, choose exact resource IDs or an explicit empty set, then submit
 the preparation's `select_resources` action. Generic `skills show` retrieval is
 not attached to that run.
 
-Record any required Dialogue reply or Critique output, perform only the
+Record any required Discuss reply or Critique output, perform only the
 authorized write, and submit the function-specific completion schema. A
 Develop or Revise completion that changed the Target returns
 `awaiting_fidelity` plus a `prepare_fidelity` action. Use it instead of
@@ -112,29 +112,29 @@ After replacement, reread the note. On `Revision mismatch`, stop, discard the pe
 
 Use `move`, `set-aside`, `trash`, or permanent `delete` only when the researcher explicitly requests that exact lifecycle action. They are not integration shortcuts.
 
-## 5. Read and answer Dialogue
+## 5. Read and answer Discuss
 
-When a Dialogue ID is supplied, retrieve its exact record:
+When a Discussion ID is supplied, retrieve its exact record:
 
 ```sh
-scholium dialogue show <dialogue-id> --triptych <triptych> --format json
+scholium discuss show <discussion-id> --triptych <triptych> --format json
 ```
 
-Treat the initial instruction, Prepared Instructions, included Comments, follow-up Comments, and agent Responses as the scholarly exchange. Prepared Instructions are transport history, not a methodological authority or a required research record. A selected note fingerprint stored in Dialogue is advisory request-time context; reread the live note before every mutation.
+Treat the initial instruction, Prepared Instructions, included Comments, follow-up Comments, and agent Responses as the scholarly exchange. Prepared Instructions are transport history, not a methodological authority or a required research record. A selected note fingerprint stored in the Discussion is advisory request-time context; reread the live note before every mutation.
 
-For the Dialogue-response architecture, the JSON record contains the required request-scoped `responseContract` snapshot. Use that snapshot through `scholium-dialogue-response`; do not replace it with newer Dialogue Defaults. A missing snapshot is invalid current state and must fail closed. Copied instructions must identify the Dialogue ID and Triptych selector so the agent can retrieve the exact record without guessing.
+For Discuss, the JSON record contains the required request-scoped `responseContract` snapshot. Use that snapshot through `scholium-discuss-response`; do not replace it with newer Discuss Defaults. A missing snapshot is invalid current state and must fail closed. Copied instructions must identify the Discussion ID and Triptych selector so the agent can retrieve the exact record without guessing.
 
-Use `dialogue list` only when discovery is necessary. Filter by Triptych and note whenever possible.
+Use `discuss list` only when discovery is necessary. Filter by Triptych and note whenever possible.
 
 Persist the final agent Response:
 
 ```sh
-scholium dialogue reply <dialogue-id> --triptych <triptych> --agent <agent-name> --from <response-file>
+scholium discuss reply <discussion-id> --triptych <triptych> --agent <agent-name> --from <response-file>
 ```
 
-When the response addresses one selected note or Comment, add the exact `--note <vault>:<relative-path>` and, when supplied by Dialogue, `--comment <uuid>` selectors.
+When the response addresses one selected note or Comment, add the exact `--note <vault>:<relative-path>` and, when supplied by Discuss, `--comment <uuid>` selectors.
 
-Use `--from` for multiline responses. Never interpolate untrusted Markdown or researcher text into a shell command. Compose the reply under `scholium-dialogue-response`; it should contain the base academic outcome, only the researcher-selected optional modules, material uncertainty, and any needed researcher decision—not commands, token counts, or routine file operations.
+Use `--from` for multiline responses. Never interpolate untrusted Markdown or researcher text into a shell command. Compose the reply under `scholium-discuss-response`; it should contain the base academic outcome, only the researcher-selected optional modules, material uncertainty, and any needed researcher decision—not commands, token counts, or routine file operations.
 
 ## 6. Recommended Bibliography
 
@@ -148,10 +148,10 @@ Zotero mutation.
 Stop the affected operation when:
 
 - the requested Triptych or vault cannot be resolved;
-- a selected note no longer belongs to the Dialogue or Triptych;
+- a selected note no longer belongs to the Discussion or Triptych;
 - a note cannot be decoded as UTF-8;
 - the expected fingerprint is stale;
-- the Dialogue store reports a health error;
+- the Discussion store reports a health error;
 - the CLI is unavailable or lacks the required command;
 - the exact target or authorization is ambiguous.
 
@@ -159,4 +159,4 @@ Also stop when a required `nextActions` command is absent from the installed
 CLI. Run `scholium version`, `doctor`, and command-specific help; do not fall
 back to guessed options or direct `.scholium` edits.
 
-Report the failure in the active conversation. If a Dialogue ID remains writable, also record a concise stopped-state Response there.
+Report the failure in the active conversation. If a Discussion ID remains writable, also record a concise stopped-state Response there.

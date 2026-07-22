@@ -7,18 +7,16 @@ struct ResearchFunctionContractsTests {
     @Test("Function roles, write authority, checkpoints, and Fidelity requirements are explicit")
     func functionRoleMatrix() {
         #expect(ResearchFunctionID.develop.allowedTargetRoles == [.analysis, .topic])
-        #expect(ResearchFunctionID.review.allowedTargetRoles == [.analysis, .topic])
         #expect(ResearchFunctionID.critique.allowedTargetRoles == [.work])
         #expect(ResearchFunctionID.revise.allowedTargetRoles == [.work])
         #expect(ResearchFunctionID.manuscript.allowedTargetRoles == [.work])
-        #expect(ResearchFunctionID.dialogue.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
+        #expect(ResearchFunctionID.discuss.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
         #expect(ResearchFunctionID.fidelity.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
 
         #expect(ResearchFunctionID.develop.writesTarget)
         #expect(ResearchFunctionID.revise.writesTarget)
         #expect(ResearchFunctionID.manuscript.writesTarget)
-        #expect(!ResearchFunctionID.dialogue.writesTarget)
-        #expect(!ResearchFunctionID.review.writesTarget)
+        #expect(!ResearchFunctionID.discuss.writesTarget)
         #expect(!ResearchFunctionID.fidelity.writesTarget)
         #expect(!ResearchFunctionID.critique.writesTarget)
 
@@ -26,8 +24,7 @@ struct ResearchFunctionContractsTests {
         #expect(ResearchFunctionID.critique.requiresCheckpoint)
         #expect(ResearchFunctionID.revise.requiresCheckpoint)
         #expect(ResearchFunctionID.manuscript.requiresCheckpoint)
-        #expect(!ResearchFunctionID.dialogue.requiresCheckpoint)
-        #expect(!ResearchFunctionID.review.requiresCheckpoint)
+        #expect(!ResearchFunctionID.discuss.requiresCheckpoint)
         #expect(!ResearchFunctionID.fidelity.requiresCheckpoint)
     }
 
@@ -115,7 +112,7 @@ struct ResearchFunctionContractsTests {
         #expect(ResearchFunctionID.develop.conditionalResources.contains(
             .developmentSynthesis
         ))
-        #expect(ResearchFunctionID.dialogue.conditionalResources.isEmpty)
+        #expect(ResearchFunctionID.discuss.conditionalResources.isEmpty)
         #expect(ResearchFunctionConditionalResource.developmentSynthesis.kind == .method)
         #expect(ResearchFunctionConditionalResource.revisionOutputContracts.kind == .template)
         #expect(ResearchFunctionConditionalResource.manuscriptGates.kind == .checklist)
@@ -159,11 +156,11 @@ struct ResearchFunctionContractsTests {
 
     }
 
-    @Test("Dialogue module selection is ordered and request scoped")
-    func dialogueResponseModuleSelection() throws {
+    @Test("Discuss module selection is ordered and request scoped")
+    func discussResponseModuleSelection() throws {
         let analysis = target(role: .analysis)
         let selected = ResearchFunctionRequest(
-            function: .dialogue,
+            function: .discuss,
             target: analysis,
             instruction: "State the bounded academic outcome.",
             dialogueResponseModules: [
@@ -180,7 +177,7 @@ struct ResearchFunctionContractsTests {
         try selected.validate()
 
         let academicOutcomeOnly = ResearchFunctionRequest(
-            function: .dialogue,
+            function: .discuss,
             target: analysis,
             instruction: "State the bounded academic outcome.",
             dialogueResponseModules: []
@@ -190,7 +187,7 @@ struct ResearchFunctionContractsTests {
 
         #expect(throws: ResearchFunctionContractError.self) {
             try ResearchFunctionRequest(
-                function: .dialogue,
+                function: .discuss,
                 target: analysis,
                 instruction: "State the bounded academic outcome.",
                 dialogueResponseModules: [
@@ -225,6 +222,62 @@ struct ResearchFunctionContractsTests {
         ])
         let defaults = try decoder.decode(ResearchFunctionRequest.self, from: defaultData)
         #expect(defaults.dialogueResponseModules == nil)
+    }
+
+    @Test("Legacy Dialogue decodes as Discuss and never re-encodes the retired function name")
+    func legacyDialogueFunctionDecode() throws {
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        let decoded = try decoder.decode(
+            ResearchFunctionID.self,
+            from: Data("\"dialogue\"".utf8)
+        )
+        #expect(decoded == .discuss)
+        #expect(String(decoding: try encoder.encode(decoded), as: UTF8.self) == "\"discuss\"")
+    }
+
+    @Test("Write authorization and shared Fidelity targets survive request persistence")
+    func multiTargetRequestRoundTrip() throws {
+        let analysis = target(role: .analysis)
+        let topic = target(role: .topic)
+        let write = ResearchFunctionRequest(
+            function: .develop,
+            target: analysis,
+            conditionalResources: [],
+            writeScope: .selectedNotes,
+            authorizedWriteTargets: [analysis, topic]
+        )
+        try write.validate()
+
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let storedWrite = try decoder.decode(
+            ResearchFunctionRequest.self,
+            from: encoder.encode(write)
+        )
+        #expect(storedWrite == write)
+        #expect(storedWrite.writeScope == .selectedNotes)
+        #expect(Set(storedWrite.authorizedWriteTargets.map(\.noteID)) == [
+            analysis.noteID,
+            topic.noteID,
+        ])
+
+        let fidelity = ResearchFunctionRequest(
+            function: .fidelity,
+            target: analysis,
+            checks: [.content, .citations],
+            fidelityTargets: [topic, analysis]
+        )
+        try fidelity.validate()
+        let storedFidelity = try decoder.decode(
+            ResearchFunctionRequest.self,
+            from: encoder.encode(fidelity)
+        )
+        #expect(storedFidelity == fidelity)
+        #expect(Set(storedFidelity.resolvedFidelityTargets.map(\.noteID)) == [
+            analysis.noteID,
+            topic.noteID,
+        ])
     }
 
     @Test("Citation style selection is explicit")

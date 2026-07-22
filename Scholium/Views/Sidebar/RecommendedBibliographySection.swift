@@ -209,7 +209,7 @@ struct RecommendedBibliographySection: View {
             }
 
             if !candidate.goals.isEmpty {
-                Text(candidate.goals.map(\.interfaceName).joined(separator: " · "))
+                Text(candidate.goals.map(\.interfaceName).joined(separator: ", "))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -260,7 +260,7 @@ struct RecommendedBibliographySection: View {
         let authors = candidate.identity.authors.joined(separator: ", ")
         return [authors.isEmpty ? nil : authors, candidate.identity.year.map(String.init)]
             .compactMap { $0 }
-            .joined(separator: " · ")
+            .joined(separator: ", ")
     }
 
     private func candidateAccessibilityLabel(

@@ -1,4 +1,4 @@
-# Dialogue Response Method
+# Discuss Response Method
 
 ## 1. Build the base outcome
 
@@ -57,7 +57,7 @@ Do not create a separate heading when one sentence in the relevant module is cle
 - Use at most one short paragraph or three items for each selected module.
 - Prefer no more than one decisive issue per optional module unless the task genuinely requires more.
 - Omit empty headings.
-- Avoid repeating note titles and source lists already visible in Dialogue unless identification prevents ambiguity.
+- Avoid repeating note titles and source lists already visible in Discuss unless identification prevents ambiguity.
 
 ## 6. Example
 

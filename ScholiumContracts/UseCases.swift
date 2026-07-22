@@ -56,27 +56,48 @@ public protocol DiscoveryUseCases: Sendable {
 
 public protocol ResearchRecordUseCases: Sendable {
     func snapshot() async throws -> WorkspaceResearchSnapshot
-    func humanReview(noteID: UUID) async throws -> HumanReviewRecord?
-    func comments(noteID: UUID) async throws -> [ResearcherComment]
-    func addComment(to note: VaultQualifiedNoteID, text: String, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> HumanReviewRecord
-    func updateComment(noteID: UUID, commentID: UUID, text: String) async throws -> HumanReviewRecord
-    func setCommentResolved(noteID: UUID, commentID: UUID, resolved: Bool) async throws -> HumanReviewRecord
-    func deleteComment(noteID: UUID, commentID: UUID) async throws -> HumanReviewRecord
-    func reattachComment(to note: VaultQualifiedNoteID, commentID: UUID, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> HumanReviewRecord
-    func reattachComments(to note: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> HumanReviewRecord
-    func saveHumanReviewDraft(for note: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint, qualification: NoteQualification?, reviewNote: String) async throws -> HumanReviewRecord
-    func completeHumanReview(for note: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint, qualification: NoteQualification?, reviewNote: String) async throws -> HumanReviewRecord
-    func dialogues(noteID: UUID) async throws -> [DialogueEntry]
+    func settle(
+        _ note: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint,
+        rationale: String?
+    ) async throws -> SettlementRecord
+    func annotations(noteID: UUID) async throws -> [AnnotationRecord]
+    func addAnnotation(to note: VaultQualifiedNoteID, text: String, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> AnnotationRecord
+    func updateAnnotation(noteID: UUID, annotationID: UUID, text: String) async throws -> AnnotationRecord
+    func setAnnotationResolved(noteID: UUID, annotationID: UUID, resolved: Bool) async throws -> AnnotationRecord
+    func deleteAnnotation(noteID: UUID, annotationID: UUID) async throws -> AnnotationRecord
+    func reattachAnnotation(to note: VaultQualifiedNoteID, annotationID: UUID, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> AnnotationRecord
+    func reattachAnnotations(to note: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> [AnnotationRecord]
+    func commentExchanges(noteID: UUID) async throws -> [CommentExchange]
+    func commentExchange(id: UUID) async throws -> CommentExchange
+    func createCommentExchange(_ exchange: CommentExchange) async throws -> CommentExchange
+    func appendCommentExchangeTurn(exchangeID: UUID, turn: CommentExchangeTurn) async throws -> CommentExchange
+    func finishCommentExchange(exchangeID: UUID) async throws -> CommentExchange
+    func discussionHistory(noteID: UUID) async throws -> [DialogueEntry]
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
-    func dialogueResponseProfile() async throws -> DialogueResponseProfile
+    func setCritiqueFindingDisposition(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        findingID: String,
+        decision: CritiqueFindingDispositionDecision,
+        rationale: String?,
+        noTextChangeRationale: String?,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation
+    func completeCritiqueRound(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation
+    func discussResponseProfile() async throws -> DialogueResponseProfile
     func settings() async throws -> TriptychSettings
     func saveSettings(_ settings: TriptychSettings) async throws
-    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws
-    func dialogueEntries() async throws -> [DialogueEntry]
-    func dialogue(id: UUID) async throws -> DialogueEntry
-    func appendDialogueReply(_ reply: DialogueReply, to entryID: UUID) async throws -> DialogueEntry
-    func appendDialogueFollowUpComment(_ comment: DialogueFollowUpComment, to entryID: UUID) async throws -> DialogueEntry
+    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws
+    func discussionRecords() async throws -> [DialogueEntry]
+    func discussion(id: UUID) async throws -> DialogueEntry
+    func appendDiscussionReply(_ reply: DialogueReply, to entryID: UUID) async throws -> DialogueEntry
+    func appendDiscussionFollowUp(_ comment: DialogueFollowUpComment, to entryID: UUID) async throws -> DialogueEntry
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
 }
@@ -179,6 +200,10 @@ public protocol ResearchFunctionUseCases: Sendable {
     func completeFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion
+
+    func finishDiscussion(
+        runID: UUID
+    ) async throws -> ResearchActivityEvent
 
     func cancelFunction(
         runID: UUID

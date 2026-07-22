@@ -437,6 +437,11 @@ public actor StyleOperations: StyleUseCases {
     private func normalized(_ profile: DocumentAppearanceProfile) -> DocumentAppearanceProfile {
         var profile = profile
         profile.name = normalizedName(profile.name, fallback: "Untitled Appearance")
+        profile.settings.lineWidthCharacterUnits = profile.settings.lineWidthCharacterUnits.isFinite
+            ? profile.settings.lineWidthCharacterUnits.clamped(
+                to: DocumentAppearanceSettings.lineWidthCharacterUnitsRange
+            )
+            : DocumentAppearanceSettings.defaultLineWidthCharacterUnits
         profile.settings.body.fontSizePoints = profile.settings.body.fontSizePoints.clamped(to: 9...24)
         profile.settings.body.lineHeight = profile.settings.body.lineHeight.clamped(to: 1.2...2.4)
         profile.settings.body.paragraphSpacingEm = profile.settings.body.paragraphSpacingEm.clamped(to: 0...2)

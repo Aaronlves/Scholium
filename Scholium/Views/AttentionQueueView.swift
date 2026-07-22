@@ -215,11 +215,11 @@ struct AttentionQueueView: View {
     private func symbol(_ kind: AttentionQueueKind) -> String {
         switch kind {
         case .possibleOrphan: "circle.dashed"
-        case .changedSinceReview: "clock.arrow.circlepath"
+        case .changedSinceSettled: "clock.arrow.circlepath"
+        case .changeAttributionNeeded: "person.crop.circle.badge.questionmark"
         case .malformedMetadata: "exclamationmark.braces"
         case .brokenConnection: "link.badge.plus"
         case .ambiguousConnection: "questionmark.diamond"
-        case .unqualifiedAnalysisReliance: "exclamationmark.triangle"
         case .unresolvedIdentity: "person.text.rectangle"
         }
     }

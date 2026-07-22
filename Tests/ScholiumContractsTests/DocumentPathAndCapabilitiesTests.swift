@@ -167,7 +167,6 @@ struct DocumentPathAndCapabilitiesTests {
                 modificationDate: nil
             ),
             lifecycle: .active,
-            review: nil,
             graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
         )
 

@@ -355,7 +355,7 @@ struct ResearchSkillStoreTests {
                 && $0.validationIssues.contains { $0.contains("protected Scholium package") }
         })
         await #expect(throws: ResearchSkillError.self) {
-            _ = try await store.instructionAssembly(mode: .dialogue)
+            _ = try await store.instructionAssembly(mode: .discuss)
         }
     }
 

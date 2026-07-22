@@ -344,6 +344,10 @@ public actor ResearchOperations: ResearchUseCases {
         try await functionCoordinator.completeFunction(submission)
     }
 
+    public func finishDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
+        try await functionCoordinator.finishDiscussion(runID: runID)
+    }
+
     public func cancelFunction(runID: UUID) async throws {
         try await functionCoordinator.cancelFunction(runID: runID)
     }
@@ -408,25 +412,34 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.researchSnapshot()
     }
 
-    public func humanReview(noteID: UUID) async throws -> HumanReviewRecord? {
+    @discardableResult
+    public func settle(
+        _ note: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint,
+        rationale: String?
+    ) async throws -> SettlementRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.humanReview(noteID: noteID)
+        return try await handle.settle(
+            note,
+            expectedRevision: expectedRevision,
+            rationale: rationale
+        )
     }
 
-    public func comments(noteID: UUID) async throws -> [ResearcherComment] {
+    public func annotations(noteID: UUID) async throws -> [AnnotationRecord] {
         let handle = try await reference.requireHandle()
-        return try await handle.comments(noteID: noteID)
+        return try await handle.annotations(noteID: noteID)
     }
 
     @discardableResult
-    public func addComment(
+    public func addAnnotation(
         to note: VaultQualifiedNoteID,
         text: String,
         anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.addComment(
+        return try await handle.addAnnotation(
             to: note,
             text: text,
             anchor: anchor,
@@ -435,105 +448,114 @@ public actor ResearchOperations: ResearchUseCases {
     }
 
     @discardableResult
-    public func updateComment(
+    public func updateAnnotation(
         noteID: UUID,
-        commentID: UUID,
+        annotationID: UUID,
         text: String
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.updateComment(
+        return try await handle.updateAnnotation(
             noteID: noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             text: text
         )
     }
 
     @discardableResult
-    public func setCommentResolved(
+    public func setAnnotationResolved(
         noteID: UUID,
-        commentID: UUID,
+        annotationID: UUID,
         resolved: Bool
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.setCommentResolved(
+        return try await handle.setAnnotationResolved(
             noteID: noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             resolved: resolved
         )
     }
 
     @discardableResult
-    public func deleteComment(
+    public func deleteAnnotation(
         noteID: UUID,
-        commentID: UUID
-    ) async throws -> HumanReviewRecord {
+        annotationID: UUID
+    ) async throws -> AnnotationRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.deleteComment(noteID: noteID, commentID: commentID)
+        return try await handle.deleteAnnotation(
+            noteID: noteID,
+            annotationID: annotationID
+        )
     }
 
     @discardableResult
-    public func reattachComment(
+    public func reattachAnnotation(
         to note: VaultQualifiedNoteID,
-        commentID: UUID,
+        annotationID: UUID,
         anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.reattachComment(
+        return try await handle.reattachAnnotation(
             to: note,
-            commentID: commentID,
+            annotationID: annotationID,
             anchor: anchor,
             expectedRevision: expectedRevision
         )
     }
 
     @discardableResult
-    public func reattachComments(
+    public func reattachAnnotations(
         to note: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> [AnnotationRecord] {
         let handle = try await reference.requireHandle()
-        return try await handle.reattachComments(
+        return try await handle.reattachAnnotations(
             to: note,
             expectedRevision: expectedRevision
         )
     }
 
-    @discardableResult
-    public func saveHumanReviewDraft(
-        for note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws -> HumanReviewRecord {
+    public func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
         let handle = try await reference.requireHandle()
-        return try await handle.saveHumanReviewDraft(
-            for: note,
-            expectedRevision: expectedRevision,
-            qualification: qualification,
-            reviewNote: reviewNote
+        return try await handle.commentExchanges(noteID: noteID)
+    }
+
+    public func commentExchange(id: UUID) async throws -> CommentExchange {
+        let handle = try await reference.requireHandle()
+        return try await handle.commentExchange(id: id)
+    }
+
+    @discardableResult
+    public func createCommentExchange(
+        _ exchange: CommentExchange
+    ) async throws -> CommentExchange {
+        let handle = try await reference.requireHandle()
+        return try await handle.createCommentExchange(exchange)
+    }
+
+    @discardableResult
+    public func appendCommentExchangeTurn(
+        exchangeID: UUID,
+        turn: CommentExchangeTurn
+    ) async throws -> CommentExchange {
+        let handle = try await reference.requireHandle()
+        return try await handle.appendCommentExchangeTurn(
+            exchangeID: exchangeID,
+            turn: turn
         )
     }
 
     @discardableResult
-    public func completeHumanReview(
-        for note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws -> HumanReviewRecord {
+    public func finishCommentExchange(
+        exchangeID: UUID
+    ) async throws -> CommentExchange {
         let handle = try await reference.requireHandle()
-        return try await handle.completeHumanReview(
-            for: note,
-            expectedRevision: expectedRevision,
-            qualification: qualification,
-            reviewNote: reviewNote
-        )
+        return try await handle.finishCommentExchange(exchangeID: exchangeID)
     }
 
-    public func dialogues(noteID: UUID) async throws -> [DialogueEntry] {
+    public func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
         let handle = try await reference.requireHandle()
-        return try await handle.dialogues(noteID: noteID)
+        return try await handle.discussionHistory(noteID: noteID)
     }
 
     public func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
@@ -546,6 +568,40 @@ public actor ResearchOperations: ResearchUseCases {
     ) async throws -> CritiqueAssociation? {
         let handle = try await reference.requireHandle()
         return try await handle.critique(critiqueRelativePath: critiqueRelativePath)
+    }
+
+    public func setCritiqueFindingDisposition(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        findingID: String,
+        decision: CritiqueFindingDispositionDecision,
+        rationale: String?,
+        noTextChangeRationale: String?,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation {
+        let handle = try await reference.requireHandle()
+        return try await handle.setCritiqueFindingDisposition(
+            workNote: workNote,
+            roundID: roundID,
+            findingID: findingID,
+            decision: decision,
+            rationale: rationale,
+            noTextChangeRationale: noTextChangeRationale,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    public func completeCritiqueRound(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation {
+        let handle = try await reference.requireHandle()
+        return try await handle.completeCritiqueRound(
+            workNote: workNote,
+            roundID: roundID,
+            expectedRevision: expectedRevision
+        )
     }
 
     @discardableResult
@@ -612,9 +668,9 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.restoreCheckpoint(checkpointID, selection: selection)
     }
 
-    public func dialogueResponseProfile() async throws -> DialogueResponseProfile {
+    public func discussResponseProfile() async throws -> DialogueResponseProfile {
         let handle = try await reference.requireHandle()
-        return try await handle.dialogueResponseProfile()
+        return try await handle.discussResponseProfile()
     }
 
     public func settings() async throws -> TriptychSettings {
@@ -627,39 +683,39 @@ public actor ResearchOperations: ResearchUseCases {
         try await handle.saveTriptychSettings(settings)
     }
 
-    public func saveDialogueResponseProfile(
+    public func saveDiscussResponseProfile(
         _ profile: DialogueResponseProfile
     ) async throws {
         let handle = try await reference.requireHandle()
-        try await handle.saveDialogueResponseProfile(profile)
+        try await handle.saveDiscussResponseProfile(profile)
     }
 
-    public func dialogueEntries() async throws -> [DialogueEntry] {
+    public func discussionRecords() async throws -> [DialogueEntry] {
         let handle = try await reference.requireHandle()
-        return try await handle.dialogueEntries()
+        return try await handle.discussionRecords()
     }
 
-    public func dialogue(id: UUID) async throws -> DialogueEntry {
+    public func discussion(id: UUID) async throws -> DialogueEntry {
         let handle = try await reference.requireHandle()
-        return try await handle.dialogue(id: id)
+        return try await handle.discussion(id: id)
     }
 
     @discardableResult
-    public func appendDialogueReply(
+    public func appendDiscussionReply(
         _ reply: DialogueReply,
         to entryID: UUID
     ) async throws -> DialogueEntry {
         let handle = try await reference.requireHandle()
-        return try await handle.appendDialogueReply(reply, to: entryID)
+        return try await handle.appendDiscussionReply(reply, to: entryID)
     }
 
     @discardableResult
-    public func appendDialogueFollowUpComment(
+    public func appendDiscussionFollowUp(
         _ comment: DialogueFollowUpComment,
         to entryID: UUID
     ) async throws -> DialogueEntry {
         let handle = try await reference.requireHandle()
-        return try await handle.appendDialogueFollowUpComment(comment, to: entryID)
+        return try await handle.appendDiscussionFollowUp(comment, to: entryID)
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
@@ -745,7 +801,7 @@ public actor ResearchOperations: ResearchUseCases {
     }
 
     public func skillInstructionAssembly(
-        mode: ResearchSkillMode = .dialogue,
+        mode: ResearchSkillMode = .discuss,
         requestedSkillIDs: [String] = [],
         mixedPhases: [ResearchSkillAssemblyPhase] = []
     ) async throws -> String {
@@ -897,7 +953,7 @@ public actor ResearchGuidanceOperations {
     }
 
     public func instructionAssembly(
-        mode: ResearchSkillMode = .dialogue,
+        mode: ResearchSkillMode = .discuss,
         requestedSkillIDs: [String] = [],
         mixedPhases: [ResearchSkillAssemblyPhase] = []
     ) async throws -> String {

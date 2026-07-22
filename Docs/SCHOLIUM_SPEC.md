@@ -34,32 +34,42 @@ unrecognized Triptych files.
 - **Unclassified** temporarily stages imported Markdown before the researcher
   assigns it to a vault.
 - A **Research Function** is a researcher-selected scholarly operation exposed
-  by the Research Inspector's **Functions** mode and executed through the
-  shared Application API: Dialogue, Develop, Fidelity, Critique, Revise, or
-  Manuscript.
-- A function's **Target** is its one immutable Analysis, Topic, or Work. Its
-  **Materials** are explicitly selected read-only notes; they are never
-  implicit write targets.
-- **Dialogue** records researcher Comments, agent Responses, and follow-ups. It
-  may create transient external-agent instructions, but it is not chat, task,
-  or permission infrastructure.
-- **Human Review** is the researcher's fingerprint-bound review of an Analysis
-  or Topic. It alone records **Qualification** as Qualified or Unqualified and
-  is presented within Dialogue without becoming an agent-facing function.
+  by the Research Inspector's **Actions** mode and executed through the shared
+  Application API. **Work with Agent** is its entry point for bounded discussion
+  or an explicitly chosen write; Fidelity, Critique, and Manuscript remain
+  separate actions where the role permits them.
+- A function's **Origin** is the immutable current Analysis, Topic, or Work
+  from which the activity begins. Its **Materials** are explicitly selected
+  read-only notes. A Write additionally freezes one authorized set of existing
+  active note identities under Current Note, Selected Notes, Analyses and
+  Topics, or Entire Triptych; a Material never becomes writable merely because
+  the agent read it.
+- A **Comment** is a deliberate passage-scoped communication exchange with an
+  agent: researcher request, agent reply, researcher Finish. Only Finish emits
+  the durable **Commented** activity. An **Annotation** is a private,
+  researcher-owned passage note and never emits activity.
+- **Settle** is the researcher's idempotent, fingerprint-bound judgment that
+  one saved revision is sufficiently stable for current research. It is neither
+  a verdict nor a qualification.
 - **Critique** is an attributed agent assessment of one Work. It does not
   replace or silently edit the Work.
 - **Fidelity** audits the exact revision's philosophical content and, when an
   applicable Researcher Skill is bound, citations. It remains distinct from
-  Human Review and Critique.
-- **Connections** are source-located neutral, support, or incompatibility
-  relations. **Attention** contains derived, recoverable warnings; it makes no
-  philosophical judgment.
+  Settle and Critique.
+- **Connect** is the Inspector surface for source-located neutral, support, or
+  incompatibility relations. **Attention** contains derived, recoverable
+  warnings; it makes no philosophical judgment.
 - **Properties** is the human-facing projection of frontmatter. A **Research
   Unit** is the minimal YAML declaration of the epistemic scope represented by
-  a note; **Research Status** presents that unit and its material limitations.
-- **Research Record** is the note-following chronology of Human Review,
-  anchored Comments, Dialogue, Critique rounds and dispositions, and detailed
-  provenance. It is a nonmodal secondary window and contains no versions.
+  a note; About presents its Scope and material Limitations with other chosen
+  properties rather than creating another status model.
+- A **Research Activity Grant** is one short-lived, task-bound write authority.
+  Its plaintext key is carried only in the prepared handoff; Scholium persists
+  only a digest and the frozen Origin, scope, identities, revisions, and expiry.
+- **Research Record** is the note-following detail view for durable research
+  activity, Comment exchanges, Critique, and provenance. It is a nonmodal
+  secondary window and contains no versions. Annotation stays with the page
+  and never appears as chronology.
 - A **Checkpoint** is a self-contained, fingerprint-bound snapshot of the
   complete Triptych, distinct from editor Undo.
 
@@ -81,26 +91,30 @@ contextual inspection must work without data loss, shell reconstruction, or
 surprising state changes. Visual metrics are provisional unless required by
 readability, accessibility, source integrity, or native-window behavior.
 
-Scholium supports source-grounded reading, writing, commenting, review, Search,
-Connections, organization, recovery, and provenance. It is not project or
-reference management, permanent AI chat, or a full Obsidian replacement. The
-manual core must work without Obsidian, Zotero, or agents.
+Scholium supports source-grounded reading, writing, private Annotation,
+deliberate agent communication, Settle, Search, Connect, organization,
+recovery, and provenance. It is not project or reference management,
+permanent AI chat, or a full Obsidian replacement. The manual core must work
+without Obsidian, Zotero, or agents.
 
 ### 2.2 Researcher responsibility and optional agent access
 
 The researcher governs the Triptych and may instruct an external agent to
-mutate files through filesystem or CLI tools. Scholium issues no persistent
-permission, Proposal, scope, or required token: only the current instruction
-authorizes the task. Dialogue and Critique remain optional.
+mutate files through filesystem or CLI tools. Scholium issues no workspace-wide
+or persistent permission and never revives Proposal. Each prepared Write uses
+one short-lived Research Activity Grant whose key, frozen scope, and completion
+command authorize only that activity. Comment, Discuss, and Critique remain
+optional.
 
 Scholium supplies safety, not transferred responsibility:
 
-- exact paths, stable identities, and advisory fingerprints;
+- exact paths, stable identities, and Application-owned fingerprint checks;
 - autosave, atomic writes, external-change detection, and conflicts;
 - automatic and manual Triptych checkpoints, comparison, and restoration.
 
 Extensive external work without a suitable checkpoint is not guaranteed
-recoverable. Fingerprints detect revisions; they are not permission tokens.
+recoverable. Fingerprints detect revisions; they are not permission tokens and
+do not need to be copied into the agent prompt.
 
 The Application API validates each Research Function's Target, Materials,
 revision, method, checkpoint, and completion contract. Frontends select
@@ -123,13 +137,13 @@ methods remain researcher-owned responsibility.
 
 ### 2.3 Authorship and provenance
 
-Keep independent: origin or last modifier; vault role and location; Human
-Review and qualification; fingerprint and changed-since-review state; Critique
-authorship; and Comments or Dialogue replies. Agent origin does not disappear
-after review, qualification, incorporation, or later editing.
+Keep independent: Origin and confirmed modified identities; vault role and
+location; settlement fingerprint and changed-since-settled state; Critique
+authorship; private Annotations; and Comment or Discuss turns. Agent origin
+does not disappear after Finish, Settle, incorporation, or later editing.
 
 Visible labels stay sparse. Location communicates Analysis, Topic, Work, and
-Critique roles; do not compose badges such as **Agent · Analysis**. Put useful
+Critique roles; do not compose badges such as **Agent — Analysis**. Put useful
 provenance and modification detail in Properties or Research Record and show
 warnings only when relevant.
 
@@ -198,7 +212,8 @@ Application Support owns:
   creating a fourth vault, plus the agent application selected for Beta handoff;
 - window sessions and vault-qualified Document tabs;
 - derived indexes, temporary files, and caches;
-- app-owned Human Review, Comments, Dialogue, and Research Record data; and
+- app-owned Research Activity, Settlement, Annotation, Comment, Discuss,
+  Critique, and Research Record data; and
 - self-contained Triptych checkpoints.
 
 ### 3.4 Triptych Guide and AI instructions
@@ -222,8 +237,8 @@ a standing generated index.
 
 Import copies Markdown into `.scholium/unclassified/` without changing the
 original. The copy is readable and editable but receives no role-specific
-Properties, Human Review, qualification, or Critique behavior until classified
-into Analyses, Topics, or Works. Irrelevant Markdown should not be imported.
+role-aware About, Settle, or Critique behavior until classified into Analyses,
+Topics, or Works. Irrelevant Markdown should not be imported.
 
 ## 4. Works folders and organization
 
@@ -241,8 +256,9 @@ Analysis, Topic, and ordinary Work notes support:
   Put Back, and permanent deletion;
 - exact-source preservation, conflict detection, atomic writes, and external
   coordination;
-- source-located Connections and anchored researcher Comments;
-- role-aware Properties and one-note or multi-note Dialogue;
+- source-located Connect relations plus distinct passage Annotations and
+  Comments;
+- role-aware Properties and one-note or multi-note Discuss/Write;
 - Search in **This Note**, **This Vault**, or **Triptych**, plus Attention; and
 - Research Record and independent checkpoint recovery.
 
@@ -262,6 +278,12 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
 - **Source** edits complete Markdown and YAML, shows line numbers, and retains
   the same document session, viewport, measure, and semantic colors while using
   exact-source typography.
+
+All three modes consume the selected Appearance's one shared line-width value.
+It changes only layout in Source: Victor Mono and the exact-source typography
+contract remain unchanged. The CSS `ch` unit resolves against each mode's
+current font and is a character-width unit, not an exact characters-per-line
+promise.
 
 Rendered callouts hide generated role names visually but retain them for
 accessibility. A supplied title inherits the role heading style; an untitled
@@ -324,12 +346,11 @@ claim boundaries—never role, identity, links, confidence, coverage percentage,
 reading passes, timestamps, or derived facts.
 
 New Analysis offers **Declare Now** or **Not Yet**. Not Yet writes no mapping
-or sentinel. The note remains editable and available for Comments, Dialogue,
-Develop, and a Human Review draft, but **Complete Review** requires declared
-Research Status. Existing Analyses receive no migration. Topics and Works use
-the same optional mapping only when it adds a durable boundary not already
-clear from title, body, or links. An authorized agent edit follows ordinary
-fingerprint, conflict, and source-preservation rules.
+or sentinel and blocks no Annotation, Comment, Discuss, Write, Fidelity, or
+Settle action. Existing Analyses receive no migration. Topics and Works use the
+same optional mapping only when it adds a durable boundary not already clear
+from title, body, or links. An authorized agent edit follows the Research
+Activity Grant, conflict, and source-preservation rules.
 
 Creation/modification times are app-owned Research Record facts, not
 Properties; existing timestamp keys remain exact custom source.
@@ -343,18 +364,19 @@ low with unrated notes afterward. No global cross-debate ranking exists;
 Scholium neither generates nor presents Project Relevance. Existing
 `relevance` and `relevance_rating` keys remain preserved custom data.
 
-Properties presents `research_unit` as **Research Status**: Scope first,
-non-empty Limitations second, and **Not Yet** when absent. A role-specific
-top-level `status` is separate production progress, never time or truth. See
-Appendix A.
+About and Properties present `research_unit` as Scope first and every non-empty
+Limitation second. Absence is quiet and writes nothing. A role-specific
+top-level `status` is separate production progress, never time, settlement, or
+truth. See Appendix A.
 
 ### 5.3 Duplicate, rename, and identity
 
 Paths are locations; notes have stable app-owned identities. Duplication creates
-a new identity, resets Review/qualification, and records origin. Confirmed
-moves/renames preserve records and update resolved incoming links. Ambiguous
-external rename keeps the note readable but blocks identity-dependent mutation,
-Review, Research Record, and Comment attachment until confirmation.
+a new identity with no inherited Settlement or Research Activity and records
+origin. Confirmed moves/renames preserve records and update resolved incoming
+links. Ambiguous external rename keeps the note readable but blocks
+identity-dependent mutation, Settle, Research Record, Annotation, and Comment
+attachment until confirmation.
 
 ## 6. Note location, Set Aside, and Trash
 
@@ -364,65 +386,59 @@ active, Set Aside, or Trash state.
 - **Set Aside** is direct and reversible. It records no reason or failure
   status. Set-aside notes remain readable but are excluded from ordinary
   Search, synthesis, Critique, and agent context unless explicitly included.
-- **Move to Trash** excludes the note from ordinary Search, Connections, agent
+- **Move to Trash** excludes the note from ordinary Search, Connect, agent
   context, and workflows without immediately erasing it.
 - **Put Back** restores the exact original vault-relative path and reports a
   conflict rather than inventing another name or destination.
 - **Cancel** changes nothing.
-- **Delete Permanently** purges the note, Comments, Dialogue, Human Review,
-  associated Critique, and note-specific app state from live storage and every
-  checkpoint. A checkpoint that cannot be scrubbed is invalidated and removed;
-  an inseparable shared Dialogue is deleted in full.
+- **Delete Permanently** purges the note, Annotations, Comment and Discuss
+  exchanges, Settlements, Research Activity, associated Critique, and
+  note-specific app state from live storage and every checkpoint. A checkpoint
+  that cannot be scrubbed is invalidated and removed; a shared activity record
+  remains only for other notes and records the removed participant.
 
 Note-specific records follow stable identity into Set Aside and Trash while
 recovery remains possible. Permanent deletion advertises no checkpoint or
 Research Record recovery.
 
-## 7. Human Review, comments, and researcher dispositions
+## 7. Settlement, Comments, and Annotations
 
-### 7.1 Scope and completion
+### 7.1 Settle
 
-Human Review applies to Analyses and Topics; Works use Critique. Completion
-requires a declared Analysis Research Status, a Qualified or Unqualified
-verdict, and a non-empty Review Note of at most 500 characters.
+Settle is available for every active Analysis, Topic, and Work from the lower
+right of Research Activity. It binds to the exact saved fingerprint, accepts an
+optional rationale, records date and researcher identity, is idempotent for that
+fingerprint, and never blocks on an agent response or Fidelity warning. Save
+failure, dirty conflict, unknown stable identity, or a revision mismatch blocks
+Settle. The current fingerprint shows a quiet Settled state; a later saved
+fingerprint keeps the historical record, offers **Settle Again**, and produces
+the transient **Changed Since Settled** HUD and Attention state. Response ready
+and Awaiting Fidelity appear as nonblocking reminders in the confirmation; the
+researcher retains the judgment.
 
-Dialogue presents anchored Comments, agent Responses and follow-ups, and an
-independent researcher-authored Human Review section. Human Review works
-without an agent or prior exchange and never prepares instructions or chooses
-Materials. The Review Note is a note-level judgment, not a Comment. The UI
-shows a counter, never truncates automatically, and exposes only the applicable
-**Review**, **Continue Review**, **Qualified**, or **Unqualified** state.
+### 7.2 Comment and Annotation
 
-**Complete Review** stays unavailable until its conditions are met. If
-Research Status is missing, offer **Declare Research Status…** while preserving
-draft review, Comments, editing, Dialogue, and Develop. **Save as Draft** does
-not mark the fingerprint reviewed; **Cancel** discards unsaved presentation
-changes. Qualification changes only through Human Review.
+Read, Live Preview, and Source expose distinct passage-selection actions.
+**Annotation** creates or edits a private, source-anchored marginal note. It
+remains beside the passage in the page, persists across reopening, and appears
+in neither Research Activity nor Research Record. **Comment** opens a complete
+agent-communication exchange with the exact selection, reply recording, Follow
+Up, and researcher Finish. Finish is the sole operation that appends
+**Commented**. Neither action has a whole-note fallback. Reattachment remains
+available only when quotation and context identify one reliable location.
 
-### 7.2 App-owned comments
+### 7.3 Legacy migration
 
-Every Comment is researcher-owned, outside Markdown, and anchored to stable
-note identity, reviewed fingerprint, UTF-8/UTF-16 range, original line,
-quotation, and context. Read and editor selections create the same record.
-Reattach automatically only when quotation and context identify one reliable
-location; otherwise mark **Needs Reattachment**. The researcher may reattach
-or resolve; an agent may reply but cannot resolve.
+Existing ResearcherComment records import as page Annotations. Existing Human Review
+and qualification records are read-only compatibility archive data: they do not
+create Settled, Attention, or current-state projections. Existing Dialogue data
+does not infer Commented activity.
 
-There is no whole-note Comment model, composer, decoder, or fallback. Without
-a source selection, Dialogue offers no Comment textbox and directs the
-researcher to **Add Comment** from a passage. That action opens Dialogue for an
-Analysis/Topic and Critique for a Work, carrying the anchor and focusing the
-inline composer. Comment, Human Review, Response, Critique, and disposition
-records remain distinct despite shared presentation.
-
-### 7.3 Unqualified Analyses
-
-An Unqualified Analysis remains readable, editable, searchable, linkable, and
-available to Topics, Works, Critique, and later agent work. Explicit scholarly
-reliance may produce a source-anchored, nonblocking Attention warning. A
-neutral Connection alone is not reliance; a citation, explicit support, or
-recognized source-bearing use may be. The warning clears when qualification or
-usage changes.
+Migration uses versioned decoders, writes an Application Support backup before
+replacing a supported older payload, and fails closed without inventing state.
+Legacy Develop, Revise, Fidelity, or Critique may backfill a corresponding
+activity only when its completed record and exact revision evidence prove the
+event. Research Markdown is never rewritten by this migration.
 
 ## 8. Research Functions and direct agent work
 
@@ -433,16 +449,16 @@ the current role-valid note:
 
 | Target | Functions, in order |
 | --- | --- |
-| Analysis or Topic | **Dialogue · Develop · Fidelity** |
-| Work | **Critique · Revise · Dialogue · Fidelity · Manuscript** |
+| Analysis or Topic | **Work with Agent, Fidelity** |
+| Work | **Work with Agent, Critique, Fidelity, Manuscript** |
 
-For an Analysis or Topic, Actions prepends **Review** as a direct
-researcher-authored action. Review remains outside the Research Function
-contract: it prepares no instructions, creates no agent handoff, and opens the
-existing Human Review destination.
+Work with Agent first asks for **Discuss** or **Write**. Discuss is read-only.
+Write opens the internal Develop method for an Analysis or Topic and the
+internal Revise method for a Work. These implementation methods are never
+top-level Actions launchers.
 
 These stable operations are not a taxonomy of philosophy. There is no Manage
-Comments doorway or nested Comment, Human Review, or Critique sheet.
+Comments doorway, Review state, or embedded settlement sheet.
 
 The optional-agent journey is choose function, inspect context, prepare durable
 run, hand off, explicitly paste/submit when needed, then inspect source/status.
@@ -472,54 +488,67 @@ auto-submit, select a model, alter Codex configuration or permissions, install
 Codex, or report agent execution. Unavailable Codex or an invalid root leaves
 the run recoverable with copy, retry, explanation, and cancel routes.
 
-Each function uses one typed panel with immutable current-note Target.
+Each function uses one typed panel with immutable current-note Origin.
 Agent-facing panels select read-only Materials through Search, optional
 Suggested Only, an individually removable Selected Materials tray, and the real
 vault hierarchy. Search covers title/alias/filename/path and retains ancestors;
 nothing is preselected or bulk-selected. Distinguish loading, true empty, and
 blocking failure with Retry Materials. Preparation freezes selection.
 
-Suggestions use only resolved one-hop Connections, in order: from the selected
+Suggestions use only resolved one-hop Connect relations, in order: from the selected
 passage, from the Target, then directly to the Target. Each states its reason
 and source location when available. Transitive paths, lexical or AI similarity,
 Comment text, and inferred evidential roles are forbidden. Suggestions navigate;
 they are not evidence.
 
-A current source selection defaults the scope to **Passage**; otherwise
-**Whole**. Dialogue includes Human Review and Analysis/Topic Comments. Critique
-includes Work Comments, findings, suggestions, and attributed **Accept**,
-**Reject**, or **Rebut** dispositions; a disposition never edits the Work.
-Fidelity offers **Content** and **Citations**. `Command-R` opens Human Review in
-Dialogue for an Analysis/Topic and Critique for a Work. One presentation channel
-keeps role-valid panels mutually exclusive.
+A current source selection may default Critique or Fidelity to **Passage**;
+otherwise those actions use **Whole**. Passage **Comment** is not a function
+panel: the researcher submits a request, the agent replies, and the researcher
+chooses Follow Up or Finish. Finish alone creates Commented. **Discuss** is the
+read-only Work with Agent method for whole-note or multi-note reflection. A
+finished Discuss with no confirmed write creates Discussed; once the researcher
+chooses Write, completion creates Developed or Revised instead and never also
+creates Discussed.
 
-Dialogue is read-only by default and may append an attributed Response. If an
-agent determines that the Target must change, it promotes the same fixed
-request through the API to Develop or Revise before mutation. Frontends do not
-classify prose or expose workflow/package mechanics.
+Work with Agent asks for **Discuss** or **Write** before preparation. Write then
+asks the researcher to authorize exactly one scope:
 
-Transport may include the instruction; selected paths, fingerprints, passages,
-lines, Comments; Triptych/Work context; Research Units; links; destination/edit
-rules; exact read set; and, only for write runs, permission for the single
-fingerprint-bound Target/range. Target/Materials are focal context, not general
+- **Current Note**;
+- **Selected Notes**, initially empty and explicitly chosen by the researcher;
+- **Analyses and Topics**; or
+- **Entire Triptych**.
+
+Resolved linked notes may be recommended inside Selected Notes but are never
+selected automatically. The authorized set includes only existing active
+Analysis, Topic, and Work identities; it excludes Materials, Critiques,
+Annotations, Comment/Discuss records, lifecycle/control files, generated state,
+Set Aside, Trash, Unclassified, creation, deletion, and rename. The Origin is
+recorded separately and receives an activity node only if its source actually
+changes. Preparation freezes the scope and identity set for that run.
+
+Transport may include the instruction; selected paths and passages; Triptych or
+Work context; Research Units; links; destination/edit rules; exact read set;
+and, only for Write, the activity key, frozen scope summary, and one supported
+completion command. It does not expose per-note fingerprints or ask the agent
+to calculate evidence. Origin and Materials are focal context, not general
 authorization. Prompts, model settings, token counts, and paragraph-level AI
 provenance are not permanent records. Each run has one overall instruction.
 
 Conditional methods persist one read-only preflight with primary method,
-checkpoint, and Dialogue/Critique record. The agent finalizes explicit
+checkpoint, and Discuss/Critique record. The agent finalizes explicit
 resources; empty means primary-only. The same run receives only selected pinned
-resources and cannot mutate/complete beforehand. Generic retrieval is not
+resources and cannot mutate or complete beforehand. Generic retrieval is not
 function-resource evidence.
 
-Dialogue shows consequential scholarly context, not active template source or
-assembled technical instructions. **Copy Only** uses the active Settings
-template; **Open in Codex** transfers the same durable request identity without
-making transport text part of the scholarly record.
+Work with Agent shows consequential scholarly context, not active template
+source or assembled technical instructions. **Copy Only** uses the active
+Settings template; **Open in Codex** transfers the same durable request identity
+without making transport text part of the scholarly record.
 
 After source changes, default to a concise academic change summary, material
 unresolved questions, and needed review; file-operation detail is secondary.
 
-Beta Dialogue stores one immutable request `responseContract`: required
+Beta Discuss stores one immutable request `responseContract`: required
 Academic Outcome plus optional Critical Reflection, Remaining Questions,
 Philosophical Significance, Debate Context, and Research Directions. Modules
 affect presentation only; they cannot expand scope, replace methods, or require
@@ -527,24 +556,27 @@ fabrication. Consider every selection without forced findings, weights, or
 coverage ledgers. Fidelity, uncertainty, failure disclosure, and researcher
 control always apply.
 
-Develop, Revise, Manuscript, and Dialogue promoted to a write function flush
-autosave and create **Before Agent Work** before instructions return. Critique
-uses its named checkpoint. Human Review and Fidelity are read-only and create
+Develop, Revise, Manuscript, and every Work with Agent Write flush all open
+authorized documents and create one whole-Triptych **Before Agent Work**
+checkpoint before instructions return. Any save failure, dirty external
+conflict, unknown identity, or unsupported target blocks handoff. Critique uses
+its named checkpoint. Comment, Discuss, and Fidelity are read-only and create
 none. The researcher may always instruct an agent outside Scholium.
 
 ### 8.2 Research Record and replies
 
-There is no global Dialogue archive. Each selected note shows the same
-chronological Dialogue entry for a multi-note exchange: Comments/follow-ups,
-selected-note list, and agent replies. Entries are scholarly records, not
-versions, prompt logs, or response-approval queues; the note expresses the
-researcher's eventual decision.
+There is no global conversation archive. Each participating note shows the same
+shared Discuss or Write record with its Origin, authorized and confirmed sets,
+researcher turns, attributed agent replies, and completion evidence. Comment
+exchanges remain passage-specific. These are scholarly records, not versions,
+prompt logs, or automatic approval queues.
 
-`scholium dialogue` validates request and Comment identities and appends
-immutable, attributed replies under Application Support. Replies may address
-the instruction, one selected note, or one Comment. An agent never edits the
-record database directly or resolves a researcher Comment. A non-CLI reply is
-recorded only if the researcher returns it manually.
+The supported CLI validates request, activity-key, and Comment identities and
+appends immutable attributed replies under Application Support. Replies may
+address the instruction, one selected note, or one Comment. An agent never
+edits the record database directly, resolves an Annotation, finishes a Comment,
+or declares a source modification authoritative. A non-CLI reply is recorded
+only if the researcher returns it manually.
 
 Beta CLI exposes the immutable `responseContract`; missing snapshots are
 unsupported pre-release state and fail closed rather than adopting current
@@ -554,8 +586,9 @@ Research Record follows the focused window's active Document tab. Its toolbar
 and **Research → Show Research Record** routes open the same nonmodal secondary
 utility window without opening, closing, replacing, or revealing Research
 Inspector. It contains scholarly chronology and provenance only; checkpoints
-remain File-owned recovery artifacts. Researchers may use Dialogue without an
-agent as a concise record of their own Comments and decisions.
+remain File-owned recovery artifacts. Researchers may use Discuss without an
+agent as a concise record of their own questions and decisions; this never
+turns an Annotation into a Comment.
 
 ### 8.3 Research Guidance, prompt templates, and skills
 
@@ -564,9 +597,9 @@ has one active Triptych-local template. Create, duplicate, rename, delete, and
 assign are supported; editing a default creates a researcher copy, while Reset
 restores the bundled baseline without overwriting custom templates.
 
-One local selector presents **Prompt Templates · Skills · Advanced**:
+One local selector presents **Prompt Templates, Skills, Advanced**:
 
-- **Prompt Templates** includes subordinate per-Triptych **Dialogue Defaults**.
+- **Prompt Templates** includes subordinate per-Triptych **Discuss Defaults**.
 - **Skills** owns discovery, creation, duplication, editing, routing metadata,
   structural validation/repair, eligible evolution, Recovery, and **Reveal
   Skills Folder** for System, Workflow, and Researcher Skills.
@@ -581,8 +614,8 @@ Triptych packages allow edit, duplicate, Repair, and eligible Evolve. Package
 faults route to Skills; binding faults to Advanced.
 
 The five official Workflow Skills are **Development**, **Critique**,
-**Revision**, **Content Fidelity**, and **Manuscript**. Dialogue is System
-transport/record infrastructure; Human Review has no Workflow Skill. Source
+**Revision**, **Content Fidelity**, and **Manuscript**. Discuss and Comment use
+System transport/record infrastructure and Settle has no Workflow Skill. Source
 Analyzer, APA 7 citation verification, and Prose Control are optional complete
 or specialist copy-on-adoption Researcher Skills, not new ownership classes or
 universal authorities. Source Analyzer has no Research Function and grants no
@@ -622,14 +655,15 @@ editable style profile and preservation ledger.
 Application owns discovery, origin/update policy, bindings, dependencies, task
 facts, permissions, and exact retrieval. Packages declare stable
 `supported_functions`; `supported_modes` is internal. Records name exact
-revisions/loaded resources. Core Protocol always loads; Dialogue only for
-Dialogue; Triptych/Zotero/citation/Researcher resources only when required. A
+revisions/loaded resources. Core Protocol always loads; agent communication
+transport only for Comment or Discuss; Triptych/Zotero/citation/Researcher
+resources only when required. A
 clipboard fallback cannot claim unretrieved packages.
 
 **Settings → Research Guidance → Advanced → Research Methods** lets each
 function keep the official primary, select one compatible researcher-owned
 replacement, and add compatible supplements and exact Practices. Application
-validates and atomically persists bindings. The Functions mode receives
+validates and atomically persists bindings. Actions receives
 semantic availability only.
 
 Workflow panels expose scholarly inputs, not prompt names, bodies,
@@ -654,16 +688,48 @@ no-follow reads prevent path/symlink redirection.
 ### 8.4 Function preparation, completion, and Fidelity
 
 One Application coordinator owns app/CLI availability, preparation, completion,
-and cancellation. Preparation resolves Target identity/fingerprint, validates
-Materials without Target duplication, resolves exact resources, creates
-checkpoint/evidence, rechecks revisions, and rolls back partial work. Human
-Review uses separate authority and no execution packet.
+and cancellation. Preparation resolves Origin identity and exact revision,
+validates read-only Materials, resolves exact resources, creates recovery and
+evidence, freezes any write set, rechecks revisions, and rolls back partial
+preparation. Comment, Discuss, and Settle use separate typed authorities and no
+write execution packet.
 
 CLI uses only `function available`, `prepare`, `show`, `select-resources`,
 `complete`, `prepare-fidelity`, and `cancel`. `show` recovers immutable state;
 `prepare-fidelity` constructs/reuses the exact child. JSON `nextActions` are
 typed argument vectors with optional stdin templates, never shell strings.
-Dialogue `promote` preserves Target, Materials, scope, and Comments.
+Work with Agent preserves Origin, Materials, selected passage, and researcher
+instruction when the researcher changes from Discuss to Write, but the new
+write scope remains an explicit choice.
+
+For a Write, Scholium creates an activity ID and a cryptographically random
+activity key after the checkpoint succeeds. The key binds only the current
+Triptych, activity, method, frozen note identities, permitted roles, and an
+expiry no later than 24 hours and the current run. Only its digest persists.
+Completion, cancellation, revocation, or expiry invalidates it. Repeating the
+same completion payload is idempotent; a different payload after completion
+fails closed.
+
+The agent completes the activity by presenting the key and candidate modified
+paths or stable identities. Scholium normalizes each path, rejects traversal,
+symlink escape, out-of-scope files, role mismatch, identity substitution,
+create/delete/rename, and unsupported lifecycle state, then compares the
+current fingerprint of every authorized note with its frozen start revision.
+The Application, not the agent, derives the confirmed modified and unmodified
+sets, performs revision checks and readback, and records only successful source
+changes. A reported unchanged note is unmodified. An authorized note changed
+but omitted from the report becomes a Research Record discrepancy and Attention
+item, not agent-attributed activity. Any scope or identity violation revokes the
+grant and routes to checkpoint recovery.
+
+One multi-target completion creates one shared activity record and one durable
+event on every confirmed modified note. The Origin receives an event only when
+confirmed modified. Each HUD tooltip or focus detail gives the date, Origin
+title, confirmed modified count, and unmodified count without monitoring or
+summarizing paragraph content. Cancellation after external changes records the
+cancelled run and preserves recovery; it never silently rolls source back.
+Clean notes in other windows refresh from the confirmed commit, while dirty
+peers keep their buffers and enter ordinary conflict handling.
 
 `version`, `doctor`, and hierarchical `help` need no Triptych. Parsing rejects
 unknown/duplicate/valueless options before Application state; JSON errors use a
@@ -678,9 +744,12 @@ stale states remain coordinator-owned; launch status is ephemeral delivery
 only.
 
 Manual and Automatic Fidelity share evidence validation. Manual targets the
-current revision; Develop/Revise finalization creates or reuses a child with
-the same inputs, and Manuscript reuses its final Revise child. Critique and
-Dialogue create no Target Fidelity.
+current revision or the confirmed set of one shared write activity.
+Develop/Revise finalization creates or reuses a child with the same inputs, and
+Manuscript reuses its final Revise child. One multi-target Fidelity run records
+one shared run plus an exact result for each note revision; it never collapses
+mixed per-note outcomes into a single verdict. Critique, Comment, and Discuss
+create no write Fidelity.
 
 With no embedded agent runtime, automatic children remain Awaiting Fidelity
 until outcomes arrive. Only a matching completed child advances the parent;
@@ -705,53 +774,52 @@ available version for recovery, and never reports **Saved**.
 
 1. Create or import an Analysis and write or revise it against the available
    source.
-2. Read it, follow relevant Connections, and add anchored Comments.
-3. Use Dialogue, Develop, or Fidelity when useful; Dialogue contains Human
-   Review, while Develop absorbs exploratory, conceptual, argumentative,
-   synthetic, or expressive work.
+2. Read it, follow relevant Connect relations, and add private Annotations or
+   passage-specific Comments when useful.
+3. Use Work with Agent or Fidelity when useful. Discuss is read-only; Write
+   uses Development and may update the explicitly authorized current or
+   multi-note set.
 4. Direct Source Analysis may inspect an available source without creating a
    Research Function, stored PDF, or Zotero control.
 5. The researcher decides what to incorporate and whether related Topics or
    Works need updates.
 
-Qualification judges one exact fingerprint without changing authorship.
-
 For a long source, maintain one source-level Analysis by default. Each session
-declares a bounded unit and applies required Orientation, Analytical, and Review
+declares a bounded unit and applies required orientation, analysis, and synthesis
 passes. Expand Research Unit only to material actually represented and record
-unread, excluded, unreliable, or incompletely reviewed material as
+unread, excluded, unreliable, or incompletely analyzed material as
 Limitations. Chapter sections need not become separate Analyses. Create a
 separate Analysis only by researcher request or when a segment needs an
 independently citable identity. `complete` means complete for the declared
-unit; **Entire source** requires source-wide analysis and review.
+unit; **Entire source** requires source-wide analysis.
 
 ## 10. Topics workflow
 
 1. Create or update a Topic from Analyses actually used, preserving
    disagreement, limitations, and uncertainty.
-2. Read it and follow Connections to sources and Works.
-3. Add Comments or use Dialogue, Develop, or Fidelity; Dialogue is
-   nonmutating unless promoted to Develop.
+2. Read it and follow Connect relations to sources and Works.
+3. Add Annotations or passage Comments, or use Work with Agent or Fidelity;
+   Discuss is nonmutating and Write uses Development.
 4. Decide whether other materially affected notes need updates.
 
-Scholium never auto-merges a qualified Analysis into Topics. It may report
-relevant reviewed material, but neutral or transitive Connections establish
-neither integration nor support. Topics have no persistent Critique; an
-assessment request normally improves the Topic through Dialogue/Develop.
+Scholium never auto-merges an Analysis into Topics. It may report relevant
+material, but neutral or transitive Connect relations establish neither
+integration nor support. Topics have no persistent Critique; an assessment
+request normally uses Discuss or an explicitly authorized Write.
 
 ## 11. Works and Critique
 
 ### 11.1 Researcher-governed Works
 
 Researchers may scaffold, write, revise, and organize Works directly. Agents
-may do so when instructed, but Critique remains visibly separate. Works have no
-Human Review qualification; Critique is optional. Critique assesses, Revise
-writes, and Manuscript coordinates isolated phases while the current Work is
-the sole Target.
+may do so when instructed, but Critique remains visibly separate. Critique is
+optional. Critique assesses, Revision writes, and Manuscript coordinates
+isolated phases while retaining one immutable Origin and any explicit bounded
+write set.
 
 ### 11.2 Critique target and storage
 
-- A Critique targets one Work; broader assessment uses multi-note Dialogue.
+- A Critique targets one Work; broader reflection uses multi-note Discuss.
 - Each Work has at most one current Critique document. Later rounds update it;
   prior rounds and researcher dispositions remain in Research Record without
   restore semantics.
@@ -762,7 +830,7 @@ the sole Target.
 
 ### 11.3 Critique function
 
-Critique uses **Whole | Passage**, includes applicable Work Comments, and
+Critique uses **Whole | Passage**, includes applicable passage Comments, and
 accepts an optional focus or disciplinary lens. A current selection defaults
 to Passage. Whole evaluates important claims, premises, arguments, sources,
 objections, and alternatives against selected Analyses and Topics; this is an
@@ -787,7 +855,7 @@ available, original line, and a short quotation. Selecting it opens the target
 passage; a fingerprint mismatch marks an earlier version. Work overlays remain
 deferred until Comment anchoring is reliable.
 
-## 12. Connections
+## 12. Connect and Connection syntax
 
 | Markdown in A | Meaning |
 | --- | --- |
@@ -849,13 +917,19 @@ corpus but remain searchable while they are the open **This Note**.
 The finite expert syntax is space-as-AND, escaped exact phrases, trailing
 prefix `*`, clause exclusion, lexical fields `title`, `alias`, `heading`,
 `body`, `author`, `year`, `tag`, `footnote`, and `path`, and structured fields
-`status`, `review`, `callout`, and `has:broken-link`. Structured filter-only
+`status`, `callout`, and `has:broken-link`. Structured filter-only
 queries are valid. A query containing only excluded free text is invalid.
 Unknown fields or canonical values, removed `vault`, `role`, or `metadata`
 fields, malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
 regular-expression, fuzzy, range, or nested syntax produce an inline query
 diagnostic and never silently broaden retrieval. Scope is selected only by the
 visible interface or CLI option.
+
+The existing `review:` field remains decoder/query compatibility for saved
+searches that explicitly inspect legacy Human Review archive values. It is
+labelled **Legacy Review**, creates no current filter menu or status, and never
+maps Reviewed, Qualified, or Unqualified to Settle. This migration adds no new
+Search syntax.
 
 Search indexes only visible semantic text and derived identity/filter fields,
 never raw Markdown source or link destinations. Title, alias, heading, author,
@@ -892,18 +966,18 @@ alter ranking nor imply evidence and never expand transitively here. Vector
 search, embeddings, AI query interpretation/ranking, and chat-style Search are
 excluded. **Vector-Link** means only researcher-authored relation markers.
 
-Attention may report possible-orphan conditions, Changed Since Review, Broken
-Connections, explicit reliance on an Unqualified Analysis, malformed metadata,
-or unresolved identity. It never infers **Superseded**, uses age alone, or issues
-automatic untraced-premise verdicts. Warnings are dismissible; Settings
+Attention may report possible-orphan conditions, Changed Since Settled, Broken
+Connections, malformed metadata, or unresolved identity. It never infers
+**Superseded**, qualification, or a philosophical verdict, uses age alone, or
+issues automatic untraced-premise verdicts. Warnings are dismissible; Settings
 controls duration, default seven days. The researcher retains judgment.
 
 ## 14. Checkpoints, versions, and recovery
 
-Autosaves create no visible versions. Before preparing Develop, Revise,
-Manuscript, promoted Dialogue, or Critique, Scholium creates a named,
-fingerprint-bound whole-Triptych checkpoint. Human Review and Fidelity create
-none. The researcher may choose **Create Checkpoint…** at any time.
+Autosaves create no visible versions. Before every Work with Agent Write,
+Manuscript mutation, or Critique, Scholium creates a named, fingerprint-bound
+whole-Triptych checkpoint. Comment, Discuss, Settle, and Fidelity create none.
+The researcher may choose **Create Checkpoint…** at any time.
 
 Every checkpoint is self-contained; includes all vaults and portable control
 state needed to interpret them; lives outside the vaults; and never depends on
@@ -1052,12 +1126,12 @@ Never add:
 
 Deferred until the dependable core is accepted, but required for later Beta:
 protected System Skills, five official Workflow Skills, bounded selective
-assembly and Manuscript phases; request-scoped Dialogue `responseContract`;
+assembly and Manuscript phases; request-scoped Discuss `responseContract`;
 and protected Zotero MCP transport.
 
 Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
-additional contributed or discipline-specific workflows; richer Dialogue
-comment-preservation and reflection modes; and Work finding overlays.
+additional contributed or discipline-specific workflows; richer Discuss
+reflection and Comment-preservation modes; and Work finding overlays.
 
 **Run with Codex** is not a 1.0 feature. Background/noninteractive execution,
 auto-submission, streamed thread/tool state, approval handling, interruption,
@@ -1088,8 +1162,9 @@ native presentation and state ownership without restating each workflow.
 - Derive Read, Live Preview, Source, Properties, Search, and research views
   reversibly from authoritative Markdown; projections never reconstruct
   writable source.
-- Distinguish source, researcher prose, agent content, Human Review, Critique,
-  Connections, and diagnostics by text and structure, not color alone.
+- Distinguish source, researcher prose, agent content, Annotation, Comment,
+  Discuss, Write, Settle, Critique, Connect, and diagnostics by text and
+  structure, not color alone.
 - Preserve menu, toolbar, keyboard, pointer, focus, accessibility, cancel,
   compare, retry, conflict, and recovery routes. Hover, drag, color, motion,
   secondary click, and gestures are never the only route to a core task.
@@ -1183,9 +1258,9 @@ Menus follow researcher tasks:
 
 ### 18.3 Library and Search
 
-- One native **Filter** menu groups Review, Integrity, Metadata, Properties,
-  Order, and Actions with at most one submenu level. Unreviewed/Unqualified may
-  appear in row status and Filter, not permanent task toggles.
+- One native **Filter** menu groups Integrity, Metadata, Properties, Order, and
+  Actions with at most one submenu level. Current Library rows and filters have
+  no Review, Unreviewed, Qualified, or Unqualified state.
 - Unclassified is reachable for classification but not a permanent Library
   row. Notes outside folders appear at vault root.
 - Folder/note rows form one hierarchy at one semantic callout size and compact
@@ -1226,30 +1301,36 @@ Ordinary scrolling space clears initial editor content from chrome; there is no
 floating context surface.
 
 All modes use one adaptive editorial-grid configuration for insets, responsive
-threshold, trailing space, text scale, and semantic typography. Document prose
-has **no maximum measure**: it occupies the available Document width while
-retaining a minimum separation from the Library's right divider and the
-Inspector's left divider. The provisional minimum inline insets are **32 CSS
-px** in Read/Live and **40 CSS px** in Source, reducing to **20 CSS px** below
-**44rem**, with a **32 CSS px** top inset. CSS lengths never convert to macOS
-points. Shared ownership and units are approved; these values still require the
-adaptation matrix and side-by-side Editor review. Live Preview and Source
-reconfigure one retained CodeMirror state; window, split, theme, or text-size
-changes never replace it or create an Editor window.
+threshold, trailing space, text scale, and semantic typography. The selected
+Appearance supplies exactly one **Line width** value: default **72ch**, range
+**48–96ch**, step **1ch**. Scholium provides no built-in preset, full-width
+switch, percentage mode, or per-mode override. Remaining inline space is split
+symmetrically with `max(mode minimum inset, (available width - line width) / 2)`.
+The regular minimum inset is **32 CSS px** in Read/Live and **40 CSS px** in
+Source; all three reduce to **20 CSS px** below **44rem**. The **32 CSS px** top
+inset and existing trailing scrolling space remain separate. CSS lengths never
+convert to macOS points. `ch` resolves against Read/Live Body type or Source's
+exact-source type and therefore does not promise an exact character count.
+Shared ownership and units are approved; the 72ch default still requires the
+adaptation matrix and researcher side-by-side acceptance. Live Preview and
+Source reconfigure one retained CodeMirror state; window, split, theme,
+line-width, or text-size changes never replace it or create an Editor window.
 
 Appearance is machine-local configuration and never Markdown or vault state.
 It stores multiple named configurations, keeps exactly one selected, and
 supports save, rename, duplicate, and deletion while retaining at least one.
-Structured controls independently configure Body, headings, and each semantic
-Callout for Read and Live Preview. The default configuration uses the values in
-§19.2; Callout controls map presentation parameters without changing protected
-role structure, generated accessible role names, or source-controlled fold
-state. Mathematics remains centered and italic, with automatic numbering on the
-physical right scoped per document; code and tables retain their shared
-app-owned styles.
+Structured controls configure the shared Line width plus Body, headings, and
+each semantic Callout. Line width applies to Read, Live Preview, and Source;
+Body, heading, and Callout presentation applies only to Read and Live Preview.
+The default configuration uses the values in §19.2; Callout controls map
+presentation parameters without changing protected role structure, generated
+accessible role names, or source-controlled fold state. Mathematics remains
+centered and italic, with automatic numbering on the physical right scoped per
+document; code and tables retain their shared app-owned styles.
 Advanced sanitized CSS snippets remain an additive compatibility path inside
 Appearance, but Appearance displays no generated CSS preview. Source typography
-and the application interface are not changed by a document configuration.
+and the application interface are not changed by a document configuration;
+only the shared Line width changes Source layout.
 
 Subject to the transfer rule in §18.2, Document toolbar order is conditional
 Show Sidebar; Heading Outline and compact identity; mode and Search; Research
@@ -1260,8 +1341,7 @@ routes. Document Text Size is per-window and source-neutral.
 
 Properties performs targeted frontmatter edits and distinguishes absent,
 empty, invalid, derived, and not-applicable. Exact YAML stays available in
-Source. Research Status shows Scope, then non-empty Limitations, and **Not Yet**
-for absence.
+Source. About shows Scope, then every non-empty Limitation; absence is quiet.
 
 ### 18.5 Contextual research and Actions
 
@@ -1269,7 +1349,7 @@ Apparatus contains Research Inspector only; Research Record and checkpoint
 recovery stay separate. Research Record is a nonrestored `UtilityWindow`, reads
 the focused Workspace directly, and starts at **760 × 680** without treating
 that size as a minimum. There is exactly one native trailing Inspector per
-Workspace, with **Overview · Connect · Actions** in that order. These are
+Workspace, with **Overview, Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
 tabs, panels, or windows. Their text labels use a restrained ink underline,
 not a filled/capsule segment; labels remain horizontally reachable rather than
@@ -1285,79 +1365,91 @@ changing its mode.
 
 Overview presents only compact current-note projections, in this order:
 
-1. **Research Status:** Scope followed by every non-empty Limitation; **Not
-   Yet** means absence, while invalid source reports its exact validation
-   problem. Editing opens the existing Properties surface.
-2. **Scholarly Status:** Human Review state for an Analysis/Topic or Critique
-   currency and round count for a Work, followed by Comment totals, unresolved
-   count, and anchors needing reattachment. This is status only; the applicable
-   Review or Critique action keeps its existing destination under Actions.
-3. **Attention:** the visible current-note count and distinct issue kinds after
-   dismissal. The complete queue, messages, filters, and dismissal controls
-   remain in Library.
-4. **Key Properties:** at most five role-priority facts, excluding Research
-   Status Scope, plus the route to complete Properties.
-5. **Provenance:** compact note and latest Review/Critique times; detailed
-   chronology stays in Research Record.
-6. **Diagnostics and Freshness:** important machine checks plus an explicit
-   current, refreshing, stale, failed, or unavailable derived-state label.
-   Stale or failed state preserves the last-known-good projection and offers
-   Retry; it never claims reading, truth, or philosophical evidence.
-7. **Zotero Source:** existing read-only matching, confirmation, and Open in
+1. **Needs Attention:** current-note count, distinct actionable kinds, and a
+   Show All route to Library's complete queue. It contains no empty decorative
+   copy and no independently styled verdict.
+2. **About:** role, Scope, every non-empty Limitation, then researcher-defined
+   property fields in the order configured for that vault. Properties edits the
+   displayed selection and order. There is no separate Research Status, Key
+   Properties, Provenance, or Derived State section.
+3. **Zotero Source:** existing read-only matching, confirmation, and Open in
    Zotero behavior, without attachment browsing.
 
-Connections begins with three expanded, independently collapsible groups:
+Freshness appears only as a compact actionable line when Refresh is pending,
+stale, failed, or unavailable. It preserves last-known-good projections and
+offers Retry where applicable; it never claims reading, truth, or evidence.
+
+Connect begins with three expanded, independently collapsible groups:
 
 | Target | Groups |
 | --- | --- |
-| Analysis | Neighbor Analyses · Related Topics · Related Works |
-| Topic | Related Sources · Neighbor Topics · Related Works |
-| Work | Related Sources · Related Topics · Neighbor Works |
+| Analysis | Neighbor Analyses, Related Topics, Related Works |
+| Topic | Related Sources, Neighbor Topics, Related Works |
+| Work | Related Sources, Related Topics, Neighbor Works |
 
 Within a group, explicit links sort supports, supported by, incompatible, then
-neutral. Redundant symbols state predicate/direction; titles wrap. Do not open
-a second panel merely to show a title. Preserve source anchors. Connections
-shows the same freshness state before its groups. Stale or failed state keeps
-the last complete graph readable and offers Retry.
+neutral. Minimal ↑, ↓, ×, and — marks state predicate and direction; titles
+wrap. Do not open a second panel merely to show a title. Preserve source
+anchors. Connect shows the same freshness state before its groups. Stale or
+failed state keeps the last complete graph readable and offers Retry.
 
-Actions presents every role-valid current-note action. For an Analysis or Topic,
-the order is **Review · Dialogue · Develop · Fidelity**; Review opens the
-existing direct researcher-authored Human Review destination and never becomes
-an agent function or handoff. A Work keeps the Section 8.1 function order.
-Availability fails closed while checking; an unavailable action is disabled
-and states its first actionable repair reason. Each launcher is a wrapping,
-full-width native button with a 44pt target. Research Function launchers open
-their existing typed sheet rather than embedding the workflow in the narrow
-Inspector. Closing a destination restores focus to its initiating Actions
-button only when it was launched there.
+Actions begins with **Research Activity**, a compact horizontal HUD of all
+actual durable events for the current note, followed by transient response or
+currency states. Its icon-only nodes never predict a workflow. Pointer hover
+and keyboard focus disclose date, source note title, and confirmed modified or
+unmodified note count. It supports ordinary scrolling and explicit Previous or
+Next controls. Selecting any node opens its Research Record detail.
 
-At the top of Actions, **Current Activity** is a compact opaque horizontal
-track for only the newest current-note run still requiring action: prepared,
-awaiting Fidelity, unverified, or stale. Nodes are recorded events from that
-one run; connectors express their actual chronology and never predict a future
-stage or connect the available Actions. The track scrolls horizontally when
-needed, reveals enough of the next event to make overflow apparent, and offers
-Previous/Next controls plus ordinary keyboard scrolling so swipe, drag, or
-hover is never required. Event labels expose the current actionable state;
-hover or keyboard focus may disclose compact time, actor, checkpoint, or
-reason detail. Right-to-left presentation reverses the chronological sequence
-without reversing digits. With no current run the complete track is absent.
-If more runs remain, the track shows their count and an **Open Research
-Record** route. Complete and cancelled runs, full instructions, Fidelity
-outcomes, and complete history remain in Research Record. This status track is
-not a separate panel, overlay, progress estimate, or glass surface.
+Only these durable events may appear:
 
-Inspector uses wrapping system interface text. Sections start 16pt below the
-tab rule and separate by 16pt; headings use one lighter sans label. Modes share
-a 20pt edge; content adds 12pt, symbols use a 16pt track plus 8pt gap, and
-trailing actions return to the outer edge unless semantics require otherwise.
+| Event | Sufficient evidence |
+| --- | --- |
+| **Created** | Scholium proves stable identity assignment on entry to the Triptych. |
+| **Commented** | The researcher finishes one passage Comment exchange. |
+| **Discussed** | The researcher finishes one Discuss with no confirmed write. |
+| **Developed** | A confirmed Analysis or Topic fingerprint changes in a scoped Write. |
+| **Fidelity Checked** | Fidelity completes successfully for that exact revision. |
+| **Settled** | The researcher settles the exact saved fingerprint. |
+| **Critiqued** | Critique completes and commits its attributed record. |
+| **Revised** | A confirmed Work fingerprint changes in a scoped Write. |
+| **Critique Addressed** | The researcher completes a fully disposed Critique round. |
 
-Scholarly Status is one restrained third-plane bordered surface, not a badge.
-Metadata/actions are sans; verdict is 18pt editorial serif with redundant
-symbol/date. Revision currency appears only after review. Review Note uses
-editorial serif beside a rule and truncates after two lines. The state remains
-in Overview while Open Review or Open Critique remains available in Actions;
-color is insufficient.
+Critique Addressed requires every actionable finding to be marked Accept,
+Reject, or Rebut; every Accept must have its corresponding change or an explicit
+researcher rationale for no text change; and the researcher must invoke
+**Complete Round**. A single disposition, merely opening Critique, or an
+ordinary Revised event is insufficient. Independent Comments remain independent
+nodes and are never merged. Existing notes receive Created only when reliable
+creation evidence exists.
+
+Only **Response ready**, **Awaiting Fidelity**, and **Changed Since Settled**
+may appear as transient actionable nodes. They do not enter completed history.
+Response ready opens its Comment exchange directly; there is no separate Open
+Comment button. Opening, reading, ordinary editing, saving, Search, selecting
+Materials, preparing or copying a handoff, checkpoints, Annotation, failure,
+cancellation, and recovery create no HUD event. The latest end is visible by
+default with a partial adjacent node when space permits. Trackpad, mouse-wheel,
+Previous/Next, arrow-key, focus, and VoiceOver routes remain equivalent. Reduce
+Motion changes scroll position without spring or node-growth animation.
+
+The lower-right HUD control is Settle. It is not an Open Comment control.
+Actions then presents role-valid launchers: Work with Agent and Fidelity for an
+Analysis or Topic, plus Critique and Manuscript for a Work. Availability fails
+closed while checking; an unavailable action is disabled and states its first
+actionable repair reason. Each launcher is a wrapping native row with a
+standard small Open control, ordinary keyboard focus, and a complete
+accessibility label. No top-level Dialogue, Develop, Revise, or Review launcher
+is visible.
+
+Inspector layout uses named `ScholiumGrid.Apparatus` variables rather than
+leaf-view spacing literals. The mode strip is a non-scrolling three-column grid
+with a 40pt owned height, 20pt outer edges, 20pt column gaps, 11pt system labels,
+and a restrained underline. Sections start 16pt below the tab rule and use a
+10pt heading-to-content gap, 6pt content-row gap, 2pt multiline leading, and
+16pt content-to-rule gap. Action rows use 10pt vertical insets, 4pt copy gaps,
+and 8pt before the right-aligned Open control. Section headings remain visually
+separate while content within one section reads as a tighter whole. These
+values adapt for localization and accessibility rather than allowing clipping.
 
 Document has no bottom Research Strip or hidden-Inspector duplicate. Function
 handoff remains keyboard/VoiceOver reachable; its sheet survives launch and
@@ -1403,14 +1495,14 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Vault | 研究库 |
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
-| Develop / Manuscript | 发展 / 稿件 |
-| Review / Human Review | 审阅 / 研究者评审 |
-| Qualification | 评审结论 |
+| Work with Agent / Discuss / Write | 与 Agent 协作 / 讨论 / 写入 |
+| Develop / Revise / Manuscript | 发展 / 修订 / 稿件 |
+| Settle / Settled | 暂定 / 已暂定 |
 | Fidelity / Critique | 核查 / 评析 |
-| Attention / Connections | 关注 / 关联 |
+| Attention / Connect | 关注 / 连接 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
-| Comment / Response | 注释 / 回应 |
-| Research Status / Research Record | 内容状态 / 研究记录 |
+| Annotation / Comment / Response | 批注 / 评论 / 回应 |
+| Research Activity / Research Record | 研究活动 / 研究记录 |
 | Set Aside / SET ASIDE | 搁置 |
 | Trash / TRASH | 纸篓 |
 | Move to Trash… | 移至纸篓… |
@@ -1460,8 +1552,10 @@ native safe area once; the titlebar owns vertical alignment.
   density, scaling, and mixed-script fallback remain legible.
 - **Victor Mono** is for Source, code, exact excerpts, anchored review content,
   revision identities, and diffs.
-- The default Appearance uses **Alegreya 12pt**, **2.0** line spacing, **1em**
-  paragraph spacing, **0.02em** tracking, justified text, and no hyphenation.
+- The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
+  **2.0** line spacing, **1em** paragraph spacing, **0.02em** tracking,
+  justified text, and no hyphenation. Line width is configurable from
+  **48–96ch** in **1ch** steps and is shared by Read, Live Preview, and Source.
   Its H1/H2/H3–H6 scales are provisionally **200/150/115%**, with centered H1
   and medium shared heading weight. These document typography values are
   user-configurable. Callouts inherit Body typography and expose independent
@@ -1492,6 +1586,9 @@ radius, shadow, border, gradient, or paper scales.
 - Interface type roles: identity, section title, row title, metadata, and
   narrowly approved editorial hierarchy. Document roles: Body,
   `heading(level:)`, Exact Source, Code, Diff, Revision Identity.
+- Document Rhythm exposes one machine-local Line width input with the default,
+  range, unit, and shared-mode ownership in §18.4. It creates no second
+  built-in measure path.
 - The Color family exposes only the two approved Accent and Paper inputs.
   Semantic roles are resolver outputs, not additional Variables; components
   consume those roles without owning a palette value.
@@ -1533,12 +1630,14 @@ preferred/maximum width or persisted divider position.
 Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, Research
 Record **760 × 680**, and fixed Settings content **700 × 560**. Regions scroll
 independently; Document takes remaining space without a fixed size. AppKit
-geometry stays outside the grid. WebKit uses `rem`, CSS px, and viewport units
-without point conversion. Document content has no maximum width; the
-**20/32/40 CSS px** minimum border separations and typographic rhythm values
-remain provisional pending ordinary, narrow, mixed-script, and 200% testing.
-Fractional browser-proof translations are superseded; screenshots and
-prototype coordinates remain evidence only.
+geometry stays outside the grid. WebKit uses `rem`, `ch`, CSS px, and viewport
+units without point conversion. The selected **48–96ch** Line width is centered
+inside the available Document width while `max(...)` retains the **20/32/40 CSS
+px** minimum border separations. Wide tables, code, and mathematics may scroll
+inside that measure; prose reflows without page-level horizontal reading
+scroll. The 72ch default and typographic rhythm still require ordinary, narrow,
+mixed-script, and 200% visual acceptance. Fractional browser-proof translations
+are superseded; screenshots and prototype coordinates remain evidence only.
 
 ### 19.5 Application icon
 
@@ -1566,7 +1665,7 @@ a new recorded decision.
   Motion, inactive windows, 200% document text, and accent changes.
 - Give every important state two suitable channels; never rely only on color,
   motion, sound, location, or arrow direction.
-- Current Activity exposes the same recorded events as a linear accessible
+- Research Activity exposes the same recorded events as a linear accessible
   list, labels its actionable state without hover, and supports Previous/Next
   plus ordinary keyboard scrolling; horizontal swipe or drag is supplementary.
 - Provide complete keyboard and visible-focus paths. Restore focus after
@@ -1579,6 +1678,9 @@ a new recorded decision.
   removal follows the next/previous/Back focus sequence defined in §18.3.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
+- The Appearance Line width slider has a localized label and help text, exposes
+  its current value in character-width units, and supports standard keyboard
+  adjustment and VoiceOver without requiring pointer dragging.
 - Test long labels, mixed English/Chinese, right-to-left chrome, minimum width,
   every lifecycle/error state, and WebKit/AppKit focus transitions.
 - At the Library boundary, verify both permitted narrow outcomes: expanded at
@@ -1615,8 +1717,9 @@ package, signing, or performance result.
 
 - Bootstrap success/failure, registration/restoration, and independent windows;
 - create/open/read/edit/save/Search and explicit cross-vault navigation;
-- Live Preview/Source fidelity, formatting, anchored Comments, and mode changes;
-- Properties, Research Status/Not Yet, Human Review, and qualification;
+- Live Preview/Source fidelity, formatting, passage Annotation and Comment,
+  and mode changes;
+- About/Properties, optional Research Unit, Settle, and Research Activity;
 - native split resize/visibility, Document tabs without shell reconstruction,
   focus, keyboard, light/dark, scaling, minimum width, and core VoiceOver; and
 - external edits, conflicts, stable rename, Set Aside, Trash, checkpoints,
@@ -1644,7 +1747,7 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, agents, or manual filesystem work. |
 | **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, checkpoints/restore, Trash/purge, external rename, and derived failures pass fixture journeys. |
-| **G5 Scholarly transparency** | Dialogue, Human Review, Critique, Fidelity, provenance, and uncertainty remain visibly distinct. |
+| **G5 Scholarly transparency** | Annotation, Comment, Discuss, Write, Settle, Critique, Fidelity, provenance, and uncertainty remain visibly distinct. |
 | **G6 Accessibility/i18n** | Section 20's declared threshold is met. |
 | **G7 Performance** | The packaged-app `PERFORMANCE_BENCHMARK.md` protocol passes on frozen fixture/machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
@@ -1689,7 +1792,8 @@ only in Git history.
 | **D-092** | 19.2–19.3, 20 | **D-093** | 18.2, 18.4, 19.2–19.4, 20 |
 | **D-094** | 3.2, 18.2 | **D-095** | 18.2, 20 |
 | **D-096** | 8.5, 14 | **D-097** | 19.5 |
-| **D-098** | 13, 18.3, 20 | **D-099** | 7.1, 8.1, 18.2, 18.5, 20 |
+| **D-098** | 13, 18.3, 20 | **D-100** | 5.1, 18.4, 19.2–19.4, 20 |
+| **D-101** | 1–2, 5–11, 13–14, 18–22 | | |
 
 Clean-cutover inventory:
 
@@ -1712,9 +1816,10 @@ Clean-cutover inventory:
   status role, renderer-owned color, or public functional/status hue. Accent
   and Paper remain the only inputs to the shared native/WebKit resolver.
 - **D-093:** replace Document Styles with machine-local named Appearance
-  configurations; retain no generated CSS preview or maximum document measure.
-  Keep protected semantic component structure, shared mathematics/code/table
-  roles, additive sanitized CSS compatibility, and minimum divider separation.
+  configurations and retain no generated CSS preview. Keep protected semantic
+  component structure, shared mathematics/code/table roles, and additive
+  sanitized CSS compatibility. D-100 supersedes only D-093's former absence of
+  a maximum document measure.
 - **D-094:** one stable document appears at most once in one window's Document
   tabs; repeated open selects the retained page while other windows stay
   independent.
@@ -1734,19 +1839,33 @@ Clean-cutover inventory:
   treatment; retain no per-vault federation, hidden scope/filter bypass,
   raw-source corpus, vector/AI ranking, exposed implementation score, visible
   workspace scrim, custom blur, or partial system-selection slab.
-- **D-099:** the Inspector uses Overview, Connect, and Actions. Overview keeps
-  Review/Critique state while Actions owns their direct entry points; Analysis
-  and Topic order Review before Dialogue, Develop, and Fidelity. Current
-  Activity precedes all launchers as an opaque, horizontally scrollable track
-  of recorded events from one actual run, with no predicted nodes, action-order
-  connectors, glass HUD, gesture-only access, or empty placeholder.
+- **D-100:** Appearance exposes one machine-local Line width, default **72ch**,
+  range **48–96ch**, and step **1ch**, shared by Read, Live Preview, and Source.
+  Retain no built-in preset, full-width switch, percentage mode, or per-mode
+  override. Center the measure with the mode-specific minimum insets, keep
+  Source exact-source typography, and update retained CodeMirror presentation
+  without replacing its edit state.
+- **D-101:** Inspector exposes Overview, Connect, and Actions only. Overview is
+  Attention, About, Zotero Source, and compact actionable freshness. Actions
+  starts with real recorded Research Activity and then role-valid launchers.
+  The HUD contains only Created, Commented, Discussed, Developed, Fidelity
+  Checked, Settled, Critiqued, Revised, and Critique Addressed events; it may
+  also project Response ready, Awaiting Fidelity, and Changed Since Settled as
+  transient states. Work with Agent distinguishes read-only Discuss from an
+  explicitly scoped multi-target Write. Comment and Annotation are separate
+  passage actions, Settle is revision-bound and idempotent, and short-lived
+  activity keys reduce agent burden without replacing Application-owned
+  containment, fingerprint, conflict, and recovery checks. Legacy Human Review,
+  qualification, ResearcherComment, and Dialogue records remain read-only
+  migration inputs only and create no current product state without independent
+  evidence.
 
 Unresolved work must not be described as complete:
 
 - sustained manual VoiceOver, Full Keyboard Access, Voice Control, Dictation,
   contrast, scaling, localization, and installed-IME acceptance;
 - final document rhythm and production mono comparison;
-- compact multi-note Dialogue and richer reflection/compression;
+- compact multi-note Discuss and richer reflection/compression;
 - broader Search ranking/usability evaluation;
 - packaged Release performance thresholds and measurements; and
 - clean-tagged distribution and external-install evidence.
@@ -1771,7 +1890,7 @@ Analyses require explicit researcher choice or independent scholarly identity.
 | About | Year | `year` | Required publication year. |
 | About | Type | `type` | Optional publication form. |
 | About | Tags | `tags` | Optional retrieval terms. |
-| Research Status | Research Unit | `research_unit` | Optional at creation; required for Complete Review. Not Yet writes nothing. |
+| About | Research Unit | `research_unit` | Optional at creation; Scope and Limitations appear first when present. |
 | Source | Access | `access` | Extent of consulted material. |
 | Source | Text Reliability | `text_reliability` | Reliability of consulted text. |
 | Source | Locators | `locators` | Citation stability/checkability. |
@@ -1791,7 +1910,7 @@ Topic YAML is optional.
 | About | Title | `title` | Optional when filename/H1 identifies the Topic. |
 | About | Aliases | `aliases` | Search and link alternatives. |
 | About | Tags | `tags` | Optional retrieval terms. |
-| Research Status | Research Unit | `research_unit` | Optional conceptual/debate boundary. |
+| About | Research Unit | `research_unit` | Optional conceptual/debate boundary. |
 | Progress | Status | `status` | `seed`, `developing`, or `maintained`; never settlement. |
 
 ### Works
@@ -1802,7 +1921,7 @@ Topic YAML is optional.
 | About | Authors | `authors` | Optional co-authors. |
 | About | Kind | `kind` | Paper, chapter, book, talk, review, teaching material, etc. |
 | About | Tags | `tags` | Optional retrieval terms. |
-| Research Status | Research Unit | `research_unit` | Optional project-question/argument boundary. |
+| About | Research Unit | `research_unit` | Optional project-question/argument boundary. |
 | Progress | Status | `status` | `planning`, `drafting`, `revising`, `review`, `ready`, `submitted`, `published`, or `archived`. |
 | Use | Venue | `venue` | Intended/actual journal, publisher, course, or event. |
 | Use | Deadline | `deadline` | Relevant delivery/submission date. |

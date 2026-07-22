@@ -11,7 +11,7 @@ public enum ResearchSkillMode: String, Codable, CaseIterable, Hashable, Sendable
     case read
     case integrate
     case write
-    case dialogue
+    case discuss
     case retrieve
     case analyze
     case zotero
@@ -30,7 +30,7 @@ public enum ResearchSkillMode: String, Codable, CaseIterable, Hashable, Sendable
         case .read: "Read"
         case .integrate: "Integrate"
         case .write: "Write"
-        case .dialogue: "Dialogue"
+        case .discuss: "Discuss"
         case .retrieve: "Retrieve"
         case .analyze: "Analyze"
         case .zotero: "Zotero"
@@ -42,6 +42,26 @@ public enum ResearchSkillMode: String, Codable, CaseIterable, Hashable, Sendable
         case .audit: "Audit"
         case .manuscript: "Manuscript"
         }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        if value == "dialogue" {
+            self = .discuss
+        } else if let mode = Self(rawValue: value) {
+            self = mode
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown Research Skill mode: \(value)"
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 
@@ -68,7 +88,7 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
     ///
     /// Compatibility and automatic activation are deliberately separate: an
     /// adapter may support every mode while remaining opt-in except for one
-    /// app-owned route such as Dialogue.
+    /// app-owned route such as Discuss.
     public let automaticModes: [ResearchSkillMode]
     /// Researcher-owned Practice identifiers that may refine this Workflow Skill.
     ///

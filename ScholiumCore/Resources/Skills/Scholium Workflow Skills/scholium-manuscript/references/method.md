@@ -16,9 +16,9 @@ When the same final fingerprint and audit key already have completed Fidelity, r
 
 ## Preserve authorship and evidence
 
-Keep source claims, researcher claims, agent proposals, Comments, Dialogue, Critique findings, and received feedback distinct. Preserve the researcher's intended thesis during authorized revision. Mark novelty, significance, completeness, and literature-placement claims unverified unless checked.
+Keep source claims, researcher claims, agent proposals, Comments, Discussions, Critique findings, and received feedback distinct. Preserve the researcher's intended thesis during authorized revision. Mark novelty, significance, completeness, and literature-placement claims unverified unless checked.
 
-A structurally complete manuscript may still have missing evidence. A Fidelity pass does not entail a favorable Critique. A favorable Critique does not constitute Human Review or researcher acceptance.
+A structurally complete manuscript may still have missing evidence. A Fidelity pass does not entail a favorable Critique. A favorable Critique does not Settle the Work or constitute researcher acceptance.
 
 ## Stop conditions
 

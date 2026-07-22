@@ -1,6 +1,5 @@
 import ScholiumContracts
 import Foundation
-import Markdown
 
 private func persistentlyEquivalent<T: Encodable>(_ lhs: T, _ rhs: T) throws -> Bool {
     let encoder = JSONEncoder()
@@ -9,7 +8,10 @@ private func persistentlyEquivalent<T: Encodable>(_ lhs: T, _ rhs: T) throws -> 
     return try encoder.encode(lhs) == encoder.encode(rhs)
 }
 
-/// One atomic store owns Human Review, qualification, and researcher comments.
+/// Read-only compatibility archive for records created by the retired Human
+/// Review model. Current product workflows cannot create or edit these
+/// records; writes are limited to identity migration, permanent deletion, and
+/// rollback of those lifecycle operations.
 public actor HumanReviewStore {
     private struct Payload: Codable {
         let schemaVersion: Int
@@ -35,7 +37,7 @@ public actor HumanReviewStore {
                 records = payload.records
                 loadFailure = payload.schemaVersion == 1
                     ? nil
-                    : "Unsupported Human Review schema version \(payload.schemaVersion)."
+                    : "Unsupported earlier Review archive schema version \(payload.schemaVersion)."
             } catch {
                 records = [:]
                 loadFailure = error.localizedDescription
@@ -48,7 +50,7 @@ public actor HumanReviewStore {
 
     public func healthError() -> String? {
         loadFailure.map {
-            ResearchRecordStoreError.unreadableStore(kind: "Human Review", reason: $0)
+            ResearchRecordStoreError.unreadableStore(kind: "earlier Review archive", reason: $0)
                 .localizedDescription
         }
     }
@@ -73,7 +75,7 @@ public actor HumanReviewStore {
     /// is used only after the researcher confirms permanent note deletion.
     @discardableResult
     public func purge(noteID: UUID) throws -> HumanReviewRecord? {
-        try requireHealthyStore(kind: "Human Review")
+        try requireHealthyStore(kind: "earlier Review archive")
         guard let removed = records[noteID] else { return nil }
         var proposed = records
         proposed.removeValue(forKey: noteID)
@@ -82,11 +84,11 @@ public actor HumanReviewStore {
     }
 
     func restorePurgedRecord(_ record: HumanReviewRecord) throws {
-        try requireHealthyStore(kind: "Human Review")
+        try requireHealthyStore(kind: "earlier Review archive")
         if let existing = records[record.id] {
             guard try persistentlyEquivalent(existing, record) else {
                 throw ResearchRecordStoreError.restorationConflict(
-                    kind: "Human Review",
+                    kind: "earlier Review archive",
                     identity: record.id.uuidString
                 )
             }
@@ -94,161 +96,6 @@ public actor HumanReviewStore {
         }
         var proposed = records
         proposed[record.id] = record
-        try commit(proposed)
-    }
-
-    @discardableResult
-    public func saveDraft(
-        noteID: UUID,
-        vaultID: UUID,
-        relativePath: String,
-        draft: HumanReviewDraft,
-        comments: [ResearcherComment]? = nil
-    ) throws -> HumanReviewRecord {
-        try validateReviewNoteLength(draft.reviewNote)
-        var record = records[noteID] ?? HumanReviewRecord(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: relativePath
-        )
-        record.relativePath = relativePath
-        record.draft = draft
-        if let comments { record.comments = comments.sorted { $0.createdAt < $1.createdAt } }
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-        return records[noteID] ?? record
-    }
-
-    @discardableResult
-    public func completeReview(
-        noteID: UUID,
-        vaultID: UUID,
-        relativePath: String,
-        fingerprint: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String,
-        comments: [ResearcherComment]? = nil
-    ) throws -> HumanReviewRecord {
-        guard let qualification else { throw HumanReviewError.missingQualification }
-        let note = reviewNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !note.isEmpty else { throw HumanReviewError.emptyReviewNote }
-        try validateReviewNoteLength(note)
-        var record = records[noteID] ?? HumanReviewRecord(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: relativePath
-        )
-        record.relativePath = relativePath
-        record.completedReviews.append(CompletedHumanReview(
-            fingerprint: fingerprint,
-            qualification: qualification,
-            reviewNote: note
-        ))
-        if let comments { record.comments = comments.sorted { $0.createdAt < $1.createdAt } }
-        record.draft = nil
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-        return records[noteID] ?? record
-    }
-
-    @discardableResult
-    public func addComment(
-        noteID: UUID,
-        vaultID: UUID,
-        relativePath: String,
-        comment: ResearcherComment
-    ) throws -> HumanReviewRecord {
-        guard !comment.text.isEmpty else { throw HumanReviewError.emptyComment }
-        var record = records[noteID] ?? HumanReviewRecord(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: relativePath
-        )
-        record.relativePath = relativePath
-        record.comments.append(comment)
-        record.comments.sort { $0.createdAt < $1.createdAt }
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-        return records[noteID] ?? record
-    }
-
-    public func updateCommentText(noteID: UUID, commentID: UUID, text: String) throws {
-        guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
-        guard let index = record.comments.firstIndex(where: { $0.id == commentID }) else {
-            throw HumanReviewError.commentNotFound(commentID)
-        }
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw HumanReviewError.emptyComment }
-        record.comments[index].text = text
-        record.comments[index].updatedAt = Date()
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-    }
-
-    /// Only the human-facing application calls this operation. Dialogue replies
-    /// are immutable agent records and deliberately have no resolution API.
-    public func setCommentResolvedByResearcher(
-        noteID: UUID,
-        commentID: UUID,
-        resolved: Bool
-    ) throws {
-        guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
-        guard let index = record.comments.firstIndex(where: { $0.id == commentID }) else {
-            throw HumanReviewError.commentNotFound(commentID)
-        }
-        record.comments[index].resolvedAt = resolved ? Date() : nil
-        record.comments[index].updatedAt = Date()
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-    }
-
-    public func reattachComment(
-        noteID: UUID,
-        commentID: UUID,
-        to anchor: ResearcherCommentAnchor
-    ) throws {
-        guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
-        guard let index = record.comments.firstIndex(where: { $0.id == commentID }) else {
-            throw HumanReviewError.commentNotFound(commentID)
-        }
-        var anchor = anchor
-        anchor.state = .attached
-        record.comments[index].anchor = anchor
-        record.comments[index].updatedAt = Date()
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-    }
-
-    public func removeComment(noteID: UUID, commentID: UUID) throws {
-        guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
-        guard record.comments.contains(where: { $0.id == commentID }) else {
-            throw HumanReviewError.commentNotFound(commentID)
-        }
-        record.comments.removeAll { $0.id == commentID }
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-    }
-
-    public func moveRecord(noteID: UUID, to relativePath: String) throws {
-        guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
-        record.relativePath = relativePath
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
         try commit(proposed)
     }
 
@@ -276,59 +123,20 @@ public actor HumanReviewStore {
         return true
     }
 
-    /// Reattaches comments only when quotation and context identify one reliable location.
-    public func reattachComments(noteID: UUID, to document: NoteDocument) throws {
-        guard var record = records[noteID] else { throw HumanReviewError.recordNotFound(noteID) }
-        var changed = false
-        record.comments = record.comments.map { comment in
-            var anchor = comment.anchor
-            guard anchor.fingerprint != document.fingerprint || anchor.state == .needsReattachment else {
-                return comment
-            }
-            var updated = comment
-            let candidates = Self.ranges(of: anchor.quotation, in: document.rawContent)
-            let reliable = candidates.filter { range in
-                Self.contextMatches(anchor: anchor, range: range, source: document.rawContent)
-            }
-            guard reliable.count == 1, let range = reliable.first else {
-                anchor.state = .needsReattachment
-                updated.anchor = anchor
-                updated.updatedAt = Date()
-                changed = true
-                return updated
-            }
-            let utf16Start = range.lowerBound.utf16Offset(in: document.rawContent)
-            let utf16End = range.upperBound.utf16Offset(in: document.rawContent)
-            let prefix = document.rawContent[..<range.lowerBound]
-            let startLine = prefix.reduce(into: 1) { if $1.isNewline { $0 += 1 } }
-            let selected = document.rawContent[range]
-            let endLine = selected.reduce(into: startLine) { if $1.isNewline { $0 += 1 } }
-            let utf8Start = Data(document.rawContent[..<range.lowerBound].utf8).count
-            let utf8End = Data(document.rawContent[..<range.upperBound].utf8).count
-            anchor.fingerprint = document.fingerprint
-            anchor.utf8Range = utf8Start..<utf8End
-            anchor.utf16Range = utf16Start..<utf16End
-            anchor.line = startLine
-            anchor.endLine = endLine
-            anchor.state = .attached
-            updated.anchor = anchor
-            updated.updatedAt = Date()
-            changed = true
-            return updated
-        }
-        guard changed else { return }
-        record.updatedAt = Date()
+    #if DEBUG
+    /// Seeds historical bytes for compatibility and lifecycle tests. This is
+    /// internal to ScholiumCore tests and is not part of a release build.
+    func seedLegacyArchiveForTesting(_ legacyRecords: [HumanReviewRecord]) throws {
         var proposed = records
-        proposed[noteID] = record
+        for record in legacyRecords {
+            proposed[record.id] = record
+        }
         try commit(proposed)
     }
-
-    private func validateReviewNoteLength(_ reviewNote: String) throws {
-        guard reviewNote.count <= 500 else { throw HumanReviewError.reviewNoteTooLong }
-    }
+    #endif
 
     private func commit(_ proposed: [UUID: HumanReviewRecord]) throws {
-        try requireHealthyStore(kind: "Human Review")
+        try requireHealthyStore(kind: "earlier Review archive")
         try fileManager.createDirectory(at: storageURL, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -353,32 +161,6 @@ public actor HumanReviewStore {
         }
     }
 
-    private static func ranges(of needle: String, in source: String) -> [Range<String.Index>] {
-        guard !needle.isEmpty else { return [] }
-        var ranges: [Range<String.Index>] = []
-        var cursor = source.startIndex
-        while cursor < source.endIndex, let range = source.range(of: needle, range: cursor..<source.endIndex) {
-            ranges.append(range)
-            cursor = range.upperBound
-        }
-        return ranges
-    }
-
-    private static func contextMatches(
-        anchor: ResearcherCommentAnchor,
-        range: Range<String.Index>,
-        source: String
-    ) -> Bool {
-        let beforeStart = source.index(range.lowerBound, offsetBy: -anchor.contextBefore.count, limitedBy: source.startIndex)
-            ?? source.startIndex
-        let afterEnd = source.index(range.upperBound, offsetBy: anchor.contextAfter.count, limitedBy: source.endIndex)
-            ?? source.endIndex
-        let before = String(source[beforeStart..<range.lowerBound])
-        let after = String(source[range.upperBound..<afterEnd])
-        let beforeMatches = anchor.contextBefore.isEmpty || before.hasSuffix(anchor.contextBefore)
-        let afterMatches = anchor.contextAfter.isEmpty || after.hasPrefix(anchor.contextAfter)
-        return beforeMatches && afterMatches
-    }
 }
 
 
@@ -530,7 +312,7 @@ public actor DialogueStore {
                 entries = payload.entries
                 loadFailure = payload.schemaVersion == 2
                     ? nil
-                    : "Unsupported Dialogue schema version \(payload.schemaVersion)."
+                    : "Unsupported Discussion schema version \(payload.schemaVersion)."
             } catch {
                 entries = [:]
                 loadFailure = error.localizedDescription
@@ -543,7 +325,7 @@ public actor DialogueStore {
 
     public func healthError() -> String? {
         loadFailure.map {
-            ResearchRecordStoreError.unreadableStore(kind: "Dialogue", reason: $0)
+            ResearchRecordStoreError.unreadableStore(kind: "Discussion", reason: $0)
                 .localizedDescription
         }
     }
@@ -612,7 +394,7 @@ public actor DialogueStore {
     /// context, comments, quotations, replies, or generated transport text.
     @discardableResult
     public func purgeEntries(containing noteID: UUID) throws -> [DialogueEntry] {
-        try requireHealthyStore(kind: "Dialogue")
+        try requireHealthyStore(kind: "Discussion")
         let removed = entries.values.filter { entry in
             entry.selectedNotes.contains { $0.noteID == noteID }
         }
@@ -624,13 +406,13 @@ public actor DialogueStore {
     }
 
     func restorePurgedEntries(_ removed: [DialogueEntry]) throws {
-        try requireHealthyStore(kind: "Dialogue")
+        try requireHealthyStore(kind: "Discussion")
         var proposed = entries
         for entry in removed {
             if let existing = proposed[entry.id] {
                 guard try persistentlyEquivalent(existing, entry) else {
                     throw ResearchRecordStoreError.restorationConflict(
-                        kind: "Dialogue",
+                        kind: "Discussion",
                         identity: entry.id.uuidString
                     )
                 }
@@ -947,7 +729,7 @@ public actor DialogueStore {
     }
 
     private func commit(_ proposed: [UUID: DialogueEntry]) throws {
-        try requireHealthyStore(kind: "Dialogue")
+        try requireHealthyStore(kind: "Discussion")
         try fileManager.createDirectory(at: storageURL, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -1177,7 +959,152 @@ public actor CritiqueRegistry {
             scope: round.scope,
             functionSnapshot: snapshot,
             functionCompletion: completion,
-            functionInstructions: round.functionInstructions
+            functionInstructions: round.functionInstructions,
+            actionableFindings: round.actionableFindings,
+            findingDispositions: round.findingDispositions,
+            completedAt: round.completedAt
+        )
+        return try save(association)
+    }
+
+    /// Freezes the actionable finding set from the completed, version-bound
+    /// Critique document. Later disposition never reparses or silently changes
+    /// this researcher-facing round boundary.
+    @discardableResult
+    public func captureActionableFindings(
+        runID: UUID,
+        findings: [CritiqueFinding]
+    ) throws -> CritiqueAssociation {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.functionSnapshot?.runID == runID
+                    ? (association.id, index, round)
+                    : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID],
+              round.functionCompletion?.function == .critique,
+              round.functionCompletion?.state == .complete else {
+            throw CritiqueRegistryError.roundNotReady(runID)
+        }
+        let normalized = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            functionSnapshot: round.functionSnapshot,
+            functionCompletion: round.functionCompletion,
+            functionInstructions: round.functionInstructions,
+            actionableFindings: findings,
+            findingDispositions: round.findingDispositions,
+            completedAt: round.completedAt
+        )
+        if !round.actionableFindings.isEmpty,
+           round.actionableFindings != normalized.actionableFindings {
+            throw CritiqueRegistryError.findingSetAlreadyCaptured(round.id)
+        }
+        if round == normalized { return association }
+        association.rounds[index] = normalized
+        return try save(association)
+    }
+
+    /// Records one researcher disposition without creating Research Activity.
+    /// Accept is valid only against an observed changed Work revision or with
+    /// an explicit researcher rationale that no text change is required.
+    @discardableResult
+    public func setFindingDisposition(
+        roundID: UUID,
+        findingID: String,
+        decision: CritiqueFindingDispositionDecision,
+        currentWorkRevision: DocumentFingerprint,
+        rationale: String?,
+        noTextChangeRationale: String?
+    ) throws -> CritiqueAssociation {
+        guard let (associationID, index, round) = roundLocation(roundID: roundID),
+              var association = associations[associationID] else {
+            throw CritiqueRegistryError.roundNotFound(roundID)
+        }
+        guard round.completedAt == nil else {
+            throw CritiqueRegistryError.roundAlreadyCompleted(roundID)
+        }
+        guard round.actionableFindings.contains(where: { $0.id == findingID }) else {
+            throw CritiqueRegistryError.findingNotFound(findingID)
+        }
+        let noChange = noTextChangeRationale?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let acceptedRevision: DocumentFingerprint?
+        let acceptedWithoutChange: String?
+        if decision == .accept {
+            if currentWorkRevision != round.targetFingerprint {
+                acceptedRevision = currentWorkRevision
+                acceptedWithoutChange = nil
+            } else {
+                guard noChange?.isEmpty == false else {
+                    throw CritiqueRegistryError.acceptRequiresChangeOrRationale(findingID)
+                }
+                acceptedRevision = nil
+                acceptedWithoutChange = noChange
+            }
+        } else {
+            acceptedRevision = nil
+            acceptedWithoutChange = nil
+        }
+        let disposition = CritiqueFindingDisposition(
+            findingID: findingID,
+            decision: decision,
+            rationale: rationale,
+            acceptedRevision: acceptedRevision,
+            noTextChangeRationale: acceptedWithoutChange
+        )
+        var dispositions = round.findingDispositions.filter { $0.findingID != findingID }
+        dispositions.append(disposition)
+        association.rounds[index] = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            functionSnapshot: round.functionSnapshot,
+            functionCompletion: round.functionCompletion,
+            functionInstructions: round.functionInstructions,
+            actionableFindings: round.actionableFindings,
+            findingDispositions: dispositions,
+            completedAt: nil
+        )
+        return try save(association)
+    }
+
+    /// Completes one fully disposed round. The returned association is
+    /// idempotent; event projection remains an Application responsibility.
+    @discardableResult
+    public func completeRound(
+        roundID: UUID,
+        completedAt: Date = Date()
+    ) throws -> CritiqueAssociation {
+        guard let (associationID, index, round) = roundLocation(roundID: roundID),
+              var association = associations[associationID] else {
+            throw CritiqueRegistryError.roundNotFound(roundID)
+        }
+        if round.completedAt != nil { return association }
+        guard round.isReadyToComplete else {
+            throw CritiqueRegistryError.incompleteDispositions(roundID)
+        }
+        association.rounds[index] = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            functionSnapshot: round.functionSnapshot,
+            functionCompletion: round.functionCompletion,
+            functionInstructions: round.functionInstructions,
+            actionableFindings: round.actionableFindings,
+            findingDispositions: round.findingDispositions,
+            completedAt: completedAt
         )
         return try save(association)
     }
@@ -1222,7 +1149,10 @@ public actor CritiqueRegistry {
             scope: round.scope,
             functionSnapshot: replacement,
             functionCompletion: nil,
-            functionInstructions: instructions
+            functionInstructions: instructions,
+            actionableFindings: round.actionableFindings,
+            findingDispositions: round.findingDispositions,
+            completedAt: round.completedAt
         )
         return try save(association)
     }
@@ -1411,6 +1341,18 @@ public actor CritiqueRegistry {
         if let loadFailure {
             throw ResearchRecordStoreError.unreadableStore(kind: kind, reason: loadFailure)
         }
+    }
+
+    private func roundLocation(
+        roundID: UUID
+    ) -> (associationID: UUID, index: Int, round: CritiqueRound)? {
+        let matches = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.id == roundID ? (association.id, index, round) : nil
+            }
+        }
+        guard matches.count == 1 else { return nil }
+        return matches[0]
     }
 
     private static func normalized(

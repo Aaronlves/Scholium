@@ -199,7 +199,7 @@ private struct MonoComparisonColumn: View {
             sample("Source", text: "research_unit:\n  scope: fittingness", size: 14)
             sample("Code", text: "let claim = evidence.map(\\.source)", size: 13)
             sample("Diff", text: "+ Explicit premise\n− Unsupported inference", size: 13)
-            sample("Revision", text: "c7f81d9a · 1,284 bytes", size: 11)
+            sample("Revision", text: "c7f81d9a, 1,284 bytes", size: 11)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -285,7 +285,7 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
             Spacer()
 
             editorialLabel("TAGS")
-            Text(verbatim: "attention  ·  learning  ·  uncertainty")
+            Text(verbatim: "attention, learning, uncertainty")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)

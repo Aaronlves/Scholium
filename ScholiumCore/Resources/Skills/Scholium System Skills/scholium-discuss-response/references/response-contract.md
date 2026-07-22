@@ -1,4 +1,4 @@
-# Dialogue Response Contract
+# Discuss Response Contract
 
 ## 1. Two levels of state
 
@@ -6,8 +6,8 @@ Keep the mutable Triptych default separate from the immutable request-time choic
 
 | State | Purpose | Authority |
 | --- | --- | --- |
-| Dialogue Defaults | Remembers the researcher’s current response defaults for the Triptych | Default for a new Dialogue only |
-| Dialogue snapshot | Records the exact choices used when **Copy Instructions for Agent** created one Dialogue | Authoritative for that Dialogue |
+| Discuss Defaults | Remembers the researcher’s current response defaults for the Triptych | Default for a new Discuss request only |
+| Discuss snapshot | Records the exact choices used when **Copy Instructions for Agent** created one Discussion | Authoritative for that Discussion |
 
 This separation prevents a later panel change from changing how an earlier request should be answered.
 
@@ -26,7 +26,7 @@ Example:
 /Research/Ethics/.scholium/dialogue-response.json
 ```
 
-Scholium creates and updates this file. Agents may inspect it only when the researcher explicitly asks about current Dialogue Defaults. Agents never write it directly, and never use it to replace a Dialogue's immutable request snapshot.
+Scholium creates and updates this legacy-named compatibility file. Agents may inspect it only when the researcher explicitly asks about current Discuss Defaults. Agents never write it directly, and never use it to replace a Discussion's immutable request snapshot.
 
 ## 3. Portable profile shape
 
@@ -51,7 +51,7 @@ Use a small, versioned JSON document:
 
 ## 4. Request snapshot
 
-When the researcher copies a Dialogue request, Scholium snapshots the effective profile into that `DialogueEntry` as `responseContract`. The snapshot contains:
+When the researcher copies a Discuss request, Scholium snapshots the effective profile into the request record as `responseContract`. The snapshot contains:
 
 ```json
 {
@@ -64,13 +64,13 @@ When the researcher copies a Dialogue request, Scholium snapshots the effective 
 }
 ```
 
-The copied transport instructions must identify the Dialogue ID and Triptych selector. The agent retrieves the complete snapshot through:
+The copied transport instructions must identify the Discussion ID and Triptych selector. The agent retrieves the complete snapshot through:
 
 ```sh
-scholium dialogue show <dialogue-id> --triptych <triptych> --format json
+scholium discuss show <discussion-id> --triptych <triptych> --format json
 ```
 
-The raw Application Support Dialogue store is not an agent-facing interface. Do not locate or edit `dialogue.json` directly.
+The raw Application Support compatibility store is not an agent-facing interface. Do not locate or edit it directly.
 
 ## 5. Response modules
 
@@ -103,8 +103,8 @@ The original app-owned Comments remain unchanged unless the adopted product desi
 ## 7. Resolution precedence
 
 Resolve the contract only from the `responseContract` snapshot in the exact
-Dialogue record. The portable Triptych Dialogue Defaults create future request
-snapshots; they never answer an existing Dialogue. A record without a snapshot
+Discussion record. The portable Triptych Discuss Defaults create future request
+snapshots; they never answer an existing Discussion. A record without a snapshot
 is invalid current state and must fail closed rather than inventing a contract.
 
 ## 8. Invalid or future values
@@ -119,12 +119,12 @@ is invalid current state and must fail closed rather than inventing a contract.
 ## 9. Current implementation boundary
 
 The current Scholium implementation creates and updates the portable
-`dialogue-response.json` profile, snapshots the effective profile into each
-new `DialogueEntry` as `responseContract`, and places the Dialogue ID and
+`dialogue-response.json` compatibility profile, snapshots the effective profile into each
+new Discuss record as `responseContract`, and places the Discussion ID and
 Triptych selector in the copied transport instructions. Agents retrieve the
-exact request snapshot through the supported `scholium dialogue show` command;
+exact request snapshot through the supported `scholium discuss show` command;
 they do not read or edit the raw Application Support Dialogue store.
 
-Dialogue entries without a snapshot are unsupported pre-release state. Scholium
-does not expose them as current Dialogue requests, and an external agent must not
+Earlier Dialogue entries without a snapshot are archive state. Scholium
+does not expose them as current Discuss requests, and an external agent must not
 infer or manufacture the missing researcher selection.

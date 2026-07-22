@@ -352,13 +352,18 @@ struct DerivedRefreshStatusTests {
                     summary: "The final Work revision passed the selected check."
                 )
             }
+        let reviseActivityCompletion = try researchActivityCompletion(
+            for: revise,
+            candidateModifiedNotes: [workID],
+            summary: "Revised the Work."
+        )
         let awaitingRevision = try await handle.research.completeFunction(
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
-                finalTargetFingerprint: revisedFingerprint,
                 summary: "Revised the Work; final Fidelity remains pending.",
-                didModifyTarget: true
+                didModifyTarget: true,
+                activityCompletion: reviseActivityCompletion
             )
         )
         #expect(awaitingRevision.state == .awaitingFidelity)
@@ -391,9 +396,9 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
-                finalTargetFingerprint: revisedFingerprint,
                 summary: "Revised the Work and linked final Fidelity evidence.",
                 didModifyTarget: true,
+                activityCompletion: reviseActivityCompletion,
                 childRunIDs: [fidelity.runID]
             )
         )
@@ -442,6 +447,29 @@ private func functionTarget(
         lifecycle: note.lifecycle,
         fingerprint: note.fingerprint,
         title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
+    )
+}
+
+private func researchActivityCompletion(
+    for preparation: ResearchFunctionPreparation,
+    candidateModifiedNotes: [VaultQualifiedNoteID],
+    summary: String,
+    submittedAt: Date = Date()
+) throws -> ResearchActivityCompletionSubmission {
+    let prefix = "Activity key: "
+    let key = try #require(
+        preparation.instructions
+            .split(separator: "\n")
+            .map(String.init)
+            .first(where: { $0.hasPrefix(prefix) })?
+            .dropFirst(prefix.count)
+    )
+    return ResearchActivityCompletionSubmission(
+        activityID: try #require(preparation.snapshot.activityID),
+        activityKey: String(key),
+        candidateModifiedNotes: candidateModifiedNotes,
+        summary: summary,
+        submittedAt: submittedAt
     )
 }
 

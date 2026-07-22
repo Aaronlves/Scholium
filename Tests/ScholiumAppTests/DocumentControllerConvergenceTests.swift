@@ -193,7 +193,6 @@ struct DocumentControllerConvergenceTests {
                 modificationDate: nil
             ),
             lifecycle: .active,
-            review: nil,
             graphCounts: WorkspaceGraphCounts(
                 incoming: 0,
                 outgoing: 0,

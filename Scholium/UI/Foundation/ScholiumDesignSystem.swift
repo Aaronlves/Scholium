@@ -459,12 +459,16 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var symbolName: String {
+    /// Minimal predicates used by the HTML study. A circle around every mark
+    /// adds visual mass without adding meaning, so Connect uses these compact
+    /// directional glyphs and exposes the full predicate to accessibility and
+    /// pointer help.
+    var symbolText: String {
         switch self {
-        case .supports: "arrow.right.circle"
-        case .supportedBy: "arrow.left.circle"
-        case .incompatible: "xmark.circle"
-        case .neutral: "link.circle"
+        case .supports: "↑"
+        case .supportedBy: "↓"
+        case .incompatible: "×"
+        case .neutral: "—"
         }
     }
 
@@ -486,6 +490,8 @@ enum ScholiumWebDesignTokens {
     )
 
     static let rhythmCSSDeclarations = """
+    --scholium-document-line-width: \(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch;
+    --scholium-document-half-line-width: \(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits / 2))ch;
     --scholium-document-prose-font-size: \(ScholiumDocumentRhythm.proseFontSizePoints)pt;
     --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
     --scholium-document-h1-size: \(ScholiumDocumentRhythm.heading1ScalePercent)%;
@@ -560,11 +566,21 @@ enum ScholiumWebDesignTokens {
       min-width: 0;
       inline-size: 100%;
       margin: 0;
-      padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular) var(--scholium-rhythm-trailing-scroll);
+      padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll);
+      padding-inline: max(
+        var(--scholium-rhythm-inline-regular),
+        calc(50% - var(--scholium-document-half-line-width))
+      );
       font-family: Alegreya, Georgia, serif;
       font-size: var(--scholium-document-text-scale);
       line-height: var(--scholium-rhythm-prose-line-height);
       overflow-wrap: anywhere;
+    }
+    .cm-editor.scholium-source-mode .cm-content {
+      padding-inline: max(
+        var(--scholium-rhythm-inline-source),
+        calc(50% - var(--scholium-document-half-line-width))
+      );
     }
     .scholium-document h1,
     .scholium-document h2,
@@ -689,6 +705,24 @@ enum ScholiumGrid {
         static let headingGapAfterCSSPixels = foundationUnit * 2
         static let trailingScrollViewportFraction: CGFloat = 0.45
     }
+
+    /// Inspector-only rhythm derived from the approved HTML study. These are
+    /// layout variables rather than leaf-view literals: the mode strip,
+    /// section hierarchy, dense content groups, and Action rows each have a
+    /// distinct responsibility and therefore a distinct cadence.
+    enum Apparatus {
+        static let modeStripHeight = foundationUnit * 10
+        static let modeColumnGap = foundationUnit * 5
+        static let headingToContentGap = foundationUnit * 2.5
+        static let contentRowGap = foundationUnit * 1.5
+        static let contentLineSpacing = foundationUnit / 2
+        static let contentToRuleGap = foundationUnit * 4
+        static let actionRowVerticalInset = foundationUnit * 2.5
+        static let actionCopyGap = foundationUnit
+        static let actionFooterGap = foundationUnit * 2
+        static let activityHUDInset = foundationUnit * 2
+        static let activityHUDCornerRadius = foundationUnit * 1.5
+    }
 }
 
 enum ScholiumMetrics {
@@ -765,7 +799,7 @@ enum ScholiumMetrics {
         /// Component-owned height for the Overview/Connections/Functions row and
         /// the trailing Research Inspector header. It does not size the window
         /// toolbar or the standard window controls.
-        static let headerHeight = Workspace.regionHeaderHeight
+        static let headerHeight = ScholiumGrid.Apparatus.modeStripHeight
         /// All three Inspector modes share one outer content edge. Individual
         /// sections must not invent their own horizontal padding.
         static let contentInset = Peripheral.contentInset
@@ -773,12 +807,20 @@ enum ScholiumMetrics {
         static let sectionSpacing = Peripheral.sectionSpacing
         /// Internal section rhythm is deliberately separate from the spacing
         /// between complete sections.
-        static let sectionContentSpacing = Peripheral.sectionContentSpacing
+        static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
         /// Concrete note links, statuses, and other section content begin one
         /// level inside their section heading while retaining the outer
         /// trailing alignment edge.
         static let sectionContentInset = Peripheral.sectionContentInset
-        static let rowSpacing = ScholiumGrid.Spacing.opticalAlignmentAdjustment
+        static let rowSpacing = ScholiumGrid.Apparatus.contentRowGap
+        static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
+        static let contentToRuleSpacing = ScholiumGrid.Apparatus.contentToRuleGap
+        static let modeColumnSpacing = ScholiumGrid.Apparatus.modeColumnGap
+        static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
+        static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
+        static let actionFooterSpacing = ScholiumGrid.Apparatus.actionFooterGap
+        static let activityHUDInset = ScholiumGrid.Apparatus.activityHUDInset
+        static let activityHUDCornerRadius = ScholiumGrid.Apparatus.activityHUDCornerRadius
         /// A fixed symbol track keeps every row's text on the same scan line,
         /// regardless of the optical width of its SF Symbol.
         static let iconColumnWidth = Peripheral.iconColumnWidth
@@ -851,7 +893,10 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
               .scholium-document,
               .cm-editor.scholium-live-mode .cm-content,
               .cm-editor.scholium-source-mode .cm-content {
-                padding-inline: var(--scholium-rhythm-inline-narrow);
+                padding-inline: max(
+                  var(--scholium-rhythm-inline-narrow),
+                  calc(50%% - var(--scholium-document-half-line-width))
+                );
               }
             }
             """,

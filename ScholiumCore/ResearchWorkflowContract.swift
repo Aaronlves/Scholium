@@ -279,7 +279,7 @@ public enum ResearchWorkflowAssembler {
         let rendered = ([
             "# Scholium Workflow Contract",
             "",
-            "This is an ephemeral structural task packet. It does not grant permission, certify philosophical adequacy, or become part of Dialogue.",
+            "This is an ephemeral structural task packet. It does not grant permission, certify philosophical adequacy, or become part of Discuss.",
             "",
         ] + resolvedPhases.map(\.renderedInstructions)).joined(separator: "\n")
         return ResolvedResearchWorkflowEnvelope(

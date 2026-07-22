@@ -62,13 +62,13 @@ body,
   min-width: 0;
   inline-size: 100%;
   margin: 0;
-  padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-source) var(--scholium-rhythm-trailing-scroll);
+  padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll);
+  padding-inline: max(
+    var(--scholium-rhythm-inline-source),
+    calc(50% - var(--scholium-document-half-line-width))
+  );
   font-size: var(--scholium-document-text-scale);
   caret-color: var(--scholium-color-accent);
-}
-
-.cm-editor.scholium-source-mode .cm-content {
-  padding-inline: var(--scholium-rhythm-inline-source);
 }
 
 .cm-gutters {
@@ -124,19 +124,71 @@ body,
   background: color-mix(in srgb, var(--scholium-color-accent) 24%, transparent) !important;
 }
 
-.cm-researcher-comment {
+.cm-line {
+  position: relative;
+}
+
+.cm-page-annotation {
   color: inherit;
-  background: color-mix(in srgb, var(--scholium-color-accent) 14%, transparent);
-  border-radius: 3px;
-  box-shadow: inset 0 -2px var(--scholium-color-accent);
+  background: color-mix(in srgb, var(--scholium-color-accent) 8%, transparent);
+  border-radius: 2px;
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--scholium-color-accent) 72%, transparent);
   cursor: pointer;
 }
 
-.cm-researcher-comment-resolved {
-  background: color-mix(in srgb, var(--scholium-color-muted-text) 8%, transparent);
+.cm-page-annotation-resolved {
+  background: color-mix(in srgb, var(--scholium-color-muted-text) 6%, transparent);
   box-shadow: inset 0 -1px var(--scholium-color-muted-text);
-  text-decoration: underline dashed var(--scholium-color-muted-text);
-  text-underline-offset: 0.14em;
+}
+
+.cm-page-annotation-margin {
+  appearance: none;
+  position: absolute;
+  z-index: 2;
+  inset-inline-start: calc(100% + 1.15rem);
+  inset-block-start: calc(var(--scholium-annotation-slot, 0) * 2.45rem);
+  inline-size: clamp(8.5rem, 15vw, 13rem);
+  padding: .18rem 0 .22rem .62rem;
+  border: 0;
+  border-inline-start: 1px solid color-mix(in srgb, var(--scholium-color-primary-text) 24%, transparent);
+  border-radius: 0;
+  color: color-mix(in srgb, var(--scholium-color-primary-text) 68%, transparent);
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: .72rem;
+  line-height: 1.35;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.cm-page-annotation-margin:hover,
+.cm-page-annotation-margin:focus-visible {
+  color: var(--scholium-color-primary-text);
+  border-inline-start-color: var(--scholium-color-accent);
+  outline: none;
+}
+
+.cm-page-annotation-margin.cm-page-annotation-resolved {
+  opacity: .62;
+}
+
+@media (max-width: 900px) {
+  .cm-page-annotation-margin {
+    position: relative;
+    inset: auto;
+    display: block;
+    inline-size: min(18rem, 72%);
+    max-block-size: 2.3rem;
+    margin-block: .35rem .55rem;
+    margin-inline-start: auto;
+    overflow: hidden;
+  }
+
+  .cm-page-annotation-margin:hover,
+  .cm-page-annotation-margin:focus-visible {
+    max-block-size: none;
+  }
 }
 
 .cm-focused {
@@ -342,7 +394,7 @@ body,
     text-decoration-thickness: 2px;
   }
 
-  .cm-researcher-comment {
+  .cm-page-annotation {
     box-shadow: inset 0 -3px var(--scholium-color-accent-hover);
   }
 }

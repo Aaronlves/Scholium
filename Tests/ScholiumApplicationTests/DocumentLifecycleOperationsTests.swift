@@ -120,20 +120,12 @@ struct DocumentLifecycleOperationsTests {
         #expect(notYet.rawContent == "# Not Yet\n")
         #expect(!notYet.rawContent.contains("research_unit"))
 
-        _ = try await handle.research.saveHumanReviewDraft(
-            for: notYetID,
+        let settlement = try await handle.research.settle(
+            notYetID,
             expectedRevision: notYet.fingerprint,
-            qualification: .qualified,
-            reviewNote: "A draft remains available before scope declaration."
+            rationale: "Settlement is independent of legacy Review status."
         )
-        await #expect(throws: ResearchOperationError.self) {
-            _ = try await handle.research.completeHumanReview(
-                for: notYetID,
-                expectedRevision: notYet.fingerprint,
-                qualification: .qualified,
-                reviewNote: "Completion must wait for Research Status."
-            )
-        }
+        #expect(settlement.fingerprint == notYet.fingerprint)
 
         let declared = try await handle.documents.save(
             notYetID,
@@ -147,13 +139,7 @@ struct DocumentLifecycleOperationsTests {
                 """),
             expectedRevision: notYet.fingerprint
         )
-        let completed = try await handle.research.completeHumanReview(
-            for: notYetID,
-            expectedRevision: declared.document.fingerprint,
-            qualification: .qualified,
-            reviewNote: "Research Status is now declared."
-        )
-        #expect(completed.review(for: declared.document.fingerprint) != nil)
+        #expect(declared.document.fingerprint != settlement.fingerprint)
 
         let created = try await handle.documents.create(DocumentCreationRequest(
             id: analysesID,
@@ -195,15 +181,9 @@ struct DocumentLifecycleOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
-        _ = try await handle.research.saveHumanReviewDraft(
-            for: fixture.targetID,
-            expectedRevision: source.fingerprint,
-            qualification: nil,
-            reviewNote: "Private review state"
-        )
         let dialogue = try await handle.research.prepareFunction(
             ResearchFunctionRequest(
-                function: .dialogue,
+                function: .discuss,
                 target: ResearchFunctionTarget(
                 noteID: stableID,
                     note: fixture.targetID,
@@ -237,12 +217,11 @@ struct DocumentLifecycleOperationsTests {
 
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
-        #expect(commit.removedHumanReview)
+        #expect(!commit.removedHumanReview)
         #expect(commit.removedDialogueIDs == [dialogue.runID])
         #expect(commit.invalidatedCheckpointIDs.contains(checkpoint.id))
         #expect(dialogue.snapshot.checkpointID == nil)
-        #expect(try await handle.research.humanReview(noteID: stableID) == nil)
-        #expect(try await handle.research.dialogues(noteID: stableID).isEmpty)
+        #expect(try await handle.research.discussionHistory(noteID: stableID).isEmpty)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         #expect(try await handle.snapshot().document(id: trash.destination) == nil)
         #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL

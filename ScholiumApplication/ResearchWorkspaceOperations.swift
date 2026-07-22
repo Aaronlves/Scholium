@@ -3,20 +3,56 @@ import Foundation
 import ScholiumCore
 
 extension WorkspaceHandle {
-    // MARK: Researcher Comments and Human Review
+    // MARK: Settlement, Annotation, and Comment exchange
 
-    func comments(noteID: UUID) async throws -> [ResearcherComment] {
-        try requireActive()
-        try await requireHealthyHumanReviewStore()
-        return await services.humanReviewStore.record(noteID: noteID)?.comments ?? []
+    @discardableResult
+    func settle(
+        _ noteID: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint,
+        rationale: String?
+    ) async throws -> SettlementRecord {
+        let context = try await researchContext(
+            for: noteID,
+            expectedRevision: expectedRevision,
+            permits: { $0 != .other },
+            unavailable: { ResearchOperationError.commentUnavailable($0) }
+        )
+        guard let role = ResearchFunctionTargetRole(vaultRole: context.vault.role) else {
+            throw ResearchOperationError.commentUnavailable(context.vault.role)
+        }
+        let title = context.document.parsedFrontmatter["title"]?.displayScalar
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackTitle = (noteID.relativePath as NSString)
+            .deletingPathExtension
+            .components(separatedBy: "/")
+            .last ?? noteID.relativePath
+        let reference = ResearchActivityNoteReference(
+            noteID: context.identity.id,
+            note: noteID,
+            role: role,
+            title: title?.isEmpty == false ? title! : fallbackTitle
+        )
+        let settlement = try await services.researchActivityStore.settle(
+            note: reference,
+            fingerprint: expectedRevision,
+            rationale: rationale
+        )
+        try await refreshAfterResearchCommit("The settlement")
+        return settlement
     }
 
-    func addComment(
+    func annotations(noteID: UUID) async throws -> [AnnotationRecord] {
+        try requireActive()
+        try await requireHealthyPageAnnotationStore()
+        return await services.pageAnnotationStore.annotations(for: noteID)
+    }
+
+    func addAnnotation(
         to noteID: VaultQualifiedNoteID,
         text: String,
         anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         let context = try await researchContext(
             for: noteID,
             expectedRevision: expectedRevision,
@@ -26,71 +62,71 @@ extension WorkspaceHandle {
         if anchor.fingerprint != expectedRevision {
             throw ResearchOperationError.staleCommentRevision
         }
-        let record = try await services.humanReviewStore.addComment(
+        let annotation = AnnotationRecord(
             noteID: context.identity.id,
             vaultID: noteID.vaultID,
             relativePath: noteID.relativePath,
-            comment: ResearcherComment(text: text, anchor: anchor)
+            text: text,
+            anchor: anchor
         )
-        try await refreshAfterResearchCommit("The Comment")
-        return record
+        try await requireHealthyPageAnnotationStore()
+        let stored = try await services.pageAnnotationStore.add(annotation)
+        try await refreshAfterResearchCommit("The Annotation")
+        return stored
     }
 
-    func updateComment(
+    func updateAnnotation(
         noteID: UUID,
-        commentID: UUID,
+        annotationID: UUID,
         text: String
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         try requireActive()
-        try await requireHealthyHumanReviewStore()
-        try await services.humanReviewStore.updateCommentText(
+        try await requireHealthyPageAnnotationStore()
+        let annotation = try await services.pageAnnotationStore.update(
             noteID: noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             text: text
         )
-        let record = try await requireHumanReviewRecord(noteID: noteID)
-        try await refreshAfterResearchCommit("The Comment")
-        return record
+        try await refreshAfterResearchCommit("The Annotation")
+        return annotation
     }
 
-    func setCommentResolved(
+    func setAnnotationResolved(
         noteID: UUID,
-        commentID: UUID,
+        annotationID: UUID,
         resolved: Bool
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         try requireActive()
-        try await requireHealthyHumanReviewStore()
-        try await services.humanReviewStore.setCommentResolvedByResearcher(
+        try await requireHealthyPageAnnotationStore()
+        let annotation = try await services.pageAnnotationStore.setResolved(
             noteID: noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             resolved: resolved
         )
-        let record = try await requireHumanReviewRecord(noteID: noteID)
-        try await refreshAfterResearchCommit("The Comment")
-        return record
+        try await refreshAfterResearchCommit("The Annotation")
+        return annotation
     }
 
-    func deleteComment(
+    func deleteAnnotation(
         noteID: UUID,
-        commentID: UUID
-    ) async throws -> HumanReviewRecord {
+        annotationID: UUID
+    ) async throws -> AnnotationRecord {
         try requireActive()
-        try await requireHealthyHumanReviewStore()
-        try await services.humanReviewStore.removeComment(
+        try await requireHealthyPageAnnotationStore()
+        let annotation = try await services.pageAnnotationStore.remove(
             noteID: noteID,
-            commentID: commentID
+            annotationID: annotationID
         )
-        let record = try await requireHumanReviewRecord(noteID: noteID)
-        try await refreshAfterResearchCommit("The Comment")
-        return record
+        try await refreshAfterResearchCommit("The Annotation")
+        return annotation
     }
 
-    func reattachComment(
+    func reattachAnnotation(
         to noteID: VaultQualifiedNoteID,
-        commentID: UUID,
+        annotationID: UUID,
         anchor: ResearcherCommentAnchor,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> AnnotationRecord {
         let context = try await researchContext(
             for: noteID,
             expectedRevision: expectedRevision,
@@ -100,89 +136,83 @@ extension WorkspaceHandle {
         guard anchor.fingerprint == expectedRevision else {
             throw ResearchOperationError.staleCommentRevision
         }
-        try await services.humanReviewStore.reattachComment(
+        try await requireHealthyPageAnnotationStore()
+        let annotation = try await services.pageAnnotationStore.reattach(
             noteID: context.identity.id,
-            commentID: commentID,
-            to: anchor
+            annotationID: annotationID,
+            anchor: anchor
         )
-        let record = try await requireHumanReviewRecord(noteID: context.identity.id)
-        try await refreshAfterResearchCommit("The Comment attachment")
-        return record
+        try await refreshAfterResearchCommit("The Annotation attachment")
+        return annotation
     }
 
-    func reattachComments(
+    func reattachAnnotations(
         to noteID: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> HumanReviewRecord {
+    ) async throws -> [AnnotationRecord] {
         let context = try await researchContext(
             for: noteID,
             expectedRevision: expectedRevision,
             permits: { $0 != .other },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        try await services.humanReviewStore.reattachComments(
+        try await requireHealthyPageAnnotationStore()
+        let annotations = try await services.pageAnnotationStore.reattachAll(
             noteID: context.identity.id,
             to: context.document
         )
-        let record = try await requireHumanReviewRecord(noteID: context.identity.id)
-        try await refreshAfterResearchCommit("The Comment attachments")
-        return record
+        try await refreshAfterResearchCommit("The Annotation attachments")
+        return annotations
     }
 
-    func saveHumanReviewDraft(
-        for noteID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws -> HumanReviewRecord {
-        let context = try await researchContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0.allowsHumanReview },
-            unavailable: { ResearchOperationError.humanReviewUnavailable($0) }
-        )
-        let record = try await services.humanReviewStore.saveDraft(
-            noteID: context.identity.id,
-            vaultID: noteID.vaultID,
-            relativePath: noteID.relativePath,
-            draft: HumanReviewDraft(
-                fingerprint: expectedRevision,
-                qualification: qualification,
-                reviewNote: reviewNote
-            )
-        )
-        try await refreshAfterResearchCommit("The Human Review draft")
-        return record
+    func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
+        try requireActive()
+        try await requireHealthyResearchActivityStore()
+        return await services.researchActivityStore.exchanges(for: noteID)
     }
 
-    func completeHumanReview(
-        for noteID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws -> HumanReviewRecord {
-        let context = try await researchContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0.allowsHumanReview },
-            unavailable: { ResearchOperationError.humanReviewUnavailable($0) }
-        )
-        if context.vault.role == .sourceCorpus,
-           ResearchUnitDeclaration(
-                frontmatter: context.document.parsedFrontmatter
-           ).state != .declared {
-            throw ResearchOperationError.researchStatusRequiredForReview
+    func commentExchange(id: UUID) async throws -> CommentExchange {
+        try requireActive()
+        try await requireHealthyResearchActivityStore()
+        guard let exchange = await services.researchActivityStore.exchange(id: id) else {
+            throw CommentExchangeError.exchangeNotFound(id)
         }
-        let record = try await services.humanReviewStore.completeReview(
-            noteID: context.identity.id,
-            vaultID: noteID.vaultID,
-            relativePath: noteID.relativePath,
-            fingerprint: expectedRevision,
-            qualification: qualification,
-            reviewNote: reviewNote
+        return exchange
+    }
+
+    func createCommentExchange(
+        _ exchange: CommentExchange
+    ) async throws -> CommentExchange {
+        try requireActive()
+        try await requireHealthyResearchActivityStore()
+        try await validateCommentExchange(exchange)
+        let stored = try await services.researchActivityStore.createExchange(exchange)
+        try await refreshAfterResearchCommit("The Comment exchange")
+        return stored
+    }
+
+    func appendCommentExchangeTurn(
+        exchangeID: UUID,
+        turn: CommentExchangeTurn
+    ) async throws -> CommentExchange {
+        try requireActive()
+        try await requireHealthyResearchActivityStore()
+        let stored = try await services.researchActivityStore.appendExchangeTurn(
+            exchangeID: exchangeID,
+            turn: turn
         )
-        try await refreshAfterResearchCommit("The Human Review")
-        return record
+        try await refreshAfterResearchCommit("The Comment exchange")
+        return stored
+    }
+
+    func finishCommentExchange(exchangeID: UUID) async throws -> CommentExchange {
+        try requireActive()
+        try await requireHealthyResearchActivityStore()
+        let stored = try await services.researchActivityStore.finishExchange(
+            exchangeID: exchangeID
+        )
+        try await refreshAfterResearchCommit("The Comment exchange")
+        return stored
     }
 
     // MARK: Checkpoints and Recovery
@@ -339,15 +369,15 @@ extension WorkspaceHandle {
         try await refreshAfterResearchCommit("The recovery-record resolution")
     }
 
-    // MARK: Dialogue
+    // MARK: Discuss
 
-    func createDialogue(
+    func createDiscussion(
         instruction: String,
         selectedNotes: [DialogueNoteReference],
         includedCommentIDs: Set<UUID>,
         requestedDestination: String?,
         responseProfile: DialogueResponseProfile?,
-        dialogueID requestedDialogueID: UUID? = nil,
+        discussionID requestedDiscussionID: UUID? = nil,
         functionSnapshot: ResearchFunctionSnapshot? = nil,
         skillInstructionsOverride: String? = nil
     ) async throws -> DialoguePreparation {
@@ -363,7 +393,7 @@ extension WorkspaceHandle {
                 template.validationIssues
             )
         }
-        let storedProfile = try await services.controlStore.dialogueResponseProfile()
+        let storedProfile = try await services.controlStore.discussResponseProfile()
         let effectiveProfile = responseProfile ?? storedProfile
         guard effectiveProfile.validationIssues.isEmpty else {
             throw ResearchOperationError.invalidDialogueResponseContract(
@@ -371,13 +401,13 @@ extension WorkspaceHandle {
             )
         }
         let responseContract = DialogueResponseContract(profile: effectiveProfile)
-        let dialogueID = requestedDialogueID ?? UUID()
+        let discussionID = requestedDiscussionID ?? UUID()
         if let functionSnapshot {
-            guard functionSnapshot.runID == dialogueID,
-                  functionSnapshot.recordID == dialogueID,
-                  functionSnapshot.request.function == .dialogue else {
+            guard functionSnapshot.runID == discussionID,
+                  functionSnapshot.recordID == discussionID,
+                  functionSnapshot.request.function == .discuss else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "Dialogue function evidence does not match its record identity."
+                    "Discuss function evidence does not match its record identity."
                 )
             }
         }
@@ -408,8 +438,8 @@ extension WorkspaceHandle {
             ),
             template: template.source
         )
-        let responseLocator = DialogueResponseTransport.locator(
-            dialogueID: dialogueID,
+        let responseLocator = DiscussResponseTransport.locator(
+            discussionID: discussionID,
             triptychID: services.manifest.id,
             contract: responseContract
         )
@@ -419,13 +449,13 @@ extension WorkspaceHandle {
         }
 
         let entry = DialogueEntry(
-            id: dialogueID,
+            id: discussionID,
             triptychID: services.manifest.id,
             instruction: instruction,
             selectedNotes: selectedNotes,
             includedComments: includedComments,
-            // Ordinary Dialogue keeps its historical record shape. A
-            // Research Function Dialogue persists the canonical immutable
+            // An earlier Dialogue keeps its historical record shape. A
+            // current Discuss run persists the canonical immutable
             // packet so a prepared run remains recoverable after dismissal.
             preparedInstructions: functionSnapshot == nil
                 ? ""
@@ -437,7 +467,7 @@ extension WorkspaceHandle {
             linkedNoteSummary: linkedSummary
         )
         let saved = try await services.dialogueStore.save(entry)
-        try await refreshAfterResearchCommit("The Dialogue request")
+        try await refreshAfterResearchCommit("The Discuss request")
         return DialoguePreparation(
             entry: saved,
             instructions: instructions,
@@ -445,7 +475,7 @@ extension WorkspaceHandle {
         )
     }
 
-    func appendDialogueFollowUpComment(
+    func appendDiscussionFollowUp(
         _ comment: DialogueFollowUpComment,
         to entryID: UUID
     ) async throws -> DialogueEntry {
@@ -457,7 +487,7 @@ extension WorkspaceHandle {
             comment,
             to: entryID
         )
-        try await refreshAfterResearchCommit("The Dialogue follow-up Comment")
+        try await refreshAfterResearchCommit("The Discuss follow-up")
         return entry
     }
 
@@ -473,6 +503,105 @@ extension WorkspaceHandle {
         return await services.critiqueRegistry.association(
             critiqueRelativePath: critiqueRelativePath
         )
+    }
+
+    func setCritiqueFindingDisposition(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        findingID: String,
+        decision: CritiqueFindingDispositionDecision,
+        rationale: String?,
+        noTextChangeRationale: String?,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation {
+        let context = try await researchContext(
+            for: workNote,
+            expectedRevision: expectedRevision,
+            permits: { $0.allowsCritique },
+            unavailable: { ResearchOperationError.critiqueUnavailable($0) }
+        )
+        guard !CritiquePlacement.isManagedCritiquePath(workNote.relativePath) else {
+            throw ResearchOperationError.critiqueTargetMustBeOrdinaryWork(
+                workNote.relativePath
+            )
+        }
+        if let issue = await services.critiqueRegistry.healthError() {
+            throw ScholiumApplicationError.researchStoreUnavailable(issue)
+        }
+        guard let current = await services.critiqueRegistry.association(
+            workNoteID: context.identity.id
+        ), current.rounds.contains(where: { $0.id == roundID }) else {
+            throw CritiqueRegistryError.roundNotFound(roundID)
+        }
+        let association = try await services.critiqueRegistry.setFindingDisposition(
+            roundID: roundID,
+            findingID: findingID,
+            decision: decision,
+            currentWorkRevision: context.document.fingerprint,
+            rationale: rationale,
+            noTextChangeRationale: noTextChangeRationale
+        )
+        try await refreshAfterResearchCommit("The Critique finding disposition")
+        return association
+    }
+
+    func completeCritiqueRound(
+        workNote: VaultQualifiedNoteID,
+        roundID: UUID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> CritiqueAssociation {
+        let context = try await researchContext(
+            for: workNote,
+            expectedRevision: expectedRevision,
+            permits: { $0.allowsCritique },
+            unavailable: { ResearchOperationError.critiqueUnavailable($0) }
+        )
+        guard !CritiquePlacement.isManagedCritiquePath(workNote.relativePath) else {
+            throw ResearchOperationError.critiqueTargetMustBeOrdinaryWork(
+                workNote.relativePath
+            )
+        }
+        guard let current = await services.critiqueRegistry.association(
+            workNoteID: context.identity.id
+        ), current.rounds.contains(where: { $0.id == roundID }) else {
+            throw CritiqueRegistryError.roundNotFound(roundID)
+        }
+        let association = try await services.critiqueRegistry.completeRound(
+            roundID: roundID
+        )
+        guard let round = association.rounds.first(where: { $0.id == roundID }),
+              let completedAt = round.completedAt else {
+            throw CritiqueRegistryError.incompleteDispositions(roundID)
+        }
+        let title = context.document.parsedFrontmatter["title"]?.displayScalar
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackTitle = (workNote.relativePath as NSString)
+            .deletingPathExtension
+            .components(separatedBy: "/")
+            .last ?? workNote.relativePath
+        let reference = ResearchActivityNoteReference(
+            noteID: context.identity.id,
+            note: workNote,
+            role: .work,
+            title: title?.isEmpty == false ? title! : fallbackTitle
+        )
+        _ = try await services.researchActivityStore.appendEvent(
+            ResearchActivityEvent(
+                id: ResearchActivityEvent.stableID(
+                    activityID: roundID,
+                    noteID: context.identity.id,
+                    kind: .critiqueAddressed
+                ),
+                activityID: roundID,
+                note: reference,
+                kind: .critiqueAddressed,
+                occurredAt: completedAt,
+                origin: reference,
+                researchRecordID: roundID
+            )
+        )
+        try await refreshAfterResearchCommit("The completed Critique round")
+        return association
     }
 
     func requestCritique(
@@ -805,19 +934,35 @@ extension WorkspaceHandle {
         )
     }
 
-    private func requireHealthyHumanReviewStore() async throws {
-        if let issue = await services.humanReviewStore.healthError() {
+    private func requireHealthyResearchActivityStore() async throws {
+        if let issue = await services.researchActivityStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(issue)
         }
     }
 
-    private func requireHumanReviewRecord(
-        noteID: UUID
-    ) async throws -> HumanReviewRecord {
-        guard let record = await services.humanReviewStore.record(noteID: noteID) else {
-            throw HumanReviewError.recordNotFound(noteID)
+    private func requireHealthyPageAnnotationStore() async throws {
+        if let issue = await services.pageAnnotationStore.healthError() {
+            throw ScholiumApplicationError.researchStoreUnavailable(issue)
         }
-        return record
+    }
+
+    private func validateCommentExchange(_ exchange: CommentExchange) async throws {
+        let reference = exchange.note
+        guard let snapshot = currentSnapshot.document(id: reference.note),
+              snapshot.lifecycle == .active,
+              case .resolved(let stableID) = snapshot.stableIdentity,
+              stableID == reference.noteID,
+              ResearchFunctionTargetRole(vaultRole: snapshot.vaultRole) == reference.role else {
+            throw ResearchOperationError.noteUnavailable(reference.note)
+        }
+        let document = try await repository(vaultID: reference.note.vaultID)
+            .load(relativePath: reference.note.relativePath)
+        guard document.fingerprint == exchange.anchor.fingerprint else {
+            throw VaultRepositoryError.conflict(
+                expected: exchange.anchor.fingerprint,
+                current: document.fingerprint
+            )
+        }
     }
 
     private func refreshAfterResearchCommit(_ operation: String) async throws {

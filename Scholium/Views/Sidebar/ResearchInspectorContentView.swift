@@ -14,9 +14,9 @@ enum ResearchProjectionFreshness: Equatable, Sendable {
         switch self {
         case .refreshing: "Refreshing derived state…"
         case .current: "Current for saved source"
-        case .stale: "Derived State Stale"
+        case .stale: "Refresh Needed"
         case .failed: "Refresh Failed"
-        case .unavailable: "Derived State Unavailable"
+        case .unavailable: "Refresh Unavailable"
         }
     }
 
@@ -33,6 +33,13 @@ enum ResearchProjectionFreshness: Equatable, Sendable {
         case .refreshing, .current, .unavailable: false
         }
     }
+
+    var isActionable: Bool {
+        switch self {
+        case .refreshing, .stale, .failed, .unavailable: true
+        case .current: false
+        }
+    }
 }
 
 struct ResearchProjectionFreshnessBanner: View {
@@ -40,33 +47,27 @@ struct ResearchProjectionFreshnessBanner: View {
     let retry: () -> Void
 
     var body: some View {
-        ScholiumApparatusSection("DERIVED STATE") {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(freshness.titleResource, systemImage: symbol)
-                    .font(ScholiumInterfaceTypography.apparatusBody)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let detail = freshness.detail {
-                    Text(detail)
-                        .font(ScholiumInterfaceTypography.apparatusMetadata)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if freshness.isActionable {
+                ScholiumApparatusSection("SOURCE FRESHNESS") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(freshness.titleResource)
+                            .font(ScholiumInterfaceTypography.apparatusBody)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let detail = freshness.detail {
+                            Text(detail)
+                                .font(ScholiumInterfaceTypography.apparatusMetadata)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if freshness.permitsRetry {
+                            Button("Retry Refresh", action: retry)
+                                .buttonStyle(.link)
+                        }
+                    }
                 }
-                if freshness.permitsRetry {
-                    Button("Retry Refresh", action: retry)
-                        .buttonStyle(.link)
-                }
+                .accessibilityIdentifier("scholium.researchProjectionFreshness")
             }
-        }
-        .accessibilityIdentifier("scholium.researchProjectionFreshness")
-    }
-
-    private var symbol: String {
-        switch freshness {
-        case .refreshing: "arrow.triangle.2.circlepath"
-        case .current: "checkmark.circle"
-        case .stale: "clock.badge.exclamationmark"
-        case .failed: "exclamationmark.triangle"
-        case .unavailable: "questionmark.circle"
         }
     }
 }
@@ -78,33 +79,17 @@ struct ResearchOverviewPresentation {
     let currentVault: RegisteredVault?
     let analysesVaultID: UUID?
     let catalog: WorkspaceCatalogSnapshot?
-    let reviewDisplayState: HumanReviewDisplayState
-    let reviewRecord: HumanReviewRecord?
-    let currentRevision: DocumentFingerprint?
-    let critique: CritiqueAssociation?
     let visibleAttentionItems: [AttentionQueueItem]
     let freshness: ResearchProjectionFreshness
-
-    var commentCount: Int { reviewRecord?.comments.count ?? 0 }
-    var unresolvedCommentCount: Int {
-        reviewRecord?.comments.filter { $0.resolvedAt == nil }.count ?? 0
-    }
-    var commentsNeedingReattachmentCount: Int {
-        reviewRecord?.comments.filter {
-            $0.anchor.state == .needsReattachment
-        }.count ?? 0
-    }
-    var attentionKinds: [AttentionQueueKind] {
-        Set(visibleAttentionItems.map(\.kind))
-            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
-    }
+    let propertiesConfiguration: VaultPropertiesConfiguration?
 }
 
 struct ResearchInspectorContentContext {
     let presentation: ResearchOverviewPresentation
-    let openReview: () -> Void
     let openResearchRecord: () -> Void
     let openProperties: () -> Void
+    let customizeProperties: () -> Void
+    let openAttention: () -> Void
     let retryRefresh: () -> Void
     let resolveZoteroSource: (ZoteroSourceIdentity) async throws -> ZoteroMatchResult
     let openZoteroItem: (String) async -> Void
@@ -115,12 +100,11 @@ struct ResearchInspectorContentContext {
     var researchUnit: ResearchUnitDeclaration { presentation.researchUnit }
     var analysesVaultID: UUID? { presentation.analysesVaultID }
     var catalog: WorkspaceCatalogSnapshot? { presentation.catalog }
-    var reviewDisplayState: HumanReviewDisplayState { presentation.reviewDisplayState }
-    var reviewRecord: HumanReviewRecord? { presentation.reviewRecord }
-    var currentRevision: DocumentFingerprint? { presentation.currentRevision }
-    var critique: CritiqueAssociation? { presentation.critique }
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
+    var propertiesConfiguration: VaultPropertiesConfiguration? {
+        presentation.propertiesConfiguration
+    }
 }
 
 /// Document-local research context: Attention, Zotero source identity, and
@@ -143,12 +127,12 @@ struct ResearchOverviewView: View {
                 alignment: .leading,
                 spacing: ScholiumMetrics.Apparatus.sectionSpacing
             ) {
-                researchStatusSection
-                scholarlyStatusSection
+                ResearchProjectionFreshnessBanner(
+                    freshness: context.freshness,
+                    retry: context.retryRefresh
+                )
                 attentionSection
-                propertiesSection
-                provenanceSection
-                diagnosticsSection
+                aboutSection
                 ZoteroSourceSection(
                     note: note,
                     currentVault: context.currentVault,
@@ -172,9 +156,9 @@ struct ResearchOverviewView: View {
 
     // MARK: - Research sections
 
-    private var researchStatusSection: some View {
+    private var aboutSection: some View {
         ScholiumApparatusSection(
-            "RESEARCH STATUS",
+            aboutTitle,
             content: {
                 VStack(
                     alignment: .leading,
@@ -182,7 +166,7 @@ struct ResearchOverviewView: View {
                 ) {
                     switch context.researchUnit.state {
                     case .absent:
-                        Label("Not Yet", systemImage: "circle.dashed")
+                        Text("No Scope or Limitations have been declared.")
                             .foregroundStyle(.secondary)
                     case .declared:
                         if let scope = context.researchUnit.scope {
@@ -207,487 +191,68 @@ struct ResearchOverviewView: View {
                             }
                         }
                     case .invalid(let message):
-                        Label(message, systemImage: "exclamationmark.triangle")
+                        Text(message)
                             .foregroundStyle(ScholiumColorRole.attention.color)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    ForEach(priorityPropertyFacts) { fact in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(fact.label)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(fact.value)
+                                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                                .multilineTextAlignment(.trailing)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(ScholiumInterfaceTypography.apparatusBody)
                     }
                 }
                 .font(ScholiumInterfaceTypography.apparatusBody)
             },
             trailing: {
-                Button("Edit Research Status…", action: context.openProperties)
-                    .buttonStyle(.link)
+                HStack(spacing: 8) {
+                    Button("Edit", action: context.openProperties)
+                        .buttonStyle(.link)
+                    Button("Customize", action: context.customizeProperties)
+                        .buttonStyle(.link)
+                }
             }
         )
-        .accessibilityIdentifier("scholium.researchStatus")
-    }
-
-    private var scholarlyStatusSection: some View {
-        VStack(
-            alignment: .leading,
-            spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
-        ) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                    Text("SCHOLARLY STATUS")
-                        .font(ScholiumInterfaceTypography.apparatusLabel)
-                        .tracking(0.7)
-                        .foregroundStyle(.secondary)
-
-                    Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-
-                    if context.reviewRecord?.latestReview != nil || context.critique != nil {
-                        HStack(spacing: 5) {
-                            Image(systemName: reviewRevisionSymbol)
-                                .font(.system(size: 6, weight: .semibold))
-                                .accessibilityHidden(true)
-                            Text(reviewRevisionTitle)
-                        }
-                        .font(ScholiumInterfaceTypography.apparatusMetadata)
-                        .foregroundStyle(reviewRevisionColor)
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-
-                HStack(alignment: .center, spacing: 12) {
-                    reviewBadge
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(reviewTitle)
-                            .font(ScholiumInterfaceTypography.reviewValue)
-                            .foregroundStyle(ScholiumColorRole.primaryText.color)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        if let latest = context.reviewRecord?.latestReview {
-                            Text("Reviewed \(latest.completedAt, style: .relative)")
-                                .font(ScholiumInterfaceTypography.apparatusMetadata)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .accessibilityElement(children: .combine)
-
-                if let reviewNote = completedReviewNote {
-                    HStack(alignment: .top, spacing: 8) {
-                        Rectangle()
-                            .fill(reviewColor)
-                            .frame(width: 2)
-                            .accessibilityHidden(true)
-
-                        Text(reviewNote)
-                            .font(ScholiumInterfaceTypography.reviewSummary)
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                ScholiumStructuralRule()
-
-                HStack(spacing: 8) {
-                    if let fingerprint = scholarlyFingerprint {
-                        Text("Fingerprint \(fingerprint.prefix(4))…\(fingerprint.suffix(4))")
-                            .font(ScholiumTypography.swiftUIRevisionIdentity())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Button(reviewActionTitle, action: context.openReview)
-                        .font(ScholiumInterfaceTypography.apparatusBody)
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
-                        .buttonStyle(.plain)
-                        .frame(
-                            minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget,
-                            alignment: .trailing
-                        )
-                        .contentShape(Rectangle())
-                        .accessibilityIdentifier(
-                            isWork ? "scholium.openCritique" : "scholium.openReview"
-                        )
-                }
-
-                ScholiumStructuralRule()
-                Text(commentSummary)
-                    .font(ScholiumInterfaceTypography.apparatusMetadata)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("scholium.researchOverview.comments")
-            }
-            .padding(12)
-            .background(
-                ScholiumColorRole.raisedSurfaceBackground.color.opacity(0.42),
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                    style: .continuous
-                )
-            )
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                    style: .continuous
-                )
-                .stroke(reviewColor.opacity(0.55), lineWidth: 1)
-            }
-
-            ScholiumStructuralRule()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier("scholium.scholarlyStatus")
+        .accessibilityIdentifier("scholium.about")
     }
 
     private var attentionSection: some View {
-        ScholiumApparatusSection("ATTENTION") {
+        ScholiumApparatusSection("NEEDS ATTENTION") {
             if context.visibleAttentionItems.isEmpty {
-                Text("None")
+                Text("No current research issues.")
                     .font(ScholiumInterfaceTypography.apparatusBody)
                     .foregroundStyle(.secondary)
             } else {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("\(context.visibleAttentionItems.count) requiring attention")
-                        .font(ScholiumInterfaceTypography.apparatusBody)
-                    Text(attentionKindSummary)
-                        .font(ScholiumInterfaceTypography.apparatusMetadata)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .accessibilityIdentifier("scholium.researchOverview.attention")
-    }
-
-    private var reviewBadge: some View {
-        ZStack {
-            Circle()
-                .fill(reviewBadgeIsFilled ? reviewColor : Color.clear)
-            Circle()
-                .stroke(reviewColor, lineWidth: 1.5)
-            if let symbol = reviewBadgeForegroundSymbol {
-                Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(
-                        reviewBadgeIsFilled
-                            ? ScholiumColorRole.documentBackground.color
-                            : reviewColor
-                    )
-            }
-        }
-        .frame(width: 34, height: 34)
-        .shadow(
-            color: reviewBadgeIsFilled ? reviewColor.opacity(0.26) : .clear,
-            radius: 5,
-            x: 0,
-            y: 2
-        )
-        .accessibilityHidden(true)
-    }
-
-    private var propertiesSection: some View {
-        ScholiumApparatusSection(
-            "PROPERTIES",
-            content: {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumMetrics.Apparatus.rowSpacing
-                ) {
-                    if priorityPropertyFacts.isEmpty {
-                        Text("No priority properties")
-                            .font(ScholiumInterfaceTypography.apparatusBody)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(priorityPropertyFacts) { fact in
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(fact.label)
-                                    .foregroundStyle(.secondary)
-                                Spacer(minLength: 8)
-                                Text(fact.value)
-                                    .foregroundStyle(ScholiumColorRole.primaryText.color)
-                                    .multilineTextAlignment(.trailing)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .font(ScholiumInterfaceTypography.apparatusBody)
-                        }
-                    }
-                }
-            },
-            trailing: {
-                Button(action: context.openProperties) {
-                    Image(systemName: "slider.horizontal.3")
-                        .frame(
-                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .help("Open Properties")
-                .accessibilityLabel("Open Properties")
-            }
-        )
-    }
-
-    private var provenanceSection: some View {
-        ScholiumApparatusSection(
-            "PROVENANCE",
-            content: {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumMetrics.Apparatus.rowSpacing
-                ) {
-                    provenanceRow(
-                        symbol: "doc.text",
-                        title: "Current note",
-                        date: note.fileModifiedAt
-                    )
-                    if let review = context.reviewRecord?.latestReview {
-                        provenanceRow(
-                            symbol: "checkmark.seal",
-                            title: "Human review",
-                            date: review.completedAt
-                        )
-                    }
-                    if let critique = context.critique {
-                        provenanceRow(
-                            symbol: "doc.text.magnifyingglass",
-                            title: "Critique",
-                            date: critique.updatedAt
-                        )
-                    }
-                }
-            },
-            trailing: {
-                Button(action: context.openResearchRecord) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .frame(
-                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .help("Open Research Record")
-                .accessibilityLabel("Open Research Record")
-            }
-        )
-    }
-
-    private var diagnosticsSection: some View {
-        ScholiumApparatusSection(
-            "DIAGNOSTICS",
-            content: {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumMetrics.Apparatus.rowSpacing
-                ) {
-                    ForEach(diagnostics) { diagnostic in
-                        ScholiumApparatusRow(
-                            leading: {
-                                Image(systemName: diagnostic.symbol)
-                                    .foregroundStyle(diagnostic.color)
-                                    .accessibilityHidden(true)
-                            },
-                            content: {
-                                Text(diagnostic.titleResource)
-                                    .font(ScholiumInterfaceTypography.apparatusBody)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        )
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel(Text(
-                            "\(ScholiumL10n.localized(diagnostic.titleResource)): \(ScholiumL10n.localized(diagnostic.accessibilityStateResource))"
-                        ))
-                    }
-
-                    ScholiumApparatusRow(
-                        leading: {
-                            Image(systemName: freshnessSymbol)
-                                .foregroundStyle(freshnessColor)
-                                .accessibilityHidden(true)
-                        },
-                        content: {
-                            Text(context.freshness.titleResource)
-                                .font(ScholiumInterfaceTypography.apparatusBody)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(context.visibleAttentionItems.prefix(3))) { item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(attentionTitle(for: item.kind))
+                                .font(ScholiumInterfaceTypography.apparatusBody.weight(.medium))
+                            Text(item.message)
+                                .font(ScholiumInterfaceTypography.apparatusMetadata)
+                                .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                    )
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(Text(context.freshness.titleResource))
-
-                    if let detail = context.freshness.detail {
-                        Text(detail)
+                    }
+                    HStack {
+                        Text("\(context.visibleAttentionItems.count) current issues")
                             .font(ScholiumInterfaceTypography.apparatusMetadata)
                             .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if context.freshness.permitsRetry {
-                        Button("Retry Refresh", action: context.retryRefresh)
+                        Spacer(minLength: 8)
+                        Button("Show All", action: context.openAttention)
                             .buttonStyle(.link)
                     }
                 }
             }
-        )
-    }
-
-    private func provenanceRow(
-        symbol: String,
-        title: LocalizedStringResource,
-        date: Date
-    ) -> some View {
-        ScholiumApparatusRow(
-            leading: {
-                Image(systemName: symbol)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            },
-            content: {
-                Text(title)
-                    .font(ScholiumInterfaceTypography.apparatusBody)
-            },
-            trailing: {
-                Text(date.formatted(date: .abbreviated, time: .omitted))
-                    .font(ScholiumInterfaceTypography.apparatusMetadata)
-                    .foregroundStyle(.secondary)
-            }
-        )
-    }
-
-    private var reviewTitle: String {
-        if isWork {
-            guard let critique = context.critique else {
-                return ScholiumL10n.string("No critique")
-            }
-            let count = critique.rounds.count
-            return count == 1
-                ? ScholiumL10n.string("1 Critique Round")
-                : ScholiumL10n.string("\(count) Critique Rounds")
         }
-        if context.reviewRecord?.draft != nil {
-            return ScholiumL10n.string("Review draft")
-        }
-        return switch context.reviewDisplayState {
-        case .notReviewed:
-            context.currentRevision != nil && context.reviewRecord?.latestReview != nil
-                ? ScholiumL10n.string("Changed since review")
-                : ScholiumL10n.string("Not reviewed")
-        case .reviewed: ScholiumL10n.string("Reviewed")
-        case .qualified: ScholiumL10n.string("Qualified")
-        case .unqualified: ScholiumL10n.string("Unqualified")
-        }
-    }
-
-    private var reviewActionTitle: String {
-        isWork
-            ? ScholiumL10n.string("Open Critique")
-            : ScholiumL10n.string("Open Review")
-    }
-
-    private var completedReviewNote: String? {
-        guard let note = context.reviewRecord?.latestReview?.reviewNote,
-              !note.isEmpty else { return nil }
-        return note
-    }
-
-    private var latestReviewMatchesCurrentRevision: Bool {
-        guard let latest = context.reviewRecord?.latestReview,
-              let currentRevision = context.currentRevision else { return false }
-        return latest.fingerprint == currentRevision
-    }
-
-    private var reviewRevisionTitle: String {
-        if isWork {
-            guard context.critique != nil else {
-                return ScholiumL10n.string("No critique")
-            }
-            return revisionIsCurrent
-                ? ScholiumL10n.string("Current revision")
-                : ScholiumL10n.string("Earlier revision")
-        }
-        guard context.reviewRecord?.latestReview != nil else {
-            return ScholiumL10n.string("Not reviewed")
-        }
-        return latestReviewMatchesCurrentRevision
-            ? ScholiumL10n.string("Current revision")
-            : ScholiumL10n.string("Earlier revision")
-    }
-
-    private var reviewRevisionSymbol: String {
-        revisionIsCurrent ? "circle.fill" : "circle"
-    }
-
-    private var reviewRevisionColor: Color {
-        if revisionIsCurrent {
-            return ScholiumColorRole.confirmed.color
-        }
-        if context.reviewRecord?.latestReview != nil || context.critique != nil {
-            return ScholiumColorRole.attention.color
-        }
-        return ScholiumColorRole.secondaryText.color
-    }
-
-    private var reviewBadgeIsFilled: Bool {
-        context.reviewRecord?.latestReview != nil
-            || context.critique != nil
-            || context.reviewDisplayState != .notReviewed
-    }
-
-    private var reviewBadgeForegroundSymbol: String? {
-        if isWork {
-            return context.critique == nil ? nil : "doc.text.magnifyingglass"
-        }
-        if context.reviewDisplayState == .notReviewed,
-           context.reviewRecord?.latestReview == nil {
-            return nil
-        }
-        return switch context.reviewDisplayState {
-        case .notReviewed: "clock"
-        case .reviewed, .qualified: "checkmark"
-        case .unqualified: "xmark"
-        }
-    }
-
-    private var reviewColor: Color {
-        if isWork {
-            guard context.critique != nil else {
-                return ScholiumColorRole.mutedText.color
-            }
-            return revisionIsCurrent
-                ? ScholiumColorRole.confirmed.color
-                : ScholiumColorRole.attention.color
-        }
-        return switch context.reviewDisplayState {
-        case .notReviewed: ScholiumColorRole.mutedText.color
-        case .reviewed: ScholiumColorRole.secondaryText.color
-        case .qualified: ScholiumColorRole.confirmed.color
-        case .unqualified: ScholiumColorRole.destructive.color
-        }
-    }
-
-    private var isWork: Bool {
-        context.currentVault?.role == .draftProject
-    }
-
-    private var revisionIsCurrent: Bool {
-        if isWork {
-            guard let critique = context.critique,
-                  let currentRevision = context.currentRevision else { return false }
-            return critique.targetFingerprint == currentRevision
-        }
-        return latestReviewMatchesCurrentRevision
-    }
-
-    private var commentSummary: String {
-        let presentation = context.presentation
-        return ScholiumL10n.string(
-            "\(presentation.commentCount) comments · \(presentation.unresolvedCommentCount) unresolved · \(presentation.commentsNeedingReattachmentCount) need reattachment"
-        )
-    }
-
-    private var attentionKindSummary: String {
-        context.presentation.attentionKinds
-            .map { ScholiumL10n.localized(attentionTitle(for: $0)) }
-            .joined(separator: " · ")
+        .accessibilityIdentifier("scholium.researchOverview.attention")
     }
 
     private func attentionTitle(
@@ -695,20 +260,13 @@ struct ResearchOverviewView: View {
     ) -> LocalizedStringResource {
         switch kind {
         case .possibleOrphan: "Possible Orphan"
-        case .changedSinceReview: "Changed Since Review"
+        case .changedSinceSettled: "Changed Since Settled"
+        case .changeAttributionNeeded: "Change Attribution Needed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"
-        case .unqualifiedAnalysisReliance: "Unqualified Analysis Reliance"
         case .unresolvedIdentity: "Unresolved Identity"
         }
-    }
-
-    private var scholarlyFingerprint: String? {
-        if isWork {
-            return context.critique?.targetFingerprint.sha256
-        }
-        return context.reviewRecord?.latestReview?.fingerprint.sha256
     }
 
     private struct PropertyFact: Identifiable {
@@ -719,25 +277,19 @@ struct ResearchOverviewView: View {
     }
 
     private var priorityPropertyFacts: [PropertyFact] {
-        let keys: [String] = switch note.profile {
-        case .paperAnalysis:
-            ["authors", "year", "type", "status", "debate_importance"]
-        case .topicKnowledge:
-            ["status", "aliases"]
-        case .draftProject:
-            ["kind", "status", "deadline", "authors"]
-        case .generic:
-            note.frontmatter.keys
-                .filter {
-                    $0 != "title"
-                        && $0 != "tags"
-                        && $0 != "research_unit"
-                        && !ResearcherPropertyPolicy.isHidden($0)
-                }
-                .sorted()
-        }
+        let keys = context.propertiesConfiguration?.visibleFields
+            ?? note.frontmatter.keys.sorted()
 
-        return Array(keys.compactMap(propertyFact(for:)).prefix(5))
+        return keys
+            .filter {
+                $0 != "title"
+                    && $0 != "tags"
+                    && $0 != "research_unit"
+                    && $0 != "scope"
+                    && $0 != "limitations"
+                    && !ResearcherPropertyPolicy.isHidden($0)
+            }
+            .compactMap(propertyFact(for:))
     }
 
     private func propertyFact(for key: String) -> PropertyFact? {
@@ -770,73 +322,13 @@ struct ResearchOverviewView: View {
         return key == "debate_importance" ? "\(display) of 10" : display
     }
 
-    private struct DiagnosticItem: Identifiable {
-        let id: String
-        let titleResource: LocalizedStringResource
-        let symbol: String
-        let color: Color
-        let accessibilityStateResource: LocalizedStringResource
-    }
-
-    private var diagnostics: [DiagnosticItem] {
-        let malformed = documentAttentionItems.contains { $0.kind == .malformedMetadata }
-        let broken = documentAttentionItems.contains {
-            $0.kind == .brokenConnection || $0.kind == .ambiguousConnection
+    private var aboutTitle: LocalizedStringResource {
+        switch note.profile {
+        case .paperAnalysis: "ABOUT THIS ANALYSIS"
+        case .topicKnowledge: "ABOUT THIS TOPIC"
+        case .draftProject: "ABOUT THIS WORK"
+        case .generic: "ABOUT THIS NOTE"
         }
-        let unresolvedIdentity = documentAttentionItems.contains { $0.kind == .unresolvedIdentity }
-        let catalogReady = context.catalog != nil
-        return [
-            diagnostic("source", "Source", passes: !note.rawContent.isEmpty),
-            diagnostic("properties", "Properties", passes: catalogReady ? !malformed : nil),
-            diagnostic("connections", "Connections", passes: catalogReady ? !broken : nil),
-            diagnostic("identity", "Identity", passes: catalogReady ? !unresolvedIdentity : nil),
-        ]
-    }
-
-    private func diagnostic(
-        _ id: String,
-        _ titleResource: LocalizedStringResource,
-        passes: Bool?
-    ) -> DiagnosticItem {
-        let presentation: (String, Color, LocalizedStringResource) = switch passes {
-        case true:
-            ("checkmark.circle", ScholiumColorRole.confirmed.color, "No issue")
-        case false:
-            ("exclamationmark.circle", ScholiumColorRole.attention.color, "Needs attention")
-        case nil:
-            ("questionmark.circle", ScholiumColorRole.secondaryText.color, "Not yet checked")
-        }
-        return DiagnosticItem(
-            id: id,
-            titleResource: titleResource,
-            symbol: presentation.0,
-            color: presentation.1,
-            accessibilityStateResource: presentation.2
-        )
-    }
-
-    private var freshnessSymbol: String {
-        switch context.freshness {
-        case .refreshing: "arrow.triangle.2.circlepath"
-        case .current: "checkmark.circle"
-        case .stale: "clock.badge.exclamationmark"
-        case .failed: "exclamationmark.triangle"
-        case .unavailable: "questionmark.circle"
-        }
-    }
-
-    private var freshnessColor: Color {
-        switch context.freshness {
-        case .current: ScholiumColorRole.confirmed.color
-        case .stale, .failed: ScholiumColorRole.attention.color
-        case .refreshing, .unavailable: ScholiumColorRole.secondaryText.color
-        }
-    }
-
-    // MARK: - Document Attention
-
-    private var documentAttentionItems: [AttentionQueueItem] {
-        context.visibleAttentionItems
     }
 
 }
@@ -1293,16 +785,14 @@ private struct ZoteroSourceSection: View {
                 currentVault: nil,
                 analysesVaultID: nil,
                 catalog: nil,
-                reviewDisplayState: .notReviewed,
-                reviewRecord: nil,
-                currentRevision: nil,
-                critique: nil,
                 visibleAttentionItems: [],
-                freshness: .unavailable("No workspace is open.")
+                freshness: .unavailable("No workspace is open."),
+                propertiesConfiguration: nil
             ),
-            openReview: {},
             openResearchRecord: {},
             openProperties: {},
+            customizeProperties: {},
+            openAttention: {},
             retryRefresh: {},
             resolveZoteroSource: { _ in .insufficientMetadata },
             openZoteroItem: { _ in },

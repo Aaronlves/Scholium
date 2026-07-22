@@ -31,20 +31,20 @@ packages:
     update_policy: release-managed-protected
     path: Scholium System Skills/scholium-research-integration
 
-  - id: scholium-dialogue-response
-    name: Scholium Dialogue Response
-    description: Resolve a request-scoped Dialogue contract, compose selected scholarly response modules, and persist one concise attributed Response without granting note-edit permission.
+  - id: scholium-discuss-response
+    name: Scholium Discuss Response
+    description: Resolve a request-scoped Discuss contract, compose selected scholarly response modules, and persist one concise attributed Response without granting note-edit permission.
     class: system
     role: protocol
     version: 0.4.0-draft
-    supported_functions: [dialogue]
+    supported_functions: [discuss]
     capabilities: []
     citation_styles: []
     supported_modes: [all]
-    automatic_modes: [dialogue]
+    automatic_modes: [discuss]
     required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-protected
-    path: Scholium System Skills/scholium-dialogue-response
+    path: Scholium System Skills/scholium-discuss-response
 
   - id: scholium-zotero-integration
     name: Scholium Zotero Integration

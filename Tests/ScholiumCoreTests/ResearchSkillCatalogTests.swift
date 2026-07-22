@@ -4,7 +4,7 @@ import Yams
 import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("Protected Skill catalog and Dialogue response contracts")
+@Suite("Protected Skill catalog and Discuss response contracts")
 struct ResearchSkillCatalogTests {
     @Test("The bundled catalog loads official packages and their resources")
     func loadsCatalogAndResources() throws {
@@ -328,15 +328,28 @@ struct ResearchSkillCatalogTests {
         }
     }
 
-    @Test("Dialogue assembly is dependency closed and does not include unrelated workflows")
-    func dialogueAssemblyIsSelective() throws {
+    @Test("Discuss assembly is dependency closed and does not include unrelated workflows")
+    func discussAssemblyIsSelective() throws {
         let catalog = try BundledResearchSkillLibrary.catalog()
-        let ids = try catalog.dependencyClosedIDs(for: .dialogue)
+        let ids = try catalog.dependencyClosedIDs(for: .discuss)
         #expect(ids.contains("scholium-core-protocol"))
         #expect(ids.contains("scholium-research-integration"))
-        #expect(ids.contains("scholium-dialogue-response"))
+        #expect(ids.contains("scholium-discuss-response"))
         #expect(!ids.contains("scholium-development"))
         #expect(!ids.contains("scholium-revision"))
+    }
+
+    @Test("Legacy Dialogue mode decodes as Discuss and re-encodes canonically")
+    func legacyDialogueModeDecode() throws {
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        let mode = try decoder.decode(
+            ResearchSkillMode.self,
+            from: Data("\"dialogue\"".utf8)
+        )
+
+        #expect(mode == .discuss)
+        #expect(String(decoding: try encoder.encode(mode), as: UTF8.self) == "\"discuss\"")
     }
 
     @Test("Explicit workflow assembly includes only its dependency closure")
@@ -357,13 +370,13 @@ struct ResearchSkillCatalogTests {
         let ordinaryReview = try catalog.dependencyClosedIDs(for: .review)
         #expect(ordinaryReview == ["scholium-core-protocol"])
 
-        let reviewWithDialogue = try catalog.dependencyClosedIDs(
+        let reviewWithDiscussion = try catalog.dependencyClosedIDs(
             for: .review,
-            requestedSkillIDs: ["scholium-dialogue-response"]
+            requestedSkillIDs: ["scholium-discuss-response"]
         )
-        #expect(reviewWithDialogue.contains("scholium-core-protocol"))
-        #expect(reviewWithDialogue.contains("scholium-research-integration"))
-        #expect(reviewWithDialogue.contains("scholium-dialogue-response"))
+        #expect(reviewWithDiscussion.contains("scholium-core-protocol"))
+        #expect(reviewWithDiscussion.contains("scholium-research-integration"))
+        #expect(reviewWithDiscussion.contains("scholium-discuss-response"))
 
         let analysisWithZotero = try catalog.dependencyClosedIDs(
             for: .develop,
@@ -372,11 +385,11 @@ struct ResearchSkillCatalogTests {
         #expect(analysisWithZotero.contains("scholium-development"))
         #expect(analysisWithZotero.contains("scholium-zotero-integration"))
 
-        let dialogue = try catalog.dependencyClosedIDs(for: .dialogue)
-        #expect(dialogue == [
+        let discussion = try catalog.dependencyClosedIDs(for: .discuss)
+        #expect(discussion == [
             "scholium-core-protocol",
             "scholium-research-integration",
-            "scholium-dialogue-response",
+            "scholium-discuss-response",
         ])
     }
 
@@ -427,11 +440,11 @@ struct ResearchSkillCatalogTests {
         )
 
         await #expect(throws: ResearchSkillError.self) {
-            _ = try await store.instructionAssembly(mode: .dialogue)
+            _ = try await store.instructionAssembly(mode: .discuss)
         }
     }
 
-    @Test("Dialogue response profile persists beside Works and snapshots independently")
+    @Test("Discuss response profile persists beside Works and snapshots independently")
     func profilePersistenceAndSnapshot() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -447,8 +460,8 @@ struct ResearchSkillCatalogTests {
             modules: [.criticalReflection, .remainingQuestions],
             commentPreservation: .keepAllComments
         )
-        try await control.saveDialogueResponseProfile(profile)
-        let loaded = try await control.dialogueResponseProfile()
+        try await control.saveDiscussResponseProfile(profile)
+        let loaded = try await control.discussResponseProfile()
         #expect(loaded.profileRevision == profile.profileRevision)
         #expect(abs(loaded.updatedAt.timeIntervalSince(profile.updatedAt)) < 1)
         #expect(loaded.base == profile.base)
@@ -469,21 +482,21 @@ struct ResearchSkillCatalogTests {
         #expect(changed.profileRevision != profile.profileRevision)
     }
 
-    @Test("Dialogue transport exposes the exact concise request snapshot")
-    func dialogueTransportSnapshot() {
-        let dialogueID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
+    @Test("Discuss transport exposes the exact concise request snapshot")
+    func discussTransportSnapshot() {
+        let discussionID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
         let triptychID = UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!
         let profile = DialogueResponseProfile(
             modules: [.criticalReflection, .philosophicalSignificance],
             commentPreservation: .keepAllComments
         )
-        let locator = DialogueResponseTransport.locator(
-            dialogueID: dialogueID,
+        let locator = DiscussResponseTransport.locator(
+            discussionID: discussionID,
             triptychID: triptychID,
             contract: DialogueResponseContract(profile: profile)
         )
 
-        #expect(locator.contains("Dialogue ID: \(dialogueID.uuidString)"))
+        #expect(locator.contains("Discussion ID: \(discussionID.uuidString)"))
         #expect(locator.contains("Triptych selector: \(triptychID.uuidString)"))
         #expect(locator.contains("Response contract: request-snapshot"))
         #expect(locator.contains("Required base: academic-outcome"))
@@ -491,7 +504,7 @@ struct ResearchSkillCatalogTests {
         #expect(locator.contains("Concision: concise"))
         #expect(locator.contains("Comment preservation: keep-all-comments"))
         #expect(locator.contains(
-            "scholium dialogue show \(dialogueID.uuidString) --triptych \(triptychID.uuidString) --format json"
+            "scholium discuss show \(discussionID.uuidString) --triptych \(triptychID.uuidString) --format json"
         ))
     }
 

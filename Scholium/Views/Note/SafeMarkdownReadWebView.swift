@@ -11,15 +11,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let presentationCSS: String
     let userCSS: String
     /// Stable caller-owned revisions avoid hashing bounded-but-nontrivial
-    /// comment and preview payloads during unrelated SwiftUI updates.
+    /// annotation and preview payloads during unrelated SwiftUI updates.
     var configurationRevision: String? = nil
-    let researcherComments: [ResearcherComment]
+    let annotations: [AnnotationRecord]
     var linkPreviews: [DocumentLinkPreview] = []
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
-    let onCommentSelection: ((MarkdownReviewSelection) -> Void)?
+    /// Private, source-anchored annotations. These never become activity.
+    let onAnnotationSelection: ((MarkdownReviewSelection) -> Void)?
+    /// A deliberate communication request to an external agent.
+    var onCommentSelection: ((MarkdownReviewSelection) -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
-    let onCommentActivation: ((UUID) -> Void)?
+    let onAnnotationActivation: ((UUID) -> Void)?
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
@@ -41,9 +44,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
+            onAnnotationSelection: onAnnotationSelection,
             onCommentSelection: onCommentSelection,
             onSelectionChange: onSelectionChange,
-            onCommentActivation: onCommentActivation,
+            onAnnotationActivation: onAnnotationActivation,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
@@ -91,7 +95,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: presentationCSS,
             userCSS: userCSS,
             configurationRevision: configurationRevision,
-            researcherComments: researcherComments,
+            annotations: annotations,
             linkPreviews: linkPreviews,
             in: webView
         )
@@ -108,9 +112,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
+            onAnnotationSelection: onAnnotationSelection,
             onCommentSelection: onCommentSelection,
             onSelectionChange: onSelectionChange,
-            onCommentActivation: onCommentActivation,
+            onAnnotationActivation: onAnnotationActivation,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
@@ -129,7 +134,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: presentationCSS,
             userCSS: userCSS,
             configurationRevision: configurationRevision,
-            researcherComments: researcherComments,
+            annotations: annotations,
             linkPreviews: linkPreviews,
             in: webView
         )
@@ -178,9 +183,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
+        private var onAnnotationSelection: ((MarkdownReviewSelection) -> Void)?
         private var onCommentSelection: ((MarkdownReviewSelection) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
-        private var onCommentActivation: ((UUID) -> Void)?
+        private var onAnnotationActivation: ((UUID) -> Void)?
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
@@ -217,9 +223,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
+            onAnnotationSelection: ((MarkdownReviewSelection) -> Void)?,
             onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
-            onCommentActivation: ((UUID) -> Void)?,
+            onAnnotationActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -235,9 +242,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
+            self.onAnnotationSelection = onAnnotationSelection
             self.onCommentSelection = onCommentSelection
             self.onSelectionChange = onSelectionChange
-            self.onCommentActivation = onCommentActivation
+            self.onAnnotationActivation = onAnnotationActivation
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
@@ -256,9 +264,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
+            onAnnotationSelection: ((MarkdownReviewSelection) -> Void)?,
             onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
-            onCommentActivation: ((UUID) -> Void)?,
+            onAnnotationActivation: ((UUID) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -285,9 +294,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
+            self.onAnnotationSelection = onAnnotationSelection
             self.onCommentSelection = onCommentSelection
             self.onSelectionChange = onSelectionChange
-            self.onCommentActivation = onCommentActivation
+            self.onAnnotationActivation = onAnnotationActivation
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
@@ -332,11 +342,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: String,
             userCSS: String,
             configurationRevision: String?,
-            researcherComments: [ResearcherComment],
+            annotations: [AnnotationRecord],
             linkPreviews: [DocumentLinkPreview],
             in webView: WKWebView
         ) {
-            let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
+            let capabilitySignature = "\(onAnnotationSelection != nil):\(onCommentSelection != nil):\(onSelectionChange != nil)"
             let signature = configurationRevision.map {
                 "revision:\($0):\(capabilitySignature)"
             } ?? [
@@ -344,7 +354,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 String(body.utf8.count),
                 String(presentationCSS.hashValue),
                 String(userCSS.hashValue),
-                String(researcherComments.hashValue),
+                String(annotations.hashValue),
                 String(linkPreviews.hashValue),
                 capabilitySignature,
             ].joined(separator: ":")
@@ -368,9 +378,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: expectedLoadGeneration,
+                annotationEnabled: onAnnotationSelection != nil,
                 commentEnabled: onCommentSelection != nil,
                 selectionEnabled: onSelectionChange != nil,
-                researcherComments: researcherComments,
+                annotations: annotations,
                 linkPreviews: linkPreviews,
                 presentationCSS: presentationCSS,
                 userCSS: userCSS
@@ -413,6 +424,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       !target.isEmpty,
                       target.utf8.count <= 8_192 else { return }
                 onLinkClick(target)
+            case "annotationSelection":
+                guard let selection = reviewSelection(from: payload) else { return }
+                onAnnotationSelection?(selection)
             case "commentSelection":
                 guard let selection = reviewSelection(from: payload) else { return }
                 onCommentSelection?(selection)
@@ -422,10 +436,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     return
                 }
                 onSelectionChange?(reviewSelection(from: payload))
-            case "commentActivated":
-                guard let rawID = payload["commentID"] as? String,
+            case "annotationActivated":
+                guard let rawID = payload["annotationID"] as? String,
                       let id = UUID(uuidString: rawID) else { return }
-                onCommentActivation?(id)
+                onAnnotationActivation?(id)
             case "scrollChanged":
                 receiveScrollPosition(
                     fractionValue: payload["fraction"],
@@ -1017,15 +1031,17 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: String,
             fingerprint: String,
             loadGeneration: UInt64 = 1,
+            annotationEnabled: Bool,
             commentEnabled: Bool,
             selectionEnabled: Bool,
-            researcherComments: [ResearcherComment],
+            annotations: [AnnotationRecord],
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
             userCSS: String
         ) -> String {
             let encodedDocumentID = jsonLiteral(documentID)
             let encodedFingerprint = jsonLiteral(fingerprint)
+            let annotationFlag = annotationEnabled ? "true" : "false"
             let commentFlag = commentEnabled ? "true" : "false"
             let selectionFlag = selectionEnabled ? "true" : "false"
             #if DEBUG
@@ -1052,8 +1068,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let noteDocument = NoteDocument(relativePath: documentID, rawContent: source)
             let renderedSpans = renderedSourceSpans(in: source, relativePath: documentID)
             let sourceLength = (source as NSString).length
-            let annotations: [ReadCommentAnnotation] = researcherComments.compactMap { comment in
-                let anchor = comment.anchor
+            let readAnnotations: [ReadPageAnnotation] = annotations.compactMap { annotation in
+                let anchor = annotation.anchor
                 guard anchor.state == .attached,
                       anchor.fingerprint.sha256 == fingerprint,
                       anchor.utf16Range.lowerBound >= 0,
@@ -1082,11 +1098,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     result.append(quotation)
                 }
                 guard !quotations.isEmpty else { return nil }
-                return ReadCommentAnnotation(
-                    id: comment.id,
+                return ReadPageAnnotation(
+                    id: annotation.id,
                     quotations: quotations,
-                    comment: String(comment.text.prefix(500)),
-                    resolved: comment.resolvedAt != nil,
+                    text: String(annotation.text.prefix(500)),
+                    resolved: annotation.resolvedAt != nil,
                     utf16LowerBound: anchor.utf16Range.lowerBound,
                     utf16UpperBound: anchor.utf16Range.upperBound,
                     containerUTF16LowerBound: container.utf16LowerBound,
@@ -1095,7 +1111,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         / Double(sourceSpanLength)
                 )
             }
-            let annotationPayload = base64JSON(annotations)
+            let annotationPayload = base64JSON(readAnnotations)
             let previewPayload = base64JSON(linkPreviews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).map {
                 ReadLinkPreview(
                     utf16LowerBound: $0.sourceSpan.utf16LowerBound,
@@ -1124,7 +1140,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 <p class="scholium-preview-metadata"></p>
                 <div class="scholium-preview-body"></div>
               </aside>
-              <button id="comment-selection" type="button" hidden>Add Comment</button>
+              <div id="selection-actions" hidden>
+                <button id="annotation-selection" type="button">Annotation</button>
+                <button id="comment-selection" type="button">Comment</button>
+              </div>
               <script>
               (() => {
                 'use strict';
@@ -1132,9 +1151,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const documentID = \(encodedDocumentID);
                 const fingerprint = \(encodedFingerprint);
                 const loadGeneration = \(loadGeneration);
+                const annotationEnabled = \(annotationFlag);
                 const commentEnabled = \(commentFlag);
                 const selectionEnabled = \(selectionFlag);
-                const commentAnnotations = JSON.parse(new TextDecoder().decode(
+                const pageAnnotations = JSON.parse(new TextDecoder().decode(
                   Uint8Array.from(atob(\(jsonLiteral(annotationPayload))), character => character.charCodeAt(0))
                 ));
                 const linkPreviews = JSON.parse(new TextDecoder().decode(
@@ -1146,7 +1166,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const previewTitle = popover.querySelector('.scholium-preview-title');
                 const previewMetadata = popover.querySelector('.scholium-preview-metadata');
                 const previewBody = popover.querySelector('.scholium-preview-body');
-                const reviewButton = document.getElementById('comment-selection');
+                const selectionActions = document.getElementById('selection-actions');
+                const annotationButton = document.getElementById('annotation-selection');
+                const commentButton = document.getElementById('comment-selection');
                 const previewByRange = new Map(linkPreviews.map(preview => [
                   preview.utf16LowerBound + ':' + preview.utf16UpperBound,
                   preview
@@ -1203,10 +1225,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   link.prepend(icon);
                 });
 
-                function applyCommentAnnotations() {
+                function applyPageAnnotations() {
                   const root = document.getElementById('scholium-document');
                   if (!root) return;
-                  for (const annotation of commentAnnotations) {
+                  for (const annotation of pageAnnotations) {
                     const containers = Array.from(root.querySelectorAll('[data-source-utf16-start][data-source-utf16-end]'))
                       .filter(element => Number(element.dataset.sourceUtf16Start) === annotation.containerUTF16LowerBound
                         && Number(element.dataset.sourceUtf16End) === annotation.containerUTF16UpperBound);
@@ -1266,18 +1288,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     range.setStart(first.node, startOffset - first.start);
                     range.setEnd(last.node, endOffset - last.start);
                     const mark = document.createElement('mark');
-                    mark.className = 'researcher-comment-annotation' + (annotation.resolved ? ' resolved' : '');
-                    mark.dataset.scholiumProtected = 'researcher-comment';
-                    mark.dataset.commentId = annotation.id;
+                    mark.className = 'page-annotation-anchor' + (annotation.resolved ? ' resolved' : '');
+                    mark.dataset.scholiumProtected = 'page-annotation';
+                    mark.dataset.annotationId = annotation.id;
                     mark.tabIndex = 0;
                     mark.setAttribute('role', 'button');
-                    mark.setAttribute('aria-label', 'Researcher comment: ' + annotation.comment);
-                    mark.title = 'Researcher comment: ' + annotation.comment;
-                    mark.style.color = 'inherit';
-                    mark.style.background = annotation.resolved
-                      ? 'color-mix(in srgb, GrayText 9%, transparent)'
-                      : 'color-mix(in srgb, AccentColor 18%, Mark 82%)';
-                    mark.style.borderBottom = '2px solid ' + (annotation.resolved ? 'GrayText' : 'AccentColor');
+                    mark.setAttribute('aria-label', 'Annotated passage: ' + annotation.text);
+                    mark.title = annotation.text;
                     try {
                       const contents = range.extractContents();
                       mark.appendChild(contents);
@@ -1285,9 +1302,28 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     } catch (_) {
                       continue;
                     }
+
+                    const marginHost = container.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6') || container;
+                    marginHost.classList.add('has-page-annotations');
+                    let rail = Array.from(marginHost.children).find(element =>
+                      element.classList && element.classList.contains('page-annotation-rail'));
+                    if (!rail) {
+                      rail = document.createElement('span');
+                      rail.className = 'page-annotation-rail';
+                      rail.dataset.scholiumProtected = 'page-annotation';
+                      marginHost.appendChild(rail);
+                    }
+                    const marginNote = document.createElement('button');
+                    marginNote.type = 'button';
+                    marginNote.className = 'page-annotation-margin' + (annotation.resolved ? ' resolved' : '');
+                    marginNote.dataset.annotationId = annotation.id;
+                    marginNote.textContent = annotation.text;
+                    marginNote.setAttribute('aria-label', 'Annotation: ' + annotation.text);
+                    marginNote.title = 'Edit Annotation';
+                    rail.appendChild(marginNote);
                   }
                 }
-                applyCommentAnnotations();
+                applyPageAnnotations();
 
                 function hidePopover() {
                   popover.hidden = true;
@@ -1340,7 +1376,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   const relationship = vectorSemantics[preview.relationship || 'neutral'];
                   previewTitle.textContent = preview.title;
                   previewMetadata.textContent = (relationship ? relationship.label : 'Related note')
-                    + (preview.fragment ? ' · ' + preview.fragment : '');
+                    + (preview.fragment ? ', ' + preview.fragment : '');
                   previewBody.innerHTML = preview.htmlBody;
                   removeInteractivePreviewContent();
                   positionPopover(link);
@@ -1363,9 +1399,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 });
 
                 document.addEventListener('click', event => {
-                  const annotation = event.target.closest && event.target.closest('[data-comment-id]');
+                  const annotation = event.target.closest && event.target.closest('[data-annotation-id]');
                   if (annotation) {
-                    post('commentActivated', {commentID: annotation.dataset.commentId});
+                    post('annotationActivated', {annotationID: annotation.dataset.annotationId});
                     event.preventDefault();
                     return;
                   }
@@ -1403,15 +1439,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 });
 
                 document.addEventListener('keydown', event => {
-                  const annotation = event.target.closest && event.target.closest('[data-comment-id]');
+                  const annotation = event.target.closest && event.target.closest('[data-annotation-id]');
                   if (annotation && (event.key === 'Enter' || event.key === ' ')) {
-                    post('commentActivated', {commentID: annotation.dataset.commentId});
+                    post('annotationActivated', {annotationID: annotation.dataset.annotationId});
                     event.preventDefault();
                     return;
                   }
                   if (event.key === 'Escape') {
                     hidePopover();
-                    reviewButton.hidden = true;
+                    selectionActions.hidden = true;
                   }
                 });
 
@@ -1420,14 +1456,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     const selection = window.getSelection();
                     const text = selection ? selection.toString().trim() : '';
                     if (!text) {
-                      reviewButton.hidden = true;
+                      selectionActions.hidden = true;
                       post('selectionChanged');
                       return;
                     }
                     const range = selection.getRangeAt(0);
                     const main = document.getElementById('scholium-document');
                     if (!main || !main.contains(range.startContainer) || !main.contains(range.endContainer)) {
-                      reviewButton.hidden = true;
+                      selectionActions.hidden = true;
                       post('selectionChanged');
                       return;
                     }
@@ -1448,30 +1484,47 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       endLine: Number(sourceElement ? sourceElement.dataset.sourceLine : '1')
                     };
                     post('selectionChanged', payload);
-                    if (!commentEnabled) {
-                      reviewButton.hidden = true;
+                    if (!annotationEnabled && !commentEnabled) {
+                      selectionActions.hidden = true;
                       return;
                     }
-                    reviewButton.dataset.selection = payload.text;
-                    reviewButton.dataset.contextBefore = payload.contextBefore;
-                    reviewButton.dataset.contextAfter = payload.contextAfter;
-                    reviewButton.dataset.sourceLine = String(payload.startLine);
-                    reviewButton.style.left = Math.max(12, Math.min(rect.right - 145, window.innerWidth - 170)) + 'px';
-                    reviewButton.style.top = Math.max(8, rect.top - 38) + 'px';
-                    reviewButton.hidden = false;
+                    for (const button of [annotationButton, commentButton]) {
+                      button.dataset.selection = payload.text;
+                      button.dataset.contextBefore = payload.contextBefore;
+                      button.dataset.contextAfter = payload.contextAfter;
+                      button.dataset.sourceLine = String(payload.startLine);
+                    }
+                    annotationButton.hidden = !annotationEnabled;
+                    commentButton.hidden = !commentEnabled;
+                    selectionActions.style.left = Math.max(12, Math.min(rect.right - 175, window.innerWidth - 200)) + 'px';
+                    selectionActions.style.top = Math.max(8, rect.top - 38) + 'px';
+                    selectionActions.hidden = false;
+                  });
+                }
+                if (annotationEnabled) {
+                  annotationButton.addEventListener('click', () => {
+                    const text = annotationButton.dataset.selection || '';
+                    if (text) post('annotationSelection', {
+                      text,
+                      contextBefore: annotationButton.dataset.contextBefore || '',
+                      contextAfter: annotationButton.dataset.contextAfter || '',
+                      startLine: Number(annotationButton.dataset.sourceLine || '1'),
+                      endLine: Number(annotationButton.dataset.sourceLine || '1')
+                    });
+                    selectionActions.hidden = true;
                   });
                 }
                 if (commentEnabled) {
-                  reviewButton.addEventListener('click', () => {
-                    const text = reviewButton.dataset.selection || '';
+                  commentButton.addEventListener('click', () => {
+                    const text = commentButton.dataset.selection || '';
                     if (text) post('commentSelection', {
                       text,
-                      contextBefore: reviewButton.dataset.contextBefore || '',
-                      contextAfter: reviewButton.dataset.contextAfter || '',
-                      startLine: Number(reviewButton.dataset.sourceLine || '1'),
-                      endLine: Number(reviewButton.dataset.sourceLine || '1')
+                      contextBefore: commentButton.dataset.contextBefore || '',
+                      contextAfter: commentButton.dataset.contextAfter || '',
+                      startLine: Number(commentButton.dataset.sourceLine || '1'),
+                      endLine: Number(commentButton.dataset.sourceLine || '1')
                     });
-                    reviewButton.hidden = true;
+                    selectionActions.hidden = true;
                   });
                 }
 
@@ -1712,10 +1765,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             return literal
         }
 
-        private struct ReadCommentAnnotation: Encodable {
+        private struct ReadPageAnnotation: Encodable {
             let id: UUID
             let quotations: [String]
-            let comment: String
+            let text: String
             let resolved: Bool
             let utf16LowerBound: Int
             let utf16UpperBound: Int
@@ -1797,13 +1850,25 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         img, video, svg { max-width: 100%; height: auto; }
         blockquote { margin: 1em 0; padding-left: var(--scholium-rhythm-quote-inset); border-left: 3px solid color-mix(in srgb, AccentColor 50%, transparent); color: color-mix(in srgb, CanvasText 78%, transparent); }
         \(ScholiumCalloutStyles.css)
-        #comment-selection { position: fixed; z-index: 110; border: 1px solid color-mix(in srgb, AccentColor 40%, transparent); border-radius: 8px; padding: 6px 10px; color: CanvasText; background: color-mix(in srgb, Canvas 92%, AccentColor 8%); box-shadow: 0 6px 20px color-mix(in srgb, CanvasText 15%, transparent); }
-        .researcher-comment-annotation { color: inherit; background: color-mix(in srgb, AccentColor 18%, Mark 82%); border-bottom: 2px solid AccentColor; border-radius: 3px; cursor: pointer; }
-        .researcher-comment-annotation.resolved { background: color-mix(in srgb, GrayText 9%, transparent); border-bottom-color: GrayText; }
-        .researcher-comment-annotation:focus { outline: 2px solid AccentColor; outline-offset: 2px; }
+        #selection-actions { position: fixed; z-index: 110; display: flex; gap: 4px; padding: 4px; border: 1px solid color-mix(in srgb, AccentColor 40%, transparent); border-radius: 8px; background: color-mix(in srgb, Canvas 92%, AccentColor 8%); box-shadow: 0 6px 20px color-mix(in srgb, CanvasText 15%, transparent); }
+        #selection-actions button { border: 0; border-radius: 5px; padding: 4px 7px; color: CanvasText; background: transparent; font: inherit; }
+        #selection-actions button:hover, #selection-actions button:focus-visible { background: color-mix(in srgb, AccentColor 18%, transparent); outline: none; }
+        .page-annotation-anchor { color: inherit; background: color-mix(in srgb, AccentColor 8%, transparent); border-bottom: 1px solid color-mix(in srgb, AccentColor 58%, transparent); border-radius: 2px; cursor: pointer; }
+        .page-annotation-anchor.resolved { background: color-mix(in srgb, GrayText 6%, transparent); border-bottom-color: GrayText; }
+        .page-annotation-anchor:focus { outline: 2px solid AccentColor; outline-offset: 2px; }
+        .has-page-annotations { position: relative; }
+        .page-annotation-rail { position: absolute; inset-inline-start: calc(100% + 1.15rem); inset-block-start: 0; display: grid; gap: .45rem; inline-size: clamp(8.5rem, 15vw, 13rem); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: .72rem; line-height: 1.35; }
+        .page-annotation-margin { display: block; inline-size: 100%; padding: .18rem 0 .22rem .62rem; border: 0; border-inline-start: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 0; color: color-mix(in srgb, CanvasText 68%, transparent); background: transparent; font: inherit; text-align: start; overflow-wrap: anywhere; cursor: text; }
+        .page-annotation-margin:hover, .page-annotation-margin:focus-visible { color: CanvasText; border-inline-start-color: AccentColor; outline: none; }
+        .page-annotation-margin.resolved { opacity: .62; }
+        @media (max-width: 64rem) {
+          .page-annotation-rail { position: static; inline-size: min(18rem, 72%); margin-block: .35rem .75rem; margin-inline-start: auto; }
+          .page-annotation-margin { max-block-size: 2.3rem; overflow: hidden; }
+          .page-annotation-margin:focus, .page-annotation-margin:hover { max-block-size: none; }
+        }
         .raw-html, .raw-html-inline { color: GrayText; }
         @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
-        @media (prefers-reduced-transparency: reduce) { #comment-selection { background: Canvas; backdrop-filter: none; } }
+        @media (prefers-reduced-transparency: reduce) { #selection-actions { background: Canvas; backdrop-filter: none; } }
         \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }

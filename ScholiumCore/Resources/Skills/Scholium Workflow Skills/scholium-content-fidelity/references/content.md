@@ -24,4 +24,4 @@ Audit novelty, research-gap, field-coverage, and missing-citation claims explici
 
 Use BLOCKER for central false attribution, serious conceptual misuse, invalid reconstruction, or unsupported evidential role; MAJOR for significant overstatement or missing support; MINOR for a needed qualification or locator repair; SUGGESTION for an optional improvement.
 
-A `passed` outcome means no material defect was found within the stated scope and evidence. It does not guarantee truth, originality, importance, completeness, Human Review, or Critique approval.
+A `passed` outcome means no material defect was found within the stated scope and evidence. It does not guarantee truth, originality, importance, completeness, researcher Settlement, or Critique approval.

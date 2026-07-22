@@ -192,11 +192,36 @@ private struct ScholiumResearchRecordFocusedContent: View {
     private var researchRecordContext: ResearchRecordContext {
         ResearchRecordContext(
             controller: appState.researchController,
-            vaultRole: appState.currentDocumentVaultRole,
             documentRevisions: appState.currentDocumentRevisions,
-            currentReview: { _ in appState.currentDocumentReviewRecord },
-            loadDialogue: { await appState.dialogueHistory(for: $0) },
             loadCritique: { await appState.critiqueAssociationRelated(to: $0) },
+            finishDiscussion: { runID in
+                _ = try await appState.researchController.finishDiscussion(runID: runID)
+            },
+            setCritiqueFindingDisposition: {
+                workNote,
+                roundID,
+                findingID,
+                decision,
+                rationale,
+                noTextChangeRationale,
+                expectedRevision in
+                try await appState.researchController.setCritiqueFindingDisposition(
+                    workNote: workNote,
+                    roundID: roundID,
+                    findingID: findingID,
+                    decision: decision,
+                    rationale: rationale,
+                    noTextChangeRationale: noTextChangeRationale,
+                    expectedRevision: expectedRevision
+                )
+            },
+            completeCritiqueRound: { workNote, roundID, expectedRevision in
+                try await appState.researchController.completeCritiqueRound(
+                    workNote: workNote,
+                    roundID: roundID,
+                    expectedRevision: expectedRevision
+                )
+            },
             copyText: { try appState.copyTextToClipboard($0) },
             openNote: { appState.requestOpenNote($0) },
             notify: { appState.showToast($0) }
@@ -586,10 +611,11 @@ struct ScholiumFocusedEditorActions {
     let documentID: String
     let isComposing: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
-    let canAddComment: () -> Bool
+    let canUseSelectedPassage: () -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
-    let addComment: () -> Void
+    let addAnnotation: () -> Void
+    let startComment: () -> Void
 }
 
 struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
@@ -808,9 +834,16 @@ private struct ScholiumCommands: Commands {
                     .disabled(editorActions?.isAvailable(.calloutFlag) != true)
             }
             Divider()
-            Button("Add Comment…") { editorActions?.addComment() }
+            Button("Add Annotation…") { editorActions?.addAnnotation() }
+                .keyboardShortcut("a", modifiers: [.command, .option])
                 .disabled(
-                    editorActions?.canAddComment() != true
+                    editorActions?.canUseSelectedPassage() != true
+                        || editorActions?.isComposing == true
+                )
+            Button("Comment on Selection…") { editorActions?.startComment() }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(
+                    editorActions?.canUseSelectedPassage() != true
                         || editorActions?.isComposing == true
                 )
         }
@@ -902,22 +935,36 @@ private struct ScholiumCommands: Commands {
         CommandMenu("Research") {
             if let role = appState?.currentResearchFunctionTarget?.role {
                 if role == .analysis || role == .topic {
-                    Button("Dialogue") { researchFunctionActions?.open(.dialogue) }
-                        .keyboardShortcut("r", modifiers: [.command])
-                        .disabled(!researchFunctionIsAvailable(.dialogue))
-                    Button("Develop") { researchFunctionActions?.open(.develop) }
-                        .disabled(!researchFunctionIsAvailable(.develop))
+                    Menu("Work with Agent") {
+                        Button("Discuss") { researchFunctionActions?.open(.discuss) }
+                            .keyboardShortcut("r", modifiers: [.command])
+                            .disabled(!researchFunctionIsAvailable(.discuss))
+                        Button("Write") { researchFunctionActions?.open(.develop) }
+                            .keyboardShortcut("r", modifiers: [.command, .shift])
+                            .disabled(!researchFunctionIsAvailable(.develop))
+                    }
+                    .disabled(
+                        !researchFunctionIsAvailable(.discuss)
+                            && !researchFunctionIsAvailable(.develop)
+                    )
                     Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
                         .disabled(!researchFunctionIsAvailable(.fidelity))
                 } else {
                     Button("Critique") { researchFunctionActions?.open(.critique) }
                         .keyboardShortcut("r", modifiers: [.command])
                         .disabled(!researchFunctionIsAvailable(.critique))
-                    Button("Revise") { researchFunctionActions?.open(.revise) }
-                        .disabled(!researchFunctionIsAvailable(.revise))
-                    Button("Dialogue") { researchFunctionActions?.open(.dialogue) }
-                        .keyboardShortcut("d", modifiers: [.command, .shift])
-                        .disabled(!researchFunctionIsAvailable(.dialogue))
+                    Menu("Work with Agent") {
+                        Button("Discuss") { researchFunctionActions?.open(.discuss) }
+                            .keyboardShortcut("d", modifiers: [.command, .shift])
+                            .disabled(!researchFunctionIsAvailable(.discuss))
+                        Button("Write") { researchFunctionActions?.open(.revise) }
+                            .keyboardShortcut("d", modifiers: [.command, .option, .shift])
+                            .disabled(!researchFunctionIsAvailable(.revise))
+                    }
+                    .disabled(
+                        !researchFunctionIsAvailable(.discuss)
+                            && !researchFunctionIsAvailable(.revise)
+                    )
                     Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
                         .disabled(!researchFunctionIsAvailable(.fidelity))
                     Button("Manuscript") { researchFunctionActions?.open(.manuscript) }
@@ -1137,6 +1184,9 @@ final class WindowModel: ObservableObject {
     @Published var refreshStatusText: String?
     @Published private(set) var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
     @Published var workspaceCatalogError: String?
+    /// One-shot routing from the Research Activity HUD to the exact pending
+    /// passage Comment. The document view consumes and clears it.
+    @Published var requestedCommentExchangeID: UUID? = nil
     @Published private(set) var workspaceVaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
     @Published var registeredVaults: [RegisteredVault] = []
     @Published var windowSessionPersistenceError: String?
@@ -1162,21 +1212,6 @@ final class WindowModel: ObservableObject {
     var noteLocationScope: NoteLocationScope {
         get { discoveryController.library.locationScope }
         set { discoveryController.selectLocationScope(newValue) }
-    }
-
-    var isReviewedFilter: Bool {
-        get { discoveryController.library.filters.isReviewed }
-        set { updateDiscoveryFilters { $0.isReviewed = newValue } }
-    }
-
-    var isUnqualifiedFilter: Bool {
-        get { discoveryController.library.filters.isUnqualified }
-        set { updateDiscoveryFilters { $0.isUnqualified = newValue } }
-    }
-
-    var isChangedSinceReviewFilter: Bool {
-        get { discoveryController.library.filters.isChangedSinceReview }
-        set { updateDiscoveryFilters { $0.isChangedSinceReview = newValue } }
     }
 
     var isNeedsAttentionFilter: Bool {
@@ -1406,7 +1441,7 @@ final class WindowModel: ObservableObject {
     private var didRestoreWindowSession = false
     private var closeAttemptGeneration: UInt64 = 0
     private var libraryBrowseGeneration: UInt64 = 0
-    private var identityReviewRefreshGeneration: UInt64 = 0
+    private var identityAnnotationRefreshGeneration: UInt64 = 0
     private var savedSearchMutationTail: Task<Void, Never>?
     private var advancedSearchExecutionTask: Task<Void, Never>?
     private var advancedSearchExecutionID: UUID?
@@ -1522,7 +1557,10 @@ final class WindowModel: ObservableObject {
             guard let self else { return }
             do {
                 let searches = try await workspaceStore.savedSearches()
-                await MainActor.run { self.savedSearches = searches }
+                await MainActor.run {
+                    guard self.savedSearches != searches else { return }
+                    self.savedSearches = searches
+                }
             } catch {
                 await MainActor.run {
                     self.vaultError = error.localizedDescription
@@ -1561,34 +1599,19 @@ final class WindowModel: ObservableObject {
         set { documentController.setSaveError(newValue) }
     }
 
-    var changedSinceReviewPaths: Set<String> {
-        get { documentController.changedSinceReviewPaths }
-        set { documentController.changedSinceReviewPaths = newValue }
-    }
-
     var requestPresentationMode: NotePresentationMode? {
         get { documentController.requestedPresentationMode }
         set { documentController.requestedPresentationMode = newValue }
     }
 
-    var pendingCommentSelection: MarkdownReviewSelection? {
-        get { documentController.pendingCommentSelection }
-        set { documentController.pendingCommentSelection = newValue }
+    var annotationsByPath: [String: [AnnotationRecord]] {
+        get { documentController.annotationsByPath }
+        set { documentController.annotationsByPath = newValue }
     }
 
-    var focusedResearcherCommentID: UUID? {
-        get { documentController.focusedResearcherCommentID }
-        set { documentController.focusedResearcherCommentID = newValue }
-    }
-
-    var humanReviewRecords: [String: HumanReviewRecord] {
-        get { documentController.humanReviewRecords }
-        set { documentController.humanReviewRecords = newValue }
-    }
-
-    private(set) var humanReviewRecordsByNoteID: [UUID: HumanReviewRecord] {
-        get { documentController.humanReviewRecordsByNoteID }
-        set { documentController.humanReviewRecordsByNoteID = newValue }
+    private(set) var annotationsByNoteID: [UUID: [AnnotationRecord]] {
+        get { documentController.annotationsByNoteID }
+        set { documentController.annotationsByNoteID = newValue }
     }
 
     var noteIdentityByPath: [String: UUID] {
@@ -1731,24 +1754,11 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var currentDocumentReviewRecord: HumanReviewRecord? {
-        guard let noteID = currentDocumentDescriptor?.sessionKey.noteID else { return nil }
-        return humanReviewRecordsByNoteID[noteID]
-            ?? researchController.records?.humanReviews.first { $0.id == noteID }
-    }
-
-    var currentDocumentReviewDisplayState: HumanReviewDisplayState {
-        guard let revision = currentNote?.document.fingerprint,
-              let review = currentDocumentReviewRecord?.review(for: revision) else {
-            return .notReviewed
-        }
-        return HumanReviewDisplayState(isReviewed: true, qualification: review.qualification)
-    }
-
-    var currentDocumentChangedSinceReview: Bool {
-        guard let revision = currentNote?.document.fingerprint,
-              let record = currentDocumentReviewRecord else { return false }
-        return record.latestReview != nil && record.review(for: revision) == nil
+    var currentDocumentAnnotations: [AnnotationRecord] {
+        guard let noteID = currentDocumentDescriptor?.sessionKey.noteID else { return [] }
+        return annotationsByNoteID[noteID]
+            ?? researchController.records?.annotations.filter { $0.noteID == noteID }
+            ?? []
     }
 
     var currentResearchFunctionTarget: ResearchFunctionTarget? {
@@ -1786,7 +1796,9 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var researchFunctionsPresentation: ResearchFunctionsPresentation {
+    func researchFunctionsPresentation(
+        critique: CritiqueAssociation? = nil
+    ) -> ResearchFunctionsPresentation {
         let target = currentResearchFunctionTarget
         let activeFunction = researchController.functions.target == target
             ? researchController.functions.activeFunction
@@ -1795,7 +1807,11 @@ final class WindowModel: ObservableObject {
             target: target,
             availability: researchController.functions.availability,
             activeFunction: activeFunction,
-            runs: researchController.functions.targetRuns
+            runs: researchController.functions.targetRuns,
+            activityEvents: researchController.records?.activityEvents ?? [],
+            pendingStates: researchController.records?.pendingResearchStates ?? [],
+            settlements: researchController.records?.settlements ?? [],
+            critique: critique
         )
     }
 
@@ -1806,17 +1822,7 @@ final class WindowModel: ObservableObject {
             researchController.records?.functionRuns ?? [],
             targetNoteID: target?.noteID
         )
-        if let target,
-           let presentationID = researchController.functions.presentationID,
-           researchController.functions.activeFunction == .dialogue,
-           presentationRouter.suspendsResearchFunction(presentationID: presentationID) {
-            researchController.functions.resumeHumanReviewDraft(
-                presentationID: presentationID,
-                target: target
-            )
-        } else {
-            researchController.functions.invalidateIfTargetChanged(target)
-        }
+        researchController.functions.invalidateIfTargetChanged(target)
         reconcileResearchFunctionPresentation()
         await researchController.functions.refreshAvailability(for: target)
         await researchController.bibliography.refresh(
@@ -1937,7 +1943,7 @@ final class WindowModel: ObservableObject {
                 candidateID: candidateID
             )
             selectedIdentityAmbiguity = nil
-            await refreshIdentityAndReviewState()
+            await refreshIdentityAndAnnotationState()
         } catch {
             identityResolutionError = error.localizedDescription
             try? await refreshNoteLocationScope()
@@ -2010,14 +2016,32 @@ final class WindowModel: ObservableObject {
         return currentNote.document.fingerprint
     }
 
-    private func storeHumanReviewRecord(
-        _ record: HumanReviewRecord,
+    private func storeAnnotation(
+        _ annotation: AnnotationRecord,
         path: String,
         vaultID: UUID
     ) {
-        humanReviewRecordsByNoteID[record.id] = record
+        var byNote = annotationsByNoteID[annotation.noteID] ?? []
+        if let index = byNote.firstIndex(where: { $0.id == annotation.id }) {
+            byNote[index] = annotation
+        } else {
+            byNote.append(annotation)
+        }
+        byNote.sort { $0.createdAt < $1.createdAt }
+        annotationsByNoteID[annotation.noteID] = byNote
         if currentRegisteredVault?.id == vaultID {
-            humanReviewRecords[path] = record
+            annotationsByPath[path] = byNote
+        }
+    }
+
+    private func removeStoredAnnotation(
+        _ annotation: AnnotationRecord,
+        path: String,
+        vaultID: UUID
+    ) {
+        annotationsByNoteID[annotation.noteID]?.removeAll { $0.id == annotation.id }
+        if currentRegisteredVault?.id == vaultID {
+            annotationsByPath[path]?.removeAll { $0.id == annotation.id }
         }
     }
 
@@ -2492,30 +2516,6 @@ final class WindowModel: ObservableObject {
     }
     #endif
 
-    func requestResearcherComments(
-        at path: String,
-        selection: MarkdownReviewSelection? = nil,
-        focusedCommentID: UUID? = nil
-    ) {
-        guard canCommentCurrentNote,
-              currentNote?.relativePath == path else { return }
-        enqueueDocumentTransition { [weak self] in
-            guard let self,
-                  self.currentNote?.relativePath == path,
-                  self.canCommentCurrentNote else { return }
-            self.pendingCommentSelection = selection
-            self.focusedResearcherCommentID = focusedCommentID
-            let function: ResearchFunctionID = self.currentDocumentVaultRole.allowsCritique
-                ? .critique
-                : .dialogue
-            self.openResearchFunction(
-                function,
-                focusCommentComposer: focusedCommentID == nil,
-                permitsUnavailablePresentation: true
-            )
-        }
-    }
-
     func openResearchFunction(
         _ function: ResearchFunctionID,
         selection: ResearcherCommentAnchor? = nil,
@@ -2568,14 +2568,6 @@ final class WindowModel: ObservableObject {
                     selection: capturedSelection,
                     presentationID: presentationID
                 )
-                if function == .review
-                    || (function == .dialogue
-                        && (target.role == .analysis || target.role == .topic)) {
-                    self.researchController.functions.beginHumanReviewDraft(
-                        revision: target.fingerprint,
-                        record: self.currentDocumentReviewRecord
-                    )
-                }
                 self.researchController.requestPresentFunction(
                     function,
                     target: reference,
@@ -2619,15 +2611,6 @@ final class WindowModel: ObservableObject {
 
     var filteredNotes: [WindowDocumentLocation] {
         var result = notes
-        if isReviewedFilter { result = result.filter { !$0.isReviewed } }
-        if isUnqualifiedFilter {
-            result = result.filter {
-                humanReviewRecords[$0.relativePath]?.latestReview?.qualification == .unqualified
-            }
-        }
-        if isChangedSinceReviewFilter {
-            result = result.filter { changedSinceReviewPaths.contains($0.relativePath) }
-        }
         if isNeedsAttentionFilter, let paths = currentAttentionPaths {
             result = result.filter { paths.contains($0.relativePath) }
         }
@@ -2649,7 +2632,6 @@ final class WindowModel: ObservableObject {
 
     var activeResearchFilterCount: Int {
         [
-            isChangedSinceReviewFilter,
             isNeedsAttentionFilter,
             isExplicitConnectionsFilter,
             isMalformedMetadataFilter,
@@ -2657,7 +2639,6 @@ final class WindowModel: ObservableObject {
     }
 
     func clearResearchFilters() {
-        isChangedSinceReviewFilter = false
         isNeedsAttentionFilter = false
         isExplicitConnectionsFilter = false
         isMalformedMetadataFilter = false
@@ -3222,8 +3203,8 @@ final class WindowModel: ObservableObject {
                     function: function
                 )
             },
-            dialogueResponseProfile: {
-                try await capabilities.research.dialogueResponseProfile()
+            discussResponseProfile: {
+                try await capabilities.research.discussResponseProfile()
             },
             prepare: { [weak self] request in
                 guard let self, let assignment = self.workspaceAssignment else {
@@ -3339,12 +3320,12 @@ final class WindowModel: ObservableObject {
         triptychSettings = settings
     }
 
-    func dialogueResponseProfile() async throws -> DialogueResponseProfile {
-        try await researchController.dialogueResponseProfile()
+    func discussResponseProfile() async throws -> DialogueResponseProfile {
+        try await researchController.discussResponseProfile()
     }
 
-    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws {
-        try await researchController.saveDialogueResponseProfile(profile)
+    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
+        try await researchController.saveDiscussResponseProfile(profile)
     }
 
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
@@ -3405,9 +3386,9 @@ final class WindowModel: ObservableObject {
         await refreshWindowProjection()
     }
 
-    func dialogueHistory(for path: String) async -> [DialogueEntry] {
+    func discussionHistory(for path: String) async -> [DialogueEntry] {
         guard let context = activeDocumentContext(for: path) else { return [] }
-        return (try? await researchController.dialogueHistory(noteID: context.noteID)) ?? []
+        return (try? await researchController.discussionHistory(noteID: context.noteID)) ?? []
     }
 
     func critiqueAssociation(for path: String) async -> CritiqueAssociation? {
@@ -3543,96 +3524,99 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func comments(for noteID: UUID) async -> [ResearcherComment] {
-        (try? await researchController.comments(noteID: noteID)) ?? []
+    func annotations(for noteID: UUID) async -> [AnnotationRecord] {
+        (try? await researchController.annotations(noteID: noteID)) ?? []
     }
 
     @discardableResult
-    func addResearcherComment(
+    func addAnnotation(
         to path: String,
         text: String,
         anchor: ResearcherCommentAnchor
-    ) async throws -> HumanReviewRecord {
-        let context = try researcherCommentContext(for: path)
-        let record = try await researchController.addComment(
+    ) async throws -> AnnotationRecord {
+        let context = try annotationContext(for: path)
+        let annotation = try await researchController.addAnnotation(
             to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             text: text,
             anchor: anchor,
             expectedRevision: context.fingerprint
         )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
-        return record
+        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
+        return annotation
     }
 
-    func updateResearcherComment(
+    func updateAnnotation(
         at path: String,
-        commentID: UUID,
+        annotationID: UUID,
         text: String
     ) async throws {
-        let context = try researcherCommentContext(for: path)
-        let record = try await researchController.updateComment(
+        let context = try annotationContext(for: path)
+        let annotation = try await researchController.updateAnnotation(
             noteID: context.noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             text: text
         )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
+        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
     }
 
-    func setResearcherCommentResolved(
+    func setAnnotationResolved(
         at path: String,
-        commentID: UUID,
+        annotationID: UUID,
         resolved: Bool
     ) async throws {
-        let context = try researcherCommentContext(for: path)
-        let record = try await researchController.setCommentResolved(
+        let context = try annotationContext(for: path)
+        let annotation = try await researchController.setAnnotationResolved(
             noteID: context.noteID,
-            commentID: commentID,
+            annotationID: annotationID,
             resolved: resolved
         )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
+        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
     }
 
-    func deleteResearcherComment(at path: String, commentID: UUID) async throws {
-        let context = try researcherCommentContext(for: path)
-        let record = try await researchController.deleteComment(
+    func deleteAnnotation(at path: String, annotationID: UUID) async throws {
+        let context = try annotationContext(for: path)
+        let annotation = try await researchController.deleteAnnotation(
             noteID: context.noteID,
-            commentID: commentID
+            annotationID: annotationID
         )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
+        removeStoredAnnotation(annotation, path: path, vaultID: context.vaultID)
     }
 
-    func reattachResearcherComment(
+    func reattachAnnotation(
         at path: String,
-        commentID: UUID,
+        annotationID: UUID,
         anchor: ResearcherCommentAnchor
     ) async throws {
-        let context = try researcherCommentContext(for: path)
-        let record = try await researchController.reattachComment(
+        let context = try annotationContext(for: path)
+        let annotation = try await researchController.reattachAnnotation(
             to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            commentID: commentID,
+            annotationID: annotationID,
             anchor: anchor,
             expectedRevision: context.fingerprint
         )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
+        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
     }
 
     @discardableResult
-    func tryReattachingResearcherComments(at path: String) async throws -> HumanReviewRecord {
-        let context = try researcherCommentContext(for: path)
-        let record = try await researchController.reattachComments(
+    func tryReattachingAnnotations(at path: String) async throws -> [AnnotationRecord] {
+        let context = try annotationContext(for: path)
+        let annotations = try await researchController.reattachAnnotations(
             to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             expectedRevision: context.fingerprint
         )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
-        return record
+        annotationsByNoteID[context.noteID] = annotations
+        if currentRegisteredVault?.id == context.vaultID {
+            annotationsByPath[path] = annotations
+        }
+        return annotations
     }
 
-    private func researcherCommentContext(
+    private func annotationContext(
         for path: String
     ) throws -> (noteID: UUID, vaultID: UUID, fingerprint: DocumentFingerprint) {
         guard canCommentCurrentNote,
               let context = activeDocumentContext(for: path) else {
-            throw ResearcherCommentWorkflowError.unavailable
+            throw AnnotationWorkflowError.unavailable
         }
         return (context.noteID, context.vaultID, context.fingerprint)
     }
@@ -3704,7 +3688,7 @@ final class WindowModel: ObservableObject {
             .map(WindowDocumentLocation.workspace)
             .sorted(by: notesAreOrdered)
         refreshDocumentRevisions()
-        await refreshIdentityAndReviewState()
+        await refreshIdentityAndAnnotationState()
         relationshipGraph = workspaceCatalog?.graph
         allTags = notes.orderedTags
         scheduleWorkspaceCatalogRefresh()
@@ -3797,7 +3781,7 @@ final class WindowModel: ObservableObject {
             vaultConfig = targetConfig
             notes = targetNotes
             refreshDocumentRevisions()
-            await refreshIdentityAndReviewState()
+            await refreshIdentityAndAnnotationState()
             if let snapshot = workspaceStore.snapshot(for: capabilities.id) {
                 receiveWorkspaceSnapshot(
                     snapshot,
@@ -3959,11 +3943,8 @@ final class WindowModel: ObservableObject {
         projectionRefreshToken &+= 1
         let refreshToken = projectionRefreshToken
         let startingVaultID = currentRegisteredVault?.id
-        // Human Review, qualification, and comments share one atomic store.
-        await refreshIdentityAndReviewState()
-        let changed = changedSinceReviewPaths
+        await refreshIdentityAndAnnotationState()
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
-        changedSinceReviewPaths = changed
 
         relationshipGraph = try? await discoveryController.discoverySnapshot().catalog.graph
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
@@ -4012,7 +3993,7 @@ final class WindowModel: ObservableObject {
             documentController.resetPresentationState()
             notes = loaded.sorted(by: notesAreOrdered)
             refreshDocumentRevisions()
-            await refreshIdentityAndReviewState()
+            await refreshIdentityAndAnnotationState()
             await refreshWindowProjection()
         } catch {
             showToast(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
@@ -4022,7 +4003,7 @@ final class WindowModel: ObservableObject {
     func refreshNoteLocationScope() async throws {
         notes = try await loadNotes(for: noteLocationScope).sorted(by: notesAreOrdered)
         refreshDocumentRevisions()
-        await refreshIdentityAndReviewState()
+        await refreshIdentityAndAnnotationState()
         await refreshWindowProjection()
     }
 
@@ -4227,10 +4208,10 @@ final class WindowModel: ObservableObject {
             throw error
         }
 
-        humanReviewRecords[path] = nil
+        annotationsByPath[path] = nil
         noteIdentityByPath[path] = nil
         if let critiquePath = commit.removedCritiqueDocumentPath {
-            humanReviewRecords[critiquePath] = nil
+            annotationsByPath[critiquePath] = nil
             noteIdentityByPath[critiquePath] = nil
         }
         let deletedPaths = Set([path, commit.removedCritiqueDocumentPath].compactMap { $0 })
@@ -4320,13 +4301,14 @@ final class WindowModel: ObservableObject {
             if identityResolved {
                 noteIdentityByPath[destinationPath] = noteID
             }
-            if identityResolved, let record = humanReviewRecords.removeValue(forKey: sourcePath) {
-                humanReviewRecords[destinationPath] = record
+            if identityResolved, var pageAnnotations = annotationsByPath.removeValue(forKey: sourcePath) {
+                for index in pageAnnotations.indices {
+                    pageAnnotations[index].relativePath = destinationPath
+                }
+                annotationsByPath[destinationPath] = pageAnnotations
+                annotationsByNoteID[noteID] = pageAnnotations
             } else {
-                humanReviewRecords[sourcePath] = nil
-            }
-            if changedSinceReviewPaths.remove(sourcePath) != nil {
-                changedSinceReviewPaths.insert(destinationPath)
+                annotationsByPath[sourcePath] = nil
             }
         }
         if let descriptor = currentDocumentDescriptor,
@@ -4856,89 +4838,6 @@ final class WindowModel: ObservableObject {
         _ = workspaceStore.openExternal(url)
     }
 
-    func reviewNote(at path: String) {
-        guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsHumanReview,
-              currentNote?.relativePath == path,
-              currentDocumentCapabilities.canHumanReview else { return }
-        openResearchFunction(.dialogue, permitsUnavailablePresentation: true)
-    }
-
-    func finishJudgmentPanelDismissal() {
-        pendingCommentSelection = nil
-        focusedResearcherCommentID = nil
-    }
-
-    func reviewDisplayState(for path: String) -> HumanReviewDisplayState {
-        guard let revision = documentRevisions[path],
-              let record = humanReviewRecords[path],
-              let review = record.review(for: revision) else {
-            return .notReviewed
-        }
-        return HumanReviewDisplayState(isReviewed: true, qualification: review.qualification)
-    }
-
-    func saveHumanReviewDraft(
-        for path: String,
-        fingerprint: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws {
-        guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsHumanReview,
-              currentNote?.relativePath == path,
-              currentDocumentCapabilities.canHumanReview else {
-            throw HumanReviewWorkflowError.unavailableForOutput
-        }
-        guard context.fingerprint == fingerprint else {
-            throw HumanReviewWorkflowError.staleRevision
-        }
-        let record = try await researchController.saveHumanReviewDraft(
-            for: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            expectedRevision: fingerprint,
-            qualification: qualification,
-            reviewNote: reviewNote
-        )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
-    }
-
-    func completeHumanReview(
-        for path: String,
-        fingerprint: DocumentFingerprint,
-        qualification: NoteQualification?,
-        reviewNote: String
-    ) async throws {
-        guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsHumanReview,
-              currentNote?.relativePath == path,
-              currentDocumentCapabilities.canHumanReview else {
-            throw HumanReviewWorkflowError.unavailableForOutput
-        }
-        guard context.fingerprint == fingerprint else {
-            throw HumanReviewWorkflowError.staleRevision
-        }
-        let record = try await researchController.completeHumanReview(
-            for: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            expectedRevision: fingerprint,
-            qualification: qualification,
-            reviewNote: reviewNote
-        )
-        storeHumanReviewRecord(record, path: path, vaultID: context.vaultID)
-        if currentRegisteredVault?.id == context.vaultID {
-            changedSinceReviewPaths.remove(path)
-        }
-        if let snapshot = try? await documentController.noteSnapshot(
-            VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
-        ) {
-            replaceCachedWorkspaceNote(snapshot)
-            if currentRegisteredVault?.id == context.vaultID,
-               let index = notes.firstIndex(where: { $0.relativePath == path }) {
-                notes[index] = .workspace(snapshot)
-            }
-        }
-        await refreshWorkspaceCatalog()
-    }
-
     func openWorkspaceReference(
         _ reference: VaultNoteReference,
         line: Int? = nil,
@@ -5087,17 +4986,17 @@ final class WindowModel: ObservableObject {
         })
     }
 
-    private func refreshIdentityAndReviewState() async {
-        identityReviewRefreshGeneration &+= 1
-        let refreshGeneration = identityReviewRefreshGeneration
+    private func refreshIdentityAndAnnotationState() async {
+        identityAnnotationRefreshGeneration &+= 1
+        let refreshGeneration = identityAnnotationRefreshGeneration
         guard noteLocationScope != .unclassified,
               let vault = currentRegisteredVault else {
             noteIdentityByPath = [:]
             identityAmbiguities = []
             pendingIdentityRebindings = []
             identityMigrationFailures = []
-            humanReviewRecords = [:]
-            changedSinceReviewPaths = []
+            annotationsByPath = [:]
+            annotationsByNoteID = [:]
             return
         }
         let locationScope = noteLocationScope
@@ -5108,7 +5007,7 @@ final class WindowModel: ObservableObject {
                 documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
             )
         })
-        guard refreshGeneration == identityReviewRefreshGeneration,
+        guard refreshGeneration == identityAnnotationRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
               noteLocationScope == locationScope else { return }
         let recovery: NoteIdentityRecoveryState
@@ -5120,69 +5019,49 @@ final class WindowModel: ObservableObject {
             }
             recovery = vaultSnapshot.identityRecovery
         } catch {
-            guard refreshGeneration == identityReviewRefreshGeneration,
+            guard refreshGeneration == identityAnnotationRefreshGeneration,
                   currentRegisteredVault?.id == vault.id,
                   noteLocationScope == locationScope else { return }
             noteIdentityByPath = [:]
             identityResolutionError = error.localizedDescription
             return
         }
-        guard refreshGeneration == identityReviewRefreshGeneration,
+        guard refreshGeneration == identityAnnotationRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
               noteLocationScope == locationScope else { return }
         let identities = recovery.identities
 
-        var records: [String: HumanReviewRecord] = [:]
-        var changed: Set<String> = []
-        var reviewStateByPath: [String: (isReviewed: Bool, reviewedAt: Date?)] = [:]
-        var commentRefreshFailure: String?
-        var storedReviewRecords = humanReviewRecordsByNoteID
+        var annotationsByStableIdentity = annotationsByNoteID
+        var annotationRefreshFailure: String?
         do {
             let snapshot = try await researchController.researchSnapshot()
-            storedReviewRecords = Dictionary(
-                snapshot.humanReviews.map { ($0.id, $0) },
-                uniquingKeysWith: { first, _ in first }
+            annotationsByStableIdentity = Dictionary(
+                grouping: snapshot.annotations,
+                by: \.noteID
             )
         } catch {
-            commentRefreshFailure = error.localizedDescription
+            annotationRefreshFailure = error.localizedDescription
         }
+        var annotationsForVisiblePaths: [String: [AnnotationRecord]] = [:]
         for note in noteSnapshot {
             let path = note.relativePath
-            guard let noteID = identities[path]?.id else {
-                reviewStateByPath[path] = (false, nil)
-                continue
-            }
+            guard let noteID = identities[path]?.id else { continue }
             let fingerprint = revisionSnapshot[path] ?? DocumentFingerprint(content: note.rawContent)
-            var record = storedReviewRecords[noteID]
-            if record?.comments.contains(where: {
-                   $0.anchor.fingerprint != fingerprint
-               }) == true {
-                guard refreshGeneration == identityReviewRefreshGeneration else { return }
+            var pageAnnotations = annotationsByStableIdentity[noteID] ?? []
+            if pageAnnotations.contains(where: { $0.anchor.fingerprint != fingerprint }) {
+                guard refreshGeneration == identityAnnotationRefreshGeneration else { return }
                 do {
-                    let reattached = try await researchController.reattachComments(
+                    pageAnnotations = try await researchController.reattachAnnotations(
                         to: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
                         expectedRevision: fingerprint
                     )
-                    record = reattached
-                    storedReviewRecords[noteID] = reattached
+                    annotationsByStableIdentity[noteID] = pageAnnotations
                 } catch {
-                    commentRefreshFailure = error.localizedDescription
+                    annotationRefreshFailure = error.localizedDescription
                 }
             }
-            guard refreshGeneration == identityReviewRefreshGeneration else { return }
-            guard let record else {
-                guard refreshGeneration == identityReviewRefreshGeneration else { return }
-                reviewStateByPath[path] = (false, nil)
-                continue
-            }
-            guard refreshGeneration == identityReviewRefreshGeneration else { return }
-            records[path] = record
-            if let currentReview = record.review(for: fingerprint) {
-                reviewStateByPath[path] = (true, currentReview.completedAt)
-            } else {
-                reviewStateByPath[path] = (false, record.latestReview?.completedAt)
-                if record.latestReview != nil { changed.insert(path) }
-            }
+            guard refreshGeneration == identityAnnotationRefreshGeneration else { return }
+            annotationsForVisiblePaths[path] = pageAnnotations.sorted { $0.createdAt < $1.createdAt }
         }
 
         let currentRevisions = Dictionary(uniqueKeysWithValues: notes.map { note in
@@ -5191,7 +5070,7 @@ final class WindowModel: ObservableObject {
                 documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
             )
         })
-        guard refreshGeneration == identityReviewRefreshGeneration,
+        guard refreshGeneration == identityAnnotationRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
               noteLocationScope == locationScope,
               currentRevisions == revisionSnapshot else { return }
@@ -5222,12 +5101,11 @@ final class WindowModel: ObservableObject {
             }
         }
         refreshSelectedDocumentProjection()
-        humanReviewRecordsByNoteID = storedReviewRecords
-        humanReviewRecords = records
-        changedSinceReviewPaths = changed
-        if let commentRefreshFailure {
-            refreshStatusText = "Researcher comments refresh failed"
-            workspaceCatalogError = "Scholium left the existing comment records unchanged because their anchors could not be refreshed safely. \(commentRefreshFailure)"
+        annotationsByNoteID = annotationsByStableIdentity
+        annotationsByPath = annotationsForVisiblePaths
+        if let annotationRefreshFailure {
+            refreshStatusText = "Page annotations refresh failed"
+            workspaceCatalogError = "Scholium left the existing page annotations unchanged because their anchors could not be refreshed safely. \(annotationRefreshFailure)"
         }
     }
 
@@ -5243,10 +5121,8 @@ final class WindowModel: ObservableObject {
         clearMetadataFilters()
         currentRegisteredVault = nil
         currentVaultRole = .other
-        pendingCommentSelection = nil
-        focusedResearcherCommentID = nil
-        humanReviewRecords = [:]
-        humanReviewRecordsByNoteID = [:]
+        annotationsByPath = [:]
+        annotationsByNoteID = [:]
         noteIdentityByPath = [:]
         identityAmbiguities = []
         pendingIdentityRebindings = []
@@ -5398,7 +5274,7 @@ final class WindowModel: ObservableObject {
             documentRevisions[activeRecoveryNote.relativePath] = previousByPath[activeRecoveryNote.relativePath]
                 .map { DocumentFingerprint(content: $0.rawContent) }
         }
-        await refreshIdentityAndReviewState()
+        await refreshIdentityAndAnnotationState()
         relationshipGraph = snapshot.discovery.catalog.graph
         allTags = notes.orderedTags
         workspaceCatalogError = nil
@@ -5469,7 +5345,6 @@ final class WindowModel: ObservableObject {
                     modificationDate: previous.fileMetadata.modificationDate
                 ),
                 lifecycle: previous.lifecycle,
-                review: previous.review,
                 graphCounts: previous.graphCounts
             )
         } else {
@@ -5487,7 +5362,6 @@ final class WindowModel: ObservableObject {
                     modificationDate: nil
                 ),
                 lifecycle: .active,
-                review: nil,
                 graphCounts: WorkspaceGraphCounts(
                     incoming: 0,
                     outgoing: 0,
@@ -5525,30 +5399,16 @@ final class WindowModel: ObservableObject {
 
 }
 
-private enum HumanReviewWorkflowError: LocalizedError {
-    case staleRevision
-    case unavailableForOutput
-
-    var errorDescription: String? {
-        switch self {
-        case .staleRevision:
-            return String(localized: "The note changed while this review was open. Reopen Review and check the current text before saving.", table: "Localizable", bundle: .module)
-        case .unavailableForOutput:
-            return String(localized: "Human Review is unavailable in Works. Request a Critique for an ordinary Work note instead.", table: "Localizable", bundle: .module)
-        }
-    }
-}
-
-private enum ResearcherCommentWorkflowError: LocalizedError {
+private enum AnnotationWorkflowError: LocalizedError {
     case unavailable
     case staleRevision
 
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return String(localized: "Comments are unavailable until Scholium can identify this Analysis, Topic, or Work reliably.", table: "Localizable", bundle: .module)
+            return String(localized: "Annotations are unavailable until Scholium can identify this Analysis, Topic, or Work reliably.", table: "Localizable", bundle: .module)
         case .staleRevision:
-            return String(localized: "The note changed before the Comment could be attached. Reopen the Review or Critique panel and select the current passage.", table: "Localizable", bundle: .module)
+            return String(localized: "The note changed before the Annotation could be attached. Select the current passage again.", table: "Localizable", bundle: .module)
         }
     }
 }

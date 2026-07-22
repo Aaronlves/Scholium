@@ -150,14 +150,34 @@ enum WorkspaceSnapshotBuilder {
             diagnostic.code == .broken ? diagnostic.source : nil
         })
 
-        let humanReviews = await services.humanReviewStore.allRecords()
+        // Legacy Human Review is retained strictly for compatibility search
+        // and Research Record history. Current Inspector and Action state is
+        // projected from Research Activity instead.
+        let legacyHumanReviews = await services.humanReviewStore.allRecords()
+        let settlements = await services.researchActivityStore.allSettlements()
+        let activityGrants = await services.researchActivityStore.grants()
+        let latestSettlementByNoteID = Dictionary(
+            settlements.map { ($0.noteID, $0) },
+            uniquingKeysWith: { lhs, rhs in
+                lhs.settledAt >= rhs.settledAt ? lhs : rhs
+            }
+        )
+        for loaded in loadedVaults {
+            for document in loaded.activeDocuments {
+                guard case .resolved(let noteID) = loaded.identityStates[document.relativePath],
+                      latestSettlementByNoteID[noteID] != nil else { continue }
+                try await services.researchActivityStore.synchronizeSettlementCurrency(
+                    noteID: noteID,
+                    currentFingerprint: document.fingerprint
+                )
+            }
+        }
         let reviewByLocation = Dictionary(
-            humanReviews.map { record in
+            legacyHumanReviews.map { record in
                 (VaultQualifiedNoteID(vaultID: record.vaultID, relativePath: record.relativePath), record)
             },
             uniquingKeysWith: { first, _ in first }
         )
-        var reviewStates: [String: WorkspaceReviewState] = [:]
         var searchDocuments: [SearchIndexDocument] = []
 
         for loaded in loadedVaults {
@@ -168,14 +188,6 @@ enum WorkspaceSnapshotBuilder {
                     relativePath: document.relativePath
                 )
                 let review = reviewByLocation[id]
-                if let latest = review?.latestReview {
-                    let referenceID = "\(loaded.vault.id.uuidString):\(document.relativePath)"
-                    reviewStates[referenceID] = WorkspaceReviewState(
-                        qualification: latest.qualification.rawValue,
-                        reviewedFingerprint: latest.fingerprint,
-                        changedSinceReview: latest.fingerprint != document.fingerprint
-                    )
-                }
                 return SearchIndexDocument(
                     vaultID: loaded.vault.id,
                     vaultName: loaded.vault.name,
@@ -201,10 +213,50 @@ enum WorkspaceSnapshotBuilder {
                 ($0.vault.id, $0.activeDocuments)
             }
         )
+        var settlementStates: [String: WorkspaceSettlementState] = [:]
+        for loaded in loadedVaults {
+            for document in loaded.activeDocuments {
+                guard case .resolved(let noteID) = loaded.identityStates[document.relativePath],
+                      let settlement = latestSettlementByNoteID[noteID] else { continue }
+                let referenceID = "\(loaded.vault.id.uuidString):\(document.relativePath)"
+                settlementStates[referenceID] = WorkspaceSettlementState(
+                    settledFingerprint: settlement.fingerprint,
+                    changedSinceSettled: settlement.fingerprint != document.fingerprint
+                )
+            }
+        }
+        let loadedVaultsByID = Dictionary(
+            uniqueKeysWithValues: loadedVaults.map { ($0.vault.id, $0) }
+        )
+        let attributionAttention = activityGrants.flatMap { grant -> [AttentionQueueItem] in
+            guard let report = grant.completionReport else { return [] }
+            return report.unreportedChangedNotes.compactMap { changed in
+                guard let loaded = loadedVaultsByID[changed.note.vaultID],
+                      loaded.activeDocuments.contains(where: {
+                          $0.relativePath == changed.note.relativePath
+                      }),
+                      case .resolved(let currentID) = loaded.identityStates[
+                          changed.note.relativePath
+                      ],
+                      currentID == changed.noteID else { return nil }
+                return AttentionQueueItem(
+                    kind: .changeAttributionNeeded,
+                    severity: .warning,
+                    note: VaultNoteReference(
+                        vaultID: loaded.vault.id,
+                        vaultName: loaded.vault.name,
+                        vaultRole: loaded.vault.role,
+                        relativePath: changed.note.relativePath
+                    ),
+                    message: "This note changed inside a frozen Write scope but was not included in the agent's completion report. Review its attribution before treating it as part of the activity from \(grant.origin.title)."
+                )
+            }
+        }
         let catalog = WorkspaceCatalogBuilder.build(
             vaults: loadedVaults.map(\.vault),
             documents: documentsByVault,
-            reviewStates: reviewStates,
+            settlementStates: settlementStates,
+            additionalAttention: attributionAttention,
             graph: graph
         )
 
@@ -212,6 +264,12 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
         if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
         if let issue = await services.humanReviewStore.healthError() {
+            healthIssues.append("Legacy Review archive: \(issue)")
+        }
+        if let issue = await services.researchActivityStore.healthError() {
+            healthIssues.append(issue)
+        }
+        if let issue = await services.pageAnnotationStore.healthError() {
             healthIssues.append(issue)
         }
         if let issue = await services.dialogueStore.healthError() {
@@ -277,13 +335,6 @@ enum WorkspaceSnapshotBuilder {
                             .contentModificationDateKey,
                             .fileSizeKey,
                         ])
-                    let review = reviewByLocation[id]?.latestReview.map {
-                        WorkspaceReviewState(
-                            qualification: $0.qualification.rawValue,
-                            reviewedFingerprint: $0.fingerprint,
-                            changedSinceReview: $0.fingerprint != document.fingerprint
-                        )
-                    }
                     let diagnostics = (graph?.diagnostics ?? []).filter { $0.source == id }
                     return WorkspaceNoteSnapshot(
                         id: id,
@@ -298,7 +349,6 @@ enum WorkspaceSnapshotBuilder {
                         lifecycle: WorkspaceDocumentLifecycle(
                             relativePath: document.relativePath
                         ),
-                        review: review,
                         graphCounts: WorkspaceGraphCounts(
                             incoming: graph?.incoming[id]?.count ?? 0,
                             outgoing: graph?.outgoing[id]?.count ?? 0,
@@ -356,8 +406,10 @@ enum WorkspaceSnapshotBuilder {
                 ($0.id, $0.fingerprint)
             }
         )
-        let commentsByID: [UUID: ResearcherComment] = Dictionary(
-            humanReviews.flatMap(\.comments).map { ($0.id, $0) },
+        let allAnnotations = await services.pageAnnotationStore
+            .allAnnotations()
+        let legacyCommentsByID: [UUID: ResearcherComment] = Dictionary(
+            legacyHumanReviews.flatMap(\.comments).map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let functionRuns = storedFunctionRuns.map { run in
@@ -378,12 +430,12 @@ enum WorkspaceSnapshotBuilder {
                 outputIsCurrent = completion.outputFingerprint == nil
             }
             let currentEvidence = try? run.snapshot.request.commentIDs.map { id -> DocumentFingerprint in
-                guard let comment = commentsByID[id] else {
+                guard let comment = legacyCommentsByID[id] else {
                     throw ResearchFunctionContractError.invalidCompletion(
-                        "Selected Comment evidence is no longer available."
+                        "Selected legacy Annotation evidence is no longer available."
                     )
                 }
-                return try researchCommentEvidenceRevision(comment)
+                return try legacyAnnotationEvidenceRevision(comment)
             }.sorted { lhs, rhs in
                 if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
                 return lhs.byteCount < rhs.byteCount
@@ -408,6 +460,7 @@ enum WorkspaceSnapshotBuilder {
                         didModifyTarget: completion.didModifyTarget,
                         outputFingerprint: completion.outputFingerprint,
                         fidelityOutcomes: completion.fidelityOutcomes,
+                        fidelityTargetResults: completion.fidelityTargetResults ?? [],
                         fidelityEvidenceKey: completion.fidelityEvidenceKey,
                         reusedFidelityRunID: completion.reusedFidelityRunID,
                         childRunIDs: completion.childRunIDs ?? [],
@@ -420,10 +473,16 @@ enum WorkspaceSnapshotBuilder {
             return run
         }
         let research = WorkspaceResearchSnapshot(
-            humanReviews: humanReviews,
+            legacyHumanReviews: legacyHumanReviews,
+            activityEvents: await services.researchActivityStore.allEvents(),
+            settlements: settlements,
+            annotations: allAnnotations,
+            commentExchanges: await services.researchActivityStore.allExchanges(),
+            pendingResearchStates: await services.researchActivityStore.allPendingStates(),
+            activityGrants: activityGrants,
             dialogues: allDialogueEntries.filter {
                 $0.functionSnapshot == nil
-                    || $0.functionSnapshot?.request.function == .dialogue
+                    || $0.functionSnapshot?.request.function == .discuss
             },
             critiques: critiqueAssociations,
             functionRuns: functionRuns,
@@ -455,11 +514,11 @@ enum WorkspaceSnapshotBuilder {
     }
 }
 
-private func researchCommentEvidenceRevision(
-    _ comment: ResearcherComment
+private func legacyAnnotationEvidenceRevision(
+    _ annotation: ResearcherComment
 ) throws -> DocumentFingerprint {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     encoder.outputFormatting = [.sortedKeys]
-    return DocumentFingerprint(data: try encoder.encode(comment))
+    return DocumentFingerprint(data: try encoder.encode(annotation))
 }

@@ -122,13 +122,13 @@ private struct AttentionSettingsView: View {
                 }
                 .disabled(AttentionPreferences.decodeLedger(dismissalLedgerData).dismissedUntilByItemID.isEmpty)
 
-                Text("Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, Human Review, or qualification.")
+                Text("Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, or research activity records.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Section("What Attention Can Report") {
-                Text("Possible orphan structure, Changed Since Review, broken or ambiguous Connections, explicit reliance on an Unqualified Analysis, malformed metadata, and unresolved note identity.")
+                Text("Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity.")
                     .foregroundStyle(.secondary)
                 Text("Attention does not judge truth, evidence, philosophical quality, or how a note may be used.")
                     .font(.caption)
@@ -771,7 +771,7 @@ private struct ResearchGuidanceSettingsView: View {
                 VStack(spacing: 0) {
                     Picker("Prompt Guidance Section", selection: $promptSection) {
                         Text("Templates").tag("templates")
-                        Text("Dialogue Defaults").tag("dialogue-response")
+                        Text("Discuss Defaults").tag("dialogue-response")
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
@@ -780,7 +780,7 @@ private struct ResearchGuidanceSettingsView: View {
                     .accessibilityIdentifier("scholium.researchGuidance.promptSection")
                     Divider()
                     if promptSection == "dialogue-response" {
-                        DialogueResponseSettingsView()
+                        DiscussResponseSettingsView()
                     } else {
                         PromptTemplateSettingsView()
                     }
@@ -1622,7 +1622,7 @@ private struct ResearchCitationMethodSettingsView: View {
     }
 }
 
-private struct DialogueResponseSettingsView: View {
+private struct DiscussResponseSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var selectedModules: Set<DialogueResponseModule> = []
     @State private var commentPreservation = DialogueCommentPreservation.keepAcademicIntentions
@@ -1632,12 +1632,12 @@ private struct DialogueResponseSettingsView: View {
 
     var body: some View {
         Form {
-            Section("New Dialogue Requests") {
+            Section("New Discuss Requests") {
                 LabeledContent("Required base") {
                     Text("Academic Outcome")
                         .foregroundStyle(.secondary)
                 }
-                Text("Choose the optional scholarly modules included in newly prepared Dialogue requests. This setting does not change existing Dialogue records.")
+                Text("Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests or the earlier Dialogue archive.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1679,7 +1679,7 @@ private struct DialogueResponseSettingsView: View {
             }
 
             Section {
-                Button("Save Dialogue Defaults") { save() }
+                Button("Save Discuss Defaults") { save() }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSaving || !unknownModuleIDs.isEmpty)
             }
@@ -1687,7 +1687,7 @@ private struct DialogueResponseSettingsView: View {
         .formStyle(.grouped)
         .padding(12)
         .task(id: settingsModel.activeTriptychServicesID) { await load() }
-        .alert("Could Not Save Dialogue Defaults", isPresented: Binding(
+        .alert("Could Not Save Discuss Defaults", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -1716,7 +1716,7 @@ private struct DialogueResponseSettingsView: View {
             return
         }
         do {
-            let profile = try await settingsModel.dialogueResponseProfile()
+            let profile = try await settingsModel.discussResponseProfile()
             selectedModules = Set(profile.knownModules)
             unknownModuleIDs = profile.unknownModuleIDs
             if let mode = DialogueCommentPreservation(rawValue: profile.commentPreservation) {
@@ -1737,8 +1737,8 @@ private struct DialogueResponseSettingsView: View {
                     modules: modules,
                     commentPreservation: commentPreservation
                 )
-                try await settingsModel.saveDialogueResponseProfile(profile)
-                settingsModel.showToast(String(localized: "Dialogue Defaults saved", table: "Localizable", bundle: .module))
+                try await settingsModel.saveDiscussResponseProfile(profile)
+                settingsModel.showToast(String(localized: "Discuss Defaults saved", table: "Localizable", bundle: .module))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -3264,7 +3264,7 @@ private struct AppearanceSettingsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Appearance")
                     .font(.title2.weight(.semibold))
-                Text("Choose a named document configuration, then adjust typography and each semantic callout independently. Changes apply to Read and Live Preview after saving.")
+                Text("Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Read, Live Preview, and Source.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -3357,6 +3357,7 @@ private struct AppearanceSettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .accessibilityIdentifier("scholium.appearance.form")
 
             if let reason = store.safeModeReason {
                 Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
@@ -3468,6 +3469,21 @@ private struct AppearanceProfileEditor: View {
     @Binding var profile: DocumentAppearanceProfile
 
     var body: some View {
+        Section("Layout") {
+            AppearanceDoubleControl(
+                "Line width",
+                value: $profile.settings.lineWidthCharacterUnits,
+                range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
+                step: 1,
+                suffix: "ch",
+                precision: 0,
+                accessibilityUnit: "character-width units"
+            )
+            Text("Line width is measured in CSS character-width units; the exact number of characters varies by typeface.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
         Section("Body") {
             Picker("Typeface", selection: $profile.settings.body.fontFamily) {
                 ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { family in
@@ -3535,7 +3551,7 @@ private struct AppearanceProfileEditor: View {
 
         Section("Mathematics") {
             LabeledContent("Display equations") {
-                Text("Centered · italic · numbered at right")
+                Text("Centered, italic, numbered at right")
                     .foregroundStyle(.secondary)
             }
             Text("Mathematics, code, and tables use Scholium’s shared restrained styles so their semantics and Read/Live parity remain stable across configurations.")
@@ -3602,20 +3618,22 @@ private struct CalloutAppearanceEditor: View {
 }
 
 private struct AppearanceDoubleControl: View {
-    let title: String
+    let title: LocalizedStringKey
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     let suffix: String
     let precision: Int
+    let accessibilityUnit: LocalizedStringResource?
 
     init(
-        _ title: String,
+        _ title: LocalizedStringKey,
         value: Binding<Double>,
         range: ClosedRange<Double>,
         step: Double,
         suffix: String,
-        precision: Int = 2
+        precision: Int = 2,
+        accessibilityUnit: LocalizedStringResource? = nil
     ) {
         self.title = title
         _value = value
@@ -3623,14 +3641,21 @@ private struct AppearanceDoubleControl: View {
         self.step = step
         self.suffix = suffix
         self.precision = precision
+        self.accessibilityUnit = accessibilityUnit
     }
 
     var body: some View {
         LabeledContent(title) {
             HStack(spacing: 8) {
-                Slider(value: $value, in: range, step: step)
+                AppearanceNativeSlider(
+                    value: $value,
+                    range: range,
+                    step: step
+                )
                     .frame(minWidth: 150, idealWidth: 220)
-                Text(value.formatted(.number.precision(.fractionLength(0...precision))))
+                    .accessibilityLabel(Text(title))
+                    .accessibilityValue(spokenValue)
+                Text(formattedValue)
                     .monospacedDigit()
                     .frame(width: 52, alignment: .trailing)
                 Text(suffix)
@@ -3638,6 +3663,93 @@ private struct AppearanceDoubleControl: View {
                     .frame(width: 24, alignment: .leading)
             }
         }
+    }
+
+    private var formattedValue: String {
+        value.formatted(.number.precision(.fractionLength(0...precision)))
+    }
+
+    private var spokenValue: Text {
+        let unit = accessibilityUnit.map { String(localized: $0) } ?? suffix
+        return Text(verbatim: "\(formattedValue) \(unit)")
+    }
+}
+
+private struct AppearanceNativeSlider: NSViewRepresentable {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> KeyboardAccessibleNSSlider {
+        let slider = KeyboardAccessibleNSSlider(
+            value: value,
+            minValue: range.lowerBound,
+            maxValue: range.upperBound,
+            target: context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:))
+        )
+        slider.isContinuous = true
+        slider.keyboardStep = step
+        return slider
+    }
+
+    func updateNSView(_ slider: KeyboardAccessibleNSSlider, context: Context) {
+        context.coordinator.parent = self
+        slider.minValue = range.lowerBound
+        slider.maxValue = range.upperBound
+        slider.keyboardStep = step
+        if slider.doubleValue != value {
+            slider.doubleValue = value
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: AppearanceNativeSlider
+
+        init(parent: AppearanceNativeSlider) {
+            self.parent = parent
+        }
+
+        @objc func valueChanged(_ sender: NSSlider) {
+            let lowerBound = parent.range.lowerBound
+            let snapped = lowerBound
+                + ((sender.doubleValue - lowerBound) / parent.step).rounded() * parent.step
+            let normalized = min(max(snapped, lowerBound), parent.range.upperBound)
+            sender.doubleValue = normalized
+            parent.value = normalized
+        }
+    }
+}
+
+private final class KeyboardAccessibleNSSlider: NSSlider {
+    var keyboardStep: Double = 1
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        window?.makeFirstResponder(self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.specialKey {
+        case .leftArrow:
+            adjustValue(by: -keyboardStep)
+        case .rightArrow:
+            adjustValue(by: keyboardStep)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    private func adjustValue(by delta: Double) {
+        doubleValue = min(max(doubleValue + delta, minValue), maxValue)
+        sendAction(action, to: target)
     }
 }
 
@@ -3652,10 +3764,10 @@ private struct AppearanceWeightPicker: View {
 
     var body: some View {
         Picker(title, selection: $weight) {
-            Text("Regular · 400").tag(400)
-            Text("Medium · 500").tag(500)
-            Text("Semibold · 600").tag(600)
-            Text("Bold · 700").tag(700)
+            Text("Regular, 400").tag(400)
+            Text("Medium, 500").tag(500)
+            Text("Semibold, 600").tag(600)
+            Text("Bold, 700").tag(700)
         }
     }
 }

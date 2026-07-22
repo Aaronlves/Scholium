@@ -53,8 +53,8 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 
 - Apply the protected Scholium Core Protocol to every Scholium task.
 - Select one primary Workflow Skill, or an explicit Mixed sequence for genuinely multi-operation work.
-- Load Scholium Research Integration for live Triptych reads, writes, properties, status, or Dialogue persistence.
-- Load Scholium Dialogue Response for a Dialogue ID or request-scoped response contract.
+- Load Scholium Research Integration for live Triptych reads, writes, properties, status, or Discuss persistence.
+- Load Scholium Discuss Response for a Discussion ID or request-scoped response contract.
 - Load only explicitly selected Researcher Skills and Practices; never scan arbitrary global skill directories.
 
 ## Workspace boundaries
@@ -73,7 +73,7 @@ Do not include:
 - the bootstrap instruction itself;
 - full Workflow methods or Philosophical Practices;
 - guessed paths, preferences, permissions, or methodological commitments;
-- Dialogue transcripts, prompt templates, hidden prompts, temporary task context, credentials, or secrets;
+- Discussion transcripts, prompt templates, hidden prompts, temporary task context, credentials, or secrets;
 - claims that the researcher authored the initial generated wording;
 - permission for an agent to rewrite `AGENTS.md` in a later task.
 

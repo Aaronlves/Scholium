@@ -190,7 +190,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setUserCSS(String)
     case setLinkCompletions([EditorLinkCompletion])
     case setLinkPreviews([MarkdownEditorLinkPreview])
-    case setResearcherComments([MarkdownEditorCommentAnnotation])
+    case setPageAnnotations([MarkdownEditorPageAnnotation])
     case showPreview
     case showPreviewAt(x: Double, y: Double)
     case announceStatus(String)
@@ -209,7 +209,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setPresentationCSS, setUserCSS, setLinkCompletions, setLinkPreviews, setResearcherComments, showPreview, showPreviewAt, announceStatus
+        case initialize, setMode, setPresentationCSS, setUserCSS, setLinkCompletions, setLinkPreviews, setPageAnnotations, showPreview, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, synchronizeCommittedText, command, markClean, focus, blur
     }
@@ -228,7 +228,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkCompletions: self = try .setLinkCompletions(container.decode([EditorLinkCompletion].self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
-        case .setResearcherComments: self = try .setResearcherComments(container.decode([MarkdownEditorCommentAnnotation].self, forKey: .value))
+        case .setPageAnnotations: self = try .setPageAnnotations(container.decode([MarkdownEditorPageAnnotation].self, forKey: .value))
         case .showPreview: self = .showPreview
         case .showPreviewAt:
             self = try .showPreviewAt(
@@ -281,7 +281,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
         case let .setLinkCompletions(value): try pair(.setLinkCompletions, value, .value, into: &container)
         case let .setLinkPreviews(value): try pair(.setLinkPreviews, value, .value, into: &container)
-        case let .setResearcherComments(value): try pair(.setResearcherComments, value, .value, into: &container)
+        case let .setPageAnnotations(value): try pair(.setPageAnnotations, value, .value, into: &container)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
         case let .showPreviewAt(x, y):
             try container.encode(Kind.showPreviewAt, forKey: .type)

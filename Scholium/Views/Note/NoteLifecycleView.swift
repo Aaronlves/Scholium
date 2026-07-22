@@ -100,7 +100,7 @@ struct NoteLifecycleView: View {
                                     compact: { limitationsEditor(minWidth: 0) }
                                 )
                             } else {
-                                Text("No Research Status is written. You can edit, comment, use Dialogue or Develop, and save a Review draft; completing Review waits until you declare it.")
+                                Text("No scope declaration is written. You can edit, annotate, comment, or use Work with Agent, then add Scope and Limitations later.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -276,7 +276,7 @@ struct NoteLifecycleView: View {
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
         case .move:
-            "Moving or renaming preserves the note identity, Human Review, comments, and Research Record."
+            "Moving or renaming preserves the note identity, page annotations, earlier Review and Dialogue archives, and Research Record."
         case .putBack:
             "Put Back returns this note to its exact original vault-relative location. Scholium never renames it or chooses another folder."
         case .classify:

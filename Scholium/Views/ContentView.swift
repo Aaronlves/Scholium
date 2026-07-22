@@ -2,10 +2,19 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
+private enum CommentExchangePresentationError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "Comment is unavailable until Scholium can identify the selected Analysis, Topic, or Work reliably."
+    }
+}
+
 // MARK: - Content View
 
 struct ContentView: View {
     @EnvironmentObject var appState: WindowModel
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
@@ -146,7 +155,6 @@ struct ContentView: View {
                appState.researchController.functions.isPresented {
                 appState.researchController.functions.dismiss()
             }
-            appState.finishJudgmentPanelDismissal()
         }) { route in
             sheetContent(for: route)
         }
@@ -224,19 +232,10 @@ struct ContentView: View {
                 currentVault: appState.currentDocumentVault,
                 analysesVaultID: appState.workspaceAssignment?.workspace.paperAnalysisVaultID,
                 catalog: appState.workspaceCatalog,
-                reviewDisplayState: appState.currentDocumentReviewDisplayState,
-                reviewRecord: appState.currentDocumentReviewRecord,
-                currentRevision: appState.currentNote?.document.fingerprint,
-                critique: currentCritique,
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
-                freshness: researchProjectionFreshness
+                freshness: researchProjectionFreshness,
+                propertiesConfiguration: appState.currentDocumentPropertiesConfiguration
             ),
-            openReview: {
-                let function: ResearchFunctionID = appState.currentDocumentVaultRole.allowsHumanReview
-                    ? .review
-                    : .critique
-                appState.openResearchFunction(function)
-            },
             openResearchRecord: {
                 windowCoordinator.actions.showResearchRecord()
             },
@@ -244,6 +243,13 @@ struct ContentView: View {
                 guard let path = appState.currentNote?.relativePath else { return }
                 appState.editingNotePath = path
                 appState.showFrontmatterEditor = true
+            },
+            customizeProperties: {
+                settingsModel.selectPane(.properties)
+                openSettings()
+            },
+            openAttention: {
+                appState.discoveryController.showAttentionQueue(true)
             },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
@@ -334,9 +340,9 @@ struct ContentView: View {
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
             propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
-            reviewRecord: appState.currentDocumentReviewRecord,
-            reviewDisplayState: appState.currentDocumentReviewDisplayState,
-            changedSinceReview: appState.currentDocumentChangedSinceReview,
+            annotations: appState.currentDocumentAnnotations,
+            commentExchanges: appState.researchController.records?.commentExchanges ?? [],
+            requestedCommentExchangeID: appState.requestedCommentExchangeID,
             canComment: appState.canCommentCurrentNote,
             canEdit: appState.canEditCurrentNote,
             isManagedCritique: appState.currentDocumentCapabilities.isManagedCritique,
@@ -357,6 +363,7 @@ struct ContentView: View {
 
     private var documentFeatureActions: DocumentFeatureActions {
         let documentPath = appState.currentNote?.relativePath
+        let triptychID = appState.workspaceAssignment?.id
         return DocumentFeatureActions(
             requestIdentityResolution: {
                 guard let path = documentPath else { return }
@@ -367,13 +374,75 @@ struct ContentView: View {
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             clearPendingSourceRange: { appState.pendingSourceRange = nil },
-            requestComments: { selection, commentID in
+            createAnnotation: { anchor, text in
                 guard let path = documentPath else { return }
-                appState.requestResearcherComments(
-                    at: path,
-                    selection: selection,
-                    focusedCommentID: commentID
+                _ = try await appState.addAnnotation(
+                    to: path,
+                    text: text,
+                    anchor: anchor
                 )
+            },
+            updateAnnotation: { annotationID, text in
+                guard let path = documentPath else { return }
+                try await appState.updateAnnotation(
+                    at: path,
+                    annotationID: annotationID,
+                    text: text
+                )
+            },
+            deleteAnnotation: { annotationID in
+                guard let path = documentPath else { return }
+                try await appState.deleteAnnotation(
+                    at: path,
+                    annotationID: annotationID
+                )
+            },
+            createCommentExchange: { anchor, message in
+                guard let target = appState.currentResearchFunctionTarget else {
+                    throw CommentExchangePresentationError.unavailable
+                }
+                return try await appState.researchController.createCommentExchange(
+                    CommentExchange(
+                        note: ResearchActivityNoteReference(
+                            noteID: target.noteID,
+                            note: target.note,
+                            role: target.role,
+                            title: target.title
+                        ),
+                        anchor: anchor,
+                        turns: [CommentExchangeTurn(author: .researcher, text: message)]
+                    )
+                )
+            },
+            appendCommentExchangeTurn: { exchangeID, author, text in
+                try await appState.researchController.appendCommentExchangeTurn(
+                    exchangeID: exchangeID,
+                    turn: CommentExchangeTurn(author: author, text: text)
+                )
+            },
+            finishCommentExchange: { exchangeID in
+                try await appState.researchController.finishCommentExchange(
+                    exchangeID: exchangeID
+                )
+            },
+            clearRequestedCommentExchange: {
+                appState.requestedCommentExchangeID = nil
+            },
+            handoffCommentRequest: { instructions in
+                appState.agentApplicationHandoff.copyAndOpen(
+                    instructions: instructions,
+                    copy: { try appState.copyTextToClipboard($0) }
+                )
+            },
+            copyCommentRequest: { instructions in
+                appState.agentApplicationHandoff.copyOnly(
+                    instructions: instructions,
+                    copy: { try appState.copyTextToClipboard($0) }
+                )
+            },
+            commentReplyCommand: { exchangeID in
+                let selector = triptychID.map { " --triptych \($0.uuidString)" } ?? ""
+                return "scholium comment reply \(exchangeID.uuidString) --agent \"AGENT_NAME\" --from -\(selector)"
             },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
@@ -438,10 +507,6 @@ struct ContentView: View {
             lifecycleMutationGeneration: appState.lifecycleMutationGeneration,
             catalogIsAvailable: appState.workspaceCatalog != nil,
             graphIsAvailable: appState.relationshipGraph != nil,
-            hasUnqualifiedReview: appState.humanReviewRecords.values.contains {
-                $0.latestReview?.qualification == .unqualified
-            },
-            changedSinceReviewCount: appState.changedSinceReviewPaths.count,
             tags: appState.allTags,
             statuses: appState.availableStatuses,
             authors: appState.availableAuthors,
@@ -451,7 +516,6 @@ struct ContentView: View {
             resolvedIdentityPaths: Set(appState.noteIdentityByPath.keys),
             bibliographyController: appState.researchController.bibliography,
             attentionQueueContext: attentionQueueContext,
-            reviewDisplayState: { appState.reviewDisplayState(for: $0) },
             notesAreOrdered: { appState.notesAreOrdered($0, $1) },
             selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
@@ -535,11 +599,10 @@ struct ContentView: View {
                     .frame(minWidth: 520, minHeight: 560)
             }
         case .researchFunction(let route):
-            if let note = note(at: route.target.relativePath) {
+            if note(at: route.target.relativePath) != nil {
                 ResearchFunctionPanelView(
                     controller: appState.researchController.functions,
                     context: ResearchFunctionPanelContext(
-                        comments: appState.currentDocumentReviewRecord?.comments ?? [],
                         repairCitationMethod: {
                             UserDefaults.standard.set(
                                 WorkspaceSettingsPane.researchGuidance.rawValue,
@@ -551,7 +614,7 @@ struct ContentView: View {
                             )
                             openSettings()
                         },
-                        repairDialogueResponseDefaults: {
+                        repairDiscussResponseDefaults: {
                             UserDefaults.standard.set(
                                 WorkspaceSettingsPane.researchGuidance.rawValue,
                                 forKey: "scholium.settings.selectedPane"
@@ -573,18 +636,9 @@ struct ContentView: View {
                         },
                         dismiss: {
                             appState.presentationRouter.dismissSheet()
-                        },
-                        note: note,
-                        commentsContext: researcherCommentsContext(for: note),
-                        focusCommentComposer: route.focusCommentComposer
+                        }
                     )
-                ) {
-                    QualityReviewView(
-                        note: note,
-                        context: qualityReviewContext(for: note, route: route),
-                        showsHeader: false
-                    )
-                }
+                )
                 .onDisappear {
                     // Normal sheet dismissal is finalized by the root
                     // `onDismiss`, after AppKit has yielded keyboard focus.
@@ -690,120 +744,8 @@ struct ContentView: View {
         return appState.notes.first(where: { $0.relativePath == path })
     }
 
-    private func qualityReviewContext(
-        for note: WindowDocumentLocation,
-        route: ResearchFunctionPanelRoute
-    ) -> QualityReviewContext {
-        let functions = appState.researchController.functions
-        return QualityReviewContext(
-            revision: functions.humanReviewRevision,
-            record: appState.currentDocumentReviewRecord,
-            qualification: Binding(
-                get: { functions.humanReviewQualification },
-                set: { functions.humanReviewQualification = $0 }
-            ),
-            reviewNote: Binding(
-                get: { functions.humanReviewNote },
-                set: { functions.humanReviewNote = $0 }
-            ),
-            researchStatusDeclared: appState.currentDocumentVaultRole != .sourceCorpus
-                || note.researchUnit.isDeclared,
-            declareResearchStatus: {
-                appState.presentationRouter.presentFrontmatter(
-                    path: note.relativePath,
-                    returningTo: route
-                )
-            },
-            saveDraft: { revision, qualification, reviewNote in
-                try await appState.saveHumanReviewDraft(
-                    for: note.relativePath,
-                    fingerprint: revision,
-                    qualification: qualification,
-                    reviewNote: reviewNote
-                )
-            },
-            completeReview: { revision, qualification, reviewNote in
-                try await appState.completeHumanReview(
-                    for: note.relativePath,
-                    fingerprint: revision,
-                    qualification: qualification,
-                    reviewNote: reviewNote
-                )
-            }
-        )
-    }
-
     private func finishFrontmatter(_ route: FrontmatterPanelRoute) {
-        if let continuation = route.returnToResearchFunction {
-            guard let target = appState.currentResearchFunctionTarget else {
-                appState.researchController.functions.dismiss(
-                    presentationID: continuation.presentationID
-                )
-                appState.presentationRouter.dismissSheet()
-                return
-            }
-            appState.researchController.functions.resumeHumanReviewDraft(
-                presentationID: continuation.presentationID,
-                target: target
-            )
-        }
         appState.presentationRouter.finishFrontmatter(route)
-    }
-
-    private func researcherCommentsContext(for note: WindowDocumentLocation) -> ResearcherCommentsContext {
-        ResearcherCommentsContext(
-            initialComments: appState.currentDocumentReviewRecord?.comments ?? [],
-            pendingSelection: appState.pendingCommentSelection,
-            focusedCommentID: appState.focusedResearcherCommentID,
-            clearPendingSelection: {
-                appState.pendingCommentSelection = nil
-            },
-            add: { text, anchor in
-                let record = try await appState.addResearcherComment(
-                    to: note.relativePath,
-                    text: text,
-                    anchor: anchor
-                )
-                return record.comments
-            },
-            update: { commentID, text in
-                try await appState.updateResearcherComment(
-                    at: note.relativePath,
-                    commentID: commentID,
-                    text: text
-                )
-                return appState.currentDocumentReviewRecord?.comments ?? []
-            },
-            setResolved: { commentID, resolved in
-                try await appState.setResearcherCommentResolved(
-                    at: note.relativePath,
-                    commentID: commentID,
-                    resolved: resolved
-                )
-                return appState.currentDocumentReviewRecord?.comments ?? []
-            },
-            delete: { commentID in
-                try await appState.deleteResearcherComment(
-                    at: note.relativePath,
-                    commentID: commentID
-                )
-                return appState.currentDocumentReviewRecord?.comments ?? []
-            },
-            reattach: { commentID, anchor in
-                try await appState.reattachResearcherComment(
-                    at: note.relativePath,
-                    commentID: commentID,
-                    anchor: anchor
-                )
-                return appState.currentDocumentReviewRecord?.comments ?? []
-            },
-            tryAutomaticReattachment: {
-                let record = try await appState.tryReattachingResearcherComments(
-                    at: note.relativePath
-                )
-                return record.comments
-            }
-        )
     }
 
     @ViewBuilder
@@ -831,10 +773,23 @@ struct ContentView: View {
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
                 researchInspectorContentContext: researchInspectorContentContext,
-                researchFunctionsPresentation: appState.researchFunctionsPresentation,
+                researchFunctionsPresentation: appState.researchFunctionsPresentation(
+                    critique: currentCritique
+                ),
                 openResearchFunction: { appState.openResearchFunction($0) },
                 openResearchRecord: {
                     windowCoordinator.actions.showResearchRecord()
+                },
+                openComment: { exchangeID in
+                    appState.requestedCommentExchangeID = exchangeID
+                },
+                settle: { rationale in
+                    guard let target = appState.currentResearchFunctionTarget else { return }
+                    _ = try await appState.researchController.settle(
+                        target.note,
+                        expectedRevision: target.fingerprint,
+                        rationale: rationale
+                    )
                 }
             )
         } else {

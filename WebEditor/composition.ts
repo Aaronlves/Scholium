@@ -12,7 +12,7 @@ export function compositionRequestPolicy(operationType: string): CompositionRequ
     "setPresentationCSS",
     "setUserCSS",
     "setLinkPreviews",
-    "setResearcherComments",
+    "setPageAnnotations",
     "goToLine",
     "restoreRecovery",
     "synchronizeCommittedText",

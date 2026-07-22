@@ -52,7 +52,7 @@ public actor TriptychControlStore {
 
     private let manifestURL: URL
     private let settingsURL: URL
-    private let dialogueResponseProfileURL: URL
+    private let discussResponseProfileURL: URL
     private let identitiesURL: URL
     private let fileManager: FileManager
 
@@ -63,7 +63,7 @@ public actor TriptychControlStore {
         unclassifiedURL = controlURL.appendingPathComponent("unclassified", isDirectory: true)
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
-        dialogueResponseProfileURL = controlURL.appendingPathComponent(
+        discussResponseProfileURL = controlURL.appendingPathComponent(
             "dialogue-response.json",
             isDirectory: false
         )
@@ -122,26 +122,26 @@ public actor TriptychControlStore {
         try encode(settings, to: settingsURL)
     }
 
-    /// Returns the mutable default for new Dialogue requests. This profile is
-    /// separate from the request snapshot stored in each Dialogue entry.
-    public func dialogueResponseProfile() throws -> DialogueResponseProfile {
+    /// Returns the mutable default for new Discuss requests. The legacy file
+    /// name is retained only so existing Triptychs open without migration loss.
+    public func discussResponseProfile() throws -> DialogueResponseProfile {
         do {
             return try decodeIfPresent(
                 DialogueResponseProfile.self,
-                from: dialogueResponseProfileURL
+                from: discussResponseProfileURL
             ) ?? DialogueResponseProfile()
         } catch {
             throw TriptychControlError.invalidDialogueResponseProfile(error.localizedDescription)
         }
     }
 
-    public func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) throws {
+    public func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) throws {
         guard profile.validationIssues.isEmpty else {
             throw TriptychControlError.invalidDialogueResponseProfile(
                 profile.validationIssues.joined(separator: " ")
             )
         }
-        try encode(profile, to: dialogueResponseProfileURL)
+        try encode(profile, to: discussResponseProfileURL)
     }
 
     /// Copies source Markdown into portable Unclassified staging without

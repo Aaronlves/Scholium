@@ -29,15 +29,14 @@ struct DeliverySurfaceParityTests {
                 """),
             expectedRevision: original.fingerprint
         )
-        _ = try await appHandle.research.completeHumanReview(
-            for: fixture.analysisNoteID,
+        _ = try await appHandle.research.settle(
+            fixture.analysisNoteID,
             expectedRevision: declared.document.fingerprint,
-            qualification: .qualified,
-            reviewNote: "Fixture review visible to every delivery surface."
+            rationale: "Fixture settlement visible to every delivery surface."
         )
         _ = try await appHandle.research.prepareFunction(
             ResearchFunctionRequest(
-                function: .dialogue,
+                function: .discuss,
                 target: ResearchFunctionTarget(
                     noteID: try #require(original.stableIdentity.resolvedID),
                     note: fixture.analysisNoteID,
@@ -94,7 +93,11 @@ struct DeliverySurfaceParityTests {
         #expect(cliHits.hasMore == appHits.hasMore)
         #expect(cliHits.diagnostics == appHits.diagnostics)
         #expect(cliMetadataIssues == appMetadataIssues)
-        #expect(cliResearch.humanReviews == appResearch.humanReviews)
+        #expect(cliResearch.legacyHumanReviews == appResearch.legacyHumanReviews)
+        #expect(cliResearch.activityEvents == appResearch.activityEvents)
+        #expect(cliResearch.settlements == appResearch.settlements)
+        #expect(cliResearch.annotations == appResearch.annotations)
+        #expect(cliResearch.commentExchanges == appResearch.commentExchanges)
         #expect(cliResearch.dialogues == appResearch.dialogues)
         #expect(cliResearch.critiques == appResearch.critiques)
 

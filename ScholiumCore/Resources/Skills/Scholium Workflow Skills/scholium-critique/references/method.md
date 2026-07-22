@@ -32,5 +32,4 @@ Use BLOCKER only when the central aim fails with no plausible local repair; MAJO
 
 ## Boundaries
 
-The Critique may recommend no major revision, limited revision, major revision, fundamental reconsideration, or unverified for the exact scope and version. It must not revise the Work, record Human Review, assert Fidelity, accept a Comment, or change readiness state.
-
+The Critique may recommend no major revision, limited revision, major revision, fundamental reconsideration, or unverified for the exact scope and version. It must not revise the Work, Settle it, assert Fidelity, accept a Comment, or change readiness state.

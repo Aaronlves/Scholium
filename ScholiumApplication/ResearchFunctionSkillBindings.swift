@@ -13,15 +13,6 @@ extension WorkspaceHandle {
             for: function,
             store: store
         )
-        guard function != .review else {
-            return ResearchFunctionSkillBindingStatus(
-                function: function,
-                candidates: [],
-                selection: ResearchFunctionSkillSelection(function: function),
-                bindingRevision: revision,
-                issue: ResearchFunctionSkillBindingIssue(code: .functionHasNoSkill)
-            )
-        }
         do {
             let selection = try await store.functionSkillSelection(for: function)
             let compatible = try await store.compatiblePracticeIDs(
@@ -89,7 +80,6 @@ extension WorkspaceHandle {
         for function: ResearchFunctionID,
         store: ResearchSkillStore
     ) async throws -> [ResearchFunctionSkillCandidate] {
-        guard function != .review else { return [] }
         let packages = try await store.skills().filter { package in
             package.origin == .triptych
                 && package.isValid
@@ -100,10 +90,10 @@ extension WorkspaceHandle {
         for package in packages {
             let roles: [ResearchFunctionSkillBindingRole]
             if package.role == "practice" {
-                guard function != .dialogue else { continue }
+                guard function != .discuss else { continue }
                 roles = [.practice]
             } else if package.role == "workflow" {
-                guard function != .dialogue else { continue }
+                guard function != .discuss else { continue }
                 roles = [.primary]
             } else {
                 var composesWithFunction = false
@@ -114,7 +104,7 @@ extension WorkspaceHandle {
                         break
                     }
                 }
-                if function == .dialogue, !composesWithFunction {
+                if function == .discuss, !composesWithFunction {
                     continue
                 }
                 if composesWithFunction {

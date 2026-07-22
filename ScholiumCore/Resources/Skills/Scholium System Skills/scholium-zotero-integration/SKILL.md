@@ -60,6 +60,6 @@ Read [references/mcp-contract.md](references/mcp-contract.md) completely before 
 
 ## Handoff
 
-Return only the Zotero facts needed by the selected Workflow Skill: stable identity, checked metadata, access status, attachment pointer when permitted, and unresolved ambiguity. Keep Zotero operations out of the permanent scholarly Dialogue except when their success, failure, or ambiguity affects the research result.
+Return only the Zotero facts needed by the selected Workflow Skill: stable identity, checked metadata, access status, attachment pointer when permitted, and unresolved ambiguity. Keep Zotero operations out of the permanent scholarly record except when their success, failure, or ambiguity affects the research result.
 
-If retrieved source material needs full source analysis, return a bounded source packet for an external source-analysis method; Scholium has no Source Analysis Strip function or Workflow package. If verified identity or source material is to inform a live note, prepare Develop or Revise through the Research Function API with fresh Target and Material fingerprints.
+If retrieved source material needs full source analysis, return a bounded source packet for an external source-analysis method; Scholium has no Source Analysis Action or Workflow package. If verified identity or source material is to inform a live note, prepare Develop or Revise through the Research Function API with fresh Target and Material fingerprints.

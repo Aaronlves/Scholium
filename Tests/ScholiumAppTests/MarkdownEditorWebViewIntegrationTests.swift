@@ -596,10 +596,60 @@ struct MarkdownEditorWebViewIntegrationTests {
         ) {
             $0.label == "Markdown source editor"
                 && $0.presentation.viewportWidth > 704
-                && $0.contentPaddingInlineStart == "40px"
+                && $0.presentation.rootLineWidth == "72ch"
+                && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > 40
         }
         #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
+        #expect(regularSourceGrid.presentation.documentFontFamily.contains("Victor Mono"))
         #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+
+        let regularSourceInset = try #require(
+            Double(regularSourceGrid.contentPaddingInlineStart.dropLast(2))
+        )
+        let selectionBeforeLineWidthChange = harness.session.context?.selections
+        let undoBeforeLineWidthChange = harness.session.context?.undoLabel
+        let scrollAnchorBeforeLineWidthChange = try await harness.session.currentScrollAnchor()
+        let narrowMeasureProfile = DocumentAppearanceProfile(
+            name: "Narrow Measure",
+            settings: .init(lineWidthCharacterUnits: 48)
+        )
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(
+                textScale: ScholiumMetrics.Document.defaultTextScale,
+                contentTopInsetCSSPixels: configuredTopInset
+            ).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: narrowMeasureProfile)
+        )
+        let customSourceGrid = try await harness.waitUntilPresentation(
+            stage: "custom Source line width"
+        ) {
+            $0.label == "Markdown source editor"
+                && $0.presentation.rootLineWidth == "48ch"
+                && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > regularSourceInset
+        }
+        #expect(customSourceGrid.presentation.documentFontFamily.contains("Victor Mono"))
+        #expect(customSourceGrid.isFocused)
+        #expect(harness.session.context?.selections == selectionBeforeLineWidthChange)
+        #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)
+        #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+        let scrollAnchorAfterLineWidthChange = try await harness.session.currentScrollAnchor()
+        #expect(
+            scrollAnchorAfterLineWidthChange?.sourceFingerprint
+                == scrollAnchorBeforeLineWidthChange?.sourceFingerprint
+        )
+        #expect(
+            scrollAnchorAfterLineWidthChange?.sourceUTF16Offset
+                == scrollAnchorBeforeLineWidthChange?.sourceUTF16Offset
+        )
+        #expect(
+            scrollAnchorAfterLineWidthChange?.blockUTF16LowerBound
+                == scrollAnchorBeforeLineWidthChange?.blockUTF16LowerBound
+        )
+        #expect(
+            scrollAnchorAfterLineWidthChange?.blockUTF16UpperBound
+                == scrollAnchorBeforeLineWidthChange?.blockUTF16UpperBound
+        )
         harness.close()
         try await Task.sleep(for: .milliseconds(500))
 
@@ -880,7 +930,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount).")
+                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -895,7 +945,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 window.appearance = NSAppearance(named: scenario.appearanceName)
                 window.setContentSize(NSSize(width: scenario.width, height: 520))
                 sourceBox.userCSS = scenario.liveUserCSS
-                sourceBox.presentationCSS = scenario.configuration.css
+                sourceBox.presentationCSS = scenario.presentationCSS
                 _ = try await waitUntilPresentation(stage: scenario.name) {
                     $0.label == "Markdown live preview editor"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
@@ -1073,15 +1123,15 @@ struct MarkdownEditorWebViewIntegrationTests {
                     linkCompletions: [],
                     linkCompletionQuery: { _ in [] },
                     linkPreviews: linkPreviews,
-                    researcherComments: [],
+                    annotations: [],
                     initialScrollFraction: 0,
                     initialScrollAnchor: sourceBox.scrollAnchor,
                     onDocumentChange: { sourceBox.source = $0 },
                     onRequestSave: {},
                     onRequestSearch: {},
-                    onRequestComment: {},
+                    onRequestAnnotation: {},
                     onLinkActivation: { _ in },
-                    onCommentActivation: nil,
+                    onAnnotationActivation: nil,
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }
             )

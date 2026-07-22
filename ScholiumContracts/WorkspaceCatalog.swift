@@ -1,18 +1,17 @@
 import Foundation
 
-public struct WorkspaceReviewState: Codable, Hashable, Sendable {
-    public let qualification: String?
-    public let reviewedFingerprint: DocumentFingerprint?
-    public let changedSinceReview: Bool
+/// Current applicability of a researcher Settlement. Unlike legacy Review,
+/// it is not a scholarly qualification and never contributes to Search.
+public struct WorkspaceSettlementState: Codable, Hashable, Sendable {
+    public let settledFingerprint: DocumentFingerprint
+    public let changedSinceSettled: Bool
 
     public init(
-        qualification: String? = nil,
-        reviewedFingerprint: DocumentFingerprint? = nil,
-        changedSinceReview: Bool = false
+        settledFingerprint: DocumentFingerprint,
+        changedSinceSettled: Bool
     ) {
-        self.qualification = qualification
-        self.reviewedFingerprint = reviewedFingerprint
-        self.changedSinceReview = changedSinceReview
+        self.settledFingerprint = settledFingerprint
+        self.changedSinceSettled = changedSinceSettled
     }
 }
 
@@ -118,21 +117,21 @@ public struct RelatedSearchItem: Hashable, Identifiable, Sendable {
 
 public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
     case possibleOrphan = "possible_orphan"
-    case changedSinceReview = "changed_since_review"
+    case changedSinceSettled = "changed_since_settled"
+    case changeAttributionNeeded = "change_attribution_needed"
     case malformedMetadata = "malformed_metadata"
     case brokenConnection = "broken_connection"
     case ambiguousConnection = "ambiguous_connection"
-    case unqualifiedAnalysisReliance = "unqualified_analysis_reliance"
     case unresolvedIdentity = "unresolved_identity"
 
     public var displayName: String {
         switch self {
         case .possibleOrphan: "Possible Orphan"
-        case .changedSinceReview: "Changed Since Review"
+        case .changedSinceSettled: "Changed Since Settled"
+        case .changeAttributionNeeded: "Change Attribution Needed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"
-        case .unqualifiedAnalysisReliance: "Unqualified Analysis Reliance"
         case .unresolvedIdentity: "Unresolved Identity"
         }
     }
@@ -429,7 +428,8 @@ public enum WorkspaceCatalogBuilder {
     public static func build(
         vaults: [RegisteredVault],
         documents: [UUID: [NoteDocument]],
-        reviewStates: [String: WorkspaceReviewState] = [:],
+        settlementStates: [String: WorkspaceSettlementState] = [:],
+        additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
         graphs: [UUID: GraphSnapshot] = [:],
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
@@ -453,7 +453,7 @@ public enum WorkspaceCatalogBuilder {
                     stableNoteID: stableID
                 )
                 references[reference.id] = reference
-                let review = reviewStates[reference.id]
+                let settlement = settlementStates[reference.id]
                 let zoteroItemKey = document.parsedFrontmatter["zotero_item_key"]?.catalogScalar
                     ?? document.parsedFrontmatter["zoteroKey"]?.catalogScalar
                     ?? document.parsedFrontmatter["zotero-key"]?.catalogScalar
@@ -501,23 +501,18 @@ public enum WorkspaceCatalogBuilder {
                         locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
                     ))
                 }
-                if isActiveResearchPath(document.relativePath), review?.changedSinceReview == true {
+                if isActiveResearchPath(document.relativePath),
+                   settlement?.changedSinceSettled == true {
                     attention.append(AttentionQueueItem(
-                        kind: .changedSinceReview,
+                        kind: .changedSinceSettled,
                         severity: .warning,
                         note: reference,
-                        message: "The committed source has changed since the recorded human review."
+                        message: "The committed source has changed since this revision was settled."
                     ))
                 }
             }
         }
 
-        // Unqualified Analyses remain usable. Attention is limited to a
-        // source-located scholarly reliance: target-to-containing support, a
-        // citation context, or another explicitly source-bearing context.
-        // Neutral Connections, incompatibility, and containing-to-target
-        // support do not acquire evidential force merely by resolving to an
-        // Analysis.
         let semanticDocuments = Dictionary(uniqueKeysWithValues: vaults.flatMap { vault in
             (documents[vault.id] ?? []).map { document in
                 let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
@@ -608,47 +603,6 @@ public enum WorkspaceCatalogBuilder {
             }
         }
 
-        let unqualifiedAnalysisIDs = Set(notes.compactMap { note -> VaultQualifiedNoteID? in
-            guard note.reference.vaultRole == .sourceCorpus,
-                  isActiveResearchPath(note.reference.relativePath),
-                  reviewStates[note.reference.id]?.qualification?.lowercased() == "unqualified" else {
-                return nil
-            }
-            return VaultQualifiedNoteID(
-                vaultID: note.reference.vaultID,
-                relativePath: note.reference.relativePath
-            )
-        })
-        for note in notes where [.topicKnowledge, .draftProject].contains(note.reference.vaultRole)
-            && isActiveResearchPath(note.reference.relativePath) {
-            let sourceID = VaultQualifiedNoteID(
-                vaultID: note.reference.vaultID,
-                relativePath: note.reference.relativePath
-            )
-            guard let semantic = semanticDocuments[sourceID] else { continue }
-            for edge in relianceGraph.outgoing[sourceID] ?? [] {
-                guard let destination = edge.destination?.note,
-                      unqualifiedAnalysisIDs.contains(destination),
-                      let analysis = notesByQualifiedID[destination],
-                      let reliance = scholarlyRelianceDescription(
-                        for: edge.occurrence,
-                        analysisTitle: analysis.title,
-                        semantic: semantic
-                      ) else { continue }
-                attention.append(AttentionQueueItem(
-                    kind: .unqualifiedAnalysisReliance,
-                    severity: .warning,
-                    note: note.reference,
-                    message: reliance + " Its use is permitted but should remain visible.",
-                    locator: SourceLocator(
-                        file: note.reference.relativePath,
-                        line: edge.occurrence.span.start.line,
-                        column: edge.occurrence.span.start.utf16Column
-                    )
-                ))
-            }
-        }
-
         let diagnosticGraphs = graph.map { [$0] }
             ?? (graphs.isEmpty ? [relianceGraph] : Array(graphs.values))
         for diagnosticGraph in diagnosticGraphs {
@@ -681,7 +635,7 @@ public enum WorkspaceCatalogBuilder {
         return WorkspaceCatalogSnapshot(
             generatedAt: Date(),
             notes: notes.sorted { $0.reference.id < $1.reference.id },
-            attention: Array(Set(attention)).sorted {
+            attention: Array(Set(attention + additionalAttention)).sorted {
                 if $0.severity != $1.severity { return severityRank($0.severity) > severityRank($1.severity) }
                 if $0.kind != $1.kind { return $0.kind.rawValue < $1.kind.rawValue }
                 return $0.note.id < $1.note.id

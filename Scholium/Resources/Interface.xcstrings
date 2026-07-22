@@ -73,38 +73,38 @@
         }
       }
     },
-    "researchFunction.dialogue.help" : {
-      "comment" : "Help and accessibility hint for the Dialogue Research Function.",
+    "researchFunction.discuss.help" : {
+      "comment" : "Help and accessibility hint for read-only Discuss.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Open a scholarly Dialogue for this note"
+            "value" : "Discuss the note without changing it"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "为此笔记打开学术对话"
+            "value" : "讨论这篇笔记但不修改它"
           }
         }
       }
     },
-    "researchFunction.dialogue.title" : {
-      "comment" : "Research Function name for scholarly conversation about a note.",
+    "researchFunction.discuss.title" : {
+      "comment" : "Read-only discussion selected from Work with Agent.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Dialogue"
+            "value" : "Discuss"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "对话"
+            "value" : "讨论"
           }
         }
       }
@@ -195,42 +195,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "稿件"
-          }
-        }
-      }
-    },
-    "researchFunction.review.help" : {
-      "comment" : "Help and accessibility hint for the Review Research Function.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review and qualify this Analysis or Topic"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅这篇分析或议题并作出结论"
-          }
-        }
-      }
-    },
-    "researchFunction.review.title" : {
-      "comment" : "Research Function name for human review and qualification.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅"
           }
         }
       }

@@ -18,7 +18,7 @@ System:
 
 - scholium-core-protocol: universal integrity and phase isolation;
 - scholium-research-integration: bounded Triptych reads, writes, and records;
-- scholium-dialogue-response: note-nonmutating Dialogue transport and attributed response persistence;
+- scholium-discuss-response: note-nonmutating Discuss transport and attributed response persistence;
 - scholium-zotero-integration: bounded optional library transport.
 
 Workflow — exactly five:
@@ -36,7 +36,7 @@ Researcher:
 - scholium-prose-control: optional meaning-preserving method for Revise;
 - scholium-citation-verification: optional APA 7 verification and formatting starter for Fidelity.
 
-Dialogue is System transport and record infrastructure. Human Review is a researcher action and has no skill. Source Analyzer is a shipped Researcher Skill, but Source Analysis and skill self-evolution are not Workflow packages or Research Strip functions. The agent may analyze a source supplied through Zotero, a local file, or another available channel; Scholium need not store or control the source. Persisting or developing the result in a Scholium note is a separate researcher-authorized action.
+Discuss is System transport and record infrastructure. Earlier Dialogue and Human Review data are read-only compatibility archives. Source Analyzer is a shipped Researcher Skill, but Source Analysis and skill self-evolution are not Workflow packages or Inspector functions. The agent may analyze a source supplied through Zotero, a local file, or another available channel; Scholium need not store or control the source. Persisting or developing the result in a Scholium note is a separate researcher-authorized action.
 
 ## Function routing
 
@@ -52,7 +52,7 @@ Function boundaries:
 - Fidelity: every Target role read-only; Content always available, Citations capability-bound.
 - Manuscript: current Work Target only; every phase independently prepared.
 
-Dialogue is note-nonmutating by default: it may read the fixed Target and Materials and append an attributed response to Dialogue/Note History. An explicit note-changing request must be promoted through the function API to Develop or Revise before mutation. Write-capable functions require a Before Agent Work checkpoint and end with a pending revision-specific Fidelity handoff. Scholium has no embedded agent runtime, so awaiting or missing Fidelity must never be presented as an automatic audit.
+Discuss is note-nonmutating: it may read the fixed Target and Materials and append an attributed response to the Discussion. An explicit note-changing request requires a separate Develop or Revise authorization before mutation. Write-capable functions require a Before Agent Work checkpoint and end with a pending revision-specific Fidelity handoff. Scholium has no embedded agent runtime, so awaiting or missing Fidelity must never be presented as an automatic audit.
 
 Prepared Function JSON exposes typed, shell-safe `nextActions`. Agents recover
 state with `function show`, finalize only declared conditional resources, and
@@ -77,8 +77,8 @@ Application determines whether a bundled template is available, a valid Triptych
 An ordinary run contains:
 
 1. scholium-core-protocol;
-2. exactly one complete primary Workflow or explicitly compatible complete Researcher Skill when the intellectual task requires one, except Dialogue and Human Review;
-3. the research-integration or Dialogue System adapters required by the operation;
+2. exactly one complete primary Workflow or explicitly compatible complete Researcher Skill when the intellectual task requires one, except Discuss;
+3. the research-integration or Discuss System adapters required by the operation;
 4. only explicitly selected Researcher Skills or Practices;
 5. only conditional resources actually needed.
 

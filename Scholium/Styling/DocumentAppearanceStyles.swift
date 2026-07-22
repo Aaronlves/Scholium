@@ -18,6 +18,8 @@ enum DocumentAppearanceStyles {
 
         var rules = """
         :root {
+          --scholium-document-line-width: \(number(profile.settings.lineWidthCharacterUnits))ch;
+          --scholium-document-half-line-width: \(number(profile.settings.lineWidthCharacterUnits / 2))ch;
           --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
           --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
           --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;

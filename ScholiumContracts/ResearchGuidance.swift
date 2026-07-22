@@ -8,7 +8,7 @@ public enum ResearchPromptKind: String, Codable, CaseIterable, Identifiable, Sen
 
     public var displayName: String {
         switch self {
-        case .dialogue: "Dialogue"
+        case .dialogue: "Discuss"
         case .critique: "Critique"
         }
     }
@@ -79,7 +79,7 @@ public extension ResearchPromptTemplate {
     static let defaultDialogue = ResearchPromptTemplate(
         id: UUID(uuidString: "82E8370D-D378-44F9-9E82-E4F70F941001")!,
         kind: .dialogue,
-        name: "Scholium Dialogue",
+        name: "Scholium Discuss",
         source: TriptychSettings.defaultDialoguePromptTemplate,
         origin: .scholium
     )

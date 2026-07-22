@@ -30,7 +30,7 @@ struct WindowControllerArchitectureTests {
         document.requestLifecycle(.move(lifecycleTarget))
         research.setActiveDocument(reference)
         research.requestPresentFunction(
-            .dialogue,
+            .discuss,
             target: reference,
             presentationID: presentationID
         )
@@ -45,7 +45,7 @@ struct WindowControllerArchitectureTests {
         #expect(researchIntents == [
             .presentResearchFunction(ResearchFunctionPanelRoute(
                 target: reference,
-                function: .dialogue,
+                function: .discuss,
                 presentationID: presentationID
             )),
         ])
@@ -131,9 +131,9 @@ struct WindowControllerArchitectureTests {
 
         let firstResearch = ResearchController(peripheralPresentation: presentation)
         let secondResearch = ResearchController(peripheralPresentation: presentation)
-        firstResearch.selectInspectorMode(.functions)
+        firstResearch.selectInspectorMode(.actions)
         firstResearch.showResearchInspector(true)
-        #expect(secondResearch.inspector.mode == .functions)
+        #expect(secondResearch.inspector.mode == .actions)
         #expect(secondResearch.inspector.isVisible)
 
         let firstDocument = DocumentController()
@@ -152,12 +152,14 @@ struct WindowControllerArchitectureTests {
         arguments: [
             (nil as String?, ResearchInspectorMode.overview),
             ("overview", ResearchInspectorMode.overview),
-            ("connections", .connections),
-            ("functions", .functions),
+            ("connect", .connect),
+            ("actions", .actions),
+            ("connections", .connect),
+            ("functions", .actions),
             ("research", .overview),
             ("relationships", .overview),
-            ("incoming", .connections),
-            ("outgoing", .connections),
+            ("incoming", .connect),
+            ("outgoing", .connect),
             ("unknown", .overview),
         ]
     )
@@ -616,7 +618,7 @@ struct WindowControllerArchitectureTests {
         let controller = DiscoveryController()
         var filters = DiscoveryFilterState()
         filters.tag = "ethics"
-        filters.isChangedSinceReview = true
+        filters.needsAttention = true
         controller.replaceFilters(filters)
         controller.selectSortOrder(.titleAscending)
         let disclosureScope = LibraryDisclosureScope(
@@ -713,7 +715,7 @@ struct WindowControllerArchitectureTests {
         let current = UUID()
         controller.functions.begin(
             target: fixtureFunctionTarget(),
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: current
         )
@@ -732,8 +734,8 @@ struct WindowControllerArchitectureTests {
         let relativePaths = [
             "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift",
             "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
-            "Scholium/Views/QualityReviewView.swift",
-            "Scholium/Views/ResearcherCommentsView.swift",
+            "Scholium/Views/Note/NoteContentView.swift",
+            "Scholium/Views/Note/SafeMarkdownReadWebView.swift",
         ]
 
         for relativePath in relativePaths {
@@ -842,7 +844,7 @@ struct WindowControllerArchitectureTests {
         )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(source.range(
-            of: "private enum HumanReviewWorkflowError",
+            of: "private enum AnnotationWorkflowError",
             range: start.upperBound..<source.endIndex
         ))
         let windowModelSource = String(source[start.lowerBound..<end.lowerBound])
@@ -898,7 +900,7 @@ struct WindowControllerArchitectureTests {
         )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(appSource.range(
-            of: "private enum HumanReviewWorkflowError",
+            of: "private enum AnnotationWorkflowError",
             range: start.upperBound..<appSource.endIndex
         ))
         let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
@@ -915,16 +917,14 @@ struct WindowControllerArchitectureTests {
         for documentOwnedState in [
             "@Published private(set) var lifecycleMutationGeneration",
             "@Published var pendingSourceLine",
-            "@Published var changedSinceReviewPaths",
             "@Published var requestPresentationMode",
-            "@Published var humanReviewRecords",
             "@Published var noteIdentityByPath",
             "@Published var identityAmbiguities",
         ] {
             #expect(!windowModelSource.contains(documentOwnedState))
         }
         #expect(controllerSource.contains("@Published var lifecycleMutationGeneration"))
-        #expect(controllerSource.contains("@Published var humanReviewRecords"))
+        #expect(controllerSource.contains("@Published var annotationsByNoteID"))
         #expect(controllerSource.contains("@Published var noteIdentityByPath"))
 
         #expect(!windowModelSource.contains("@Published var dialogueInitialNotes"))

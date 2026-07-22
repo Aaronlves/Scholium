@@ -5,7 +5,7 @@ description: Audit the exact current revision of an Analysis, Topic, or Work for
 
 # Scholium Content Fidelity
 
-Apply scholium-core-protocol. Fidelity is a read-only evidential function over one exact Target revision. It remains distinct from Human Review, Critique, Dialogue, and any write-capable run that requested it.
+Apply scholium-core-protocol. Fidelity is a read-only evidential function over one exact Target revision. It remains distinct from researcher Settlement, Critique, Discuss, and any write-capable run that requested it.
 
 ## Establish the function packet
 

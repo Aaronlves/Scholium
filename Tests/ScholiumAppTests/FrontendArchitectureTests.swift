@@ -77,7 +77,7 @@ struct FrontendArchitectureTests {
                 vaultRole: .topicKnowledge,
                 relativePath: "Topics/Agency.md"
             ),
-            function: .review,
+            function: .develop,
             presentationID: UUID()
         )
         let propertiesRoute = FrontmatterPanelRoute(
@@ -93,7 +93,7 @@ struct FrontendArchitectureTests {
 
         router.finishFrontmatter(propertiesRoute)
         guard case .researchFunction(let resumedRoute) = router.sheet else {
-            Issue.record("Expected the same Review route to resume")
+            Issue.record("Expected the same Write route to resume")
             return
         }
         #expect(resumedRoute == functionRoute)
@@ -112,12 +112,12 @@ struct FrontendArchitectureTests {
         )
         let olderFunction = ResearchFunctionPanelRoute(
             target: target,
-            function: .review,
+            function: .develop,
             presentationID: UUID()
         )
         let newerFunction = ResearchFunctionPanelRoute(
             target: target,
-            function: .dialogue,
+            function: .discuss,
             presentationID: UUID()
         )
         let older = FrontmatterPanelRoute(
@@ -590,9 +590,10 @@ struct FrontendArchitectureTests {
         )
         #expect(sidebarSource.contains("ScholiumInkIconControl("))
 
-        for section in ["Review", "Integrity", "Metadata", "Properties", "Order", "Actions"] {
+        for section in ["Integrity", "Metadata", "Properties", "Order", "Actions"] {
             #expect(sidebarSource.contains("Section(\"\(section)\")"))
         }
+        #expect(!sidebarSource.contains("Section(\"Review\")"))
 
         #expect(sidebarSource.contains("SidebarRecommendedBibliographySection("))
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
@@ -673,7 +674,7 @@ struct FrontendArchitectureTests {
         #expect(!attentionSource.contains("placement: .toolbar"))
     }
 
-    @Test("Overview, Connections, and Functions share one Apparatus geometry")
+    @Test("Overview, Connect, and Actions share one variable-driven Apparatus geometry")
     func apparatusAlignmentContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -718,7 +719,7 @@ struct FrontendArchitectureTests {
         )
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
-                == ScholiumMetrics.Peripheral.sectionContentSpacing
+                == ScholiumGrid.Apparatus.headingToContentGap
         )
         #expect(
             ScholiumMetrics.Apparatus.sectionContentInset
@@ -739,7 +740,10 @@ struct FrontendArchitectureTests {
             "width: ScholiumMetrics.Apparatus.iconColumnWidth"
         ))
         #expect(componentsSource.contains(
-            ".padding(.leading, ScholiumMetrics.Apparatus.sectionContentInset)"
+            ".padding(.bottom, ScholiumMetrics.Apparatus.sectionContentSpacing)"
+        ))
+        #expect(componentsSource.contains(
+            ".lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)"
         ))
         #expect(researchSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
@@ -747,9 +751,9 @@ struct FrontendArchitectureTests {
         #expect(researchSource.components(
             separatedBy: "ScholiumApparatusSection("
         ).count >= 4)
-        #expect(researchSource.components(
-            separatedBy: "ScholiumApparatusRow("
-        ).count >= 5)
+        #expect(researchSource.contains("attentionSection"))
+        #expect(researchSource.contains("aboutSection"))
+        #expect(researchSource.contains("priorityPropertyFacts"))
         #expect(connectionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
@@ -762,11 +766,13 @@ struct FrontendArchitectureTests {
         #expect(functionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
-        #expect(researchSource.contains("ScholiumInterfaceTypography.reviewValue"))
-        #expect(researchSource.contains("\"Current revision\""))
-        #expect(researchSource.contains("private var propertiesSection"))
-        #expect(researchSource.contains("prefix(5)"))
-        #expect(researchSource.contains(".lineLimit(2)"))
+        #expect(researchSource.contains("visibleAttentionItems.prefix(3)"))
+        #expect(researchSource.contains("Button(\"Edit\""))
+        #expect(researchSource.contains("Button(\"Customize\""))
+        #expect(!researchSource.contains("prefix(5)"))
+        #expect(!researchSource.contains("Scholarly Status"))
+        #expect(!researchSource.contains("Provenance"))
+        #expect(!researchSource.contains("Derived State"))
         #expect(connectionsSource.contains("ScholiumApparatusRow("))
         #expect(!connectionsSource.contains("DisclosureGroup(\n            isExpanded:"))
     }
@@ -832,13 +838,14 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.sectionSpacing == ScholiumMetrics.Peripheral.sectionSpacing)
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
-                == ScholiumMetrics.Peripheral.sectionContentSpacing
+                == ScholiumGrid.Apparatus.headingToContentGap
         )
         #expect(
             ScholiumMetrics.Apparatus.sectionContentInset
                 == ScholiumMetrics.Peripheral.sectionContentInset
         )
-        #expect(ScholiumMetrics.Apparatus.headerHeight == 48)
+        #expect(ScholiumMetrics.Apparatus.headerHeight == ScholiumGrid.Apparatus.modeStripHeight)
+        #expect(ScholiumMetrics.Apparatus.headerHeight == 40)
         #expect(ScholiumMetrics.Workspace.libraryFooterHeight == 52)
 
         let preview = try String(
@@ -1181,11 +1188,11 @@ struct FrontendArchitectureTests {
         let firstPresentation = UUID()
         controller.functions.begin(
             target: target,
-            function: .dialogue,
+            function: .discuss,
             selection: nil,
             presentationID: firstPresentation
         )
-        #expect(controller.functions.activeFunction == .dialogue)
+        #expect(controller.functions.activeFunction == .discuss)
         #expect(controller.functions.target == target)
         #expect(controller.functions.presentationID == firstPresentation)
 
@@ -1498,14 +1505,17 @@ struct FrontendArchitectureTests {
         #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-live-scroller\""))
         #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-source-scroller\""))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
-            "padding: var(--scholium-document-content-top-inset) var(--scholium-rhythm-inline-regular)"
+            "padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll)"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "calc(50% - var(--scholium-document-half-line-width))"
         ))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             "padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after)"
         ))
 
         #expect(noteSource.contains("ScholiumDocumentPresentationConfiguration"))
-        #expect(!editorStyles.contains("--scholium-document-readable-measure"))
+        #expect(editorStyles.contains("var(--scholium-document-half-line-width)"))
         #expect(editorStyles.contains("var(--scholium-document-content-top-inset)"))
         #expect(editorStyles.contains("var(--scholium-document-text-scale)"))
         #expect(ScholiumDocumentPresentationConfiguration(textScale: 1).css.contains(
@@ -1529,14 +1539,9 @@ struct FrontendArchitectureTests {
                 "ScholiumColorRole.documentBackground",
                 "scholiumForeground(.attention)",
             ],
-            "Scholium/Views/QualityReviewView.swift": [
-                "scholiumSurface(.denseEvidence)",
-                "ScholiumColorRole.destructive",
-            ],
             "Scholium/Views/Sidebar/SidebarView.swift": [
                 ".background(ScholiumColorRole.surfaceBackground.color)",
                 "SidebarLifecycleDestinationView(",
-                "ScholiumColorRole.confirmed",
             ],
             "Scholium/Views/Note/NoteContentView.swift": [
                 ".scholiumSurface(.document)",
@@ -1890,11 +1895,15 @@ struct FrontendArchitectureTests {
         }
         #expect(editorHTML.contains(sharedCSS))
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
-        #expect(!sharedCSS.contains("--scholium-document-readable-measure"))
+        #expect(sharedCSS.contains("--scholium-document-line-width: 72ch"))
+        #expect(sharedCSS.contains("--scholium-document-half-line-width: 36ch"))
         #expect(!sharedCSS.contains("max-inline-size:"))
         #expect(sharedCSS.contains("inline-size: 100%;"))
+        #expect(sharedCSS.contains("calc(50% - var(--scholium-document-half-line-width))"))
+        #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-content"))
         let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
-        #expect(presentationCSS.contains("padding-inline: var(--scholium-rhythm-inline-narrow)"))
+        #expect(presentationCSS.contains("var(--scholium-rhythm-inline-narrow)"))
+        #expect(presentationCSS.contains("var(--scholium-document-half-line-width)"))
         #expect(presentationCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
     }
 
@@ -1941,6 +1950,90 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("text-align-last:"))
     }
 
+    @Test("Page Annotations remain beside their passage in Read, Live Preview, and Source")
+    func pageAnnotationsUseOneMarginaliaPresentation() throws {
+        let source = "A selected passage."
+        let fingerprint = DocumentFingerprint(content: source)
+        let annotation = AnnotationRecord(
+            noteID: UUID(),
+            vaultID: UUID(),
+            relativePath: "Topic.md",
+            text: "Distinguish the two senses here.",
+            anchor: ResearcherCommentAnchor(
+                fingerprint: fingerprint,
+                utf8Range: 2..<10,
+                utf16Range: 2..<10,
+                line: 1,
+                endLine: 1,
+                quotation: "selected"
+            )
+        )
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<p data-source-utf16-start="0" data-source-utf16-end="19">A selected passage.</p>"#,
+            source: source,
+            documentID: "Topic.md",
+            fingerprint: fingerprint.sha256,
+            annotationEnabled: true,
+            commentEnabled: true,
+            selectionEnabled: true,
+            annotations: [annotation],
+            linkPreviews: [],
+            presentationCSS: "",
+            userCSS: ""
+        )
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let editorCSS = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
+            encoding: .utf8
+        )
+
+        #expect(readHTML.contains("applyPageAnnotations"))
+        #expect(readHTML.contains("page-annotation-rail"))
+        #expect(readHTML.contains("page-annotation-margin"))
+        #expect(readHTML.contains("data-annotation-id"))
+        #expect(readHTML.contains("annotationActivated"))
+        #expect(!readHTML.contains("commentActivated"))
+        #expect(editorSource.contains("setPageAnnotations"))
+        #expect(editorSource.contains("PageAnnotationMarginWidget"))
+        #expect(editorSource.contains("annotationActivated"))
+        #expect(editorCSS.contains(".cm-page-annotation-margin"))
+        #expect(!editorSource.contains("setResearcherComments"))
+    }
+
+    @Test("Page Annotations stay outside Research Record while legacy history remains readable")
+    func pageAnnotationsStayOutsideResearchRecord() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let recordStart = try #require(source.range(of: "// MARK: - Research Record"))
+        let recordEnd = try #require(
+            source.range(of: "// MARK: - Preview", range: recordStart.upperBound..<source.endIndex)
+        )
+        let recordSource = String(source[recordStart.lowerBound..<recordEnd.lowerBound])
+
+        #expect(!recordSource.contains("annotationSection"))
+        #expect(!recordSource.contains("currentAnnotations"))
+        #expect(!recordSource.contains("Page Annotation"))
+        #expect(recordSource.contains("Write Activities"))
+        #expect(recordSource.contains("Earlier Review Archive"))
+        #expect(recordSource.contains("Earlier Dialogue Archive"))
+        #expect(recordSource.contains("entry.functionSnapshot == nil"))
+    }
+
     @Test("Read and Live Preview share one offline mathematics runtime and font set")
     func sharedMathematicsRuntime() throws {
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
@@ -1975,6 +2068,8 @@ struct FrontendArchitectureTests {
         #expect(css.contains("--scholium-callout-connect-content-indent: 1.1em"))
         #expect(css.contains("grid-template-columns: 6.5em minmax(0, 1fr)"))
         #expect(css.contains("details.scholium-callout > .scholium-callout-body"))
+        #expect(css.contains("--scholium-document-line-width: 72ch"))
+        #expect(css.contains("--scholium-document-half-line-width: 36ch"))
         #expect(!css.contains("readable-measure"))
         #expect(!css.contains("max-inline-size"))
     }
@@ -1994,9 +2089,10 @@ struct FrontendArchitectureTests {
             source: "",
             documentID: "Table.md",
             fingerprint: DocumentFingerprint(content: "").sha256,
+            annotationEnabled: false,
             commentEnabled: false,
             selectionEnabled: false,
-            researcherComments: [],
+            annotations: [],
             linkPreviews: [],
             presentationCSS: "",
             userCSS: ""
@@ -2018,9 +2114,10 @@ struct FrontendArchitectureTests {
             source: "",
             documentID: "Footnotes.md",
             fingerprint: DocumentFingerprint(content: "").sha256,
+            annotationEnabled: false,
             commentEnabled: false,
             selectionEnabled: false,
-            researcherComments: [],
+            annotations: [],
             linkPreviews: [],
             presentationCSS: "",
             userCSS: ""
@@ -2057,9 +2154,10 @@ struct FrontendArchitectureTests {
             source: "[[Target]]",
             documentID: "Source.md",
             fingerprint: DocumentFingerprint(content: "[[Target]]").sha256,
+            annotationEnabled: false,
             commentEnabled: false,
             selectionEnabled: false,
-            researcherComments: [],
+            annotations: [],
             linkPreviews: [preview],
             presentationCSS: "",
             userCSS: ""
@@ -2130,14 +2228,14 @@ struct FrontendArchitectureTests {
         let expected: [
             (ScholiumConnectionPresentation, String, String, ScholiumColorRole)
         ] = [
-            (.supports, "Supports", "arrow.right.circle", .connectionSupport),
-            (.supportedBy, "Supported By", "arrow.left.circle", .connectionSupport),
-            (.incompatible, "Incompatible With", "xmark.circle", .connectionIncompatible),
-            (.neutral, "Related", "link.circle", .connectionNeutral),
+            (.supports, "Supports", "↑", .connectionSupport),
+            (.supportedBy, "Supported By", "↓", .connectionSupport),
+            (.incompatible, "Incompatible With", "×", .connectionIncompatible),
+            (.neutral, "Related", "—", .connectionNeutral),
         ]
-        for (presentation, title, symbolName, colorRole) in expected {
+        for (presentation, title, symbolText, colorRole) in expected {
             #expect(presentation.title == title)
-            #expect(presentation.symbolName == symbolName)
+            #expect(presentation.symbolText == symbolText)
             #expect(presentation.colorRole == colorRole)
         }
 

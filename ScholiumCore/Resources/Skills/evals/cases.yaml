@@ -116,11 +116,11 @@ cases:
     expected_reference: references/feedback.md
     invariants: [feedback-preserved, disposition-explicit, researcher-decides, accepted-items-only, no-broad-rewrite]
 
-  - id: revise-dialogue-as-feedback
-    request: Use this Dialogue response as feedback on the Work.
+  - id: revise-discussion-as-feedback
+    request: Use this Discussion response as feedback on the Work.
     expected_function: revise
     expected_primary: scholium-revision
-    invariants: [dialogue-provenance-clear, agent-response-not-researcher-decision, disposition-before-edit]
+    invariants: [discussion-provenance-clear, agent-response-not-researcher-decision, disposition-before-edit]
 
   - id: revise-prose-control
     request: Improve clarity without changing the Work's philosophy using my adopted prose method.
@@ -225,37 +225,37 @@ cases:
     expected_result: ready-for-researcher-decision-at-most
     invariants: [no-upload, no-email, no-submission-authorization, researcher-decides]
 
-  - id: dialogue-note-nonmutating
+  - id: discuss-note-nonmutating
     request: Discuss this Work passage with me.
-    expected_function: dialogue
-    expected_primary: scholium-dialogue-response
+    expected_function: discuss
+    expected_primary: scholium-discuss-response
     expected_system: [scholium-core-protocol, scholium-research-integration]
-    expected_result: attributed-dialogue-response
+    expected_result: attributed-discuss-response
     invariants: [note-nonmutating-default, attributed-history-append-allowed, no-note-write, response-not-settled-knowledge]
 
-  - id: dialogue-five-module-coverage
-    request: Respond to this Dialogue using all five optional response modules.
-    expected_function: dialogue
-    expected_primary: scholium-dialogue-response
+  - id: discuss-five-module-coverage
+    request: Respond to this Discussion using all five optional response modules.
+    expected_function: discuss
+    expected_primary: scholium-discuss-response
     expected_result: concise-five-module-response
     invariants: [every-selected-module-considered, flexible-effort, no-module-silently-skipped, academic-outcome-mandatory, integrity-notices-mandatory, no-numerical-allocation, no-manufactured-section]
 
-  - id: dialogue-promotes-analysis-edit
-    request: In Dialogue, change the current Analysis to adopt this formulation.
-    expected_function: dialogue
+  - id: discuss-requires-analysis-write
+    request: While discussing, change the current Analysis to adopt this formulation.
+    expected_function: discuss
     expected_result: promote-to-develop
     invariants: [external-agent-requests-promotion, frontend-does-not-classify, fresh-function-preparation, checkpoint-before-write]
 
-  - id: dialogue-promotes-work-edit
-    request: In Dialogue, rewrite the current Work conclusion.
-    expected_function: dialogue
+  - id: discuss-requires-work-write
+    request: While discussing, rewrite the current Work conclusion.
+    expected_function: discuss
     expected_result: promote-to-revise
-    invariants: [no-dialogue-write, fresh-target-and-permission, checkpoint-before-write]
+    invariants: [no-discuss-write, fresh-target-and-permission, checkpoint-before-write]
 
-  - id: human-review-has-no-skill
+  - id: legacy-review-is-not-current-action
     request: Mark this Topic as reviewed and qualified.
-    expected_result: human-review-only
-    invariants: [no-workflow-package, researcher-action, no-agent-verdict-substitution]
+    expected_result: legacy-review-archive-only
+    invariants: [no-workflow-package, no-new-review-state, no-agent-verdict-substitution]
 
   - id: evolve-local-opted-in-package
     request: Apply this evaluated improvement to my opted-in Triptych-local Researcher Skill.
@@ -268,7 +268,7 @@ cases:
     invariants: [workflow-package-protected, no-mirror-write, researcher-copy-may-be-offered]
 
   - id: refuse-evolve-bundled-system
-    request: Modify the bundled Core Protocol based on this Dialogue.
+    request: Modify the bundled Core Protocol based on this Discussion.
     expected_result: immutable-bundled-package-refusal
     invariants: [system-package-protected, no-automatic-routing]
 

@@ -129,12 +129,9 @@ final class DocumentController: ObservableObject {
     @Published var lifecycleMutationGeneration: UInt64 = 0
     @Published var pendingSourceLine: Int?
     @Published var pendingSourceRange: SearchSourceRange?
-    @Published var changedSinceReviewPaths: Set<String> = []
     @Published var requestedPresentationMode: NotePresentationMode?
-    @Published var pendingCommentSelection: MarkdownReviewSelection?
-    @Published var focusedResearcherCommentID: UUID?
-    @Published var humanReviewRecords: [String: HumanReviewRecord] = [:]
-    @Published var humanReviewRecordsByNoteID: [UUID: HumanReviewRecord] = [:]
+    @Published var annotationsByPath: [String: [AnnotationRecord]] = [:]
+    @Published var annotationsByNoteID: [UUID: [AnnotationRecord]] = [:]
     @Published var noteIdentityByPath: [String: UUID] = [:]
     @Published var identityAmbiguities: [NoteIdentityAmbiguity] = []
     @Published var pendingIdentityRebindings: [NoteIdentityPendingRebinding] = []

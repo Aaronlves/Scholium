@@ -46,9 +46,9 @@ For each proposed insertion:
 
 Do not let the needs of the target note reshape the source analysis. If integration exposes an ambiguity in the analysis, stop the insertion and return to source analysis with a bounded question.
 
-## 3. `dialogue-to-note`
+## 3. `discussion-to-note`
 
-Treat Dialogue as the scholarly exchange and the note as the durable research formulation. A researcher Comment, follow-up, or explicit decision may establish what the researcher wants; an agent Response alone does not.
+Treat Discuss as the scholarly exchange and the note as the durable research formulation. A researcher Comment, follow-up, or explicit decision may establish what the researcher wants; an agent Response alone does not.
 
 Before integration:
 
@@ -58,7 +58,7 @@ Before integration:
 4. if no conclusion is clearly settled, return a candidate formulation or request a decision instead of choosing;
 5. update only the selected note and section authorized by the task.
 
-Honor the configured Dialogue preservation level, but never misrepresent a condensed academic intention as a verbatim Comment.
+Honor the configured Discuss preservation level, but never misrepresent a condensed academic intention as a verbatim Comment.
 
 ## 4. `authorized-workflow-edit`
 
@@ -72,4 +72,4 @@ After a successful write:
 - verify that unrelated Markdown, YAML, links, citations, and researcher text remain intact;
 - identify the academic change and its evidential status;
 - mark substantive philosophical content `audit-needed` for that exact fingerprint;
-- write the concise academic Response to Dialogue when the task originated there.
+- write the concise academic Response to the Discussion when the task originated there.

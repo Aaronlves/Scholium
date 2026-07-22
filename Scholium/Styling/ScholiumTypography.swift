@@ -244,16 +244,23 @@ enum ScholiumInterfaceTypography {
     static let metadata = Font.caption.weight(.medium)
     static let editorialLabel = Font.caption2.weight(.semibold)
 
-    /// Inspector section labels use the same system size as the Library's
-    /// editorial label but a lighter weight, keeping the Apparatus subordinate.
-    static let apparatusLabel = Font.caption2.weight(.medium)
+    /// Inspector chrome follows the compact type scale frozen in the HTML
+    /// study. Selection changes weight, not size, so switching modes does not
+    /// disturb the three-column grid.
+    static let apparatusMode = Font.system(size: 11, weight: .medium)
+    static let apparatusModeSelected = Font.system(size: 11, weight: .semibold)
+
+    /// Section headings stay quiet but gain enough weight and tracking to
+    /// remain distinct from their more tightly grouped content.
+    static let apparatusLabel = Font.system(size: 10, weight: .semibold)
 
     /// Operational Inspector text remains system sans-serif. Research-object
     /// names and researcher-authored judgments use the editorial serif roles.
-    static let apparatusBody = Font.caption
-    static let apparatusMetadata = Font.caption2.weight(.medium)
+    static let apparatusBody = Font.system(size: 11, weight: .regular)
+    static let apparatusMetadata = Font.system(size: 9.5, weight: .regular)
+    static let apparatusActionTitle = Font.system(size: 12, weight: .semibold)
     static let apparatusResearchContent = ScholiumTypography.swiftUIReadingFont(
-        size: 11,
+        size: 12,
         relativeTo: .caption
     )
     static let reviewValue = ScholiumTypography.swiftUIReadingFont(

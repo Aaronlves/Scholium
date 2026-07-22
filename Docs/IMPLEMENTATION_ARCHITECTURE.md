@@ -170,11 +170,15 @@ through the exact per-window coordinator. Selected-document state supplies
 availability. `WindowModel` mirrors native visibility for commands,
 restoration, and toolbar reconciliation but never reasserts it or stores width.
 
-The Inspector may project Connections, Research Status, metadata, provenance,
-Human Review or Critique status, and other current-note context. It may
-navigate or open another note in the Document tabs, but it never owns a document
-buffer, editing, autosave, undo, or conflict state. Those remain exclusively in
-the Document surface and its existing controllers.
+The Inspector has exactly three current-note modes: Overview, Connect, and
+Actions. Overview projects compact Attention, researcher-configured About
+fields, and applicable Zotero source identity. Connect projects direct and
+derived relations. Actions projects recorded Research Activity and role-valid
+launchers. Legacy Review and Dialogue records appear only in the separate
+read-only Research Record archive. The Inspector may navigate or open another
+note in the Document tabs, but it never owns a document buffer, editing,
+autosave, undo, or conflict state. Those remain exclusively in the Document
+surface and its existing controllers.
 
 Before changing a window/container boundary, engineering must:
 
@@ -245,8 +249,10 @@ Exact evidence keys prevent duplicate storage or scheduling.
 
 Core separates Skill discovery/bindings (`ResearchSkillStore`), dependency and
 instruction assembly (`ResearchWorkflowAssembler`), checkpoints
-(`TriptychCheckpointStore`), Dialogue, Critique, and Human Review. Repositories
-alone mutate revision-checked source.
+(`TriptychCheckpointStore`), Discussion, Critique, page Annotation, Research
+Activity, and the read-only earlier Review archive. The archive exposes no
+current Review, qualification, or comment-creation API; repositories alone
+mutate revision-checked source.
 `RecommendedBibliographyStore` alone owns its atomic portable JSON and never
 mutates notes or Zotero. No omnibus function store exists.
 
@@ -364,10 +370,12 @@ Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
 receives the current native focused object observed at the app scene boundary;
 each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
 registry, notification, generation counter, presentation coordinator, custom
-focused key, or manually retained window model participates. The window projects Human Review,
-anchored Comments, Dialogue, Critique association, and provenance through a
-narrow `ResearchRecordContext`. It never enters the trailing split item and
-never owns checkpoints, a document buffer, autosave, undo, or conflicts.
+focused key, or manually retained window model participates. The window
+projects Research Activity, Comment exchanges, Write attribution, Critique
+association, provenance, and read-only legacy Review and Dialogue archives
+through a narrow `ResearchRecordContext`. Page Annotations are not chronology
+and never enter this window. It never enters the trailing split item and never
+owns checkpoints, a document buffer, autosave, undo, or conflicts.
 Closing Research Record therefore cannot reveal or resize Research Inspector.
 
 The Library-owned Attention queue is an inline Library destination, not a sheet
@@ -378,8 +386,8 @@ migration debt recorded in Implementation Status.
 
 The Research Inspector receives immutable `ResearchOverviewPresentation` and
 `ResearchFunctionsPresentation` values composed at the window root. It owns no
-workspace refresh, review, comment, Critique, availability, or run state. Its
-Overview, Connections, and Functions modes share the one native trailing split
+workspace refresh, Comment, Critique, availability, or run state. Its Overview,
+Connect, and Actions modes share the one native trailing split
 item and one per-window `ResearchInspectorMode`; legacy stored strings are
 normalized only while restoring that window. Mode changes and note/tab changes
 never reconstruct the retained Document host.
@@ -389,7 +397,7 @@ carrying only a stable Target reference, function ID, and presentation ID. The
 router owns sheet exclusivity; `ResearchFunctionController` owns the session
 and draft. `NoteContentView` retains only the focused
 `openResearchFunction(id:selection:)` action for menu and keyboard invocation;
-it contains no Function presentation or bottom inset. Functions mode launches
+it contains no Function presentation or bottom inset. Actions launches
 the same sheet and restores focus only when that mode supplied the initiating
 button. Neither leaf receives `WindowModel`, Core, or Application authority.
 
@@ -431,8 +439,8 @@ for explicit `Bundle.module` lookups. `Info.plist` declares `en` and `zh-Hans`.
 the exact resource directory copied into the `ScholiumCore` SwiftPM bundle.
 There is no repository-level source mirror or synchronization step. The official Workflow
 layer contains Development, Critique, Revision, Content Fidelity, and
-Manuscript; Dialogue remains System infrastructure and Human Review has no
-skill. Catalog metadata exposes supported functions, capabilities—including
+Manuscript; Discuss remains System infrastructure and the earlier Review
+archive has no skill. Catalog metadata exposes supported functions, capabilities—including
 `bibliography-recommendation`—and citation styles while retaining supported
 modes only for internal method selection.
 
@@ -665,9 +673,14 @@ Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
 handoff anchor, and delayed restoration requires the same document or Read-load
 generation. It never depends only on throttle-prone animation frames.
 
-Add Comment is not a Markdown transformation: it captures an exact source
-selection, opens the role-valid Review or Critique panel, and focuses its
-anchored composer. `Command-F` opens Scholium's shared **This Note** Search;
+Annotation and Comment are not Markdown transformations. Annotation persists
+as app-owned page marginalia keyed by stable note identity and an exact source
+anchor; Read places it beside the corresponding rendered block, while Live
+Preview and Source use a CodeMirror margin widget. It remains outside Research
+Activity and Research Record. Comment requires an exact source selection and
+opens a passage-scoped researcher-agent exchange. Agent replies remain pending
+until the researcher chooses Finish, which alone projects Commented activity.
+`Command-F` opens Scholium's shared **This Note** Search;
 the embedded CodeMirror Find panel is not part of the product.
 
 **This Note** receives an immutable editor source snapshot containing note,
@@ -872,7 +885,15 @@ mirror exists.
 - `ScholiumDocumentRhythm`, the unit-explicit
   `ScholiumDocumentPresentationConfiguration`, and `ScholiumWebDesignTokens`
   supply one responsive `rem`/CSS-pixel typography and minimum-inset contract
-  to Read, Live Preview, and Source. The Document has no maximum measure.
+  to Read, Live Preview, and Source. `DocumentAppearanceSettings` owns one
+  normalized **48–96ch** line-width value with a **72ch** default; generated
+  presentation CSS exports it as `--scholium-document-line-width` together
+  with an internal derived half-width length so the supported WebKit runtime
+  does not depend on CSS division. Read/Live resolve it against Body type and
+  Source against retained exact-source type. The shared CSS centers that
+  measure subject to the mode-specific minimum inline inset, while dynamic
+  presentation updates reuse the existing CodeMirror remeasure path rather
+  than reconstructing editor state.
 
 `ScholiumMotion` exposes purpose-named animations and returns no animation
 when Reduce Motion is active. It does not install a global animation policy.

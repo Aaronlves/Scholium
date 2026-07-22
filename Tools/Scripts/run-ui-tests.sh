@@ -125,20 +125,6 @@ if [[ "${profile}" == "smoke" ]]; then
 elif [[ "${profile}" == "complete" ]]; then
   manifest="${ROOT}/.build/qa-complete-test-manifest.json"
   acceptance_filter="-only-testing:ScholiumUITests/ScholiumUITests"
-  # Dialogue is intentionally outside the current acceptance run while its
-  # product interaction is being redesigned. Keep the deferral explicit and
-  # local to the Dialogue journeys; the rest of the dynamically enumerated
-  # acceptance class must still run.
-  dialogue_deferrals=(
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testDialogueFunctionCopiesPreparedRequest"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testDialoguePreservesResearcherFollowUpAndAgentResponseChronology"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testFunctionsInspectorAccessibilityOrderAndDialogueReviewSemantics"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testFunctionsInspectorAndPanelRemainUsableInLightAndDarkAppearances"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testFunctionsInspectorVoiceOverSpeechOrder"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testResearchFunctionPanelFitsCompactEditor"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testResearchFunctionPanelFitsWideEditor"
-    "-skip-testing:ScholiumUITests/ScholiumUITests/testWorkFunctionsInspectorMaterialsCommentsModulesAndShortcuts"
-  )
   rm -f "${manifest}"
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
@@ -148,7 +134,6 @@ elif [[ "${profile}" == "complete" ]]; then
     -test-enumeration-format json \
     -test-enumeration-output-path "${manifest}" \
     "${acceptance_filter}" \
-    "${dialogue_deferrals[@]}" \
     "${test_arguments[@]}" \
     test-without-building
   [[ -s "${manifest}" ]] || {
@@ -158,7 +143,6 @@ elif [[ "${profile}" == "complete" ]]; then
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
     "${common_arguments[@]}" \
     "${acceptance_filter}" \
-    "${dialogue_deferrals[@]}" \
     "${test_arguments[@]}" \
     test-without-building
 else

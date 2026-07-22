@@ -1,6 +1,6 @@
 ---
 name: scholium-core-protocol
-description: Apply Scholium's protected universal protocol for philosophy-facing, truth-pursuing, source-faithful, knowledge-base-constructing research. Use automatically with every Scholium System, Workflow, and Researcher Skill to preserve researcher authority, bounded evidence and permission, workspace safety, Dialogue boundaries, Mixed-mode isolation, version-bound auditing, and academically meaningful results.
+description: Apply Scholium's protected universal protocol for philosophy-facing, truth-pursuing, source-faithful, knowledge-base-constructing research. Use automatically with every Scholium System, Workflow, and Researcher Skill to preserve researcher authority, bounded evidence and permission, workspace safety, Discuss boundaries, Mixed-mode isolation, version-bound auditing, and academically meaningful results.
 ---
 
 # Scholium Core Protocol
@@ -16,7 +16,7 @@ Judge success by the scholarly outcome, not by whether a command ran or a file c
 - **Philosophy-facing:** work with sources, concepts, distinctions, arguments, objections, positions, questions, and their warranted relations.
 - **Truth-pursuing:** seek the best warranted interpretation or conclusion, test defeaters and alternatives, correct discovered errors, and expose underdetermination. Do not claim that Scholium or an agent can certify philosophical truth.
 - **Fidelity-caring:** preserve what sources and researchers actually say, including scope, qualification, uncertainty, and dialectical role.
-- **Knowledge-base-constructing:** leave the researcher with a more precise, reviewable Analysis, Topic, Work, relation, Dialogue result, or bounded handoff. Do not manufacture a durable edit when the warranted result is provisional or read-only.
+- **Knowledge-base-constructing:** leave the researcher with a more precise, reviewable Analysis, Topic, Work, relation, Discussion result, or bounded handoff. Do not manufacture a durable edit when the warranted result is provisional or read-only.
 
 CLI calls, file operations, metadata changes, MCP retrieval, and fingerprints are subordinate mechanisms. Mention them only when they affect evidence, authorization, integrity, recovery, or failure. If the actual task is to design, code, test, or maintain the Scholium application, use the separate Scholium development instructions and Skills rather than these researcher-facing packages.
 
@@ -71,7 +71,7 @@ Permission: read-only | candidate-only | direct-edit-authorized
 Output:
 Stop condition:
 Durability: ephemeral | handoff | durable update
-Dialogue target: none | dialogue-id
+Discussion target: none | discussion-id
 Response contract: none | request-snapshot
 Audit state: not-needed | needed | satisfied-for-exact-version
 ```
@@ -117,9 +117,9 @@ Direct paper analysis may use the complete Source Analyzer without creating a Re
 
 When the workflow changes mode, rebuild the read set, write set, permission, method instructions, assumptions, stop condition, and durability expectation. The preceding result becomes a labeled input or handoff, not an accepted commitment.
 
-Load `scholium-research-integration` whenever the task must discover a configured Triptych, read or mutate live notes, inspect properties, change status, or persist an agent Response in Dialogue.
+Load `scholium-research-integration` whenever the task must discover a configured Triptych, read or mutate live notes, inspect properties, change status, or persist an agent Response in Discuss.
 
-Load `scholium-dialogue-response` whenever a task originates from Scholium Dialogue, carries a Dialogue ID, or includes a researcher-selected response contract. That System Skill controls response selection and persistence semantics; it does not add a philosophical workflow or grant note-edit permission.
+Load `scholium-discuss-response` whenever a task originates from Scholium Discuss, carries a Discussion ID, or includes a researcher-selected response contract. That System Skill controls response selection and persistence semantics; it does not add a philosophical workflow or grant note-edit permission.
 
 Load `scholium-zotero-integration` whenever the task requires an external agent to use Scholium's supported Zotero MCP capability. That System Skill controls library retrieval and explicitly requested guarded imports; it does not supply source evidence, citation style, philosophical analysis, or standing Zotero write permission.
 
@@ -137,11 +137,11 @@ Treat an audit as bound to the exact target fingerprint and declared audit scope
 
 Scholium does not impose a universal citation-format method. Use an adopted researcher-owned citation skill when a task requires a particular style, discipline, edition practice, or bibliographic convention. The optional bundled APA 7 starter remains editable and has no authority until the researcher selects or adopts it.
 
-## Keep Dialogue scholarly and concise
+## Keep Discuss scholarly and concise
 
-Dialogue records researcher Comments, attributed agent Responses, and follow-up exchanges. It need not preserve hidden prompts, prompt templates, model parameters, token counts, or sentence-level generation history.
+Discuss records researcher requests, attributed agent Responses, and follow-up exchanges. It need not preserve hidden prompts, prompt templates, model parameters, token counts, or sentence-level generation history.
 
-When a task originates in Dialogue, use `scholium-dialogue-response` to resolve the exact request-scoped response contract, honor the selected presentation and Comment-preservation choices, and persist the final Response through `scholium-research-integration`.
+When a task originates in Discuss, use `scholium-discuss-response` to resolve the exact request-scoped response contract, honor the selected presentation and Comment-preservation choices, and persist the final Response through `scholium-research-integration`.
 
 Never condense away a qualification, objection, uncertainty, or change of mind that matters to the research. Never misrepresent condensed text as a verbatim Comment, store an implementation log as the scholarly Response, or treat an agent Response as the researcher's settled conclusion.
 

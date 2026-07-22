@@ -118,6 +118,10 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public let sourceDeletion: PreparedPermanentDeletion?
     public let critiqueDeletion: PreparedPermanentDeletion?
     public let checkpointPurge: PreparedCheckpointPurge?
+    /// Present only for deletion journals created after page Annotation
+    /// storage was separated from the legacy Review archive.
+    public let pageAnnotations: [AnnotationRecord]?
+    public let critiquePageAnnotations: [AnnotationRecord]?
 
     public init(
         phase: PermanentDeletionRecoveryPhase,
@@ -136,7 +140,9 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         critiqueIdentity: PermanentDeletionIdentityBackup?,
         sourceDeletion: PreparedPermanentDeletion?,
         critiqueDeletion: PreparedPermanentDeletion?,
-        checkpointPurge: PreparedCheckpointPurge?
+        checkpointPurge: PreparedCheckpointPurge?,
+        pageAnnotations: [AnnotationRecord]? = nil,
+        critiquePageAnnotations: [AnnotationRecord]? = nil
     ) {
         self.phase = phase
         self.noteID = noteID
@@ -155,6 +161,8 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         self.sourceDeletion = sourceDeletion
         self.critiqueDeletion = critiqueDeletion
         self.checkpointPurge = checkpointPurge
+        self.pageAnnotations = pageAnnotations
+        self.critiquePageAnnotations = critiquePageAnnotations
     }
 
     public func updating(
@@ -180,7 +188,9 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             critiqueIdentity: critiqueIdentity,
             sourceDeletion: sourceDeletion ?? self.sourceDeletion,
             critiqueDeletion: critiqueDeletion ?? self.critiqueDeletion,
-            checkpointPurge: checkpointPurge ?? self.checkpointPurge
+            checkpointPurge: checkpointPurge ?? self.checkpointPurge,
+            pageAnnotations: pageAnnotations,
+            critiquePageAnnotations: critiquePageAnnotations
         )
     }
 }

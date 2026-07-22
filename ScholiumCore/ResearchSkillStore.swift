@@ -442,9 +442,6 @@ public actor ResearchSkillStore {
     public func functionSkillSelection(
         for function: ResearchFunctionID
     ) throws -> ResearchFunctionSkillSelection {
-        guard function != .review else {
-            return ResearchFunctionSkillSelection(function: function)
-        }
         guard let document = try bindingSnapshot()?.document else {
             return ResearchFunctionSkillSelection(function: function)
         }
@@ -666,17 +663,11 @@ public actor ResearchSkillStore {
         for function: ResearchFunctionID
     ) throws -> ResearchSkillBindingResolution {
         let rawBindingRevision = try? bindingFileRevision()
-        if function == .review {
-            return ResearchSkillBindingResolution(
-                source: .none,
-                bindingRevision: rawBindingRevision
-            )
-        }
         let all = try skills()
         let localCandidates = all.filter {
             $0.origin == .triptych && $0.isValid && $0.supports(function)
         }.map(\.id)
-        let primaryClass: ResearchSkillClass = function == .dialogue ? .system : .workflow
+        let primaryClass: ResearchSkillClass = function == .discuss ? .system : .workflow
         let bundledCandidates = all.filter {
             $0.origin == .bundled
                 && $0.skillClass == primaryClass
@@ -864,7 +855,6 @@ public actor ResearchSkillStore {
         primaryResourcePaths: Set<String> = [],
         additionalResourcePaths: [String: Set<String>] = [:]
     ) throws -> [ResolvedResearchSkillSelection] {
-        guard function != .review else { return [] }
         let primaryResolution = try functionBindingResolution(for: function)
         guard let primary = primaryResolution.package, primaryResolution.issue == nil else {
             throw ResearchSkillBindingError.unresolvedBinding(
@@ -952,7 +942,7 @@ public actor ResearchSkillStore {
     /// default mode assembly contains only the required protected System
     /// packages. Mixed mode keeps every phase in its own envelope.
     public func instructionAssembly(
-        mode: ResearchSkillMode = .dialogue,
+        mode: ResearchSkillMode = .discuss,
         requestedSkillIDs: [String] = [],
         mixedPhases: [ResearchSkillAssemblyPhase] = []
     ) throws -> String {
@@ -1228,8 +1218,7 @@ public actor ResearchSkillStore {
             .union(document.functionSkillBindings.keys)
             .union(document.functionPracticeBindings.keys)
         for rawFunction in functionKeys {
-            guard let function = ResearchFunctionID(rawValue: rawFunction),
-                  function != .review else {
+            guard let function = ResearchFunctionID(rawValue: rawFunction) else {
                 throw ResearchSkillBindingError.invalidBindingDocument(
                     "Unknown or non-skill function binding: \(rawFunction)."
                 )
@@ -1308,14 +1297,9 @@ public actor ResearchSkillStore {
     private func validateFunctionSkillSelection(
         _ selection: ResearchFunctionSkillSelection
     ) throws {
-        guard selection.function != .review else {
+        if selection.function == .discuss, selection.primaryPackageID != nil {
             throw ResearchSkillBindingError.invalidBindingDocument(
-                "Human Review has no executable Skill binding."
-            )
-        }
-        if selection.function == .dialogue, selection.primaryPackageID != nil {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Dialogue transport is protected System guidance and cannot be replaced by a Researcher Skill."
+                "Discuss transport is protected System guidance and cannot be replaced by a Researcher Skill."
             )
         }
         let selectedPracticeIDs = selection.selectedPractices.map(\.selectionID)
@@ -1657,9 +1641,8 @@ public actor ResearchSkillStore {
 
     private static func skillMode(for function: ResearchFunctionID) -> ResearchSkillMode {
         switch function {
-        case .dialogue: .dialogue
+        case .discuss: .discuss
         case .develop: .develop
-        case .review: .review
         case .fidelity: .audit
         case .critique: .review
         case .revise: .write
@@ -1672,12 +1655,10 @@ public actor ResearchSkillStore {
         fidelityChecks: Set<FidelityCheck>
     ) -> Set<String> {
         switch function {
-        case .dialogue:
+        case .discuss:
             ["references/response-contract.md", "references/response-method.md"]
         case .develop:
             ["references/method.md"]
-        case .review:
-            []
         case .fidelity:
             Set([
                 fidelityChecks.contains(.content) ? "references/content.md" : nil,

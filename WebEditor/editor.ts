@@ -141,7 +141,7 @@ interface ScholiumWindow extends Window {
   scholiumEditor?: ScholiumEditorAPI;
 }
 interface LinkCandidate { label: string; insertion: string; detail: string; path: string; isAmbiguous: boolean }
-interface ResearcherCommentAnnotation { id: string; from: number; to: number; comment: string; resolved: boolean }
+interface PageAnnotation { id: string; from: number; to: number; text: string; resolved: boolean; slot: number }
 interface SourceDelta { from: number; to: number; insert: string }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
 interface SemanticCodeBlockRange extends ProjectionSourceRange { readonly fenced: boolean }
@@ -267,26 +267,58 @@ const liveBlockActivationField = StateField.define<LiveBlockActivation | null>({
     return selectionKeepsActivation ? next : null;
   },
 });
-const setResearcherCommentsEffect = StateEffect.define<ResearcherCommentAnnotation[]>();
-const researcherCommentField = StateField.define<DecorationSet>({
+class PageAnnotationMarginWidget extends WidgetType {
+  constructor(readonly annotation: PageAnnotation) { super(); }
+
+  eq(other: PageAnnotationMarginWidget) {
+    return this.annotation.id === other.annotation.id
+      && this.annotation.text === other.annotation.text
+      && this.annotation.resolved === other.annotation.resolved
+      && this.annotation.slot === other.annotation.slot;
+  }
+
+  toDOM() {
+    const marginNote = document.createElement("button");
+    marginNote.type = "button";
+    marginNote.className = `cm-page-annotation-margin${this.annotation.resolved ? " cm-page-annotation-resolved" : ""}`;
+    marginNote.dataset.annotationId = this.annotation.id;
+    marginNote.dataset.scholiumProtected = "page-annotation";
+    marginNote.textContent = this.annotation.text;
+    marginNote.title = this.annotation.text;
+    marginNote.setAttribute("aria-label", `Annotation: ${this.annotation.text}`);
+    marginNote.style.setProperty("--scholium-annotation-slot", String(this.annotation.slot));
+    return marginNote;
+  }
+
+  ignoreEvent() { return false; }
+}
+
+const setPageAnnotationsEffect = StateEffect.define<PageAnnotation[]>();
+const pageAnnotationField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(value, transaction) {
     let next = value.map(transaction.changes);
     for (const effect of transaction.effects) {
-      if (!effect.is(setResearcherCommentsEffect)) continue;
-      const ranges: Range<Decoration>[] = effect.value
-        .filter((comment) => comment.from >= 0
-          && comment.to > comment.from
-          && comment.to <= transaction.newDoc.length)
-        .map((comment) => Decoration.mark({
-          class: `cm-researcher-comment${comment.resolved ? " cm-researcher-comment-resolved" : ""}`,
+      if (!effect.is(setPageAnnotationsEffect)) continue;
+      const ranges: Range<Decoration>[] = [];
+      for (const annotation of effect.value.filter((item) => item.from >= 0
+        && item.to > item.from
+        && item.to <= transaction.newDoc.length)) {
+        ranges.push(Decoration.mark({
+          class: `cm-page-annotation${annotation.resolved ? " cm-page-annotation-resolved" : ""}`,
           attributes: {
-            "data-comment-id": comment.id,
-            "data-scholium-protected": "researcher-comment",
-            "aria-label": `Researcher comment: ${comment.comment}`,
-            title: `Researcher comment: ${comment.comment}`,
+            "data-annotation-id": annotation.id,
+            "data-scholium-protected": "page-annotation",
+            "aria-label": `Annotated passage: ${annotation.text}`,
+            title: annotation.text,
           },
-        }).range(comment.from, comment.to));
+        }).range(annotation.from, annotation.to));
+        const line = transaction.newDoc.lineAt(annotation.from);
+        ranges.push(Decoration.widget({
+          widget: new PageAnnotationMarginWidget(annotation),
+          side: 1,
+        }).range(line.to));
+      }
       next = Decoration.set(ranges, true);
     }
     return next;
@@ -2234,7 +2266,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
   }
 });
 
-const researcherCommentActivation = EditorView.domEventHandlers({
+const pageAnnotationActivation = EditorView.domEventHandlers({
   click(event) {
     if (event.metaKey) {
       const position = editor.posAtCoords({x: event.clientX, y: event.clientY});
@@ -2246,14 +2278,14 @@ const researcherCommentActivation = EditorView.domEventHandlers({
       }
     }
     const target = event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-comment-id]")
+      ? event.target.closest<HTMLElement>("[data-annotation-id]")
       : null;
-    const commentID = target?.dataset.commentId;
-    if (!commentID) return false;
-    post({ type: "commentActivated", commentID });
-    // Let CodeMirror place the caret normally. The comments toolbar remains
-    // the keyboard-accessible route, while clicking an existing annotation
-    // opens that exact record without making the editor text inert.
+    const annotationID = target?.dataset.annotationId;
+    if (!annotationID) return false;
+    post({ type: "annotationActivated", annotationID });
+    // Let CodeMirror place the caret normally. The selection toolbar remains
+    // the keyboard-accessible route, while clicking an existing Annotation
+    // opens that exact marginal note without making the editor text inert.
     return false;
   },
 });
@@ -2532,8 +2564,8 @@ const editorExtensions = [
       structuralInteractionKeymap,
       saveKeymap,
       stateReporter,
-      researcherCommentField,
-      researcherCommentActivation,
+      pageAnnotationField,
+      pageAnnotationActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
       liveProjectionIndexField,
       modeCompartment.of(livePreviewMode),
@@ -2634,7 +2666,7 @@ function showLinkPreview(preview: LinkPreview, anchor: PreviewAnchorRect, starte
   previewTitle.textContent = preview.title;
   const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
   previewMetadata.textContent = preview.fragment
-    ? `${relationship} · ${preview.fragment}`
+    ? `${relationship}\n${preview.fragment}`
     : relationship;
   previewBody.innerHTML = preview.htmlBody;
   removeInteractivePreviewContent(previewBody);
@@ -2961,7 +2993,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkCompletions": editorOperations.setLinkCompletions(operation.value as LinkCandidate[]); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
-  case "setResearcherComments": editorOperations.setResearcherComments(operation.value as ResearcherCommentAnnotation[]); break;
+  case "setPageAnnotations": editorOperations.setPageAnnotations(operation.value as PageAnnotation[]); break;
   case "showPreview": showPreviewAtSelection(); break;
   case "showPreviewAt": showPreviewAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
@@ -3308,23 +3340,28 @@ const editorOperations = {
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
   },
 
-  setResearcherComments(comments: ResearcherCommentAnnotation[]) {
-    const normalized = Array.isArray(comments)
-      ? comments.slice(0, 10000).flatMap((comment) => {
-        const id = typeof comment?.id === "string" ? comment.id : "";
-        const from = Number.isInteger(comment?.from) ? comment.from : -1;
-        const to = Number.isInteger(comment?.to) ? comment.to : -1;
+  setPageAnnotations(annotations: PageAnnotation[]) {
+    const lineSlots = new Map<number, number>();
+    const normalized = Array.isArray(annotations)
+      ? annotations.slice(0, 10000).flatMap((annotation) => {
+        const id = typeof annotation?.id === "string" ? annotation.id : "";
+        const from = Number.isInteger(annotation?.from) ? annotation.from : -1;
+        const to = Number.isInteger(annotation?.to) ? annotation.to : -1;
         if (!id || from < 0 || to <= from || to > editor.state.doc.length) return [];
+        const lineNumber = editor.state.doc.lineAt(from).number;
+        const slot = lineSlots.get(lineNumber) ?? 0;
+        lineSlots.set(lineNumber, slot + 1);
         return [{
           id,
           from,
           to,
-          comment: typeof comment.comment === "string" ? comment.comment.slice(0, 500) : "",
-          resolved: comment.resolved === true,
+          text: typeof annotation.text === "string" ? annotation.text.slice(0, 500) : "",
+          resolved: annotation.resolved === true,
+          slot,
         }];
       })
       : [];
-    editor.dispatch({ effects: setResearcherCommentsEffect.of(normalized) });
+    editor.dispatch({ effects: setPageAnnotationsEffect.of(normalized) });
   },
 
   /** @param {number} requestedLine */

@@ -21374,7 +21374,7 @@
     "setUserCSS",
     "setLinkCompletions",
     "setLinkPreviews",
-    "setResearcherComments",
+    "setPageAnnotations",
     "showPreview",
     "showPreviewAt",
     "announceStatus",
@@ -21477,7 +21477,7 @@
         return typeof operation.value === "string" && operation.value.length <= 500;
       case "setLinkCompletions":
       case "setLinkPreviews":
-      case "setResearcherComments":
+      case "setPageAnnotations":
         return Array.isArray(operation.value);
       case "showPreviewAt":
         return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
@@ -30449,7 +30449,7 @@ ${fence}
       "setPresentationCSS",
       "setUserCSS",
       "setLinkPreviews",
-      "setResearcherComments",
+      "setPageAnnotations",
       "goToLine",
       "restoreRecovery",
       "synchronizeCommittedText",
@@ -31023,22 +31023,55 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       return selectionKeepsActivation ? next : null;
     }
   });
-  var setResearcherCommentsEffect = StateEffect.define();
-  var researcherCommentField = StateField.define({
+  var PageAnnotationMarginWidget = class extends WidgetType {
+    constructor(annotation) {
+      super();
+      this.annotation = annotation;
+    }
+    annotation;
+    eq(other) {
+      return this.annotation.id === other.annotation.id && this.annotation.text === other.annotation.text && this.annotation.resolved === other.annotation.resolved && this.annotation.slot === other.annotation.slot;
+    }
+    toDOM() {
+      const marginNote = document.createElement("button");
+      marginNote.type = "button";
+      marginNote.className = `cm-page-annotation-margin${this.annotation.resolved ? " cm-page-annotation-resolved" : ""}`;
+      marginNote.dataset.annotationId = this.annotation.id;
+      marginNote.dataset.scholiumProtected = "page-annotation";
+      marginNote.textContent = this.annotation.text;
+      marginNote.title = this.annotation.text;
+      marginNote.setAttribute("aria-label", `Annotation: ${this.annotation.text}`);
+      marginNote.style.setProperty("--scholium-annotation-slot", String(this.annotation.slot));
+      return marginNote;
+    }
+    ignoreEvent() {
+      return false;
+    }
+  };
+  var setPageAnnotationsEffect = StateEffect.define();
+  var pageAnnotationField = StateField.define({
     create: () => Decoration.none,
     update(value, transaction) {
       let next = value.map(transaction.changes);
       for (const effect of transaction.effects) {
-        if (!effect.is(setResearcherCommentsEffect)) continue;
-        const ranges = effect.value.filter((comment2) => comment2.from >= 0 && comment2.to > comment2.from && comment2.to <= transaction.newDoc.length).map((comment2) => Decoration.mark({
-          class: `cm-researcher-comment${comment2.resolved ? " cm-researcher-comment-resolved" : ""}`,
-          attributes: {
-            "data-comment-id": comment2.id,
-            "data-scholium-protected": "researcher-comment",
-            "aria-label": `Researcher comment: ${comment2.comment}`,
-            title: `Researcher comment: ${comment2.comment}`
-          }
-        }).range(comment2.from, comment2.to));
+        if (!effect.is(setPageAnnotationsEffect)) continue;
+        const ranges = [];
+        for (const annotation of effect.value.filter((item) => item.from >= 0 && item.to > item.from && item.to <= transaction.newDoc.length)) {
+          ranges.push(Decoration.mark({
+            class: `cm-page-annotation${annotation.resolved ? " cm-page-annotation-resolved" : ""}`,
+            attributes: {
+              "data-annotation-id": annotation.id,
+              "data-scholium-protected": "page-annotation",
+              "aria-label": `Annotated passage: ${annotation.text}`,
+              title: annotation.text
+            }
+          }).range(annotation.from, annotation.to));
+          const line = transaction.newDoc.lineAt(annotation.from);
+          ranges.push(Decoration.widget({
+            widget: new PageAnnotationMarginWidget(annotation),
+            side: 1
+          }).range(line.to));
+        }
         next = Decoration.set(ranges, true);
       }
       return next;
@@ -32717,7 +32750,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       idleTimer = window.setTimeout(() => post({ type: "idle", dirty }), 500);
     }
   });
-  var researcherCommentActivation = EditorView.domEventHandlers({
+  var pageAnnotationActivation = EditorView.domEventHandlers({
     click(event) {
       if (event.metaKey) {
         const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
@@ -32728,10 +32761,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           return true;
         }
       }
-      const target = event.target instanceof Element ? event.target.closest("[data-comment-id]") : null;
-      const commentID = target?.dataset.commentId;
-      if (!commentID) return false;
-      post({ type: "commentActivated", commentID });
+      const target = event.target instanceof Element ? event.target.closest("[data-annotation-id]") : null;
+      const annotationID = target?.dataset.annotationId;
+      if (!annotationID) return false;
+      post({ type: "annotationActivated", annotationID });
       return false;
     }
   });
@@ -32961,8 +32994,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     structuralInteractionKeymap,
     saveKeymap,
     stateReporter,
-    researcherCommentField,
-    researcherCommentActivation,
+    pageAnnotationField,
+    pageAnnotationActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
     liveProjectionIndexField,
     modeCompartment.of(livePreviewMode),
@@ -33052,7 +33085,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function showLinkPreview(preview, anchor, startedAt) {
     previewTitle.textContent = preview.title;
     const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
-    previewMetadata.textContent = preview.fragment ? `${relationship} \xB7 ${preview.fragment}` : relationship;
+    previewMetadata.textContent = preview.fragment ? `${relationship}
+${preview.fragment}` : relationship;
     previewBody.innerHTML = preview.htmlBody;
     removeInteractivePreviewContent(previewBody);
     recordEditorMetric("cached-preview-work", startedAt, {
@@ -33406,8 +33440,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "setLinkPreviews":
         editorOperations.setLinkPreviews(operation.value);
         break;
-      case "setResearcherComments":
-        editorOperations.setResearcherComments(operation.value);
+      case "setPageAnnotations":
+        editorOperations.setPageAnnotations(operation.value);
         break;
       case "showPreview":
         showPreviewAtSelection();
@@ -33759,21 +33793,26 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       );
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
     },
-    setResearcherComments(comments) {
-      const normalized2 = Array.isArray(comments) ? comments.slice(0, 1e4).flatMap((comment2) => {
-        const id2 = typeof comment2?.id === "string" ? comment2.id : "";
-        const from = Number.isInteger(comment2?.from) ? comment2.from : -1;
-        const to = Number.isInteger(comment2?.to) ? comment2.to : -1;
+    setPageAnnotations(annotations) {
+      const lineSlots = /* @__PURE__ */ new Map();
+      const normalized2 = Array.isArray(annotations) ? annotations.slice(0, 1e4).flatMap((annotation) => {
+        const id2 = typeof annotation?.id === "string" ? annotation.id : "";
+        const from = Number.isInteger(annotation?.from) ? annotation.from : -1;
+        const to = Number.isInteger(annotation?.to) ? annotation.to : -1;
         if (!id2 || from < 0 || to <= from || to > editor.state.doc.length) return [];
+        const lineNumber = editor.state.doc.lineAt(from).number;
+        const slot = lineSlots.get(lineNumber) ?? 0;
+        lineSlots.set(lineNumber, slot + 1);
         return [{
           id: id2,
           from,
           to,
-          comment: typeof comment2.comment === "string" ? comment2.comment.slice(0, 500) : "",
-          resolved: comment2.resolved === true
+          text: typeof annotation.text === "string" ? annotation.text.slice(0, 500) : "",
+          resolved: annotation.resolved === true,
+          slot
         }];
       }) : [];
-      editor.dispatch({ effects: setResearcherCommentsEffect.of(normalized2) });
+      editor.dispatch({ effects: setPageAnnotationsEffect.of(normalized2) });
     },
     /** @param {number} requestedLine */
     goToLine(requestedLine) {

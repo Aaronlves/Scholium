@@ -18,9 +18,9 @@ struct DocumentFeatureState {
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let propertiesConfiguration: VaultPropertiesConfiguration?
-    let reviewRecord: HumanReviewRecord?
-    let reviewDisplayState: HumanReviewDisplayState
-    let changedSinceReview: Bool
+    let annotations: [AnnotationRecord]
+    let commentExchanges: [CommentExchange]
+    let requestedCommentExchangeID: UUID?
     let canComment: Bool
     let canEdit: Bool
     let isManagedCritique: Bool
@@ -45,7 +45,26 @@ struct DocumentFeatureActions {
     let clearRequestedPresentationMode: @MainActor () -> Void
     let clearPendingSourceLine: @MainActor () -> Void
     let clearPendingSourceRange: @MainActor () -> Void
-    let requestComments: @MainActor (MarkdownReviewSelection?, UUID?) -> Void
+    /// Page-local marginalia, retained separately from agent communication and
+    /// never projected into research activity.
+    let createAnnotation: @MainActor (ResearcherCommentAnchor, String) async throws -> Void
+    let updateAnnotation: @MainActor (UUID, String) async throws -> Void
+    let deleteAnnotation: @MainActor (UUID) async throws -> Void
+    /// A deliberate passage-scoped communication exchange with an agent.
+    let createCommentExchange: @MainActor (
+        ResearcherCommentAnchor,
+        String
+    ) async throws -> CommentExchange
+    let appendCommentExchangeTurn: @MainActor (
+        UUID,
+        CommentExchangeTurnAuthor,
+        String
+    ) async throws -> CommentExchange
+    let finishCommentExchange: @MainActor (UUID) async throws -> CommentExchange
+    let clearRequestedCommentExchange: @MainActor () -> Void
+    let handoffCommentRequest: @MainActor (String) -> Bool
+    let copyCommentRequest: @MainActor (String) -> Bool
+    let commentReplyCommand: @MainActor (UUID) -> String
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
@@ -182,6 +201,8 @@ struct ResearchInspectorView: View {
     let researchFunctionsPresentation: ResearchFunctionsPresentation
     let openResearchFunction: (ResearchFunctionID) -> Void
     let openResearchRecord: () -> Void
+    let openComment: (UUID) -> Void
+    let settle: (String?) async throws -> Void
 
     init(
         note: WindowDocumentLocation,
@@ -192,7 +213,9 @@ struct ResearchInspectorView: View {
         researchInspectorContentContext: ResearchInspectorContentContext,
         researchFunctionsPresentation: ResearchFunctionsPresentation,
         openResearchFunction: @escaping (ResearchFunctionID) -> Void,
-        openResearchRecord: @escaping () -> Void
+        openResearchRecord: @escaping () -> Void,
+        openComment: @escaping (UUID) -> Void,
+        settle: @escaping (String?) async throws -> Void
     ) {
         self.note = note
         self.controller = controller
@@ -203,6 +226,8 @@ struct ResearchInspectorView: View {
         self.researchFunctionsPresentation = researchFunctionsPresentation
         self.openResearchFunction = openResearchFunction
         self.openResearchRecord = openResearchRecord
+        self.openComment = openComment
+        self.settle = settle
     }
 
     var body: some View {
@@ -216,15 +241,17 @@ struct ResearchInspectorView: View {
                         note: note,
                         context: researchInspectorContentContext
                     )
-                case .connections:
+                case .connect:
                     ConnectionsInspectorView(context: relationshipContext)
-                case .functions:
+                case .actions:
                     ResearchFunctionsInspectorView(
                         presentation: researchFunctionsPresentation,
                         freshness: researchInspectorContentContext.freshness,
                         select: openResearchFunction,
                         openResearchRecord: openResearchRecord,
-                        retryRefresh: researchInspectorContentContext.retryRefresh
+                        openComment: openComment,
+                        retryRefresh: researchInspectorContentContext.retryRefresh,
+                        settle: settle
                     )
                 }
             }
@@ -239,22 +266,18 @@ struct ResearchInspectorView: View {
         ZStack(alignment: .bottom) {
             ScholiumStructuralRule()
 
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(ResearchInspectorMode.allCases) { mode in
-                        InspectorModeButton(
-                            mode: mode,
-                            isSelected: controller.inspector.mode == mode,
-                            focusedMode: $focusedMode,
-                            select: { selectMode(mode) },
-                            move: { moveFocus(from: mode, direction: $0) }
-                        )
-                        .frame(minWidth: 92)
-                    }
+            HStack(spacing: ScholiumMetrics.Apparatus.modeColumnSpacing) {
+                ForEach(ResearchInspectorMode.allCases) { mode in
+                    InspectorModeButton(
+                        mode: mode,
+                        isSelected: controller.inspector.mode == mode,
+                        focusedMode: $focusedMode,
+                        select: { selectMode(mode) },
+                        move: { moveFocus(from: mode, direction: $0) }
+                    )
+                    .frame(minWidth: 0, maxWidth: .infinity)
                 }
-                .frame(minWidth: 276)
             }
-            .scrollIndicators(.hidden)
             .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
         }
         .frame(minHeight: ScholiumMetrics.Apparatus.headerHeight)
@@ -313,9 +336,13 @@ private struct InspectorModeButton: View {
     var body: some View {
         Button(action: select) {
             Text(mode.interfaceTitleResource)
-                .font(.body)
+                .font(
+                    isSelected
+                        ? ScholiumInterfaceTypography.apparatusModeSelected
+                        : ScholiumInterfaceTypography.apparatusMode
+                )
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .minimumScaleFactor(0.9)
                 .frame(
                     maxWidth: .infinity,
                     minHeight: ScholiumMetrics.Apparatus.headerHeight
@@ -348,6 +375,439 @@ private struct InspectorModeButton: View {
 }
 // MARK: - Note Content View
 
+private struct PageAnnotationDraft: Identifiable {
+    let annotationID: UUID?
+    let anchor: ResearcherCommentAnchor?
+    let excerpt: String
+    let text: String
+
+    var id: String {
+        annotationID?.uuidString ?? "new:\(anchor?.utf16Range.lowerBound ?? 0)"
+    }
+}
+
+private struct PageAnnotationEditor: View {
+    let draft: PageAnnotationDraft
+    let isSaving: Bool
+    let save: (String) -> Void
+    let delete: (() -> Void)?
+    let cancel: () -> Void
+
+    @State private var text: String
+    @FocusState private var isFocused: Bool
+
+    init(
+        draft: PageAnnotationDraft,
+        isSaving: Bool,
+        save: @escaping (String) -> Void,
+        delete: (() -> Void)?,
+        cancel: @escaping () -> Void
+    ) {
+        self.draft = draft
+        self.isSaving = isSaving
+        self.save = save
+        self.delete = delete
+        self.cancel = cancel
+        _text = State(initialValue: draft.text)
+    }
+
+    private var normalizedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(draft.excerpt)
+                .font(ScholiumInterfaceTypography.apparatusMetadata)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextEditor(text: $text)
+                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 72, maxHeight: 132)
+                .focused($isFocused)
+                .accessibilityLabel("Annotation")
+
+            HStack(spacing: 10) {
+                if let delete {
+                    Button("Delete", role: .destructive, action: delete)
+                        .buttonStyle(.borderless)
+                }
+                Spacer(minLength: 8)
+                Button("Cancel", action: cancel)
+                    .buttonStyle(.borderless)
+                Button("Save") { save(normalizedText) }
+                    .buttonStyle(.borderless)
+                    .disabled(normalizedText.isEmpty || isSaving)
+            }
+            .font(ScholiumInterfaceTypography.apparatusMetadata)
+        }
+        .padding(12)
+        .frame(width: 232, alignment: .leading)
+        .background(
+            ScholiumColorRole.surfaceBackground.color,
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.07), radius: 9, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.pageAnnotationEditor")
+        .onAppear { isFocused = true }
+    }
+}
+
+/// A Comment is a bounded communication exchange, not page marginalia. The
+/// sheet keeps the selected passage and complete turn sequence visible while
+/// only researcher Finish is allowed to create durable HUD activity.
+private struct CommentExchangeRoute: Identifiable {
+    let id: UUID
+    let anchor: ResearcherCommentAnchor
+    let excerpt: String
+    let exchange: CommentExchange?
+
+    init(anchor: ResearcherCommentAnchor, excerpt: String) {
+        id = UUID()
+        self.anchor = anchor
+        self.excerpt = excerpt
+        exchange = nil
+    }
+
+    init(exchange: CommentExchange) {
+        id = exchange.id
+        anchor = exchange.anchor
+        excerpt = exchange.anchor.selectedText ?? exchange.anchor.quotation
+        self.exchange = exchange
+    }
+}
+
+private struct CommentExchangePanel: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let noteTitle: String
+    let route: CommentExchangeRoute
+    let create: (ResearcherCommentAnchor, String) async throws -> CommentExchange
+    let append: (UUID, CommentExchangeTurnAuthor, String) async throws -> CommentExchange
+    let finish: (UUID) async throws -> CommentExchange
+    let handoff: (String) -> Bool
+    let copyOnly: (String) -> Bool
+    let replyCommand: (UUID) -> String
+    let onFinished: () -> Void
+
+    @State private var exchange: CommentExchange?
+    @State private var researcherMessage = ""
+    @State private var agentReply = ""
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    init(
+        noteTitle: String,
+        route: CommentExchangeRoute,
+        create: @escaping (ResearcherCommentAnchor, String) async throws -> CommentExchange,
+        append: @escaping (UUID, CommentExchangeTurnAuthor, String) async throws -> CommentExchange,
+        finish: @escaping (UUID) async throws -> CommentExchange,
+        handoff: @escaping (String) -> Bool,
+        copyOnly: @escaping (String) -> Bool,
+        replyCommand: @escaping (UUID) -> String,
+        onFinished: @escaping () -> Void
+    ) {
+        self.noteTitle = noteTitle
+        self.route = route
+        self.create = create
+        self.append = append
+        self.finish = finish
+        self.handoff = handoff
+        self.copyOnly = copyOnly
+        self.replyCommand = replyCommand
+        self.onFinished = onFinished
+        _exchange = State(initialValue: route.exchange)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Comment")
+                        .font(.title3.weight(.semibold))
+                    Text(noteTitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(18)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("SELECTED PASSAGE")
+                            .font(ScholiumInterfaceTypography.apparatusLabel)
+                            .tracking(0.7)
+                            .foregroundStyle(.secondary)
+                        Text(route.excerpt)
+                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
+                            .textSelection(.enabled)
+                    }
+
+                    if let exchange {
+                        transcript(exchange)
+                    }
+
+                    exchangeControls
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(ScholiumColorRole.attention.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("scholium.commentExchange.error")
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 520, idealHeight: 640)
+        .accessibilityIdentifier("scholium.commentExchange")
+    }
+
+    @ViewBuilder
+    private var exchangeControls: some View {
+        switch exchange?.status {
+        case nil:
+            researcherComposer(
+                title: "MESSAGE TO AGENT",
+                buttonTitle: "Prepare for Agent…",
+                action: beginOrFollowUp
+            )
+            Text("Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .awaitingReply:
+            agentHandoffControls
+            VStack(alignment: .leading, spacing: 8) {
+                Text("AGENT REPLY")
+                    .font(ScholiumInterfaceTypography.apparatusLabel)
+                    .tracking(0.7)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $agentReply)
+                    .font(.body)
+                    .frame(minHeight: 110)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
+                    }
+                    .accessibilityLabel("Agent reply")
+                HStack {
+                    Spacer()
+                    Button("Record Agent Reply", action: recordAgentReply)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isWorking || normalized(agentReply).isEmpty)
+                }
+            }
+
+        case .responseReady:
+            researcherComposer(
+                title: "FOLLOW UP",
+                buttonTitle: "Follow Up and Open Agent…",
+                action: beginOrFollowUp
+            )
+            HStack {
+                Text("Review the reply. Finish records one Commented activity; Follow Up keeps this exchange open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 16)
+                Button("Finish", action: finishExchange)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("scholium.commentExchange.finish")
+            }
+
+        case .finished:
+            Text("This Comment is finished.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func transcript(_ exchange: CommentExchange) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("EXCHANGE")
+                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .tracking(0.7)
+                .foregroundStyle(.secondary)
+            ForEach(exchange.turns) { turn in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(turn.author == .researcher ? "Researcher" : "Agent")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(turn.text)
+                        .font(.body)
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                }
+                .padding(.vertical, 3)
+                if turn.id != exchange.turns.last?.id {
+                    Divider()
+                }
+            }
+        }
+    }
+
+    private func researcherComposer(
+        title: String,
+        buttonTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .tracking(0.7)
+                .foregroundStyle(.secondary)
+            TextEditor(text: $researcherMessage)
+                .font(.body)
+                .frame(minHeight: 100)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
+                }
+                .accessibilityLabel(title.capitalized)
+            HStack {
+                Spacer()
+                Button(buttonTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .disabled(isWorking || normalized(researcherMessage).isEmpty)
+                    .accessibilityIdentifier("scholium.commentExchange.submitResearcherTurn")
+            }
+        }
+    }
+
+    private var agentHandoffControls: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Button("Copy and Open Agent App…") {
+                    guard let exchange else { return }
+                    if !handoff(agentRequest(for: exchange)) {
+                        errorMessage = "Scholium could not prepare the agent handoff."
+                    }
+                }
+                .buttonStyle(.bordered)
+                Button("Copy Only") {
+                    guard let exchange else { return }
+                    if !copyOnly(agentRequest(for: exchange)) {
+                        errorMessage = "Scholium could not copy the agent request."
+                    }
+                }
+                .buttonStyle(.link)
+            }
+            Text("The exchange is waiting for an agent reply. No activity is added until you review a reply and choose Finish.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func beginOrFollowUp() {
+        let message = normalized(researcherMessage)
+        guard !message.isEmpty else { return }
+        isWorking = true
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                let updated: CommentExchange
+                if let exchange {
+                    updated = try await append(exchange.id, .researcher, message)
+                } else {
+                    updated = try await create(route.anchor, message)
+                }
+                self.exchange = updated
+                researcherMessage = ""
+                isWorking = false
+                if !handoff(agentRequest(for: updated)) {
+                    errorMessage = "The Comment was saved, but Scholium could not prepare the agent handoff."
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+                isWorking = false
+            }
+        }
+    }
+
+    private func recordAgentReply() {
+        guard let exchange else { return }
+        let reply = normalized(agentReply)
+        guard !reply.isEmpty else { return }
+        isWorking = true
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                self.exchange = try await append(exchange.id, .agent, reply)
+                agentReply = ""
+                isWorking = false
+            } catch {
+                errorMessage = error.localizedDescription
+                isWorking = false
+            }
+        }
+    }
+
+    private func finishExchange() {
+        guard let exchange else { return }
+        isWorking = true
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                self.exchange = try await finish(exchange.id)
+                isWorking = false
+                onFinished()
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isWorking = false
+            }
+        }
+    }
+
+    private func agentRequest(for exchange: CommentExchange) -> String {
+        let conversation = exchange.turns.map { turn in
+            let speaker = turn.author == .researcher ? "Researcher" : "Agent"
+            return "\(speaker):\n\(turn.text)"
+        }.joined(separator: "\n\n")
+        return """
+        Respond to a passage-specific research Comment from \(noteTitle).
+
+        Selected passage:
+        \(route.excerpt)
+
+        Exchange:
+        \(conversation)
+
+        Reply to the researcher's latest message. Do not edit the note.
+
+        After composing the response, submit only that response to Scholium through standard input:
+        (replyCommand(exchange.id))
+
+        Replace AGENT_NAME with your agent identity. Do not finish the Comment. The researcher reviews the reply and chooses Finish.
+        """
+    }
+
+    private func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 struct NoteContentView: View {
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @ObservedObject private var controller: DocumentController
@@ -357,6 +817,10 @@ struct NoteContentView: View {
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
+    @State private var annotationDraft: PageAnnotationDraft?
+    @State private var isSavingAnnotation = false
+    @State private var annotationError: String?
+    @State private var commentRoute: CommentExchangeRoute?
 
     init(
         controller: DocumentController,
@@ -453,6 +917,23 @@ struct NoteContentView: View {
             .clipped()
         }
         .scholiumSurface(.document)
+        .overlay(alignment: .topTrailing) {
+            if let annotationDraft {
+                PageAnnotationEditor(
+                    draft: annotationDraft,
+                    isSaving: isSavingAnnotation,
+                    save: { saveAnnotation($0) },
+                    delete: annotationDraft.annotationID == nil
+                        ? nil
+                        : { deleteAnnotation(annotationDraft) },
+                    cancel: { self.annotationDraft = nil }
+                )
+                .padding(.top, 72)
+                .padding(.trailing, 22)
+                .transition(.opacity)
+                .zIndex(4)
+            }
+        }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
             actions.beginSearch(invocation)
         })
@@ -462,14 +943,17 @@ struct NoteContentView: View {
         )
         .focusedSceneValue(
             \.scholiumEditorActions,
-            isEditing ? ScholiumFocusedEditorActions(
-                documentID: editorSession.documentID,
-                isComposing: editorSession.context?.composing == true,
+            ScholiumFocusedEditorActions(
+                documentID: isEditing ? editorSession.documentID : note.relativePath,
+                isComposing: isEditing && editorSession.context?.composing == true,
                 isAvailable: { command in
-                    editorSession.context?.availableCommands.contains(command) == true
+                    isEditing && editorSession.context?.availableCommands.contains(command) == true
                 },
-                canAddComment: {
-                    editorSession.context?.selections.contains(where: \.isNonempty) == true
+                canUseSelectedPassage: {
+                    if isEditing {
+                        return editorSession.context?.selections.contains(where: \.isNonempty) == true
+                    }
+                    return documentSession.readSelection != nil
                 },
                 perform: { command in
                     Task { @MainActor in
@@ -489,8 +973,9 @@ struct NoteContentView: View {
                         }
                     }
                 },
-                addComment: requestResearcherCommentsFromDocument
-            ) : nil
+                addAnnotation: requestAnnotationsFromDocument,
+                startComment: requestCommentFromDocument
+            )
         ))
         .sheet(isPresented: Binding(
             get: { showConflictComparison },
@@ -509,6 +994,21 @@ struct NoteContentView: View {
                     onReloadFromDisk: { reloadFromDisk() }
                 )
             }
+        }
+        .sheet(item: $commentRoute, onDismiss: {
+            actions.clearRequestedCommentExchange()
+        }) { route in
+            CommentExchangePanel(
+                noteTitle: note.title ?? note.displayName,
+                route: route,
+                create: actions.createCommentExchange,
+                append: actions.appendCommentExchangeTurn,
+                finish: actions.finishCommentExchange,
+                handoff: actions.handoffCommentRequest,
+                copyOnly: actions.copyCommentRequest,
+                replyCommand: actions.commentReplyCommand,
+                onFinished: actions.clearRequestedCommentExchange
+            )
         }
         .alert(conflict == nil ? "Save Failed" : "This Note Changed on Disk", isPresented: Binding(
             get: { editError != nil && (conflict == nil || !editorIsComposing) },
@@ -530,6 +1030,14 @@ struct NoteContentView: View {
         } message: {
             Text(editError ?? "")
         }
+        .alert("Annotation Unavailable", isPresented: Binding(
+            get: { annotationError != nil },
+            set: { if !$0 { annotationError = nil } }
+        )) {
+            Button("Dismiss", role: .cancel) { annotationError = nil }
+        } message: {
+            Text(annotationError ?? "")
+        }
         .onChange(of: state.requestedPresentationMode) { _, requested in
             guard let requested else { return }
             selectPresentationMode(requested)
@@ -538,6 +1046,9 @@ struct NoteContentView: View {
         }
         .onChange(of: state.pendingSourceRange) { _, range in
             if range != nil { consumePendingSourceLocation() }
+        }
+        .onChange(of: state.requestedCommentExchangeID) { _, exchangeID in
+            openRequestedCommentExchange(exchangeID)
         }
         .onChange(of: editError) { _, error in
             guard error != nil, !editorIsComposing else { return }
@@ -550,6 +1061,7 @@ struct NoteContentView: View {
             controller.observe(documentSession)
             restorePresentationModeIfAvailable()
             consumePendingPresentationRequest()
+            openRequestedCommentExchange(state.requestedCommentExchangeID)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -656,7 +1168,7 @@ struct NoteContentView: View {
             linkCompletions: [],
             linkCompletionQuery: queryEditorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
-            researcherComments: currentResearcherComments,
+            annotations: currentAnnotations,
             initialScrollFraction: state.initialScrollFraction,
             initialScrollAnchor: editorScrollAnchor,
             onDocumentChange: { updatedSource in
@@ -677,7 +1189,8 @@ struct NoteContentView: View {
             onRequestSearch: {
                 actions.beginSearch(.findInNote(previousScope: state.ordinarySearchScope))
             },
-            onRequestComment: requestResearcherCommentsFromDocument,
+            onRequestAnnotation: requestAnnotationsFromDocument,
+            onRequestComment: requestCommentFromDocument,
             onLinkActivation: { target in
                 if let url = URL(string: target),
                    let scheme = url.scheme?.lowercased(),
@@ -687,8 +1200,8 @@ struct NoteContentView: View {
                     actions.openInternalLink(target)
                 }
             },
-            onCommentActivation: commentingIsAvailable ? { commentID in
-                actions.requestComments(nil, commentID)
+            onAnnotationActivation: commentingIsAvailable ? { annotationID in
+                openAnnotation(annotationID)
             } : nil,
             onScrollFractionChange: {
                 documentSession.observeScrollFraction($0)
@@ -770,21 +1283,24 @@ struct NoteContentView: View {
             presentationCSS: documentPresentationCSS,
             userCSS: state.readCSS,
             configurationRevision: readConfigurationRevision,
-            researcherComments: currentResearcherComments,
+            annotations: currentAnnotations,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             onLinkClick: {
                 actions.openInternalLink($0)
             },
             onOpenExternalURL: actions.openExternalURL,
+            onAnnotationSelection: commentingIsAvailable ? { selection in
+                openAnnotationComposer(for: selection, source: note.rawContent)
+            } : nil,
             onCommentSelection: commentingIsAvailable ? { selection in
-                actions.requestComments(selection, nil)
+                openCommentComposer(for: selection, source: note.rawContent)
             } : nil,
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
             },
-            onCommentActivation: commentingIsAvailable ? { commentID in
-                actions.requestComments(nil, commentID)
+            onAnnotationActivation: commentingIsAvailable ? { annotationID in
+                openAnnotation(annotationID)
             } : nil,
             onRenderingFailure: { reason in
                 actions.enterCSSSafeMode(reason)
@@ -821,8 +1337,8 @@ struct NoteContentView: View {
         .layoutPriority(1)
     }
 
-    private var currentResearcherComments: [ResearcherComment] {
-        state.reviewRecord?.comments ?? []
+    private var currentAnnotations: [AnnotationRecord] {
+        state.annotations
     }
 
     private var editorScrollAnchor: EditorScrollAnchor? {
@@ -840,9 +1356,9 @@ struct NoteContentView: View {
     }
 
     private var readConfigurationRevision: String {
-        let commentRevision = state.reviewRecord.map {
+        let annotationRevision = state.annotations.map {
             "\($0.id.uuidString):\($0.updatedAt.timeIntervalSinceReferenceDate)"
-        } ?? "no-comments"
+        }.joined(separator: ",")
         let previewRevision = documentSession.previewCatalog.map { catalog in
             let targets = catalog.links.map { link in
                 "\(link.sourceSpan.utf16LowerBound)-\(link.sourceSpan.utf16UpperBound):"
@@ -855,7 +1371,7 @@ struct NoteContentView: View {
             String(state.documentTextScale.bitPattern),
             String(state.appearanceCSS.hashValue),
             String(state.readCSS.hashValue),
-            commentRevision,
+            annotationRevision,
             previewRevision,
         ].joined(separator: ":")
     }
@@ -992,13 +1508,84 @@ struct NoteContentView: View {
         }
     }
 
-    private func requestResearcherCommentsFromDocument() {
-        guard commentingIsAvailable else { return }
-        guard isEditing else {
+    private func openAnnotationComposer(
+        for selection: MarkdownReviewSelection,
+        source: String
+    ) {
+        guard let anchor = ResearchFunctionSelectionCapture.anchor(
+            for: selection,
+            in: source,
+            relativePath: note.relativePath
+        ) else {
             actions.notify(
-                "Select a passage in Read, Live Preview, or Source before adding a Comment.",
+                "Scholium could not attach this Annotation to one exact passage.",
                 .information
             )
+            return
+        }
+        annotationDraft = PageAnnotationDraft(
+            annotationID: nil,
+            anchor: anchor,
+            excerpt: selection.excerpt,
+            text: ""
+        )
+    }
+
+    private func openAnnotation(_ annotationID: UUID) {
+        guard let annotation = state.annotations.first(where: { $0.id == annotationID }) else {
+            return
+        }
+        annotationDraft = PageAnnotationDraft(
+            annotationID: annotation.id,
+            anchor: nil,
+            excerpt: annotation.anchor.selectedText ?? annotation.anchor.quotation,
+            text: annotation.text
+        )
+    }
+
+    private func saveAnnotation(_ text: String) {
+        guard let draft = annotationDraft else { return }
+        Task { @MainActor in
+            isSavingAnnotation = true
+            defer { isSavingAnnotation = false }
+            do {
+                if let annotationID = draft.annotationID {
+                    try await actions.updateAnnotation(annotationID, text)
+                } else if let anchor = draft.anchor {
+                    try await actions.createAnnotation(anchor, text)
+                }
+                annotationDraft = nil
+            } catch {
+                annotationError = error.localizedDescription
+            }
+        }
+    }
+
+    private func deleteAnnotation(_ draft: PageAnnotationDraft) {
+        guard let annotationID = draft.annotationID else { return }
+        Task { @MainActor in
+            isSavingAnnotation = true
+            defer { isSavingAnnotation = false }
+            do {
+                try await actions.deleteAnnotation(annotationID)
+                annotationDraft = nil
+            } catch {
+                annotationError = error.localizedDescription
+            }
+        }
+    }
+
+    private func requestAnnotationsFromDocument() {
+        guard commentingIsAvailable else { return }
+        guard isEditing else {
+            guard let selection = documentSession.readSelection else {
+                actions.notify(
+                    "Select a passage in Read, Live Preview, or Source before adding an Annotation.",
+                    .information
+                )
+                return
+            }
+            openAnnotationComposer(for: selection, source: note.rawContent)
             return
         }
         Task { @MainActor in
@@ -1011,13 +1598,13 @@ struct NoteContentView: View {
                     in: currentSource
                 )
                 guard let selection,
-                      ResearchFunctionSelectionCapture.anchor(
+                      let anchor = ResearchFunctionSelectionCapture.anchor(
                           for: selection,
                           in: currentSource,
                           relativePath: note.relativePath
-                      ) != nil else {
+                      ) else {
                     actions.notify(
-                        "Select a passage before adding a Comment. Review or Critique provides the whole-note judgment.",
+                        "Select a passage before adding an Annotation.",
                         .information
                     )
                     editorSession.focus()
@@ -1027,7 +1614,12 @@ struct NoteContentView: View {
                     session: documentSession,
                     target: target
                 )
-                actions.requestComments(selection, nil)
+                annotationDraft = PageAnnotationDraft(
+                    annotationID: nil,
+                    anchor: anchor,
+                    excerpt: selection.excerpt,
+                    text: ""
+                )
             } catch {
                 actions.notify(
                     "Scholium could not capture the current editor selection. Keep editing and try again. \(error.localizedDescription)",
@@ -1035,6 +1627,87 @@ struct NoteContentView: View {
                 )
             }
         }
+    }
+
+    private func requestCommentFromDocument() {
+        guard commentingIsAvailable else { return }
+        guard isEditing else {
+            guard let selection = documentSession.readSelection else {
+                actions.notify(
+                    "Select a passage in Read, Live Preview, or Source before commenting.",
+                    .information
+                )
+                return
+            }
+            openCommentComposer(for: selection, source: note.rawContent)
+            return
+        }
+        Task { @MainActor in
+            do {
+                let currentSource = try await editorSession.currentText(
+                    for: editorSession.bridgeDocumentID
+                )
+                guard let selection = try await editorSession.currentSelection(
+                    for: editorSession.bridgeDocumentID,
+                    in: currentSource
+                ), let anchor = ResearchFunctionSelectionCapture.anchor(
+                    for: selection,
+                    in: currentSource,
+                    relativePath: note.relativePath
+                ) else {
+                    actions.notify("Select a passage before commenting.", .information)
+                    editorSession.focus()
+                    return
+                }
+                try await controller.flushForExternalOperation(
+                    session: documentSession,
+                    target: target
+                )
+                commentRoute = CommentExchangeRoute(
+                    anchor: anchor,
+                    excerpt: selection.excerpt
+                )
+            } catch {
+                actions.notify(
+                    "Scholium could not capture the current editor selection. Keep editing and try again. \(error.localizedDescription)",
+                    .error
+                )
+            }
+        }
+    }
+
+    private func openCommentComposer(
+        for selection: MarkdownReviewSelection,
+        source: String
+    ) {
+        guard let anchor = ResearchFunctionSelectionCapture.anchor(
+            for: selection,
+            in: source,
+            relativePath: note.relativePath
+        ) else {
+            actions.notify(
+                "Scholium could not attach this Comment to one exact passage.",
+                .information
+            )
+            return
+        }
+        commentRoute = CommentExchangeRoute(
+            anchor: anchor,
+            excerpt: selection.excerpt
+        )
+    }
+
+    private func openRequestedCommentExchange(_ exchangeID: UUID?) {
+        guard let exchangeID else { return }
+        guard let exchange = state.commentExchanges.first(where: { $0.id == exchangeID }) else {
+            actions.notify(
+                "The requested Comment is no longer available.",
+                .information
+            )
+            actions.clearRequestedCommentExchange()
+            return
+        }
+        commentRoute = CommentExchangeRoute(exchange: exchange)
     }
 
     private func openResearchFunction(_ function: ResearchFunctionID) {
@@ -1224,26 +1897,26 @@ private struct ConflictComparisonSheet: View {
 
 struct ResearchRecordContext {
     let controller: ResearchController
-    let vaultRole: VaultRole
     let documentRevisions: [String: DocumentFingerprint]
-    let currentReview: @MainActor (String) -> HumanReviewRecord?
-    let loadDialogue: @MainActor (String) async -> [DialogueEntry]
     let loadCritique: @MainActor (String) async -> CritiqueAssociation?
+    let finishDiscussion: @MainActor (UUID) async throws -> Void
+    let setCritiqueFindingDisposition: @MainActor (
+        VaultQualifiedNoteID,
+        UUID,
+        String,
+        CritiqueFindingDispositionDecision,
+        String?,
+        String?,
+        DocumentFingerprint
+    ) async throws -> CritiqueAssociation
+    let completeCritiqueRound: @MainActor (
+        VaultQualifiedNoteID,
+        UUID,
+        DocumentFingerprint
+    ) async throws -> CritiqueAssociation
     let copyText: @MainActor (String) throws -> Void
     let openNote: @MainActor (String) -> Void
     let notify: @MainActor (String) -> Void
-}
-
-private enum DialogueHistorySheetRoute: Identifiable {
-    case followUp(DialogueEntry)
-    case response(DialogueEntry)
-
-    var id: String {
-        switch self {
-        case .followUp(let entry): "follow-up-\(entry.id.uuidString)"
-        case .response(let entry): "response-\(entry.id.uuidString)"
-        }
-    }
 }
 
 struct ResearchRecordView: View {
@@ -1251,13 +1924,11 @@ struct ResearchRecordView: View {
     let note: WindowDocumentLocation
     let context: ResearchRecordContext
 
-    @State private var review: HumanReviewRecord?
-    @State private var dialogue: [DialogueEntry] = []
     @State private var critique: CritiqueAssociation?
-    @State private var pendingDialogueSheet: DialogueHistorySheetRoute?
-    @State private var expandedDialogueEntryIDs: Set<UUID> = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var finishingDiscussionID: UUID?
+    @State private var completingCritiqueRoundID: UUID?
 
     init(
         note: WindowDocumentLocation,
@@ -1280,11 +1951,19 @@ struct ResearchRecordView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        if context.vaultRole.allowsHumanReview { reviewSection }
-                        commentSection
+                        activitySection
+                        if !currentActivityGrants.isEmpty {
+                            writeActivitySection
+                        }
+                        commentExchangeSection
                         functionRunSection
-                        dialogueSection
-                        if context.vaultRole.allowsCritique { critiqueSection }
+                        critiqueSection
+                        if currentLegacyReview != nil {
+                            legacyReviewArchiveSection
+                        }
+                        if !currentLegacyDialogues.isEmpty {
+                            legacyDialogueArchiveSection
+                        }
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1304,30 +1983,6 @@ struct ResearchRecordView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .sheet(item: $pendingDialogueSheet) { route in
-            switch route {
-            case .followUp(let entry):
-                ManualDialogueFollowUpView(
-                    controller: context.controller,
-                    entry: entry
-                ) { updated in
-                    if let index = dialogue.firstIndex(where: { $0.id == updated.id }) {
-                        dialogue[index] = updated
-                    }
-                    pendingDialogueSheet = nil
-                }
-            case .response(let entry):
-                ManualDialogueReplyView(
-                    controller: context.controller,
-                    entry: entry
-                ) { updated in
-                    if let index = dialogue.firstIndex(where: { $0.id == updated.id }) {
-                        dialogue[index] = updated
-                    }
-                    pendingDialogueSheet = nil
-                }
-            }
-        }
     }
 
     private var researchRecordHeader: some View {
@@ -1344,74 +1999,97 @@ struct ResearchRecordView: View {
         .padding(18)
     }
 
-    private var reviewSection: some View {
-        historySection("Human Review", systemImage: "checkmark.seal") {
-            if let review {
-                if let latest = review.latestReview {
-                    HStack {
-                        Label(
-                            latest.qualification == .qualified ? "Qualified" : "Unqualified",
-                            systemImage: latest.qualification == .qualified
-                                ? "checkmark.seal.fill"
-                                : "xmark.seal.fill"
-                        )
-                        .foregroundStyle(latest.qualification == .qualified ? .green : .red)
-                        Spacer()
-                        Text(latest.completedAt.formatted(date: .abbreviated, time: .shortened))
+    private var activitySection: some View {
+        historySection("Research Activity", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90") {
+            if currentActivities.isEmpty {
+                emptyText("No durable research activity is recorded for this note.")
+            } else {
+                ForEach(currentActivities.reversed()) { event in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(event.kind.activityTitle, systemImage: event.kind.activitySymbol)
+                            .font(.subheadline.weight(.semibold))
+                        Text(event.activityDetail)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text(latest.reviewNote)
-                        .textSelection(.enabled)
-                    Text("Bound to SHA-256 \(latest.fingerprint.sha256.prefix(12))…")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                } else if let draft = review.draft {
-                    Label("Review draft saved", systemImage: "square.and.pencil")
-                    if !draft.reviewNote.isEmpty { Text(draft.reviewNote).textSelection(.enabled) }
-                } else {
-                    emptyText("No completed Human Review for this note.")
+                    .padding(.vertical, 3)
+                    if event.id != currentActivities.reversed().first?.id { Divider() }
                 }
-            } else {
-                emptyText("This note has no Human Review.")
             }
         }
     }
 
-    private var commentSection: some View {
-        historySection("Researcher Comments", systemImage: "text.bubble") {
-            if let comments = review?.comments, !comments.isEmpty {
-                ForEach(comments) { comment in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            let anchor = comment.anchor
-                            Text(anchor.state == .needsReattachment
-                                ? "Needs Reattachment — originally line \(anchor.line)"
-                                : (anchor.line == anchor.endLine
-                                    ? "Line \(anchor.line)"
-                                    : "Lines \(anchor.line)–\(anchor.endLine)"))
+    private var commentExchangeSection: some View {
+        historySection("Comments", systemImage: "bubble.left.and.bubble.right") {
+            if currentCommentExchanges.isEmpty {
+                emptyText("No completed communication exchange is recorded for this note.")
+            } else {
+                ForEach(currentCommentExchanges) { exchange in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(exchange.status == .finished ? "Finished" : "In progress")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(anchor.state == .needsReattachment ? Color.orange : Color.secondary)
-                            if comment.resolvedAt != nil {
-                                Text("Resolved")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                        }
-                        Text(comment.text).textSelection(.enabled)
-                        Text(comment.anchor.selectedText ?? comment.anchor.quotation)
-                            .font(ScholiumTypography.swiftUIMonospaceFont(size: 11, relativeTo: .caption))
                             .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .lineLimit(3)
+                        ForEach(exchange.turns) { turn in
+                            Text(turn.text)
+                                .textSelection(.enabled)
+                        }
                     }
                     .padding(.vertical, 3)
-                    if comment.id != comments.last?.id { Divider() }
                 }
-            } else {
-                emptyText("This note has no researcher comments.")
             }
         }
+    }
+
+    private var writeActivitySection: some View {
+        historySection("Write Activities", systemImage: "square.and.pencil") {
+            Text("These records show the frozen authorization and the changes Scholium observed. They do not claim that the agent authored every changed byte.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(currentActivityGrants) { grant in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(grant.writeScope.researchRecordTitle)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 12)
+                        Text(grant.issuedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    recordField("Source", value: grant.origin.title)
+                    recordField("State", value: grant.state.rawValue.capitalized)
+
+                    DisclosureGroup("Frozen write set (\(grant.allowedTargets.count))") {
+                        researchNoteList(grant.allowedTargets)
+                            .padding(.top, 4)
+                    }
+
+                    if let report = grant.completionReport {
+                        if !report.summary.isEmpty {
+                            recordField("Agent report", value: report.summary)
+                        }
+                        completionGroup(
+                            "Confirmed modifications",
+                            notes: report.confirmedModifiedNotes
+                        )
+                        completionGroup(
+                            "Reported without a revision change",
+                            notes: report.unmodifiedNotes
+                        )
+                        completionGroup(
+                            "Changed without report and awaiting attribution",
+                            notes: report.unreportedChangedNotes,
+                            emphasizesAttention: true
+                        )
+                    }
+                }
+                .padding(.vertical, 3)
+                if grant.id != currentActivityGrants.last?.id { Divider() }
+            }
+        }
+        .accessibilityIdentifier("scholium.researchRecord.writeActivities")
     }
 
     private var functionRunSection: some View {
@@ -1419,12 +2097,29 @@ struct ResearchRecordView: View {
             if currentFunctionRuns.isEmpty {
                 emptyText("No Research Function runs are recorded for this note.")
             } else {
-                Text("Run state is shown here without merging Dialogue, Critique, Human Review, Comments, or Fidelity findings.")
+                Text("Run envelopes remain distinct from durable activity and communication records.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ForEach(currentFunctionRuns) { run in
                     VStack(alignment: .leading, spacing: 8) {
                         ResearchFunctionRunStatusView(record: run, showsFunction: true)
+                        if discussionAwaitsResearcherFinish(run) {
+                            Text("Review the agent response above. Finish records one Discussed activity; leaving it open records no activity.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack {
+                                Spacer(minLength: 0)
+                                Button("Finish Discussion") {
+                                    finishDiscussion(run.id)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(finishingDiscussionID != nil)
+                                .accessibilityIdentifier(
+                                    "scholium.researchRecord.finishDiscussion"
+                                )
+                            }
+                        }
                         if let instructions = run.preparedInstructions,
                            run.runState != .complete,
                            run.runState != .cancelled {
@@ -1462,219 +2157,90 @@ struct ResearchRecordView: View {
             }
     }
 
-    private var dialogueSection: some View {
-        historySection("Dialogue", systemImage: "bubble.left.and.bubble.right") {
-            if dialogue.isEmpty {
-                emptyText("No researcher instructions have included this note.")
-            } else {
-                ForEach(dialogue) { entry in
-                    let isExpanded = expandedDialogueEntryIDs.contains(entry.id)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            if isExpanded {
-                                expandedDialogueEntryIDs.remove(entry.id)
-                            } else {
-                                expandedDialogueEntryIDs.insert(entry.id)
-                            }
-                        } label: {
-                            HStack(spacing: 7) {
-                                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .frame(width: 12)
-                                    .accessibilityHidden(true)
-                                Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                Spacer(minLength: 0)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(
-                            "Dialogue from \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))"
-                        )
-                        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-                        .accessibilityHint(isExpanded ? "Collapses this Dialogue entry" : "Expands this Dialogue entry")
-                        .accessibilityIdentifier("scholium.dialogue.entryDisclosure")
-
-                        if isExpanded {
-                            VStack(alignment: .leading, spacing: 8) {
-                        DialogueTurnRow(
-                            id: entry.id,
-                            participant: "Researcher",
-                            role: "Initial Comment",
-                            scope: "Overall",
-                            text: entry.instruction,
-                            createdAt: entry.createdAt,
-                            systemImage: "person"
-                        )
-                        if let destination = entry.requestedDestination {
-                            LabeledContent("Requested Destination") {
-                                Text(destination)
-                                    .multilineTextAlignment(.trailing)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                        DisclosureGroup("Selected Notes (\(entry.selectedNotes.count))") {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(entry.selectedNotes) { selectedNote in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(selectedNote.title)
-                                            .font(.subheadline.weight(.medium))
-                                        Text("\(selectedNote.vaultName) — \(selectedNote.relativePath)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                        if let kind = selectedNote.kind {
-                                            Text("Kind: \(kind)")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.top, 4)
-                        }
-                        if let linkedNoteSummary = entry.linkedNoteSummary {
-                            DisclosureGroup("Linked-Note Context") {
-                                Text(linkedNoteSummary)
-                                    .font(.caption)
-                                    .textSelection(.enabled)
-                                    .padding(.top, 3)
-                            }
-                        }
-                        if !entry.includedComments.isEmpty {
-                            Divider()
-                            Text("Included Comments")
-                                .font(.subheadline.weight(.semibold))
-                            ForEach(entry.includedComments) { includedComment in
-                                VStack(alignment: .leading, spacing: 3) {
-                                    let sourceNote = includedComment.note
-                                    Text(sourceNote.title)
-                                        .font(.subheadline.weight(.medium))
-                                    Text("\(sourceNote.vaultName) — \(sourceNote.relativePath)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .textSelection(.enabled)
-                                    Text("Note ID: \(sourceNote.noteID.uuidString)")
-                                        .font(ScholiumTypography.swiftUIMonospaceFont(
-                                            size: 10,
-                                            relativeTo: .caption
-                                        ))
-                                        .foregroundStyle(.tertiary)
-                                        .textSelection(.enabled)
-                                    Text(includedComment.comment.text)
-                                        .textSelection(.enabled)
-                                    Text(
-                                        "Lines \(includedComment.comment.anchor.line)–\(includedComment.comment.anchor.endLine)"
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 3)
-                            }
-                        }
-                        let chronologicalTurns = entry.chronologicalTurns
-                        if !chronologicalTurns.isEmpty {
-                            Divider()
-                            Text("Follow-up Exchange")
-                                .font(.subheadline.weight(.semibold))
-                                .accessibilityAddTraits(.isHeader)
-                        }
-                        ForEach(chronologicalTurns) { turn in
-                            switch turn {
-                            case .researcher(let comment):
-                                DialogueTurnRow(
-                                    id: comment.id,
-                                    participant: "Researcher",
-                                    role: "Follow-up Comment",
-                                    scope: dialogueScope(
-                                        noteID: comment.noteID,
-                                        commentID: comment.commentID,
-                                        in: entry
-                                    ),
-                                    text: comment.text,
-                                    createdAt: comment.createdAt,
-                                    systemImage: "person"
-                                )
-                            case .agent(let reply):
-                                DialogueTurnRow(
-                                    id: reply.id,
-                                    participant: reply.agentName.isEmpty ? "Agent" : reply.agentName,
-                                    role: "Agent Response",
-                                    scope: dialogueScope(
-                                        noteID: reply.noteID,
-                                        commentID: reply.commentID,
-                                        in: entry
-                                    ),
-                                    text: reply.text,
-                                    createdAt: reply.createdAt,
-                                    systemImage: "sparkles"
-                                )
-                            }
-                        }
-                        if !entry.preparedInstructions.isEmpty {
-                            DisclosureGroup("Prepared Instructions") {
-                            VStack(alignment: .leading, spacing: 7) {
-                                Text(entry.preparedInstructions)
-                                    .font(ScholiumTypography.swiftUIMonospaceFont(
-                                        size: 11,
-                                        relativeTo: .caption
-                                    ))
-                                    .textSelection(.enabled)
-                                Button {
-                                    do {
-                                        try context.copyText(entry.preparedInstructions)
-                                        context.notify("Instructions copied")
-                                    } catch {
-                                        errorMessage = error.localizedDescription
-                                    }
-                                } label: {
-                                    Label("Copy Instructions", systemImage: "doc.on.doc")
-                                }
-                                .controlSize(.small)
-                            }
-                            .padding(.top, 4)
-                            }
-                        }
-                        HStack {
-                            Button {
-                                pendingDialogueSheet = .followUp(entry)
-                            } label: {
-                                Label("Add Follow-up Comment…", systemImage: "plus.bubble")
-                            }
-                            .accessibilityIdentifier("scholium.dialogue.addFollowUp")
-
-                            Button {
-                                pendingDialogueSheet = .response(entry)
-                            } label: {
-                                Label("Record Agent Response…", systemImage: "bubble.left.and.bubble.right")
-                            }
-                            .accessibilityIdentifier("scholium.dialogue.recordResponse")
-                        }
-                        .controlSize(.small)
-                            }
-                            .padding(.leading, 19)
-                        }
-                    }
-                }
-            }
+    private var currentActivityGrants: [ResearchActivityGrant] {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else {
+            return []
         }
-        .accessibilityIdentifier("scholium.researchRecord.dialogueSection")
+        return (researchController.records?.activityGrants ?? [])
+            .filter { grant in
+                grant.origin.noteID == noteID
+                    || grant.allowedTargets.contains { $0.noteID == noteID }
+            }
+            .sorted {
+                if $0.issuedAt != $1.issuedAt { return $0.issuedAt > $1.issuedAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
     }
 
-    private func dialogueScope(
-        noteID: UUID?,
-        commentID: UUID?,
-        in entry: DialogueEntry
-    ) -> String {
-        if let commentID,
-           let included = entry.includedComments.first(where: { $0.comment.id == commentID }) {
-            return "Comment in \(included.note.title)"
+    private var currentActivities: [ResearchActivityEvent] {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else { return [] }
+        return (researchController.records?.activityEvents ?? [])
+            .filter { $0.note.noteID == noteID }
+            .sorted { $0.occurredAt < $1.occurredAt }
+    }
+
+    private var currentCommentExchanges: [CommentExchange] {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else { return [] }
+        return (researchController.records?.commentExchanges ?? [])
+            .filter { $0.note.noteID == noteID }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var currentPendingStates: [PendingResearchState] {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else { return [] }
+        return (researchController.records?.pendingResearchStates ?? [])
+            .filter { $0.noteID == noteID }
+    }
+
+    private var currentLegacyReview: HumanReviewRecord? {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else {
+            return nil
         }
-        if let noteID,
-           let selected = entry.selectedNotes.first(where: { $0.noteID == noteID }) {
-            return selected.title
+        return researchController.records?.legacyHumanReviews.first {
+            $0.id == noteID
         }
-        return "Overall"
+    }
+
+    private var currentLegacyDialogues: [DialogueEntry] {
+        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else {
+            return []
+        }
+        return (researchController.records?.dialogues ?? [])
+            .filter { entry in
+                entry.functionSnapshot == nil
+                    && (entry.selectedNotes.contains { $0.noteID == noteID }
+                        || entry.includedComments.contains { $0.note.noteID == noteID })
+            }
+            .sorted {
+                if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+    }
+
+    private func discussionAwaitsResearcherFinish(
+        _ run: ResearchFunctionRecordProjection
+    ) -> Bool {
+        guard run.snapshot.request.function == .discuss,
+              run.completion?.state == .complete else { return false }
+        return currentPendingStates.contains {
+            $0.kind == .responseReady
+                && $0.route == .discuss
+                && $0.activityID == run.id
+        }
+    }
+
+    private func finishDiscussion(_ runID: UUID) {
+        guard finishingDiscussionID == nil else { return }
+        finishingDiscussionID = runID
+        Task { @MainActor in
+            defer { finishingDiscussionID = nil }
+            do {
+                try await context.finishDiscussion(runID)
+                context.notify("Discussion finished")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private var critiqueSection: some View {
@@ -1712,18 +2278,75 @@ struct ResearchRecordView: View {
 
                 if !critique.rounds.isEmpty {
                     DisclosureGroup("Request Rounds (\(critique.rounds.count))") {
-                        VStack(alignment: .leading, spacing: 7) {
+                        VStack(alignment: .leading, spacing: 14) {
                             ForEach(critique.rounds.reversed()) { round in
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 9) {
                                     Text("\(round.scope.rawValue) — \(round.requestedAt.formatted(date: .abbreviated, time: .shortened))")
                                         .font(.subheadline)
-                                    HStack(spacing: 5) {
-                                        Text("SHA-256 \(round.targetFingerprint.sha256.prefix(12))…")
-                                    }
+                                    Text("SHA-256 \(round.targetFingerprint.sha256.prefix(12))…")
                                     .font(.caption.monospaced())
                                     .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
+
+                                    if let completedAt = round.completedAt {
+                                        Text("Round completed \(completedAt.formatted(date: .abbreviated, time: .shortened))")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else if round.actionableFindings.isEmpty {
+                                        Text("No fixed actionable findings are available for this round. Older rounds are kept as read-only history and are not inferred as addressed.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    } else {
+                                        ForEach(round.actionableFindings) { finding in
+                                            CritiqueFindingDispositionRow(
+                                                finding: finding,
+                                                existing: round.findingDispositions.first {
+                                                    $0.findingID == finding.id
+                                                },
+                                                workRevisionChanged: context.documentRevisions[
+                                                    critique.workRelativePath
+                                                ] != round.targetFingerprint,
+                                                save: {
+                                                    decision,
+                                                    rationale,
+                                                    noTextChangeRationale in
+                                                    try await saveCritiqueDisposition(
+                                                        critique: critique,
+                                                        round: round,
+                                                        finding: finding,
+                                                        decision: decision,
+                                                        rationale: rationale,
+                                                        noTextChangeRationale: noTextChangeRationale
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        HStack {
+                                            Text("Complete Round is available only after every finding has a valid disposition.")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            Spacer(minLength: 12)
+                                            Button("Complete Round") {
+                                                completeCritiqueRound(
+                                                    critique: critique,
+                                                    round: round
+                                                )
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(
+                                                !round.isReadyToComplete
+                                                    || completingCritiqueRoundID != nil
+                                            )
+                                            .accessibilityIdentifier(
+                                                "scholium.researchRecord.completeCritiqueRound"
+                                            )
+                                        }
+                                    }
                                 }
+                                if round.id != critique.rounds.first?.id { Divider() }
                             }
                         }
                         .padding(.top, 5)
@@ -1733,6 +2356,198 @@ struct ResearchRecordView: View {
                 emptyText("No Critique is associated with this Work.")
             }
         }
+    }
+
+    private var legacyReviewArchiveSection: some View {
+        historySection("Earlier Review Archive", systemImage: "archivebox") {
+            Text("Read-only compatibility history. Earlier Review and Qualification do not become Settlement or current research activity.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let review = currentLegacyReview {
+                ForEach(review.completedReviews.reversed()) { completed in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(completed.qualification.legacyArchiveTitle)
+                                .font(.subheadline.weight(.semibold))
+                            Spacer(minLength: 12)
+                            Text(completed.completedAt.formatted(
+                                date: .abbreviated,
+                                time: .shortened
+                            ))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        if !completed.reviewNote.isEmpty {
+                            Text(completed.reviewNote)
+                                .textSelection(.enabled)
+                        }
+                        Text("Revision SHA-256 \(completed.fingerprint.sha256.prefix(12))…")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    .padding(.vertical, 3)
+                }
+
+                if let draft = review.draft {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Unfinished earlier Review")
+                            .font(.subheadline.weight(.semibold))
+                        Text(draft.reviewNote.isEmpty ? "No Review Note was saved." : draft.reviewNote)
+                            .textSelection(.enabled)
+                        Text("This draft remains read-only and creates no current state.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 3)
+                }
+            }
+        }
+        .accessibilityIdentifier("scholium.researchRecord.legacyReviewArchive")
+    }
+
+    private var legacyDialogueArchiveSection: some View {
+        historySection("Earlier Dialogue Archive", systemImage: "archivebox") {
+            Text("Read-only compatibility history. Scholium does not infer Commented or Discussed activity from these records.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(currentLegacyDialogues) { entry in
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !entry.instruction.isEmpty {
+                        recordField("Researcher request", value: entry.instruction)
+                    }
+                    ForEach(entry.chronologicalTurns) { turn in
+                        switch turn {
+                        case .researcher(let followUp):
+                            recordField("Researcher follow-up", value: followUp.text)
+                        case .agent(let reply):
+                            recordField(
+                                reply.agentName.isEmpty ? "Agent reply" : reply.agentName,
+                                value: reply.text
+                            )
+                        }
+                    }
+                }
+                .padding(.vertical, 3)
+                if entry.id != currentLegacyDialogues.last?.id { Divider() }
+            }
+        }
+        .accessibilityIdentifier("scholium.researchRecord.legacyDialogueArchive")
+    }
+
+    @ViewBuilder
+    private func completionGroup(
+        _ title: String,
+        notes: [ResearchActivityNoteReference],
+        emphasizesAttention: Bool = false
+    ) -> some View {
+        if !notes.isEmpty {
+            DisclosureGroup("\(title) (\(notes.count))") {
+                researchNoteList(notes, emphasizesAttention: emphasizesAttention)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private func researchNoteList(
+        _ notes: [ResearchActivityNoteReference],
+        emphasizesAttention: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(notes) { target in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(target.role.rawValue.capitalized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(
+                            emphasizesAttention
+                                ? ScholiumColorRole.attention.color
+                                : .secondary
+                        )
+                        .frame(width: 58, alignment: .leading)
+                    Text(target.title)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private func recordField(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @MainActor
+    private func saveCritiqueDisposition(
+        critique: CritiqueAssociation,
+        round: CritiqueRound,
+        finding: CritiqueFinding,
+        decision: CritiqueFindingDispositionDecision,
+        rationale: String?,
+        noTextChangeRationale: String?
+    ) async throws {
+        guard let workNote = workNoteID(for: critique),
+              let revision = context.documentRevisions[critique.workRelativePath] else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The current Work revision is unavailable."
+            )
+        }
+        self.critique = try await context.setCritiqueFindingDisposition(
+            workNote,
+            round.id,
+            finding.id,
+            decision,
+            rationale,
+            noTextChangeRationale,
+            revision
+        )
+    }
+
+    private func completeCritiqueRound(
+        critique: CritiqueAssociation,
+        round: CritiqueRound
+    ) {
+        guard completingCritiqueRoundID == nil,
+              let workNote = workNoteID(for: critique),
+              let revision = context.documentRevisions[critique.workRelativePath] else { return }
+        completingCritiqueRoundID = round.id
+        Task { @MainActor in
+            defer { completingCritiqueRoundID = nil }
+            do {
+                self.critique = try await context.completeCritiqueRound(
+                    workNote,
+                    round.id,
+                    revision
+                )
+                context.notify("Critique round completed")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func workNoteID(
+        for critique: CritiqueAssociation
+    ) -> VaultQualifiedNoteID? {
+        guard let vaultID = note.workspaceSnapshot?.id.vaultID else { return nil }
+        return VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: critique.workRelativePath
+        )
     }
 
     private func historySection<Content: View>(
@@ -1758,329 +2573,171 @@ struct ResearchRecordView: View {
     @MainActor
     private func reload() async {
         isLoading = true
-        review = context.currentReview(note.relativePath)
-        async let loadedDialogue = context.loadDialogue(note.relativePath)
         async let loadedCritique = context.loadCritique(note.relativePath)
-        dialogue = await loadedDialogue
         critique = await loadedCritique
         isLoading = false
     }
 }
 
-private struct DialogueTurnRow: View {
-    let id: UUID
-    let participant: String
-    let role: String
-    let scope: String
-    let text: String
-    let createdAt: Date
-    let systemImage: String
+private struct CritiqueFindingDispositionRow: View {
+    let finding: CritiqueFinding
+    let existing: CritiqueFindingDisposition?
+    let workRevisionChanged: Bool
+    let save: @MainActor (
+        CritiqueFindingDispositionDecision,
+        String?,
+        String?
+    ) async throws -> Void
+
+    @State private var decision: CritiqueFindingDispositionDecision
+    @State private var rationale: String
+    @State private var noTextChangeRationale: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(
+        finding: CritiqueFinding,
+        existing: CritiqueFindingDisposition?,
+        workRevisionChanged: Bool,
+        save: @escaping @MainActor (
+            CritiqueFindingDispositionDecision,
+            String?,
+            String?
+        ) async throws -> Void
+    ) {
+        self.finding = finding
+        self.existing = existing
+        self.workRevisionChanged = workRevisionChanged
+        self.save = save
+        _decision = State(initialValue: existing?.decision ?? .accept)
+        _rationale = State(initialValue: existing?.rationale ?? "")
+        _noTextChangeRationale = State(
+            initialValue: existing?.noTextChangeRationale ?? ""
+        )
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline) {
-                Label(participant, systemImage: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                Text(role)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(scope)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(finding.title)
+                        .font(.callout.weight(.semibold))
+                    Text(finding.judgment.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                Picker("Disposition", selection: $decision) {
+                    Text("Accept").tag(CritiqueFindingDispositionDecision.accept)
+                    Text("Reject").tag(CritiqueFindingDispositionDecision.reject)
+                    Text("Rebut").tag(CritiqueFindingDispositionDecision.rebut)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 108)
             }
-            Text(text)
-                .textSelection(.enabled)
-            Text(createdAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+
+            TextField("Rationale (optional)", text: $rationale, axis: .vertical)
+                .lineLimit(1...3)
+
+            if decision == .accept, !workRevisionChanged {
+                TextField(
+                    "Why no text change is required",
+                    text: $noTextChangeRationale,
+                    axis: .vertical
+                )
+                .lineLimit(1...3)
+                Text("The Work still matches the Critique target revision, so Accept requires this explanation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(ScholiumColorRole.attention.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                if let existing {
+                    Text("Saved as \(existing.decision.interfaceTitle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button(existing == nil ? "Save Disposition" : "Update Disposition") {
+                    persist()
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    isSaving
+                        || (decision == .accept
+                            && !workRevisionChanged
+                            && noTextChangeRationale.trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            ).isEmpty)
+                )
+            }
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("scholium.dialogue.turn.\(id.uuidString)")
+        .padding(.vertical, 5)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func persist() {
+        guard !isSaving else { return }
+        isSaving = true
+        errorMessage = nil
+        Task { @MainActor in
+            defer { isSaving = false }
+            do {
+                try await save(
+                    decision,
+                    normalized(rationale),
+                    decision == .accept && !workRevisionChanged
+                        ? normalized(noTextChangeRationale)
+                        : nil
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func normalized(_ value: String) -> String? {
+        let result = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? nil : result
     }
 }
 
-private enum ManualDialogueTarget: Hashable, Identifiable {
-    case overall
-    case note(UUID)
-    case comment(UUID)
-
-    var id: String {
+private extension CritiqueFindingDispositionDecision {
+    var interfaceTitle: String {
         switch self {
-        case .overall: "overall"
-        case .note(let id): "note:\(id.uuidString)"
-        case .comment(let id): "comment:\(id.uuidString)"
+        case .accept: "Accept"
+        case .reject: "Reject"
+        case .rebut: "Rebut"
         }
     }
 }
 
-private struct ManualDialogueFollowUpView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let controller: ResearchController
-    let entry: DialogueEntry
-    let onSaved: (DialogueEntry) -> Void
-
-    @State private var text = ""
-    @State private var target: ManualDialogueTarget = .overall
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    private var targetOptions: [ManualDialogueTarget] {
-        [.overall]
-            + entry.selectedNotes.map { .note($0.noteID) }
-            + entry.includedComments.map { .comment($0.comment.id) }
-    }
-
-    private var canSave: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "plus.bubble")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Add Follow-up Comment")
-                        .font(.title2.weight(.semibold))
-                    Text("Continue the scholarly exchange without changing the selected notes or creating agent instructions.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(18)
-
-            Divider()
-
-            Form {
-                Picker("Comment Applies To", selection: $target) {
-                    ForEach(targetOptions) { option in
-                        Text(dialogueTargetLabel(option, in: entry)).tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                LabeledContent("Comment") {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 150)
-                        .padding(5)
-                        .background(
-                            Color(nsColor: .textBackgroundColor),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .accessibilityLabel("Follow-up Comment")
-                        .accessibilityIdentifier("scholium.dialogue.followUpText")
-                }
-            }
-            .formStyle(.grouped)
-
-            Divider()
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Add Comment") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave)
-                    .accessibilityIdentifier("scholium.dialogue.saveFollowUp")
-            }
-            .padding(16)
-        }
-        .frame(minWidth: 0, idealWidth: 640, minHeight: 430, idealHeight: 500)
-        .alert("Could Not Add Follow-up Comment", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("Keep Editing", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
-    }
-
-    private func save() {
-        guard canSave else { return }
-        let targetIDs = dialogueTargetIDs(target, in: entry)
-        isSaving = true
-        Task {
-            do {
-                let updated = try await controller.appendDialogueFollowUpComment(
-                    DialogueFollowUpComment(
-                        text: text,
-                        noteID: targetIDs.noteID,
-                        commentID: targetIDs.commentID
-                    ),
-                    to: entry.id
-                )
-                onSaved(updated)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
+private extension ResearchWriteScope {
+    var researchRecordTitle: String {
+        switch self {
+        case .currentNote: "Current Note"
+        case .selectedNotes: "Selected Notes"
+        case .analysesAndTopics: "Analyses and Topics"
+        case .entireTriptych: "Entire Triptych"
         }
     }
 }
 
-private struct ManualDialogueReplyView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let controller: ResearchController
-    let entry: DialogueEntry
-    let onSaved: (DialogueEntry) -> Void
-
-    @State private var agentName = "Agent"
-    @State private var text = ""
-    @State private var target: ManualDialogueTarget = .overall
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    private var targetOptions: [ManualDialogueTarget] {
-        [.overall]
-            + entry.selectedNotes.map { .note($0.noteID) }
-            + entry.includedComments.map { .comment($0.comment.id) }
-    }
-
-    private var canSave: Bool {
-        !agentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !isSaving
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Record Agent Response")
-                        .font(.title2.weight(.semibold))
-                    Text("Store a response returned outside the local Scholium CLI in this Dialogue entry.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(18)
-
-            Divider()
-
-            Form {
-                TextField("Agent Name", text: $agentName)
-                    .accessibilityIdentifier("scholium.dialogue.agentName")
-                Picker("Reply Addresses", selection: $target) {
-                    ForEach(targetOptions) { option in
-                        Text(dialogueTargetLabel(option, in: entry)).tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                LabeledContent("Response") {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 150)
-                        .padding(5)
-                        .background(
-                            Color(nsColor: .textBackgroundColor),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .accessibilityLabel("Agent response")
-                        .accessibilityIdentifier("scholium.dialogue.responseText")
-                }
-            }
-            .formStyle(.grouped)
-
-            Divider()
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Record Response") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave)
-                    .accessibilityIdentifier("scholium.dialogue.saveResponse")
-            }
-            .padding(16)
+private extension NoteQualification {
+    var legacyArchiveTitle: String {
+        switch self {
+        case .qualified: "Earlier Qualified Review"
+        case .unqualified: "Earlier Unqualified Review"
         }
-        .frame(minWidth: 0, idealWidth: 640, minHeight: 430, idealHeight: 500)
-        .alert("Could Not Record Agent Response", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("Keep Editing", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
-    }
-
-    private func save() {
-        guard canSave else { return }
-        let targetIDs = dialogueTargetIDs(target, in: entry)
-
-        isSaving = true
-        Task {
-            do {
-                let updated = try await controller.appendDialogueReply(
-                    DialogueReply(
-                        agentName: agentName,
-                        text: text,
-                        noteID: targetIDs.noteID,
-                        commentID: targetIDs.commentID
-                    ),
-                    to: entry.id
-                )
-                onSaved(updated)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
-        }
-    }
-}
-
-private func dialogueTargetLabel(
-    _ target: ManualDialogueTarget,
-    in entry: DialogueEntry
-) -> String {
-    switch target {
-    case .overall:
-        return "Overall instruction"
-    case .note(let noteID):
-        return entry.selectedNotes.first(where: { $0.noteID == noteID })
-            .map { "Note: \($0.title)" }
-            ?? "Selected note"
-    case .comment(let commentID):
-        guard let included = entry.includedComments.first(where: {
-            $0.comment.id == commentID
-        }) else { return "Researcher Comment" }
-        return "Comment in \(included.note.title): \(included.comment.text)"
-    }
-}
-
-private func dialogueTargetIDs(
-    _ target: ManualDialogueTarget,
-    in entry: DialogueEntry
-) -> (noteID: UUID?, commentID: UUID?) {
-    switch target {
-    case .overall:
-        return (nil, nil)
-    case .note(let id):
-        return (id, nil)
-    case .comment(let id):
-        let noteID = entry.includedComments.first(where: {
-            $0.comment.id == id
-        })?.note.noteID
-        return (noteID, id)
     }
 }
 
@@ -2103,9 +2760,9 @@ private func dialogueTargetIDs(
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
         propertiesConfiguration: nil,
-        reviewRecord: nil,
-        reviewDisplayState: .notReviewed,
-        changedSinceReview: false,
+        annotations: [],
+        commentExchanges: [],
+        requestedCommentExchangeID: nil,
         canComment: false,
         canEdit: false,
         isManagedCritique: false,
@@ -2129,7 +2786,29 @@ private func dialogueTargetIDs(
         clearRequestedPresentationMode: {},
         clearPendingSourceLine: {},
         clearPendingSourceRange: {},
-        requestComments: { _, _ in },
+        createAnnotation: { _, _ in },
+        updateAnnotation: { _, _ in },
+        deleteAnnotation: { _ in },
+        createCommentExchange: { anchor, text in
+            CommentExchange(
+                note: ResearchActivityNoteReference(
+                    noteID: UUID(),
+                    note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: note.relativePath),
+                    role: .topic,
+                    title: note.displayName
+                ),
+                anchor: anchor,
+                turns: [CommentExchangeTurn(author: .researcher, text: text)]
+            )
+        },
+        appendCommentExchangeTurn: { _, _, _ in throw CancellationError() },
+        finishCommentExchange: { _ in throw CancellationError() },
+        clearRequestedCommentExchange: {},
+        handoffCommentRequest: { _ in true },
+        copyCommentRequest: { _ in true },
+        commentReplyCommand: { id in
+            "scholium comment reply \(id.uuidString) --agent \"AGENT_NAME\" --from -"
+        },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },

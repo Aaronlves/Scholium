@@ -237,18 +237,18 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     Requested destination:
     {{requested_destination}}
 
-    Dialogue boundary:
+    Discuss boundary:
     {{editing_rules}}
     The selected Target and contextual Materials are read-only. Inspect their current
     revisions before relying on them. If the request requires changing the Target,
-    stop Dialogue mutation and prepare Develop for an Analysis or Topic, or Revise
+    stop the Discuss exchange and prepare Develop for an Analysis or Topic, or Revise
     for a Work, through Scholium's Research Function API. Treat fingerprints as
     revision checks, not permission tokens. Neutral links and transitive paths are
     not evidence.
 
     Closing response:
     Conclude with a concise attributed academic result. Identify any unresolved
-    question, warranted promotion, or required researcher review. Dialogue itself
+    question, warranted promotion, or required researcher review. Discuss itself
     creates no checkpoint and authorizes no research-note mutation.
     """
 
@@ -430,7 +430,7 @@ public enum TriptychControlError: LocalizedError, Sendable {
         case .invalidManifest:
             return "The Triptych manifest is missing or does not match the selected vaults."
         case .invalidDialogueResponseProfile(let reason):
-            return "The Dialogue response profile could not be read safely. \(reason)"
+            return "The Discuss response profile could not be read safely. \(reason)"
         case .unsupportedImport(let path):
             return "Only regular Markdown files can be imported: \(path)"
         case .invalidUnclassifiedPath(let path):

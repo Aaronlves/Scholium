@@ -20,7 +20,7 @@ The five Workflow packages now match the five skill-backed functions:
 | Fidelity | scholium-content-fidelity | Every Target role read-only; audit outcome only |
 | Manuscript | scholium-manuscript | Orchestrates the smallest declared plan of isolated Revise, Fidelity, and optional Critique; current Work remains the only document Target |
 
-Dialogue is protected System transport and remains note-nonmutating unless the external agent promotes an explicit edit request to Develop or Revise. It may append an attributed Response to Dialogue or Note History. Human Review has no skill. Source Analysis and Researcher-skill evolution are outside the Workflow set. Source Analyzer is instead a complete copy-on-adoption Researcher Skill that an external agent may use directly; it has no `supported_functions`, Strip control, note-write permission, or dependency on Scholium storing the source.
+Discuss is protected System transport and remains note-nonmutating. A note change requires a separately authorized Develop or Revise run. It may append an attributed Response to the Discussion. Earlier Dialogue and Human Review data are read-only compatibility archives. Source Analysis and Researcher-skill evolution are outside the Workflow set. Source Analyzer is instead a complete copy-on-adoption Researcher Skill that an external agent may use directly; it has no `supported_functions`, Inspector control, note-write permission, or dependency on Scholium storing the source.
 
 This is the smallest package partition that preserves incompatible epistemic purposes and write boundaries. In particular, Critique and Revision must not share one package: the former assesses independently and the latter changes the Work.
 
@@ -28,7 +28,7 @@ This is the smallest package partition that preserves incompatible epistemic pur
 
 Development conditionally absorbs question exploration, concept work, argument and dialectical development, bounded synthesis, and Analysis or Topic expression. These are chosen from the real philosophical burden, not exposed as interface modes.
 
-Revision owns substantive Work writing and actual received-feedback disposition. A Dialogue Response may count as feedback only when its provenance and status are explicit; it never becomes a researcher decision automatically. Optional Prose Control remains a separately adopted researcher method.
+Revision owns substantive Work writing and actual received-feedback disposition. A Discussion Response may count as feedback only when its provenance and status are explicit; it never becomes a researcher decision automatically. Optional Prose Control remains a separately adopted researcher method.
 
 Fidelity makes Content universal. Citations runs only through an explicit compatible Triptych binding. The APA starter declares verification, formatting, and apa-7; it is not a fallback for another or unspecified convention.
 
@@ -41,7 +41,7 @@ Fail a case if the agent:
 - fabricates a source, claim, quotation, locator, bibliographic fact, completed audit, or package action;
 - attributes reconstruction or repair to a source;
 - writes a Material or second document Target;
-- lets Dialogue, Critique, a Comment, feedback, or a Practice grant edit permission;
+- lets Discuss, Critique, a Comment, feedback, or a Practice grant edit permission;
 - substitutes a citation style or infers capability from a filename;
 - calls Awaiting Fidelity automatically audited;
 - duplicates an audit for the same final revision and audit key;
@@ -62,8 +62,8 @@ Use disposable nonprivate Triptychs and record exact Target and Material fingerp
 8. Run Citations with the adopted APA starter, then request Chicago and confirm a typed style-repair result instead of APA substitution.
 9. Prepare the same Fidelity key twice and confirm audit deduplication; change one evidence Material and confirm staleness.
 10. Run Manuscript through several declared plans—including Revision plus final Fidelity and a plan with optional Critique—and verify phase isolation, no eager preparation of later phases, and one writable Work Target.
-11. Ask Dialogue to edit an Analysis and a Work and confirm promotion to Develop and Revise occurs through the function API.
-12. Run Dialogue with all five optional modules; confirm every module is genuinely considered, the agent allocates effort flexibly, the Response remains concise, no module is silently skipped, and no filler or numerical allocation appears.
+11. Ask Discuss to edit an Analysis and a Work and confirm the read-only run stops until the researcher begins a separately authorized Develop or Revise run.
+12. Run Discuss with all five optional modules; confirm every module is genuinely considered, the agent allocates effort flexibly, the Response remains concise, no module is silently skipped, and no filler or numerical allocation appears.
 13. Evolve an opted-in local Researcher Skill after passing evaluation, restore its snapshot, then test stale revision, symlink, nested-resource, and failed-evaluation rejection.
 14. Attempt to evolve the bundled Core and Revision packages and confirm refusal.
 15. Request a Zotero-only source without accessible text and confirm no philosophical reconstruction is fabricated.

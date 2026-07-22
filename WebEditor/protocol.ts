@@ -84,7 +84,7 @@ export type EditorOperation =
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkCompletions"; value: unknown[]}
   | {type: "setLinkPreviews"; value: unknown[]}
-  | {type: "setResearcherComments"; value: unknown[]}
+  | {type: "setPageAnnotations"; value: unknown[]}
   | {type: "showPreview"}
   | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
@@ -125,7 +125,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkCompletions", "setLinkPreviews", "setResearcherComments", "showPreview", "showPreviewAt", "announceStatus",
+  "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkCompletions", "setLinkPreviews", "setPageAnnotations", "showPreview", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus", "blur",
 ]);
@@ -213,7 +213,7 @@ function validOperation(operation: Record<string, unknown>) {
   case "setPresentationCSS":
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
-  case "setLinkCompletions": case "setLinkPreviews": case "setResearcherComments": return Array.isArray(operation.value);
+  case "setLinkCompletions": case "setLinkPreviews": case "setPageAnnotations": return Array.isArray(operation.value);
   case "showPreviewAt":
     return typeof operation.x === "number" && Number.isFinite(operation.x)
       && typeof operation.y === "number" && Number.isFinite(operation.y);

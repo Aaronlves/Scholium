@@ -24,7 +24,7 @@ struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
     var body: some View {
         VStack(
             alignment: .leading,
-            spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+            spacing: 0
         ) {
             HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
                 Text(title)
@@ -35,13 +35,15 @@ struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
                 trailing()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, ScholiumMetrics.Apparatus.sectionContentSpacing)
 
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, ScholiumMetrics.Apparatus.sectionContentInset)
+                .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
 
             if showsDivider {
                 ScholiumStructuralRule()
+                    .padding(.top, ScholiumMetrics.Apparatus.contentToRuleSpacing)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

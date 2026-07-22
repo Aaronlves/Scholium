@@ -452,11 +452,11 @@ final class WorkspaceStore: ObservableObject {
                     try await handle.research.saveSettings(settings)
                     return try await settingsSnapshot(preferredTriptychID: id)
                 },
-                dialogueResponseProfile: { [self] id in
-                    try await workspaceHandle(id: id).research.dialogueResponseProfile()
+                discussResponseProfile: { [self] id in
+                    try await workspaceHandle(id: id).research.discussResponseProfile()
                 },
-                saveDialogueResponseProfile: { [self] id, profile in
-                    try await workspaceHandle(id: id).research.saveDialogueResponseProfile(profile)
+                saveDiscussResponseProfile: { [self] id, profile in
+                    try await workspaceHandle(id: id).research.saveDiscussResponseProfile(profile)
                 },
                 portableContainerURL: { [self] url in
                     await portableContainerURL(forWorksURL: url)

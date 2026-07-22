@@ -6,6 +6,9 @@ import WebKit
 private final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
     weak var editorSession: MarkdownEditorSession?
+    /// A private, source-anchored passage annotation.
+    var onRequestAnnotation: (() -> Void)?
+    /// A deliberate message to an external research agent.
     var onRequestComment: (() -> Void)?
     private var rightMouseMonitor: Any?
 
@@ -116,14 +119,22 @@ private final class WindowAttachedWebView: WKWebView {
             menu.addItem(item)
             addedAction = true
         }
-        if onRequestComment != nil,
+        if (onRequestAnnotation != nil || onRequestComment != nil),
            editorSession.context?.composing != true,
            editorSession.context?.selections.contains(where: \.isNonempty) == true {
             if !addedAction { menu.addItem(.separator()) }
-            let item = NSMenuItem(title: ScholiumL10n.string("Add Comment…"), action: #selector(requestComment(_:)), keyEquivalent: "")
-            item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.comment")
-            item.target = self
-            menu.addItem(item)
+            if onRequestAnnotation != nil {
+                let item = NSMenuItem(title: ScholiumL10n.string("Add Annotation…"), action: #selector(requestAnnotation(_:)), keyEquivalent: "")
+                item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.annotation")
+                item.target = self
+                menu.addItem(item)
+            }
+            if onRequestComment != nil {
+                let item = NSMenuItem(title: ScholiumL10n.string("Comment…"), action: #selector(requestComment(_:)), keyEquivalent: "")
+                item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.agentComment")
+                item.target = self
+                menu.addItem(item)
+            }
         }
         return menu
     }
@@ -147,6 +158,10 @@ private final class WindowAttachedWebView: WKWebView {
                 editorSession.reportError(error.localizedDescription)
             }
         }
+    }
+
+    @objc private func requestAnnotation(_ sender: NSMenuItem) {
+        onRequestAnnotation?()
     }
 
     @objc private func requestComment(_ sender: NSMenuItem) {
@@ -199,11 +214,11 @@ struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let isAmbiguous: Bool
 }
 
-struct MarkdownEditorCommentAnnotation: Codable, Hashable, Sendable {
+struct MarkdownEditorPageAnnotation: Codable, Hashable, Sendable {
     let id: UUID
     let from: Int
     let to: Int
-    let comment: String
+    let text: String
     let resolved: Bool
 }
 
@@ -232,7 +247,7 @@ private struct EditorBridgeMessage: Codable {
     let editorReady: Bool?
     let scrollFraction: Double?
     let scrollAnchor: MarkdownEditorWireScrollAnchor?
-    let commentID: String?
+    let annotationID: String?
     let target: String?
     let requestID: String?
     let query: String?
@@ -325,7 +340,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingSourceRange: Range<Int>?
     private var pendingLinkCompletions: [EditorLinkCompletion] = []
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
-    private var pendingResearcherComments: [MarkdownEditorCommentAnnotation] = []
+    private var pendingPageAnnotations: [MarkdownEditorPageAnnotation] = []
     private var pendingScrollFraction: Double?
     private var pendingScrollAnchor: EditorScrollAnchor?
     private var reconstructionScrollAnchor: EditorScrollAnchor?
@@ -426,6 +441,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let rootInlineRegular: String
         let rootInlineSource: String
         let rootInlineNarrow: String
+        let rootLineWidth: String
         let viewportWidth: Double
         let pageColor: String
         let pageBackgroundColor: String
@@ -724,6 +740,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     rootInlineRegular: rootStyle.getPropertyValue('--scholium-rhythm-inline-regular').trim(),
                     rootInlineSource: rootStyle.getPropertyValue('--scholium-rhythm-inline-source').trim(),
                     rootInlineNarrow: rootStyle.getPropertyValue('--scholium-rhythm-inline-narrow').trim(),
+                    rootLineWidth: rootStyle.getPropertyValue('--scholium-document-line-width').trim(),
                     viewportWidth: document.documentElement.clientWidth,
                     pageColor: style('.cm-scroller')?.color || '',
                     pageBackgroundColor: style('.cm-editor')?.backgroundColor || '',
@@ -972,7 +989,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingDocumentID = ""
         pendingLinkCompletions = []
         pendingLinkPreviews = []
-        pendingResearcherComments = []
+        pendingPageAnnotations = []
         pendingScrollFraction = nil
         pendingScrollAnchor = nil
         reconstructionScrollAnchor = nil
@@ -1238,13 +1255,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
-    func setResearcherComments(_ comments: [ResearcherComment], in source: String) {
+    func setPageAnnotations(_ annotations: [AnnotationRecord], in source: String) {
         let fingerprint = DocumentFingerprint(content: source)
         let offsetMap = source == checkedSource
             ? sourceOffsetMap
             : EditorSourceOffsetMap(source: source)
-        pendingResearcherComments = comments.compactMap { comment in
-            let anchor = comment.anchor
+        pendingPageAnnotations = annotations.compactMap { annotation in
+            let anchor = annotation.anchor
             guard anchor.state == .attached,
                   anchor.fingerprint == fingerprint,
                   let from = offsetMap.editorUTF16Offset(
@@ -1254,17 +1271,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     forSourceUTF16Offset: anchor.utf16Range.upperBound
                   ),
                   to > from else { return nil }
-            return MarkdownEditorCommentAnnotation(
-                id: comment.id,
+            return MarkdownEditorPageAnnotation(
+                id: annotation.id,
                 from: from,
                 to: to,
-                comment: String(comment.text.prefix(500)),
-                resolved: comment.resolvedAt != nil
+                text: String(annotation.text.prefix(500)),
+                resolved: annotation.resolvedAt != nil
             )
         }
         guard isReady, isLoaded, let webView else { return }
         Task {
-            _ = try? await send(.setResearcherComments(pendingResearcherComments), in: webView)
+            _ = try? await send(.setPageAnnotations(pendingPageAnnotations), in: webView)
         }
     }
 
@@ -1719,7 +1736,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 _ = try await send(.setUserCSS(pendingUserCSS), in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 _ = try await send(.setLinkCompletions(pendingLinkCompletions), in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 _ = try await send(.setLinkPreviews(pendingLinkPreviews), in: webView, requiringRequestEpoch: intendedRequestEpoch)
-                _ = try await send(.setResearcherComments(pendingResearcherComments), in: webView, requiringRequestEpoch: intendedRequestEpoch)
+                _ = try await send(.setPageAnnotations(pendingPageAnnotations), in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 if let snapshot = matchingRecovery,
                    snapshot.fingerprint == startingFingerprint,
                    snapshot.source == checkedSource {
@@ -2115,15 +2132,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let linkCompletions: [EditorLinkCompletion]
     let linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
     let linkPreviews: [DocumentLinkPreview]
-    let researcherComments: [ResearcherComment]
+    let annotations: [AnnotationRecord]
     let initialScrollFraction: Double
     let initialScrollAnchor: EditorScrollAnchor?
     let onDocumentChange: (String) -> Void
     let onRequestSave: () -> Void
     let onRequestSearch: () -> Void
-    let onRequestComment: () -> Void
+    let onRequestAnnotation: () -> Void
+    var onRequestComment: () -> Void = {}
     let onLinkActivation: (String) -> Void
-    let onCommentActivation: ((UUID) -> Void)?
+    let onAnnotationActivation: ((UUID) -> Void)?
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
@@ -2135,7 +2153,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestSearch: onRequestSearch,
             linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
-            onCommentActivation: onCommentActivation,
+            onAnnotationActivation: onAnnotationActivation,
             onScrollFractionChange: onScrollFractionChange,
             onScrollAnchorChange: onScrollAnchorChange
         )
@@ -2188,6 +2206,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         let webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         webView.editorSession = session
+        webView.onRequestAnnotation = onRequestAnnotation
         webView.onRequestComment = onRequestComment
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
@@ -2199,7 +2218,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.userCSS = userCSS
         context.coordinator.linkCompletions = linkCompletions
         context.coordinator.linkPreviews = linkPreviews
-        context.coordinator.researcherComments = researcherComments
+        context.coordinator.annotations = annotations
         context.coordinator.initialScrollFraction = initialScrollFraction
         context.coordinator.initialScrollAnchor = initialScrollAnchor
         session.setPresentationCSS(presentationCSS)
@@ -2221,6 +2240,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
+            webView.onRequestAnnotation = onRequestAnnotation
             webView.onRequestComment = onRequestComment
         }
         context.coordinator.onDocumentChange = onDocumentChange
@@ -2228,7 +2248,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onRequestSearch = onRequestSearch
         context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.onLinkActivation = onLinkActivation
-        context.coordinator.onCommentActivation = onCommentActivation
+        context.coordinator.onAnnotationActivation = onAnnotationActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
         context.coordinator.onScrollAnchorChange = onScrollAnchorChange
         context.coordinator.initialScrollFraction = initialScrollFraction
@@ -2249,9 +2269,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.linkPreviews = linkPreviews
             session.setLinkPreviews(linkPreviews, in: source)
         }
-        if context.coordinator.researcherComments != researcherComments {
-            context.coordinator.researcherComments = researcherComments
-            session.setResearcherComments(researcherComments, in: source)
+        if context.coordinator.annotations != annotations {
+            context.coordinator.annotations = annotations
+            session.setPageAnnotations(annotations, in: source)
         }
         if context.coordinator.documentID != documentID {
             context.coordinator.documentID = documentID
@@ -2260,7 +2280,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.lastDocumentVersion = 0
             session.loadDocument(source, documentID: documentID, mode: mode)
             session.setLinkPreviews(linkPreviews, in: source)
-            session.setResearcherComments(researcherComments, in: source)
+            session.setPageAnnotations(annotations, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.source != source {
             context.coordinator.source = source
@@ -2268,7 +2288,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.lastDocumentVersion = 0
             session.loadDocument(source, documentID: documentID, mode: mode)
             session.setLinkPreviews(linkPreviews, in: source)
-            session.setResearcherComments(researcherComments, in: source)
+            session.setPageAnnotations(annotations, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.mode != mode {
             context.coordinator.mode = mode
@@ -2279,6 +2299,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = nil
+            webView.onRequestAnnotation = nil
             webView.onRequestComment = nil
         }
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
@@ -2342,7 +2363,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onRequestSearch: () -> Void
         var linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
         var onLinkActivation: (String) -> Void
-        var onCommentActivation: ((UUID) -> Void)?
+        var onAnnotationActivation: ((UUID) -> Void)?
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var documentID = ""
@@ -2352,7 +2373,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var userCSS = ""
         var linkCompletions: [EditorLinkCompletion] = []
         var linkPreviews: [DocumentLinkPreview] = []
-        var researcherComments: [ResearcherComment] = []
+        var annotations: [AnnotationRecord] = []
         var awaitingEditorLoad = false
         var recoveringAfterTermination = false
         var startingFingerprint = ""
@@ -2368,7 +2389,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestSearch: @escaping () -> Void,
             linkCompletionQuery: @escaping @MainActor (String) async -> [EditorLinkCompletion],
             onLinkActivation: @escaping (String) -> Void,
-            onCommentActivation: ((UUID) -> Void)?,
+            onAnnotationActivation: ((UUID) -> Void)?,
             onScrollFractionChange: @escaping (Double) -> Void,
             onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
         ) {
@@ -2378,7 +2399,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onRequestSearch = onRequestSearch
             self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
-            self.onCommentActivation = onCommentActivation
+            self.onAnnotationActivation = onAnnotationActivation
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             super.init()
@@ -2477,11 +2498,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "linkActivated":
                 guard validEnvelope(payload), let target = payload.target, !target.isEmpty else { return }
                 onLinkActivation(target)
-            case "commentActivated":
+            case "annotationActivated":
                 guard validEnvelope(payload),
-                      let rawID = payload.commentID,
+                      let rawID = payload.annotationID,
                       let id = UUID(uuidString: rawID) else { return }
-                onCommentActivation?(id)
+                onAnnotationActivation?(id)
             case "scrollChanged":
                 guard validEnvelope(payload),
                       let fraction = payload.scrollFraction,
@@ -2569,7 +2590,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.setUserCSS(userCSS)
             session.setLinkCompletions(linkCompletions)
             session.setLinkPreviews(linkPreviews, in: source)
-            session.setResearcherComments(researcherComments, in: source)
+            session.setPageAnnotations(annotations, in: source)
             session.setScrollPosition(
                 anchor: session.retainedScrollAnchor ?? initialScrollAnchor,
                 fallbackFraction: session.retainedScrollFraction(

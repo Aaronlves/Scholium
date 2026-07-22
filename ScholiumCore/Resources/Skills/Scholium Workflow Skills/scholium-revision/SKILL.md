@@ -1,11 +1,11 @@
 ---
 name: scholium-revision
-description: Revise the current Work by repairing philosophical structure, drafting or replacing bounded prose, and disposing of selected received feedback while preserving the researcher's intended thesis and source roles. Use only for the current Work Target. Do not independently Critique the Work, edit Materials, treat Dialogue as accepted feedback, or claim Fidelity before its final phase completes.
+description: Revise the current Work by repairing philosophical structure, drafting or replacing bounded prose, and disposing of selected received feedback while preserving the researcher's intended thesis and source roles. Use only for the current Work Target. Do not independently Critique the Work, edit Materials, treat a Discussion as accepted feedback, or claim Fidelity before its final phase completes.
 ---
 
 # Scholium Revision
 
-Apply scholium-core-protocol. The current Work is the single writable Target; selected notes, Critiques, Comments, Dialogue records, and sources are read-only Materials.
+Apply scholium-core-protocol. The current Work is the single writable Target; selected notes, Critiques, Comments, Discussion records, and sources are read-only Materials.
 
 ## Establish the function packet
 
@@ -29,7 +29,7 @@ When the request is limited to meaning-preserving prose improvement, an explicit
 
 1. Identify the Work's controlling claim, local passage function, and current philosophical burden.
 2. State what must be preserved and what substantive intervention is authorized.
-3. Distinguish researcher commitments, source positions, Critique findings, received feedback, Dialogue, and agent proposals.
+3. Distinguish researcher commitments, source positions, Critique findings, received feedback, Discussions, and agent proposals.
 4. Build or repair the logical, interpretive, explanatory, or dialectical route before polishing prose.
 5. Verify load-bearing source use or leave explicit checks.
 6. When feedback is present, preserve each item and distinguish an agent-recommended disposition, a researcher-confirmed decision, and task-authorized implementation. A recommendation never becomes the researcher's decision silently; revise only confirmed or explicitly authorized items.

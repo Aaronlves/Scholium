@@ -3,9 +3,9 @@ import Testing
 import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("Human Review, comments, Dialogue, and Critique records")
+@Suite("Legacy archives, page anchors, Discuss, and Critique records")
 struct ResearchRecordsTests {
-    @Test("Human Review display state reflects only the current reviewed fingerprint")
+    @Test("Legacy Review display state reflects only the archived fingerprint")
     func humanReviewDisplayState() {
         #expect(HumanReviewDisplayState(isReviewed: false, qualification: nil) == .notReviewed)
         #expect(HumanReviewDisplayState(isReviewed: true, qualification: nil) == .reviewed)
@@ -13,63 +13,73 @@ struct ResearchRecordsTests {
         #expect(HumanReviewDisplayState(isReviewed: true, qualification: .unqualified) == .unqualified)
     }
 
-    @Test("Review drafts do not mark a fingerprint reviewed")
-    func reviewDraftAndCompletion() async throws {
+    @Test("Legacy Review archives reopen without a current write workflow")
+    func legacyReviewArchiveReopens() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = HumanReviewStore(storageURL: fixture.support)
         let noteID = UUID()
         let vaultID = UUID()
         let fingerprint = DocumentFingerprint(content: "# Note\n")
-
-        let draftRecord = try await store.saveDraft(
+        let archivedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let archived = HumanReviewRecord(
             noteID: noteID,
             vaultID: vaultID,
             relativePath: "Note.md",
             draft: HumanReviewDraft(
                 fingerprint: fingerprint,
                 qualification: .qualified,
-                reviewNote: "Needs one more source check."
-            )
+                reviewNote: "Needs one more source check.",
+                updatedAt: archivedAt
+            ),
+            completedReviews: [
+                CompletedHumanReview(
+                    fingerprint: fingerprint,
+                    qualification: .qualified,
+                    reviewNote: "Historical assessment.",
+                    completedAt: archivedAt
+                ),
+            ],
+            createdAt: archivedAt,
+            updatedAt: archivedAt
         )
-        #expect(draftRecord.latestReview == nil)
-        #expect(draftRecord.draft?.qualification == .qualified)
+        try await store.seedLegacyArchiveForTesting([archived])
 
-        let completed = try await store.completeReview(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: "Note.md",
-            fingerprint: fingerprint,
-            qualification: .qualified,
-            reviewNote: "Source fidelity and argument reconstruction checked."
-        )
-        #expect(completed.draft == nil)
-        #expect(completed.review(for: fingerprint)?.qualification == .qualified)
-        #expect(!completed.hasChangedSinceReview(current: fingerprint))
-        #expect(completed.hasChangedSinceReview(current: DocumentFingerprint(content: "Changed")))
+        let reopened = HumanReviewStore(storageURL: fixture.support)
+        let restored = try #require(await reopened.record(noteID: noteID))
+        #expect(restored == archived)
+        #expect(restored.review(for: fingerprint)?.qualification == .qualified)
     }
 
-    @Test("Live Human Review values match their persisted delivery projection")
-    func liveReviewMatchesPersistedProjection() async throws {
+    @Test("Live legacy Review values match their persisted archive projection")
+    func liveLegacyReviewMatchesPersistedProjection() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let noteID = UUID()
         let vaultID = UUID()
         let store = HumanReviewStore(storageURL: fixture.support)
-
-        let returned = try await store.completeReview(
+        let archivedAt = Date(timeIntervalSince1970: 1_700_000_100)
+        let archived = HumanReviewRecord(
             noteID: noteID,
             vaultID: vaultID,
             relativePath: "Note.md",
-            fingerprint: DocumentFingerprint(content: "# Note\n"),
-            qualification: .qualified,
-            reviewNote: "The live and reopened delivery surfaces must agree."
+            completedReviews: [
+                CompletedHumanReview(
+                    fingerprint: DocumentFingerprint(content: "# Note\n"),
+                    qualification: .qualified,
+                    reviewNote: "The live and reopened archive projections must agree.",
+                    completedAt: archivedAt
+                ),
+            ],
+            createdAt: archivedAt,
+            updatedAt: archivedAt
         )
+        try await store.seedLegacyArchiveForTesting([archived])
         let live = try #require(await store.record(noteID: noteID))
         let reopened = HumanReviewStore(storageURL: fixture.support)
         let persisted = try #require(await reopened.record(noteID: noteID))
 
-        #expect(returned == live)
+        #expect(archived == live)
         #expect(live == persisted)
     }
 
@@ -129,47 +139,6 @@ struct ResearchRecordsTests {
         #expect(liveCritique == persistedCritique)
     }
 
-    @Test("A completed Review requires a verdict and a concise nonempty note")
-    func reviewValidation() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = HumanReviewStore(storageURL: fixture.support)
-        let noteID = UUID()
-        let vaultID = UUID()
-        let fingerprint = DocumentFingerprint(content: "note")
-
-        await #expect(throws: HumanReviewError.self) {
-            try await store.completeReview(
-                noteID: noteID,
-                vaultID: vaultID,
-                relativePath: "Note.md",
-                fingerprint: fingerprint,
-                qualification: nil,
-                reviewNote: "Assessment"
-            )
-        }
-        await #expect(throws: HumanReviewError.self) {
-            try await store.completeReview(
-                noteID: noteID,
-                vaultID: vaultID,
-                relativePath: "Note.md",
-                fingerprint: fingerprint,
-                qualification: .unqualified,
-                reviewNote: "   "
-            )
-        }
-        await #expect(throws: HumanReviewError.self) {
-            try await store.completeReview(
-                noteID: noteID,
-                vaultID: vaultID,
-                relativePath: "Note.md",
-                fingerprint: fingerprint,
-                qualification: .unqualified,
-                reviewNote: String(repeating: "x", count: 501)
-            )
-        }
-    }
-
     @Test("Corrupt research-record files remain untouched and block replacement writes")
     func corruptResearchRecordStoresAreReadOnly() async throws {
         let fixture = try Fixture()
@@ -182,17 +151,6 @@ struct ResearchRecordsTests {
         try corrupt.write(to: reviewURL)
         let reviewStore = HumanReviewStore(storageURL: reviewDirectory)
         #expect(await reviewStore.healthError() != nil)
-        await #expect(throws: ResearchRecordStoreError.self) {
-            _ = try await reviewStore.addComment(
-                noteID: UUID(),
-                vaultID: UUID(),
-                relativePath: "Note.md",
-                comment: ResearcherComment(
-                    text: "Do not overwrite the corrupt store.",
-                    anchor: testCommentAnchor()
-                )
-            )
-        }
         await #expect(throws: ResearchRecordStoreError.self) {
             _ = try await reviewStore.purge(noteID: UUID())
         }
@@ -260,15 +218,13 @@ struct ResearchRecordsTests {
         let noteID = UUID()
         let reviewStore = HumanReviewStore(storageURL: blocked)
         await #expect(throws: (any Error).self) {
-            _ = try await reviewStore.addComment(
-                noteID: noteID,
-                vaultID: UUID(),
-                relativePath: "Note.md",
-                comment: ResearcherComment(
-                    text: "Must not appear in memory.",
-                    anchor: testCommentAnchor()
-                )
-            )
+            try await reviewStore.seedLegacyArchiveForTesting([
+                HumanReviewRecord(
+                    noteID: noteID,
+                    vaultID: UUID(),
+                    relativePath: "Note.md"
+                ),
+            ])
         }
         #expect(await reviewStore.record(noteID: noteID) == nil)
 
@@ -321,15 +277,19 @@ struct ResearchRecordsTests {
         let reviewStore = HumanReviewStore(
             storageURL: fixture.support.appendingPathComponent("review", isDirectory: true)
         )
-        _ = try await reviewStore.addComment(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: "Trash/Work.md",
-            comment: ResearcherComment(
-                text: "Private comment",
-                anchor: testCommentAnchor()
-            )
-        )
+        try await reviewStore.seedLegacyArchiveForTesting([
+            HumanReviewRecord(
+                noteID: noteID,
+                vaultID: vaultID,
+                relativePath: "Trash/Work.md",
+                comments: [
+                    ResearcherComment(
+                        text: "Private historical comment",
+                        anchor: testCommentAnchor()
+                    ),
+                ]
+            ),
+        ])
 
         let deletedReference = DialogueNoteReference(
             noteID: noteID,
@@ -380,50 +340,6 @@ struct ResearchRecordsTests {
         #expect(await dialogueStore.entries(noteID: noteID).isEmpty)
         #expect(await dialogueStore.entries(noteID: otherNoteID).isEmpty)
         #expect(await critiqueStore.association(workNoteID: noteID) == nil)
-    }
-
-    @Test("Anchored comments reattach only at one reliable location")
-    func commentReattachment() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = HumanReviewStore(storageURL: fixture.support)
-        let noteID = UUID()
-        let vaultID = UUID()
-        let original = NoteDocument(relativePath: "Note.md", rawContent: "Intro\nThe claim matters.\nEnd\n")
-        let quotation = "claim"
-        let range = try #require(original.rawContent.range(of: quotation))
-        let utf8Start = Data(original.rawContent[..<range.lowerBound].utf8).count
-        let utf8End = Data(original.rawContent[..<range.upperBound].utf8).count
-        let anchor = ResearcherCommentAnchor(
-            fingerprint: original.fingerprint,
-            utf8Range: utf8Start..<utf8End,
-            utf16Range: range.lowerBound.utf16Offset(in: original.rawContent)..<range.upperBound.utf16Offset(in: original.rawContent),
-            line: 2,
-            endLine: 2,
-            quotation: quotation,
-            contextBefore: "The ",
-            contextAfter: " matters"
-        )
-        _ = try await store.addComment(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: "Note.md",
-            comment: ResearcherComment(text: "Clarify the support.", anchor: anchor)
-        )
-
-        let moved = NoteDocument(relativePath: "Note.md", rawContent: "New preface\nIntro\nThe claim matters.\nEnd\n")
-        try await store.reattachComments(noteID: noteID, to: moved)
-        var record = try #require(await store.record(noteID: noteID))
-        #expect(record.comments[0].anchor.state == .attached)
-        #expect(record.comments[0].anchor.line == 3)
-
-        let ambiguous = NoteDocument(
-            relativePath: "Note.md",
-            rawContent: "The claim matters.\nThe claim matters.\n"
-        )
-        try await store.reattachComments(noteID: noteID, to: ambiguous)
-        record = try #require(await store.record(noteID: noteID))
-        #expect(record.comments[0].anchor.state == .needsReattachment)
     }
 
     @Test("Comment anchors preserve full-file Unicode ranges and visible selection")
@@ -512,81 +428,26 @@ struct ResearchRecordsTests {
         #expect(anchor.quotation == "claim")
     }
 
-    @Test("Comments can be edited, resolved, reopened, reattached, and deleted without Review")
-    func independentCommentLifecycle() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = HumanReviewStore(storageURL: fixture.support)
-        let noteID = UUID()
-        let vaultID = UUID()
-        let document = NoteDocument(relativePath: "Work.md", rawContent: "# Work\nA claim.\n")
-        let range = try #require(document.rawContent.range(of: "claim"))
-        let rangeLower = range.lowerBound.utf16Offset(in: document.rawContent)
-        let rangeUpper = range.upperBound.utf16Offset(in: document.rawContent)
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
-            in: document.rawContent,
-            fingerprint: document.fingerprint,
-            utf16Range: rangeLower..<rangeUpper
-        ))
-        let comment = ResearcherComment(text: "Clarify this.", anchor: anchor)
-
-        _ = try await store.addComment(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: document.relativePath,
-            comment: comment
-        )
-        try await store.updateCommentText(
-            noteID: noteID,
-            commentID: comment.id,
-            text: "Clarify the premise."
-        )
-        try await store.setCommentResolvedByResearcher(noteID: noteID, commentID: comment.id, resolved: true)
-        var record = try #require(await store.record(noteID: noteID))
-        #expect(record.latestReview == nil)
-        #expect(record.comments[0].text == "Clarify the premise.")
-        #expect(record.comments[0].resolvedAt != nil)
-
-        try await store.setCommentResolvedByResearcher(noteID: noteID, commentID: comment.id, resolved: false)
-        let replacement = NoteDocument(relativePath: "Work.md", rawContent: "# Work\nA revised claim.\n")
-        let replacementRange = try #require(replacement.rawContent.range(of: "revised claim"))
-        let replacementLower = replacementRange.lowerBound.utf16Offset(in: replacement.rawContent)
-        let replacementUpper = replacementRange.upperBound.utf16Offset(in: replacement.rawContent)
-        let replacementAnchor = try #require(ResearcherCommentAnchorBuilder.anchor(
-            in: replacement.rawContent,
-            fingerprint: replacement.fingerprint,
-            utf16Range: replacementLower..<replacementUpper
-        ))
-        try await store.reattachComment(
-            noteID: noteID,
-            commentID: comment.id,
-            to: replacementAnchor
-        )
-        record = try #require(await store.record(noteID: noteID))
-        #expect(record.comments[0].resolvedAt == nil)
-        #expect(record.comments[0].anchor.quotation == "revised claim")
-        #expect(record.comments[0].anchor.fingerprint == replacement.fingerprint)
-
-        try await store.removeComment(noteID: noteID, commentID: comment.id)
-        #expect((await store.record(noteID: noteID))?.comments.isEmpty == true)
-    }
-
-    @Test("Human Review and Dialogue path migration is idempotent and preserves historical prompt")
+    @Test("Legacy Review and Dialogue path migration is idempotent and preserves historical prompt")
     func appOwnedPathMigration() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let noteID = UUID()
         let vaultID = UUID()
         let reviewStore = HumanReviewStore(storageURL: fixture.support.appendingPathComponent("review"))
-        _ = try await reviewStore.addComment(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: "Old.md",
-            comment: ResearcherComment(
-                text: "Keep this comment.",
-                anchor: testCommentAnchor()
-            )
-        )
+        try await reviewStore.seedLegacyArchiveForTesting([
+            HumanReviewRecord(
+                noteID: noteID,
+                vaultID: vaultID,
+                relativePath: "Old.md",
+                comments: [
+                    ResearcherComment(
+                        text: "Keep this historical comment.",
+                        anchor: testCommentAnchor()
+                    ),
+                ]
+            ),
+        ])
         #expect(try await reviewStore.migratePathIfPresent(
             noteID: noteID,
             vaultID: vaultID,
@@ -971,6 +832,107 @@ struct ResearchRecordsTests {
         #expect(moved.targetFingerprint == association.targetFingerprint)
     }
 
+    @Test("Critique round completes only after every actionable finding is disposed")
+    func critiqueRoundDispositionAndCompletion() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let control = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
+        let registry = CritiqueRegistry(controlURL: control)
+        let workID = UUID()
+        let vaultID = UUID()
+        let targetFingerprint = DocumentFingerprint(content: "# Original Work\n")
+        let target = ResearchFunctionTarget(
+            noteID: workID,
+            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Drafts/Paper.md"),
+            role: .work,
+            fingerprint: targetFingerprint,
+            title: "Paper"
+        )
+        let snapshot = ResearchFunctionSnapshot(
+            request: ResearchFunctionRequest(function: .critique, target: target),
+            recordKind: .critique
+        )
+        let completion = ResearchFunctionCompletion(
+            runID: snapshot.runID,
+            function: .critique,
+            state: .complete,
+            targetFingerprint: targetFingerprint,
+            materialFingerprints: [:],
+            summary: "Two actionable findings were recorded.",
+            didModifyTarget: false,
+            fidelityOutcomes: []
+        )
+        _ = try await registry.recordRequest(
+            workNoteID: workID,
+            workRelativePath: "Drafts/Paper.md",
+            targetFingerprint: targetFingerprint,
+            critiqueRelativePath: "Critiques/Paper Critique.md",
+            checkpointID: UUID(),
+            scope: .overall,
+            roundID: snapshot.runID,
+            functionSnapshot: snapshot,
+            functionCompletion: completion
+        )
+        let first = CritiqueFinding(
+            judgment: .traced,
+            title: "Clarify the inference",
+            critiqueSourceLine: 10,
+            targetLine: 4
+        )
+        let second = CritiqueFinding(
+            judgment: .disputed,
+            title: "Answer the counterexample",
+            critiqueSourceLine: 20,
+            targetLine: 8
+        )
+        _ = try await registry.captureActionableFindings(
+            runID: snapshot.runID,
+            findings: [first, second]
+        )
+
+        await #expect(throws: CritiqueRegistryError.self) {
+            _ = try await registry.setFindingDisposition(
+                roundID: snapshot.runID,
+                findingID: first.id,
+                decision: .accept,
+                currentWorkRevision: targetFingerprint,
+                rationale: nil,
+                noTextChangeRationale: nil
+            )
+        }
+        _ = try await registry.setFindingDisposition(
+            roundID: snapshot.runID,
+            findingID: first.id,
+            decision: .accept,
+            currentWorkRevision: targetFingerprint,
+            rationale: nil,
+            noTextChangeRationale: "The clarification is already explicit in the cited paragraph."
+        )
+        await #expect(throws: CritiqueRegistryError.self) {
+            _ = try await registry.completeRound(roundID: snapshot.runID)
+        }
+        _ = try await registry.setFindingDisposition(
+            roundID: snapshot.runID,
+            findingID: second.id,
+            decision: .rebut,
+            currentWorkRevision: targetFingerprint,
+            rationale: "The counterexample assumes the conclusion it disputes.",
+            noTextChangeRationale: nil
+        )
+        let completed = try await registry.completeRound(roundID: snapshot.runID)
+        let retried = try await registry.completeRound(roundID: snapshot.runID)
+        let round = try #require(completed.rounds.first)
+        #expect(round.completedAt != nil)
+        #expect(round.findingDispositions.count == 2)
+        #expect(retried.rounds.first?.completedAt == round.completedAt)
+
+        let reopened = CritiqueRegistry(controlURL: control)
+        let persisted = try #require(await reopened.association(workNoteID: workID))
+        #expect(persisted.rounds.first?.actionableFindings == [first, second])
+        #expect(persisted.rounds.first?.findingDispositions.count == 2)
+        #expect(persisted.rounds.first?.completedAt != nil)
+    }
+
     @Test("Dialogue function evidence advances monotonically and incomplete preparation rolls back")
     func dialogueFunctionEvidenceLifecycle() async throws {
         let fixture = try Fixture()
@@ -990,7 +952,7 @@ struct ResearchRecordsTests {
         let checkpointID = UUID()
         let snapshot = ResearchFunctionSnapshot(
             request: ResearchFunctionRequest(function: .develop, target: target),
-            recordKind: .dialogue,
+            recordKind: .discuss,
             checkpointID: checkpointID,
             fidelityHandoff: ResearchFunctionFidelityHandoff(
                 required: true,
@@ -1113,7 +1075,7 @@ struct ResearchRecordsTests {
 
         let rollbackSnapshot = ResearchFunctionSnapshot(
             request: ResearchFunctionRequest(function: .develop, target: target),
-            recordKind: .dialogue
+            recordKind: .discuss
         )
         _ = try await store.save(DialogueEntry(
             triptychID: entry.triptychID,

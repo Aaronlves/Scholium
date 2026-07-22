@@ -2,66 +2,44 @@ import ScholiumContracts
 import SwiftUI
 
 struct ResearchFunctionPanelContext {
-    let comments: [ResearcherComment]
     let repairCitationMethod: () -> Void
-    let repairDialogueResponseDefaults: () -> Void
+    let repairDiscussResponseDefaults: () -> Void
     let agentApplicationHandoff: AgentApplicationHandoffController
     let copyInstructions: (String) throws -> Void
     let dismiss: () -> Void
-    let note: WindowDocumentLocation?
-    let commentsContext: ResearcherCommentsContext?
-    let focusCommentComposer: Bool
 
     init(
-        comments: [ResearcherComment],
         repairCitationMethod: @escaping () -> Void,
-        repairDialogueResponseDefaults: @escaping () -> Void,
+        repairDiscussResponseDefaults: @escaping () -> Void,
         agentApplicationHandoff: AgentApplicationHandoffController,
         copyInstructions: @escaping (String) throws -> Void,
-        dismiss: @escaping () -> Void,
-        note: WindowDocumentLocation? = nil,
-        commentsContext: ResearcherCommentsContext? = nil,
-        focusCommentComposer: Bool = false
+        dismiss: @escaping () -> Void
     ) {
-        self.comments = comments
         self.repairCitationMethod = repairCitationMethod
-        self.repairDialogueResponseDefaults = repairDialogueResponseDefaults
+        self.repairDiscussResponseDefaults = repairDiscussResponseDefaults
         self.agentApplicationHandoff = agentApplicationHandoff
         self.copyInstructions = copyInstructions
         self.dismiss = dismiss
-        self.note = note
-        self.commentsContext = commentsContext
-        self.focusCommentComposer = focusCommentComposer
     }
 }
 
-/// Shared typed presentation root for Research Function entry points. It
-/// observes only the per-window function controller; Review is supplied
-/// through a narrow, immutable adapter so the reusable Human Review view keeps
-/// its own record boundary.
-struct ResearchFunctionPanelView<ReviewContent: View>: View {
+/// Shared presentation root for Research Function entry points. Human
+/// settlement is recorded from the activity HUD rather than rendered as a
+/// separate function panel.
+struct ResearchFunctionPanelView: View {
     @ObservedObject private var controller: ResearchFunctionController
     let context: ResearchFunctionPanelContext
-    private let reviewContent: ReviewContent
 
     init(
         controller: ResearchFunctionController,
-        context: ResearchFunctionPanelContext,
-        @ViewBuilder reviewContent: () -> ReviewContent
+        context: ResearchFunctionPanelContext
     ) {
         self.controller = controller
         self.context = context
-        self.reviewContent = reviewContent()
     }
 
     var body: some View {
-        Group {
-            if controller.activeFunction == .review {
-                reviewPanel
-            } else {
-                agentPanel
-            }
-        }
+        agentPanel
         .frame(minWidth: 560, idealWidth: 680, minHeight: 520, idealHeight: 700)
         .scholiumSurface(.denseEvidence)
         .accessibilityAddTraits(.isModal)
@@ -77,31 +55,6 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
         return "\(function.interfaceTitle) function"
     }
 
-    private var reviewPanel: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if let target = controller.target {
-                            ResearchFunctionTargetSection(target: target)
-                        }
-                        judgmentComments(permitsEvidenceSelection: false)
-                            .onAppear { focusJudgmentContent(in: proxy) }
-                    }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .frame(maxHeight: 260)
-
-            Divider()
-            reviewContent
-        }
-    }
-
     private var agentPanel: some View {
         VStack(spacing: 0) {
             header
@@ -112,6 +65,20 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                     VStack(alignment: .leading, spacing: 16) {
                         if let target = controller.target {
                             ResearchFunctionTargetSection(target: target)
+                        }
+
+                        if controller.isWriteFunction,
+                           let target = controller.target {
+                            ResearchFunctionWriteScopeSection(
+                                scope: controller.writeScope,
+                                target: target,
+                                candidates: controller.writeTargetCandidates,
+                                selectedIDs: controller.selectedWriteTargetIDs,
+                                authorizedCount: controller.authorizedWriteTargets.count,
+                                isFrozen: controller.materialsViewState.isFrozen,
+                                setScope: controller.setWriteScope,
+                                setSelected: controller.setWriteTargetSelected
+                            )
                         }
 
                         if controller.phase == .loading {
@@ -129,16 +96,8 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                                 select: controller.setScope
                             )
 
-                            if controller.activeFunction == .dialogue {
+                            if controller.activeFunction == .discuss {
                                 instructionSection
-                            }
-
-                            if controller.activeFunction == .critique {
-                                judgmentComments(permitsEvidenceSelection: true)
-                                    .onAppear { focusJudgmentContent(in: proxy) }
-                            } else if controller.activeFunction == .dialogue {
-                                judgmentComments(permitsEvidenceSelection: true)
-                                    .onAppear { focusJudgmentContent(in: proxy) }
                             }
 
                             if controller.activeFunction == .fidelity {
@@ -157,13 +116,13 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                                 )
                             }
 
-                            if controller.activeFunction == .dialogue {
-                                ResearchFunctionDialogueResponseSection(
-                                    selection: controller.dialogueResponseModules,
-                                    defaultsLoaded: controller.dialogueResponseDefaultsLoaded,
+                            if controller.activeFunction == .discuss {
+                                ResearchFunctionDiscussResponseSection(
+                                    selection: controller.discussResponseModules,
+                                    defaultsLoaded: controller.discussResponseDefaultsLoaded,
                                     errorMessage: controller.errorMessage,
-                                    setSelected: controller.setDialogueResponseModule,
-                                    repair: context.repairDialogueResponseDefaults
+                                    setSelected: controller.setDiscussResponseModule,
+                                    repair: context.repairDiscussResponseDefaults
                                 )
                             } else {
                                 instructionSection
@@ -177,14 +136,6 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
                 .accessibilityIdentifier("scholium.researchFunctionPanel.scroll")
             }
             .frame(minHeight: 180)
-
-            if controller.activeFunction == .dialogue,
-               let role = controller.target?.role,
-               role == .analysis || role == .topic {
-                Divider()
-                reviewContent
-                    .frame(minHeight: 180, idealHeight: 240, maxHeight: 300)
-            }
 
             Divider()
             footer
@@ -250,58 +201,7 @@ struct ResearchFunctionPanelView<ReviewContent: View>: View {
     }
 
     private var instructionTitle: String {
-        controller.activeFunction == .dialogue ? "Question" : "Focus (Optional)"
-    }
-
-    @ViewBuilder
-    private func judgmentComments(permitsEvidenceSelection: Bool) -> some View {
-        if let note = context.note, let commentsContext = context.commentsContext {
-            if permitsEvidenceSelection {
-                ResearcherCommentsView(
-                    note: note,
-                    context: commentsContext,
-                    focusComposerOnAppear: context.focusCommentComposer,
-                    evidenceSelection: controller.selectedCommentIDs,
-                    setEvidenceSelected: { id, isSelected in
-                        controller.setCommentSelected(id, isSelected: isSelected)
-                    }
-                )
-            } else {
-                ResearcherCommentsView(
-                    note: note,
-                    context: commentsContext,
-                    focusComposerOnAppear: context.focusCommentComposer
-                )
-            }
-        } else {
-            if permitsEvidenceSelection {
-                ResearchFunctionCommentsSection(
-                    comments: context.comments,
-                    selection: controller.selectedCommentIDs,
-                    permitsSelection: true,
-                    setSelected: { id, isSelected in
-                        controller.setCommentSelected(id, isSelected: isSelected)
-                    }
-                )
-            } else {
-                ResearchFunctionCommentsSection(
-                    comments: context.comments,
-                    selection: [],
-                    permitsSelection: false,
-                    setSelected: { _, _ in }
-                )
-            }
-        }
-    }
-
-    private func focusJudgmentContent(in proxy: ScrollViewProxy) {
-        DispatchQueue.main.async {
-            if let commentID = context.commentsContext?.focusedCommentID {
-                proxy.scrollTo(commentID, anchor: .center)
-            } else if context.focusCommentComposer {
-                proxy.scrollTo("scholium.commentComposer", anchor: .top)
-            }
-        }
+        controller.activeFunction == .discuss ? "Question" : "Focus (Optional)"
     }
 
     @ViewBuilder
@@ -453,7 +353,7 @@ private struct ResearchFunctionAgentHandoffView: View {
 }
 
 /// Read-only status projection for a Function-run envelope. It deliberately
-/// does not render Dialogue turns, Critique prose, Human Review, or Comments.
+/// does not render an agent exchange, critique prose, settlement, or annotations.
 struct ResearchFunctionRunStatusView: View {
     let record: ResearchFunctionRecordProjection
     let showsFunction: Bool
@@ -483,7 +383,11 @@ struct ResearchFunctionRunStatusView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let completion = record.completion, !completion.summary.isEmpty {
-                LabeledContent("Agent-reported completion") {
+                LabeledContent(
+                    record.snapshot.request.function == .discuss
+                        ? "Agent response"
+                        : "Agent-reported completion"
+                ) {
                     Text(completion.summary)
                         .multilineTextAlignment(.trailing)
                         .textSelection(.enabled)
@@ -495,7 +399,7 @@ struct ResearchFunctionRunStatusView: View {
                !completion.fidelityOutcomes.isEmpty {
                 DisclosureGroup("Fidelity Outcomes") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("These are attributed Function-run outcomes, not Human Review or Critique.")
+                        Text("These are attributed Function-run outcomes, separate from Critique and settlement.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         ForEach(completion.fidelityOutcomes, id: \.check) { outcome in
@@ -509,7 +413,36 @@ struct ResearchFunctionRunStatusView: View {
                                     .font(.caption)
                                     .textSelection(.enabled)
                                 ForEach(outcome.findings, id: \.self) { finding in
-                                    Text("• \(finding)")
+                                    Text("— \(finding)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 5)
+                }
+            }
+
+            if let results = record.completion?.fidelityTargetResults,
+               results.count > 1 {
+                DisclosureGroup("Fidelity Results (\(results.count))") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(results, id: \.target.noteID) { result in
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(result.target.title)
+                                    .font(.caption.weight(.semibold))
+                                Text(result.target.note.relativePath)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                ForEach(result.outcomes, id: \.check) { outcome in
+                                    Label(
+                                        "\(checkTitle(outcome.check)): \(outcomeTitle(outcome.state))",
+                                        systemImage: outcomeSymbol(outcome.state)
+                                    )
+                                    .font(.caption)
+                                    Text(outcome.summary)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .textSelection(.enabled)
@@ -616,6 +549,134 @@ struct ResearchFunctionTargetSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("scholium.researchFunctionTarget")
+    }
+}
+
+struct ResearchFunctionWriteScopeSection: View {
+    let scope: ResearchWriteScope
+    let target: ResearchFunctionTarget
+    let candidates: [ResearchFunctionMaterialCandidate]
+    let selectedIDs: Set<UUID>
+    let authorizedCount: Int
+    let isFrozen: Bool
+    let setScope: (ResearchWriteScope) -> Void
+    let setSelected: (UUID, Bool) -> Void
+
+    var body: some View {
+        ResearchFunctionSection(title: "Write", symbol: "pencil.line") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker(
+                    "Writable range",
+                    selection: Binding(
+                        get: { scope },
+                        set: { newScope in setScope(newScope) }
+                    )
+                ) {
+                    ForEach(ResearchWriteScope.allCases, id: \.self) { value in
+                        Text(value.interfaceTitle).tag(value)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(isFrozen)
+                .accessibilityIdentifier("scholium.researchFunction.writeScope")
+
+                Text(scope.interfaceDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if scope == .selectedNotes {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 7) {
+                            writeTargetToggle(
+                                id: target.noteID,
+                                title: target.title,
+                                path: target.note.relativePath,
+                                isSuggested: false
+                            )
+                            ForEach(candidates) { candidate in
+                                writeTargetToggle(
+                                    id: candidate.id,
+                                    title: candidate.material.title,
+                                    path: candidate.material.note.relativePath,
+                                    isSuggested: !candidate.suggestionReasons.isEmpty
+                                )
+                            }
+                        }
+                        .padding(.trailing, 6)
+                    }
+                    .frame(minHeight: 100, maxHeight: 220)
+                    .accessibilityLabel("Selectable Write targets")
+                }
+
+                Text("Writable notes: \(authorizedCount)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(authorizedCount == 0 ? .red : .secondary)
+
+                Text("Linked notes may be recommended, but Scholium never selects them automatically. Materials remain read-only and cannot also be Write targets.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityIdentifier("scholium.researchFunction.writeAuthorization")
+    }
+
+    private func writeTargetToggle(
+        id: UUID,
+        title: String,
+        path: String,
+        isSuggested: Bool
+    ) -> some View {
+        Toggle(
+            isOn: Binding(
+                get: { selectedIDs.contains(id) },
+                set: { setSelected(id, $0) }
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if isSuggested {
+                    Text("Linked recommendation")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.tint)
+                }
+            }
+        }
+        .toggleStyle(.checkbox)
+        .disabled(isFrozen)
+        .accessibilityHint(
+            isSuggested
+                ? "Recommended from a direct connection. It is not selected automatically."
+                : "Include this existing note in the frozen Write authorization."
+        )
+    }
+}
+
+private extension ResearchWriteScope {
+    var interfaceTitle: String {
+        switch self {
+        case .currentNote: "Current Note"
+        case .selectedNotes: "Selected Notes"
+        case .analysesAndTopics: "Analyses and Topics"
+        case .entireTriptych: "Entire Triptych"
+        }
+    }
+
+    var interfaceDescription: String {
+        switch self {
+        case .currentNote:
+            "Only the origin note may be changed. This is the recommended default."
+        case .selectedNotes:
+            "Only notes you explicitly select below may be changed."
+        case .analysesAndTopics:
+            "All active ordinary Analyses and Topics are frozen as the maximum Write set."
+        case .entireTriptych:
+            "All active ordinary Analyses, Topics, and Works are frozen as the maximum Write set."
+        }
     }
 }
 
@@ -849,7 +910,7 @@ private struct ResearchFunctionMaterialTree: View {
             "Suggested — Links Directly to Target"
         }
         let line = reason.sourceSpan.start.line
-        return "\(relation) · \(reason.sourceNote.relativePath), line \(line)"
+        return "\(relation), \(reason.sourceNote.relativePath), line \(line)"
     }
 
     private func materialAccessibilityHint(
@@ -898,59 +959,6 @@ struct ResearchFunctionScopeSection: View {
     }
 }
 
-struct ResearchFunctionCommentsSection: View {
-    let comments: [ResearcherComment]
-    let selection: Set<UUID>
-    let permitsSelection: Bool
-    let setSelected: (UUID, Bool) -> Void
-
-    var body: some View {
-        ResearchFunctionSection(title: "Comments", symbol: "text.bubble") {
-            VStack(alignment: .leading, spacing: 8) {
-                if comments.isEmpty {
-                    Text("No Comments are attached to this note.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(comments) { comment in
-                        if permitsSelection {
-                            Toggle(isOn: Binding(
-                                get: { selection.contains(comment.id) },
-                                set: { setSelected(comment.id, $0) }
-                            )) {
-                                commentLabel(comment)
-                            }
-                            .toggleStyle(.checkbox)
-                            .accessibilityLabel(comment.text)
-                            .accessibilityHint(
-                                "Include this app-owned Comment as read-only evidence for the function request"
-                            )
-                            .accessibilityIdentifier(
-                                "scholium.researchFunctionComment.\(comment.id.uuidString)"
-                            )
-                        } else {
-                            commentLabel(comment)
-                        }
-                    }
-                }
-            }
-        }
-        .accessibilityIdentifier("scholium.researchFunctionComments")
-    }
-
-    private func commentLabel(_ comment: ResearcherComment) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(comment.text)
-                .lineLimit(3)
-            if comment.resolvedAt != nil {
-                Text("Resolved")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
 struct ResearchFunctionFidelitySection: View {
     let checks: Set<FidelityCheck>
     let availability: [FidelityCheck: ResearchFunctionCheckAvailability]
@@ -995,7 +1003,7 @@ struct ResearchFunctionFidelitySection: View {
     }
 }
 
-struct ResearchFunctionDialogueResponseSection: View {
+struct ResearchFunctionDiscussResponseSection: View {
     let selection: Set<DialogueResponseModule>
     let defaultsLoaded: Bool
     let errorMessage: String?
@@ -1011,7 +1019,7 @@ struct ResearchFunctionDialogueResponseSection: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Academic Outcome, always included")
-                .accessibilityHint("The required base of every Dialogue response")
+                .accessibilityHint("The required base of every Discuss response")
                 .accessibilityIdentifier("scholium.researchFunctionAcademicOutcome")
 
                 ForEach(DialogueResponseModule.allCases, id: \.self) { module in
@@ -1040,9 +1048,9 @@ struct ResearchFunctionDialogueResponseSection: View {
                 if !defaultsLoaded, errorMessage != nil {
                     Button("Open Research Guidance…", action: repair)
                         .buttonStyle(.link)
-                        .accessibilityHint("Repair the Triptych Dialogue Defaults in Settings")
+                        .accessibilityHint("Repair the Triptych Discuss Defaults in Settings")
                         .accessibilityIdentifier(
-                            "scholium.researchFunction.repairDialogueResponseDefaults"
+                            "scholium.researchFunction.repairDiscussResponseDefaults"
                         )
                 }
             }

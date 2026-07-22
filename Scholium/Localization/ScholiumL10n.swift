@@ -106,13 +106,13 @@ enum ScholiumL10n {
     }
 
     enum ResearchFunction {
-        static var dialogueTitle: LocalizedStringResource {
+        static var discussTitle: LocalizedStringResource {
             LocalizedStringResource(
-                "researchFunction.dialogue.title",
-                defaultValue: "Dialogue",
+                "researchFunction.discuss.title",
+                defaultValue: "Discuss",
                 table: "Interface",
                 bundle: .module,
-                comment: "Research Function name for scholarly conversation about a note."
+                comment: "Read-only discussion selected from Work with Agent."
             )
         }
 
@@ -123,16 +123,6 @@ enum ScholiumL10n {
                 table: "Interface",
                 bundle: .module,
                 comment: "Research Function name for developing an Analysis or Topic."
-            )
-        }
-
-        static var reviewTitle: LocalizedStringResource {
-            LocalizedStringResource(
-                "researchFunction.review.title",
-                defaultValue: "Review",
-                table: "Interface",
-                bundle: .module,
-                comment: "Research Function name for human review and qualification."
             )
         }
 
@@ -176,13 +166,13 @@ enum ScholiumL10n {
             )
         }
 
-        static var dialogueHelp: LocalizedStringResource {
+        static var discussHelp: LocalizedStringResource {
             LocalizedStringResource(
-                "researchFunction.dialogue.help",
-                defaultValue: "Open a scholarly Dialogue for this note",
+                "researchFunction.discuss.help",
+                defaultValue: "Discuss the note without changing it",
                 table: "Interface",
                 bundle: .module,
-                comment: "Help and accessibility hint for the Dialogue Research Function."
+                comment: "Help and accessibility hint for read-only Discuss."
             )
         }
 
@@ -193,16 +183,6 @@ enum ScholiumL10n {
                 table: "Interface",
                 bundle: .module,
                 comment: "Help and accessibility hint for the Develop Research Function."
-            )
-        }
-
-        static var reviewHelp: LocalizedStringResource {
-            LocalizedStringResource(
-                "researchFunction.review.help",
-                defaultValue: "Review and qualify this Analysis or Topic",
-                table: "Interface",
-                bundle: .module,
-                comment: "Help and accessibility hint for the Review Research Function."
             )
         }
 
@@ -281,9 +261,8 @@ enum ScholiumL10n {
 extension ResearchFunctionID {
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
-        case .dialogue: ScholiumL10n.ResearchFunction.dialogueTitle
+        case .discuss: ScholiumL10n.ResearchFunction.discussTitle
         case .develop: ScholiumL10n.ResearchFunction.developTitle
-        case .review: ScholiumL10n.ResearchFunction.reviewTitle
         case .fidelity: ScholiumL10n.ResearchFunction.fidelityTitle
         case .critique: ScholiumL10n.ResearchFunction.critiqueTitle
         case .revise: ScholiumL10n.ResearchFunction.reviseTitle
@@ -301,9 +280,8 @@ extension ResearchFunctionID {
 
     var interfaceHelpResource: LocalizedStringResource {
         switch self {
-        case .dialogue: ScholiumL10n.ResearchFunction.dialogueHelp
+        case .discuss: ScholiumL10n.ResearchFunction.discussHelp
         case .develop: ScholiumL10n.ResearchFunction.developHelp
-        case .review: ScholiumL10n.ResearchFunction.reviewHelp
         case .fidelity: ScholiumL10n.ResearchFunction.fidelityHelp
         case .critique: ScholiumL10n.ResearchFunction.critiqueHelp
         case .revise: ScholiumL10n.ResearchFunction.reviseHelp

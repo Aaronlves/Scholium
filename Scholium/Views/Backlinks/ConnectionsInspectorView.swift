@@ -186,8 +186,8 @@ struct ConnectionsInspectorView: View {
             } label: {
                 ScholiumApparatusRow(
                     leading: {
-                        Image(systemName: "chevron.right")
-                            .font(ScholiumInterfaceTypography.apparatusBody)
+                        Text("›")
+                            .font(.system(size: 16, weight: .regular))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
@@ -262,8 +262,8 @@ private struct CombinedConnectionRow: View {
     var body: some View {
         ScholiumApparatusRow(
             leading: {
-                Image(systemName: item.section.symbolName)
-                    .font(ScholiumInterfaceTypography.apparatusBody)
+                Text(item.section.symbolText)
+                    .font(.system(size: 11, weight: .semibold))
                     .scholiumForeground(item.section.colorRole)
                     .accessibilityHidden(true)
             },
@@ -293,7 +293,9 @@ private struct CombinedConnectionRow: View {
                             item.edge.occurrence.span.start.line
                         )
                     } label: {
-                        Image(systemName: "text.alignleft")
+                        Text("↗")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
                             .frame(
                                 width: ScholiumMetrics.Accessibility.preferredCustomTarget,
                                 height: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -306,6 +308,7 @@ private struct CombinedConnectionRow: View {
                 }
             }
         )
+        .help(item.section.title)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(item.section.title): \(title)")
     }

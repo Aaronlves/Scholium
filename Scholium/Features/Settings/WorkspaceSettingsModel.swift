@@ -45,8 +45,8 @@ struct WorkspaceSettingsWorkspaceCapabilities {
         URL, URL, URL, URL, UUID?, String?
     ) async throws -> WorkspaceSettingsSnapshot
     let saveTriptychSettings: (UUID, TriptychSettings) async throws -> WorkspaceSettingsSnapshot
-    let dialogueResponseProfile: (UUID) async throws -> DialogueResponseProfile
-    let saveDialogueResponseProfile: (UUID, DialogueResponseProfile) async throws -> Void
+    let discussResponseProfile: (UUID) async throws -> DialogueResponseProfile
+    let saveDiscussResponseProfile: (UUID, DialogueResponseProfile) async throws -> Void
     let portableContainerURL: (URL) async -> URL?
 }
 
@@ -305,18 +305,18 @@ final class WorkspaceSettingsModel: ObservableObject {
         replaceSnapshot(try await capabilities.workspace.saveTriptychSettings(id, settings))
     }
 
-    func dialogueResponseProfile() async throws -> DialogueResponseProfile {
+    func discussResponseProfile() async throws -> DialogueResponseProfile {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.workspace.dialogueResponseProfile(id)
+        return try await capabilities.workspace.discussResponseProfile(id)
     }
 
-    func saveDialogueResponseProfile(_ profile: DialogueResponseProfile) async throws {
+    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await capabilities.workspace.saveDialogueResponseProfile(id, profile)
+        try await capabilities.workspace.saveDiscussResponseProfile(id, profile)
     }
 
     func configureTriptych(

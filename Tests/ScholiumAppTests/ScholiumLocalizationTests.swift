@@ -37,8 +37,8 @@ struct ScholiumLocalizationTests {
 
     @Test("Research Function presentation localizes independently of stable identifiers")
     func researchFunctions() {
-        #expect(ResearchFunctionID.dialogue.interfaceTitle(locale: english) == "Dialogue")
-        #expect(ResearchFunctionID.dialogue.interfaceTitle(locale: simplifiedChinese) == "对话")
+        #expect(ResearchFunctionID.discuss.interfaceTitle(locale: english) == "Discuss")
+        #expect(ResearchFunctionID.discuss.interfaceTitle(locale: simplifiedChinese) == "讨论")
         #expect(ResearchFunctionID.develop.interfaceTitle(locale: simplifiedChinese) == "发展")
         #expect(ResearchFunctionID.fidelity.interfaceTitle(locale: simplifiedChinese) == "核查")
         #expect(
@@ -46,7 +46,7 @@ struct ScholiumLocalizationTests {
                 == "请求对这篇写作进行署名评析"
         )
 
-        #expect(ResearchFunctionID.dialogue.interfaceIdentifier == "dialogue")
+        #expect(ResearchFunctionID.discuss.interfaceIdentifier == "discuss")
         #expect(ResearchFunctionID.fidelity.interfaceIdentifier == "fidelity")
     }
 
@@ -60,17 +60,16 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Analyses", locale: simplifiedChinese) == "分析")
         #expect(ScholiumL10n.string("Topics", locale: simplifiedChinese) == "议题")
         #expect(ScholiumL10n.string("Works", locale: simplifiedChinese) == "写作")
-        #expect(ScholiumL10n.string("Human Review", locale: simplifiedChinese) == "研究者评审")
-        #expect(ScholiumL10n.string("Qualification", locale: simplifiedChinese) == "评审结论")
-        #expect(ScholiumL10n.string("Qualified", locale: simplifiedChinese) == "通过评审")
-        #expect(ScholiumL10n.string("Unqualified", locale: simplifiedChinese) == "未通过评审")
         #expect(ScholiumL10n.string("Attention", locale: simplifiedChinese) == "关注")
-        #expect(ScholiumL10n.string("Connections", locale: simplifiedChinese) == "关联")
+        #expect(ScholiumL10n.string("Connect", locale: simplifiedChinese) == "连接")
         #expect(ScholiumL10n.string("Checkpoint", locale: simplifiedChinese) == "恢复点")
         #expect(ScholiumL10n.string("Snapshot", locale: simplifiedChinese) == "快照")
-        #expect(ScholiumL10n.string("Comment", locale: simplifiedChinese) == "注释")
+        #expect(ScholiumL10n.string("Annotation", locale: simplifiedChinese) == "批注")
+        #expect(ScholiumL10n.string("Comment", locale: simplifiedChinese) == "评论")
         #expect(ScholiumL10n.string("Response", locale: simplifiedChinese) == "回应")
-        #expect(ScholiumL10n.string("Review", locale: simplifiedChinese) == "审阅")
+        #expect(ScholiumL10n.string("Work with Agent", locale: simplifiedChinese) == "与 Agent 协作")
+        #expect(ScholiumL10n.string("Settle", locale: simplifiedChinese) == "暂定")
+        #expect(ScholiumL10n.string("RESEARCH ACTIVITY", locale: simplifiedChinese) == "研究活动")
         #expect(ScholiumL10n.string("Research Status", locale: simplifiedChinese) == "内容状态")
         #expect(ScholiumL10n.string("Research Record", locale: simplifiedChinese) == "研究记录")
         #expect(ScholiumL10n.string("Restore Access", locale: simplifiedChinese) == "恢复访问权限")
@@ -89,6 +88,22 @@ struct ScholiumLocalizationTests {
                 == "推荐文献"
         )
         #expect(ScholiumL10n.string("Save", locale: english) == "Save")
+    }
+
+    @Test("Appearance line-width controls use localized labels and explanations")
+    func appearanceLineWidthCopy() {
+        #expect(ScholiumL10n.string("Layout", locale: simplifiedChinese) == "布局")
+        #expect(ScholiumL10n.string("Line width", locale: simplifiedChinese) == "行宽")
+        #expect(
+            ScholiumL10n.string("character-width units", locale: simplifiedChinese)
+                == "字符宽度单位"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Line width is measured in CSS character-width units; the exact number of characters varies by typeface.",
+                locale: simplifiedChinese
+            ) == "行宽以 CSS 字符宽度单位计量；每行的实际字符数会随字体而变化。"
+        )
     }
 
     @Test("Application and Skill names remain verbatim")

@@ -129,11 +129,8 @@ struct AppCompositionRootTests {
         #expect(second.discoveryController.library.locationScope == .workspace)
 
         first.pendingSourceLine = 17
-        first.changedSinceReviewPaths = [reference.relativePath]
         #expect(first.documentController.pendingSourceLine == 17)
-        #expect(first.documentController.changedSinceReviewPaths == [reference.relativePath])
         #expect(second.documentController.pendingSourceLine == nil)
-        #expect(second.documentController.changedSinceReviewPaths.isEmpty)
 
         let lifecycleTarget = NoteLifecycleTarget(
             documentID: VaultQualifiedNoteID(
@@ -748,17 +745,17 @@ struct AppCompositionRootTests {
             fingerprint: original.fingerprint,
             utf16Range: headingUTF16Range
         ))
-        let addedCommentRecord = try await configured.research.addComment(
+        let addedAnnotation = try await configured.research.addAnnotation(
             to: originalID,
             text: "Keep this heading anchored.",
             anchor: headingAnchor,
             expectedRevision: original.fingerprint
         )
-        let commentID = try #require(addedCommentRecord.comments.first?.id)
-        try await waitUntil("the first window received the new comment projection") {
+        let annotationID = addedAnnotation.id
+        try await waitUntil("the first window received the new page Annotation") {
             await firstWindow!.retryIdentityRecovery()
-            return firstWindow!.currentDocumentReviewRecord?.comments.contains {
-                $0.id == commentID && $0.anchor.fingerprint == original.fingerprint
+            return firstWindow!.currentDocumentAnnotations.contains {
+                $0.id == annotationID && $0.anchor.fingerprint == original.fingerprint
             } == true
         }
 
@@ -776,11 +773,12 @@ struct AppCompositionRootTests {
         }
         #expect(firstSession.conflict == nil)
         #expect(secondSession.conflict == nil)
-        try await waitUntil("the first window received the rebased comment projection") {
+        try await waitUntil("the first window received the reattached page Annotation") {
             await firstWindow!.retryIdentityRecovery()
-            return firstWindow!.currentDocumentReviewRecord?.comments.contains {
-                $0.id == commentID && $0.anchor.fingerprint == cleanCommit.document.fingerprint
-            } == true
+            return firstWindow!.currentDocumentAnnotations.contains {
+                $0.id == annotationID
+                    && $0.anchor.fingerprint == cleanCommit.document.fingerprint
+            }
         }
 
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
