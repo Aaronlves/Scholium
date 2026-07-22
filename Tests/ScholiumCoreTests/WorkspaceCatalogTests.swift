@@ -40,7 +40,8 @@ struct WorkspaceCatalogTests {
                 return LinkCatalogNote(vaultID: vault.id, document: document, semantic: semantics[id])
             },
             documents: semantics,
-            resolutionScope: .workspace
+            resolutionScope: .workspace,
+            sourceManifestHash: "manifest"
         )
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [analyses, topics, works],
@@ -51,10 +52,16 @@ struct WorkspaceCatalogTests {
             ],
             graph: graph
         )
+        let searchGeneration = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 1,
+            sourceManifestHash: "manifest"
+        )
 
         let related = snapshot.relatedSearchResults(
-            for: "Practical Identity",
-            scope: .workspace
+            for: "\"Practical Identity\"",
+            scope: .triptych,
+            searchGeneration: searchGeneration
         )
         #expect(related.map(\.note.title) == ["Argument Draft", "Paper Analysis"])
         #expect(related.first?.relationship == .itemSupportsConcept)
@@ -66,15 +73,22 @@ struct WorkspaceCatalogTests {
 
         let analysesOnly = snapshot.relatedSearchResults(
             for: "Agency",
-            scope: .currentVault(analyses.id)
+            scope: .currentVault(analyses.id),
+            searchGeneration: searchGeneration
         )
         #expect(analysesOnly.map(\.note.title) == ["Paper Analysis"])
         #expect(snapshot.relatedSearchResults(
             for: "Agency",
-            scope: .currentNote(VaultQualifiedNoteID(
-                vaultID: topics.id,
-                relativePath: concept.relativePath
-            ))
+            scope: .currentNote(SearchSourceSnapshot(
+                noteID: VaultQualifiedNoteID(
+                    vaultID: topics.id,
+                    relativePath: concept.relativePath
+                ),
+                editorSessionID: UUID(),
+                source: concept.rawContent,
+                editorRevision: 0
+            )),
+            searchGeneration: searchGeneration
         ).isEmpty)
 
         let analysisID = VaultQualifiedNoteID(
@@ -83,10 +97,58 @@ struct WorkspaceCatalogTests {
         )
         #expect(snapshot.relatedSearchResults(
             for: "Agency",
-            scope: .workspace,
+            scope: .triptych,
+            searchGeneration: searchGeneration,
             excluding: [analysisID]
         ).map(\.note.title) == ["Argument Draft"])
-        #expect(snapshot.relatedSearchResults(for: "title:Agency", scope: .workspace).isEmpty)
+        #expect(snapshot.relatedSearchResults(
+            for: "title:Agency",
+            scope: .triptych,
+            searchGeneration: searchGeneration
+        ).isEmpty)
+    }
+
+    @Test("Related identity preserves diacritics while folding case")
+    func relatedIdentityDoesNotEraseDiacritics() {
+        let topics = vault("Topics", .topicKnowledge)
+        let works = vault("Works", .draftProject)
+        let topic = note("Cafe.md", "---\ntitle: Café\n---\n")
+        let draft = note("Draft.md", "---\ntitle: Draft\n---\n+[[Café]]")
+        let topicID = VaultQualifiedNoteID(vaultID: topics.id, relativePath: topic.relativePath)
+        let draftID = VaultQualifiedNoteID(vaultID: works.id, relativePath: draft.relativePath)
+        let topicSemantic = MarkdownSemanticDocument(parsing: topic)
+        let draftSemantic = MarkdownSemanticDocument(parsing: draft)
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: [
+                LinkCatalogNote(vaultID: topics.id, document: topic, semantic: topicSemantic),
+                LinkCatalogNote(vaultID: works.id, document: draft, semantic: draftSemantic),
+            ],
+            documents: [topicID: topicSemantic, draftID: draftSemantic],
+            resolutionScope: .workspace,
+            sourceManifestHash: "manifest"
+        )
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [topics, works],
+            documents: [topics.id: [topic], works.id: [draft]],
+            graph: graph
+        )
+        let generation = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 1,
+            sourceManifestHash: "manifest"
+        )
+
+        #expect(snapshot.relatedSearchResults(
+            for: "CAFÉ",
+            scope: .triptych,
+            searchGeneration: generation
+        ).isEmpty == false)
+        #expect(snapshot.relatedSearchResults(
+            for: "Cafe",
+            scope: .triptych,
+            searchGeneration: generation
+        ).isEmpty)
     }
 
     @Test("Ambiguous Topic aliases never trigger graph expansion")
@@ -106,7 +168,8 @@ struct WorkspaceCatalogTests {
                 return LinkCatalogNote(vaultID: topics.id, document: document, semantic: semantics[id])
             },
             documents: semantics,
-            resolutionScope: .workspace
+            resolutionScope: .workspace,
+            sourceManifestHash: "manifest"
         )
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [topics],
@@ -114,7 +177,15 @@ struct WorkspaceCatalogTests {
             graph: graph
         )
 
-        #expect(snapshot.relatedSearchResults(for: "Identity", scope: .workspace).isEmpty)
+        #expect(snapshot.relatedSearchResults(
+            for: "Identity",
+            scope: .triptych,
+            searchGeneration: SearchGenerationID(
+                triptychID: UUID(),
+                sequence: 1,
+                sourceManifestHash: "manifest"
+            )
+        ).isEmpty)
     }
 
     @Test("A legacy catalog note without aliases remains readable")

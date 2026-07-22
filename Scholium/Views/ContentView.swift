@@ -347,6 +347,7 @@ struct ContentView: View {
             initialScrollFraction: path.map { appState.scrollPosition(for: $0) } ?? 0,
             requestedPresentationMode: appState.requestPresentationMode,
             pendingSourceLine: appState.pendingSourceLine,
+            pendingSourceRange: appState.pendingSourceRange,
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
@@ -365,6 +366,7 @@ struct ContentView: View {
             beginSearch: { appState.beginSearch($0) },
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
+            clearPendingSourceRange: { appState.pendingSourceRange = nil },
             requestComments: { selection, commentID in
                 guard let path = documentPath else { return }
                 appState.requestResearcherComments(
@@ -900,7 +902,6 @@ private struct ScholiumNoDocumentDetailView: View {
 
 private struct SpotlightSearchOverlay: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     let context: SpotlightSearchContext
 
     init(controller: DiscoveryController, context: SpotlightSearchContext) {
@@ -911,12 +912,6 @@ private struct SpotlightSearchOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .top) {
-                Rectangle()
-                    .fill(
-                        reduceTransparency
-                            ? ScholiumColorRole.documentBackground.color
-                            : ScholiumColorRole.primaryText.color.opacity(0.12)
-                    )
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture(perform: context.dismiss)

@@ -54,8 +54,10 @@ extension ScholiumCLI {
           scholium version [--format text|json]
           scholium doctor [--format text|json]
           scholium vault list
-          scholium search <query> --vault <selector> [--format text|jsonl]
-          scholium search <query> --workspace [--triptych <uuid-or-unique-name>] [filters]
+          scholium search <query> --vault <selector> [--triptych <selector>]
+              [--limit 1...500] [--format text|jsonl]
+          scholium search <query> --triptych <uuid-or-unique-name>
+              [--limit 1...500] [--format text|jsonl]
           scholium links incoming <vault>:<path> --format json
           scholium links outgoing <vault>:<path> --format json
           scholium links relationships <vault>:<path> --format json
@@ -152,7 +154,7 @@ private extension ScholiumCLI {
     static var commandHelp: [String: String] {
         [
             "vault list": "Usage: scholium vault list [--format text|json]\n\nLists registered Triptychs and their three role vaults.",
-            "search": "Usage: scholium search <query> (--vault <selector> | --workspace) [--triptych <selector>] [--limit <count>] [--format text|jsonl]",
+            "search": "Usage: scholium search <query> (--vault <selector> [--triptych <selector>] | --triptych <selector>) [--limit <count>] [--format text|jsonl]",
             "links incoming": "Usage: scholium links incoming <vault>:<path> --format json",
             "links outgoing": "Usage: scholium links outgoing <vault>:<path> --format json",
             "links relationships": "Usage: scholium links relationships <vault>:<path> --format json",

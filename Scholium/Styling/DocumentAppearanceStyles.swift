@@ -144,8 +144,10 @@ enum DocumentAppearanceStyles {
         case .connections:
             css += """
 
-            \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-            \(selector) .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? 0.72))em; }
+            \(selector) {
+              --scholium-callout-connect-content-indent: \(number(callout.contentIndentEm ?? 1.1))em;
+              margin-inline: \(number(callout.inlineInsetEm))em;
+            }
             """
         case .statement:
             css += "\n\(selector) .scholium-callout-heading { margin-inline-end: \(number(callout.titleGapEm ?? 0))em; }"

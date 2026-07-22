@@ -366,6 +366,22 @@
         }
       }
     },
+    "%lld Results" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld Results"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条结果"
+          }
+        }
+      }
+    },
     "%lld bibliography recommendations" : {
       "localizations" : {
         "en" : {
@@ -591,6 +607,22 @@
         }
       }
     },
+    "%lld+ Results" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld+ Results"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld+ 条结果"
+          }
+        }
+      }
+    },
     "%lld/500" : {
       "localizations" : {
         "en" : {
@@ -651,6 +683,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 轮批评"
+          }
+        }
+      }
+    },
+    "1 Result" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "1 Result"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 条结果"
           }
         }
       }
@@ -735,6 +783,22 @@
         }
       }
     },
+    "A Search clause cannot be empty." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A Search clause cannot be empty."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索子句不能为空。"
+          }
+        }
+      }
+    },
     "A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder." : {
       "localizations" : {
         "en" : {
@@ -747,6 +811,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "手动恢复点是完整脉络的独立副本。它会一直保留，直到您在 Finder 中删除其文件夹。"
+          }
+        }
+      }
+    },
+    "A prefix must contain at least two non-CJK characters and place * only at the end." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A prefix must contain at least two non-CJK characters and place * only at the end."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前缀至少须包含两个非 CJK 字符，且 * 只能置于末尾。"
           }
         }
       }
@@ -1053,6 +1133,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加 Zotero 项目密钥、DOI 或 ISBN、引文密钥或标题、作者和年份来标识此来源。"
+          }
+        }
+      }
+    },
+    "Add a positive term or a structured status, review, callout, or broken-link condition." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add a positive term or a structured status, review, callout, or broken-link condition."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请添加肯定词项，或 status、review、callout、broken-link 结构化条件。"
           }
         }
       }
@@ -2152,6 +2248,22 @@
         }
       }
     },
+    "Building Search Index" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Building Search Index"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在构建搜索索引"
+          }
+        }
+      }
+    },
     "Built-in" : {
       "localizations" : {
         "en" : {
@@ -2212,6 +2324,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "项目符号列表"
+          }
+        }
+      }
+    },
+    "CJK clauses do not use *. Continuous character matching is automatic." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "CJK clauses do not use *. Continuous character matching is automatic."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CJK 子句不使用 *；连续字符匹配会自动进行。"
           }
         }
       }
@@ -2926,6 +3054,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择身份…"
+          }
+        }
+      }
+    },
+    "Choose This Note, This Vault, or Triptych as the Search scope." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose This Note, This Vault, or Triptych as the Search scope."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择“此笔记”“此资料库”或“脉络”作为搜索范围。"
           }
         }
       }
@@ -5331,18 +5475,18 @@
         }
       }
     },
-    "Direct Topic connections. Related items do not affect search ranking." : {
+    "Direct Topic connections. Related items affect neither search ranking nor evidential status." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Direct Topic connections. Related items do not affect search ranking."
+            "value" : "Direct Topic connections. Related items affect neither search ranking nor evidential status."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "议题的直接关联。相关项目不会影响搜索排名。"
+            "value" : "议题的直接关联。相关项目既不影响搜索排名，也不改变证据地位。"
           }
         }
       }
@@ -5913,6 +6057,22 @@
         }
       }
     },
+    "Edit this saved query before running it with Search v3." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Edit this saved query before running it with Search v3."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先编辑此已存查询，再用搜索 v3 运行。"
+          }
+        }
+      }
+    },
     "Edit…" : {
       "localizations" : {
         "en" : {
@@ -6037,6 +6197,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "演进…"
+          }
+        }
+      }
+    },
+    "Exact alias" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Exact alias"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "别名完全匹配"
+          }
+        }
+      }
+    },
+    "Exact filename" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Exact filename"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件名完全匹配"
+          }
+        }
+      }
+    },
+    "Exact path" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Exact path"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径完全匹配"
+          }
+        }
+      }
+    },
+    "Exact title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Exact title"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题完全匹配"
           }
         }
       }
@@ -7347,6 +7571,22 @@
         }
       }
     },
+    "Incompatible with %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Incompatible with %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 %@ 不兼容"
+          }
+        }
+      }
+    },
     "Increase Text Size" : {
       "localizations" : {
         "en" : {
@@ -7359,6 +7599,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "增加文字大小"
+          }
+        }
+      }
+    },
+    "Indexed %lld of %lld notes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Indexed %1$lld of %2$lld notes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已索引 %1$lld / %2$lld 篇笔记。"
           }
         }
       }
@@ -7551,6 +7807,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完整性检查"
+          }
+        }
+      }
+    },
+    "Invalid search query: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid search query: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索查询无效：%@"
           }
         }
       }
@@ -7929,6 +8201,22 @@
         }
       }
     },
+    "Line %lld, Column %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$lld, Column %2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 行，第 %2$lld 列"
+          }
+        }
+      }
+    },
     "Lines %arg–%arg" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -7978,6 +8266,22 @@
         }
       }
     },
+    "Linked from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Linked from %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 链接"
+          }
+        }
+      }
+    },
     "Linked-Note Context" : {
       "localizations" : {
         "en" : {
@@ -7990,6 +8294,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "链接-笔记上下文"
+          }
+        }
+      }
+    },
+    "Links to %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Links to %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "链接到 %@"
           }
         }
       }
@@ -8070,6 +8390,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载材料…"
+          }
+        }
+      }
+    },
+    "Loading Related…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading Related…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载相关项目…"
           }
         }
       }
@@ -8376,6 +8712,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标记恢复完成…"
+          }
+        }
+      }
+    },
+    "Matched %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Matched %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匹配字段：%@"
           }
         }
       }
@@ -9910,6 +10262,22 @@
         }
       }
     },
+    "Only escaped quotes and backslashes are valid inside a Search phrase." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Only escaped quotes and backslashes are valid inside a Search phrase."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索短语中只允许转义引号和反斜杠。"
+          }
+        }
+      }
+    },
     "Open %@" : {
       "localizations" : {
         "en" : {
@@ -11120,6 +11488,22 @@
         }
       }
     },
+    "Preparing the local Triptych index." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preparing the local Triptych index."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备本地脉络索引。"
+          }
+        }
+      }
+    },
     "Preservation changes how the external agent presents the selected Comment. It never grants note-edit permission." : {
       "localizations" : {
         "en" : {
@@ -12055,6 +12439,22 @@
         }
       }
     },
+    "Refreshing Search Index" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Refreshing Search Index"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刷新搜索索引"
+          }
+        }
+      }
+    },
     "Refreshing derived state…" : {
       "localizations" : {
         "en" : {
@@ -12099,6 +12499,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相关"
+          }
+        }
+      }
+    },
+    "Related connections are refreshing." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Related connections are refreshing."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刷新相关关联。"
+          }
+        }
+      }
+    },
+    "Related connections are stale. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Related connections are stale. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相关关联已过期。详情：%@"
+          }
+        }
+      }
+    },
+    "Related connections are stale: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Related connections are stale: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相关关联已过期：%@"
+          }
+        }
+      }
+    },
+    "Related items unavailable: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Related items unavailable: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载相关项目：%@"
           }
         }
       }
@@ -13683,6 +14147,22 @@
         }
       }
     },
+    "Root" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Root"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "根目录"
+          }
+        }
+      }
+    },
     "Routing Metadata" : {
       "localizations" : {
         "en" : {
@@ -14293,6 +14773,22 @@
         }
       }
     },
+    "Scholium could not publish a replacement Search index. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium could not publish a replacement Search index. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法发布替代搜索索引。详情：%@"
+          }
+        }
+      }
+    },
     "Scholium could not record the Critique request and could not restore the Critique file automatically. %@ Recovery also failed: %@ Restore the Before Agent Work checkpoint before continuing." : {
       "localizations" : {
         "en" : {
@@ -14693,6 +15189,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索关注事项"
+          }
+        }
+      }
+    },
+    "Search Index Failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search Index Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索索引失败"
+          }
+        }
+      }
+    },
+    "Search Index Is Stale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search Index Is Stale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索索引已过期"
           }
         }
       }
@@ -15181,6 +15709,22 @@
         }
       }
     },
+    "Showing results from the last complete index while the replacement is built." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing results from the last complete index while the replacement is built."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在构建替代索引；暂时显示上一个完整索引的结果。"
+          }
+        }
+      }
+    },
     "Shown" : {
       "localizations" : {
         "en" : {
@@ -15649,6 +16193,22 @@
         }
       }
     },
+    "Structured filter" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Structured filter"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结构化筛选"
+          }
+        }
+      }
+    },
     "Style" : {
       "localizations" : {
         "en" : {
@@ -15730,6 +16290,22 @@
         }
       }
     },
+    "Supported by %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Supported by %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 支持"
+          }
+        }
+      }
+    },
     "Supported by Target" : {
       "localizations" : {
         "en" : {
@@ -15776,6 +16352,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支持"
+          }
+        }
+      }
+    },
+    "Supports %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Supports %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支持 %@"
           }
         }
       }
@@ -16265,6 +16857,22 @@
         }
       }
     },
+    "The last complete Search index remains available. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The last complete Search index remains available. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一个完整搜索索引仍可使用。详情：%@"
+          }
+        }
+      }
+    },
     "The maintenance purpose or imported proposal changed after validation. Validate this proposal again before requesting evaluation." : {
       "localizations" : {
         "en" : {
@@ -16329,6 +16937,22 @@
         }
       }
     },
+    "The note changed. Search results were refreshed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The note changed. Search results were refreshed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记已变化，搜索结果已刷新。"
+          }
+        }
+      }
+    },
     "The note changed; reopen the function." : {
       "localizations" : {
         "en" : {
@@ -16373,6 +16997,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法恢复待处理的文献推荐请求。"
+          }
+        }
+      }
+    },
+    "The quoted phrase is not closed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The quoted phrase is not closed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "带引号的短语未闭合。"
           }
         }
       }
@@ -16748,6 +17388,22 @@
         }
       }
     },
+    "This Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此笔记"
+          }
+        }
+      }
+    },
     "This Note Changed on Disk" : {
       "localizations" : {
         "en" : {
@@ -16764,6 +17420,54 @@
         }
       }
     },
+    "This Search field is not supported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Search field is not supported."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持此搜索字段。"
+          }
+        }
+      }
+    },
+    "This Search field requires a value." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Search field requires a value."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此搜索字段需要一个值。"
+          }
+        }
+      }
+    },
+    "This Vault" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Vault"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此资料库"
+          }
+        }
+      }
+    },
     "This cannot be undone. Scholium removes the note, its Review and comments, Dialogue records, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it." : {
       "localizations" : {
         "en" : {
@@ -16776,6 +17480,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此操作无法撤销。Scholium 会移除该笔记、研究者评审与注释、对话记录、评析关联、稳定身份、研究记录，以及所有包含该笔记的脉络恢复点。"
+          }
+        }
+      }
+    },
+    "This field was removed in Search v3. Choose the scope in the visible Search control." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This field was removed in Search v3. Choose the scope in the visible Search control."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此字段已从搜索 v3 中移除。请在可见的搜索控件中选择范围。"
           }
         }
       }
@@ -17067,6 +17787,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此快照是当前包。"
+          }
+        }
+      }
+    },
+    "This structured value is not a canonical Scholium value." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This structured value is not a canonical Scholium value."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此结构化值不是 Scholium 的规范值。"
+          }
+        }
+      }
+    },
+    "This syntax is outside Scholium’s finite Search grammar." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This syntax is outside Scholium’s finite Search grammar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此语法不属于 Scholium 的有限搜索语法。"
           }
         }
       }
@@ -18357,6 +19109,118 @@
         }
       }
     },
+    "alias" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "alias"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "别名"
+          }
+        }
+      }
+    },
+    "author" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "author"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作者"
+          }
+        }
+      }
+    },
+    "body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "body"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正文"
+          }
+        }
+      }
+    },
+    "broken link" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "broken link"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "断开的关联"
+          }
+        }
+      }
+    },
+    "callout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "callout"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标注块"
+          }
+        }
+      }
+    },
+    "footnote" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "footnote"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脚注"
+          }
+        }
+      }
+    },
+    "heading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "heading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小标题"
+          }
+        }
+      }
+    },
     "macOS did not accept the text on the clipboard. %@" : {
       "localizations" : {
         "en" : {
@@ -18402,6 +19266,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS 不接受剪贴板上的文本。再次尝试复制。"
+          }
+        }
+      }
+    },
+    "path" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "path"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径"
+          }
+        }
+      }
+    },
+    "review" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "review"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评审"
+          }
+        }
+      }
+    },
+    "status" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态"
+          }
+        }
+      }
+    },
+    "tag" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "tag"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签"
+          }
+        }
+      }
+    },
+    "title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "title"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题"
+          }
+        }
+      }
+    },
+    "year" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "year"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "年份"
           }
         }
       }

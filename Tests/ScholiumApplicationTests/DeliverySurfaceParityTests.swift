@@ -49,10 +49,12 @@ struct DeliverySurfaceParityTests {
             )
         )
         let appSnapshot = try await appHandle.snapshot()
-        let appHits = try await appHandle.discovery.search(
-            SearchQuery("freedom"),
-            scope: .workspace
-        )
+        let appHits = try await appHandle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
         let appDocument = try #require(appSnapshot.document(id: fixture.analysisNoteID))
         let appMetadataIssues = PropertyContractCatalog.validate(
             appDocument.document,
@@ -67,10 +69,12 @@ struct DeliverySurfaceParityTests {
         )
         let cliHandle = try await cliRuntime.openWorkspace(id: fixture.assignment.id)
         let cliSnapshot = try await cliHandle.snapshot()
-        let cliHits = try await cliHandle.discovery.search(
-            SearchQuery("freedom"),
-            scope: .workspace
-        )
+        let cliHits = try await cliHandle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
         let cliDocument = try #require(cliSnapshot.document(id: fixture.analysisNoteID))
         let cliMetadataIssues = PropertyContractCatalog.validate(
             cliDocument.document,
@@ -80,7 +84,15 @@ struct DeliverySurfaceParityTests {
 
         #expect(cliSnapshot.discovery.catalog.notes == appSnapshot.discovery.catalog.notes)
         #expect(cliSnapshot.discovery.catalog.attention == appSnapshot.discovery.catalog.attention)
-        #expect(cliHits == appHits)
+        // Each delivery request owns a distinct cancellation/staleness identity,
+        // while the shared Application response content must remain identical.
+        #expect(cliHits.contractVersion == appHits.contractVersion)
+        #expect(cliHits.scope == appHits.scope)
+        #expect(cliHits.freshnessToken == appHits.freshnessToken)
+        #expect(cliHits.availability == appHits.availability)
+        #expect(cliHits.results == appHits.results)
+        #expect(cliHits.hasMore == appHits.hasMore)
+        #expect(cliHits.diagnostics == appHits.diagnostics)
         #expect(cliMetadataIssues == appMetadataIssues)
         #expect(cliResearch.humanReviews == appResearch.humanReviews)
         #expect(cliResearch.dialogues == appResearch.dialogues)

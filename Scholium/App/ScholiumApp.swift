@@ -1408,6 +1408,9 @@ final class WindowModel: ObservableObject {
     private var libraryBrowseGeneration: UInt64 = 0
     private var identityReviewRefreshGeneration: UInt64 = 0
     private var savedSearchMutationTail: Task<Void, Never>?
+    private var advancedSearchExecutionTask: Task<Void, Never>?
+    private var advancedSearchExecutionID: UUID?
+    private var workspaceSearchGeneration: SearchGenerationID?
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
     #if DEBUG
     private var qaPerformanceModeNotificationTokens: [Int32] = []
@@ -1546,6 +1549,11 @@ final class WindowModel: ObservableObject {
     var pendingSourceLine: Int? {
         get { documentController.pendingSourceLine }
         set { documentController.pendingSourceLine = newValue }
+    }
+
+    var pendingSourceRange: SearchSourceRange? {
+        get { documentController.pendingSourceRange }
+        set { documentController.pendingSourceRange = newValue }
     }
 
     var lastSaveError: String? {
@@ -2153,23 +2161,14 @@ final class WindowModel: ObservableObject {
     /// This Note and leaves the researcher's ordinary scope untouched.
     func beginSearch(_ invocation: SearchInvocation) {
         if case .findInNote = invocation, currentNote == nil { return }
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.flushRegisteredEditorIfNeeded()
-                self.discoveryController.presentSearch(invocation)
-                self.showSearchSurface = true
-            } catch {
-                self.lastSaveError = error.localizedDescription
-                self.showToast(
-                    "The current note could not be saved, so Search did not open. \(error.localizedDescription)",
-                    kind: .error
-                )
-            }
-        }
+        discoveryController.presentSearch(invocation)
+        showSearchSurface = true
     }
 
     func dismissSearch() {
+        advancedSearchExecutionTask?.cancel()
+        advancedSearchExecutionTask = nil
+        advancedSearchExecutionID = nil
         discoveryController.dismissSearch()
         showSearchSurface = false
     }
@@ -2189,6 +2188,10 @@ final class WindowModel: ObservableObject {
                     line: route.sourceLocator?.line,
                     mode: route.sourceLocator == nil ? .read : .source
                 )
+            }
+        case .openSearchResult(let result, let disposition):
+            Task { [weak self] in
+                await self?.openSearchResult(result, disposition: disposition)
             }
         case .revealSourceLocator(let vaultID, let locator):
             Task { [weak self] in
@@ -2229,6 +2232,88 @@ final class WindowModel: ObservableObject {
         case .presentLifecycle(let request):
             noteLifecycleRequest = request
         }
+    }
+
+    private func openSearchResult(
+        _ result: SearchResultSelection,
+        disposition: WindowOpenDisposition
+    ) async {
+        switch result {
+        case .related:
+            var route = result.documentRoute
+            route = WindowDocumentRoute(
+                reference: route.reference,
+                sourceLocator: route.sourceLocator,
+                disposition: disposition
+            )
+            if disposition == .newTab {
+                requestOpenNote(route.reference, disposition: .newTab)
+            } else {
+                await openWorkspaceReference(
+                    route.reference,
+                    line: route.sourceLocator?.line,
+                    mode: route.sourceLocator == nil ? .read : .source
+                )
+            }
+            dismissSearch()
+
+        case .lexical(let hit):
+            guard discoveryController.search.freshnessToken == hit.freshnessToken else {
+                await refreshAfterStaleSearchResult()
+                return
+            }
+
+            let currentFingerprint: DocumentFingerprint?
+            let currentFreshness: SearchFreshnessToken?
+            if discoveryController.search.criteria.scope == .thisNote {
+                let snapshot = try? await currentSearchSourceSnapshot()
+                currentFingerprint = snapshot?.fingerprint
+                currentFreshness = snapshot.map(SearchFreshnessToken.currentNote)
+            } else {
+                let discovery = try? await discoveryController.discoverySnapshot()
+                currentFreshness = discovery?.searchGeneration.map(SearchFreshnessToken.triptych)
+                currentFingerprint = workspaceVaultSnapshotsByID[hit.vaultID]?.documents.first {
+                    $0.id.relativePath == hit.relativePath
+                }?.fingerprint
+            }
+            guard currentFreshness == hit.freshnessToken,
+                  currentFingerprint == hit.fingerprint else {
+                await refreshAfterStaleSearchResult()
+                return
+            }
+
+            let reference = VaultNoteReference(
+                vaultID: hit.vaultID,
+                vaultName: hit.vaultName,
+                vaultRole: hit.vaultRole,
+                relativePath: hit.relativePath,
+                stableNoteID: hit.stableNoteID
+            )
+            let isCurrentDocument = currentDocumentDescriptor?.reference.vaultID == hit.vaultID
+                && currentDocumentDescriptor?.reference.relativePath == hit.relativePath
+            if isCurrentDocument {
+                pendingSourceRange = hit.sourceRange
+                pendingSourceLine = hit.sourceRange?.line ?? hit.sourceLine
+                requestPresentationMode = .source
+            } else if disposition == .newTab {
+                requestOpenNote(reference, disposition: .newTab)
+            } else {
+                openWorkspaceReference(
+                    reference,
+                    sourceRange: hit.sourceRange,
+                    fallbackLine: hit.sourceLine
+                )
+            }
+            dismissSearch()
+        }
+    }
+
+    private func refreshAfterStaleSearchResult() async {
+        showToast(
+            String(localized: "The note changed. Search results were refreshed.", table: "Localizable", bundle: .module),
+            kind: .information
+        )
+        await refreshAdvancedSearch()
     }
 
     func requestOpenNote(
@@ -3868,7 +3953,7 @@ final class WindowModel: ObservableObject {
     }
 
     func refreshWindowProjection() async {
-        // `WorkspaceStore` publishes the authoritative per-vault index and
+        // `WorkspaceStore` publishes the authoritative Triptych index and
         // Triptych graph. Keep this method as a window projection refresh for
         // existing callers; it must not create a second graph or index.
         projectionRefreshToken &+= 1
@@ -4301,23 +4386,82 @@ final class WindowModel: ObservableObject {
     }
 
     func refreshAdvancedSearch() async {
+        advancedSearchExecutionTask?.cancel()
+        let executionID = UUID()
+        advancedSearchExecutionID = executionID
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performAdvancedSearch(executionID: executionID)
+        }
+        advancedSearchExecutionTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        if advancedSearchExecutionID == executionID {
+            advancedSearchExecutionTask = nil
+            advancedSearchExecutionID = nil
+        }
+    }
+
+    private func performAdvancedSearch(executionID: UUID) async {
         let state = advancedSearchState
         do {
+            let sourceSnapshot = state.scope == .thisNote
+                ? try await currentSearchSourceSnapshot()
+                : nil
             try await discoveryController.executeSearch(
                 state,
                 context: DiscoverySearchExecutionContext(
                     workspaceIsAvailable: workspaceAssignment != nil,
-                    currentNote: selectedDocument,
+                    currentNoteSnapshot: sourceSnapshot,
                     currentVaultID: currentRegisteredVault?.id
                 )
             )
             if refreshStatusText == "Search unavailable" { refreshStatusText = nil }
+        } catch is CancellationError {
+            return
         } catch {
+            guard advancedSearchExecutionID == executionID else { return }
+            discoveryController.failPendingSearch(error.localizedDescription, for: state)
             refreshStatusText = "Search unavailable"
             if !(error is DiscoverySearchExecutionError) {
                 workspaceCatalogError = "Search refresh failed. \(error.localizedDescription)"
             }
         }
+    }
+
+    /// Captures CodeMirror's checked in-memory source without flushing or
+    /// saving it. Identity is rechecked after the asynchronous bridge query so
+    /// a superseded tab cannot become This Note Search authority.
+    private func currentSearchSourceSnapshot() async throws -> SearchSourceSnapshot? {
+        guard let descriptor = currentDocumentDescriptor,
+              let note = currentNote else { return nil }
+        let session = documentController.session(for: descriptor)
+        let sessionID = session.editorSession.sessionID
+        let source: String
+        if session.isEditing || session.editorSession.hasRecoverableBuffer {
+            source = try await session.editorSession.currentText(
+                for: session.editorSession.bridgeDocumentID
+            )
+        } else {
+            source = note.rawContent
+        }
+        guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+              documentController.session(for: descriptor) === session,
+              session.editorSession.sessionID == sessionID else {
+            throw CancellationError()
+        }
+        return SearchSourceSnapshot(
+            noteID: VaultQualifiedNoteID(
+                vaultID: descriptor.reference.vaultID,
+                relativePath: note.relativePath
+            ),
+            editorSessionID: sessionID,
+            source: source,
+            editorRevision: UInt64(max(0, session.editorSession.generation))
+        )
     }
 
     func saveCurrentSearch(named requestedName: String) {
@@ -4327,13 +4471,22 @@ final class WindowModel: ObservableObject {
         let state = advancedSearchState
         enqueueSavedSearchMutation { searches in
             var searches = searches
-            searches.insert(SavedSearch(name: name, state: state), at: 0)
+            searches.insert(SavedSearch(
+                name: name,
+                definition: SearchDefinition(
+                    query: state.query,
+                    presentationScope: state.scope
+                )
+            ), at: 0)
             return searches
         }
     }
 
     func runSavedSearch(_ search: SavedSearch) {
-        advancedSearchState = search.state
+        advancedSearchState = SearchWorkspaceState(
+            query: search.definition.query,
+            scope: search.definition.presentationScope
+        )
         showSearchSurface = true
         Task { await refreshAdvancedSearch() }
     }
@@ -4798,9 +4951,27 @@ final class WindowModel: ObservableObject {
                 tabActivation: .place(.replaceSelected)
             )
             if let line {
+                self.pendingSourceRange = nil
                 self.pendingSourceLine = max(1, line)
                 self.requestPresentationMode = mode
             }
+        }
+    }
+
+    private func openWorkspaceReference(
+        _ reference: VaultNoteReference,
+        sourceRange: SearchSourceRange?,
+        fallbackLine: Int
+    ) {
+        enqueueDocumentTransition { [weak self] in
+            guard let self else { return }
+            try self.activateWorkspaceReference(
+                reference,
+                tabActivation: .place(.replaceSelected)
+            )
+            self.pendingSourceRange = sourceRange
+            self.pendingSourceLine = sourceRange?.line ?? max(1, fallbackLine)
+            self.requestPresentationMode = .source
         }
     }
 
@@ -5068,6 +5239,7 @@ final class WindowModel: ObservableObject {
         notes = []
         documentController.resetPresentationState()
         pendingSourceLine = nil
+        pendingSourceRange = nil
         clearMetadataFilters()
         currentRegisteredVault = nil
         currentVaultRole = .other
@@ -5084,6 +5256,10 @@ final class WindowModel: ObservableObject {
         documentRevisions = [:]
         relationshipGraph = nil
         workspaceVaultSnapshotsByID = [:]
+        workspaceSearchGeneration = nil
+        advancedSearchExecutionTask?.cancel()
+        advancedSearchExecutionTask = nil
+        advancedSearchExecutionID = nil
         derivedRefreshStatus = nil
     }
 
@@ -5174,11 +5350,22 @@ final class WindowModel: ObservableObject {
         _ snapshot: WorkspaceSnapshot,
         vaultID: UUID
     ) async {
+        let previousSearchGeneration = workspaceSearchGeneration
+        workspaceSearchGeneration = snapshot.discovery.searchGeneration
         workspaceCatalog = snapshot.discovery.catalog
         workspaceVaultSnapshotsByID = Dictionary(
             uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
         )
         refreshDocumentTabProjections()
+        if let previousSearchGeneration,
+           previousSearchGeneration != snapshot.discovery.searchGeneration,
+           showSearchSurface,
+           !advancedSearchState.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // A source-generation change invalidates both the visible rows and
+            // any index statement still evaluating the predecessor.
+            advancedSearchExecutionTask?.cancel()
+            Task { [weak self] in await self?.refreshAdvancedSearch() }
+        }
         guard noteLocationScope == .workspace else {
             try? await refreshNoteLocationScope()
             return

@@ -428,13 +428,18 @@ usage changes.
 
 ### 8.1 Research Functions and function contract
 
-The Research Inspector's **Functions** mode exposes only the functions valid
-for the current role-valid note:
+The Research Inspector's **Actions** mode exposes only the functions valid for
+the current role-valid note:
 
 | Target | Functions, in order |
 | --- | --- |
 | Analysis or Topic | **Dialogue · Develop · Fidelity** |
 | Work | **Critique · Revise · Dialogue · Fidelity · Manuscript** |
+
+For an Analysis or Topic, Actions prepends **Review** as a direct
+researcher-authored action. Review remains outside the Research Function
+contract: it prepares no instructions, creates no agent handoff, and opens the
+existing Human Review destination.
 
 These stable operations are not a taxonomy of philosophy. There is no Manage
 Comments doorway or nested Comment, Human Review, or Critique sheet.
@@ -815,18 +820,77 @@ Search is a centered, compact Spotlight-style command surface. Scope is visible
 before typing; empty Search shows no results sheet. Text expands a bounded
 native result list vertically, not into a workspace-scale panel. It follows
 appearance and accessibility settings without copying Spotlight categories or
-Finder actions.
+Finder actions. Opening Search does not dim, tint, or blur the retained
+workspace or native toolbar. A transparent outside-click target may cover the
+workspace content; the opaque Search surface, focus, boundary, and restrained
+elevation establish its foreground hierarchy.
+
+The transient keyboard or pointer result target is not document selection. It
+uses one full-width warm opaque row with a narrow accent leading rule, exposes
+the native selected accessibility trait, and retains native scrolling, focus,
+and keyboard mechanics. Search never layers a partial dark system-selection
+slab behind only part of a result row.
 
 Each window remembers its ordinary scope. `Command-F` requires an open note and
 temporarily selects **This Note**. Dismissal restores the prior scope unless the
 researcher explicitly changed it, cancels work, rejects stale results, and
 clears query/results while retaining scope and saved searches.
 
-Beta uses deterministic local SQLite FTS5. An exact Topic match may show its
-direct resolved Connections in a separate **Related** section; they neither
-alter ranking nor imply evidence. Vector search, embeddings, AI query
-interpretation/ranking, and chat-style Search are excluded. **Vector-Link**
-means only researcher-authored relation markers.
+Beta Search contract v3 uses one deterministic local SQLite FTS5 corpus for
+the active Triptych. **This Vault** is a predicate over that corpus and
+**Triptych** uses it without a vault predicate, so BM25 statistics remain
+comparable across Analyses, Topics, and Works. **This Note** instead searches
+the current editor's exact in-memory revision and returns one row per
+non-overlapping occurrence after the complete query is satisfied; invoking
+Search never saves or indexes that buffer. Vault and Triptych results remain
+one row per active note. Set Aside and Trash are excluded from the persisted
+corpus but remain searchable while they are the open **This Note**.
+
+The finite expert syntax is space-as-AND, escaped exact phrases, trailing
+prefix `*`, clause exclusion, lexical fields `title`, `alias`, `heading`,
+`body`, `author`, `year`, `tag`, `footnote`, and `path`, and structured fields
+`status`, `review`, `callout`, and `has:broken-link`. Structured filter-only
+queries are valid. A query containing only excluded free text is invalid.
+Unknown fields or canonical values, removed `vault`, `role`, or `metadata`
+fields, malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
+regular-expression, fuzzy, range, or nested syntax produce an inline query
+diagnostic and never silently broaden retrieval. Scope is selected only by the
+visible interface or CLI option.
+
+Search indexes only visible semantic text and derived identity/filter fields,
+never raw Markdown source or link destinations. Title, alias, heading, author,
+year, tag, path, canonical callout, footnote, and residual body text are
+separate projections; the same heading, callout, or footnote content is not
+also weighted as body. Links contribute displayed text and images contribute
+alt text. Source mappings preserve exact UTF-16 ranges through Unicode
+normalization. Production CJK retrieval uses the same deterministic
+character-and-overlapping-bigram projection at index and query time, followed
+by contiguous-substring verification; Apple language tokenization is not a
+persisted Search contract.
+
+Complete normalized title, alias, filename stem, and relative-path identity
+precede one-corpus BM25, then normalized title, fixed Analyses/Topics/Works
+order, and normalized path break ties. Exact identity candidates come directly
+from ordinary tables and cannot be lost to a lexical candidate cutoff. Public
+results explain matched field and rank reason without exposing raw BM25. The
+interface caps at 100 rows and reports only `N Results` or `N+ Results`; Search
+does not perform an expensive exact total count.
+
+Each response binds a versioned query contract, Triptych generation, sorted
+source-manifest hash, source fingerprint or editor revision, and freshness
+token. A stale result must refresh rather than navigate. Building, refreshing,
+stale, failed, and query-invalid are distinct states; cancellation is not a
+failure. A failed routine refresh continues serving the last complete
+generation, while a first or incompatible v3 build never falls back to the
+different v1 ranking contract. One generation publishes atomically or not at
+all and its disposable index stores no writable research authority.
+
+An exact Topic match may show its direct resolved Connections in a separately
+loaded **Related** section only when its graph manifest matches the lexical
+manifest. Related failure never removes lexical results; relations neither
+alter ranking nor imply evidence and never expand transitively here. Vector
+search, embeddings, AI query interpretation/ranking, and chat-style Search are
+excluded. **Vector-Link** means only researcher-authored relation markers.
 
 Attention may report possible-orphan conditions, Changed Since Review, Broken
 Connections, explicit reliance on an Unqualified Analysis, malformed metadata,
@@ -1039,8 +1103,8 @@ with three sibling items:
    Filter; one folder/note hierarchy; Recommended Bibliography; compact Set
    Aside, Trash, and Settings routes.
 2. **Document:** selected note or the text-free semantic background.
-3. **Apparatus:** Research Inspector's read-only Overview, Connections, and
-   Functions projections. It never owns buffers, autosave, Undo, or conflicts;
+3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
+   projections. It never owns buffers, autosave, Undo, or conflicts;
    full chronology belongs to Research Record.
 
 The workspace starts at **1180 × 760**, not a minimum. SwiftUI Scene data owns
@@ -1199,13 +1263,13 @@ empty, invalid, derived, and not-applicable. Exact YAML stays available in
 Source. Research Status shows Scope, then non-empty Limitations, and **Not Yet**
 for absence.
 
-### 18.5 Contextual research and Research Functions
+### 18.5 Contextual research and Actions
 
 Apparatus contains Research Inspector only; Research Record and checkpoint
 recovery stay separate. Research Record is a nonrestored `UtilityWindow`, reads
 the focused Workspace directly, and starts at **760 × 680** without treating
 that size as a minimum. There is exactly one native trailing Inspector per
-Workspace, with **Overview · Connections · Functions** in that order. These are
+Workspace, with **Overview · Connect · Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
 tabs, panels, or windows. Their text labels use a restrained ink underline,
 not a filled/capsule segment; labels remain horizontally reachable rather than
@@ -1226,8 +1290,8 @@ Overview presents only compact current-note projections, in this order:
    problem. Editing opens the existing Properties surface.
 2. **Scholarly Status:** Human Review state for an Analysis/Topic or Critique
    currency and round count for a Work, followed by Comment totals, unresolved
-   count, and anchors needing reattachment. Review/Critique actions keep their
-   existing destinations.
+   count, and anchors needing reattachment. This is status only; the applicable
+   Review or Critique action keeps its existing destination under Actions.
 3. **Attention:** the visible current-note count and distinct issue kinds after
    dismissal. The complete queue, messages, filters, and dismissal controls
    remain in Library.
@@ -1256,19 +1320,32 @@ a second panel merely to show a title. Preserve source anchors. Connections
 shows the same freshness state before its groups. Stale or failed state keeps
 the last complete graph readable and offers Retry.
 
-Functions presents the role-valid functions in the Section 8.1 order. Human
-Review is not a Function launcher. Availability fails closed while checking;
-an unavailable function is disabled and states its first actionable repair
-reason. Each launcher is a wrapping, full-width native button with a 44pt
-target. It opens the existing typed Research Function sheet rather than
-embedding the workflow in the narrow Inspector. Closing a sheet restores focus
-to its initiating Functions button only when it was launched there.
+Actions presents every role-valid current-note action. For an Analysis or Topic,
+the order is **Review · Dialogue · Develop · Fidelity**; Review opens the
+existing direct researcher-authored Human Review destination and never becomes
+an agent function or handoff. A Work keeps the Section 8.1 function order.
+Availability fails closed while checking; an unavailable action is disabled
+and states its first actionable repair reason. Each launcher is a wrapping,
+full-width native button with a 44pt target. Research Function launchers open
+their existing typed sheet rather than embedding the workflow in the narrow
+Inspector. Closing a destination restores focus to its initiating Actions
+button only when it was launched there.
 
-**Current Activity** shows only the newest current-note run still requiring
-action: prepared, awaiting Fidelity, unverified, or stale. If more remain, it
-shows their count and an **Open Research Record** route. Complete and cancelled
-runs, full instructions, Fidelity outcomes, and complete history remain in
-Research Record.
+At the top of Actions, **Current Activity** is a compact opaque horizontal
+track for only the newest current-note run still requiring action: prepared,
+awaiting Fidelity, unverified, or stale. Nodes are recorded events from that
+one run; connectors express their actual chronology and never predict a future
+stage or connect the available Actions. The track scrolls horizontally when
+needed, reveals enough of the next event to make overflow apparent, and offers
+Previous/Next controls plus ordinary keyboard scrolling so swipe, drag, or
+hover is never required. Event labels expose the current actionable state;
+hover or keyboard focus may disclose compact time, actor, checkpoint, or
+reason detail. Right-to-left presentation reverses the chronological sequence
+without reversing digits. With no current run the complete track is absent.
+If more runs remain, the track shows their count and an **Open Research
+Record** route. Complete and cancelled runs, full instructions, Fidelity
+outcomes, and complete history remain in Research Record. This status track is
+not a separate panel, overlay, progress estimate, or glass surface.
 
 Inspector uses wrapping system interface text. Sections start 16pt below the
 tab rule and separate by 16pt; headings use one lighter sans label. Modes share
@@ -1278,8 +1355,9 @@ trailing actions return to the outer edge unless semantics require otherwise.
 Scholarly Status is one restrained third-plane bordered surface, not a badge.
 Metadata/actions are sans; verdict is 18pt editorial serif with redundant
 symbol/date. Revision currency appears only after review. Review Note uses
-editorial serif beside a rule and truncates after two lines. Open Review or
-Open Critique remains available; color is insufficient.
+editorial serif beside a rule and truncates after two lines. The state remains
+in Overview while Open Review or Open Critique remains available in Actions;
+color is insufficient.
 
 Document has no bottom Research Strip or hidden-Inspector duplicate. Function
 handoff remains keyboard/VoiceOver reachable; its sheet survives launch and
@@ -1462,6 +1540,23 @@ remain provisional pending ordinary, narrow, mixed-script, and 200% testing.
 Fractional browser-proof translations are superseded; screenshots and
 prototype coordinates remain evidence only.
 
+### 19.5 Application icon
+
+The canonical Scholium application icon is the exact researcher-approved
+parchment-and-ink composition: a cuffed hand points right toward one vertical
+marginal rule and six short manuscript strokes. Its composition, orientation,
+paper grain, ink character, and rounded parchment field are application
+identity, not Appearance settings or design Variables.
+
+Use this artwork only as the application icon. Do not recolor it through the
+Accent/Paper resolver, mirror it for right-to-left interfaces, substitute an SF
+Symbol, reuse it as a state or action glyph, or add text, badges, shadows, or
+other Scholium-owned effects. Debug, QA, and release bundles derive their icon
+representations from the same approved artwork. The platform may scale or mask
+those representations; Scholium does not crop, recompose, or maintain a second
+icon lineage. Replacing the artwork requires explicit researcher approval and
+a new recorded decision.
+
 ## 20. Accessibility and adaptation
 
 - Support System, Light, and Dark without hard-coded inversion.
@@ -1471,6 +1566,9 @@ prototype coordinates remain evidence only.
   Motion, inactive windows, 200% document text, and accent changes.
 - Give every important state two suitable channels; never rely only on color,
   motion, sound, location, or arrow direction.
+- Current Activity exposes the same recorded events as a linear accessible
+  list, labels its actionable state without hover, and supports Previous/Next
+  plus ordinary keyboard scrolling; horizontal swipe or drag is supplementary.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, function panels, conflict comparison, and
   Research Record close.
@@ -1590,7 +1688,8 @@ only in Git history.
 | **D-090** | 18.2, 19.3–19.4, 20 | **D-091** | 18.2, 18.4–18.5, 19.1, 20 |
 | **D-092** | 19.2–19.3, 20 | **D-093** | 18.2, 18.4, 19.2–19.4, 20 |
 | **D-094** | 3.2, 18.2 | **D-095** | 18.2, 20 |
-| **D-096** | 8.5, 14 |  |  |
+| **D-096** | 8.5, 14 | **D-097** | 19.5 |
+| **D-098** | 13, 18.3, 20 | **D-099** | 7.1, 8.1, 18.2, 18.5, 20 |
 
 Clean-cutover inventory:
 
@@ -1625,6 +1724,22 @@ Clean-cutover inventory:
 - **D-096:** existing-file mutation requires durable expected/candidate bytes
   plus a verifiable displaced-file-preserving commit boundary; otherwise fail
   closed without a **Saved** claim.
+- **D-097:** retain one approved application-icon lineage across debug, QA, and
+  release bundles; retain no prior icon, Appearance-derived variant, mirrored
+  copy, interface-glyph reuse, or packaging-specific replacement.
+- **D-098:** retain exactly one Triptych lexical corpus, the three public
+  scopes, finite contract-v3 syntax, exact-identity precedence, symmetric CJK
+  verification, versioned freshness, a separate direct Related section, and
+  the non-dimming opaque command surface and full-row editorial result-target
+  treatment; retain no per-vault federation, hidden scope/filter bypass,
+  raw-source corpus, vector/AI ranking, exposed implementation score, visible
+  workspace scrim, custom blur, or partial system-selection slab.
+- **D-099:** the Inspector uses Overview, Connect, and Actions. Overview keeps
+  Review/Critique state while Actions owns their direct entry points; Analysis
+  and Topic order Review before Dialogue, Develop, and Fidelity. Current
+  Activity precedes all launchers as an opaque, horizontally scrollable track
+  of recorded events from one actual run, with no predicted nodes, action-order
+  connectors, glass HUD, gesture-only access, or empty placeholder.
 
 Unresolved work must not be described as complete:
 

@@ -87,7 +87,7 @@ struct DerivedRefreshStatusTests {
         #expect(!issue.reason.isEmpty)
         #expect(issue.lastKnownGood == WorkspaceDerivedRefreshEvidence(snapshot: initial.snapshot))
         #expect(event.snapshot.generatedAt == initial.snapshot.generatedAt)
-        #expect(event.discovery.indexGenerations == initial.snapshot.discovery.indexGenerations)
+        #expect(event.discovery.searchGeneration == initial.snapshot.discovery.searchGeneration)
 
         try FileManager.default.removeItem(at: invalidURL)
         let refreshed = try await handle.discovery.refresh()

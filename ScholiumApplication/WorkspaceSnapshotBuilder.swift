@@ -19,8 +19,7 @@ enum WorkspaceSnapshotBuilder {
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
         services: WorkspaceServices,
-        graphGeneration: Int,
-        recoveredIndexIDs: Set<UUID>
+        graphGeneration: Int
     ) async throws -> WorkspaceSnapshot {
         try Task.checkCancellation()
 
@@ -116,13 +115,38 @@ enum WorkspaceSnapshotBuilder {
             )
         }
 
-        let graph = try LinkGraphBuilder.buildCancellable(
-            generation: graphGeneration,
-            catalog: linkCatalog,
-            documents: semanticDocuments,
-            resolutionScope: .workspace
+        let sourceManifestHash = SearchSourceManifest.hash(
+            loadedVaults.flatMap { loaded in
+                loaded.activeDocuments.map {
+                    SearchSourceManifestEntry(
+                        vaultID: loaded.vault.id,
+                        relativePath: $0.relativePath,
+                        fingerprint: $0.fingerprint
+                    )
+                }
+            }
         )
-        let brokenNoteIDs = Set(graph.diagnostics.compactMap { diagnostic in
+        let graph: GraphSnapshot?
+        let graphBuildIssue: String?
+        do {
+            graph = try LinkGraphBuilder.buildCancellable(
+                generation: graphGeneration,
+                catalog: linkCatalog,
+                documents: semanticDocuments,
+                resolutionScope: .workspace,
+                sourceManifestHash: sourceManifestHash
+            )
+            graphBuildIssue = nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Search is an independent projection of the same source
+            // snapshot. A graph failure must not prevent a complete lexical
+            // generation from replacing its predecessor.
+            graph = nil
+            graphBuildIssue = "Relationship graph: \(error.localizedDescription)"
+        }
+        let brokenNoteIDs = Set((graph?.diagnostics ?? []).compactMap { diagnostic in
             diagnostic.code == .broken ? diagnostic.source : nil
         })
 
@@ -134,14 +158,11 @@ enum WorkspaceSnapshotBuilder {
             uniquingKeysWith: { first, _ in first }
         )
         var reviewStates: [String: WorkspaceReviewState] = [:]
-        var indexGenerations: [UUID: IndexGeneration] = [:]
+        var searchDocuments: [SearchIndexDocument] = []
 
         for loaded in loadedVaults {
             try Task.checkCancellation()
-            guard let index = services.indexes[loaded.vault.id] else {
-                throw ScholiumApplicationError.incompleteTriptych(assignment.id)
-            }
-            let searchDocuments = loaded.activeDocuments.map { document in
+            searchDocuments.append(contentsOf: loaded.activeDocuments.map { document in
                 let id = VaultQualifiedNoteID(
                     vaultID: loaded.vault.id,
                     relativePath: document.relativePath
@@ -161,19 +182,18 @@ enum WorkspaceSnapshotBuilder {
                     vaultRole: loaded.vault.role,
                     document: document,
                     semantic: loaded.semantics[document.relativePath],
-                    review: review?.review(for: document.fingerprint) == nil
-                        ? "unreviewed"
-                        : "reviewed",
+                    review: searchReviewState(
+                        review?.review(for: document.fingerprint)
+                    ).rawValue,
                     hasBrokenLink: brokenNoteIDs.contains(id)
                 )
-            }
-            let result = try await index.synchronize(
-                searchDocuments,
-                vaultName: loaded.vault.name,
-                vaultRole: loaded.vault.role,
-                recoveredCorruption: recoveredIndexIDs.contains(loaded.vault.id)
+            })
+        }
+        let searchPublication = try await services.searchIndex.synchronize(searchDocuments)
+        guard searchPublication.generation.sourceManifestHash == sourceManifestHash else {
+            throw SearchIndexError.invalidDocuments(
+                "Search and Graph were derived from different source manifests"
             )
-            indexGenerations[loaded.vault.id] = result.generation
         }
 
         let documentsByVault = Dictionary(
@@ -190,6 +210,7 @@ enum WorkspaceSnapshotBuilder {
 
         var healthIssues: [String] = []
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
+        if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
         if let issue = await services.humanReviewStore.healthError() {
             healthIssues.append(issue)
         }
@@ -263,7 +284,7 @@ enum WorkspaceSnapshotBuilder {
                             changedSinceReview: $0.fingerprint != document.fingerprint
                         )
                     }
-                    let diagnostics = graph.diagnostics.filter { $0.source == id }
+                    let diagnostics = (graph?.diagnostics ?? []).filter { $0.source == id }
                     return WorkspaceNoteSnapshot(
                         id: id,
                         vaultRole: loaded.vault.role,
@@ -279,8 +300,8 @@ enum WorkspaceSnapshotBuilder {
                         ),
                         review: review,
                         graphCounts: WorkspaceGraphCounts(
-                            incoming: graph.incoming[id]?.count ?? 0,
-                            outgoing: graph.outgoing[id]?.count ?? 0,
+                            incoming: graph?.incoming[id]?.count ?? 0,
+                            outgoing: graph?.outgoing[id]?.count ?? 0,
                             broken: diagnostics.count { $0.code == .broken },
                             ambiguous: diagnostics.count {
                                 $0.code == .ambiguous || $0.code == .ambiguousHeading
@@ -417,10 +438,20 @@ enum WorkspaceSnapshotBuilder {
             vaults: vaultSnapshots,
             discovery: WorkspaceDiscoverySnapshot(
                 catalog: catalog,
-                indexGenerations: indexGenerations
+                searchGeneration: searchPublication.generation
             ),
             research: research
         )
+    }
+
+    private static func searchReviewState(
+        _ review: CompletedHumanReview?
+    ) -> SearchReviewState {
+        switch review?.qualification {
+        case .qualified: .qualified
+        case .unqualified: .unqualified
+        case nil: review == nil ? .unreviewed : .reviewed
+        }
     }
 }
 

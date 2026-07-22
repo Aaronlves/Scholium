@@ -117,16 +117,23 @@ struct CLIApplicationDelegationTests {
         #expect(!sources.bibliography.contains("recommended-bibliography.json"))
     }
 
-    @Test("Search, catalog, read, and lifecycle output schemas remain stable")
+    @Test("Search v3, catalog, read, and lifecycle output schemas remain stable")
     func serializedOutputContractsRemainStable() throws {
         let sources = try CLISources.load()
 
         #expect(sources.workspace.contains(
-            #"write("\(hit.vaultName):\(hit.relativePath):\(hit.sourceLine)  [retrieval_lead]\n  \(hit.snippet)\n")"#
+            #"[retrieval_lead; \(hit.rankReason.rawValue)]\n  \(hit.snippet)\n"#
         ))
         #expect(sources.workspace.contains(
-            "String(decoding: try encoder.encode(hit), as: UTF8.self) + \"\\n\""
+            "let summary = SearchSummaryRecord(response: response)"
         ))
+        #expect(sources.workspace.contains(
+            "encoder.encode(SearchResultRecord(hit: hit))"
+        ))
+        #expect(sources.workspace.contains(#"let type = "search_summary""#))
+        #expect(sources.workspace.contains(#"let type = "search_result""#))
+        #expect(sources.workspace.contains("case contractVersion = \"contract_version\""))
+        #expect(!sources.workspace.contains("raw_score"))
         #expect(sources.workspace.contains(
             "String(decoding: try encoder.encode(snapshot), as: UTF8.self) + \"\\n\""
         ))

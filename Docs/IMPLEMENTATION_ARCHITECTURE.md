@@ -62,6 +62,25 @@ runtimes, watchers, and derived refresh while any app window needs them;
 snapshot performs one-shot loading without watchers and shuts down after each
 CLI invocation.
 
+Each `WorkspaceHandle` owns one `TriptychSearchIndex` at
+`Triptychs/<triptych-id>/indexes/search-v3.sqlite`; pooled vault runtimes own
+repositories but no Search index. `WorkspaceSnapshotBuilder` first captures
+one complete, same-generation source manifest for all three vaults. Search and
+Graph derive independently from that manifest. Search publication is one
+SQLite transaction and Graph failure cannot invalidate the lexical
+generation. Direct Related items are publishable only when the Graph and
+Search manifest hashes agree.
+
+`ScholiumContracts` owns contract-v3 parsing, the visible semantic
+`SearchDocumentProjection`, exact source mappings, CJK query projection,
+requests, responses, diagnostics, availability, and generation IDs. Core owns
+the disposable SQLite schema, staging/validation/recovery, read transactions,
+cancellation, deterministic ranking, and in-memory **This Note** matcher.
+Application resolves presentation scope to execution scope and is the only
+search capability exposed to GUI and CLI. Saved Searches persist only query
+and presentation scope. Selection, request cancellation, and Related loading
+are window-controller state rather than persisted search definition.
+
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 only `DocumentUseCases`, `DiscoveryUseCases`, and `ResearchUseCases` plus
 immutable identity/assignment values. `WorkspaceStore` coalesces duplicate runtime
@@ -242,6 +261,12 @@ the user-local command directory and refuses symbolic-link destinations. The
 Settings feature receives status/install closures only; SwiftUI does not copy
 executables or inspect the filesystem. Packaging and QA scripts build and sign
 the app and its helper together.
+
+Application-icon identity is product-owned by `SCHOLIUM_SPEC.md` §19.5, not by
+SwiftUI state, document Appearance, or a runtime resolver.
+`Tools/Packaging/ScholiumIcon.icns` is the sole derived bundle icon named by
+`Tools/Packaging/Info.plist`. Debug, QA, and release assembly copy that same
+repository resource; no build lane synthesizes or selects an alternate icon.
 
 All SwiftPM scratch and Xcode DerivedData live in isolated lanes beneath the
 ignored repository-local `.build/`; none may use `/tmp`. This requires the
@@ -558,7 +583,8 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v4 sends source deltas immediately in generation order. It coalesces
+Bridge v5 sends source deltas immediately in generation order and adds a
+generation-checked, nonmutating exact UTF-16 source-range reveal operation. It coalesces
 selection-only reports to the latest envelope per animation frame, with a 50 ms
 offscreen watchdog. Each envelope carries exact selection and coordinates but
 includes command availability only when changed. Swift keeps coordinates as
@@ -605,7 +631,7 @@ and malformed ranges whose boundaries cannot be proved. Outside proven edit
 ranges, BOM, newline style, final newline, YAML, comments, unknown syntax, and
 malformed source remain exact.
 
-Before autosave, manual Save, Read, Search, Dialogue, or Critique flushes,
+Before autosave, manual Save, Read, Dialogue, or Critique flushes,
 Swift requests complete CodeMirror text and reconciles it with the checked
 mirror. A clean external revision may replace the buffer through a
 generation-checked non-history transaction; a dirty buffer stays exact and
@@ -643,6 +669,14 @@ Add Comment is not a Markdown transformation: it captures an exact source
 selection, opens the role-valid Review or Critique panel, and focuses its
 anchored composer. `Command-F` opens Scholium's shared **This Note** Search;
 the embedded CodeMirror Find panel is not part of the product.
+
+**This Note** receives an immutable editor source snapshot containing note,
+session, source, and revision identifiers. Search reads that value without a
+flush, autosave, repository mutation, or index publication. Result navigation
+checks the request freshness, session, revision, and fingerprint before
+issuing a CodeMirror `revealSourceRange` transaction with no history entry;
+cross-document navigation continues through the ordinary dirty-buffer,
+autosave, and conflict coordinator.
 
 ### Shared document rendering migration
 

@@ -5,6 +5,74 @@ import Testing
 
 @Suite("Executable Research Function CLI lifecycle")
 struct FunctionCLIExecutableLifecycleTests {
+    @Test("The real CLI exposes the Search v3 text and JSONL contracts")
+    func searchV3Contract() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_FUNCTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await FunctionCLIFixture.make()
+        defer { fixture.remove() }
+        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let triptych = fixture.assignment.id.uuidString
+        let analyses = try #require(fixture.assignment.vault(for: .paperAnalysis))
+
+        let jsonl = try cli.run([
+            "search", "synthetic", "--triptych", triptych,
+            "--limit", "2", "--format", "jsonl",
+        ])
+        let lines = String(decoding: jsonl.stdout, as: UTF8.self)
+            .split(separator: "\n")
+        #expect(lines.count == 3)
+        let records = try lines.map { line in
+            try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        }
+        #expect(records.first?["type"] as? String == "search_summary")
+        #expect(records.first?["contract_version"] as? Int == SearchContractV3.contractVersion)
+        #expect(records.first?["scope"] as? String == SearchPresentationScope.triptych.rawValue)
+        #expect(records.dropFirst().allSatisfy { $0["type"] as? String == "search_result" })
+        #expect(records.dropFirst().allSatisfy { $0["score"] == nil && $0["index_generation"] == nil })
+
+        let text = String(decoding: try cli.run([
+            "search", "synthetic", "--vault", analyses.id.uuidString,
+            "--triptych", triptych, "--format", "text",
+        ]).stdout, as: UTF8.self)
+        #expect(text.contains("Analyses:Analysis.md:"))
+        #expect(text.contains("[retrieval_lead;"))
+
+        let noMatch = try cli.run([
+            "search", "no-such-search-term", "--triptych", triptych,
+        ])
+        #expect(String(decoding: noMatch.stdout, as: UTF8.self) == "No matches.\n")
+
+        let negativeStructured = try cli.run([
+            "search", "-review:reviewed", "--triptych", triptych,
+            "--limit", "1", "--format", "jsonl",
+        ])
+        let negativeSummary = try #require(
+            String(decoding: negativeStructured.stdout, as: UTF8.self)
+                .split(separator: "\n")
+                .first
+        )
+        let negativeRecord = try #require(
+            JSONSerialization.jsonObject(with: Data(negativeSummary.utf8)) as? [String: Any]
+        )
+        #expect(negativeRecord["type"] as? String == "search_summary")
+
+        try cli.expectFailure(
+            ["search", "role:analyses", "--triptych", triptych],
+            contains: "removed"
+        )
+        try cli.expectFailure(
+            ["search", "synthetic", "--workspace"],
+            contains: "unknown option"
+        )
+        try cli.expectFailure(
+            ["search", "synthetic"],
+            contains: "choose --vault"
+        )
+    }
+
     @Test("The real CLI preserves one complete Function lifecycle")
     func lifecycle() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[

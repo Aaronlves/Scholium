@@ -253,17 +253,23 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
     /// remain visibly separate systems.
     public func relatedSearchResults(
         for query: String,
-        scope: SearchScope,
+        scope: SearchExecutionScope,
+        searchGeneration: SearchGenerationID?,
         excluding excludedNotes: Set<VaultQualifiedNoteID> = [],
         limit: Int = 12
     ) -> [RelatedSearchItem] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsed = SearchQueryParser.parse(trimmed)
         guard limit > 0,
               !trimmed.isEmpty,
-              !Self.looksLikeStructuredSearch(trimmed),
-              let graph else { return [] }
+              let ast = parsed.ast,
+              parsed.diagnostics.isEmpty,
+              let relatedIdentityNeedle = ast.relatedIdentityNeedle,
+              let graph,
+              let searchGeneration,
+              graph.sourceManifestHash == searchGeneration.sourceManifestHash else { return [] }
 
-        let needle = Self.searchIdentityComparable(trimmed)
+        let needle = Self.searchIdentityComparable(relatedIdentityNeedle)
         let matchingConcepts = notes.filter { note in
             guard note.reference.vaultRole == .topicKnowledge else { return false }
             return ([note.title] + note.aliases).contains {
@@ -378,30 +384,20 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
     }
 
     private static func searchIdentityComparable(_ value: String) -> String {
-        value.folding(
-            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
+        SearchTextNormalization.normalize(value)
     }
 
-    private static func looksLikeStructuredSearch(_ query: String) -> Bool {
-        query.contains(":")
-            || query.contains("\"")
-            || query.split(whereSeparator: { $0.isWhitespace }).contains { token in
-                token.hasPrefix("-")
-            }
-    }
-
-    private static func includes(_ note: WorkspaceCatalogNote, in scope: SearchScope) -> Bool {
+    private static func includes(
+        _ note: WorkspaceCatalogNote,
+        in scope: SearchExecutionScope
+    ) -> Bool {
         switch scope {
         case .currentNote:
             false
         case .currentVault(let vaultID):
             note.reference.vaultID == vaultID
-        case .workspace:
+        case .triptych:
             true
-        case .roles(let roles):
-            roles.contains(note.reference.vaultRole)
         }
     }
 
@@ -480,7 +476,9 @@ public enum WorkspaceCatalogBuilder {
                 notes.append(WorkspaceCatalogNote(
                     reference: reference,
                     title: document.parsedFrontmatter["title"]?.catalogScalar
-                        ?? (document.relativePath as NSString).lastPathComponent,
+                        ?? URL(fileURLWithPath: document.relativePath)
+                            .deletingPathExtension()
+                            .lastPathComponent,
                     aliases: (
                         document.parsedFrontmatter["aliases"]?.catalogStrings
                             ?? document.parsedFrontmatter["alias"]?.catalogStrings

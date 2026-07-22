@@ -206,6 +206,7 @@ struct FrontmatterPanelRoute: Hashable, Sendable {
 /// general event bus.
 enum WindowIntent: Equatable, Sendable {
     case openDocument(WindowDocumentRoute)
+    case openSearchResult(SearchResultSelection, disposition: WindowOpenDisposition)
     case revealSourceLocator(vaultID: UUID, locator: SourceLocator)
     case switchVault(UUID)
     case presentResearchFunction(ResearchFunctionPanelRoute)
@@ -214,7 +215,7 @@ enum WindowIntent: Equatable, Sendable {
 
 enum SearchResultIdentity {
     static func lexical(_ hit: SearchHit) -> String {
-        "\(hit.vaultID.uuidString.lowercased()):\(hit.relativePath)"
+        hit.resultID
     }
 
     static func related(_ item: RelatedSearchItem) -> String {

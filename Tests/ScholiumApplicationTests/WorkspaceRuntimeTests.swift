@@ -9,8 +9,12 @@ struct WorkspaceRuntimeTests {
     func revisionCheckedDocumentPreviewCatalog() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        try Data("# Agency\n\n[[Freedom]]\n".utf8).write(
+        try Data("---\ntitle: Agency\n---\n[[Freedom]]\n".utf8).write(
             to: fixture.analysesURL.appendingPathComponent("Agency.md"),
+            options: .atomic
+        )
+        try Data("---\ntitle: Freedom\n---\nA topic note about agency.\n".utf8).write(
+            to: fixture.topicsURL.appendingPathComponent("Freedom.md"),
             options: .atomic
         )
         let runtime = try await WorkspaceRuntime.snapshot(
@@ -119,11 +123,13 @@ struct WorkspaceRuntimeTests {
         )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
-        let hits = try await handle.discovery.search(
-            SearchQuery("freedom"),
-            scope: .workspace
-        )
-        #expect(hits.contains { $0.vaultID == fixture.analysisNoteID.vaultID })
+        let hits = try await handle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        #expect(hits.results.contains { $0.vaultID == fixture.analysisNoteID.vaultID })
         #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
 
         await runtime.shutdown()
@@ -136,6 +142,51 @@ struct WorkspaceRuntimeTests {
                 return
             }
         }
+    }
+
+    @Test("Related stays separate and refuses a lexical generation mismatch")
+    func relatedGenerationCompatibility() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        try Data("# Agency\n\n[[Freedom]]\n".utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Agency.md"),
+            options: .atomic
+        )
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.discovery.snapshot()
+        let generation = try #require(snapshot.searchGeneration)
+
+        let current = try await handle.discovery.related(
+            query: "Freedom",
+            scope: .triptych,
+            searchGeneration: generation,
+            excluding: []
+        )
+        #expect(current.availability == .current)
+        #expect(current.items.map(\.note.reference.relativePath) == ["Agency.md"])
+
+        let mismatched = SearchGenerationID(
+            triptychID: generation.triptychID,
+            sequence: generation.sequence + 1,
+            schemaVersion: generation.schemaVersion,
+            queryContractVersion: generation.queryContractVersion,
+            tokenizerPolicyVersion: generation.tokenizerPolicyVersion,
+            rankingPolicyVersion: generation.rankingPolicyVersion,
+            sourceManifestHash: generation.sourceManifestHash
+        )
+        let refreshing = try await handle.discovery.related(
+            query: "Freedom",
+            scope: .triptych,
+            searchGeneration: mismatched,
+            excluding: []
+        )
+        #expect(refreshing.availability == .refreshing)
+        #expect(refreshing.items.isEmpty)
+        await runtime.shutdown()
     }
 
     @Test("Document writes retain VaultRepository revision gates")

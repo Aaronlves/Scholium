@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 4;
+export const EDITOR_PROTOCOL_VERSION = 5;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -89,6 +89,7 @@ export type EditorOperation =
   | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
   | {type: "goToLine"; line: number}
+  | {type: "revealSourceRange"; fromUTF16: number; toUTF16: number}
   | {type: "setScrollFraction"; fraction: number}
   | {type: "setScrollAnchor"; anchor: EditorScrollAnchor}
   | {type: "queryText"} | {type: "querySelection"} | {type: "queryContext"} | {type: "queryScrollAnchor"}
@@ -125,7 +126,7 @@ export interface EditorCommandResult {
 
 const operationTypes = new Set([
   "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkCompletions", "setLinkPreviews", "setResearcherComments", "showPreview", "showPreviewAt", "announceStatus",
-  "goToLine", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
+  "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
@@ -217,6 +218,11 @@ function validOperation(operation: Record<string, unknown>) {
     return typeof operation.x === "number" && Number.isFinite(operation.x)
       && typeof operation.y === "number" && Number.isFinite(operation.y);
   case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1;
+  case "revealSourceRange":
+    return Number.isSafeInteger(operation.fromUTF16)
+      && Number.isSafeInteger(operation.toUTF16)
+      && Number(operation.fromUTF16) >= 0
+      && Number(operation.toUTF16) >= Number(operation.fromUTF16);
   case "setScrollFraction": return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
   case "setScrollAnchor": {
     const anchor = operation.anchor as Partial<EditorScrollAnchor> | undefined;

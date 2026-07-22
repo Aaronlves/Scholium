@@ -50,7 +50,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 4")
+    @Test("Request envelope and operation round trip with protocol version 5")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -66,10 +66,21 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 4)
+        #expect(object["protocolVersion"] as? Int == 5)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
+    }
+
+    @Test("Exact source-range reveal round trips as a nonmutating bridge operation")
+    func sourceRangeRevealRoundTrip() throws {
+        let operation = MarkdownEditorOperation.revealSourceRange(fromUTF16: 12, toUTF16: 19)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "revealSourceRange")
+        #expect(object["fromUTF16"] as? Int == 12)
+        #expect(object["toUTF16"] as? Int == 19)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
     @Test("Initialization carries the immutable Contracts dialect")

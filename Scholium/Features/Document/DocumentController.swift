@@ -128,6 +128,7 @@ final class DocumentController: ObservableObject {
     @Published private(set) var lastSaveError: String?
     @Published var lifecycleMutationGeneration: UInt64 = 0
     @Published var pendingSourceLine: Int?
+    @Published var pendingSourceRange: SearchSourceRange?
     @Published var changedSinceReviewPaths: Set<String> = []
     @Published var requestedPresentationMode: NotePresentationMode?
     @Published var pendingCommentSelection: MarkdownReviewSelection?

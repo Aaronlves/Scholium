@@ -65,9 +65,18 @@ extension ScholiumCLI {
                     index += 1
                 }
             } else if token.hasPrefix("-") && token != "-" {
-                throw CLIError.usage(
-                    "Unknown option '\(token)' for 'scholium \(key)'. Run 'scholium help \(key)'."
-                )
+                if key == "search", positionals.isEmpty {
+                    // Search's finite query grammar owns leading clause
+                    // exclusion. Preserve it as query text so the shared
+                    // parser can distinguish valid structured exclusion from
+                    // an invalid free-text-only negative query.
+                    positionals.append(token)
+                    index += 1
+                } else {
+                    throw CLIError.usage(
+                        "Unknown option '\(token)' for 'scholium \(key)'. Run 'scholium help \(key)'."
+                    )
+                }
             } else {
                 positionals.append(token)
                 index += 1
@@ -82,10 +91,10 @@ extension ScholiumCLI {
 
         if key == "search" {
             let hasVault = counts["--vault", default: 0] > 0
-            let hasWorkspace = counts["--workspace", default: 0] > 0
-            guard hasVault != hasWorkspace else {
+            let hasTriptych = counts["--triptych", default: 0] > 0
+            guard hasVault || hasTriptych else {
                 throw CLIError.usage(
-                    "Choose exactly one search scope: --vault <selector> or --workspace."
+                    "Choose --vault <selector> or --triptych <uuid-or-unique-name>."
                 )
             }
         }
@@ -123,7 +132,6 @@ extension ScholiumCLI {
                 positionalCount: 1 ... 1,
                 options: [
                     "--vault": .value,
-                    "--workspace": .flag,
                     "--triptych": .value,
                     "--limit": .value,
                     "--format": .value,

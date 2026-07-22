@@ -21364,7 +21364,7 @@
   });
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 4;
+  var EDITOR_PROTOCOL_VERSION = 5;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21379,6 +21379,7 @@
     "showPreviewAt",
     "announceStatus",
     "goToLine",
+    "revealSourceRange",
     "setScrollFraction",
     "setScrollAnchor",
     "queryText",
@@ -21482,6 +21483,8 @@
         return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
       case "goToLine":
         return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1;
+      case "revealSourceRange":
+        return Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
       case "setScrollFraction":
         return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
       case "setScrollAnchor": {
@@ -33418,6 +33421,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "goToLine":
         editorOperations.goToLine(operation.line);
         break;
+      case "revealSourceRange":
+        editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16);
+        break;
       case "setScrollFraction":
         editorOperations.setScrollFraction(operation.fraction);
         break;
@@ -33776,6 +33782,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       editor.dispatch({
         selection: { anchor: line.from },
         effects: EditorView.scrollIntoView(line.from, { y: "center" })
+      });
+      editor.focus();
+    },
+    /** Selects an exact source range without changing Markdown or undo history. */
+    revealSourceRange(requestedFromUTF16, requestedToUTF16) {
+      const documentLength = editor.state.doc.length;
+      const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
+      const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
+      editor.dispatch({
+        selection: EditorSelection.single(from, to),
+        effects: EditorView.scrollIntoView(EditorSelection.range(from, to), { y: "center" }),
+        annotations: Transaction.addToHistory.of(false)
       });
       editor.focus();
     },

@@ -126,10 +126,56 @@ public struct GraphSnapshot: Codable, Sendable {
     public static let currentContractVersion = 3
     public let contractVersion: Int
     public let generation: Int
+    /// Hash of the complete source manifest from which this graph was built.
+    /// Related is compatible only with a Search generation carrying this hash.
+    public let sourceManifestHash: String
     public let outgoing: [VaultQualifiedNoteID: [LinkGraphEdge]]
     public let incoming: [VaultQualifiedNoteID: [LinkGraphEdge]]
     public let diagnostics: [LinkGraphDiagnostic]
     public let relationships: [RelationshipEdge]
+
+    public init(
+        contractVersion: Int,
+        generation: Int,
+        sourceManifestHash: String = "",
+        outgoing: [VaultQualifiedNoteID: [LinkGraphEdge]],
+        incoming: [VaultQualifiedNoteID: [LinkGraphEdge]],
+        diagnostics: [LinkGraphDiagnostic],
+        relationships: [RelationshipEdge]
+    ) {
+        self.contractVersion = contractVersion
+        self.generation = generation
+        self.sourceManifestHash = sourceManifestHash
+        self.outgoing = outgoing
+        self.incoming = incoming
+        self.diagnostics = diagnostics
+        self.relationships = relationships
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case contractVersion, generation, sourceManifestHash
+        case outgoing, incoming, diagnostics, relationships
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        contractVersion = try container.decode(Int.self, forKey: .contractVersion)
+        generation = try container.decode(Int.self, forKey: .generation)
+        sourceManifestHash = try container.decodeIfPresent(
+            String.self,
+            forKey: .sourceManifestHash
+        ) ?? ""
+        outgoing = try container.decode(
+            [VaultQualifiedNoteID: [LinkGraphEdge]].self,
+            forKey: .outgoing
+        )
+        incoming = try container.decode(
+            [VaultQualifiedNoteID: [LinkGraphEdge]].self,
+            forKey: .incoming
+        )
+        diagnostics = try container.decode([LinkGraphDiagnostic].self, forKey: .diagnostics)
+        relationships = try container.decode([RelationshipEdge].self, forKey: .relationships)
+    }
 }
 
 public enum LinkResolutionScope: String, Codable, Hashable, Sendable {
@@ -147,13 +193,15 @@ public enum LinkGraphBuilder {
         generation: Int,
         catalog: [LinkCatalogNote],
         documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
-        resolutionScope: LinkResolutionScope = .sourceVault
+        resolutionScope: LinkResolutionScope = .sourceVault,
+        sourceManifestHash: String = ""
     ) -> GraphSnapshot {
         build(
             generation: generation,
             catalog: catalog,
             documents: documents,
             resolutionScope: resolutionScope,
+            sourceManifestHash: sourceManifestHash,
             cancellationCheck: {}
         )
     }
@@ -164,13 +212,15 @@ public enum LinkGraphBuilder {
         generation: Int,
         catalog: [LinkCatalogNote],
         documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
-        resolutionScope: LinkResolutionScope = .sourceVault
+        resolutionScope: LinkResolutionScope = .sourceVault,
+        sourceManifestHash: String = ""
     ) throws -> GraphSnapshot {
         try build(
             generation: generation,
             catalog: catalog,
             documents: documents,
             resolutionScope: resolutionScope,
+            sourceManifestHash: sourceManifestHash,
             cancellationCheck: { try Task.checkCancellation() }
         )
     }
@@ -180,6 +230,7 @@ public enum LinkGraphBuilder {
         catalog: [LinkCatalogNote],
         documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
         resolutionScope: LinkResolutionScope,
+        sourceManifestHash: String,
         cancellationCheck: () throws -> Void
     ) rethrows -> GraphSnapshot {
         let notesByID = Dictionary(uniqueKeysWithValues: catalog.map { ($0.id, $0) })
@@ -279,6 +330,7 @@ public enum LinkGraphBuilder {
         return GraphSnapshot(
             contractVersion: GraphSnapshot.currentContractVersion,
             generation: generation,
+            sourceManifestHash: sourceManifestHash,
             outgoing: outgoing,
             incoming: incoming,
             diagnostics: diagnostics.sorted(by: diagnosticOrder),

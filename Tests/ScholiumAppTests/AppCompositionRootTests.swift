@@ -228,8 +228,8 @@ struct AppCompositionRootTests {
         #expect(saved.documentTextScale == 1.7)
     }
 
-    @Test("Transient document view detachment preserves the active editor flush")
-    func transientDocumentDetachmentPreservesEditorFlush() async throws {
+    @Test("Transient document view detachment retains close-time flush without Search saving")
+    func transientDocumentDetachmentRetainsCloseFlush() async throws {
         let store = WorkspaceStore()
         let window = WindowModel(workspaceStore: store)
         window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
@@ -248,18 +248,17 @@ struct AppCompositionRootTests {
         window.unregisterEditorFlush(token: token)
         window.beginSearch(.general)
 
-        try await waitUntil("the still-selected editor flushed before Search") {
-            flushCount == 1
-        }
+        await Task.yield()
+        #expect(flushCount == 0)
 
         _ = try await window.prepareForWindowClose()
-        #expect(flushCount == 2)
+        #expect(flushCount == 1)
 
         // A successful close releases the workspace-wide registration rather
         // than retaining the document session through the shared store.
         window.beginSearch(.general)
         try await Task.sleep(for: .milliseconds(50))
-        #expect(flushCount == 2)
+        #expect(flushCount == 1)
     }
 
     @Test("A hanging content flush keeps the window retryable")

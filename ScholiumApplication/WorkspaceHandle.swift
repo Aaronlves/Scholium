@@ -12,7 +12,7 @@ enum WorkspaceAccessConfiguration: Sendable {
 struct WorkspaceServices: Sendable {
     let manifest: TriptychManifest
     let repositories: [UUID: VaultRepository]
-    let indexes: [UUID: SQLiteSearchIndex]
+    let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
     let researchSkillStore: ResearchSkillStore
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
@@ -92,7 +92,6 @@ public actor WorkspaceHandle {
     let services: WorkspaceServices
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
-    private var recoveredIndexIDs: Set<UUID>
     private var nextGraphGeneration = 2
     private var refreshRequest: UInt64 = 0
     private var appliedRefreshRequest: UInt64 = 0
@@ -109,7 +108,6 @@ public actor WorkspaceHandle {
         services: WorkspaceServices,
         leases: [SecurityScopeLease],
         initialSnapshot: WorkspaceSnapshot,
-        recoveredIndexIDs: Set<UUID>,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations
@@ -124,7 +122,6 @@ public actor WorkspaceHandle {
         self.services = services
         self.leases = leases
         currentSnapshot = initialSnapshot
-        self.recoveredIndexIDs = recoveredIndexIDs
         self.documents = documents
         self.discovery = discovery
         self.research = research
@@ -148,8 +145,6 @@ public actor WorkspaceHandle {
         var leases: [SecurityScopeLease] = []
         do {
             var repositories: [UUID: VaultRepository] = [:]
-            var indexes: [UUID: SQLiteSearchIndex] = [:]
-            var recoveredIndexIDs: Set<UUID> = []
             var resolvedURLs: [WorkspaceVaultSlot: URL] = [:]
             var pooledVaults: [UUID: PooledWorkspaceVault] = [:]
 
@@ -160,9 +155,7 @@ public actor WorkspaceHandle {
                 }
                 let pooled = try await vaultPool.vault(for: vault)
                 repositories[vault.id] = pooled.repository
-                indexes[vault.id] = pooled.index
                 pooledVaults[vault.id] = pooled
-                if pooled.recoveredIndexCorruption { recoveredIndexIDs.insert(vault.id) }
                 resolvedURLs[slot] = pooled.rootURL
             }
 
@@ -208,6 +201,15 @@ public actor WorkspaceHandle {
                 )
             }
 
+            let openedSearchIndex = try TriptychSearchIndex.openRecovering(
+                databaseURL: TriptychSearchIndex.databaseURL(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
+                triptychID: manifest.id,
+                vaults: Array(assignment.vaults.values)
+            )
+
             let triptychStorage = applicationSupportURL
                 .appendingPathComponent("Triptychs", isDirectory: true)
                 .appendingPathComponent(manifest.id.uuidString, isDirectory: true)
@@ -240,7 +242,7 @@ public actor WorkspaceHandle {
             let services = WorkspaceServices(
                 manifest: manifest,
                 repositories: repositories,
-                indexes: indexes,
+                searchIndex: openedSearchIndex.index,
                 controlStore: controlStore,
                 researchSkillStore: researchSkillStore,
                 researchSkillMaintenanceStore: researchSkillMaintenanceStore,
@@ -289,8 +291,7 @@ public actor WorkspaceHandle {
                 assignment: assignment,
                 mode: mode,
                 services: services,
-                graphGeneration: 1,
-                recoveredIndexIDs: recoveredIndexIDs
+                graphGeneration: 1
             )
             try Task.checkCancellation()
             let reference = WorkspaceHandleReference(workspaceID: assignment.id)
@@ -307,7 +308,6 @@ public actor WorkspaceHandle {
                 services: services,
                 leases: leases,
                 initialSnapshot: initialSnapshot,
-                recoveredIndexIDs: recoveredIndexIDs,
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations
@@ -896,8 +896,7 @@ public actor WorkspaceHandle {
                 assignment: assignment,
                 mode: mode,
                 services: services,
-                graphGeneration: graphGeneration,
-                recoveredIndexIDs: recoveredIndexIDs
+                graphGeneration: graphGeneration
             )
         } catch {
             if !Task.isCancelled, !isShutDown, request > appliedRefreshRequest {
@@ -918,7 +917,6 @@ public actor WorkspaceHandle {
         try requireActive()
         guard request > appliedRefreshRequest else { return currentSnapshot }
         appliedRefreshRequest = request
-        recoveredIndexIDs.removeAll()
         let previous = currentSnapshot
         currentSnapshot = snapshot
         let confirmsEarlierFailure = derivedStateRequiresRefresh
@@ -1284,56 +1282,49 @@ public actor WorkspaceHandle {
         )
     }
 
-    func search(
-        _ query: SearchQuery,
-        scope: SearchScope,
-        limit: Int
-    ) async throws -> [SearchHit] {
+    func search(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
-        let boundedLimit = max(0, min(limit, 500))
-        guard boundedLimit > 0 else { return [] }
-
-        switch scope {
-        case .currentNote(let noteID):
-            let index = try index(vaultID: noteID.vaultID)
-            return try await index.search(
-                query,
-                filter: SearchFilter(relativePath: noteID.relativePath),
-                limit: boundedLimit
-            )
-        case .currentVault(let vaultID):
-            return try await federatedSearch(
-                query,
-                vaults: [try vault(id: vaultID)],
-                limit: boundedLimit
-            )
-        case .workspace:
-            return try await federatedSearch(
-                query,
-                vaults: orderedVaults(),
-                limit: boundedLimit
-            )
-        case .roles(let roles):
-            return try await federatedSearch(
-                query,
-                vaults: orderedVaults().filter { roles.contains($0.role) },
-                limit: boundedLimit
-            )
-        }
+        return try await services.searchIndex.search(request)
     }
 
     func related(
         query: String,
-        scope: SearchScope,
+        scope: SearchExecutionScope,
+        searchGeneration: SearchGenerationID?,
         excluding: Set<VaultQualifiedNoteID>,
         limit: Int
-    ) throws -> [RelatedSearchItem] {
+    ) throws -> RelatedSearchResponse {
         try requireActive()
-        return currentSnapshot.discovery.catalog.relatedSearchResults(
+        let parsed = SearchQueryParser.parse(query)
+        guard parsed.diagnostics.isEmpty,
+              parsed.ast?.relatedIdentityNeedle != nil else {
+            return RelatedSearchResponse(availability: .notApplicable)
+        }
+        guard let searchGeneration else {
+            return RelatedSearchResponse(availability: .notApplicable)
+        }
+        guard currentSnapshot.discovery.searchGeneration == searchGeneration else {
+            return RelatedSearchResponse(availability: .refreshing)
+        }
+        guard let graph = currentSnapshot.discovery.catalog.graph else {
+            return RelatedSearchResponse(availability: .refreshing)
+        }
+        guard graph.sourceManifestHash == searchGeneration.sourceManifestHash else {
+            return RelatedSearchResponse(
+                availability: .stale(
+                    reason: "Related connections were derived from an older source manifest."
+                )
+            )
+        }
+        return RelatedSearchResponse(
+            availability: .current,
+            items: currentSnapshot.discovery.catalog.relatedSearchResults(
             for: query,
             scope: scope,
+            searchGeneration: currentSnapshot.discovery.searchGeneration,
             excluding: excluding,
             limit: limit
+            )
         )
     }
 
@@ -1726,17 +1717,6 @@ public actor WorkspaceHandle {
         path.hasPrefix("Set Aside/") || path.hasPrefix("Trash/")
     }
 
-    private func federatedSearch(
-        _ query: SearchQuery,
-        vaults: [RegisteredVault],
-        limit: Int
-    ) async throws -> [SearchHit] {
-        let pairs = try vaults.map { vault in
-            (vault: vault, index: try index(vaultID: vault.id))
-        }
-        return try await FederatedSearchEngine.search(query, indexes: pairs, limit: limit)
-    }
-
     private func orderedVaults() -> [RegisteredVault] {
         WorkspaceVaultSlot.allCases.compactMap { assignment.vault(for: $0) }
     }
@@ -1753,13 +1733,6 @@ public actor WorkspaceHandle {
             throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
         }
         return repository
-    }
-
-    private func index(vaultID: UUID) throws -> SQLiteSearchIndex {
-        guard let index = services.indexes[vaultID] else {
-            throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
-        }
-        return index
     }
 
     func requireActive() throws {

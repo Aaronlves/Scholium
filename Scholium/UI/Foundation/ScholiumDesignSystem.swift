@@ -791,6 +791,9 @@ enum ScholiumMetrics {
         static let maximumWidth: CGFloat = 720
         static let collapsedHeight: CGFloat = 104
         static let resultRowHeight: CGFloat = 64
+        static let resultHorizontalInset = ScholiumGrid.Spacing.regionContentInset
+        static let resultVerticalInset = ScholiumGrid.Spacing.labelAccessoryGap
+        static let selectionIndicatorWidth = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         static let expandedHeight: CGFloat = 520
         static let scopeWidth: CGFloat = 320
         static let responsiveMargin = ScholiumGrid.Spacing.regionContentInset

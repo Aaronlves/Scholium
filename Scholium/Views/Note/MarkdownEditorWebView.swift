@@ -322,6 +322,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
     private var pendingLine: Int?
+    private var pendingSourceRange: Range<Int>?
     private var pendingLinkCompletions: [EditorLinkCompletion] = []
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     private var pendingResearcherComments: [MarkdownEditorCommentAnnotation] = []
@@ -991,7 +992,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         flushPendingState()
     }
 
-    /// Applies the rAF-coalesced v4 interaction envelope. Exact cursor
+    /// Applies the rAF-coalesced v5 interaction envelope. Exact cursor
     /// coordinates stay readable for commands and recovery, but they are not
     /// Observable state. Only a semantic availability change invalidates UI.
     func updateInteraction(
@@ -1025,6 +1026,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         } else if let interactionAvailability {
             context = interactionAvailability.context(selections: selections)
         }
+        flushPendingSourceRange()
     }
 
     fileprivate func reportError(_ message: String) {
@@ -1104,6 +1106,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func goToLine(_ line: Int) {
         pendingLine = max(1, line)
         flushPendingLine()
+    }
+
+    func revealSourceRange(fromUTF16: Int, toUTF16: Int) {
+        let lowerBound = max(0, fromUTF16)
+        pendingSourceRange = lowerBound..<max(lowerBound, toUTF16)
+        flushPendingSourceRange()
     }
 
     func setScrollFraction(_ fraction: Double) {
@@ -1773,6 +1781,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     mode: mode
                 )
                 flushPendingLine()
+                flushPendingSourceRange()
                 focus()
             } catch {
                 guard intendedRequestEpoch == requestEpoch,
@@ -1789,6 +1798,31 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingLine = nil
         Task {
             _ = try? await send(.goToLine(line), in: webView)
+        }
+    }
+
+    private func flushPendingSourceRange() {
+        guard isReady,
+              isLoaded,
+              context?.composing != true,
+              let range = pendingSourceRange,
+              let webView else { return }
+        pendingSourceRange = nil
+        Task { [weak self] in
+            do {
+                _ = try await self?.send(
+                    .revealSourceRange(
+                        fromUTF16: range.lowerBound,
+                        toUTF16: range.upperBound
+                    ),
+                    in: webView
+                )
+            } catch {
+                guard let self else { return }
+                if self.context?.composing == true {
+                    self.pendingSourceRange = range
+                }
+            }
         }
     }
 

@@ -31,6 +31,7 @@ struct DocumentFeatureState {
     let initialScrollFraction: Double
     let requestedPresentationMode: NotePresentationMode?
     let pendingSourceLine: Int?
+    let pendingSourceRange: SearchSourceRange?
     let identityAmbiguity: NoteIdentityAmbiguity?
     let pendingIdentityRebinding: NoteIdentityPendingRebinding?
     let identityMigrationFailureMessage: String?
@@ -43,6 +44,7 @@ struct DocumentFeatureActions {
     let beginSearch: @MainActor (SearchInvocation) -> Void
     let clearRequestedPresentationMode: @MainActor () -> Void
     let clearPendingSourceLine: @MainActor () -> Void
+    let clearPendingSourceRange: @MainActor () -> Void
     let requestComments: @MainActor (MarkdownReviewSelection?, UUID?) -> Void
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
@@ -532,6 +534,10 @@ struct NoteContentView: View {
             guard let requested else { return }
             selectPresentationMode(requested)
             actions.clearRequestedPresentationMode()
+            consumePendingSourceLocation()
+        }
+        .onChange(of: state.pendingSourceRange) { _, range in
+            if range != nil { consumePendingSourceLocation() }
         }
         .onChange(of: editError) { _, error in
             guard error != nil, !editorIsComposing else { return }
@@ -557,9 +563,8 @@ struct NoteContentView: View {
             documentSession.readSelection = nil
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
-            guard loaded, let line = state.pendingSourceLine else { return }
-            editorSession.goToLine(line)
-            actions.clearPendingSourceLine()
+            guard loaded else { return }
+            consumePendingSourceLocation()
         }
         .task(id: readProjectionTaskIdentity) {
             guard presentationMode == .read else { return }
@@ -939,8 +944,20 @@ struct NoteContentView: View {
         guard let requested = state.requestedPresentationMode else { return }
         selectPresentationMode(requested)
         actions.clearRequestedPresentationMode()
-        if let line = state.pendingSourceLine {
+        consumePendingSourceLocation()
+    }
+
+    private func consumePendingSourceLocation() {
+        if let range = state.pendingSourceRange {
+            editorSession.revealSourceRange(
+                fromUTF16: range.utf16LowerBound,
+                toUTF16: range.utf16UpperBound
+            )
+            actions.clearPendingSourceRange()
+            actions.clearPendingSourceLine()
+        } else if let line = state.pendingSourceLine {
             editorSession.goToLine(line)
+            actions.clearPendingSourceLine()
         }
     }
 
@@ -2099,6 +2116,7 @@ private func dialogueTargetIDs(
         initialScrollFraction: 0,
         requestedPresentationMode: nil,
         pendingSourceLine: nil,
+        pendingSourceRange: nil,
         identityAmbiguity: nil,
         pendingIdentityRebinding: nil,
         identityMigrationFailureMessage: nil,
@@ -2110,6 +2128,7 @@ private func dialogueTargetIDs(
         beginSearch: { _ in },
         clearRequestedPresentationMode: {},
         clearPendingSourceLine: {},
+        clearPendingSourceRange: {},
         requestComments: { _, _ in },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },

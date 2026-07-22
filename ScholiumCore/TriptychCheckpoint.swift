@@ -1136,8 +1136,19 @@ public actor TriptychCheckpointStore {
             .standardizedFileURL
         let candidate = snapshotFileURL(checkpointID: checkpointID, key: key).standardizedFileURL
         let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        let rootValues = try root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard rootValues.isDirectory == true, rootValues.isSymbolicLink != true else {
+            throw TriptychCheckpointError.corruptCheckpoint(
+                checkpointID,
+                "the snapshot root is linked or is not a directory"
+            )
+        }
+        let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedPrefix = resolvedRoot.path.hasSuffix("/")
+            ? resolvedRoot.path
+            : resolvedRoot.path + "/"
         let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL
-        guard candidate.path.hasPrefix(prefix), resolved.path.hasPrefix(prefix) else {
+        guard candidate.path.hasPrefix(prefix), resolved.path.hasPrefix(resolvedPrefix) else {
             throw TriptychCheckpointError.corruptCheckpoint(checkpointID, "a stored path escapes the snapshot")
         }
         let values = try candidate.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])

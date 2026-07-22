@@ -3576,7 +3576,7 @@ private struct CalloutAppearanceEditor: View {
             AppearanceDoubleControl("End inset", value: optional($callout.endInsetEm, fallback: 3), range: 0...6, step: 0.1, suffix: "em")
             AppearanceDoubleControl("Line spacing", value: optional($callout.lineHeight, fallback: 1.3), range: 1.1...2.4, step: 0.05, suffix: "×")
         case .connections:
-            AppearanceDoubleControl("Content indent", value: optional($callout.contentIndentEm, fallback: 0.72), range: 0...4, step: 0.1, suffix: "em")
+            AppearanceDoubleControl("Content indent", value: optional($callout.contentIndentEm, fallback: 1.1), range: 0...4, step: 0.1, suffix: "em")
         case .statement:
             AppearanceDoubleControl("Title gap", value: optional($callout.titleGapEm, fallback: 0.32), range: 0...2, step: 0.05, suffix: "em")
         case .illustration:

@@ -151,7 +151,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Bridge v4 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    @Test("Exact UTF-16 reveal selects source without changing bytes, generation, or undo")
+    func exactSourceRangeRevealIsNonmutating() async throws {
+        let source = "# Search\n\nBefore 🧭 autonomy after.\n"
+        let nsSource = source as NSString
+        let range = nsSource.range(of: "autonomy")
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        harness.session.revealSourceRange(
+            fromUTF16: range.location,
+            toUTF16: NSMaxRange(range)
+        )
+        try await harness.waitUntilSelection(head: NSMaxRange(range))
+
+        let selection = try #require(try await harness.session.currentSelection(
+            for: harness.documentID,
+            in: source
+        ))
+        #expect(selection.excerpt == "autonomy")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Bridge v5 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
         // Let their short native-window journeys finish before this suite owns

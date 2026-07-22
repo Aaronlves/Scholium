@@ -235,9 +235,9 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
             role: .connections,
             inlineInsetEm: 0,
             blockGapEm: 1.4,
-            paragraphSpacingEm: 0.42,
-            titleWeight: 700,
-            contentIndentEm: 0.72
+            paragraphSpacingEm: 0.36,
+            titleWeight: 500,
+            contentIndentEm: 1.1
         ),
         .init(
             role: .statement,

@@ -2966,6 +2966,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "showPreviewAt": showPreviewAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line); break;
+  case "revealSourceRange": editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16); break;
   case "setScrollFraction": editorOperations.setScrollFraction(operation.fraction); break;
   case "setScrollAnchor": editorOperations.setScrollAnchor(operation.anchor); break;
   case "queryText": return {...successfulResult(request.requestID), text: exactEditorSource()};
@@ -3333,6 +3334,19 @@ const editorOperations = {
     editor.dispatch({
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: "center" }),
+    });
+    editor.focus();
+  },
+
+  /** Selects an exact source range without changing Markdown or undo history. */
+  revealSourceRange(requestedFromUTF16: number, requestedToUTF16: number) {
+    const documentLength = editor.state.doc.length;
+    const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
+    const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
+    editor.dispatch({
+      selection: EditorSelection.single(from, to),
+      effects: EditorView.scrollIntoView(EditorSelection.range(from, to), {y: "center"}),
+      annotations: Transaction.addToHistory.of(false),
     });
     editor.focus();
   },

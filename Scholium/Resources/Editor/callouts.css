@@ -269,20 +269,30 @@
   font-variant-numeric: lining-nums tabular-nums;
 }
 
-/* Connections — compact interface heading and an indented relation list. */
+/*
+ * Connections — an editorial relation note. The supplied title acts as a
+ * quiet lead; content hierarchy and spacing carry the role without a marker,
+ * border, or colored surface.
+ */
+.scholium-callout-connect {
+  --scholium-callout-connect-content-indent: 1.1em;
+}
+
 .scholium-callout-connect .scholium-callout-role,
 .scholium-callout-connect .scholium-callout-title {
-  font: 700 82%/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  letter-spacing: .03em;
+  font-size: 100%;
+  font-style: italic;
+  font-weight: 550;
+  letter-spacing: .01em;
 }
 
 .scholium-callout-connect .scholium-callout-body {
-  margin-inline-start: .72rem;
+  margin-top: .34rem;
+  margin-inline-start: var(--scholium-callout-connect-content-indent);
+  color: var(--scholium-callout-secondary-ink);
 }
 
 .scholium-callout-connect .scholium-callout-content > ul {
-  display: grid;
-  gap: .42rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -290,14 +300,16 @@
 
 .scholium-callout-connect .scholium-callout-content > ul > li {
   margin: 0;
-  padding-inline-start: .9rem;
-  text-indent: -.9rem;
+  padding: 0;
 }
 
-.scholium-callout-connect .scholium-callout-content > ul > li::before {
-  color: var(--scholium-callout-muted-ink);
-  content: "—";
-  margin-inline-end: .38rem;
+.scholium-callout-connect .scholium-callout-content > ul > li + li {
+  margin-top: .36rem;
+}
+
+.scholium-callout-connect .scholium-callout-content > ul > li > strong:first-child {
+  color: var(--scholium-callout-ink);
+  font-weight: 600;
 }
 
 /* Statement — supplied title and first paragraph begin on the same line. */

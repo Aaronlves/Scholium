@@ -148,7 +148,7 @@ struct ArchitectureBoundaryTests {
         ]
         let prohibitedConstructions: [(label: String, pattern: String)] = [
             ("vault repository", #"\bVaultRepository\s*\("#),
-            ("SQLite index", #"\bSQLiteSearchIndex\s*\.\s*openRecovering\s*\("#),
+            ("Triptych Search index", #"\bTriptychSearchIndex\s*\.\s*openRecovering\s*\("#),
             ("legacy vault runtime", #"\bVaultService\s*\("#),
             ("legacy search runtime", #"\bSearchEngine\s*\("#),
             ("workspace registry", #"\bWorkspaceRegistry\s*\("#),
@@ -175,7 +175,7 @@ struct ArchitectureBoundaryTests {
             ("legacy shared Triptych runtime", #"\bSharedTriptychRuntime\b"#),
             ("legacy shared vault runtime", #"\bSharedVaultRuntime\b"#),
             ("vault repository authority", #"\bVaultRepository\b"#),
-            ("SQLite index authority", #"\bSQLiteSearchIndex\b"#),
+            ("Triptych Search index authority", #"\bTriptychSearchIndex\b"#),
             ("portable control-store authority", #"\bTriptychControlStore\b"#),
             ("research-skill store authority", #"\bResearchSkillStore\b"#),
             ("Human Review store authority", #"\bHumanReviewStore\b"#),
@@ -301,7 +301,7 @@ struct ArchitectureBoundaryTests {
         }
     }
 
-    @Test("Markdown editor exposes the typed v4 dispatcher and completion response callback")
+    @Test("Markdown editor exposes the typed v5 dispatcher and completion response callback")
     func markdownEditorBridgeBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

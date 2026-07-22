@@ -5,14 +5,13 @@ import ScholiumContracts
 
 @Suite("Workbench completion models")
 struct WorkbenchModelsTests {
-    @Test("Search workspace state round trips")
+    @Test("Saved Search persists only its v3 definition")
     func stateRoundTrip() throws {
         let saved = SavedSearch(
             name: "Open objections",
-            state: SearchWorkspaceState(
-                query: #"status:open callout:objection"#,
-                scope: .triptych,
-                selectedRoles: [.topicKnowledge, .draftProject]
+            definition: SearchDefinition(
+                query: #"status:draft callout:state"#,
+                presentationScope: .triptych
             )
         )
         let encoded = try JSONEncoder().encode(saved)
@@ -28,12 +27,12 @@ struct WorkbenchModelsTests {
         let store = SavedSearchStore(workspaceStorageURL: base)
         let expected = SavedSearch(
             name: "Unsettled control records",
-            state: SearchWorkspaceState(query: "status:unsettled", scope: .triptych),
+            definition: SearchDefinition(query: "status:draft", presentationScope: .triptych),
             createdAt: Date(timeIntervalSince1970: 10)
         )
         let olderButFirst = SavedSearch(
             name: "Researcher-ordered first",
-            state: SearchWorkspaceState(query: "callout:objection", scope: .currentVault),
+            definition: SearchDefinition(query: "callout:state", presentationScope: .currentVault),
             createdAt: Date(timeIntervalSince1970: 1)
         )
 
@@ -42,7 +41,7 @@ struct WorkbenchModelsTests {
 
         #expect(loaded.map(\.id) == [olderButFirst.id, expected.id])
         #expect(loaded[1].name == expected.name)
-        #expect(loaded[1].state == expected.state)
+        #expect(loaded[1].definition == expected.definition)
     }
 
     @Test("A corrupt Saved Searches file remains untouched and blocks replacement")
@@ -62,10 +61,38 @@ struct WorkbenchModelsTests {
             try await store.save([
                 SavedSearch(
                     name: "Must not replace",
-                    state: SearchWorkspaceState(query: "test", scope: .triptych)
+                    definition: SearchDefinition(query: "test", presentationScope: .triptych)
                 ),
             ])
         }
         #expect(try Data(contentsOf: file) == corrupt)
+    }
+
+    @Test("Legacy Saved Search drops transient state and preserves removed fields for editing")
+    func legacySavedSearchMigration() throws {
+        let id = UUID()
+        let legacy = """
+        {
+          "id": "\(id.uuidString)",
+          "name": "Legacy role query",
+          "createdAt": 0,
+          "state": {
+            "query": "role:analyses autonomy",
+            "scope": "triptych",
+            "selectedRoles": ["source_corpus"],
+            "selectedResultID": "transient-result"
+          }
+        }
+        """
+        let decoded = try JSONDecoder().decode(SavedSearch.self, from: Data(legacy.utf8))
+        #expect(decoded.definition.query == "role:analyses autonomy")
+        #expect(decoded.definition.presentationScope == .triptych)
+        #expect(decoded.needsEditingDiagnostic?.code == .removedField)
+
+        let encoded = try JSONEncoder().encode(decoded)
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(object["definition"] != nil)
+        #expect(object["state"] == nil)
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("transient-result"))
     }
 }

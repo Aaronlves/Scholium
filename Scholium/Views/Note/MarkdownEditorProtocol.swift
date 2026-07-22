@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 4
+let markdownEditorProtocolVersion = 5
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -195,6 +195,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case showPreviewAt(x: Double, y: Double)
     case announceStatus(String)
     case goToLine(Int)
+    case revealSourceRange(fromUTF16: Int, toUTF16: Int)
     case setScrollFraction(Double)
     case setScrollAnchor(MarkdownEditorWireScrollAnchor)
     case queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance, captureRecovery
@@ -204,12 +205,12 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case markClean, focus, blur
 
     private enum CodingKeys: String, CodingKey {
-        case type, text, mode, dialect, value, line, fraction, anchor, snapshot, x, y
+        case type, text, mode, dialect, value, line, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setPresentationCSS, setUserCSS, setLinkCompletions, setLinkPreviews, setResearcherComments, showPreview, showPreviewAt, announceStatus
-        case goToLine, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
+        case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, synchronizeCommittedText, command, markClean, focus, blur
     }
 
@@ -236,6 +237,11 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             )
         case .announceStatus: self = try .announceStatus(container.decode(String.self, forKey: .value))
         case .goToLine: self = try .goToLine(container.decode(Int.self, forKey: .line))
+        case .revealSourceRange:
+            self = try .revealSourceRange(
+                fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
+                toUTF16: container.decode(Int.self, forKey: .toUTF16)
+            )
         case .setScrollFraction: self = try .setScrollFraction(container.decode(Double.self, forKey: .fraction))
         case .setScrollAnchor: self = try .setScrollAnchor(container.decode(MarkdownEditorWireScrollAnchor.self, forKey: .anchor))
         case .queryText: self = .queryText
@@ -283,6 +289,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(y, forKey: .y)
         case let .announceStatus(value): try pair(.announceStatus, value, .value, into: &container)
         case let .goToLine(line): try pair(.goToLine, line, .line, into: &container)
+        case let .revealSourceRange(fromUTF16, toUTF16):
+            try container.encode(Kind.revealSourceRange, forKey: .type)
+            try container.encode(fromUTF16, forKey: .fromUTF16)
+            try container.encode(toUTF16, forKey: .toUTF16)
         case let .setScrollFraction(fraction): try pair(.setScrollFraction, fraction, .fraction, into: &container)
         case let .setScrollAnchor(anchor): try pair(.setScrollAnchor, anchor, .anchor, into: &container)
         case .queryText: try container.encode(Kind.queryText, forKey: .type)

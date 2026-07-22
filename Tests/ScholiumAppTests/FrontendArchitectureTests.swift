@@ -961,9 +961,62 @@ struct FrontendArchitectureTests {
         #expect(controller.search.errorMessage == "current")
     }
 
+    @Test("Search preparation failures close only the matching pending projection")
+    func searchPreparationFailureClosesPendingProjection() {
+        let controller = DiscoveryController()
+        let first = SearchWorkspaceState(query: "first", scope: .thisNote)
+        let second = SearchWorkspaceState(query: "second", scope: .triptych)
+
+        controller.replaceSearchCriteria(first)
+        #expect(controller.search.isRunning)
+        controller.replaceSearchCriteria(second)
+        controller.failPendingSearch("late bridge failure", for: first)
+
+        #expect(controller.search.criteria == second)
+        #expect(controller.search.isRunning)
+        #expect(controller.search.errorMessage == nil)
+
+        controller.failPendingSearch("current bridge failure", for: second)
+        #expect(!controller.search.isRunning)
+        #expect(controller.search.errorMessage == "current bridge failure")
+    }
+
+    @Test("Search rejects a response whose contract request ID does not match the active request")
+    func searchResponseRequestIDRejection() {
+        let controller = DiscoveryController()
+        let request = controller.beginSearch(SearchWorkspaceState(
+            query: "identity",
+            scope: .triptych
+        ))
+        let generation = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 1,
+            sourceManifestHash: "manifest"
+        )
+        controller.receiveSearchResponse(SearchResponse(
+            requestID: UUID(),
+            scope: .triptych,
+            freshnessToken: .triptych(generation),
+            availability: .current(generation),
+            results: [],
+            hasMore: false
+        ), for: request)
+
+        #expect(controller.search.responseRequestID == nil)
+        #expect(controller.search.hits.isEmpty)
+        #expect(controller.search.isRunning)
+        #expect(controller.isCurrentSearch(request))
+    }
+
     @Test("Editing a Search query removes the prior result projection immediately")
     func searchQueryChangeClearsPriorProjection() {
         let controller = DiscoveryController()
+        let generation = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 1,
+            sourceManifestHash: "manifest"
+        )
+        let freshness = SearchFreshnessToken.triptych(generation)
         let hit = SearchHit(
             vaultID: UUID(),
             vaultName: "Analyses",
@@ -976,9 +1029,8 @@ struct FrontendArchitectureTests {
             sourceLine: 1,
             snippet: "First",
             highlights: [],
-            score: 1,
+            freshnessToken: freshness,
             fingerprint: DocumentFingerprint(content: "# First\n"),
-            indexGeneration: 1,
             evidentialLayer: .paperAnalysis,
             classification: .retrievalLead
         )
@@ -986,25 +1038,35 @@ struct FrontendArchitectureTests {
             query: "first",
             scope: .triptych
         ))
-        controller.receiveSearchResults(
-            hits: [hit],
-            relatedItems: [],
-            for: first
-        )
+        controller.receiveSearchResponse(SearchResponse(
+            requestID: first.id,
+            scope: .triptych,
+            freshnessToken: freshness,
+            availability: .current(generation),
+            results: [hit],
+            hasMore: false
+        ), for: first)
         #expect(controller.search.hits.count == 1)
-        #expect(controller.search.criteria.selectedResultID != nil)
+        #expect(controller.search.selectedResultID == nil)
 
         controller.updateSearchQuery("second")
 
         #expect(controller.search.criteria.query == "second")
-        #expect(controller.search.criteria.selectedResultID == nil)
+        #expect(controller.search.selectedResultID == nil)
         #expect(controller.search.hits.isEmpty)
         #expect(controller.search.relatedItems.isEmpty)
         #expect(controller.search.isRunning)
         #expect(!controller.isCurrentSearch(first))
 
         let second = controller.beginSearch(controller.search.criteria)
-        controller.receiveSearchResults(hits: [hit], relatedItems: [], for: second)
+        controller.receiveSearchResponse(SearchResponse(
+            requestID: second.id,
+            scope: .thisNote,
+            freshnessToken: freshness,
+            availability: .current(generation),
+            results: [hit],
+            hasMore: false
+        ), for: second)
         controller.selectSearchScope(.thisNote)
         #expect(controller.search.criteria.scope == .thisNote)
         #expect(controller.search.hits.isEmpty)
@@ -1013,7 +1075,14 @@ struct FrontendArchitectureTests {
         #expect(!controller.isCurrentSearch(second))
 
         let scoped = controller.beginSearch(controller.search.criteria)
-        controller.receiveSearchResults(hits: [hit], relatedItems: [], for: scoped)
+        controller.receiveSearchResponse(SearchResponse(
+            requestID: scoped.id,
+            scope: .thisNote,
+            freshnessToken: freshness,
+            availability: .current(generation),
+            results: [hit],
+            hasMore: false
+        ), for: scoped)
         controller.replaceSearchCriteria(SearchWorkspaceState(
             query: "saved",
             scope: .currentVault
@@ -1025,8 +1094,8 @@ struct FrontendArchitectureTests {
         #expect(!controller.isCurrentSearch(scoped))
     }
 
-    @Test("Search flushes the registered editor before presenting retrieval")
-    func searchPresentationCommitsTheEditorFirst() throws {
+    @Test("Presenting Search does not flush or save the editor")
+    func searchPresentationDoesNotCommitTheEditor() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -1045,13 +1114,9 @@ struct FrontendArchitectureTests {
             )
         )
         let implementation = appSource[searchBoundary.lowerBound ..< dismissalBoundary.lowerBound]
-        let flush = try #require(
-            implementation.range(of: "try await self.flushRegisteredEditorIfNeeded()")
-        )
-        let presentation = try #require(
-            implementation.range(of: "self.discoveryController.presentSearch(invocation)")
-        )
-        #expect(flush.lowerBound < presentation.lowerBound)
+        #expect(implementation.contains("discoveryController.presentSearch(invocation)"))
+        #expect(!implementation.contains("flushRegisteredEditorIfNeeded"))
+        #expect(!implementation.contains("save"))
     }
 
     @Test("Research Inspector has one trailing-context owner")
@@ -1333,6 +1398,9 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Accessibility.minimumCustomTarget == 20)
         #expect(ScholiumMetrics.Search.preferredWidth == 640)
         #expect(ScholiumMetrics.Search.cornerRadius == 12)
+        #expect(ScholiumMetrics.Search.resultHorizontalInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Search.resultVerticalInset == ScholiumGrid.Spacing.labelAccessoryGap)
+        #expect(ScholiumMetrics.Search.selectionIndicatorWidth == ScholiumGrid.Spacing.opticalAlignmentAdjustment)
         #expect(ScholiumShape.editorialControlCornerRadius == 8)
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
     }
@@ -1489,6 +1557,55 @@ struct FrontendArchitectureTests {
                 #expect(source.contains(token), "\(path) must consume \(token)")
             }
         }
+    }
+
+    @Test("Search results use the editorial full-row selection treatment")
+    func searchResultSelectionTreatment() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains(".listStyle(.plain)"))
+        #expect(source.contains(".listRowBackground(resultRowBackground(resultID))"))
+        #expect(source.contains("ScholiumColorRole.documentBackground.color("))
+        #expect(source.contains("ScholiumColorRole.accent.color("))
+        #expect(source.contains(".accessibilityIdentifier(\"scholium.searchResults\")"))
+        #expect(source.contains(".isSelected"))
+        #expect(!source.contains("List(selection:"))
+    }
+
+    @Test("Search dismisses outside clicks without dimming the workspace")
+    func searchUsesTransparentDismissalLayer() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(
+            source.range(of: "private struct SpotlightSearchOverlay")
+        )
+        let suffix = source[start.lowerBound...]
+        let end = try #require(suffix.range(of: "// MARK: - Loading Overlay"))
+        let overlaySource = String(suffix[..<end.lowerBound])
+
+        #expect(overlaySource.contains("Color.clear"))
+        #expect(overlaySource.contains(".contentShape(Rectangle())"))
+        #expect(overlaySource.contains(".onTapGesture(perform: context.dismiss)"))
+        #expect(overlaySource.contains(".accessibilityAddTraits(.isModal)"))
+        #expect(!overlaySource.contains(".fill("))
+        #expect(!overlaySource.contains("scholiumReduceTransparency"))
     }
 
     @Test("Transient status motion is accessibility-owned by the view")
@@ -1801,6 +1918,12 @@ struct FrontendArchitectureTests {
         #expect(calloutCSS.contains("padding-block: .72rem .8rem;"))
         #expect(calloutCSS.contains("background: var(--scholium-callout-surface);"))
         #expect(calloutCSS.contains(".scholium-callout-flag {\n  background: var(--scholium-callout-surface-emphasis);"))
+        #expect(calloutCSS.contains("--scholium-callout-connect-content-indent: 1.1em;"))
+        #expect(calloutCSS.contains(".scholium-callout-connect .scholium-callout-body {\n  margin-top: .34rem;"))
+        #expect(calloutCSS.contains("color: var(--scholium-callout-secondary-ink);"))
+        #expect(calloutCSS.contains(".scholium-callout-connect .scholium-callout-content > ul > li + li {"))
+        #expect(!calloutCSS.contains(".scholium-callout-connect .scholium-callout-content > ul > li::before"))
+        #expect(!calloutCSS.contains("content: \"—\";"))
         #expect(!calloutCSS.contains("border-inline-start:"))
         #expect(calloutCSS.contains(".scholium-callout-orient > header .scholium-callout-heading,"))
         #expect(calloutCSS.contains("aside.scholium-callout-state > header,"))
@@ -1849,7 +1972,7 @@ struct FrontendArchitectureTests {
         #expect(css.contains("margin-inline-start: 3em"))
         #expect(css.contains("margin-inline-end: 3em"))
         #expect(css.contains(".scholium-callout-connect"))
-        #expect(css.contains("margin-inline-start: 0.72em"))
+        #expect(css.contains("--scholium-callout-connect-content-indent: 1.1em"))
         #expect(css.contains("grid-template-columns: 6.5em minmax(0, 1fr)"))
         #expect(css.contains("details.scholium-callout > .scholium-callout-body"))
         #expect(!css.contains("readable-measure"))

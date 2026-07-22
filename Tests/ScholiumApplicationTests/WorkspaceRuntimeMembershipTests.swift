@@ -228,18 +228,16 @@ private struct RuntimeMembershipFixture: Sendable {
             SavedSearch(
                 id: UUID(),
                 name: "Open questions",
-                state: SearchWorkspaceState(
+                definition: SearchDefinition(
                     query: "agency",
-                    scope: .triptych,
-                    selectedRoles: [.sourceCorpus, .topicKnowledge],
-                    selectedResultID: "result-1"
+                    presentationScope: .triptych
                 ),
                 createdAt: Date(timeIntervalSince1970: 1_234)
             ),
             SavedSearch(
                 id: UUID(),
                 name: "Current source",
-                state: SearchWorkspaceState(query: "freedom", scope: .thisNote),
+                definition: SearchDefinition(query: "freedom", presentationScope: .thisNote),
                 createdAt: Date(timeIntervalSince1970: 5_678)
             ),
         ]

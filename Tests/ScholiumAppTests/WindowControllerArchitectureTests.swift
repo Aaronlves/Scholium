@@ -525,7 +525,7 @@ struct WindowControllerArchitectureTests {
                 SearchWorkspaceState(query: "agency", scope: .triptych),
                 context: DiscoverySearchExecutionContext(
                     workspaceIsAvailable: false,
-                    currentNote: nil,
+                    currentNoteSnapshot: nil,
                     currentVaultID: nil
                 )
             )

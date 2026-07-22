@@ -7,7 +7,7 @@ enum WorkspaceVaultPoolMode: Sendable {
     case snapshot
 }
 
-/// One process-owned repository/index/native watcher authority for a stable
+/// One process-owned repository/native watcher authority for a stable
 /// vault identity. The native stream has one consumer here and is fanned out
 /// into a distinct bounded stream for each borrowing WorkspaceHandle.
 actor PooledWorkspaceVault {
@@ -19,8 +19,6 @@ actor PooledWorkspaceVault {
     nonisolated let vault: RegisteredVault
     nonisolated let rootURL: URL
     nonisolated let repository: VaultRepository
-    nonisolated let index: SQLiteSearchIndex
-    nonisolated let recoveredIndexCorruption: Bool
 
     private let securityScopeURL: URL?
     private let watcher: WorkspaceFileEventWatcher?
@@ -32,16 +30,12 @@ actor PooledWorkspaceVault {
         vault: RegisteredVault,
         rootURL: URL,
         repository: VaultRepository,
-        index: SQLiteSearchIndex,
-        recoveredIndexCorruption: Bool,
         securityScopeURL: URL?,
         watcher: WorkspaceFileEventWatcher?
     ) {
         self.vault = vault
         self.rootURL = rootURL
         self.repository = repository
-        self.index = index
-        self.recoveredIndexCorruption = recoveredIndexCorruption
         self.securityScopeURL = securityScopeURL
         self.watcher = watcher
     }
@@ -278,13 +272,6 @@ actor WorkspaceVaultPool {
                 applicationSupportURL: applicationSupportURL,
                 vaultRole: registeredVault.role
             )
-            let opened = try SQLiteSearchIndex.openRecovering(
-                databaseURL: SQLiteSearchIndex.databaseURL(
-                    applicationSupportURL: applicationSupportURL,
-                    vaultID: registeredVault.id
-                ),
-                vaultID: registeredVault.id
-            )
             let watcher: WorkspaceFileEventWatcher? = switch mode {
             case .live: WorkspaceFileEventWatcher(rootURL: rootURL)
             case .snapshot: nil
@@ -293,8 +280,6 @@ actor WorkspaceVaultPool {
                 vault: registeredVault,
                 rootURL: rootURL,
                 repository: repository,
-                index: opened.index,
-                recoveredIndexCorruption: opened.recoveredCorruption,
                 securityScopeURL: securityScopeURL,
                 watcher: watcher
             )

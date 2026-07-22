@@ -135,7 +135,7 @@ The interaction boundaries above are normative: visible, selectable, and
 unblocked for launch; complete visible results for Search; rendered and
 interactive for Read. Semantic HTML projection alone is insufficient.
 
-Editor bridge v4 retains a fixed 256-sample circular diagnostic buffer
+Editor bridge v5 retains a fixed 256-sample circular diagnostic buffer
 containing only metric names, durations, document length,
 visible-range/decorations counts, and byte counts. It records startup, document
 load, visible-range projection, key-to-state, key-to-paint, mode-transition

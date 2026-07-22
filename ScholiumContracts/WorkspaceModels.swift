@@ -191,14 +191,14 @@ public struct WorkspaceVaultSnapshot: Sendable {
 
 public struct WorkspaceDiscoverySnapshot: Sendable {
     public let catalog: WorkspaceCatalogSnapshot
-    public let indexGenerations: [UUID: IndexGeneration]
+    public let searchGeneration: SearchGenerationID?
 
     public init(
         catalog: WorkspaceCatalogSnapshot,
-        indexGenerations: [UUID: IndexGeneration]
+        searchGeneration: SearchGenerationID?
     ) {
         self.catalog = catalog
-        self.indexGenerations = indexGenerations
+        self.searchGeneration = searchGeneration
     }
 }
 
@@ -363,28 +363,28 @@ public struct WorkspaceInventoryChangedEvent: Sendable {
 }
 
 /// Evidence identifying the complete derived projection represented by a
-/// workspace snapshot. Consumers can compare the graph and per-vault lexical
+/// workspace snapshot. Consumers can compare the graph and Triptych lexical
 /// generations without reaching into an index implementation.
 public struct WorkspaceDerivedRefreshEvidence: Sendable, Equatable {
     public let snapshotGeneratedAt: Date
     public let graphGeneration: Int?
-    public let indexGenerations: [UUID: IndexGeneration]
+    public let searchGeneration: SearchGenerationID?
 
     public init(
         snapshotGeneratedAt: Date,
         graphGeneration: Int?,
-        indexGenerations: [UUID: IndexGeneration]
+        searchGeneration: SearchGenerationID?
     ) {
         self.snapshotGeneratedAt = snapshotGeneratedAt
         self.graphGeneration = graphGeneration
-        self.indexGenerations = indexGenerations
+        self.searchGeneration = searchGeneration
     }
 
     public init(snapshot: WorkspaceSnapshot) {
         self.init(
             snapshotGeneratedAt: snapshot.generatedAt,
             graphGeneration: snapshot.discovery.catalog.graph?.generation,
-            indexGenerations: snapshot.discovery.indexGenerations
+            searchGeneration: snapshot.discovery.searchGeneration
         )
     }
 }

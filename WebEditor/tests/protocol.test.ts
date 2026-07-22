@@ -33,7 +33,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(4);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(5);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -41,6 +41,16 @@ describe("editor protocol", () => {
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);
+  });
+  it("accepts only ordered UTF-16 source ranges", () => {
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "revealSourceRange", fromUTF16: 12, toUTF16: 19},
+    })).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "revealSourceRange", fromUTF16: 19, toUTF16: 12},
+    })).toBe(false);
   });
   it("keeps presentation CSS separate from user CSS", () => {
     expect(isEditorRequest({

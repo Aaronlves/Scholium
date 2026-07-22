@@ -44,8 +44,14 @@ public extension DocumentUseCases {
 public protocol DiscoveryUseCases: Sendable {
     func snapshot() async throws -> WorkspaceDiscoverySnapshot
     func refresh() async throws -> WorkspaceSnapshot
-    func search(_ query: SearchQuery, scope: SearchScope, limit: Int) async throws -> [SearchHit]
-    func related(query: String, scope: SearchScope, excluding: Set<VaultQualifiedNoteID>, limit: Int) async throws -> [RelatedSearchItem]
+    func search(_ request: SearchRequest) async throws -> SearchResponse
+    func related(
+        query: String,
+        scope: SearchExecutionScope,
+        searchGeneration: SearchGenerationID?,
+        excluding: Set<VaultQualifiedNoteID>,
+        limit: Int
+    ) async throws -> RelatedSearchResponse
 }
 
 public protocol ResearchRecordUseCases: Sendable {

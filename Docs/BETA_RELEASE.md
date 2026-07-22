@@ -68,10 +68,11 @@ Before creating the tag or uploading assets:
    DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
    ```
 4. Package outside the checkout with `SCHOLIUM_REQUIRE_CLEAN=1` and inspect the
-   app metadata, resources, entitlements, architecture, ad-hoc signature, ZIP,
-   and checksum.
+   app metadata, canonical D-097 application icon, other resources,
+   entitlements, architecture, ad-hoc signature, ZIP, and checksum.
 5. Smoke-test the exact expanded ZIP in a clean macOS account without existing
-   Scholium state. Exercise first launch, Triptych selection, read/edit/save,
+   Scholium state. Verify the canonical icon in Finder and the Dock at ordinary
+   and small sizes. Exercise first launch, Triptych selection, read/edit/save,
    conflicts, Search, all three Research Inspector modes and a representative
    Research Function, checkpoints, restoration, and unavailable optional
    integrations.

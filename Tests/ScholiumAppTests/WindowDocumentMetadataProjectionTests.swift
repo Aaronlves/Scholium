@@ -70,7 +70,7 @@ struct WindowDocumentMetadataProjectionTests {
         let relativePaths = [
             "Scholium/Models/Models.swift",
             "ScholiumContracts/SearchContracts.swift",
-            "ScholiumCore/SearchIndex.swift",
+            "ScholiumCore/TriptychSearchIndex.swift",
         ]
         let sources = try relativePaths.map {
             try String(

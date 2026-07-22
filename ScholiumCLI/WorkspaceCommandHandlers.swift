@@ -58,24 +58,32 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let first = arguments.first else {
-            throw CLIError.usage("Usage: scholium search <query> (--vault <selector> | --workspace) [filters]")
+            throw CLIError.usage("Usage: scholium search <query> (--vault <selector> | --triptych <selector>) [options]")
         }
         let query: String
         let assignment: TriptychAssignment
-        let scope: SearchScope
+        let executionScope: SearchExecutionScope
+        let presentationScope: SearchPresentationScope
         if let selector = option("--vault", in: arguments) {
             query = first
             let vault = try await context.resolveVault(selector)
-            assignment = try await context.triptych(containing: [vault.id])
-            scope = .currentVault(vault.id)
-        } else if arguments.contains("--workspace") {
+            if let triptychSelector = option("--triptych", in: arguments) {
+                assignment = try await context.selectedTriptych(selector: triptychSelector)
+                guard assignment.vaults.values.contains(where: { $0.id == vault.id }) else {
+                    throw CLIError.usage("The selected vault is not a member of the selected Triptych.")
+                }
+            } else {
+                assignment = try await context.triptych(containing: [vault.id])
+            }
+            executionScope = .currentVault(vault.id)
+            presentationScope = .currentVault
+        } else if let selector = option("--triptych", in: arguments) {
             query = first
-            assignment = try await context.selectedTriptych(
-                selector: option("--triptych", in: arguments)
-            )
-            scope = .workspace
+            assignment = try await context.selectedTriptych(selector: selector)
+            executionScope = .triptych
+            presentationScope = .triptych
         } else {
-            throw CLIError.usage("Choose --vault <selector> or --workspace.")
+            throw CLIError.usage("Choose --vault <selector> or --triptych <uuid-or-unique-name>.")
         }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { throw CLIError.usage("Search query cannot be empty.") }
@@ -84,24 +92,129 @@ extension ScholiumCLI {
             throw CLIError.usage("--limit must be a whole number from 1 through 500.")
         }
         let handle = try await context.handle(for: assignment)
-        let hits = try await handle.discovery.search(
-            SearchQuery(trimmedQuery),
-            scope: scope,
+        let response = try await handle.discovery.search(SearchRequest(
+            query: trimmedQuery,
+            presentationScope: presentationScope,
+            executionScope: executionScope,
             limit: limit
-        )
+        ))
+        if let diagnostic = response.diagnostics.first {
+            throw CLIError.usage(diagnostic.message)
+        }
         let format = option("--format", in: arguments) ?? "text"
         switch format {
         case "jsonl":
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
-            for hit in hits { write(String(decoding: try encoder.encode(hit), as: UTF8.self) + "\n") }
+            let summary = SearchSummaryRecord(response: response)
+            write(String(decoding: try encoder.encode(summary), as: UTF8.self) + "\n")
+            for hit in response.results {
+                write(String(
+                    decoding: try encoder.encode(SearchResultRecord(hit: hit)),
+                    as: UTF8.self
+                ) + "\n")
+            }
         case "text":
-            if hits.isEmpty { write("No matches.\n") }
-            for hit in hits {
-                write("\(hit.vaultName):\(hit.relativePath):\(hit.sourceLine)  [retrieval_lead]\n  \(hit.snippet)\n")
+            if response.results.isEmpty { write("No matches.\n") }
+            for hit in response.results {
+                let line = hit.sourceRange?.line ?? hit.sourceLine
+                let column = hit.sourceRange?.column ?? 1
+                write(
+                    "\(hit.vaultName):\(hit.relativePath):\(line):\(column) "
+                        + "[retrieval_lead; \(hit.rankReason.rawValue)]\n  \(hit.snippet)\n"
+                )
             }
         default:
             throw CLIError.usage("--format must be text or jsonl.")
+        }
+    }
+
+    private struct SearchSummaryRecord: Encodable {
+        let type = "search_summary"
+        let contractVersion: Int
+        let generation: SearchGenerationID?
+        let scope: String
+        let status: String
+        let resultCount: Int
+        let hasMore: Bool
+
+        init(response: SearchResponse) {
+            contractVersion = response.contractVersion
+            generation = response.availability.lastGoodGeneration
+            scope = response.scope.rawValue
+            status = switch response.availability {
+            case .unavailable: "unavailable"
+            case .building: "building"
+            case .current: "current"
+            case .refreshing: "refreshing"
+            case .stale: "stale"
+            case .failed: "failed"
+            }
+            resultCount = response.results.count
+            hasMore = response.hasMore
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case contractVersion = "contract_version"
+            case generation, scope, status
+            case resultCount = "result_count"
+            case hasMore = "has_more"
+        }
+    }
+
+    private struct SearchResultRecord: Encodable {
+        let type = "search_result"
+        let resultID: String
+        let vaultID: UUID
+        let vaultName: String
+        let vaultRole: VaultRole
+        let relativePath: String
+        let stableNoteID: String?
+        let title: String
+        let matchedFields: [SearchMatchedField]
+        let rankReason: SearchRankReason
+        let snippet: String
+        let highlights: [SearchHighlight]
+        let sourceRange: SearchSourceRange?
+        let fingerprint: DocumentFingerprint
+        let freshnessToken: SearchFreshnessToken
+        let classification: SearchResultClassification
+
+        init(hit: SearchHit) {
+            resultID = hit.resultID
+            vaultID = hit.vaultID
+            vaultName = hit.vaultName
+            vaultRole = hit.vaultRole
+            relativePath = hit.relativePath
+            stableNoteID = hit.stableNoteID
+            title = hit.title
+            matchedFields = hit.matchedFields
+            rankReason = hit.rankReason
+            snippet = hit.snippet
+            highlights = hit.highlights
+            sourceRange = hit.sourceRange
+            fingerprint = hit.fingerprint
+            freshnessToken = hit.freshnessToken
+            classification = hit.classification
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case resultID = "result_id"
+            case vaultID = "vault_id"
+            case vaultName = "vault_name"
+            case vaultRole = "vault_role"
+            case relativePath = "relative_path"
+            case stableNoteID = "stable_note_id"
+            case title
+            case matchedFields = "matched_fields"
+            case rankReason = "rank_reason"
+            case snippet, highlights
+            case sourceRange = "source_range"
+            case fingerprint
+            case freshnessToken = "freshness_token"
+            case classification
         }
     }
 

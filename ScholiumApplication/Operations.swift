@@ -232,25 +232,23 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return try await handle.refresh()
     }
 
-    public func search(
-        _ query: SearchQuery,
-        scope: SearchScope = .workspace,
-        limit: Int = 50
-    ) async throws -> [SearchHit] {
+    public func search(_ request: SearchRequest) async throws -> SearchResponse {
         let handle = try await reference.requireHandle()
-        return try await handle.search(query, scope: scope, limit: limit)
+        return try await handle.search(request)
     }
 
     public func related(
         query: String,
-        scope: SearchScope,
+        scope: SearchExecutionScope,
+        searchGeneration: SearchGenerationID?,
         excluding: Set<VaultQualifiedNoteID> = [],
         limit: Int = 12
-    ) async throws -> [RelatedSearchItem] {
+    ) async throws -> RelatedSearchResponse {
         let handle = try await reference.requireHandle()
         return try await handle.related(
             query: query,
             scope: scope,
+            searchGeneration: searchGeneration,
             excluding: excluding,
             limit: limit
         )

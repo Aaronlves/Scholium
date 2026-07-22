@@ -3,19 +3,50 @@ import AppKit
 import CryptoKit
 import notify
 
-/// Commits marked text without changing the user's active input source.
-/// `typeText` alone can leave Latin test queries inside a CJK IME
-/// composition, so SwiftUI has not yet received the bound value. Return
-/// commits that composition; Tab can be consumed by the IME instead.
+/// Enters an exact query without changing the user's active input source.
+/// XCTest typing can leave Latin text marked under a CJK input source and can
+/// route quotes or spaces through its candidate window. A short-lived paste is
+/// deterministic; the prior clipboard is restored unless somebody else changes
+/// it while the test owns the temporary value.
 @MainActor
 private func typeCommittedText(
     _ text: String,
     into field: XCUIElement,
     in application: XCUIApplication
 ) {
+    let pasteboard = NSPasteboard.general
+    let savedItems = pasteboard.pasteboardItems?.map { source in
+        source.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { item, type in
+            item[type] = source.data(forType: type)
+        }
+    }
+
+    pasteboard.clearContents()
+    XCTAssertTrue(pasteboard.setString(text, forType: .string))
+    let temporaryChangeCount = pasteboard.changeCount
+    defer {
+        if pasteboard.changeCount == temporaryChangeCount {
+            pasteboard.clearContents()
+            if let savedItems {
+                let restoredItems = savedItems.map { representations in
+                    let item = NSPasteboardItem()
+                    for (type, data) in representations {
+                        item.setData(data, forType: type)
+                    }
+                    return item
+                }
+                pasteboard.writeObjects(restoredItems)
+            }
+        }
+    }
+
     field.click()
-    field.typeText(text)
-    application.typeKey(.return, modifierFlags: [])
+    application.typeKey("v", modifierFlags: .command)
+    XCTAssertEqual(
+        field.value as? String,
+        text,
+        "The Search query was not committed exactly under the active input source."
+    )
 }
 
 final class ScholiumUITests: XCTestCase {
@@ -74,7 +105,10 @@ final class ScholiumUITests: XCTestCase {
         try createIsolatedTriptych()
         app = configuredApplication(
             sessionID: sessionID,
-            initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest
+            initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest,
+            autosaveDelayMS: name.contains(
+                "testDirtyLivePreviewSearchesThisNoteWithoutSaving"
+            ) ? 300_000 : 5_000
         )
         app.launch()
         XCTAssertTrue(
@@ -290,6 +324,9 @@ final class ScholiumUITests: XCTestCase {
 
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let triptych = app.radioButtons["Triptych"]
+        XCTAssertTrue(triptych.waitForExistence(timeout: 5))
+        triptych.click()
         typeCommittedText("Normative QA Nexus", into: field, in: app)
 
         let result = app.descendants(matching: .any)["scholium.searchResult.QA Topic.md"]
@@ -1927,7 +1964,10 @@ final class ScholiumUITests: XCTestCase {
         app.typeKey("f", modifierFlags: [.command])
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
-        let result = app.descendants(matching: .any)["scholium.searchResult.QA Autosave A.md"]
+        let results = app.descendants(matching: .any).matching(
+            identifier: "scholium.searchResult.QA Autosave A.md"
+        )
+        let result = results.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         let searchMode = app.descendants(matching: .any)["scholium.searchMode"]
         let closeSearch = app.descendants(matching: .any)["scholium.closeSearchButton"]
@@ -1942,8 +1982,8 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertLessThanOrEqual(collapsedControls.width, 644)
         XCTAssertLessThanOrEqual(collapsedControls.height, 80)
 
-        typeCommittedText("analysis", into: field, in: app)
         app.radioButtons["This Note"].click()
+        typeCommittedText("analysis", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         let expandedContentHeight = result.frame.maxY - field.frame.minY
         XCTAssertGreaterThan(expandedContentHeight, collapsedControls.height)
@@ -1972,27 +2012,36 @@ final class ScholiumUITests: XCTestCase {
         app.typeKey("f", modifierFlags: [.command, .shift])
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
-        let result = app.descendants(matching: .any)["scholium.searchResult.QA Autosave A.md"]
+        let result = app.descendants(matching: .any).matching(
+            identifier: "scholium.searchResult.QA Autosave A.md"
+        ).firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        typeCommittedText("analysis", into: field, in: app)
         let thisNote = app.radioButtons["This Note"]
         XCTAssertTrue(thisNote.waitForExistence(timeout: 5))
         thisNote.click()
+        typeCommittedText("analysis", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         field.click()
         field.typeKey(.downArrow, modifierFlags: [])
-        field.typeKey(.enter, modifierFlags: [])
+
+        let selectionAttachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        selectionAttachment.name = "Search editorial selection"
+        selectionAttachment.lifetime = .keepAlways
+        add(selectionAttachment)
+
+        field.typeKey(.return, modifierFlags: [])
 
         XCTAssertTrue(waitUntil(timeout: 5) { !search.exists })
         let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 5))
         XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(
-            app.descendants(matching: .any)[
-                "scholium.renderedDocument.QA Autosave A.md"
-            ].waitForExistence(timeout: 10),
-            "The selected Search result did not finish rendering in Read mode."
+            sourceEditor.waitForExistence(timeout: 10),
+            "The selected Search result did not finish revealing its source range."
         )
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertEqual(mode.value as? String, "Source")
     }
 
     @MainActor
@@ -2003,24 +2052,32 @@ final class ScholiumUITests: XCTestCase {
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        typeCommittedText("QA Topic", into: field, in: app)
-        XCTAssertTrue(app.radioButtons["Triptych"].waitForExistence(timeout: 5))
+        let triptych = app.radioButtons["Triptych"]
+        XCTAssertTrue(triptych.waitForExistence(timeout: 5))
+        triptych.click()
+        typeCommittedText("\"QA Related Search Concept 947\"", into: field, in: app)
 
-        let directTopic = app.descendants(matching: .any)["scholium.searchResult.QA Topic.md"]
+        let directTopic = app.descendants(matching: .any)[
+            "scholium.searchResult.QA Related Search Topic.md"
+        ]
         let relatedAnalysis = app.descendants(matching: .any)[
             "scholium.relatedSearchResult.QA Autosave A.md"
         ]
-        let directWork = app.descendants(matching: .any)[
-            "scholium.searchResult.QA Work.md"
-        ]
         XCTAssertTrue(directTopic.waitForExistence(timeout: 10))
         XCTAssertTrue(relatedAnalysis.waitForExistence(timeout: 10))
-        XCTAssertTrue(directWork.exists)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.searchResult.QA Autosave A.md"
+        ].exists)
         XCTAssertTrue(app.staticTexts["Related"].exists)
         XCTAssertTrue(app.staticTexts[
-            "Direct Topic connections. Related items do not affect search ranking."
+            "Direct Topic connections. Related items affect neither search ranking nor evidential status."
         ].exists)
 
+        let resultScroll = app.outlines["scholium.searchResults"].firstMatch
+        XCTAssertTrue(resultScroll.waitForExistence(timeout: 5))
+        if !relatedAnalysis.isHittable {
+            scrollUntilHittable(relatedAnalysis, in: resultScroll)
+        }
         relatedAnalysis.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !search.exists })
         let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
@@ -2030,35 +2087,15 @@ final class ScholiumUITests: XCTestCase {
 
     @MainActor
     func testSearchExplainsTitleAliasHeadingAndBodyRanking() throws {
-        let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
-        try write(
-            "---\ntitle: Deliberative Autonomy\n---\nA concise account.\n",
-            to: analyses.appendingPathComponent("Ranking Title.md")
-        )
-        try write(
-            "---\ntitle: Agency Structure\naliases: [Deliberative Autonomy]\n---\nA concise account.\n",
-            to: analyses.appendingPathComponent("Ranking Alias.md")
-        )
-        try write(
-            "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account.\n",
-            to: analyses.appendingPathComponent("Ranking Heading.md")
-        )
-        try write(
-            "---\ntitle: Practical Reason\n---\nThis account develops deliberative autonomy in ordinary prose.\n",
-            to: analyses.appendingPathComponent("Ranking Body.md")
-        )
-        // Relaunching makes the four synthetic notes part of one deterministic
-        // initial scan instead of relying on watcher timing during the query.
-        relaunchApplication(initialWorkspaceWidth: 1380)
         waitForDocumentSurface()
 
         app.typeKey("f", modifierFlags: [.command, .shift])
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        typeCommittedText("deliberative autonomy", into: field, in: app)
         let thisVault = app.radioButtons["This Vault"]
         XCTAssertTrue(thisVault.waitForExistence(timeout: 5))
         thisVault.click()
+        typeCommittedText("deliberative autonomy", into: field, in: app)
 
         let title = app.descendants(matching: .any)["scholium.searchResult.Ranking Title.md"]
         let alias = app.descendants(matching: .any)["scholium.searchResult.Ranking Alias.md"]
@@ -3827,15 +3864,24 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testDirtyLivePreviewCommitsBeforeOpeningSearch() throws {
-        let token = " SEARCH-\(UUID().uuidString)"
+    func testDirtyLivePreviewSearchesThisNoteWithoutSaving() throws {
+        let token = " searchunsavedtoken"
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         try enterLivePreviewAndAppend(token)
         XCTAssertFalse(try source(at: noteURL).contains(token))
 
-        app.typeKey("f", modifierFlags: [.command, .shift])
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.searchWorkspace"].waitForExistence(timeout: 8))
-        XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: noteURL).contains(token)) == true })
+        app.typeKey("f", modifierFlags: [.command])
+        let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
+        let field = app.descendants(matching: .any)["scholium.searchField"]
+        let result = app.descendants(matching: .any)["scholium.searchResult.QA Autosave A.md"]
+        XCTAssertTrue(field.waitForExistence(timeout: 8))
+        typeCommittedText("searchunsavedtoken", into: field, in: app)
+        XCTAssertTrue(result.waitForExistence(timeout: 8))
+        XCTAssertFalse(try source(at: noteURL).contains(token))
+
+        app.descendants(matching: .any)["scholium.closeSearchButton"].click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
+        XCTAssertFalse(try source(at: noteURL).contains(token))
     }
 
     @MainActor
@@ -4947,7 +4993,16 @@ final class ScholiumUITests: XCTestCase {
     private func enterLivePreviewAndAppend(_ token: String, in root: XCUIElement? = nil) throws {
         let editor = enterLivePreview(in: root)
         app.typeKey(.end, modifierFlags: [.command])
-        app.typeText(token)
+        editor.typeText(token)
+        let tokenWasCommitted = waitUntil(timeout: 1) {
+            (editor.value as? String ?? "").contains(token)
+        }
+        if !tokenWasCommitted {
+            // XCUITest can leave synthetic Latin text marked when the
+            // host input source is CJK. Commit that composition before
+            // testing the save or navigation boundary.
+            app.typeKey(.return, modifierFlags: [])
+        }
         XCTAssertTrue(
             waitUntil(timeout: 8) {
                 (editor.value as? String ?? "").contains(token)
@@ -5197,6 +5252,39 @@ final class ScholiumUITests: XCTestCase {
                     NSLocalizedDescriptionKey:
                         "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
                 ]
+            )
+        }
+        if name.contains("testSearchKeepsDirectResultsSeparateFromRelatedConnections") {
+            try write(
+                """
+                ---
+                title: "QA Related Search Concept 947"
+                aliases: ["QA Related Search Alias 947"]
+                status: seed
+                ---
+                # QA Related Search Concept 947
+
+                Synthetic navigation fixture: +[[QA Autosave A|A distinct analysis relation]].
+                """ + "\n",
+                to: topics.appendingPathComponent("QA Related Search Topic.md")
+            )
+        }
+        if name.contains("testSearchExplainsTitleAliasHeadingAndBodyRanking") {
+            try write(
+                "---\ntitle: Deliberative Autonomy\n---\nA concise account.\n",
+                to: analyses.appendingPathComponent("Ranking Title.md")
+            )
+            try write(
+                "---\ntitle: Agency Structure\naliases: [Deliberative Autonomy]\n---\nA concise account.\n",
+                to: analyses.appendingPathComponent("Ranking Alias.md")
+            )
+            try write(
+                "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account.\n",
+                to: analyses.appendingPathComponent("Ranking Heading.md")
+            )
+            try write(
+                "---\ntitle: Practical Reason\n---\nThis account develops deliberative autonomy in ordinary prose.\n",
+                to: analyses.appendingPathComponent("Ranking Body.md")
             )
         }
         if name.contains("testLifecycleDestinationKeepsLongTitleOnOneRow") {
