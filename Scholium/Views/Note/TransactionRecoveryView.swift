@@ -171,6 +171,12 @@ struct TransactionRecoveryView: View {
         switch operation {
         case .noteSave: "Save Note"
         case .noteMove: "Move or Rename Note"
+        case .folderMove:
+            String(
+                localized: "Move or Rename Folder",
+                table: "Localizable",
+                bundle: .module
+            )
         case .unclassifiedClassification: "Classify Imported Note"
         case .permanentDeletion: "Permanent Deletion"
         }
@@ -222,6 +228,8 @@ private struct RecoveryFileRow: View {
         switch file.role {
         case .savedNote: "Saved note"
         case .movedNote: "Moved note"
+        case .movedFolder:
+            String(localized: "Moved folder", table: "Localizable", bundle: .module)
         case .incomingLinkRewrite: "Incoming link rewrite"
         case .classifiedSource: "Unclassified source"
         case .classifiedDestination: "Classified destination"

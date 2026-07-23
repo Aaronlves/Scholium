@@ -309,6 +309,48 @@ final class DocumentController: ObservableObject {
         try await requireOperations().create(request)
     }
 
+    func createUntitledNote(
+        inVault vaultID: UUID,
+        folderRelativePath: String?
+    ) async throws -> NoteDocument {
+        try await requireOperations().createUntitledNote(
+            inVault: vaultID,
+            folderRelativePath: folderRelativePath
+        )
+    }
+
+    func createUntitledFolder(
+        inVault vaultID: UUID,
+        parentRelativePath: String?
+    ) async throws -> VaultRelativeFolderPath {
+        try await requireOperations().createUntitledFolder(
+            inVault: vaultID,
+            parentRelativePath: parentRelativePath
+        )
+    }
+
+    func moveFolder(
+        inVault vaultID: UUID,
+        from sourceRelativePath: String,
+        to destinationRelativePath: String
+    ) async throws -> FolderMoveCommit {
+        try await requireOperations().moveFolder(
+            inVault: vaultID,
+            from: sourceRelativePath,
+            to: destinationRelativePath
+        )
+    }
+
+    func moveFolderToTrash(
+        inVault vaultID: UUID,
+        relativePath: String
+    ) async throws -> FolderMoveCommit {
+        try await requireOperations().moveFolderToTrash(
+            inVault: vaultID,
+            relativePath: relativePath
+        )
+    }
+
     func duplicate(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,

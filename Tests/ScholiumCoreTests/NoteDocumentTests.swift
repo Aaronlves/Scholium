@@ -31,8 +31,51 @@ struct NoteDocumentTests {
         #expect(result.hasSuffix("---\nBody\n"))
     }
 
-    @Test("Nested mapping edits serialize as bounded YAML without rewriting the body")
-    func nestedMappingEdit() throws {
+    @Test("Scalar patches preserve BOM, CRLF, inline comments, and body final-newline state")
+    func scalarPatchPreservesExactSurroundings() throws {
+        let source = "\u{FEFF}---\r\n# before\r\ntitle: Old value   # keep inline\r\ncustom:\r\n  nested: true\r\n---\r\nBody without final newline"
+        let document = NoteDocument(relativePath: "topics/a.md", rawContent: source)
+        let result = try document.applying(
+            .frontmatter(["title": .string("New: value")]),
+            timestampKey: nil
+        )
+
+        #expect(result == "\u{FEFF}---\r\n# before\r\ntitle: \"New: value\"   # keep inline\r\ncustom:\r\n  nested: true\r\n---\r\nBody without final newline")
+        #expect(!result.hasSuffix("\n"))
+    }
+
+    @Test("A missing key appends only inside a proven block mapping")
+    func safeAppend() throws {
+        let source = "---\ntitle: Existing\ncustom:\n  nested: true\n---\nBody\n"
+        let document = NoteDocument(relativePath: "topics/a.md", rawContent: source)
+        let result = try document.applying(
+            .frontmatter(["status": .string("candidate")]),
+            timestampKey: nil
+        )
+        #expect(result == "---\ntitle: Existing\ncustom:\n  nested: true\nstatus: candidate\n---\nBody\n")
+    }
+
+    @Test("Ambiguous YAML constructs refuse without producing replacement bytes", arguments: [
+        "\"title\": Old\n",
+        "title: One\ntitle: Two\n",
+        "base: &base value\ntitle: *base\n",
+        "base: &base\n  title: Old\n<<: *base\n",
+        "{title: Old, custom: true}\n",
+        "title: |\n  Old value\n",
+        "title: Old value\n  continued value\n",
+    ])
+    func ambiguousYAMLRefuses(frontmatter: String) {
+        #expect(throws: FrontmatterPatchRefusal.self) {
+            _ = try FrontmatterPatchPlanner.plan(
+                frontmatter: frontmatter,
+                edits: ["title": .string("New")],
+                newline: "\n"
+            )
+        }
+    }
+
+    @Test("A bounded mapping edit preserves unrelated members and source bytes")
+    func boundedMappingEdit() throws {
         let source = "---\n# keep this comment\ntitle: Old\nresearch_unit:\n  scope: Old scope\n  limitations:\n    - Old boundary\ncustom:\n  nested: true\n---\nBody\n"
         let document = NoteDocument(relativePath: "papers/a.md", rawContent: source)
         let result = try document.applying(

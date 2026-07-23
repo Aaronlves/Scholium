@@ -152,6 +152,312 @@ private struct LifecycleDestinationCatalog: View {
     }
 }
 
+/// Native design-only comparison for the D-102 Inspector typography. It uses
+/// real research-density examples but owns no product state or behavior.
+private struct PropertiesTypographyComparisonBoard: View {
+    let panelWidth: CGFloat
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 20) {
+            PropertiesTypographySample(
+                treatment: .editorialHybrid,
+                width: panelWidth
+            )
+            PropertiesTypographySample(
+                treatment: .allSerif,
+                width: panelWidth
+            )
+        }
+        .padding(20)
+        .scholiumSurface(.document)
+    }
+}
+
+private struct PropertiesTypographySample: View {
+    enum Treatment: String {
+        case editorialHybrid = "Editorial hybrid"
+        case allSerif = "All Serif"
+    }
+
+    let treatment: Treatment
+    let width: CGFloat
+
+    private var usesHybrid: Bool { treatment == .editorialHybrid }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: treatment.rawValue)
+                    .font(usesHybrid
+                        ? ScholiumInterfaceTypography.rowTitle
+                        : ScholiumTypography.swiftUIReadingFont(
+                            size: 13,
+                            relativeTo: .body,
+                            bold: true
+                        ))
+                Text(verbatim: width == 320 ? "320 pt" : "Narrow width")
+                    .font(usesHybrid
+                        ? ScholiumInterfaceTypography.metadata
+                        : ScholiumTypography.swiftUIReadingFont(
+                            size: 11,
+                            relativeTo: .caption
+                        ))
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            }
+            .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+            .padding(.vertical, ScholiumGrid.Spacing.nestedContentInset)
+
+            ScholiumStructuralRule()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    sampleSection("NEEDS ATTENTION", count: "0") {
+                        EmptyView()
+                    }
+
+                    sampleSection("ANALYSIS ABOUT") {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.readingBlockSpacing) {
+                            shortFacts([
+                                .init(id: "completion", label: "Completion", value: "6/11"),
+                                .init(id: "authors", label: "Authors", value: "María Zambrano; 李明"),
+                                .init(id: "year", label: "Year", value: "2024"),
+                                .init(id: "type", label: "Type", value: "Edited collection"),
+                            ])
+                            readingBlock(
+                                "Limitation",
+                                "Only the English translation and Chapters 1–6 were consulted; the archival appendix remains unavailable."
+                            )
+                            readingBlock(
+                                "Limitation",
+                                "“Abstract”, tags, and Collections are bibliographic metadata, not evidence for the source's argument."
+                            )
+                            action(
+                                "Edit Properties",
+                                symbol: "slider.horizontal.3",
+                                detail: nil
+                            )
+                        }
+                    }
+
+                    sampleSection("WORK ABOUT") {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.readingBlockSpacing) {
+                            readingBlock(
+                                "Research Scope",
+                                "Whether fittingness reasons alter a researcher's practical option-space without collapsing into a generic value-ranking thesis."
+                            )
+                            readingBlock(
+                                "Limitation",
+                                "The current note brackets the historical genealogy and addresses only the contemporary objection."
+                            )
+                            shortFacts([
+                                .init(id: "kind", label: "Kind", value: "Dissertation chapter"),
+                                .init(id: "venue", label: "Venue", value: "Doctoral dissertation / 博士论文"),
+                            ])
+                        }
+                    }
+
+                    sampleSection("CONNECT") {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
+                            countedSubheading("RELATED SOURCES", count: "0")
+                            countedSubheading("RELATED TOPICS", count: "0")
+                            countedSubheading("NEIGHBOR WORKS", count: "0")
+                        }
+                    }
+
+                    sampleSection("WORK WITH AGENT") {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
+                            action(
+                                "Discuss",
+                                symbol: "bubble.left.and.bubble.right",
+                                detail: "Reflect without changing the note."
+                            )
+                            action(
+                                "Write",
+                                symbol: "square.and.pencil",
+                                detail: "Prepare one bounded Revise activity."
+                            )
+                        }
+                    }
+
+                    sampleSection("OTHER ACTIONS") {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
+                            action(
+                                "Check Fidelity",
+                                symbol: "checkmark.seal",
+                                detail: "Save the current edit before preparing this check.",
+                                enabled: false
+                            )
+                            action(
+                                "Open Research Record",
+                                symbol: "clock.arrow.circlepath",
+                                detail: nil
+                            )
+                        }
+                    }
+
+                    sampleSection("RESEARCH ACTIVITY", count: "0") {
+                        EmptyView()
+                    }
+                }
+                .padding(ScholiumGrid.Spacing.sectionSeparation)
+            }
+        }
+        .frame(width: width, height: 860, alignment: .topLeading)
+        .scholiumSurface(.apparatus)
+        .scholiumBoundary(.subtleBoundary, in: Rectangle())
+    }
+
+    private func sampleSection<Content: View>(
+        _ title: String,
+        count: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
+            HStack(alignment: .firstTextBaseline) {
+                heading(title)
+                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                if let count {
+                    Text(verbatim: count)
+                        .font(countFont.monospacedDigit())
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                }
+            }
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private func heading(_ title: String) -> some View {
+        if usesHybrid {
+            Text(verbatim: title).scholiumApparatusHeadingStyle()
+        } else {
+            Text(verbatim: title)
+                .font(ScholiumTypography.swiftUIReadingFont(
+                    size: 10,
+                    relativeTo: .caption,
+                    bold: true
+                ))
+                .tracking(0.7)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        }
+    }
+
+    private var countFont: Font {
+        usesHybrid
+            ? ScholiumInterfaceTypography.metadata
+            : ScholiumTypography.swiftUIReadingFont(size: 11, relativeTo: .caption)
+    }
+
+    @ViewBuilder
+    private func shortFacts(_ facts: [ScholiumApparatusFact]) -> some View {
+        if usesHybrid {
+            ScholiumApparatusFactGrid(facts: facts)
+        } else {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
+                ForEach(facts) { fact in
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline) {
+                            serifLabel(fact.label)
+                            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                            serifValue(fact.value)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            serifLabel(fact.label)
+                            serifValue(fact.value)
+                                .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func readingBlock(_ label: String, _ text: String) -> some View {
+        if usesHybrid {
+            ScholiumApparatusReadingBlock(label: label, text: text)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                serifLabel(label)
+                serifValue(text)
+                    .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
+            }
+        }
+    }
+
+    private func countedSubheading(_ title: String, count: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            heading(title)
+            Spacer()
+            Text(verbatim: count)
+                .font(countFont.monospacedDigit())
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        }
+    }
+
+    @ViewBuilder
+    private func action(
+        _ title: LocalizedStringResource,
+        symbol: String,
+        detail: String?,
+        enabled: Bool = true
+    ) -> some View {
+        if usesHybrid {
+            ScholiumApparatusActionButton(
+                title,
+                systemImage: symbol,
+                detail: detail,
+                action: {}
+            )
+            .disabled(!enabled)
+        } else {
+            Button(action: {}) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: symbol)
+                        .frame(width: 14)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(ScholiumTypography.swiftUIReadingFont(
+                                size: 12,
+                                relativeTo: .body,
+                                bold: true
+                            ))
+                        if let detail {
+                            serifValue(detail)
+                                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled)
+        }
+    }
+
+    private func serifLabel(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(ScholiumTypography.swiftUIReadingFont(
+                size: 12,
+                relativeTo: .body,
+                bold: true
+            ))
+            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+    }
+
+    private func serifValue(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(ScholiumTypography.swiftUIReadingFont(size: 12, relativeTo: .body))
+            .foregroundStyle(ScholiumColorRole.primaryText.color)
+            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 private struct ScholiumMonoComparison: View {
     var body: some View {
         ScrollView {
@@ -196,7 +502,7 @@ private struct MonoComparisonColumn: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(ScholiumInterfaceTypography.rowTitle)
-            sample("Source", text: "research_unit:\n  scope: fittingness", size: 14)
+            sample("Source", text: "research_unit:\n  completion: \"6/11\"", size: 14)
             sample("Code", text: "let claim = evidence.map(\\.source)", size: 13)
             sample("Diff", text: "+ Explicit premise\n− Unsupported inference", size: 13)
             sample("Revision", text: "c7f81d9a, 1,284 bytes", size: 11)
@@ -325,8 +631,8 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(verbatim: "In Progress")
-                            .font(.caption.weight(.medium))
+                        Text(verbatim: "6/11")
+                            .font(.caption.weight(.medium).monospacedDigit())
                     }
                     .padding(.horizontal, 12)
                     .frame(height: 38)
@@ -383,10 +689,10 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
                     inspectorLink("IV. Feedback and Delay")
                     inspectorLink("On Patience in Practice")
 
-                    inspectorSection("RESEARCH CONTEXT", count: nil)
-                    inspectorFact("Status", "In Progress")
-                    inspectorFact("Importance", "★★★★☆")
-                    inspectorFact("Type", "Analysis")
+                    inspectorSection("ABOUT", count: nil)
+                    inspectorFact("Completion", "6/11")
+                    inspectorFact("Authors", "M. Example and 李明")
+                    inspectorFact("Type", "Book")
 
                     inspectorSection("TAGS", count: "5")
                     Text(verbatim: "motivation  progress  feedback\nlearning  uncertainty")
@@ -545,6 +851,27 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
 
 #Preview("Victor Mono vs System Mono") {
     ScholiumMonoComparison()
+}
+
+#Preview("Properties Typography A/B — 320") {
+    PropertiesTypographyComparisonBoard(panelWidth: 320)
+}
+
+#Preview("Properties Typography A/B — Narrow") {
+    PropertiesTypographyComparisonBoard(panelWidth: 248)
+}
+
+#Preview("Properties Typography A/B — Dark") {
+    PropertiesTypographyComparisonBoard(panelWidth: 320)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Properties Typography A/B — Increased Contrast") {
+    PropertiesTypographyComparisonBoard(panelWidth: 320)
+        .environment(
+            \.scholiumVisualEnvironmentOverride,
+            .init(increasedContrast: true)
+        )
 }
 
 #Preview("Scholarly Editorialism — 1380") {

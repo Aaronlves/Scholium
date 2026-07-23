@@ -1,35 +1,22 @@
 import Foundation
 
-/// Resolves explicit test isolation first, then a safe home for the disposable
-/// QA bundle. A fixture is opened only when automation supplies it explicitly.
+/// Resolves only an explicitly supplied Debug/QA isolation root. Release
+/// production never accepts this environment override or invents a fallback.
 enum ScholiumRuntimeIsolation {
     static let qaBundleIdentifier = "com.scholium.qa"
-    // The ignored QA bundle lives under `.build/qa-runtime`; derive its
-    // fallback home from the bundle rather than escaping to global /tmp.
-    static let defaultQAHomeURL: URL = {
-        let container = Bundle.main.bundleURL.deletingLastPathComponent()
-        let qaRoot = container.lastPathComponent == "registered"
-            ? container.deletingLastPathComponent()
-            : container
-        return qaRoot.appendingPathComponent("home", isDirectory: true)
-    }()
-
     static func homeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
-        qaHomeURL: URL = defaultQAHomeURL
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> URL? {
+#if DEBUG
         if let explicit = nonempty(environment["SCHOLIUM_HOME"]) {
             return URL(
                 fileURLWithPath: (explicit as NSString).expandingTildeInPath,
                 isDirectory: true
             ).standardizedFileURL
         }
-#if DEBUG
-        if bundleIdentifier == qaBundleIdentifier {
-            return qaHomeURL.standardizedFileURL
-        }
 #endif
+        _ = bundleIdentifier
         return nil
     }
 

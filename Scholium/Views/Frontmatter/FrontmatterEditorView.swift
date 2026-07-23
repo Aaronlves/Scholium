@@ -25,8 +25,8 @@ struct FrontmatterEditorView: View {
     @State private var expectedRevision: DocumentFingerprint?
     @State private var saveError: String?
     @State private var showAvailableProperties = false
-    @State private var researchUnitEnabled = false
-    @State private var originalResearchUnitEnabled = false
+    @State private var researchUnitCompletion = ""
+    @State private var originalResearchUnitCompletion = ""
     @State private var researchUnitScope = ""
     @State private var originalResearchUnitScope = ""
     @State private var researchUnitLimitationsText = ""
@@ -63,8 +63,6 @@ struct FrontmatterEditorView: View {
     private var availableFields: [PropertyEditorField] { editorModel.availableFields }
 
     private var allFields: [PropertyEditorField] { editorModel.allFields }
-
-    private var missingRequiredFields: [PropertyEditorField] { editorModel.missingRequiredFields }
 
     private var groupedPresentFields: [(group: PropertyPresentationGroup, fields: [PropertyEditorField])] {
         editorModel.groupedPresentFields
@@ -113,22 +111,12 @@ struct FrontmatterEditorView: View {
             // Form fields
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if !missingRequiredFields.isEmpty {
-                        Label(
-                            "This note uses an older property set. You can edit its existing properties now and add newer schema properties when useful.",
-                            systemImage: "info.circle"
-                        )
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                    }
-
                     Text("Researcher Properties")
                         .font(.headline)
 
-                    researchStatusEditor
+                    if supportsResearchUnit {
+                        researchUnitEditor
+                    }
 
                     if allFields.isEmpty {
                         Label(
@@ -223,19 +211,16 @@ struct FrontmatterEditorView: View {
             let declaration = note.researchUnit
             switch declaration.state {
             case .absent:
-                researchUnitEnabled = false
-                originalResearchUnitEnabled = false
+                break
             case .declared:
-                researchUnitEnabled = true
-                originalResearchUnitEnabled = true
+                researchUnitCompletion = declaration.completion?.yamlScalar ?? ""
+                originalResearchUnitCompletion = researchUnitCompletion
                 researchUnitScope = declaration.scope ?? ""
                 originalResearchUnitScope = researchUnitScope
                 researchUnitLimitationsText = declaration.limitations.joined(separator: "\n")
                 originalResearchUnitLimitationsText = researchUnitLimitationsText
             case .invalid:
                 researchUnitWasInvalid = true
-                researchUnitEnabled = false
-                originalResearchUnitEnabled = false
             }
             expectedRevision = initialExpectedRevision
         }
@@ -253,6 +238,14 @@ struct FrontmatterEditorView: View {
         editorModel.hiddenPropertyCount
     }
 
+    private var supportsResearchUnit: Bool {
+        guard PropertyContractCatalog.contract(
+            for: "research_unit",
+            profile: note.schemaProfile
+        ) != nil else { return false }
+        return configuredEditableFields?.contains("research_unit") ?? true
+    }
+
     private var researchUnitLimitations: [String] {
         researchUnitLimitationsText
             .split(whereSeparator: { $0.isNewline })
@@ -261,23 +254,23 @@ struct FrontmatterEditorView: View {
     }
 
     private var researchUnitHasChanges: Bool {
-        researchUnitEnabled != originalResearchUnitEnabled
+        researchUnitCompletion != originalResearchUnitCompletion
             || researchUnitScope != originalResearchUnitScope
             || researchUnitLimitationsText != originalResearchUnitLimitationsText
     }
 
     @ViewBuilder
-    private var researchStatusEditor: some View {
-        GroupBox("Research Status") {
+    private var researchUnitEditor: some View {
+        GroupBox("Research Unit") {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Declare the scope within which this note's claims apply. Limitations are optional and should describe material boundaries.")
+                Text(researchUnitHelp)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if researchUnitWasInvalid {
                     Label(
-                        "The existing Research Status is not valid. Source mode preserves its exact YAML; enabling this editor will replace it with a valid declaration.",
+                        "The existing Research Unit is not valid for this note role. Source mode preserves its exact YAML; changing these fields will replace it with a valid declaration.",
                         systemImage: "exclamationmark.triangle"
                     )
                     .font(.caption)
@@ -285,58 +278,52 @@ struct FrontmatterEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Toggle("Declare Research Status", isOn: $researchUnitEnabled)
-                    .toggleStyle(.switch)
-                    .accessibilityIdentifier("scholium.properties.researchStatusDeclared")
-
-                if researchUnitEnabled {
+                if note.schemaProfile == .analysis {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Scope")
+                        Text("Completion")
                             .font(.callout.weight(.medium))
-                        TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
+                        TextField("complete, incomplete, or 6/11", text: $researchUnitCompletion)
                             .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Research Status Scope")
-                            .accessibilityIdentifier("scholium.properties.researchStatusScope")
-                        if let error = fieldErrors["research_unit.scope"] {
-                            Label(error, systemImage: "exclamationmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
+                            .accessibilityLabel("Analysis completion")
+                            .accessibilityIdentifier("scholium.properties.researchUnitCompletion")
                     }
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Limitations")
-                            .font(.callout.weight(.medium))
-                        Text("One material boundary per line.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $researchUnitLimitationsText)
-                            .font(.body)
-                            .frame(minHeight: 70)
-                            .scrollContentBackground(.hidden)
-                            .padding(4)
-                            .background(
-                                Color(nsColor: .textBackgroundColor),
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                            )
-                            .accessibilityLabel("Research Status Limitations")
-                    }
-                } else if originalResearchUnitEnabled {
-                    Label(
-                        "Turning this off will remove the Research Status mapping from the note.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 } else {
-                    Text("Not Yet")
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
+                            .font(.callout.weight(.medium))
+                        TextField("Describe the boundary of this note's research", text: $researchUnitScope)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
+                            .accessibilityIdentifier("scholium.properties.researchUnitScope")
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Limitations")
+                        .font(.callout.weight(.medium))
+                    Text("One material boundary per line.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Research Status: Not Yet")
+                    TextEditor(text: $researchUnitLimitationsText)
+                        .font(.body)
+                        .frame(minHeight: 70)
+                        .scrollContentBackground(.hidden)
+                        .padding(4)
+                        .background(
+                            Color(nsColor: .textBackgroundColor),
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                        .accessibilityLabel("Research Unit Limitations")
+                }
+
+                if let error = fieldErrors["research_unit"] {
+                    Label(error, systemImage: "exclamationmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -356,12 +343,6 @@ struct FrontmatterEditorView: View {
                 Text(field.label)
                     .font(.callout)
                     .fontWeight(.medium)
-                if field.isRequiredForCreation {
-                    Text("*")
-                        .foregroundStyle(.red)
-                        .font(.callout)
-                        .fontWeight(.bold)
-                }
                 if field.isReadOnly {
                     Text("Read only")
                         .font(.caption2)
@@ -490,7 +471,7 @@ struct FrontmatterEditorView: View {
                 .frame(maxWidth: 240)
             }
 
-        case .researchStatus:
+        case .researchUnit:
             EmptyView()
         }
     }
@@ -647,14 +628,34 @@ struct FrontmatterEditorView: View {
 
         let researchUnitEdit: ResearchUnitEdit?
         if hasResearchUnitChanges {
-            if researchUnitEnabled {
-                researchUnitEdit = .set(
-                    scope: researchUnitScope.trimmingCharacters(in: .whitespacesAndNewlines),
+            let completionText = researchUnitCompletion.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            let completion: AnalysisCompletion?
+            if completionText.isEmpty {
+                completion = nil
+            } else if let parsed = AnalysisCompletion(yamlScalar: completionText) {
+                completion = parsed
+            } else {
+                fieldErrors = [
+                    "research_unit": "Completion must be complete, incomplete, or a valid completed/total ratio."
+                ]
+                return
+            }
+
+            let trimmedScope = researchUnitScope.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            let scope = trimmedScope.isEmpty ? nil : trimmedScope
+            researchUnitEdit = completion == nil
+                && scope == nil
+                && researchUnitLimitations.isEmpty
+                ? .remove
+                : .set(
+                    completion: completion,
+                    scope: scope,
                     limitations: researchUnitLimitations
                 )
-            } else {
-                researchUnitEdit = .remove
-            }
         } else {
             researchUnitEdit = nil
         }
@@ -668,7 +669,7 @@ struct FrontmatterEditorView: View {
         )
         for issue in issues {
             if let key = issue.propertyKey {
-                fieldErrors[key == "research_unit" ? "research_unit.scope" : key] = issue.message
+                fieldErrors[key] = issue.message
             } else {
                 saveError = issue.message
             }
@@ -702,6 +703,19 @@ struct FrontmatterEditorView: View {
     }
 
     // MARK: - Helpers
+
+    private var researchUnitHelp: String {
+        switch note.schemaProfile {
+        case .analysis:
+            "Record how much source material this Analysis represents and any material limitations. Completion does not judge analytical adequacy."
+        case .topicMarkdown:
+            "Describe the Topic's conceptual or debate scope and any material limitations."
+        case .draftProject:
+            "Describe this Work's Research Scope and any material limitations."
+        case .genericMarkdown:
+            "This note role does not define a Research Unit."
+        }
+    }
 
     private func frontmatterToString(_ value: YAMLValue) -> String {
         switch value {
@@ -798,7 +812,8 @@ struct FlowLayout: Layout {
         authors: [Smith, Jones]
         year: 2023
         tags: [attention, nlp]
-        status: analyzed
+        research_unit:
+          completion: 6/11
         ---
         """
     ))) { _, _, _ in }

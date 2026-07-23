@@ -7,7 +7,7 @@ import Testing
 /// The original 17 lexical baselines are retained here, but execute against
 /// the only user-reachable v3 engine. They are regression evidence, not a
 /// second implementation contract.
-@Suite("Search v3 retained lexical baselines")
+@Suite("Search v4 retained lexical baselines")
 struct SearchIndexTests {
     @Test("Phrases, prefixes, fields, CJK, and retrieval classification share one contract")
     func queryContract() async throws {
@@ -315,7 +315,7 @@ struct SearchIndexTests {
         let opened = try TriptychSearchIndex.openRecovering(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([source])
-        #expect(result.generation.schemaVersion == SearchContractV3.schemaVersion)
+        #expect(result.generation.schemaVersion == SearchContractV4.schemaVersion)
         #expect(source.document.rawContent.contains("exact source remains external"))
     }
 
@@ -356,7 +356,7 @@ struct SearchIndexTests {
         init() throws {
             root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v3.sqlite")
+            databaseURL = root.appendingPathComponent("search-v4.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {

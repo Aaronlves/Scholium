@@ -13,15 +13,14 @@ struct PropertyContractTests {
 
         #expect(analysis.map(\.canonicalKey) == [
             "title", "authors", "year", "type", "tags", "research_unit",
-            "access", "text_reliability", "locators", "status",
+            "zotero_item_key", "access", "text_reliability", "locators",
             "debate_importance", "debate_importance_scope",
         ])
         #expect(topic.map(\.canonicalKey) == [
-            "title", "aliases", "tags", "research_unit", "status",
+            "aliases", "tags", "research_unit",
         ])
         #expect(work.map(\.canonicalKey) == [
-            "title", "authors", "kind", "tags", "research_unit", "status",
-            "venue", "deadline",
+            "authors", "kind", "tags", "research_unit", "venue",
         ])
 
         let researchUnit = try #require(
@@ -29,6 +28,13 @@ struct PropertyContractTests {
         )
         #expect(researchUnit.valueKind == .mapping)
         #expect(researchUnit.creationRequirement == .optional)
+        #expect(analysis.allSatisfy { $0.creationRequirement == .optional })
+        #expect(PropertyContractCatalog.contract(
+            for: "zotero_item_key",
+            profile: .analysis
+        )?.ownership == .protectedMachine)
+        #expect(PropertyContractCatalog.contract(for: "status", profile: .analysis) == nil)
+        #expect(PropertyContractCatalog.contract(for: "deadline", profile: .draftProject) == nil)
         let importance = try #require(
             PropertyContractCatalog.contract(for: "debate_importance", profile: .analysis)
         )
@@ -102,9 +108,7 @@ struct PropertyContractTests {
         #expect(invalid.contains {
             $0.propertyKey == "type" && $0.code == .valueNotAllowed
         })
-        #expect(invalid.contains {
-            $0.propertyKey == "status" && $0.code == .valueNotAllowed
-        })
+        #expect(!invalid.contains { $0.propertyKey == "status" })
         #expect(invalid.contains {
             $0.propertyKey == "debate_importance"
                 && $0.code == .debateImportanceOutOfRange
@@ -152,7 +156,7 @@ struct PropertyContractTests {
         #expect(issues == [PropertyValidationIssue(
             propertyKey: "research_unit",
             code: .invalidResearchUnit,
-            message: "Scope is required and cannot be empty."
+            message: "Unsupported field: scope."
         )])
     }
 

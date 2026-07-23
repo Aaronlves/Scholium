@@ -85,7 +85,10 @@ public actor WorkspaceRuntime: SettingsUseCases {
     private var retainedHandles: [UUID: WorkspaceHandle] = [:]
     private var isShutDown = false
 
-    public init(configuration: Configuration) {
+    public init(
+        configuration: Configuration,
+        zotero injectedZotero: ZoteroOperations? = nil
+    ) {
         switch configuration {
         case .live(let configuration):
             let identityRegistry = VaultIdentityRegistry(
@@ -113,7 +116,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                     isDirectory: true
                 )
             ))
-            zotero = ZoteroOperations()
+            zotero = injectedZotero ?? ZoteroOperations()
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             membership = .live(
                 registry: registry,
@@ -138,7 +141,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                     isDirectory: true
                 )
             ))
-            zotero = ZoteroOperations()
+            zotero = injectedZotero ?? ZoteroOperations()
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             var assignments: [UUID: TriptychAssignment] = [:]
             for assignment in configuration.assignments where assignments[assignment.id] == nil {
@@ -384,6 +387,17 @@ public actor WorkspaceRuntime: SettingsUseCases {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         try await windowSessionStore.save(snapshot)
+    }
+
+    public func saveWindowSession(
+        _ snapshot: WindowSessionSnapshot,
+        generation: UInt64
+    ) async throws {
+        try requireActive()
+        guard case .live = membership else {
+            throw ScholiumApplicationError.runtimeConfigurationUnavailable
+        }
+        try await windowSessionStore.save(snapshot, generation: generation)
     }
 
     /// Registers three independently located vaults through the same actors

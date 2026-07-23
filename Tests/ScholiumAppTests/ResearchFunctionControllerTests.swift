@@ -702,14 +702,14 @@ struct ResearchFunctionControllerTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("Text(item.actionTitleResource)"))
-        #expect(source.contains("ScholiumMetrics.Apparatus.actionRowVerticalInset"))
-        #expect(source.contains("ScholiumMetrics.Apparatus.actionCopySpacing"))
+        #expect(source.contains("ScholiumApparatusActionButton(\n            item.actionTitleResource"))
+        #expect(source.contains("VStack(alignment: .leading, spacing: 0)"))
         #expect(source.contains("ScrollView(.horizontal)"))
-        #expect(source.contains("Button(\"Discuss\")"))
-        #expect(source.contains("Button(\"Write\")"))
+        #expect(source.contains("case .discuss: \"Discuss\""))
+        #expect(source.contains("case .develop, .revise: \"Write\""))
+        #expect(source.contains("[.discuss, .develop, .revise]"))
         #expect(designSystemSource.contains("static let actionRowVerticalInset"))
-        #expect(source.contains(".fixedSize(horizontal: false, vertical: true)"))
+        #expect(designSystemSource.contains("static let actionCopySpacing"))
         #expect(!source.contains("Menu {"))
     }
 
@@ -747,7 +747,7 @@ struct ResearchFunctionControllerTests {
             activeFunction: nil,
             runs: []
         )
-        #expect(topicPresentation.items.map(\.id) == [.discuss, .fidelity])
+        #expect(topicPresentation.items.map(\.id) == [.discuss, .develop, .fidelity])
         #expect(topicPresentation.items.allSatisfy { !$0.isEnabled })
         #expect(topicPresentation.items.allSatisfy {
             $0.disabledReason == "Checking availability…"
@@ -769,13 +769,13 @@ struct ResearchFunctionControllerTests {
             runs: []
         )
         #expect(workPresentation.items.map(\.id) == [
-            .discuss, .critique, .fidelity, .manuscript,
+            .discuss, .revise, .critique, .fidelity, .manuscript,
         ])
-        #expect(workPresentation.items[1].isEnabled == true)
-        #expect(workPresentation.items[1].statusSummary
+        #expect(workPresentation.items[2].isEnabled == true)
+        #expect(workPresentation.items[2].statusSummary
             == "Read-only. No Critique has been recorded.")
         #expect(workPresentation.items.enumerated().allSatisfy { index, item in
-            index == 1 ? item.isEnabled : !item.isEnabled
+            index == 2 ? item.isEnabled : !item.isEnabled
         })
     }
 
@@ -831,10 +831,10 @@ struct ResearchFunctionControllerTests {
             ),
         ]
         let presentation = ResearchOverviewPresentation(
-            researchUnit: ResearchUnitDeclaration(frontmatter: [:]),
-            currentVault: nil,
-            analysesVaultID: nil,
-            catalog: nil,
+            researchUnit: ResearchUnitDeclaration(
+                frontmatter: [:],
+                profile: .topicMarkdown
+            ),
             visibleAttentionItems: attention,
             freshness: .current,
             propertiesConfiguration: nil

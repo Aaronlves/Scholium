@@ -23,7 +23,7 @@ struct DeliverySurfaceParityTests {
             changeSet: .exactContent("""
                 ---
                 research_unit:
-                  scope: "The bounded fixture source"
+                  completion: incomplete
                 ---
                 \(original.document.rawContent)
                 """),

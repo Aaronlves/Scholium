@@ -3,6 +3,7 @@ import Foundation
 
 public actor WindowSessionSnapshotStore {
     private let directoryURL: URL
+    private var acceptedWriteGenerations: [UUID: UInt64] = [:]
 
     public init(applicationSupportURL: URL) {
         directoryURL = applicationSupportURL
@@ -21,6 +22,24 @@ public actor WindowSessionSnapshotStore {
     }
 
     public func save(_ snapshot: WindowSessionSnapshot) throws {
+        try write(snapshot)
+    }
+
+    /// Rejects a late persistence task from an older lifecycle attempt. The
+    /// generation is process-local because no task can survive process exit;
+    /// the stored JSON contract therefore remains unchanged.
+    public func save(
+        _ snapshot: WindowSessionSnapshot,
+        generation: UInt64
+    ) throws {
+        guard generation > (acceptedWriteGenerations[snapshot.id] ?? 0) else {
+            return
+        }
+        try write(snapshot)
+        acceptedWriteGenerations[snapshot.id] = generation
+    }
+
+    private func write(_ snapshot: WindowSessionSnapshot) throws {
         try FileManager.default.createDirectory(
             at: directoryURL,
             withIntermediateDirectories: true

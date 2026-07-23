@@ -93,6 +93,52 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.createDocument(request)
     }
 
+    public func createUntitledNote(
+        inVault vaultID: UUID,
+        folderRelativePath: String?
+    ) async throws -> NoteDocument {
+        let handle = try await reference.requireHandle()
+        return try await handle.createUntitledNote(
+            inVault: vaultID,
+            folderRelativePath: folderRelativePath
+        )
+    }
+
+    public func createUntitledFolder(
+        inVault vaultID: UUID,
+        parentRelativePath: String?
+    ) async throws -> VaultRelativeFolderPath {
+        let handle = try await reference.requireHandle()
+        return try await handle.createUntitledFolder(
+            inVault: vaultID,
+            parentRelativePath: parentRelativePath
+        )
+    }
+
+    public func moveFolder(
+        inVault vaultID: UUID,
+        from sourceRelativePath: String,
+        to destinationRelativePath: String
+    ) async throws -> FolderMoveCommit {
+        let handle = try await reference.requireHandle()
+        return try await handle.moveFolder(
+            inVault: vaultID,
+            from: sourceRelativePath,
+            to: destinationRelativePath
+        )
+    }
+
+    public func moveFolderToTrash(
+        inVault vaultID: UUID,
+        relativePath: String
+    ) async throws -> FolderMoveCommit {
+        let handle = try await reference.requireHandle()
+        return try await handle.moveFolderToTrash(
+            inVault: vaultID,
+            relativePath: relativePath
+        )
+    }
+
     public func duplicate(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,

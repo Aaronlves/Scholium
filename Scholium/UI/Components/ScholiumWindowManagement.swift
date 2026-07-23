@@ -49,6 +49,12 @@ struct ScholiumLifecyclePolicy: Sendable {
     var maximumConcurrentWindowFlushes = 4
 }
 
+struct LifecycleAttemptID: Hashable, Sendable {
+    let rawValue: UInt64
+}
+
+typealias ScholiumLifecycleSleeper = @MainActor @Sendable (Duration) async throws -> Void
+
 @MainActor
 private final class ScholiumLifecycleDeadlineRace {
     typealias Outcome = Result<Void, any Error>
@@ -62,50 +68,47 @@ private final class ScholiumLifecycleDeadlineRace {
         continuation: CheckedContinuation<Outcome, Never>,
         phase: ScholiumLifecyclePhase,
         timeout: Duration,
+        sleep: @escaping ScholiumLifecycleSleeper,
         operation: @escaping @MainActor () async throws -> Void
     ) {
         self.continuation = continuation
         if wasCancelled {
-            finish(.failure(CancellationError()), cancelling: nil)
+            finish(.failure(CancellationError()))
             return
         }
         operationTask = Task { [self] in
             do {
                 try await operation()
-                finish(.success(()), cancelling: timeoutTask)
+                finish(.success(()))
             } catch {
-                finish(.failure(error), cancelling: timeoutTask)
+                finish(.failure(error))
             }
         }
         timeoutTask = Task { [self] in
             do {
-                try await Task.sleep(for: timeout)
+                try await sleep(timeout)
             } catch {
                 return
             }
-            finish(
-                .failure(ScholiumWindowLifecycleError.timedOut(phase)),
-                cancelling: operationTask
-            )
+            finish(.failure(ScholiumWindowLifecycleError.timedOut(phase)))
         }
     }
 
-    private func finish(
-        _ outcome: Outcome,
-        cancelling loser: Task<Void, Never>?
-    ) {
+    private func finish(_ outcome: Outcome) {
         guard let continuation else { return }
+        let operationTask = operationTask
+        let timeoutTask = timeoutTask
         self.continuation = nil
-        loser?.cancel()
-        operationTask = nil
-        timeoutTask = nil
+        self.operationTask = nil
+        self.timeoutTask = nil
+        operationTask?.cancel()
+        timeoutTask?.cancel()
         continuation.resume(returning: outcome)
     }
 
     func cancel() {
         wasCancelled = true
-        finish(.failure(CancellationError()), cancelling: operationTask)
-        timeoutTask?.cancel()
+        finish(.failure(CancellationError()))
     }
 }
 
@@ -113,6 +116,9 @@ private final class ScholiumLifecycleDeadlineRace {
 func withScholiumLifecycleDeadline(
     phase: ScholiumLifecyclePhase,
     timeout: Duration,
+    sleep: @escaping ScholiumLifecycleSleeper = { duration in
+        try await Task.sleep(for: duration)
+    },
     operation: @escaping @MainActor () async throws -> Void
 ) async throws {
     let race = ScholiumLifecycleDeadlineRace()
@@ -123,6 +129,7 @@ func withScholiumLifecycleDeadline(
                 continuation: continuation,
                 phase: phase,
                 timeout: timeout,
+                sleep: sleep,
                 operation: operation
             )
         }

@@ -12,8 +12,6 @@ struct PropertyEditorField: Identifiable, Hashable, Sendable {
     var group: PropertyPresentationGroup { presentation.group }
     var controlStyle: PropertyControlStyle { presentation.controlStyle }
     var allowedValues: [String]? { contract?.allowedValues }
-    var isRequiredForCreation: Bool { contract?.creationRequirement == .required }
-
     let presentation: PropertyPresentation
     let contract: PropertyContract?
     /// The canonical key edited in exact source.
@@ -63,10 +61,6 @@ struct PropertyEditorModel: Sendable {
     }
 
     var allFields: [PropertyEditorField] { presentFields + availableFields }
-
-    var missingRequiredFields: [PropertyEditorField] {
-        availableFields.filter(\.isRequiredForCreation)
-    }
 
     var groupedPresentFields: [(group: PropertyPresentationGroup, fields: [PropertyEditorField])] {
         let grouped = Dictionary(grouping: presentFields, by: \.group)
@@ -118,8 +112,14 @@ struct PropertyEditorModel: Sendable {
         var proposed = proposedFrontmatter
         if let researchUnitEdit {
             switch researchUnitEdit {
-            case .set(let scope, let limitations):
-                var mapping: [String: YAMLValue] = ["scope": .string(scope)]
+            case .set(let completion, let scope, let limitations):
+                var mapping: [String: YAMLValue] = [:]
+                if let completion {
+                    mapping["completion"] = .string(completion.yamlScalar)
+                }
+                if let scope {
+                    mapping["scope"] = .string(scope)
+                }
                 if !limitations.isEmpty {
                     mapping["limitations"] = .array(limitations.map(YAMLValue.string))
                 }
@@ -150,7 +150,7 @@ struct PropertyEditorModel: Sendable {
         return PropertyContractCatalog.validate(
             frontmatter: proposed,
             profile: profile,
-            context: .creation
+            context: .existingDocument
         ).filter { issue in
             guard let key = issue.propertyKey else { return true }
             return relevantKeys.contains(key)
@@ -186,7 +186,8 @@ struct PropertyEditorModel: Sendable {
                 contract: contract,
                 sourceKey: contract.canonicalKey,
                 valueKind: contract.valueKind,
-                isReadOnly: !ResearcherPropertyPolicy.isHumanEditable(presentation.key)
+                isReadOnly: contract.ownership != .researcher
+                    || !ResearcherPropertyPolicy.isHumanEditable(presentation.key)
             )
         }
     }
@@ -197,7 +198,8 @@ struct PropertyEditorModel: Sendable {
     }
 
     private func isEditableByConfiguration(_ key: String) -> Bool {
-        ResearcherPropertyPolicy.isHumanEditable(key)
+        PropertyContractCatalog.contract(for: key, profile: profile)?.ownership != .protectedMachine
+            && ResearcherPropertyPolicy.isHumanEditable(key)
             && (configuredEditableFields?.contains(key) ?? true)
     }
 
@@ -260,7 +262,7 @@ struct PropertyEditorModel: Sendable {
                     .map(YAMLValue.string)
             )
         case .mapping:
-            // Mappings are read-only except for the dedicated Research Status
+            // Mappings are read-only except for the dedicated Research Unit
             // editor, which supplies a `ResearchUnitEdit` instead.
             return .string(trimmed)
         }

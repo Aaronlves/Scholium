@@ -57,7 +57,7 @@ struct WorkflowSchemaTests {
         #expect(flattened["notes"] == "Headings and frontmatter complete.")
     }
 
-    @Test("Default Properties exclude agent-owned time and contextual relevance")
+    @Test("Default About fields exclude machine state and optional assessments")
     func defaultPropertyVocabulary() throws {
         let analyses = try #require(TriptychSettings.defaultProperties[.paperAnalysis])
         let topics = try #require(TriptychSettings.defaultProperties[.topicKnowledge])
@@ -71,8 +71,12 @@ struct WorkflowSchemaTests {
         }
         #expect(!analyses.visibleFields.contains("relevance"))
         #expect(!analyses.editableFields.contains("relevance"))
-        #expect(analyses.visibleFields.contains("debate_importance"))
-        #expect(analyses.visibleFields.contains("debate_importance_scope"))
+        #expect(!analyses.visibleFields.contains("debate_importance"))
+        #expect(!analyses.visibleFields.contains("debate_importance_scope"))
+        #expect(analyses.editableFields.contains("debate_importance"))
+        #expect(analyses.editableFields.contains("debate_importance_scope"))
+        #expect(!works.visibleFields.contains("deadline"))
+        #expect(!works.editableFields.contains("deadline"))
     }
 
     @Test("CLI role aliases do not become persisted registry spellings")

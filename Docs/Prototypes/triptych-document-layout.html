@@ -260,7 +260,7 @@
     }
     .role { color: var(--accent); font-weight: 700; }
     .fact { color: var(--secondary-text); }
-    .properties .status { margin-left: auto; color: var(--attention); }
+    .properties .completion { margin-left: auto; color: var(--attention); }
 
     .document-scroll { overflow: auto; padding: 16px 8vw 100px; }
     article { width: min(680px, 100%); margin: auto; font-family: Alegreya, Georgia, serif; font-size: 18px; line-height: 1.72; }
@@ -370,7 +370,7 @@
               <li><button type="button">▾ Agency</button>
                 <ul>
                   <li><button class="note-button" type="button"><span>Double Effect and Moral Description</span><span class="secondary">Qualified · current revision</span></button></li>
-                  <li><button class="note-button" type="button"><span>Reasons, Fittingness, and Value</span><span class="secondary">Not Yet</span></button></li>
+                  <li><button class="note-button" type="button"><span>Reasons, Fittingness, and Value</span><span class="secondary">6/11</span></button></li>
                 </ul>
               </li>
               <li><button type="button">▸ Moral Psychology</button></li>
@@ -390,7 +390,7 @@
         <section class="detail document-detail" id="documentDetail" aria-label="Document" hidden>
           <div class="document-context">
             <button class="toolbar-button" type="button" aria-label="Document mode: Read">Read</button>
-            <div class="properties"><span class="role">Analysis</span><span class="fact">Research fixture · 2026</span><span class="status">Research Status: Not Yet</span></div>
+            <div class="properties"><span class="role">Analysis</span><span class="fact">Research fixture · 2026</span><span class="completion">Completion: 6/11</span></div>
           </div>
           <div class="document-scroll">
             <article>
@@ -434,8 +434,8 @@
         </div>
         <div class="panel-section">
           <h3>Human Review</h3>
-          <p><strong>Research Status: Not Yet.</strong> Declare Research Status before completing Review.</p>
-          <button class="panel-button" type="button">Declare Research Status…</button>
+          <p><strong>Completion: 6/11.</strong> Five units remain unrepresented.</p>
+          <button class="panel-button" type="button">Edit Properties…</button>
           <textarea id="reviewNote" aria-label="Review Note" placeholder="Review Note"></textarea>
         </div>
         <footer class="panel-actions"><button class="panel-button" data-close-review type="button">Cancel</button><span><button class="panel-button" type="button">Save as Draft</button> <button class="panel-button primary" type="button" disabled>Complete Review</button></span></footer>

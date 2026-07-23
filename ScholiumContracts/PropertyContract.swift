@@ -23,6 +23,14 @@ public enum PropertyCreationRequirement: String, Codable, Hashable, Sendable {
     case required
 }
 
+/// Declares who may author a recognized property through structured product
+/// surfaces. Protected machine properties remain part of the exact Markdown
+/// vocabulary, but are excluded from researcher-facing editors and profiles.
+public enum PropertyOwnership: String, Codable, Hashable, Sendable {
+    case researcher
+    case protectedMachine = "protected_machine"
+}
+
 /// A semantic constraint that relates one property to another value or
 /// property. Constraints are descriptive Core data as well as validation
 /// inputs, so every delivery surface can inspect the same rule catalog.
@@ -42,6 +50,7 @@ public struct PropertyContract: Codable, Hashable, Sendable {
     public let canonicalKey: String
     public let valueKind: PropertyValueKind
     public let creationRequirement: PropertyCreationRequirement
+    public let ownership: PropertyOwnership
     public let allowedValues: [String]?
     public let constraints: [PropertyConstraint]
 
@@ -49,12 +58,14 @@ public struct PropertyContract: Codable, Hashable, Sendable {
         canonicalKey: String,
         valueKind: PropertyValueKind,
         creationRequirement: PropertyCreationRequirement = .optional,
+        ownership: PropertyOwnership = .researcher,
         allowedValues: [String]? = nil,
         constraints: [PropertyConstraint] = []
     ) {
         self.canonicalKey = canonicalKey
         self.valueKind = valueKind
         self.creationRequirement = creationRequirement
+        self.ownership = ownership
         self.allowedValues = allowedValues.map(Self.unique)
         self.constraints = Self.unique(constraints)
     }
@@ -171,9 +182,10 @@ public enum PropertyContractCatalog {
             guard let value else { continue }
 
             if contract.canonicalKey == "research_unit" {
-                let declaration = ResearchUnitDeclaration(frontmatter: [
-                    "research_unit": value
-                ])
+                let declaration = ResearchUnitDeclaration(
+                    frontmatter: ["research_unit": value],
+                    profile: profile
+                )
                 if let message = declaration.validationMessage {
                     issues.append(PropertyValidationIssue(
                         propertyKey: contract.canonicalKey,
@@ -235,9 +247,7 @@ public enum PropertyContractCatalog {
         }
     }
 
-    private static let analysisProfile = CachedProfile(contracts:
-        analysisContracts(researchUnitRequirement: .optional)
-    )
+    private static let analysisProfile = CachedProfile(contracts: analysisContracts)
     private static let topicProfile = CachedProfile(contracts: topicContracts)
     private static let workProfile = CachedProfile(contracts: workContracts)
     private static let genericProfile = CachedProfile(contracts: [])
@@ -251,9 +261,7 @@ public enum PropertyContractCatalog {
         }
     }
 
-    private static func analysisContracts(
-        researchUnitRequirement: PropertyCreationRequirement
-    ) -> [PropertyContract] {
+    private static let analysisContracts: [PropertyContract] = {
         [
             property("title", .text),
             property("authors", .textList),
@@ -263,7 +271,8 @@ public enum PropertyContractCatalog {
                 "encyclopedia_entry", "thesis", "manuscript", "other",
             ]),
             property("tags", .tags),
-            property("research_unit", .mapping, requirement: researchUnitRequirement),
+            property("research_unit", .mapping),
+            property("zotero_item_key", .text, ownership: .protectedMachine),
             property("access", .choice, allowed: [
                 "full_text", "partial_text", "metadata_only", "unavailable",
             ]),
@@ -273,7 +282,6 @@ public enum PropertyContractCatalog {
             property("locators", .choice, allowed: [
                 "reliable", "partial", "unverified", "unavailable",
             ]),
-            property("status", .choice, allowed: ["draft", "complete", "reviewed"]),
             property(
                 "debate_importance",
                 .number,
@@ -288,36 +296,29 @@ public enum PropertyContractCatalog {
                 constraints: [.pairedWith(canonicalKey: "debate_importance")]
             ),
         ]
-    }
+    }()
 
     private static let topicContracts: [PropertyContract] = [
-        property("title", .text),
         property("aliases", .textList),
         property("tags", .tags),
         property("research_unit", .mapping),
-        property("status", .choice, allowed: ["seed", "developing", "maintained"]),
     ]
 
     private static let workContracts: [PropertyContract] = [
-        property("title", .text),
         property("authors", .textList),
         property("kind", .choice, allowed: [
             "paper", "chapter", "book", "talk", "review", "teaching", "other",
         ]),
         property("tags", .tags),
         property("research_unit", .mapping),
-        property("status", .choice, allowed: [
-            "planning", "drafting", "revising", "review", "ready",
-            "submitted", "published", "archived",
-        ]),
         property("venue", .text),
-        property("deadline", .date),
     ]
 
     private static func property(
         _ key: String,
         _ kind: PropertyValueKind,
         requirement: PropertyCreationRequirement = .optional,
+        ownership: PropertyOwnership = .researcher,
         allowed: [String]? = nil,
         constraints: [PropertyConstraint] = []
     ) -> PropertyContract {
@@ -325,6 +326,7 @@ public enum PropertyContractCatalog {
             canonicalKey: key,
             valueKind: kind,
             creationRequirement: requirement,
+            ownership: ownership,
             allowedValues: allowed,
             constraints: constraints
         )

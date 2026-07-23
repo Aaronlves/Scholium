@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 import Testing
 
-@Suite("Search v3 contracts")
+@Suite("Search v4 contracts")
 struct SearchV3ContractsTests {
     @Test("Finite syntax parses AND, escaped phrases, prefix, and exclusion")
     func finiteSyntax() throws {
@@ -33,7 +33,7 @@ struct SearchV3ContractsTests {
 
     @Test("Structured-only positive and negative queries remain valid")
     func structuredOnly() throws {
-        let positive = SearchQueryParser.parse("status:draft")
+        let positive = SearchQueryParser.parse("callout:state")
         #expect(try #require(positive.ast).isFilterOnly)
         let negative = SearchQueryParser.parse("-review:reviewed")
         #expect(try #require(negative.ast).isFilterOnly)
@@ -46,6 +46,10 @@ struct SearchV3ContractsTests {
         #expect(removed.ast == nil)
         #expect(removed.diagnostics.first?.code == .removedField)
         #expect(removed.diagnostics.first?.needsEditing == true)
+        let status = SearchQueryParser.parse("status:draft")
+        #expect(status.ast == nil)
+        #expect(status.diagnostics.first?.code == .removedField)
+        #expect(status.diagnostics.first?.message.contains("not a Scholium property") == true)
         #expect(SearchQueryParser.parse("review:maybe").diagnostics.first?.code == .unknownStructuredValue)
         #expect(SearchQueryParser.parse("unknown:value").diagnostics.first?.code == .unknownField)
     }
@@ -65,7 +69,7 @@ struct SearchV3ContractsTests {
             ("autonomy~", .unsupportedSyntax),
             ("year:1990..2000", .unsupportedSyntax),
             ("title:", .missingFieldValue),
-            ("status:not-canonical", .unknownStructuredValue),
+            ("callout:not-canonical", .unknownStructuredValue),
             ("-autonomy", .onlyExcludedFreeText),
         ]
         for (query, expected) in cases {
@@ -120,6 +124,7 @@ struct SearchV3ContractsTests {
         let document = NoteDocument(relativePath: "Folder/Test Note.md", rawContent: source)
         let projection = SearchDocumentProjection(
             document: document,
+            profile: .analysis,
             review: "unreviewed",
             hasBrokenLink: true
         )
@@ -180,6 +185,45 @@ struct SearchV3ContractsTests {
             location: sourceRange.lowerBound,
             length: sourceRange.count
         )) == decomposed)
+    }
+
+    @Test("A cached source projection changes only dynamic review and broken-link state")
+    func cachedSourceProjection() {
+        let document = NoteDocument(
+            relativePath: "Cached.md",
+            rawContent: "# Cached\n\nExact visible body.\n"
+        )
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        let cached = SearchDocumentProjection(
+            document: document,
+            profile: .analysis,
+            semantic: semantic
+        )
+        let reused = SearchIndexDocument(
+            vaultID: UUID(),
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            document: document,
+            semantic: semantic,
+            cachedSourceProjection: cached,
+            review: "QUALIFIED",
+            hasBrokenLink: true
+        )
+        let rebuilt = SearchIndexDocument(
+            vaultID: reused.vaultID,
+            vaultName: reused.vaultName,
+            vaultRole: reused.vaultRole,
+            document: document,
+            semantic: semantic,
+            review: "QUALIFIED",
+            hasBrokenLink: true
+        )
+
+        #expect(reused.projection == rebuilt.projection)
+        #expect(reused.projection.segments == cached.segments)
+        #expect(reused.projection.review == "qualified")
+        #expect(reused.projection.hasBrokenLink)
+        #expect(reused.projection.projectionHash != cached.projectionHash)
     }
 
     @Test("BOM, CRLF, emoji, and RTL text retain exact UTF-16 source ranges")

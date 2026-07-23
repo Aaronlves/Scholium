@@ -75,7 +75,7 @@ struct WindowControllerArchitectureTests {
 
     @Test("Source deltas do not invalidate WindowModel after the dirty chrome transition")
     func sourceDeltasStayBelowTheChromeBoundary() async {
-        let window = WindowModel(workspaceStore: WorkspaceStore())
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
         let reference = fixtureReference(path: "Topics/Hot Path.md")
         let key = DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID())
         let descriptor = WindowDocumentDescriptor(sessionKey: key, reference: reference)
@@ -871,7 +871,7 @@ struct WindowControllerArchitectureTests {
                 Comment(rawValue: "WindowModel still executes \(prohibited) directly")
             )
         }
-        #expect(windowModelSource.contains("documentController.create(DocumentCreationRequest("))
+        #expect(windowModelSource.contains("documentController.createUntitledNote("))
         #expect(windowModelSource.contains("discoveryController.executeSearch("))
         #expect(windowModelSource.contains("researchController.functions"))
     }

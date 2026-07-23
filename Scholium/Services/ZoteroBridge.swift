@@ -8,7 +8,7 @@ typealias ZoteroCitation = ZoteroItemMetadata
 typealias ZoteroBridgeError = ZoteroUseCaseError
 
 /// macOS presentation adapter over the Application-owned Zotero capability.
-/// HTTP, decoding, matching, and cache state remain behind `ZoteroUseCases`;
+/// HTTP, decoding, matching, and connection history remain behind `ZoteroUseCases`;
 /// this adapter owns only external-app presentation.
 actor ZoteroBridge {
     private let operations: any ZoteroUseCases
@@ -25,8 +25,8 @@ actor ZoteroBridge {
         try await operations.refreshLibraryInfo()
     }
 
-    func forgetCache() async throws {
-        try await operations.forgetLibraryCache()
+    func clearConnectionHistory() async throws {
+        try await operations.clearConnectionHistory()
     }
 
     func openZotero() {

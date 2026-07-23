@@ -777,7 +777,7 @@ struct SpotlightSearchPanelView: View {
         case .unknownField:
             String(localized: "This Search field is not supported.")
         case .removedField:
-            String(localized: "This field was removed in Search v3. Choose the scope in the visible Search control.")
+            String(localized: "This field was removed in Search v4. Choose the scope in the visible Search control.")
         case .missingFieldValue:
             String(localized: "This Search field requires a value.")
         case .unknownStructuredValue:
@@ -787,9 +787,9 @@ struct SpotlightSearchPanelView: View {
         case .invalidScope:
             String(localized: "Choose This Note, This Vault, or Triptych as the Search scope.")
         case .onlyExcludedFreeText:
-            String(localized: "Add a positive term or a structured status, review, callout, or broken-link condition.")
+            String(localized: "Add a positive term or a structured review, callout, or broken-link condition.")
         case .needsEditing:
-            String(localized: "Edit this saved query before running it with Search v3.")
+            String(localized: "Edit this saved query before running it with Search v4.")
         }
     }
 
@@ -801,7 +801,6 @@ struct SpotlightSearchPanelView: View {
         case .author: String(localized: "author")
         case .year: String(localized: "year")
         case .tag: String(localized: "tag")
-        case .status: String(localized: "status")
         case .review: String(localized: "review")
         case .path: String(localized: "path")
         case .callout: String(localized: "callout")
@@ -906,7 +905,6 @@ private struct WorkspaceSearchResultRow: View {
         case .author: String(localized: "author")
         case .year: String(localized: "year")
         case .tag: String(localized: "tag")
-        case .status: String(localized: "status")
         case .review: String(localized: "review")
         case .body: String(localized: "body")
         case .callout: String(localized: "callout")

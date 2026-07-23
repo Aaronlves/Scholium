@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 
@@ -9,6 +10,7 @@ public actor VaultRepository {
 
     private let canonicalRoot: URL
     private let pathResolver: VaultPathResolver
+    private let descriptorAccess: VaultDescriptorAccess
     private let mutationCoordinator: VaultMutationCoordinator
     private let recoveryLedger: PrewriteRecoveryLedger
     private let fileManager = FileManager.default
@@ -23,7 +25,9 @@ public actor VaultRepository {
         self.vaultRole = vaultRole
         self.vaultURL = vaultURL.standardizedFileURL
         self.canonicalRoot = vaultURL.resolvingSymlinksInPath().standardizedFileURL
-        self.pathResolver = try VaultPathResolver(rootURL: vaultURL)
+        let pathResolver = try VaultPathResolver(rootURL: vaultURL)
+        self.pathResolver = pathResolver
+        self.descriptorAccess = VaultDescriptorAccess(rootURL: pathResolver.canonicalRoot)
         self.mutationCoordinator = VaultMutationCoordinator(resolver: pathResolver)
         self.storageURL = applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
@@ -39,12 +43,100 @@ public actor VaultRepository {
     }
 
     public func load(relativePath: String) throws -> NoteDocument {
-        let fileURL = try existingFileURL(relativePath: relativePath)
-        let data = try Data(contentsOf: fileURL)
+        try loadVersioned(relativePath: relativePath).document
+    }
+
+    public func loadVersioned(
+        relativePath: String
+    ) throws -> (document: NoteDocument, version: SourceVersion) {
+        let loaded = try loadCatalogSource(relativePath: relativePath)
+        return (loaded.document, loaded.version)
+    }
+
+    package func loadCatalogSource(
+        relativePath: String
+    ) throws -> (
+        document: NoteDocument,
+        version: SourceVersion,
+        fileMetadata: WorkspaceFileMetadata
+    ) {
+        let path = try markdownRelativePath(relativePath)
+        let loaded = try descriptorAccess.withOpenRegularFile(path) {
+            descriptor, parentDescriptor, name, initialStatus in
+            let data = try VaultDescriptorAccess.readAll(from: descriptor)
+            var finalStatus = stat()
+            guard fstat(descriptor, &finalStatus) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            guard Self.sameFileState(initialStatus, finalStatus),
+                  Int(finalStatus.st_size) == data.count else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The source changed while its exact bytes were being read."
+                )
+            }
+            let openedIdentity = VaultDescriptorAccess.FileIdentity(
+                initialStatus
+            )
+            let currentIdentity: VaultDescriptorAccess.FileIdentity
+            do {
+                currentIdentity = try VaultDescriptorAccess.identity(
+                    name: name,
+                    parentDescriptor: parentDescriptor
+                )
+            } catch let error as POSIXError where error.code == .ENOENT {
+                throw VaultRepositoryError.fileDoesNotExist(relativePath)
+            }
+            guard currentIdentity == openedIdentity else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The source path changed identity while its exact bytes were being read."
+                )
+            }
+            try descriptorAccess.verifyCurrentParent(
+                path,
+                retainedDescriptor: parentDescriptor
+            )
+            return (data, finalStatus)
+        }
+        let data = loaded.0
         guard let content = NoteDocument.decodeUTF8PreservingBOM(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
-        return NoteDocument(relativePath: relativePath, rawContent: content)
+        let document = NoteDocument(relativePath: relativePath, rawContent: content)
+        return (
+            document,
+            Self.sourceVersion(status: loaded.1, fingerprint: document.fingerprint),
+            Self.fileMetadata(status: loaded.1)
+        )
+    }
+
+    public func sourceVersionIsCurrent(
+        relativePath: String,
+        version: SourceVersion
+    ) throws -> Bool {
+        let path = try markdownRelativePath(relativePath)
+        return try descriptorAccess.withOpenRegularFile(path) {
+            _, parentDescriptor, name, status in
+            let openedIdentity = VaultDescriptorAccess.FileIdentity(status)
+            let currentIdentity: VaultDescriptorAccess.FileIdentity
+            do {
+                currentIdentity = try VaultDescriptorAccess.identity(
+                    name: name,
+                    parentDescriptor: parentDescriptor
+                )
+            } catch let error as POSIXError where error.code == .ENOENT {
+                throw VaultRepositoryError.fileDoesNotExist(relativePath)
+            }
+            guard currentIdentity == openedIdentity else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The source path changed identity during version validation."
+                )
+            }
+            try descriptorAccess.verifyCurrentParent(
+                path,
+                retainedDescriptor: parentDescriptor
+            )
+            return Self.matches(status: status, version: version)
+        }
     }
 
     /// A side-effect-free authorization and revision check used by a
@@ -75,12 +167,20 @@ public actor VaultRepository {
     /// Returns ordinary active Markdown paths. Set Aside and Trash are excluded
     /// unless the caller is explicitly presenting recovery content.
     public func markdownRelativePaths(includeLifecycle: Bool = false) throws -> [String] {
+        var enumerationError: (any Error)?
         guard let enumerator = fileManager.enumerator(
             at: canonicalRoot,
             includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants],
-            errorHandler: { _, _ in false }
-        ) else { return [] }
+            errorHandler: { _, error in
+                enumerationError = error
+                return false
+            }
+        ) else {
+            throw VaultRepositoryError.commitUncertain(
+                "The vault Markdown inventory could not be enumerated."
+            )
+        }
         var paths: [String] = []
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey])
@@ -100,7 +200,138 @@ public actor VaultRepository {
                   url.pathExtension.caseInsensitiveCompare("md") == .orderedSame else { continue }
             paths.append(relativePath)
         }
+        if let enumerationError { throw enumerationError }
         return paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Returns real directory paths, including empty folders. Directories are
+    /// classifications only; callers must continue to track notes by their
+    /// stable identities rather than treating these paths as durable IDs.
+    public func folderRelativePaths(includeLifecycle: Bool = false) throws
+        -> [VaultRelativeFolderPath]
+    {
+        var enumerationError: (any Error)?
+        guard let enumerator = fileManager.enumerator(
+            at: canonicalRoot,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            errorHandler: { _, error in
+                enumerationError = error
+                return false
+            }
+        ) else {
+            throw VaultRepositoryError.commitUncertain(
+                "The vault folder inventory could not be enumerated."
+            )
+        }
+        var paths: [VaultRelativeFolderPath] = []
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if values.isSymbolicLink == true {
+                enumerator.skipDescendants()
+                continue
+            }
+            guard values.isDirectory == true,
+                  let relativePath = VaultPath.relativePath(for: url, in: canonicalRoot),
+                  let path = try? VaultRelativeFolderPath(relativePath) else { continue }
+            if !includeLifecycle,
+               relativePath == "Set Aside" || relativePath.hasPrefix("Set Aside/")
+                || relativePath == "Trash" || relativePath.hasPrefix("Trash/") {
+                enumerator.skipDescendants()
+                continue
+            }
+            paths.append(path)
+        }
+        if let enumerationError { throw enumerationError }
+        return paths.sorted {
+            $0.rawValue.localizedStandardCompare($1.rawValue) == .orderedAscending
+        }
+    }
+
+    /// Creates one exact empty folder without inventing a stable identity.
+    public func createFolder(relativePath: String) throws -> VaultRelativeFolderPath {
+        let path = try folderRelativePath(relativePath)
+        _ = try prospectiveNewFolderURL(path: path, ignoring: nil, createMissingParents: false)
+        try mutationCoordinator.createDirectory(path: path)
+        _ = try existingFolderURL(path: path)
+        return path
+    }
+
+    func folderExists(_ path: VaultRelativeFolderPath) -> Bool {
+        (try? existingFolderURL(path: path)) != nil
+    }
+
+    /// Moves one directory entry after proving that every descendant Markdown
+    /// note still matches the caller's complete path-and-revision inventory.
+    /// Non-Markdown descendants travel with the same directory inode and are
+    /// never parsed or rewritten.
+    func moveFolder(
+        from source: VaultRelativeFolderPath,
+        to destination: VaultRelativeFolderPath,
+        expectedDocuments: [String: DocumentFingerprint],
+        createMissingParents: Bool = false
+    ) throws -> FolderRepositoryMoveResult {
+        let sourcePrefix = source.rawValue + "/"
+        guard destination.rawValue != source.rawValue,
+              !destination.rawValue.hasPrefix(sourcePrefix) else {
+            throw VaultRepositoryError.invalidRelativePath(destination.rawValue)
+        }
+        _ = try existingFolderURL(path: source)
+        _ = try prospectiveNewFolderURL(
+            path: destination,
+            ignoring: source,
+            createMissingParents: createMissingParents
+        )
+
+        let before = try preflightFolderDocuments(
+            in: source,
+            expectedDocuments: expectedDocuments
+        )
+        try mutationCoordinator.moveDirectory(source: source, destination: destination)
+
+        let destinationPrefix = destination.rawValue + "/"
+        var movedDocuments: [NoteDocument] = []
+        for document in before {
+            let suffix = document.relativePath.dropFirst(sourcePrefix.count)
+            let movedPath = destinationPrefix + suffix
+            let observed = try load(relativePath: movedPath)
+            guard observed.fingerprint == document.fingerprint else {
+                throw VaultRepositoryError.readbackMismatch(
+                    expected: document.fingerprint,
+                    current: observed.fingerprint
+                )
+            }
+            movedDocuments.append(observed)
+        }
+        _ = try existingFolderURL(path: destination)
+        return FolderRepositoryMoveResult(
+            sourceFolder: source,
+            destinationFolder: destination,
+            documents: movedDocuments.sorted { $0.relativePath < $1.relativePath }
+        )
+    }
+
+    func preflightFolderMove(
+        from source: VaultRelativeFolderPath,
+        to destination: VaultRelativeFolderPath,
+        expectedDocuments: [String: DocumentFingerprint],
+        createMissingParents: Bool = false
+    ) throws -> [NoteDocument] {
+        let sourcePrefix = source.rawValue + "/"
+        guard destination.rawValue != source.rawValue,
+              !destination.rawValue.hasPrefix(sourcePrefix) else {
+            throw VaultRepositoryError.invalidRelativePath(destination.rawValue)
+        }
+        _ = try existingFolderURL(path: source)
+        _ = try prospectiveNewFolderURL(
+            path: destination,
+            ignoring: source,
+            createMissingParents: createMissingParents
+        )
+        return try preflightFolderDocuments(
+            in: source,
+            expectedDocuments: expectedDocuments
+        )
     }
 
     public func save(
@@ -108,8 +339,8 @@ public actor VaultRepository {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) throws -> SaveResult {
-        let fileURL = try existingFileURL(relativePath: relativePath)
-        let currentData = try Data(contentsOf: fileURL)
+        _ = try existingFileURL(relativePath: relativePath)
+        let currentData = try readSource(relativePath: relativePath)
         let currentFingerprint = DocumentFingerprint(data: currentData)
         guard currentFingerprint == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: currentFingerprint)
@@ -139,7 +370,7 @@ public actor VaultRepository {
             throw error
         }
         do {
-            let recheckedData = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
+            let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
             guard recheckedFingerprint == expectedRevision else {
                 try discardPreparedSnapshot(snapshot)
@@ -150,7 +381,7 @@ public actor VaultRepository {
                 expected: currentData,
                 candidate: candidateData
             )
-            let readback = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
+            let readback = try readSource(relativePath: relativePath)
             let expectedFingerprint = DocumentFingerprint(content: updatedContent)
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == expectedFingerprint else {
@@ -167,7 +398,7 @@ public actor VaultRepository {
                 try? commitPreparedSnapshot(snapshot)
                 try? recoveryLedger.retainMutation(mutation, reason: error.localizedDescription)
             } else {
-                let observed = try? Data(contentsOf: fileURL)
+                let observed = try? readSource(relativePath: relativePath)
                 if observed.map(DocumentFingerprint.init(data:)) == currentFingerprint {
                     try? discardPreparedSnapshot(snapshot)
                     try? recoveryLedger.completeMutation(mutation)
@@ -193,7 +424,7 @@ public actor VaultRepository {
                 path: markdownRelativePath(relativePath),
                 data: Data(content.utf8)
             )
-            let readback = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
+            let readback = try readSource(relativePath: relativePath)
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == proposed.fingerprint else {
                 throw VaultRepositoryError.readbackMismatch(
@@ -211,8 +442,7 @@ public actor VaultRepository {
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
     ) throws -> NoteDocument {
-        let sourceURL = try existingFileURL(relativePath: relativePath)
-        let data = try Data(contentsOf: sourceURL)
+        let data = try readSource(relativePath: relativePath)
         let current = DocumentFingerprint(data: data)
         guard current == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
@@ -230,21 +460,21 @@ public actor VaultRepository {
         expectedRevision: DocumentFingerprint
     ) throws -> NoteMoveResult {
         let sourceURL = try existingFileURL(relativePath: relativePath)
-        let currentData = try Data(contentsOf: sourceURL)
+        let currentData = try readSource(relativePath: relativePath)
         let currentFingerprint = DocumentFingerprint(data: currentData)
         guard currentFingerprint == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: currentFingerprint)
         }
-        let destinationURL = try newFileURL(relativePath: destinationRelativePath)
+        _ = try newFileURL(relativePath: destinationRelativePath)
         let snapshot = try prepareSnapshot(relativePath: relativePath, data: currentData)
         do {
-            let recheckedData = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
+            let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
             guard recheckedFingerprint == expectedRevision else {
                 try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.conflict(expected: expectedRevision, current: recheckedFingerprint)
             }
-            guard !fileManager.fileExists(atPath: destinationURL.path) else {
+            guard try filePresence(relativePath: destinationRelativePath) == .absent else {
                 try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.fileAlreadyExists(destinationRelativePath)
             }
@@ -253,7 +483,7 @@ public actor VaultRepository {
                 destination: markdownRelativePath(destinationRelativePath),
                 expected: currentData
             )
-            let readback = try Data(contentsOf: try existingFileURL(relativePath: destinationRelativePath))
+            let readback = try readSource(relativePath: destinationRelativePath)
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == currentFingerprint else {
                 try commitPreparedSnapshot(snapshot)
@@ -273,7 +503,7 @@ public actor VaultRepository {
                 relativePath: destinationRelativePath
             )
         } catch {
-            if fileManager.fileExists(atPath: sourceURL.path) {
+            if (try? filePresence(relativePath: relativePath)) == .present {
                 try? discardPreparedSnapshot(snapshot)
             } else {
                 try? commitPreparedSnapshot(snapshot)
@@ -312,7 +542,7 @@ public actor VaultRepository {
         expectedRevision: DocumentFingerprint
     ) throws -> NoteDeletionResult {
         let fileURL = try existingFileURL(relativePath: relativePath)
-        let data = try Data(contentsOf: fileURL)
+        let data = try readSource(relativePath: relativePath)
         let current = DocumentFingerprint(data: data)
         guard current == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
@@ -320,7 +550,7 @@ public actor VaultRepository {
         let snapshot = try prepareSnapshot(relativePath: relativePath, data: data)
         var sourceWasDeleted = false
         do {
-            let recheckedData = try Data(contentsOf: try existingFileURL(relativePath: relativePath))
+            let recheckedData = try readSource(relativePath: relativePath)
             let rechecked = DocumentFingerprint(data: recheckedData)
             guard rechecked == expectedRevision else {
                 try discardPreparedSnapshot(snapshot)
@@ -358,8 +588,8 @@ public actor VaultRepository {
         relativePath: String,
         expectedRevision: DocumentFingerprint
     ) throws -> PreparedPermanentDeletion {
-        let fileURL = try existingFileURL(relativePath: relativePath)
-        let data = try Data(contentsOf: fileURL)
+        _ = try existingFileURL(relativePath: relativePath)
+        let data = try readSource(relativePath: relativePath)
         let current = DocumentFingerprint(data: data)
         guard current == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
@@ -383,7 +613,9 @@ public actor VaultRepository {
     /// enclosing transaction either rolls back or finalizes.
     func applyPreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
         let fileURL = try existingFileURL(relativePath: prepared.relativePath)
-        let current = DocumentFingerprint(data: try Data(contentsOf: fileURL))
+        let current = DocumentFingerprint(data: try readSource(
+            relativePath: prepared.relativePath
+        ))
         guard current == prepared.fingerprint else {
             throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
         }
@@ -397,13 +629,21 @@ public actor VaultRepository {
     /// Restores exact prepared bytes without replacing a concurrently recreated
     /// path. This is idempotent when the original bytes already exist.
     func rollbackPreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
-        if let existing = try? load(relativePath: prepared.relativePath) {
+        switch try filePresence(relativePath: prepared.relativePath) {
+        case .present:
+            let existing = try load(relativePath: prepared.relativePath)
             let current = existing.fingerprint
             guard current == prepared.fingerprint else {
                 throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
             }
             try discardCommittedSnapshot(prepared.recoveryReference)
             return
+        case .absent:
+            break
+        case .inaccessible(let code):
+            throw VaultRepositoryError.commitUncertain(
+                "Rollback destination presence could not be verified (errno \(code))."
+            )
         }
 
         let candidate = try prospectiveNewFileURL(relativePath: prepared.relativePath)
@@ -419,9 +659,9 @@ public actor VaultRepository {
             path: markdownRelativePath(prepared.relativePath),
             data: data
         )
-        let observed = DocumentFingerprint(data: try Data(contentsOf: try existingFileURL(
+        let observed = DocumentFingerprint(data: try readSource(
             relativePath: prepared.relativePath
-        )))
+        ))
         guard observed == prepared.fingerprint else {
             throw VaultRepositoryError.readbackMismatch(expected: prepared.fingerprint, current: observed)
         }
@@ -431,12 +671,18 @@ public actor VaultRepository {
     /// Makes a prepared deletion permanent by removing all path-keyed recovery
     /// evidence, including the temporary entry. Repeating it is safe.
     func finalizePreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
-        let candidate = try prospectiveNewFileURL(relativePath: prepared.relativePath)
-        if fileManager.fileExists(atPath: candidate.path) {
-            let current = DocumentFingerprint(data: try Data(contentsOf: try existingFileURL(
+        switch try filePresence(relativePath: prepared.relativePath) {
+        case .present:
+            let current = DocumentFingerprint(data: try readSource(
                 relativePath: prepared.relativePath
-            )))
+            ))
             throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
+        case .absent:
+            break
+        case .inaccessible(let code):
+            throw VaultRepositoryError.commitUncertain(
+                "Deletion finalization presence could not be verified (errno \(code))."
+            )
         }
         try purgeRecoveryEntries(relativePath: prepared.relativePath)
     }
@@ -449,14 +695,14 @@ public actor VaultRepository {
         relativePath: String,
         createdRevision: DocumentFingerprint
     ) throws {
-        let fileURL = try existingFileURL(relativePath: relativePath)
-        let data = try Data(contentsOf: fileURL)
+        _ = try existingFileURL(relativePath: relativePath)
+        let data = try readSource(relativePath: relativePath)
         let current = DocumentFingerprint(data: data)
         guard current == createdRevision else {
             throw VaultRepositoryError.conflict(expected: createdRevision, current: current)
         }
         let recheckedURL = try existingFileURL(relativePath: relativePath)
-        let recheckedData = try Data(contentsOf: recheckedURL)
+        let recheckedData = try readSource(relativePath: relativePath)
         let rechecked = DocumentFingerprint(data: recheckedData)
         guard rechecked == createdRevision else {
             throw VaultRepositoryError.conflict(expected: createdRevision, current: rechecked)
@@ -497,6 +743,66 @@ public actor VaultRepository {
         return content
     }
 
+    private func readSource(relativePath: String) throws -> Data {
+        try descriptorAccess.read(markdownRelativePath(relativePath))
+    }
+
+    private static func sourceVersion(
+        status: stat,
+        fingerprint: DocumentFingerprint
+    ) -> SourceVersion {
+        SourceVersion(
+            fingerprint: fingerprint,
+            device: UInt64(status.st_dev),
+            inode: UInt64(status.st_ino),
+            byteCount: Int(status.st_size),
+            modificationNanoseconds: nanoseconds(status.st_mtimespec),
+            statusChangeNanoseconds: nanoseconds(status.st_ctimespec)
+        )
+    }
+
+    private static func fileMetadata(status: stat) -> WorkspaceFileMetadata {
+        WorkspaceFileMetadata(
+            byteCount: Int(status.st_size),
+            creationDate: date(status.st_birthtimespec),
+            modificationDate: date(status.st_mtimespec)
+        )
+    }
+
+    private static func date(_ value: timespec) -> Date? {
+        guard value.tv_sec > 0 || value.tv_nsec > 0 else { return nil }
+        return Date(
+            timeIntervalSince1970: TimeInterval(value.tv_sec)
+                + TimeInterval(value.tv_nsec) / 1_000_000_000
+        )
+    }
+
+    private static func matches(status: stat, version: SourceVersion) -> Bool {
+        UInt64(status.st_dev) == version.device
+            && UInt64(status.st_ino) == version.inode
+            && Int(status.st_size) == version.byteCount
+            && nanoseconds(status.st_mtimespec) == version.modificationNanoseconds
+            && nanoseconds(status.st_ctimespec) == version.statusChangeNanoseconds
+    }
+
+    private static func sameFileState(_ lhs: stat, _ rhs: stat) -> Bool {
+        lhs.st_dev == rhs.st_dev
+            && lhs.st_ino == rhs.st_ino
+            && lhs.st_size == rhs.st_size
+            && lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec
+            && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
+            && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
+            && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
+    }
+
+    private static func nanoseconds(_ time: timespec) -> Int64 {
+        Int64(time.tv_sec) * 1_000_000_000 + Int64(time.tv_nsec)
+    }
+
+    private func filePresence(relativePath: String) throws -> FilePresence {
+        try descriptorAccess.presence(markdownRelativePath(relativePath))
+    }
+
     private func existingFileURL(relativePath: String) throws -> URL {
         try validateMarkdownRelativePath(relativePath)
         let candidate = canonicalRoot.appendingPathComponent(relativePath).standardizedFileURL
@@ -517,6 +823,108 @@ public actor VaultRepository {
             throw VaultRepositoryError.notRegularFile(relativePath)
         }
         return resolved
+    }
+
+    private func existingFolderURL(path: VaultRelativeFolderPath) throws -> URL {
+        let candidate = try pathResolver.unresolvedURL(for: path)
+        guard fileManager.fileExists(atPath: candidate.path) else {
+            throw VaultRepositoryError.fileDoesNotExist(path.rawValue)
+        }
+        let directValues = try candidate.resourceValues(forKeys: [
+            .isSymbolicLinkKey,
+            .isDirectoryKey,
+        ])
+        guard directValues.isSymbolicLink != true,
+              directValues.isDirectory == true else {
+            throw VaultRepositoryError.notRegularFile(path.rawValue)
+        }
+        let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
+        guard resolved.path.hasPrefix(rootPath) else {
+            throw VaultRepositoryError.outsideVault(path.rawValue)
+        }
+        return candidate
+    }
+
+    private func prospectiveNewFolderURL(
+        path: VaultRelativeFolderPath,
+        ignoring source: VaultRelativeFolderPath?,
+        createMissingParents: Bool
+    ) throws -> URL {
+        let candidate = try pathResolver.unresolvedURL(for: path)
+        let sourceURL = try source.map(pathResolver.unresolvedURL(for:))
+        if fileManager.fileExists(atPath: candidate.path) {
+            let candidateValues = try candidate.resourceValues(forKeys: [
+                .fileResourceIdentifierKey,
+                .isSymbolicLinkKey,
+            ])
+            let sourceValues = try sourceURL?.resourceValues(forKeys: [
+                .fileResourceIdentifierKey,
+                .isSymbolicLinkKey,
+            ])
+            guard source != nil,
+                  candidateValues.isSymbolicLink != true,
+                  sourceValues?.isSymbolicLink != true,
+                  candidateValues.fileResourceIdentifier as? AnyHashable
+                    == sourceValues?.fileResourceIdentifier as? AnyHashable else {
+                throw VaultRepositoryError.fileAlreadyExists(path.rawValue)
+            }
+        }
+        try pathResolver.validateNoCollision(
+            for: path,
+            ignoring: source,
+            fileManager: fileManager
+        )
+
+        let parent = candidate.deletingLastPathComponent()
+        if createMissingParents {
+            try ensureSafeDirectory(parent)
+        }
+        guard fileManager.fileExists(atPath: parent.path) else {
+            throw VaultRepositoryError.fileDoesNotExist(
+                VaultPath.relativePath(for: parent, in: canonicalRoot) ?? parent.path
+            )
+        }
+        let directValues = try parent.resourceValues(forKeys: [
+            .isSymbolicLinkKey,
+            .isDirectoryKey,
+        ])
+        guard directValues.isSymbolicLink != true,
+              directValues.isDirectory == true else {
+            throw VaultRepositoryError.outsideVault(path.rawValue)
+        }
+        let resolvedParent = parent.resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
+        guard resolvedParent.path == canonicalRoot.path
+                || resolvedParent.path.hasPrefix(rootPath) else {
+            throw VaultRepositoryError.outsideVault(path.rawValue)
+        }
+        return candidate
+    }
+
+    private func preflightFolderDocuments(
+        in folder: VaultRelativeFolderPath,
+        expectedDocuments: [String: DocumentFingerprint]
+    ) throws -> [NoteDocument] {
+        let prefix = folder.rawValue + "/"
+        let currentPaths = try markdownRelativePaths(includeLifecycle: true)
+            .filter { $0.hasPrefix(prefix) }
+        guard Set(currentPaths) == Set(expectedDocuments.keys) else {
+            throw VaultRepositoryError.commitUncertain(
+                "The folder's Markdown inventory changed before the move."
+            )
+        }
+        return try currentPaths.map { relativePath in
+            let document = try load(relativePath: relativePath)
+            guard let expected = expectedDocuments[relativePath],
+                  document.fingerprint == expected else {
+                throw VaultRepositoryError.conflict(
+                    expected: expectedDocuments[relativePath] ?? document.fingerprint,
+                    current: document.fingerprint
+                )
+            }
+            return document
+        }
     }
 
     private func newFileURL(relativePath: String) throws -> URL {
@@ -578,6 +986,14 @@ public actor VaultRepository {
             return try MarkdownRelativePath(relativePath)
         } catch MarkdownRelativePathError.markdownRequired {
             throw VaultRepositoryError.markdownRequired(relativePath)
+        } catch {
+            throw VaultRepositoryError.invalidRelativePath(relativePath)
+        }
+    }
+
+    private func folderRelativePath(_ relativePath: String) throws -> VaultRelativeFolderPath {
+        do {
+            return try VaultRelativeFolderPath(relativePath)
         } catch {
             throw VaultRepositoryError.invalidRelativePath(relativePath)
         }

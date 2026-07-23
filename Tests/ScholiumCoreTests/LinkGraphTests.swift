@@ -24,7 +24,12 @@ struct LinkGraphTests {
             topicID: MarkdownSemanticDocument(parsing: topic),
         ]
         let catalog = [
-            LinkCatalogNote(vaultID: analysisVault, document: analysis, semantic: documents[analysisID]),
+            LinkCatalogNote(
+                vaultID: analysisVault,
+                document: analysis,
+                profile: .analysis,
+                semantic: documents[analysisID]
+            ),
             LinkCatalogNote(vaultID: topicVault, document: topic, semantic: documents[topicID]),
         ]
 
@@ -92,7 +97,12 @@ struct LinkGraphTests {
         let graph = LinkGraphBuilder.build(
             generation: 1,
             catalog: [
-                LinkCatalogNote(vaultID: analysisVault, document: analysis, semantic: documents[analysisID]),
+                LinkCatalogNote(
+                    vaultID: analysisVault,
+                    document: analysis,
+                    profile: .analysis,
+                    semantic: documents[analysisID]
+                ),
                 LinkCatalogNote(vaultID: worksVault, document: work, semantic: documents[workID]),
             ],
             documents: documents,

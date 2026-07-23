@@ -434,7 +434,43 @@ public enum WorkspaceCatalogBuilder {
         graphs: [UUID: GraphSnapshot] = [:],
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
     ) -> WorkspaceCatalogSnapshot {
+        build(
+            vaults: vaults,
+            documents: documents,
+            semanticDocuments: [:],
+            settlementStates: settlementStates,
+            additionalAttention: additionalAttention,
+            graph: graph,
+            graphs: graphs,
+            identityAmbiguitiesByVault: identityAmbiguitiesByVault
+        )
+    }
+
+    package static func build(
+        vaults: [RegisteredVault],
+        documents: [UUID: [NoteDocument]],
+        semanticDocuments: [VaultQualifiedNoteID: MarkdownSemanticDocument],
+        settlementStates: [String: WorkspaceSettlementState] = [:],
+        additionalAttention: [AttentionQueueItem] = [],
+        graph: GraphSnapshot? = nil,
+        graphs: [UUID: GraphSnapshot] = [:],
+        identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
+    ) -> WorkspaceCatalogSnapshot {
         let vaultsByID = Dictionary(uniqueKeysWithValues: vaults.map { ($0.id, $0) })
+        var resolvedSemanticDocuments = semanticDocuments
+        for vault in vaults {
+            for document in documents[vault.id] ?? [] {
+                let id = VaultQualifiedNoteID(
+                    vaultID: vault.id,
+                    relativePath: document.relativePath
+                )
+                if resolvedSemanticDocuments[id]?.fingerprint != document.fingerprint {
+                    resolvedSemanticDocuments[id] = MarkdownSemanticDocument(
+                        parsing: document
+                    )
+                }
+            }
+        }
         var notes: [WorkspaceCatalogNote] = []
         var references: [String: VaultNoteReference] = [:]
         var attention: [AttentionQueueItem] = []
@@ -454,20 +490,12 @@ public enum WorkspaceCatalogBuilder {
                 )
                 references[reference.id] = reference
                 let settlement = settlementStates[reference.id]
-                let zoteroItemKey = document.parsedFrontmatter["zotero_item_key"]?.catalogScalar
-                    ?? document.parsedFrontmatter["zoteroKey"]?.catalogScalar
-                    ?? document.parsedFrontmatter["zotero-key"]?.catalogScalar
+                let zoteroItemKey = vault.role == .sourceCorpus
+                    ? document.parsedFrontmatter["zotero_item_key"]?.catalogScalar
+                    : nil
                 let zoteroSourceIdentity = vault.role == .sourceCorpus
                     ? ZoteroSourceIdentity(
                         itemKey: zoteroItemKey,
-                        doi: document.parsedFrontmatter["doi"]?.catalogScalar
-                            ?? document.parsedFrontmatter["DOI"]?.catalogScalar,
-                        isbn: document.parsedFrontmatter["isbn"]?.catalogScalar
-                            ?? document.parsedFrontmatter["ISBN"]?.catalogScalar,
-                        citationKey: document.parsedFrontmatter["zotero_citation_key"]?.catalogScalar
-                            ?? document.parsedFrontmatter["citation_key"]?.catalogScalar
-                            ?? document.parsedFrontmatter["citationKey"]?.catalogScalar
-                            ?? document.parsedFrontmatter["citekey"]?.catalogScalar,
                         title: document.parsedFrontmatter["title"]?.catalogScalar,
                         authors: document.parsedFrontmatter["authors"]?.catalogStrings ?? [],
                         year: document.parsedFrontmatter["year"]?.catalogInteger
@@ -475,10 +503,16 @@ public enum WorkspaceCatalogBuilder {
                     : nil
                 notes.append(WorkspaceCatalogNote(
                     reference: reference,
-                    title: document.parsedFrontmatter["title"]?.catalogScalar
-                        ?? URL(fileURLWithPath: document.relativePath)
-                            .deletingPathExtension()
-                            .lastPathComponent,
+                    title: ResearchNoteTitleResolver.resolve(
+                        document: document,
+                        vaultRole: vault.role,
+                        semantic: resolvedSemanticDocuments[
+                            VaultQualifiedNoteID(
+                                vaultID: vault.id,
+                                relativePath: document.relativePath
+                            )
+                        ]
+                    ).title,
                     aliases: (
                         document.parsedFrontmatter["aliases"]?.catalogStrings
                             ?? document.parsedFrontmatter["alias"]?.catalogStrings
@@ -513,12 +547,6 @@ public enum WorkspaceCatalogBuilder {
             }
         }
 
-        let semanticDocuments = Dictionary(uniqueKeysWithValues: vaults.flatMap { vault in
-            (documents[vault.id] ?? []).map { document in
-                let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
-                return (id, MarkdownSemanticDocument(parsing: document))
-            }
-        })
         let relianceGraph = graph ?? LinkGraphBuilder.build(
             generation: 1,
             catalog: vaults.flatMap { vault in
@@ -527,11 +555,16 @@ public enum WorkspaceCatalogBuilder {
                     return LinkCatalogNote(
                         vaultID: vault.id,
                         document: document,
-                        semantic: semanticDocuments[id]
+                        profile: WorkflowProfileResolver.resolve(
+                            vaultRole: vault.role,
+                            frontmatter: document.parsedFrontmatter,
+                            relativePath: document.relativePath
+                        ),
+                        semantic: resolvedSemanticDocuments[id]
                     )
                 }
             },
-            documents: semanticDocuments,
+            documents: resolvedSemanticDocuments,
             resolutionScope: .workspace
         )
         let notesByQualifiedID = Dictionary(uniqueKeysWithValues: notes.map { note in

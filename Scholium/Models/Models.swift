@@ -120,6 +120,7 @@ enum NoteProfile: String, Codable, Hashable {
 enum ResearcherPropertyPolicy {
   static let explicitlyHiddenKeys: Set<String> = [
     "id", "record_type", "schema_version", "paper_id", "note_id",
+    "status", "deadline",
     "zotero_item_key", "zotero_attachment_key", "zotero_citation_key",
     "zoterokey", "citation_key", "citationkey", "citekey",
     "main_topic", "related_topics", "follow_up",
@@ -152,17 +153,23 @@ enum ResearcherPropertyPolicy {
 
 // MARK: - Window Document Location
 
-/// A validated structured edit for the optional Research Status mapping.
+/// A validated structured edit for the optional role-aware Research Unit.
 /// Removing the mapping is explicit; an empty or malformed mapping is never
 /// emitted by the Properties editor.
 enum ResearchUnitEdit: Hashable, Sendable {
-  case set(scope: String, limitations: [String])
+  case set(completion: AnalysisCompletion?, scope: String?, limitations: [String])
   case remove
 
   var coreValue: FrontmatterEditValue {
     switch self {
-    case .set(let scope, let limitations):
-      var values: [String: FrontmatterEditValue] = ["scope": .string(scope)]
+    case .set(let completion, let scope, let limitations):
+      var values: [String: FrontmatterEditValue] = [:]
+      if let completion {
+        values["completion"] = .string(completion.yamlScalar)
+      }
+      if let scope {
+        values["scope"] = .string(scope)
+      }
       if !limitations.isEmpty {
         values["limitations"] = .array(limitations)
       }
@@ -228,7 +235,13 @@ extension WindowDocumentLocation {
   var relativePath: String { document.relativePath }
   var fileName: String { (relativePath as NSString).lastPathComponent }
   var displayName: String {
-    ((relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
+    if let cached = workspaceSnapshot?.cachedTitleProjection {
+      return cached.resolution.title
+    }
+    return ResearchNoteTitleResolver.resolve(
+      document: document,
+      profile: schemaProfile
+    ).title
   }
   var vaultRole: VaultRole { workspaceSnapshot?.vaultRole ?? .other }
   var profile: NoteProfile {
@@ -246,12 +259,11 @@ extension WindowDocumentLocation {
   }
   var rawContent: String { document.rawContent }
 
-  var title: String? { frontmatter["title"]?.scalarString }
+  var title: String? { displayName }
   var aliases: [String] {
     (frontmatter["aliases"] ?? frontmatter["alias"])?.appArrayValue ?? []
   }
   var tags: [String] { frontmatter["tags"]?.appArrayValue ?? [] }
-  var status: String? { property(at: "status")?.scalarString }
   var year: Int? { frontmatter["year"]?.appIntValue }
   var authors: [String] { frontmatter["authors"]?.appArrayValue ?? [] }
   var debateImportance: Int? {
@@ -260,37 +272,11 @@ extension WindowDocumentLocation {
           contract.containsInteger(rating) else { return nil }
     return rating
   }
-  var doi: String? {
-    frontmatter["doi"]?.scalarString ?? frontmatter["DOI"]?.scalarString
-  }
-  var isbn: String? {
-    frontmatter["isbn"]?.scalarString ?? frontmatter["ISBN"]?.scalarString
-  }
-  var zoteroCitationKey: String? {
-    frontmatter["zotero_citation_key"]?.scalarString
-      ?? frontmatter["citation_key"]?.scalarString
-      ?? frontmatter["citationKey"]?.scalarString
-      ?? frontmatter["citationkey"]?.scalarString
-      ?? frontmatter["citekey"]?.scalarString
-  }
-  var zoteroKey: String? {
-    frontmatter["zotero_item_key"]?.scalarString
-      ?? frontmatter["zoteroKey"]?.scalarString
-      ?? frontmatter["zotero-key"]?.scalarString
-  }
-  var zoteroSourceIdentity: ZoteroSourceIdentity {
-    ZoteroSourceIdentity(
-      itemKey: zoteroKey,
-      doi: doi,
-      isbn: isbn,
-      citationKey: zoteroCitationKey,
-      title: title,
-      authors: authors,
-      year: year
-    )
-  }
   var researchUnit: ResearchUnitDeclaration {
-    ResearchUnitDeclaration(frontmatter: document.parsedFrontmatter)
+    ResearchUnitDeclaration(
+      frontmatter: document.parsedFrontmatter,
+      profile: schemaProfile
+    )
   }
   var created: Date? { property(at: "created")?.appDateValue }
   var modified: Date? { property(at: "updated")?.appDateValue }
@@ -344,7 +330,9 @@ extension WindowDocumentLocation {
     default:
       inactiveAnalysisKeys = []
     }
-    for (key, value) in frontmatter where !inactiveAnalysisKeys.contains(key) {
+    for (key, value) in frontmatter
+      where !inactiveAnalysisKeys.contains(key)
+        && !ResearcherPropertyPolicy.isHidden(key) {
       if case .object(let nested) = value {
         for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
           result["\(key).\(path)"] = [nestedValue]

@@ -8,34 +8,24 @@ struct ScholiumRuntimeIsolationTests {
     func explicitHomeWins() throws {
         let explicit = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let fallback = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-
         let resolved = ScholiumRuntimeIsolation.homeURL(
             environment: ["SCHOLIUM_HOME": explicit.path],
-            bundleIdentifier: "com.scholium.app",
-            qaHomeURL: fallback
+            bundleIdentifier: "com.scholium.app"
         )
 
         #expect(resolved == explicit.standardizedFileURL)
     }
 
-    @Test("The QA bundle never falls back to production Application Support")
-    func qaBundleUsesDedicatedHome() throws {
-        let qaHome = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-
+    @Test("The QA bundle requires an explicit isolated home")
+    func qaBundleRequiresExplicitHome() throws {
         #expect(ScholiumRuntimeIsolation.homeURL(
             environment: [:],
-            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier,
-            qaHomeURL: qaHome
-        ) == qaHome.standardizedFileURL)
-        #expect(ScholiumRuntimeIsolation.homeURL(
-            environment: [:],
-            bundleIdentifier: "com.scholium.app",
-            qaHomeURL: qaHome
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
         ) == nil)
-        #expect(ScholiumRuntimeIsolation.defaultQAHomeURL.lastPathComponent == "home")
+        #expect(ScholiumRuntimeIsolation.homeURL(
+            environment: [:],
+            bundleIdentifier: "com.scholium.app"
+        ) == nil)
     }
 
     @Test("A fixture opens only when the test explicitly supplies its root")

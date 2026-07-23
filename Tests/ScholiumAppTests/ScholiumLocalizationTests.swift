@@ -70,7 +70,10 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Work with Agent", locale: simplifiedChinese) == "与 Agent 协作")
         #expect(ScholiumL10n.string("Settle", locale: simplifiedChinese) == "暂定")
         #expect(ScholiumL10n.string("RESEARCH ACTIVITY", locale: simplifiedChinese) == "研究活动")
-        #expect(ScholiumL10n.string("Research Status", locale: simplifiedChinese) == "内容状态")
+        #expect(ScholiumL10n.string("Completion", locale: simplifiedChinese) == "完成度")
+        #expect(ScholiumL10n.string("Incomplete", locale: simplifiedChinese) == "未完成")
+        #expect(ScholiumL10n.string("Research Scope", locale: simplifiedChinese) == "研究范围")
+        #expect(ScholiumL10n.string("Source basis", locale: simplifiedChinese) == "来源依据")
         #expect(ScholiumL10n.string("Research Record", locale: simplifiedChinese) == "研究记录")
         #expect(ScholiumL10n.string("Restore Access", locale: simplifiedChinese) == "恢复访问权限")
         #expect(ScholiumL10n.string("Hide Sidebar", locale: simplifiedChinese) == "隐藏边栏")
@@ -87,6 +90,10 @@ struct ScholiumLocalizationTests {
             ScholiumL10n.string("RECOMMENDED BIBLIOGRAPHY", locale: simplifiedChinese)
                 == "推荐文献"
         )
+        #expect(ScholiumL10n.string("Storage Unavailable", locale: simplifiedChinese) == "存储不可用")
+        #expect(ScholiumL10n.string("Details", locale: simplifiedChinese) == "详细信息")
+        #expect(ScholiumL10n.string("Quit", locale: simplifiedChinese) == "退出")
+        #expect(ScholiumL10n.string("Retry", locale: simplifiedChinese) == "重试")
         #expect(ScholiumL10n.string("Save", locale: english) == "Save")
     }
 

@@ -753,7 +753,7 @@ struct FrontendArchitectureTests {
         ).count >= 4)
         #expect(researchSource.contains("attentionSection"))
         #expect(researchSource.contains("aboutSection"))
-        #expect(researchSource.contains("priorityPropertyFacts"))
+        #expect(researchSource.contains("propertyFacts"))
         #expect(connectionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
@@ -767,8 +767,8 @@ struct FrontendArchitectureTests {
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
         #expect(researchSource.contains("visibleAttentionItems.prefix(3)"))
-        #expect(researchSource.contains("Button(\"Edit\""))
-        #expect(researchSource.contains("Button(\"Customize\""))
+        #expect(researchSource.contains("ScholiumApparatusActionButton(\n                    \"Edit Properties\""))
+        #expect(!researchSource.contains("Customize"))
         #expect(!researchSource.contains("prefix(5)"))
         #expect(!researchSource.contains("Scholarly Status"))
         #expect(!researchSource.contains("Provenance"))

@@ -108,6 +108,8 @@ actor WorkspaceFileEventWatcher {
                 var requiresFullRescan = false
                 var rootChanged = false
                 var latestEventID: UInt64 = 0
+                var sawRenamedMarkdownAddition = false
+                var sawRenamedMarkdownDeletion = false
 
                 for index in 0..<eventCount {
                     guard let fullPath = paths[index] as? String else { continue }
@@ -121,16 +123,26 @@ actor WorkspaceFileEventWatcher {
                     rootChanged = rootChanged
                         || (flag & UInt32(kFSEventStreamEventFlagRootChanged)) != 0
 
+                    let created = (flag & UInt32(kFSEventStreamEventFlagItemCreated)) != 0
+                    let removed = (flag & UInt32(kFSEventStreamEventFlagItemRemoved)) != 0
+                    let renamed = (flag & UInt32(kFSEventStreamEventFlagItemRenamed)) != 0
+                    let isDirectory = (flag & UInt32(
+                        kFSEventStreamEventFlagItemIsDir
+                    )) != 0
+                    // Directory events do not identify every descendant
+                    // Markdown path, so treat them as intentionally coarse.
+                    // This keeps empty-folder inventory correct without
+                    // guessing a partial note delta.
+                    requiresFullRescan = requiresFullRescan
+                        || (isDirectory && (created || removed || renamed))
+
                     guard let relativePath = VaultPath.relativePath(
                         for: URL(fileURLWithPath: fullPath),
                         in: owner.rootURL
                     ), relativePath.lowercased().hasSuffix(".md") else {
                         continue
                     }
-                    let created = (flag & UInt32(kFSEventStreamEventFlagItemCreated)) != 0
                     let changed = (flag & UInt32(kFSEventStreamEventFlagItemModified)) != 0
-                    let removed = (flag & UInt32(kFSEventStreamEventFlagItemRemoved)) != 0
-                    let renamed = (flag & UInt32(kFSEventStreamEventFlagItemRenamed)) != 0
                     let metadataChanged =
                         (flag & UInt32(kFSEventStreamEventFlagItemChangeOwner)) != 0
                         || (flag & UInt32(kFSEventStreamEventFlagItemXattrMod)) != 0
@@ -138,11 +150,22 @@ actor WorkspaceFileEventWatcher {
 
                     if removed || (renamed && !exists) {
                         deleted.append(relativePath)
+                        if renamed { sawRenamedMarkdownDeletion = true }
                     } else if created || (renamed && exists) {
                         added.append(relativePath)
+                        if renamed { sawRenamedMarkdownAddition = true }
                     } else if changed || metadataChanged {
                         modified.append(relativePath)
                     }
+                }
+
+                // macOS may split one rename across separate native
+                // callbacks. A callback containing only one side is coarse:
+                // reconcile from descriptor-authorized authority so Scholium
+                // never publishes a transient Added or Deleted generation.
+                // When both sides arrive together, retain the precise delta.
+                if sawRenamedMarkdownAddition != sawRenamedMarkdownDeletion {
+                    requiresFullRescan = true
                 }
 
                 guard !added.isEmpty || !modified.isEmpty || !deleted.isEmpty

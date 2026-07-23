@@ -14,36 +14,45 @@ struct WindowCompositionCoordinatorTests {
         coordinator.enqueue(
             prepare: { events.append("obsolete prepare") },
             operation: { events.append("obsolete operation") },
-            didFail: { _ in Issue.record("Obsolete transition failed") }
+            didFail: { _ in Issue.record("Obsolete transition failed") },
+            didFinish: { events.append("obsolete finish") }
         )
         coordinator.enqueue(
             prepare: { events.append("prepare") },
             operation: { events.append("operation") },
-            didFail: { error in Issue.record("Unexpected transition failure: \(error)") }
+            didFail: { error in Issue.record("Unexpected transition failure: \(error)") },
+            didFinish: { events.append("finish") }
         )
 
         await coordinator.waitForIdle()
-        #expect(events == ["prepare", "operation"])
+        #expect(events == ["obsolete finish", "prepare", "operation", "finish"])
     }
 
     @Test("A superseding presentation save cancels the older completion")
     func presentationSaveReplacement() async {
         let coordinator = WindowSessionPersistenceCoordinator(
             lifecyclePolicy: ScholiumLifecyclePolicy(),
-            finalSaver: { _ in }
+            finalSaver: { _, _ in }
         )
         var completedIDs: [UUID] = []
+        var persistenceAttempts: [UInt64] = []
         let first = WindowSessionSnapshot(id: UUID())
         let second = WindowSessionSnapshot(id: UUID())
 
         coordinator.schedule(
             snapshot: first,
-            save: { _ in try await Task.sleep(for: .seconds(1)) },
+            save: { _, attempt in
+                persistenceAttempts.append(attempt.rawValue)
+                try await Task.sleep(for: .seconds(1))
+            },
             completion: { _ in completedIDs.append(first.id) }
         )
+        await Task.yield()
         coordinator.schedule(
             snapshot: second,
-            save: { _ in },
+            save: { _, attempt in
+                persistenceAttempts.append(attempt.rawValue)
+            },
             completion: { result in
                 if case .failure(let error) = result {
                     Issue.record("Unexpected persistence failure: \(error)")
@@ -56,6 +65,8 @@ struct WindowCompositionCoordinatorTests {
         }
 
         #expect(completedIDs == [second.id])
+        #expect(persistenceAttempts.count == 2)
+        #expect(persistenceAttempts[1] > persistenceAttempts[0])
     }
 
     @Test("Final presentation persistence is bounded and does not claim content failure")
@@ -64,7 +75,7 @@ struct WindowCompositionCoordinatorTests {
         policy.presentationSnapshot = .milliseconds(20)
         let coordinator = WindowSessionPersistenceCoordinator(
             lifecyclePolicy: policy,
-            finalSaver: { _ in
+            finalSaver: { _, _ in
                 try await Task.sleep(for: .seconds(10))
             }
         )

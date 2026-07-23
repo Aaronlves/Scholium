@@ -179,13 +179,16 @@ private struct PropertiesSettingsView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    private var recommendedKeys: [String] {
-        let profile: SchemaProfileID = switch selectedSlot {
+    private var selectedProfile: SchemaProfileID {
+        switch selectedSlot {
         case .paperAnalysis: .analysis
         case .topicKnowledge: .topicMarkdown
         case .output: .draftProject
         }
-        return PropertyPresentationCatalog.presentations(for: profile).map(\.key)
+    }
+
+    private var recommendedKeys: [String] {
+        PropertyPresentationCatalog.presentations(for: selectedProfile).map(\.key)
     }
 
     private var availableKeys: [String] {
@@ -204,7 +207,9 @@ private struct PropertiesSettingsView: View {
     private var selectedConfiguration: VaultPropertiesConfiguration {
         var configuration = configurations[selectedSlot] ?? TriptychSettings.defaultProperties[selectedSlot]
             ?? VaultPropertiesConfiguration()
-        configuration.visibleFields.removeAll { ResearcherPropertyPolicy.isHidden($0) }
+        configuration.visibleFields.removeAll {
+            !AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
+        }
         configuration.editableFields.removeAll { !ResearcherPropertyPolicy.isHumanEditable($0) }
         return configuration
     }
@@ -213,7 +218,7 @@ private struct PropertiesSettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Vault-Wide Properties")
                 .font(.title2.weight(.semibold))
-            Text("Set the fields, display order, structured-editing allowlist, and starting disclosure for each Triptych vault. The setting applies to the complete vault; Source mode always exposes the exact YAML.")
+            Text("Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. The role-specific Research Unit remains part of the default About profile; Source mode always exposes the exact YAML.")
                 .foregroundStyle(.secondary)
             Picker("Vault", selection: $selectedSlot) {
                 ForEach(WorkspaceVaultSlot.allCases) { slot in
@@ -227,16 +232,6 @@ private struct PropertiesSettingsView: View {
                 editableFieldsColumn
             }
             .frame(maxHeight: .infinity)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Open Properties by Default", isOn: defaultDisclosureBinding)
-                    .toggleStyle(.checkbox)
-                Text("This is the starting state for notes in \(selectedSlot.displayName); the researcher can still open or close an individual note.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider()
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 TextField("Custom top-level YAML field", text: $customField)
@@ -280,15 +275,6 @@ private struct PropertiesSettingsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-    }
-
-    private var defaultDisclosureBinding: Binding<Bool> {
-        Binding(
-            get: { selectedConfiguration.isExpanded },
-            set: { value in
-                updateSelectedConfiguration { $0.isExpanded = value }
-            }
-        )
     }
 
     private var displayOrderColumn: some View {
@@ -343,7 +329,10 @@ private struct PropertiesSettingsView: View {
                 }
 
                 Menu("Add Visible Field") {
-                    let hidden = availableKeys.filter { !selectedConfiguration.visibleFields.contains($0) }
+                    let hidden = availableKeys.filter {
+                        AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
+                            && !selectedConfiguration.visibleFields.contains($0)
+                    }
                     if hidden.isEmpty {
                         Text("All available fields are shown")
                     } else {
@@ -419,7 +408,8 @@ private struct PropertiesSettingsView: View {
     }
 
     private func addCustomFieldToDisplay() {
-        guard let field = normalizedCustomField else {
+        guard let field = normalizedCustomField,
+              AboutProfileCatalog.allowsOptionalField(field, profile: selectedProfile) else {
             customFieldMessage = "Enter a visible, non-machine YAML field name."
             return
         }
@@ -450,12 +440,21 @@ private struct PropertiesSettingsView: View {
         Task {
             do {
                 var settings = settingsModel.triptychSettings
-                settings.properties = configurations.mapValues { configuration in
+                var sanitized: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [:]
+                for (slot, configuration) in configurations {
                     var result = configuration
-                    result.visibleFields.removeAll { ResearcherPropertyPolicy.isHidden($0) }
+                    let profile: SchemaProfileID = switch slot {
+                    case .paperAnalysis: .analysis
+                    case .topicKnowledge: .topicMarkdown
+                    case .output: .draftProject
+                    }
+                    result.visibleFields.removeAll {
+                        !AboutProfileCatalog.allowsOptionalField($0, profile: profile)
+                    }
                     result.editableFields.removeAll { !ResearcherPropertyPolicy.isHumanEditable($0) }
-                    return result
+                    sanitized[slot] = result
                 }
+                settings.properties = sanitized
                 try await settingsModel.saveTriptychSettings(settings)
                 settingsModel.showToast(String(localized: "Properties configuration saved", table: "Localizable", bundle: .module))
             } catch {
@@ -3104,9 +3103,9 @@ private struct ZoteroSettingsView: View {
                         .disabled(isTesting)
                     Button("Refresh Library Information") { refresh() }
                         .disabled(isTesting)
-                    Button("Forget Cached Zotero Data", role: .destructive) {
+                    Button("Clear Connection History", role: .destructive) {
                         Task {
-                            try? await settingsModel.forgetZoteroCache()
+                            try? await settingsModel.clearZoteroConnectionHistory()
                             info = await settingsModel.zoteroConnectionInfo()
                         }
                     }

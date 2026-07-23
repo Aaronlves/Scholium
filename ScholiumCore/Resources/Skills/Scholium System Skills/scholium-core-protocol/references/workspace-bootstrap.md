@@ -53,7 +53,7 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 
 - Apply the protected Scholium Core Protocol to every Scholium task.
 - Select one primary Workflow Skill, or an explicit Mixed sequence for genuinely multi-operation work.
-- Load Scholium Research Integration for live Triptych reads, writes, properties, status, or Discuss persistence.
+- Load Scholium Research Integration for live Triptych reads, writes, Properties, Research Units, or Discuss persistence.
 - Load Scholium Discuss Response for a Discussion ID or request-scoped response contract.
 - Load only explicitly selected Researcher Skills and Practices; never scan arbitrary global skill directories.
 

@@ -5,12 +5,12 @@ import ScholiumContracts
 
 @Suite("Workbench completion models")
 struct WorkbenchModelsTests {
-    @Test("Saved Search persists only its v3 definition")
+    @Test("Saved Search persists only its v4 definition")
     func stateRoundTrip() throws {
         let saved = SavedSearch(
             name: "Open objections",
             definition: SearchDefinition(
-                query: #"status:draft callout:state"#,
+                query: #"review:unreviewed callout:state"#,
                 presentationScope: .triptych
             )
         )
@@ -27,7 +27,7 @@ struct WorkbenchModelsTests {
         let store = SavedSearchStore(workspaceStorageURL: base)
         let expected = SavedSearch(
             name: "Unsettled control records",
-            definition: SearchDefinition(query: "status:draft", presentationScope: .triptych),
+            definition: SearchDefinition(query: "review:unreviewed", presentationScope: .triptych),
             createdAt: Date(timeIntervalSince1970: 10)
         )
         let olderButFirst = SavedSearch(

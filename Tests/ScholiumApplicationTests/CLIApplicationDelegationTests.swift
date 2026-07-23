@@ -120,7 +120,7 @@ struct CLIApplicationDelegationTests {
         #expect(!sources.bibliography.contains("recommended-bibliography.json"))
     }
 
-    @Test("Search v3, catalog, read, and lifecycle output schemas remain stable")
+    @Test("Search v4, catalog, read, and lifecycle output schemas remain stable")
     func serializedOutputContractsRemainStable() throws {
         let sources = try CLISources.load()
 

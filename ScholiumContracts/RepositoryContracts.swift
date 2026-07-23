@@ -90,6 +90,22 @@ public struct NoteMoveResult: Sendable {
     }
 }
 
+public struct FolderRepositoryMoveResult: Sendable {
+    public let sourceFolder: VaultRelativeFolderPath
+    public let destinationFolder: VaultRelativeFolderPath
+    public let documents: [NoteDocument]
+
+    public init(
+        sourceFolder: VaultRelativeFolderPath,
+        destinationFolder: VaultRelativeFolderPath,
+        documents: [NoteDocument]
+    ) {
+        self.sourceFolder = sourceFolder
+        self.destinationFolder = destinationFolder
+        self.documents = documents
+    }
+}
+
 public struct NoteDeletionResult: Sendable {
     public let relativePath: String
     public let fingerprint: DocumentFingerprint

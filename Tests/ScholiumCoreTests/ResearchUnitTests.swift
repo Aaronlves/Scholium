@@ -2,85 +2,155 @@ import Testing
 import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("Research Unit declarations")
+@Suite("Role-aware Research Unit declarations")
 struct ResearchUnitTests {
-    @Test("A missing Research Unit remains an explicit undeclared state")
+    @Test("A missing Research Unit is valid and absent for every role")
     func absentDeclaration() {
-        let declaration = ResearchUnitDeclaration(frontmatter: [
-            "title": .string("A note")
-        ])
-
-        #expect(declaration.state == .absent)
-        #expect(declaration.scope == nil)
-        #expect(declaration.limitations.isEmpty)
-        #expect(!declaration.isInvalid)
+        for profile in [
+            SchemaProfileID.analysis,
+            .topicMarkdown,
+            .draftProject,
+        ] {
+            let declaration = ResearchUnitDeclaration(
+                frontmatter: ["title": .string("A note")],
+                profile: profile
+            )
+            #expect(declaration.state == .absent)
+            #expect(declaration.completion == nil)
+            #expect(declaration.scope == nil)
+            #expect(declaration.limitations.isEmpty)
+        }
     }
 
-    @Test("A valid declaration exposes scope first and preserves its limitations")
-    func validDeclaration() {
-        let declaration = ResearchUnitDeclaration(frontmatter: [
-            "research_unit": .object([
-                "scope": .string("Introduction and Chapters 1–4"),
-                "limitations": .array([
-                    .string("Chapters 5–8 have not been analyzed."),
-                    .string("The appendix is outside this note's scope.")
+    @Test("Analysis accepts binary, ratio, and limitation-only declarations")
+    func analysisForms() {
+        for (value, expected) in [
+            ("complete", AnalysisCompletion.complete),
+            ("incomplete", .incomplete),
+            ("0/1", .represented(completed: 0, total: 1)),
+            ("6/11", .represented(completed: 6, total: 11)),
+            ("11/11", .represented(completed: 11, total: 11)),
+        ] {
+            let declaration = ResearchUnitDeclaration(
+                frontmatter: [
+                    "research_unit": .object(["completion": .string(value)])
+                ],
+                profile: .analysis
+            )
+            #expect(declaration.state == .declared)
+            #expect(declaration.completion == expected)
+            #expect(declaration.scope == nil)
+        }
+
+        let limitationOnly = ResearchUnitDeclaration(
+            frontmatter: [
+                "research_unit": .object([
+                    "limitations": .array([.string("Only one translation was used.")])
                 ])
-            ])
-        ])
-
-        #expect(declaration.state == .declared)
-        #expect(declaration.isDeclared)
-        #expect(declaration.scope == "Introduction and Chapters 1–4")
-        #expect(declaration.limitations == [
-            "Chapters 5–8 have not been analyzed.",
-            "The appendix is outside this note's scope."
-        ])
+            ],
+            profile: .analysis
+        )
+        #expect(limitationOnly.state == .declared)
+        #expect(limitationOnly.completion == nil)
+        #expect(limitationOnly.limitations == ["Only one translation was used."])
     }
 
-    @Test("A declaration without a non-empty scope is invalid")
-    func missingScope() {
-        let declaration = ResearchUnitDeclaration(frontmatter: [
-            "research_unit": .object([
-                "limitations": .array([.string("The appendix is outside scope.")])
-            ])
-        ])
+    @Test("Analysis rejects invalid ratios, wrong types, and Scope")
+    func invalidAnalysisForms() {
+        for value in ["1/0", "-1/3", "4/3", "1/", "/2", "one/two"] {
+            let declaration = ResearchUnitDeclaration(
+                frontmatter: [
+                    "research_unit": .object(["completion": .string(value)])
+                ],
+                profile: .analysis
+            )
+            #expect(declaration.isInvalid, "Expected invalid ratio \(value)")
+        }
+        let numeric = ResearchUnitDeclaration(
+            frontmatter: [
+                "research_unit": .object(["completion": .integer(6)])
+            ],
+            profile: .analysis
+        )
+        #expect(numeric.validationMessage == "Completion must be complete, incomplete, or a valid completed/total ratio.")
 
-        #expect(declaration.state == .invalid("Scope is required and cannot be empty."))
-        #expect(declaration.validationMessage == "Scope is required and cannot be empty.")
+        let scope = ResearchUnitDeclaration(
+            frontmatter: [
+                "research_unit": .object(["scope": .string("Chapters 1–6")])
+            ],
+            profile: .analysis
+        )
+        #expect(scope.validationMessage == "Unsupported field: scope.")
     }
 
-    @Test("Empty or malformed limitations are invalid rather than silently discarded")
-    func malformedLimitations() {
-        let empty = ResearchUnitDeclaration(frontmatter: [
-            "research_unit": .object([
-                "scope": .string("A bounded scope"),
-                "limitations": .array([])
-            ])
-        ])
-        let nonText = ResearchUnitDeclaration(frontmatter: [
-            "research_unit": .object([
-                "scope": .string("A bounded scope"),
-                "limitations": .array([.integer(3)])
-            ])
-        ])
+    @Test("Topic and Work accept Scope, Limitations, or both")
+    func topicAndWorkForms() {
+        for profile in [SchemaProfileID.topicMarkdown, .draftProject] {
+            let scopeOnly = ResearchUnitDeclaration(
+                frontmatter: [
+                    "research_unit": .object(["scope": .string("  A bounded question  ")])
+                ],
+                profile: profile
+            )
+            #expect(scopeOnly.state == .declared)
+            #expect(scopeOnly.scope == "A bounded question")
 
-        #expect(empty.isInvalid)
-        #expect(nonText.validationMessage == "Each limitation must be a non-empty text value.")
+            let limitationOnly = ResearchUnitDeclaration(
+                frontmatter: [
+                    "research_unit": .object([
+                        "limitations": .array([.string("A historical variant is excluded.")])
+                    ])
+                ],
+                profile: profile
+            )
+            #expect(limitationOnly.state == .declared)
+            #expect(limitationOnly.scope == nil)
+
+            let both = ResearchUnitDeclaration(
+                frontmatter: [
+                    "research_unit": .object([
+                        "scope": .string("A bounded question"),
+                        "limitations": .array([.string("One archive is unavailable.")]),
+                    ])
+                ],
+                profile: profile
+            )
+            #expect(both.state == .declared)
+            #expect(both.limitations == ["One archive is unavailable."])
+        }
     }
 
-    @Test("Unknown fields and scalar Research Units are rejected")
-    func unsupportedShape() {
-        let unknownField = ResearchUnitDeclaration(frontmatter: [
-            "research_unit": .object([
-                "scope": .string("A bounded scope"),
-                "confidence": .string("high")
-            ])
-        ])
-        let scalar = ResearchUnitDeclaration(frontmatter: [
-            "research_unit": .string("A bounded scope")
-        ])
+    @Test("Empty, unknown, cross-role, and malformed structures fail closed")
+    func unsupportedShapes() {
+        let empty = ResearchUnitDeclaration(
+            frontmatter: ["research_unit": .object([:])],
+            profile: .topicMarkdown
+        )
+        #expect(empty.validationMessage == "research_unit must contain at least one non-empty member.")
 
-        #expect(unknownField.validationMessage == "Unsupported field: confidence.")
-        #expect(scalar.validationMessage == "Research Status must be a mapping.")
+        let unknown = ResearchUnitDeclaration(
+            frontmatter: [
+                "research_unit": .object([
+                    "scope": .string("A bounded scope"),
+                    "confidence": .string("high"),
+                ])
+            ],
+            profile: .topicMarkdown
+        )
+        #expect(unknown.validationMessage == "Unsupported field: confidence.")
+
+        let crossRole = ResearchUnitDeclaration(
+            frontmatter: [
+                "research_unit": .object(["completion": .string("complete")])
+            ],
+            profile: .draftProject
+        )
+        #expect(crossRole.validationMessage == "Unsupported field: completion.")
+
+        let scalar = ResearchUnitDeclaration(
+            frontmatter: ["research_unit": .string("A bounded scope")],
+            profile: .topicMarkdown
+        )
+        #expect(scalar.validationMessage == "research_unit must be a mapping.")
     }
 }

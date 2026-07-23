@@ -36,42 +36,84 @@ ScholiumCore ← ScholiumApplication
                        ↑
               ScholiumApp / ScholiumCLI
 
-WorkspaceRuntime (one live runtime for the app delivery)
-└── WorkspaceStore (macOS adapter and sole event-stream subscriber)
-    └── SwiftUI WindowGroup (one Codable route per scene)
-        ├── WindowModel (one per complete workspace window)
-        │   ├── WindowWorkspaceController
-        │   ├── WindowSessionPersistenceCoordinator
-        │   ├── DocumentTransitionCoordinator
-        │   ├── DiscoveryController
-        │   ├── DocumentTabController
-        │   ├── DocumentController
-        │   │   └── DocumentSessionStore
-        │   ├── ResearchController
-        │   │   └── ResearchFunctionController
-        │   ├── WindowPresentationRouter
-        │   └── typed WindowIntent routing
-        └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
+ApplicationBootstrapController (one app-owned storage gate)
+└── Ready (explicit validated Application Support URL)
+    └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
+        ├── WorkspaceRuntime (one live runtime for the app delivery)
+        └── SwiftUI WindowGroup (one Codable route per scene)
+            ├── WindowModel (one per complete workspace window)
+            │   ├── WindowWorkspaceController
+            │   ├── WindowSessionPersistenceCoordinator
+            │   ├── DocumentTransitionCoordinator
+            │   ├── DiscoveryController
+            │   ├── DocumentTabController
+            │   ├── DocumentController
+            │   │   └── DocumentSessionStore
+            │   ├── ResearchController
+            │   │   └── ResearchFunctionController
+            │   ├── WindowPresentationRouter
+            │   └── typed WindowIntent routing
+            └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
 
 ScholiumApplicationDelegate
 └── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
 ```
 
-`WorkspaceRuntime` has two configurations: live reuses stable Triptych/vault
-runtimes, watchers, and derived refresh while any app window needs them;
-snapshot performs one-shot loading without watchers and shuts down after each
-CLI invocation.
+`ApplicationBootstrapController` is the only production composition route to
+`WorkspaceStore`. Its Starting, Ready, and Storage Unavailable states validate
+the real per-user Application Support directory before constructing any
+runtime. `WorkspaceStore.init(applicationSupportURL:)` is explicit and
+failable; there is no temporary-directory fallback. An explicitly supplied QA
+root uses the same validation. `WorkspaceRuntime` then has two configurations:
+live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
+any app window needs them; snapshot performs one-shot loading without watchers
+and shuts down after each CLI invocation.
 
 Each `WorkspaceHandle` owns one `TriptychSearchIndex` at
-`Triptychs/<triptych-id>/indexes/search-v3.sqlite`; pooled vault runtimes own
-repositories but no Search index. `WorkspaceSnapshotBuilder` first captures
-one complete, same-generation source manifest for all three vaults. Search and
-Graph derive independently from that manifest. Search publication is one
-SQLite transaction and Graph failure cannot invalidate the lexical
-generation. Direct Related items are publishable only when the Graph and
-Search manifest hashes agree.
+`Triptychs/<triptych-id>/indexes/search-v4.sqlite`; pooled vault runtimes own
+repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
+index. The catalog retains exact `NoteDocument`, descriptor-observed file
+metadata, `SourceVersion`, cached `MarkdownSemanticDocument`, and the
+source-bound part of
+`SearchDocumentProjection` as disposable state. Review and broken-link fields
+are reapplied with a lightweight projection-hash update, so ordinary Search
+deltas do not rebuild visible text and exact offset maps for unchanged notes.
+Projection construction advances monotonic UTF-16 cursors, preserving exact
+source mapping without repeatedly rescanning an accumulated String.
+Watchers start before the initial
+reconcile; precise add/edit/delete/rename events update affected entries, while
+event loss, root replacement, or explicit rebuild requests force a full
+stat/reconcile. `WorkspaceSnapshotBuilder` consumes three immutable catalog
+generations and still rebuilds the complete in-memory graph. The three
+independent catalog actors may prepare concurrently inside one refresh cycle;
+Graph construction, Search synchronization, snapshot publication, failure, and
+retry remain ordered under the one coordinator worker. It does not reread or
+reparse every Markdown file for an ordinary single-file save.
 
-`ScholiumContracts` owns contract-v3 parsing, the visible semantic
+One `WorkspaceRefreshCoordinator` actor per handle serializes the complete
+prepare → Search synchronize → snapshot publish cycle. Monotonic
+`RefreshRequestID`s make an in-flight cycle cover only the requests it captured;
+later requests coalesce into the next cycle, and cancelling one waiter cannot
+cancel work required by another. Merged cycles prepare every requested source
+path, not just the last payload. An exclusive source-mutation gate buffers
+watcher invalidations until the filesystem transaction, portable identity, and
+other path-bound stores agree, preventing a builder from observing the
+file/identity gap. Search publication applies one transactional
+`SearchIndexDelta` carrying a transactionally persisted workspace generation
+and refuses stale generations, including across index reopen or another
+process connection. A failed cycle preserves the last complete snapshot and index.
+Direct Related items are publishable only when the Graph and Search manifest
+hashes agree. Privacy-safe measurements record enumerate/read/parse/source-
+projection counts and durations, identity and research-state projection,
+graph construction, dynamic Search projection and synchronization, snapshot
+assembly, source-byte size, publication, and total duration without source
+content or identifiers. Per-vault source durations are work sums and may
+overlap; total duration remains wall clock. Snapshot assembly reuses the exact
+same generation's reconciled portable-identity state for Critique association;
+only `.resolved` identities participate, so ambiguous, pending, unresolved, or
+failed recovery remains closed without one storage lookup per Work.
+
+`ScholiumContracts` owns contract-v4 parsing, the visible semantic
 `SearchDocumentProjection`, exact source mappings, CJK query projection,
 requests, responses, diagnostics, availability, and generation IDs. Core owns
 the disposable SQLite schema, staging/validation/recovery, read transactions,
@@ -112,6 +154,26 @@ but no longer owns those three state machines. `DocumentController` alone owns s
 document workflow state; `ResearchController` owns research generations,
 initial Dialogue projection, checkpoint-list failures, and durable-recovery
 listing. `WindowModel` exposes computed projections, not duplicated storage.
+Direct New Note requests remain focused-window commands: the Library and File
+menu send a target folder value to `WindowModel`, which flushes the current
+editor and calls the Application-owned untitled-note use case. Application
+atomically advances through occupied default paths; the view never scans or
+writes the vault and no presentation route participates. Folder disclosure and
+subtree expansion remain `DiscoveryController` state. Core enumerates real
+directories so empty classifications survive projection, but folder paths never
+enter the portable identity store. Direct New Folder creation atomically claims
+one default directory name. Empty-folder creation and empty-folder moves publish
+only a new folder inventory snapshot; they preserve the current Search and graph
+generations because no Markdown source or note location changed. Rename, Move,
+and Move to Trash flush Triptych-wide
+editors, preflight the complete descendant-note inventory, and commit one
+descriptor-relative no-replace directory rename. `TriptychFolderMoveCoordinator`
+applies exact resolved-link rewrites against one future graph with rollback and
+durable recovery; Application then rebinds every descendant stable note ID in
+one control-store write and resumes existing idempotent path migrations. Other
+directory contents move with the inode and are not parsed. Copy Relative Path
+and Reveal in Finder remain delivery actions over an existing folder or note
+vault-relative path and create no Core authority.
 Document, Search, and presentation are window-local; Library hierarchy and
 selection, Sidebar/Apparatus visibility, and Apparatus mode belong to the outer
 window, never a tab. Controllers do not mutate one another. Separate
@@ -171,10 +233,11 @@ availability. `WindowModel` mirrors native visibility for commands,
 restoration, and toolbar reconciliation but never reasserts it or stores width.
 
 The Inspector has exactly three current-note modes: Overview, Connect, and
-Actions. Overview projects compact Attention, researcher-configured About
-fields, and applicable Zotero source identity. Connect projects direct and
-derived relations. Actions projects recorded Research Activity and role-valid
-launchers. Legacy Review and Dialogue records appear only in the separate
+Actions. Overview projects compact Attention and role-aware About fields;
+Zotero has no Inspector projection. Connect projects direct and derived
+relations. Actions projects recorded Research Activity and direct role-valid
+full-row operations, with Discuss and Write under a static Work with Agent
+heading. Legacy Review and Dialogue records appear only in the separate
 read-only Research Record archive. The Inspector may navigate or open another
 note in the Document tabs, but it never owns a document buffer, editing,
 autosave, undo, or conflict state. Those remain exclusively in the Document
@@ -239,6 +302,23 @@ empty selection before mutation/completion; Core's
 `finalizeFunctionPreflight` atomically extends the same snapshot with only
 selected references/revisions. Public `ResearchOperations` delegates here;
 Dialogue/Critique have no alternate preparation path.
+
+Rendered function input keeps three typed layers distinct: `taskDirective`
+contains the authorized operation and read/write sets; a validated
+`methodContract` supplies bounded method guidance; and provenance-labelled
+`researchData` carries Markdown, YAML-derived values, citations, bibliographic
+metadata, and records only as serialized data. Researcher Skills may change
+method, never fingerprints, checkpoints, conflict handling, containment,
+recovery, or typed permissions. Agent completion is revalidated against those
+Application-owned constraints regardless of text found in any data field.
+
+For an Analysis Target carrying canonical `zotero_item_key`, preparation reads
+that exact item once through Application's local read-only `ZoteroOperations`,
+adds `scholium-zotero-integration` to the resolved phase, and embeds a labelled
+`ZoteroBibliographicContext` in the durable `ResearchFunctionSnapshot`.
+Warnings are data in that snapshot and never fail preparation. Resume reuses
+the stored context; a new run rereads Zotero. No fetched field enters Markdown,
+Inspector, Search, or a cross-task metadata cache.
 
 Write preparation records only a pending Fidelity handoff. Post-edit completion
 stores the final Target fingerprint as `awaitingFidelity`; Application creates
@@ -353,7 +433,9 @@ rows. Prior results remain visible through refresh and failure.
 Replacing a sheet route replaces its complete payload atomically. Conditional
 dismissal uses the route identity, so a stale callback cannot dismiss a newer
 sheet. Route payloads carry note paths only as navigation projections; they do
-not own document sessions.
+not own document sessions. Note creation is not a sheet route; lifecycle sheets
+remain only for operations that require researcher-supplied destinations or
+classification.
 
 `ContentView` has one `.sheet(item:)`, one typed alert presentation, and one
 persistent `ScholiumWorkspaceSplitView` root for each configured workspace
@@ -489,14 +571,31 @@ rejects absolute paths, empty or dot components, NUL, and non-Markdown targets.
 volume-sensitive `VaultPathComparisonKey` only for case/Unicode collision
 decisions; neither rewrites Markdown or stored display paths.
 
-`VaultMutationCoordinator` performs short `NSFileCoordinator` accessors while
-walking parent directories through no-follow descriptors. Create and move use
-exclusive rename. Existing-file update writes a same-directory candidate,
-rechecks the exact preimage, uses displaced-byte-preserving swap, and verifies
-both canonical and displaced bytes. Unsupported swap fails closed. Any
-post-swap identity, readback, permission, or synchronization uncertainty keeps
-observed staging evidence and returns `commitUncertain`; Application persists a
-`.noteSave` Transaction Recovery record and never reports Saved.
+`VaultDescriptorAccess` opens one root descriptor for each top-level operation,
+walks every parent with `openat` plus `O_NOFOLLOW`, and opens leaves with
+`O_NOFOLLOW | O_NONBLOCK`. Immediate `fstat` accepts regular files only.
+Enumeration supplies candidates, never final authorization. Vault loads,
+fingerprints, precommit checks, postcommit readback, and recovery verification
+all use this descriptor-relative boundary. `FilePresence` distinguishes
+present, `ENOENT` absence, and inaccessible/error; only confirmed absence may
+complete deletion.
+
+`VaultMutationCoordinator` performs short `NSFileCoordinator` accessors around
+that descriptor authority. Create and move use exclusive rename. Existing-file
+update holds the original descriptor, writes and synchronizes a same-directory
+candidate, copies metadata with descriptor APIs, preserves the candidate
+content mtime, rechecks the exact preimage, uses displaced-byte-preserving swap,
+and verifies bytes, mode, owner/group, ACL/xattrs, flags, birth metadata, and
+the parent-directory synchronization boundary. Ordinary xattrs and Finder tags
+remain byte-exact. For the LaunchServices-managed `com.apple.quarantine`
+attribute only, verification accepts a valid system normalization when its
+security flags and event identifier are unchanged and its timestamp does not
+move backward; malformed values or authority changes still fail closed.
+Unsupported swap fails closed.
+Any post-swap identity, readback, metadata, permission, or synchronization
+uncertainty attempts a guarded swap-back, keeps observed staging evidence, and
+returns `commitUncertain`; Application persists a `.noteSave` Transaction
+Recovery record and never reports Saved.
 
 `PrewriteRecoveryLedger` is Core-only machine state under
 `Vaults/<vault-id>/recovery-v2/`. Immutable fingerprinted objects are indexed by
@@ -510,19 +609,31 @@ Checkpoint restore remains the only visible recovery mechanism.
 ## Shared read models and metadata
 
 `WorkspaceNoteSnapshot` is the shared immutable read model for a workspace
-note. It carries vault-qualified identity, exact `NoteDocument`, file metadata,
-review projection, and graph counts. The app does not maintain a second mutable
-`Note` or YAML value model; the only app wrapper distinguishes a workspace
-snapshot from an Unclassified `NoteDocument` without copying either source.
+note. It carries vault-qualified identity, exact `NoteDocument`,
+descriptor-observed file metadata, a fingerprint-bound title projection, and
+graph counts. The app does not maintain a second mutable `Note` or YAML value
+model; the only app wrapper distinguishes a workspace snapshot from an
+Unclassified `NoteDocument` without copying either source.
 
-Contracts' `PropertyContract` catalog is the sole semantic metadata authority. It
-defines canonical keys, value kinds, creation requirements, allowed values,
-cross-field constraints, and validation. App
-`PropertyPresentation` values add labels, help, grouping, ordering, and control
-style only. Property edits are validated through Contracts and applied by
-Application as targeted
-`NoteDocument` changes, preserving unknown YAML, malformed-note
-readability, formatting, and bytes outside the changed range.
+Contracts' `PropertyContract` catalog is the sole canonical vocabulary and
+ownership authority. It defines role-specific keys, value kinds, empty
+creation requirements, allowed values, cross-field constraints, and validation.
+`ResearchUnitDeclaration` separately parses Analysis Completion versus
+Topic/Work Scope, and `ResearchNoteTitleResolver` supplies one role-aware
+identity fallback to Workspace, Search, Link Graph, and Research Functions.
+App's independent `AboutProfileCatalog` owns default display choices and order;
+`PropertyPresentation` adds labels, help, grouping, and control style only.
+Property edits are validated through Contracts and applied by Application as targeted
+`NoteDocument` changes. `FrontmatterPatchPlanner` first validates complete YAML
+with Yams, then proves a unique bounded plain key. Ordinary scalar edits replace
+only the value token; the role-aware Research Unit uses bounded member and array
+replacements; and a missing key is appended only at a proven top-level or child
+block-mapping boundary. Flow roots, quoted/duplicate or complex keys,
+merge/anchor/alias involvement, block scalars, structured scalar continuations,
+and ambiguous indentation return a typed refusal that directs the researcher
+to Source. Refusal leaves every Markdown byte unchanged; successful patches
+preserve BOM, newline/final-newline style, comments, unknown YAML, formatting,
+and all bytes outside the proven range.
 
 ## Documents and CodeMirror
 

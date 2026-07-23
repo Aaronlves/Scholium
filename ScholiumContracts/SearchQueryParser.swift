@@ -13,7 +13,6 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
 }
 
 public enum SearchStructuredField: String, Codable, CaseIterable, Hashable, Sendable {
-    case status
     case review
     case callout
     case has
@@ -136,10 +135,7 @@ public enum SearchQueryParser {
         let range: Range<Int>
     }
 
-    private static let removedFields: Set<String> = ["vault", "role", "metadata"]
-    private static let statusValues = Set(SchemaProfileID.allCases.flatMap { profile in
-        PropertyContractCatalog.contract(for: "status", profile: profile)?.allowedValues ?? []
-    })
+    private static let removedFields: Set<String> = ["vault", "role", "metadata", "status"]
     private static let reviewValues = Set(SearchReviewState.allCases.map(\.rawValue))
     private static let calloutValues = Set(CalloutSemanticRole.allCases.map(\.rawValue))
 
@@ -180,7 +176,7 @@ public enum SearchQueryParser {
             return SearchQueryParseResult(ast: nil, diagnostics: [
                 SearchQueryDiagnostic(
                     code: .onlyExcludedFreeText,
-                    message: "Add a positive term or a structured status, review, callout, or broken-link condition.",
+                    message: "Add a positive term or a structured review, callout, or broken-link condition.",
                     utf16LowerBound: range.lowerBound,
                     utf16UpperBound: range.upperBound
                 ),
@@ -233,9 +229,12 @@ public enum SearchQueryParser {
                 ))
             }
             if removedFields.contains(field) {
+                let message = field == "status"
+                    ? "The status: field is unsupported because status is not a Scholium property."
+                    : "The \(field): field was removed in Search v4. Choose scope in the visible interface or CLI option."
                 return .failure(SearchQueryDiagnostic(
                     code: .removedField,
-                    message: "The \(field): field was removed in Search v3. Choose scope in the visible interface or CLI option.",
+                    message: message,
                     utf16LowerBound: token.range.lowerBound,
                     utf16UpperBound: token.range.upperBound,
                     needsEditing: true
@@ -345,7 +344,6 @@ public enum SearchQueryParser {
         }
         let normalized = value.text.lowercased()
         let allowed: Set<String> = switch field {
-        case .status: statusValues
         case .review: reviewValues
         case .callout: calloutValues
         case .has: ["broken-link"]
@@ -604,6 +602,7 @@ public enum SearchTextNormalization {
         }
 
         var normalized = ""
+        var normalizedUTF16Count = 0
         var offsets: [Offset] = []
         var originalCursor = 0
         var pendingWhitespace: Range<Int>?
@@ -623,8 +622,9 @@ public enum SearchTextNormalization {
                 continue
             }
             if let pendingWhitespace {
-                let lower = normalized.utf16.count
+                let lower = normalizedUTF16Count
                 normalized.append(" ")
+                normalizedUTF16Count += 1
                 offsets.append(Offset(
                     normalized: lower..<(lower + 1),
                     original: pendingWhitespace
@@ -632,10 +632,11 @@ public enum SearchTextNormalization {
             }
             pendingWhitespace = nil
             let folded = normalizer(String(character))
-            let lower = normalized.utf16.count
+            let lower = normalizedUTF16Count
             normalized += folded
+            normalizedUTF16Count += folded.utf16.count
             offsets.append(Offset(
-                normalized: lower..<normalized.utf16.count,
+                normalized: lower..<normalizedUTF16Count,
                 original: originalRange
             ))
         }

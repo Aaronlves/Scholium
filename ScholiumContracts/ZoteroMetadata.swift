@@ -17,6 +17,40 @@ public struct ZoteroLibraryInfo: Codable, Hashable, Sendable {
     }
 }
 
+/// One immutable, task-scoped Zotero read attached to an Analysis Research
+/// Function. It is durable only with that function record: a later function
+/// performs a fresh read, while resuming this function reuses this snapshot.
+public struct ZoteroBibliographicContext: Codable, Hashable, Sendable {
+    public enum RetrievalState: String, Codable, Hashable, Sendable {
+        case resolved
+        case unavailable
+        case notFound
+        case invalidResponse
+    }
+
+    public static let evidentialLabel = "Zotero bibliographic metadata"
+
+    public let itemKey: String
+    public let state: RetrievalState
+    public let metadata: ZoteroItemMetadata?
+    public let warning: String?
+    public let capturedAt: Date
+
+    public init(
+        itemKey: String,
+        state: RetrievalState,
+        metadata: ZoteroItemMetadata? = nil,
+        warning: String? = nil,
+        capturedAt: Date = Date()
+    ) {
+        self.itemKey = itemKey
+        self.state = state
+        self.metadata = metadata
+        self.warning = warning
+        self.capturedAt = capturedAt
+    }
+}
+
 public enum ZoteroUseCaseError: LocalizedError, Sendable {
     case appUnavailable
     case apiDisabled
@@ -147,23 +181,40 @@ public struct ZoteroSourceIdentity: Codable, Hashable, Sendable {
 }
 
 /// Read-only metadata returned by Zotero's localhost API.
+public struct ZoteroCreatorMetadata: Codable, Hashable, Sendable {
+    public let role: String
+    public let name: String
+
+    public init(role: String, name: String) {
+        self.role = role
+        self.name = name
+    }
+}
+
 public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
     public var id: String { key }
 
     public let key: String
     public let itemType: String?
     public let title: String
+    public let creators: [ZoteroCreatorMetadata]
     public let authors: [String]
+    public let date: String?
     public let year: Int?
+    public let language: String?
     public let containerTitle: String?
     public let volume: String?
     public let issue: String?
     public let pages: String?
+    public let series: String?
     public let doi: String?
     public let isbn: String?
+    public let issn: String?
     public let citationKey: String?
     public let abstract: String?
+    public let tags: [String]
     public let publisher: String?
+    public let place: String?
     public let edition: String?
     public let url: String?
     public let collectionKeys: [String]
@@ -174,17 +225,24 @@ public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
         key: String,
         itemType: String? = nil,
         title: String,
+        creators: [ZoteroCreatorMetadata] = [],
         authors: [String] = [],
+        date: String? = nil,
         year: Int? = nil,
+        language: String? = nil,
         containerTitle: String? = nil,
         volume: String? = nil,
         issue: String? = nil,
         pages: String? = nil,
+        series: String? = nil,
         doi: String? = nil,
         isbn: String? = nil,
+        issn: String? = nil,
         citationKey: String? = nil,
         abstract: String? = nil,
+        tags: [String] = [],
         publisher: String? = nil,
+        place: String? = nil,
         edition: String? = nil,
         url: String? = nil,
         collectionKeys: [String] = [],
@@ -194,17 +252,24 @@ public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
         self.key = key
         self.itemType = itemType
         self.title = title
+        self.creators = creators
         self.authors = authors
+        self.date = date
         self.year = year
+        self.language = language
         self.containerTitle = containerTitle
         self.volume = volume
         self.issue = issue
         self.pages = pages
+        self.series = series
         self.doi = doi
         self.isbn = isbn
+        self.issn = issn
         self.citationKey = citationKey
         self.abstract = abstract
+        self.tags = tags
         self.publisher = publisher
+        self.place = place
         self.edition = edition
         self.url = url
         self.collectionKeys = collectionKeys
@@ -228,17 +293,24 @@ public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
             key: key,
             itemType: itemType,
             title: title,
+            creators: creators,
             authors: authors,
+            date: date,
             year: year,
+            language: language,
             containerTitle: containerTitle,
             volume: volume,
             issue: issue,
             pages: pages,
+            series: series,
             doi: doi,
             isbn: isbn,
+            issn: issn,
             citationKey: citationKey,
             abstract: abstract,
+            tags: tags,
             publisher: publisher,
+            place: place,
             edition: edition,
             url: url,
             collectionKeys: collectionKeys,
@@ -382,7 +454,7 @@ public enum ZoteroMetadataMatcher {
 /// loopback transport and for rejecting child objects as lookup candidates.
 public enum ZoteroMetadataDecoder {
     public static func decodeItems(from data: Data) throws -> [ZoteroItemMetadata] {
-        let object = try JSONSerialization.jsonObject(with: data)
+        let object = try jsonObject(from: data)
         let objects: [[String: Any]]
         if let array = object as? [[String: Any]] {
             objects = array
@@ -398,7 +470,7 @@ public enum ZoteroMetadataDecoder {
     }
 
     public static func decodeCollectionName(from data: Data) throws -> String? {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = try jsonObject(from: data) as? [String: Any] else {
             throw DecodingError.dataCorrupted(.init(
                 codingPath: [],
                 debugDescription: "Zotero returned a non-object collection response."
@@ -406,6 +478,18 @@ public enum ZoteroMetadataDecoder {
         }
         let values = object["data"] as? [String: Any] ?? object
         return nonempty(values["name"] as? String)
+    }
+
+    private static func jsonObject(from data: Data) throws -> Any {
+        do {
+            return try JSONSerialization.jsonObject(with: data)
+        } catch {
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: [],
+                debugDescription: "Zotero returned invalid JSON.",
+                underlyingError: error
+            ))
+        }
     }
 
     private static func decodeItem(_ object: [String: Any]) throws -> ZoteroItemMetadata {
@@ -417,24 +501,37 @@ public enum ZoteroMetadataDecoder {
             )
         }
 
-        let creators = item["creators"] as? [[String: Any]] ?? []
+        let creatorObjects = item["creators"] as? [[String: Any]] ?? []
+        let creators = creatorObjects.compactMap { creator -> ZoteroCreatorMetadata? in
+            let role = nonempty(creator["creatorType"] as? String) ?? "creator"
+            let name: String?
+            if let literalName = nonempty(creator["name"] as? String) {
+                name = literalName
+            } else {
+                let first = nonempty(creator["firstName"] as? String)
+                let last = nonempty(creator["lastName"] as? String)
+                name = nonempty([first, last].compactMap { $0 }.joined(separator: " "))
+            }
+            guard let name else { return nil }
+            return ZoteroCreatorMetadata(role: role, name: name)
+        }
         let authors = creators.compactMap { creator -> String? in
-            let creatorType = (creator["creatorType"] as? String)?.lowercased()
-            guard creatorType == nil || creatorType == "author" || creatorType == "bookauthor" else {
+            let creatorType = creator.role.lowercased()
+            guard creatorType == "author" || creatorType == "bookauthor" else {
                 return nil
             }
-            if let name = nonempty(creator["name"] as? String) { return name }
-            let first = nonempty(creator["firstName"] as? String)
-            let last = nonempty(creator["lastName"] as? String)
-            return nonempty([first, last].compactMap { $0 }.joined(separator: " "))
+            return creator.name
         }
-
         let date = nonempty(item["date"] as? String)
         let year = date?.range(of: #"\b(?:1[5-9]|20)\d{2}\b"#, options: .regularExpression)
             .flatMap { range in date.flatMap { Int($0[range]) } }
+        let tags = (item["tags"] as? [Any] ?? []).compactMap { value -> String? in
+            if let value = value as? String { return nonempty(value) }
+            return (value as? [String: Any]).flatMap { nonempty($0["tag"] as? String) }
+        }
         let containerTitle = [
             "publicationTitle", "bookTitle", "proceedingsTitle", "encyclopediaTitle",
-            "dictionaryTitle", "seriesTitle", "conferenceName",
+            "dictionaryTitle", "conferenceName",
         ].compactMap { nonempty(item[$0] as? String) }.first
         let citationKey = nonempty(item["citationKey"] as? String)
             ?? citationKeyFromExtra(item["extra"] as? String)
@@ -445,17 +542,25 @@ public enum ZoteroMetadataDecoder {
             key: key,
             itemType: nonempty(item["itemType"] as? String),
             title: nonempty(item["title"] as? String) ?? "Untitled Zotero Item",
+            creators: creators,
             authors: authors,
+            date: date,
             year: year,
+            language: nonempty(item["language"] as? String),
             containerTitle: containerTitle,
             volume: nonempty(item["volume"] as? String),
             issue: nonempty(item["issue"] as? String),
             pages: nonempty(item["pages"] as? String),
+            series: nonempty(item["series"] as? String)
+                ?? nonempty(item["seriesTitle"] as? String),
             doi: nonempty(item["DOI"] as? String) ?? nonempty(item["doi"] as? String),
             isbn: nonempty(item["ISBN"] as? String) ?? nonempty(item["isbn"] as? String),
+            issn: nonempty(item["ISSN"] as? String) ?? nonempty(item["issn"] as? String),
             citationKey: citationKey,
             abstract: nonempty(item["abstractNote"] as? String),
+            tags: tags,
             publisher: nonempty(item["publisher"] as? String),
+            place: nonempty(item["place"] as? String),
             edition: nonempty(item["edition"] as? String),
             url: nonempty(item["url"] as? String),
             collectionKeys: collectionKeys,

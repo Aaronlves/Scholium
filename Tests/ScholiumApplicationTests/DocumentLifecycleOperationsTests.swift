@@ -108,58 +108,45 @@ struct DocumentLifecycleOperationsTests {
             relativePath: "New/Analysis.md"
         )
 
-        let notYetID = VaultQualifiedNoteID(
+        let optionalID = VaultQualifiedNoteID(
             vaultID: fixture.targetID.vaultID,
-            relativePath: "New/Not Yet.md"
+            relativePath: "New/Optional.md"
         )
-        let notYet = try await handle.documents.create(DocumentCreationRequest(
-            id: notYetID,
-            title: "Not Yet",
-            analysisResearchStatus: .notYet
+        let optional = try await handle.documents.create(DocumentCreationRequest(
+            id: optionalID,
+            title: "Optional"
         ))
-        #expect(notYet.rawContent == "# Not Yet\n")
-        #expect(!notYet.rawContent.contains("research_unit"))
+        #expect(optional.rawContent == "# Optional\n")
+        #expect(!optional.rawContent.contains("research_unit"))
 
         let settlement = try await handle.research.settle(
-            notYetID,
-            expectedRevision: notYet.fingerprint,
+            optionalID,
+            expectedRevision: optional.fingerprint,
             rationale: "Settlement is independent of legacy Review status."
         )
-        #expect(settlement.fingerprint == notYet.fingerprint)
+        #expect(settlement.fingerprint == optional.fingerprint)
 
         let declared = try await handle.documents.save(
-            notYetID,
+            optionalID,
             changeSet: .exactContent("""
                 ---
                 research_unit:
-                  scope: "One bounded source"
+                  completion: "6/11"
+                  limitations:
+                    - "Only one translation was consulted."
                 ---
-                # Not Yet
+                # Optional
 
                 """),
-            expectedRevision: notYet.fingerprint
+            expectedRevision: optional.fingerprint
         )
         #expect(declared.document.fingerprint != settlement.fingerprint)
 
         let created = try await handle.documents.create(DocumentCreationRequest(
             id: analysesID,
-            title: "Analysis",
-            analysisResearchStatus: .declareNow(
-                scope: "A source with \"quoted\" language",
-                limitations: ["First limitation", "Second limitation"]
-            )
+            title: "Analysis"
         ))
-        #expect(created.rawContent == """
-            ---
-            research_unit:
-              scope: "A source with \\"quoted\\" language"
-              limitations:
-                - "First limitation"
-                - "Second limitation"
-            ---
-            # Analysis
-
-            """)
+        #expect(created.rawContent == "# Analysis\n")
 
         let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
         let untitledWork = try await handle.documents.create(DocumentCreationRequest(
@@ -167,6 +154,159 @@ struct DocumentLifecycleOperationsTests {
             title: ""
         ))
         #expect(untitledWork.rawContent.isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Untitled creation claims the first unoccupied name in the requested folder")
+    func untitledCreationAdvancesWithoutReplacingSource() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+
+        for relativePath in ["Sources/Untitled.md", "Sources/Untitled 2.md"] {
+            _ = try await handle.documents.create(
+                VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath),
+                content: "Existing source at \(relativePath)\n"
+            )
+        }
+
+        let created = try await handle.documents.createUntitledNote(
+            inVault: vaultID,
+            folderRelativePath: "Sources"
+        )
+
+        #expect(created.relativePath == "Sources/Untitled 3.md")
+        #expect(created.rawContent.isEmpty)
+        let first = try await handle.documents.load(VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Sources/Untitled.md"
+        ))
+        let second = try await handle.documents.load(VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Sources/Untitled 2.md"
+        ))
+        #expect(first.rawContent == "Existing source at Sources/Untitled.md\n")
+        #expect(second.rawContent == "Existing source at Sources/Untitled 2.md\n")
+        await runtime.shutdown()
+    }
+
+    @Test("Folder creation is direct and folder moves preserve note identities and resolved links")
+    func folderLifecycleTracksNotesRatherThanFolders() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+        let searchGenerationBeforeFolders = try await handle.snapshot()
+            .discovery.searchGeneration
+
+        let firstFolder = try await handle.documents.createUntitledFolder(
+            inVault: vaultID,
+            parentRelativePath: nil
+        )
+        let secondFolder = try await handle.documents.createUntitledFolder(
+            inVault: vaultID,
+            parentRelativePath: nil
+        )
+        #expect(firstFolder.rawValue == "Untitled Folder")
+        #expect(secondFolder.rawValue == "Untitled Folder 2")
+        #expect(try await handle.snapshot().discovery.searchGeneration
+            == searchGenerationBeforeFolders)
+
+        let firstID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Untitled Folder/First.md"
+        )
+        let secondID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Untitled Folder/Nested/Second.md"
+        )
+        let referenceID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Folder Reference.md"
+        )
+        let first = try await handle.documents.create(
+            firstID,
+            content: "# First\n\nSee [[Untitled Folder/Nested/Second]].\n"
+        )
+        _ = try await handle.documents.create(secondID, content: "# Second\n")
+        _ = try await handle.documents.create(
+            referenceID,
+            content: "# Reference\n\nSee [[Untitled Folder/First]].\n"
+        )
+        _ = try await handle.documents.save(
+            firstID,
+            changeSet: .exactContent(
+                first.rawContent + "\nA revised observation.\n"
+            ),
+            expectedRevision: first.fingerprint
+        )
+        let attachmentBytes = Data([9, 8, 7, 0, 255])
+        try attachmentBytes.write(
+            to: fixture.analysesURL.appendingPathComponent(
+                "Untitled Folder/Nested/source.bin"
+            )
+        )
+
+        let before = try await handle.snapshot()
+        let firstStableID = try #require(before.document(id: firstID)?.stableIdentity.resolvedID)
+        let secondStableID = try #require(before.document(id: secondID)?.stableIdentity.resolvedID)
+        let commit = try await handle.documents.moveFolder(
+            inVault: vaultID,
+            from: "Untitled Folder",
+            to: "Sources"
+        )
+
+        #expect(commit.noteMoves.count == 2)
+        #expect(commit.rewrites.count == 2)
+        let movedFirstID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Sources/First.md"
+        )
+        let movedSecondID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Sources/Nested/Second.md"
+        )
+        let after = try await handle.snapshot()
+        #expect(after.document(id: movedFirstID)?.stableIdentity.resolvedID == firstStableID)
+        #expect(after.document(id: movedSecondID)?.stableIdentity.resolvedID == secondStableID)
+        #expect(after.document(id: firstID) == nil)
+        #expect(after.vault(id: vaultID)?.folders.contains(
+            try VaultRelativeFolderPath("Untitled Folder 2")
+        ) == true)
+        #expect(after.vault(id: vaultID)?.folders.contains(
+            try VaultRelativeFolderPath("Sources/Nested")
+        ) == true)
+        let reference = try await handle.documents.load(referenceID)
+        #expect(reference.rawContent.contains("[[Sources/First]]"))
+        let movedFirst = try await handle.documents.load(movedFirstID)
+        #expect(movedFirst.rawContent.contains("[[Sources/Nested/Second]]"))
+        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
+            "Sources/Nested/source.bin"
+        )) == attachmentBytes)
+
+        let trashCommit = try await handle.documents.moveFolderToTrash(
+            inVault: vaultID,
+            relativePath: "Sources"
+        )
+        #expect(trashCommit.destinationFolder.rawValue == "Trash/Sources")
+        let trashedFirstID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Trash/Sources/First.md"
+        )
+        let trashedSecondID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Trash/Sources/Nested/Second.md"
+        )
+        let trashed = try await handle.snapshot()
+        #expect(trashed.document(id: trashedFirstID)?.stableIdentity.resolvedID == firstStableID)
+        #expect(trashed.document(id: trashedSecondID)?.stableIdentity.resolvedID == secondStableID)
+        #expect(trashed.document(id: trashedFirstID)?.lifecycle == .trash)
+        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
+            "Trash/Sources/Nested/source.bin"
+        )) == attachmentBytes)
         await runtime.shutdown()
     }
 

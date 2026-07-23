@@ -228,43 +228,24 @@ struct ContentView: View {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 researchUnit: appState.currentNote?.researchUnit
-                    ?? ResearchUnitDeclaration(frontmatter: [:]),
-                currentVault: appState.currentDocumentVault,
-                analysesVaultID: appState.workspaceAssignment?.workspace.paperAnalysisVaultID,
-                catalog: appState.workspaceCatalog,
+                    ?? ResearchUnitDeclaration(
+                        frontmatter: [:],
+                        profile: .genericMarkdown
+                    ),
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
                 freshness: researchProjectionFreshness,
                 propertiesConfiguration: appState.currentDocumentPropertiesConfiguration
             ),
-            openResearchRecord: {
-                windowCoordinator.actions.showResearchRecord()
-            },
             openProperties: {
                 guard let path = appState.currentNote?.relativePath else { return }
                 appState.editingNotePath = path
                 appState.showFrontmatterEditor = true
-            },
-            customizeProperties: {
-                settingsModel.selectPane(.properties)
-                openSettings()
             },
             openAttention: {
                 appState.discoveryController.showAttentionQueue(true)
             },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
-            },
-            resolveZoteroSource: { source in
-                try await appState.zoteroBridge.resolve(source: source)
-            },
-            openZoteroItem: { itemKey in
-                await appState.zoteroBridge.openInZotero(zoteroKey: itemKey)
-            },
-            confirmZoteroItem: { itemKey, reference in
-                try await appState.confirmZoteroItemKey(itemKey, for: reference)
-            },
-            didConfirmZoteroSource: { title in
-                appState.showToast(String(localized: "Zotero source confirmed for \(title).", table: "Localizable", bundle: .module))
             }
         )
     }
@@ -492,6 +473,7 @@ struct ContentView: View {
             attentionItems: appState.workspaceCatalog?.attention,
             filteredNotes: appState.filteredNotes,
             allNotes: appState.notes,
+            folders: appState.currentLibraryFolders,
             currentVaultID: appState.currentRegisteredVault?.id,
             disclosureScope: appState.currentRegisteredVault.map {
                 LibraryDisclosureScope(
@@ -504,11 +486,14 @@ struct ContentView: View {
             currentVaultRole: appState.currentVaultRole,
             currentWorkspaceSlot: currentWorkspaceSlot,
             noteLifecycleRequest: appState.noteLifecycleRequest,
+            canCreateNote: appState.noteLocationScope == .workspace
+                && appState.currentRegisteredVault != nil
+                && !appState.isCreatingNote
+                && !appState.isMutatingFolder,
             lifecycleMutationGeneration: appState.lifecycleMutationGeneration,
             catalogIsAvailable: appState.workspaceCatalog != nil,
             graphIsAvailable: appState.relationshipGraph != nil,
             tags: appState.allTags,
-            statuses: appState.availableStatuses,
             authors: appState.availableAuthors,
             years: appState.availableYears,
             propertyKeys: propertyFilterOptions.keys,
@@ -524,6 +509,30 @@ struct ContentView: View {
             lifecycleItems: { try await appState.lifecycleLocationItems(for: $0) },
             prepareLifecycle: { appState.prepareLifecycleOperation($0) },
             clearPreparedLifecycle: { appState.clearPreparedLifecycleOperation(at: $0) },
+            createUntitledNote: { appState.requestUntitledNoteCreation(in: $0) },
+            createUntitledFolder: {
+                appState.requestUntitledFolderCreation(in: $0)
+            },
+            requestFolderLifecycle: {
+                appState.folderLifecycleRequest = $0
+            },
+            moveFolderToTrash: {
+                try await appState.moveFolderToTrash($0)
+            },
+            copyRelativePath: { path in
+                do {
+                    try appState.copyTextToClipboard(path)
+                    appState.showToast(
+                        String(
+                            localized: "Relative path copied.",
+                            table: "Localizable",
+                            bundle: .module
+                        )
+                    )
+                } catch {
+                    appState.showToast(error.localizedDescription, kind: .error)
+                }
+            },
             revealNote: { appState.showInFinder($0) },
             setAside: { try await appState.setAsideNote($0) },
             moveToTrash: { try await appState.moveNoteToTrash($0) },
@@ -676,17 +685,9 @@ struct ContentView: View {
         case .lifecycle(let request):
             NoteLifecycleView(
                 request: request,
-                vaultRole: appState.currentVaultRole,
                 actions: NoteLifecycleActions(
                     putBackDestination: {
                         appState.documentController.putBackDestination(for: $0)
-                    },
-                    create: { path, title, researchStatus in
-                        _ = try await appState.createNote(
-                            relativePath: path,
-                            title: title,
-                            analysisResearchStatus: researchStatus
-                        )
                     },
                     duplicate: { source, destination in
                         _ = try await appState.duplicateNote(source, to: destination)
@@ -701,6 +702,16 @@ struct ContentView: View {
                             into: slot,
                             destination: destination
                         )
+                    }
+                )
+            )
+        case .folderLifecycle(let request):
+            FolderLifecycleView(
+                request: request,
+                folderRelativePaths: appState.currentLibraryFolders,
+                actions: FolderLifecycleActions(
+                    move: { target, destination in
+                        try await appState.moveFolder(target, to: destination)
                     }
                 )
             )
@@ -971,7 +982,15 @@ struct ToastView: View {
 // MARK: - Preview
 
 #Preview {
-    let workspaceStore = WorkspaceStore()
+    let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let workspaceStore = try! WorkspaceStore(
+        applicationSupportURL: repositoryRoot
+            .appendingPathComponent(".build/previews", isDirectory: true)
+            .appendingPathComponent("ContentView", isDirectory: true)
+    )
     let model = WindowModel(workspaceStore: workspaceStore)
     let coordinator = WorkspaceWindowCoordinator(
         windowID: model.nativeWindowID,

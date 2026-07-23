@@ -5,6 +5,47 @@ import ScholiumContracts
 
 @Suite("Triptych workspace catalog")
 struct WorkspaceCatalogTests {
+    @Test("Package catalog assembly reuses only fingerprint-bound semantics")
+    func catalogReusesFingerprintBoundSemantics() throws {
+        let topics = vault("Topics", .topicKnowledge)
+        let document = note("Topic.md", "# Authoritative Title\n\nBody")
+        let projectedDocument = note(
+            "Projected.md",
+            "# Cached Semantic Title\n\nBody"
+        )
+        let projected = MarkdownSemanticDocument(parsing: projectedDocument)
+        let fingerprintBound = MarkdownSemanticDocument(
+            fingerprint: document.fingerprint,
+            blocks: projected.blocks,
+            inlines: projected.inlines,
+            headings: projected.headings,
+            callouts: projected.callouts,
+            footnoteDefinitions: projected.footnoteDefinitions,
+            footnoteReferences: projected.footnoteReferences,
+            mathExpressions: projected.mathExpressions,
+            links: projected.links,
+            diagnostics: projected.diagnostics
+        )
+        let id = VaultQualifiedNoteID(
+            vaultID: topics.id,
+            relativePath: document.relativePath
+        )
+
+        let reused = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: [document]],
+            semanticDocuments: [id: fingerprintBound]
+        )
+        let stale = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: [document]],
+            semanticDocuments: [id: projected]
+        )
+
+        #expect(try #require(reused.notes.first).title == "Cached Semantic Title")
+        #expect(try #require(stale.notes.first).title == "Authoritative Title")
+    }
+
     @Test("Search expansion uses only direct links from one exact Topic concept")
     func relatedSearchIsDirectExplainableAndScopeBounded() throws {
         let analyses = vault("Analyses", .sourceCorpus)
@@ -21,7 +62,7 @@ struct WorkspaceCatalogTests {
         let remote = note("Remote.md", "---\ntitle: Remote Source\n---\nSource")
         let work = note(
             "Argument.md",
-            "---\ntitle: Argument Draft\n---\n+[[Agency]]"
+            "# Argument Draft\n\n+[[Agency]]"
         )
         let documents: [(RegisteredVault, NoteDocument)] = [
             (analyses, analysis),
@@ -37,7 +78,7 @@ struct WorkspaceCatalogTests {
             generation: 1,
             catalog: documents.map { vault, document in
                 let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
-                return LinkCatalogNote(vaultID: vault.id, document: document, semantic: semantics[id])
+                return catalogNote(vault, document, semantic: semantics[id])
             },
             documents: semantics,
             resolutionScope: .workspace,
@@ -66,7 +107,7 @@ struct WorkspaceCatalogTests {
         #expect(related.map(\.note.title) == ["Argument Draft", "Paper Analysis"])
         #expect(related.first?.relationship == .itemSupportsConcept)
         #expect(related.first?.explanation == "Supports Agency")
-        #expect(related.first?.sourceLine == 4)
+        #expect(related.first?.sourceLine == 3)
         #expect(related.last?.relationship == .conceptSupportsItem)
         #expect(related.last?.explanation == "Supported by Agency")
         #expect(!related.contains { $0.note.title == "Remote Source" })
@@ -112,8 +153,8 @@ struct WorkspaceCatalogTests {
     func relatedIdentityDoesNotEraseDiacritics() {
         let topics = vault("Topics", .topicKnowledge)
         let works = vault("Works", .draftProject)
-        let topic = note("Cafe.md", "---\ntitle: Café\n---\n")
-        let draft = note("Draft.md", "---\ntitle: Draft\n---\n+[[Café]]")
+        let topic = note("Cafe.md", "# Café\n")
+        let draft = note("Draft.md", "# Draft\n\n+[[Café]]")
         let topicID = VaultQualifiedNoteID(vaultID: topics.id, relativePath: topic.relativePath)
         let draftID = VaultQualifiedNoteID(vaultID: works.id, relativePath: draft.relativePath)
         let topicSemantic = MarkdownSemanticDocument(parsing: topic)
@@ -121,8 +162,8 @@ struct WorkspaceCatalogTests {
         let graph = LinkGraphBuilder.build(
             generation: 1,
             catalog: [
-                LinkCatalogNote(vaultID: topics.id, document: topic, semantic: topicSemantic),
-                LinkCatalogNote(vaultID: works.id, document: draft, semantic: draftSemantic),
+                catalogNote(topics, topic, semantic: topicSemantic),
+                catalogNote(works, draft, semantic: draftSemantic),
             ],
             documents: [topicID: topicSemantic, draftID: draftSemantic],
             resolutionScope: .workspace,
@@ -165,7 +206,7 @@ struct WorkspaceCatalogTests {
             generation: 1,
             catalog: documents.map { document in
                 let id = VaultQualifiedNoteID(vaultID: topics.id, relativePath: document.relativePath)
-                return LinkCatalogNote(vaultID: topics.id, document: document, semantic: semantics[id])
+                return catalogNote(topics, document, semantic: semantics[id])
             },
             documents: semantics,
             resolutionScope: .workspace,
@@ -397,7 +438,7 @@ struct WorkspaceCatalogTests {
         })
         let linkCatalog = allDocuments.map { vault, document in
             let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
-            return LinkCatalogNote(vaultID: vault.id, document: document, semantic: semantics[id])
+            return catalogNote(vault, document, semantic: semantics[id])
         }
         let graph = LinkGraphBuilder.build(
             generation: 1,
@@ -420,11 +461,50 @@ struct WorkspaceCatalogTests {
         )
         #expect(selected.map(\.title) == ["Used Analysis"])
         #expect(selected.first?.zoteroItemKey == "USED0001")
-        #expect(selected.first?.zoteroSourceIdentity?.doi == "10.1000/used")
-        #expect(selected.first?.zoteroSourceIdentity?.isbn == "978-1-2345-6789-0")
-        #expect(selected.first?.zoteroSourceIdentity?.citationKey == "ScholarUsed2024")
+        #expect(selected.first?.zoteroSourceIdentity?.doi == nil)
+        #expect(selected.first?.zoteroSourceIdentity?.isbn == nil)
+        #expect(selected.first?.zoteroSourceIdentity?.citationKey == nil)
         #expect(selected.first?.zoteroSourceIdentity?.authors == ["A. Scholar"])
         #expect(selected.first?.zoteroSourceIdentity?.year == 2024)
+    }
+
+    @Test("Only the canonical Analysis Zotero item key enters the catalog")
+    func canonicalAnalysisZoteroItemKeyOnly() {
+        let analysisVault = vault("Analyses", .sourceCorpus)
+        let topicVault = vault("Topics", .topicKnowledge)
+        let worksVault = vault("Works", .draftProject)
+        let canonical = note(
+            "Canonical.md",
+            "---\ntitle: Canonical\nzotero_item_key: CANON001\n---\nAnalysis"
+        )
+        let legacyAlias = note(
+            "Legacy Alias.md",
+            "---\ntitle: Legacy Alias\nzoteroKey: ALIAS001\n---\nAnalysis"
+        )
+        let topic = note(
+            "Topic.md",
+            "---\nzotero_item_key: TOPIC001\n---\n# Topic"
+        )
+        let work = note(
+            "Work.md",
+            "---\nzotero_item_key: WORK001\n---\n# Work"
+        )
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [analysisVault, topicVault, worksVault],
+            documents: [
+                analysisVault.id: [canonical, legacyAlias],
+                topicVault.id: [topic],
+                worksVault.id: [work],
+            ]
+        )
+        let notesByPath = Dictionary(uniqueKeysWithValues: snapshot.notes.map {
+            ($0.reference.relativePath, $0)
+        })
+
+        #expect(notesByPath["Canonical.md"]?.zoteroItemKey == "CANON001")
+        #expect(notesByPath["Legacy Alias.md"]?.zoteroItemKey == nil)
+        #expect(notesByPath["Topic.md"]?.zoteroItemKey == nil)
+        #expect(notesByPath["Work.md"]?.zoteroItemKey == nil)
     }
 
     @Test("Zotero source selection applies to Works but not Unclassified notes")
@@ -451,7 +531,7 @@ struct WorkspaceCatalogTests {
             generation: 1,
             catalog: allDocuments.map { vault, document in
                 let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
-                return LinkCatalogNote(vaultID: vault.id, document: document, semantic: semantics[id])
+                return catalogNote(vault, document, semantic: semantics[id])
             },
             documents: semantics,
             resolutionScope: .workspace
@@ -498,7 +578,7 @@ struct WorkspaceCatalogTests {
             generation: 1,
             catalog: allDocuments.map { vault, document in
                 let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
-                return LinkCatalogNote(vaultID: vault.id, document: document, semantic: semantics[id])
+                return catalogNote(vault, document, semantic: semantics[id])
             },
             documents: semantics,
             resolutionScope: .workspace
@@ -521,6 +601,23 @@ struct WorkspaceCatalogTests {
 
     private func note(_ path: String, _ source: String) -> NoteDocument {
         NoteDocument(relativePath: path, rawContent: source)
+    }
+
+    private func catalogNote(
+        _ vault: RegisteredVault,
+        _ document: NoteDocument,
+        semantic: MarkdownSemanticDocument?
+    ) -> LinkCatalogNote {
+        LinkCatalogNote(
+            vaultID: vault.id,
+            document: document,
+            profile: WorkflowProfileResolver.resolve(
+                vaultRole: vault.role,
+                frontmatter: document.parsedFrontmatter,
+                relativePath: document.relativePath
+            ),
+            semantic: semantic
+        )
     }
 
     private func ref(_ vault: RegisteredVault, _ note: NoteDocument) -> VaultNoteReference {

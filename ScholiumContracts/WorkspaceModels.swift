@@ -72,6 +72,24 @@ public enum WorkspaceNoteIdentityState: Hashable, Sendable {
     }
 }
 
+package struct WorkspaceNoteTitleProjection: Hashable, Sendable {
+    package let sourceFingerprint: DocumentFingerprint
+    package let resolution: ResearchNoteTitleResolution
+
+    package init(
+        document: NoteDocument,
+        vaultRole: VaultRole,
+        semantic: MarkdownSemanticDocument
+    ) {
+        sourceFingerprint = document.fingerprint
+        resolution = ResearchNoteTitleResolver.resolve(
+            document: document,
+            vaultRole: vaultRole,
+            semantic: semantic
+        )
+    }
+}
+
 /// A source-fidelity-preserving note projection for one complete generation.
 /// `document` retains the exact bytes loaded by `VaultRepository`; the other
 /// fields are explicitly derived projections over that source revision.
@@ -83,6 +101,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let fileMetadata: WorkspaceFileMetadata
     public let lifecycle: WorkspaceDocumentLifecycle
     public let graphCounts: WorkspaceGraphCounts
+    package let cachedTitleProjection: WorkspaceNoteTitleProjection?
 
     public var fingerprint: DocumentFingerprint { document.fingerprint }
     public var validationWarnings: [String] { document.validationWarnings }
@@ -118,6 +137,28 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         lifecycle: WorkspaceDocumentLifecycle,
         graphCounts: WorkspaceGraphCounts
     ) {
+        self.init(
+            id: id,
+            vaultRole: vaultRole,
+            stableIdentity: stableIdentity,
+            document: document,
+            fileMetadata: fileMetadata,
+            lifecycle: lifecycle,
+            graphCounts: graphCounts,
+            cachedTitleProjection: nil
+        )
+    }
+
+    package init(
+        id: VaultQualifiedNoteID,
+        vaultRole: VaultRole = .other,
+        stableIdentity: WorkspaceNoteIdentityState,
+        document: NoteDocument,
+        fileMetadata: WorkspaceFileMetadata,
+        lifecycle: WorkspaceDocumentLifecycle,
+        graphCounts: WorkspaceGraphCounts,
+        cachedTitleProjection: WorkspaceNoteTitleProjection?
+    ) {
         self.id = id
         self.vaultRole = vaultRole
         self.stableIdentity = stableIdentity
@@ -125,6 +166,9 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.fileMetadata = fileMetadata
         self.lifecycle = lifecycle
         self.graphCounts = graphCounts
+        self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
+            ? cachedTitleProjection
+            : nil
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -169,17 +213,20 @@ public struct WorkspaceVaultSnapshot: Sendable {
     public let slot: WorkspaceVaultSlot
     public let vault: RegisteredVault
     public let documents: [WorkspaceNoteSnapshot]
+    public let folders: [VaultRelativeFolderPath]
     public let identityRecovery: NoteIdentityRecoveryState
 
     public init(
         slot: WorkspaceVaultSlot,
         vault: RegisteredVault,
         documents: [WorkspaceNoteSnapshot],
+        folders: [VaultRelativeFolderPath] = [],
         identityRecovery: NoteIdentityRecoveryState
     ) {
         self.slot = slot
         self.vault = vault
         self.documents = documents
+        self.folders = folders
         self.identityRecovery = identityRecovery
     }
 }
@@ -328,7 +375,7 @@ public struct WorkspaceSnapshotEvent: Sendable {
     }
 }
 
-public enum WorkspaceSourceCommitKind: Sendable {
+public enum WorkspaceSourceCommitKind: Equatable, Sendable {
     case save
     case checkpointRestore(checkpointID: UUID)
 }

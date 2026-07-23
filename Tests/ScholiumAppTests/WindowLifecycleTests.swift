@@ -179,6 +179,66 @@ struct WindowLifecycleTests {
         }
     }
 
+    @Test("Timeout and caller cancellation ignore late noncooperative lifecycle completion")
+    func deadlineRaceResumesOnce() async {
+        let timeoutSleeper = ManualLifecycleSuspension()
+        let lateOperation = ManualLifecycleSuspension()
+        var acceptedOwnerEffects = 0
+        let timedAttempt = Task { @MainActor in
+            do {
+                try await withScholiumLifecycleDeadline(
+                    phase: .contentFlush,
+                    timeout: .seconds(30),
+                    sleep: { _ in await timeoutSleeper.suspendIgnoringCancellation() }
+                ) {
+                    await lateOperation.suspendIgnoringCancellation()
+                }
+                acceptedOwnerEffects += 1
+                return DeadlineTestOutcome.succeeded
+            } catch let error as ScholiumWindowLifecycleError {
+                return error == .timedOut(.contentFlush)
+                    ? .timedOut
+                    : .unexpected
+            } catch {
+                return .unexpected
+            }
+        }
+        await timeoutSleeper.waitUntilArmed()
+        await lateOperation.waitUntilArmed()
+        timeoutSleeper.resume()
+        #expect(await timedAttempt.value == .timedOut)
+        #expect(acceptedOwnerEffects == 0)
+
+        // The operation deliberately ignores cancellation and arrives after
+        // the timeout. It cannot resume the parent again or apply owner state.
+        lateOperation.resume()
+        for _ in 0..<20 { await Task.yield() }
+        #expect(acceptedOwnerEffects == 0)
+
+        let cancellationSleeper = ManualLifecycleSuspension()
+        let cancelledOperation = ManualLifecycleSuspension()
+        let cancelledAttempt = Task { @MainActor in
+            try await withScholiumLifecycleDeadline(
+                phase: .presentationSnapshot,
+                timeout: .seconds(30),
+                sleep: { _ in
+                    await cancellationSleeper.suspendIgnoringCancellation()
+                }
+            ) {
+                await cancelledOperation.suspendIgnoringCancellation()
+            }
+        }
+        await cancellationSleeper.waitUntilArmed()
+        await cancelledOperation.waitUntilArmed()
+        cancelledAttempt.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await cancelledAttempt.value
+        }
+        cancellationSleeper.resume()
+        cancelledOperation.resume()
+        for _ in 0..<20 { await Task.yield() }
+    }
+
     @Test("Application flush visits every registered window")
     func flushAllRegisteredWindows() async {
         let registry = ScholiumWindowLifecycleRegistry()
@@ -256,7 +316,10 @@ struct WindowLifecycleTests {
     func delegateRetentionAndRestoration() {
         let id = UUID()
         let registry = ScholiumWindowLifecycleRegistry()
-        let model = WindowModel(workspaceStore: WorkspaceStore(), nativeWindowID: id)
+        let model = WindowModel(
+            workspaceStore: makeTestWorkspaceStore(),
+            nativeWindowID: id
+        )
         let coordinator = WorkspaceWindowCoordinator(
             windowID: id,
             appState: model,
@@ -281,7 +344,10 @@ struct WindowLifecycleTests {
     func coordinatorMarksExactNativeBoundaryReady() async {
         let id = UUID()
         let registry = ScholiumWindowLifecycleRegistry()
-        let model = WindowModel(workspaceStore: WorkspaceStore(), nativeWindowID: id)
+        let model = WindowModel(
+            workspaceStore: makeTestWorkspaceStore(),
+            nativeWindowID: id
+        )
         let coordinator = WorkspaceWindowCoordinator(
             windowID: id,
             appState: model,
@@ -454,6 +520,35 @@ struct WindowLifecycleTests {
         )
         window.isReleasedWhenClosed = false
         return window
+    }
+}
+
+private enum DeadlineTestOutcome: Equatable, Sendable {
+    case succeeded
+    case timedOut
+    case unexpected
+}
+
+@MainActor
+private final class ManualLifecycleSuspension {
+    private var continuation: UnsafeContinuation<Void, Never>?
+
+    func suspendIgnoringCancellation() async {
+        await withUnsafeContinuation { continuation = $0 }
+    }
+
+    func waitUntilArmed() async {
+        for _ in 0..<1_000 {
+            if continuation != nil { return }
+            await Task.yield()
+        }
+        Issue.record("The controllable lifecycle suspension did not arm.")
+    }
+
+    func resume() {
+        let continuation = continuation
+        self.continuation = nil
+        continuation?.resume()
     }
 }
 

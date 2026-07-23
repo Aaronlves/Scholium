@@ -39,18 +39,12 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         didSet { editableFields = Self.unique(editableFields) }
     }
 
-    /// The initial disclosure state for notes in this vault. Opening or
-    /// closing one note remains a presentation choice for that note session.
-    public var isExpanded: Bool
-
     public init(
         visibleFields: [String] = [],
-        editableFields: [String] = [],
-        isExpanded: Bool = false
+        editableFields: [String] = []
     ) {
         self.visibleFields = Self.unique(visibleFields)
         self.editableFields = Self.unique(editableFields)
-        self.isExpanded = isExpanded
     }
 
     /// Adds or removes a field without losing the explicit order of the
@@ -164,23 +158,21 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public static let defaultProperties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
-                "title", "authors", "year", "type", "status",
-                "debate_importance", "debate_importance_scope",
-                "access", "text_reliability", "locators",
+                "authors", "year", "type", "access", "text_reliability", "locators",
             ],
             editableFields: [
-                "title", "authors", "year", "type", "status",
+                "title", "authors", "year", "type",
                 "debate_importance", "debate_importance_scope",
-                "access", "text_reliability", "locators", "tags",
+                "access", "text_reliability", "locators", "tags", "research_unit",
             ]
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["title", "aliases", "status"],
-            editableFields: ["title", "aliases", "status", "tags"]
+            visibleFields: ["aliases"],
+            editableFields: ["aliases", "tags", "research_unit"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["title", "kind", "authors", "status", "venue", "deadline"],
-            editableFields: ["title", "kind", "authors", "status", "venue", "deadline", "tags"]
+            visibleFields: ["kind", "authors", "venue"],
+            editableFields: ["kind", "authors", "venue", "tags", "research_unit"]
         ),
     ]
 

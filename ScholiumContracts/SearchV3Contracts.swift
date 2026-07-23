@@ -3,9 +3,9 @@ import Foundation
 
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
-public enum SearchContractV3 {
-    public static let contractVersion = 3
-    public static let schemaVersion = 3
+public enum SearchContractV4 {
+    public static let contractVersion = 4
+    public static let schemaVersion = 5
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 1
     public static let maximumInterfaceResults = 100
@@ -59,7 +59,7 @@ public struct SearchDefinition: Codable, Hashable, Sendable {
     public var presentationScope: SearchPresentationScope
 
     public init(
-        contractVersion: Int = SearchContractV3.contractVersion,
+        contractVersion: Int = SearchContractV4.contractVersion,
         query: String,
         presentationScope: SearchPresentationScope
     ) {
@@ -134,10 +134,10 @@ public struct SearchGenerationID: Codable, Hashable, Sendable {
     public init(
         triptychID: UUID,
         sequence: Int,
-        schemaVersion: Int = SearchContractV3.schemaVersion,
-        queryContractVersion: Int = SearchContractV3.contractVersion,
-        tokenizerPolicyVersion: Int = SearchContractV3.tokenizerPolicyVersion,
-        rankingPolicyVersion: Int = SearchContractV3.rankingPolicyVersion,
+        schemaVersion: Int = SearchContractV4.schemaVersion,
+        queryContractVersion: Int = SearchContractV4.contractVersion,
+        tokenizerPolicyVersion: Int = SearchContractV4.tokenizerPolicyVersion,
+        rankingPolicyVersion: Int = SearchContractV4.rankingPolicyVersion,
         sourceManifestHash: String
     ) {
         self.triptychID = triptychID
@@ -302,7 +302,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
     public let diagnostics: [SearchQueryDiagnostic]
 
     public init(
-        contractVersion: Int = SearchContractV3.contractVersion,
+        contractVersion: Int = SearchContractV4.contractVersion,
         requestID: UUID,
         scope: SearchPresentationScope,
         freshnessToken: SearchFreshnessToken,

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 import ScholiumContracts
@@ -6,13 +7,128 @@ import ScholiumContracts
 @Suite("Transactional vault repository")
 struct VaultRepositoryTests {
     private func fixture() throws -> (root: URL, support: URL, note: URL) {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureID = String(UUID().uuidString.prefix(12)).lowercased()
+        let base = repositoryRoot
+            .appendingPathComponent(".build/vt", isDirectory: true)
+            .appendingPathComponent(fixtureID, isDirectory: true)
         let root = base.appendingPathComponent("vault", isDirectory: true)
         let support = base.appendingPathComponent("support", isDirectory: true)
         let note = root.appendingPathComponent("topics/note.md")
         try FileManager.default.createDirectory(at: note.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "---\ntitle: Note\nmodified: 2025-01-01\n---\nOriginal\n".write(to: note, atomically: true, encoding: .utf8)
         return (root, support, note)
+    }
+
+    @Test("FIFO, socket, and directory leaves are rejected without blocking")
+    func specialFilesAreRejectedWithoutBlocking() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil),
+            applicationSupportURL: f.support
+        )
+        try FileManager.default.removeItem(at: f.note)
+
+        #expect(mkfifo(f.note.path, 0o600) == 0)
+        let clock = ContinuousClock()
+        let fifoStart = clock.now
+        await #expect(throws: (any Error).self) {
+            _ = try await repository.load(relativePath: "topics/note.md")
+        }
+        #expect(fifoStart.duration(to: clock.now) < .seconds(1))
+        try FileManager.default.removeItem(at: f.note)
+
+        try FileManager.default.createDirectory(at: f.note, withIntermediateDirectories: false)
+        await #expect(throws: (any Error).self) {
+            _ = try await repository.load(relativePath: "topics/note.md")
+        }
+        try FileManager.default.removeItem(at: f.note)
+
+        let socketDescriptor = try bindUnixSocket(at: f.note)
+        defer { close(socketDescriptor) }
+        let socketStart = clock.now
+        await #expect(throws: (any Error).self) {
+            _ = try await repository.load(relativePath: "topics/note.md")
+        }
+        #expect(socketStart.duration(to: clock.now) < .seconds(1))
+    }
+
+    @Test("Inventory enumeration fails closed when a vault subtree is unreadable")
+    func unreadableInventoryIsNotTreatedAsDeletion() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(
+                id: UUID(),
+                canonicalPath: f.root.path,
+                bookmarkData: nil
+            ),
+            applicationSupportURL: f.support
+        )
+        let unreadable = f.root.appendingPathComponent(
+            "unreadable",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: unreadable,
+            withIntermediateDirectories: false
+        )
+        try Data("# Hidden from an incomplete inventory\n".utf8).write(
+            to: unreadable.appendingPathComponent("Hidden.md")
+        )
+        guard chmod(unreadable.path, 0) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { _ = chmod(unreadable.path, 0o700) }
+
+        await #expect(throws: (any Error).self) {
+            _ = try await repository.markdownRelativePaths(
+                includeLifecycle: true
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await repository.folderRelativePaths(
+                includeLifecycle: true
+            )
+        }
+    }
+
+    private func bindUnixSocket(at url: URL) throws -> Int32 {
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        var address = sockaddr_un()
+        let bytes = Array(url.path.utf8CString)
+        guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else {
+            close(descriptor)
+            throw POSIXError(.ENAMETOOLONG)
+        }
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sa_family_t>.size + bytes.count)
+        withUnsafeMutablePointer(to: &address.sun_path.0) { destination in
+            bytes.withUnsafeBytes { source in
+                _ = memcpy(destination, source.baseAddress, bytes.count)
+            }
+        }
+        let addressLength = socklen_t(address.sun_len)
+        let result = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(descriptor, $0, addressLength)
+            }
+        }
+        guard result == 0 else {
+            let code = errno
+            close(descriptor)
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+        }
+        return descriptor
     }
 
     @Test("Save records immutable prewrite recovery without exposing delivery restore")
@@ -191,6 +307,67 @@ struct VaultRepositoryTests {
         )
         #expect(duplicate.rawContent == created.rawContent)
         #expect(duplicate.relativePath == "new/Created copy.md")
+    }
+
+    @Test("Folder inventory includes empty directories and one directory move preserves all contents")
+    func folderInventoryAndMove() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        let empty = try await repository.createFolder(relativePath: "topics/Empty")
+        #expect(empty.rawValue == "topics/Empty")
+        #expect(try await repository.folderRelativePaths().contains(empty))
+
+        let attachment = f.root.appendingPathComponent("topics/source.bin")
+        let attachmentBytes = Data([0, 1, 2, 255])
+        try attachmentBytes.write(to: attachment)
+        let original = try await repository.load(relativePath: "topics/note.md")
+        let source = try VaultRelativeFolderPath("topics")
+        let destination = try VaultRelativeFolderPath("Renamed")
+        let moved = try await repository.moveFolder(
+            from: source,
+            to: destination,
+            expectedDocuments: [original.relativePath: original.fingerprint]
+        )
+
+        #expect(moved.documents.map(\.relativePath) == ["Renamed/note.md"])
+        #expect(moved.documents[0].rawContent == original.rawContent)
+        #expect(try Data(contentsOf: f.root.appendingPathComponent("Renamed/source.bin")) == attachmentBytes)
+        #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent("topics").path))
+        #expect(try await repository.folderRelativePaths().contains(destination))
+    }
+
+    @Test("Folder move rejects an inventory changed outside Scholium")
+    func folderMoveRejectsChangedInventory() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+        try "# Added externally\n".write(
+            to: f.root.appendingPathComponent("topics/Added.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await repository.moveFolder(
+                from: VaultRelativeFolderPath("topics"),
+                to: VaultRelativeFolderPath("Renamed"),
+                expectedDocuments: [original.relativePath: original.fingerprint]
+            )
+        }
+        #expect(FileManager.default.fileExists(atPath: f.root.appendingPathComponent("topics").path))
+        #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent("Renamed").path))
     }
 
     @Test("Creation rollback is revision checked and does not create history")

@@ -61,6 +61,157 @@ public struct IncomingLinkRewriteBlock: Codable, Hashable, Sendable {
 /// moved vault-qualified note are changed. Broken and ambiguous links are never
 /// guessed, and the writable source always comes from the exact NoteDocument.
 public enum IncomingLinkRewriter {
+    /// Plans link edits for one directory-path change while preserving note
+    /// identity as the unit of movement. Every note move is evaluated against
+    /// one future graph, so links between two notes in the moved folder are not
+    /// rewritten against an intermediate, partly moved inventory.
+    public static func folderPlan(
+        documents: [VaultQualifiedNoteID: NoteDocument],
+        graph: GraphSnapshot,
+        vaultID: UUID,
+        sourceFolder: VaultRelativeFolderPath,
+        destinationFolder: VaultRelativeFolderPath,
+        noteMoves: [FolderNoteMovePlan]
+    ) -> FolderIncomingLinkRewritePlan {
+        let empty = {
+            FolderIncomingLinkRewritePlan(
+                vaultID: vaultID,
+                sourceFolder: sourceFolder,
+                destinationFolder: destinationFolder,
+                graphGeneration: graph.generation,
+                noteMoves: noteMoves,
+                rewrites: []
+            )
+        }
+        guard graph.contractVersion == GraphSnapshot.currentContractVersion,
+              noteMoves.allSatisfy({
+                  $0.source.vaultID == vaultID
+                    && $0.destination.vaultID == vaultID
+                    && $0.source != $0.destination
+              }) else { return empty() }
+
+        var destinations: [VaultQualifiedNoteID: VaultQualifiedNoteID] = [:]
+        for move in noteMoves {
+            guard destinations.updateValue(move.destination, forKey: move.source) == nil else {
+                return empty()
+            }
+        }
+        let currentSemantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let currentCatalog = documents.map { id, document in
+            LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: currentSemantics[id])
+        }
+        let currentGraph = LinkGraphBuilder.build(
+            generation: graph.generation,
+            catalog: currentCatalog,
+            documents: currentSemantics,
+            resolutionScope: .workspace
+        )
+
+        let suppliedKeys: Set<EligibleOccurrenceKey> = Set(
+            graph.outgoing.values.flatMap { $0 }.compactMap { edge in
+            guard case .resolved(let target) = edge.occurrence.resolution,
+                  destinations[target] != nil else { return nil }
+            return EligibleOccurrenceKey(
+                source: edge.source,
+                syntax: edge.occurrence.syntax,
+                target: edge.occurrence.target,
+                span: edge.occurrence.span
+            )
+        })
+        let incoming = currentGraph.outgoing.values.flatMap { $0 }.filter { edge in
+            guard case .resolved(let target) = edge.occurrence.resolution,
+                  destinations[target] != nil else { return false }
+            let key = EligibleOccurrenceKey(
+                source: edge.source,
+                syntax: edge.occurrence.syntax,
+                target: edge.occurrence.target,
+                span: edge.occurrence.span
+            )
+            return suppliedKeys.contains(key)
+        }
+
+        var futureDocuments = documents
+        for move in noteMoves {
+            guard let moved = futureDocuments.removeValue(forKey: move.source) else { continue }
+            futureDocuments[move.destination] = NoteDocument(
+                relativePath: move.destination.relativePath,
+                rawContent: moved.rawContent
+            )
+        }
+        let futureSemantics = futureDocuments.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let futureCatalog = futureDocuments.map { id, document in
+            LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: futureSemantics[id])
+        }
+        let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(catalog: futureCatalog)
+
+        var blocked: [IncomingLinkRewriteBlock] = []
+        var replacementsBySource: [VaultQualifiedNoteID: [Replacement]] = [:]
+        for edge in incoming {
+            guard case .resolved(let currentTarget) = edge.occurrence.resolution,
+                  let destination = destinations[currentTarget],
+                  let document = documents[edge.source] else { continue }
+            let futureSource = destinations[edge.source] ?? edge.source
+            let resolution = futureResolutionIndex.resolve(
+                destination.relativePath,
+                from: futureSource,
+                scope: .workspace
+            )
+            guard resolution == .resolved(destination) else {
+                blocked.append(IncomingLinkRewriteBlock(
+                    source: edge.source,
+                    span: edge.occurrence.span,
+                    reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                ))
+                continue
+            }
+            guard let planned = replacement(
+                for: edge.occurrence,
+                in: document.rawContent,
+                newRelativePath: destination.relativePath
+            ) else { continue }
+            replacementsBySource[edge.source, default: []].append(planned)
+        }
+
+        let rewrites = replacementsBySource.compactMap { sourceID, replacements
+            -> IncomingLinkRewrite? in
+            guard let document = documents[sourceID] else { return nil }
+            let sorted = replacements.sorted { $0.range.location > $1.range.location }
+            let mutable = NSMutableString(string: document.rawContent)
+            var appliedRanges: Set<ReplacementKey> = []
+            var applied = 0
+            for planned in sorted {
+                let key = ReplacementKey(
+                    location: planned.range.location,
+                    length: planned.range.length
+                )
+                guard appliedRanges.insert(key).inserted,
+                      NSMaxRange(planned.range) <= mutable.length else { continue }
+                mutable.replaceCharacters(in: planned.range, with: planned.text)
+                applied += 1
+            }
+            guard applied > 0 else { return nil }
+            return IncomingLinkRewrite(
+                source: sourceID,
+                expectedRevision: document.fingerprint,
+                updatedSource: mutable as String,
+                rewrittenOccurrences: applied
+            )
+        }.sorted { $0.source < $1.source }
+
+        return FolderIncomingLinkRewritePlan(
+            vaultID: vaultID,
+            sourceFolder: sourceFolder,
+            destinationFolder: destinationFolder,
+            graphGeneration: graph.generation,
+            noteMoves: noteMoves,
+            rewrites: rewrites,
+            blockedIncomingLinks: blocked.sorted {
+                if $0.source != $1.source { return $0.source < $1.source }
+                return $0.span.utf16LowerBound < $1.span.utf16LowerBound
+            }
+        )
+    }
+
     public static func plan(
         documents: [VaultQualifiedNoteID: NoteDocument],
         graph: GraphSnapshot,
@@ -191,6 +342,11 @@ public enum IncomingLinkRewriter {
     private struct Replacement {
         let range: NSRange
         let text: String
+    }
+
+    private struct ReplacementKey: Hashable {
+        let location: Int
+        let length: Int
     }
 
     private struct EligibleOccurrenceKey: Hashable {

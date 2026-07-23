@@ -11,6 +11,7 @@ struct SidebarContext {
     let attentionItems: [AttentionQueueItem]?
     let filteredNotes: [WindowDocumentLocation]
     let allNotes: [WindowDocumentLocation]
+    let folders: [String]
     let currentVaultID: UUID?
     let disclosureScope: LibraryDisclosureScope?
     let selectedDocumentPath: String?
@@ -18,11 +19,11 @@ struct SidebarContext {
     let currentVaultRole: VaultRole
     let currentWorkspaceSlot: WorkspaceVaultSlot?
     let noteLifecycleRequest: NoteLifecycleRequest?
+    let canCreateNote: Bool
     let lifecycleMutationGeneration: UInt64
     let catalogIsAvailable: Bool
     let graphIsAvailable: Bool
     let tags: [String]
-    let statuses: [String]
     let authors: [String]
     let years: [Int]
     let propertyKeys: [String]
@@ -38,6 +39,11 @@ struct SidebarContext {
     let lifecycleItems: (NoteLocationScope) async throws -> [LifecycleLocationItem]
     let prepareLifecycle: (LifecycleLocationItem) -> Void
     let clearPreparedLifecycle: (String) -> Void
+    let createUntitledNote: (String?) -> Void
+    let createUntitledFolder: (String?) -> Void
+    let requestFolderLifecycle: (FolderLifecycleRequest) -> Void
+    let moveFolderToTrash: (String) async throws -> Void
+    let copyRelativePath: (String) -> Void
     let revealNote: (String) -> Void
     let setAside: (String) async throws -> Void
     let moveToTrash: (String) async throws -> Void
@@ -131,7 +137,11 @@ struct SidebarView: View {
 
     /// Build folder tree from filtered notes
     private var folderTree: [TreeNode] {
-        buildTree(from: filteredNotes, notesAreOrdered: context.notesAreOrdered)
+        buildTree(
+            from: filteredNotes,
+            folderRelativePaths: context.folders,
+            notesAreOrdered: context.notesAreOrdered
+        )
     }
 
     var body: some View {
@@ -377,7 +387,7 @@ struct SidebarView: View {
             libraryFilterMenu
 
             Button {
-                controller.requestLifecycle(.create)
+                context.createUntitledNote(nil)
             } label: {
                 Label("New Note", systemImage: "plus")
                     .labelStyle(.iconOnly)
@@ -388,6 +398,7 @@ struct SidebarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .disabled(!context.canCreateNote)
             .help("New Note")
             .accessibilityIdentifier("scholium.newNote")
         }
@@ -741,22 +752,6 @@ struct SidebarView: View {
                 }
                 .disabled(context.tags.isEmpty)
 
-                Menu("Status") {
-                    Button("Any Status") { updateFilters { $0.status = nil } }
-                    Divider()
-                    ForEach(context.statuses, id: \.self) { status in
-                        Button {
-                            updateFilters { $0.status = status }
-                        } label: {
-                            if controller.library.filters.status == status {
-                                Label(status.capitalized, systemImage: "checkmark")
-                            } else {
-                                Text(status.capitalized)
-                            }
-                        }
-                    }
-                }
-
                 if !context.authors.isEmpty {
                     Menu("Author") {
                         Button("Any Author") { updateFilters { $0.author = nil } }
@@ -916,7 +911,6 @@ struct SidebarView: View {
     private var activeMetadataFilterCount: Int {
         let filters = controller.library.filters
         return [
-            filters.status != nil,
             filters.author != nil,
             filters.year != nil,
             filters.propertyKey != nil && filters.propertyValue != nil,
@@ -956,7 +950,6 @@ struct SidebarView: View {
 
     private func clearMetadataFilters() {
         updateFilters {
-            $0.status = nil
             $0.author = nil
             $0.year = nil
             $0.propertyKey = nil
@@ -969,11 +962,18 @@ struct SidebarView: View {
 
     private var treeContext: SidebarTreeContext {
         SidebarTreeContext(
+            currentVaultID: context.currentVaultID,
             currentVaultRole: context.currentVaultRole,
             locationScope: controller.library.locationScope,
             resolvedIdentityPaths: context.resolvedIdentityPaths,
             openNote: context.openNote,
             requestLifecycle: { controller.requestLifecycle($0) },
+            canCreateNote: context.canCreateNote,
+            createUntitledNote: context.createUntitledNote,
+            createUntitledFolder: context.createUntitledFolder,
+            requestFolderLifecycle: context.requestFolderLifecycle,
+            moveFolderToTrash: context.moveFolderToTrash,
+            copyRelativePath: context.copyRelativePath,
             revealNote: context.revealNote,
             setAside: context.setAside,
             moveToTrash: context.moveToTrash,
@@ -1472,29 +1472,74 @@ struct TreeNode: Identifiable {
     let name: String     // display name
     let isFolder: Bool
     let note: WindowDocumentLocation?      // nil for folders
+    let folderRelativePath: String?         // nil for notes or ambiguous legacy roots
     let children: [TreeNode]
     let depth: Int
+
+    var folderIDs: Set<String> {
+        guard isFolder else { return [] }
+        return children.reduce(into: Set([id])) { result, child in
+            result.formUnion(child.folderIDs)
+        }
+    }
 }
 
 /// Build a folder tree from flat note list
 func buildTree(
     from notes: [WindowDocumentLocation],
+    folderRelativePaths folders: [String] = [],
     notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
 ) -> [TreeNode] {
     var roots: [TreeNode] = []
     var folderMap: [String: [WindowDocumentLocation]] = [:]
+    var folderRelativePaths: [String: String] = [:]
+    var ambiguousFolderPaths: Set<String> = []
+
+    func registerFolder(actualPath: String) {
+        let visiblePath = stripKBRootFolder(actualPath)
+        guard !visiblePath.isEmpty else { return }
+        let visibleParts = visiblePath.split(separator: "/").map(String.init)
+        let actualParts = actualPath.split(separator: "/").map(String.init)
+        guard actualParts.count >= visibleParts.count else { return }
+        let hiddenPrefixCount = actualParts.count - visibleParts.count
+        for count in 1...visibleParts.count {
+            let visibleAncestor = visibleParts.prefix(count).joined(separator: "/")
+            let actualAncestor = actualParts
+                .prefix(hiddenPrefixCount + count)
+                .joined(separator: "/")
+            if folderMap[visibleAncestor] == nil {
+                folderMap[visibleAncestor] = []
+            }
+            if let existing = folderRelativePaths[visibleAncestor],
+               existing != actualAncestor {
+                ambiguousFolderPaths.insert(visibleAncestor)
+            } else {
+                folderRelativePaths[visibleAncestor] = actualAncestor
+            }
+        }
+    }
+
+    for folder in folders {
+        registerFolder(actualPath: folder)
+    }
 
     for note in notes {
         // Strip KB root prefix (e.g., "papers/", "topics/", "output/")
         let stripped = stripKBRoot(note.relativePath)
         let parts = stripped.split(separator: "/").map(String.init)
         if parts.count == 0 || (parts.count == 1 && parts[0].isEmpty) {
-            roots.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, children: [], depth: 0))
+            roots.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, folderRelativePath: nil, children: [], depth: 0))
         } else if parts.count == 1 {
-            roots.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, children: [], depth: 0))
+            roots.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, folderRelativePath: nil, children: [], depth: 0))
         } else {
             let folderPath = parts.dropLast().joined(separator: "/")
             folderMap[folderPath, default: []].append(note)
+            registerFolder(
+                actualPath: note.relativePath
+                    .split(separator: "/")
+                    .dropLast()
+                    .joined(separator: "/")
+            )
         }
     }
 
@@ -1506,7 +1551,7 @@ func buildTree(
         // Add files directly in this folder
         if let files = folderMap[path] {
             for note in files {
-                children.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, children: [], depth: depth + 1))
+                children.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, folderRelativePath: nil, children: [], depth: depth + 1))
             }
         }
 
@@ -1517,11 +1562,21 @@ func buildTree(
             children.append(buildNode(path: sub, depth: depth + 1))
         }
 
-        return TreeNode(id: path, name: name, isFolder: true, note: nil, children: children.sorted { a, b in
-            if a.isFolder != b.isFolder { return a.isFolder }
-            if let left = a.note, let right = b.note { return notesAreOrdered(left, right) }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }, depth: depth)
+        return TreeNode(
+            id: path,
+            name: name,
+            isFolder: true,
+            note: nil,
+            folderRelativePath: ambiguousFolderPaths.contains(path)
+                ? nil
+                : folderRelativePaths[path],
+            children: children.sorted { a, b in
+                if a.isFolder != b.isFolder { return a.isFolder }
+                if let left = a.note, let right = b.note { return notesAreOrdered(left, right) }
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            },
+            depth: depth
+        )
     }
 
     // Collect top-level folders
@@ -1550,14 +1605,32 @@ func stripKBRoot(_ path: String) -> String {
     return path
 }
 
+func stripKBRootFolder(_ path: String) -> String {
+    for root in ["papers", "topics", "output"] {
+        if path == root { return "" }
+        let prefix = root + "/"
+        if path.hasPrefix(prefix) {
+            return String(path.dropFirst(prefix.count))
+        }
+    }
+    return path
+}
+
 // MARK: - Tree Node View
 
 private struct SidebarTreeContext {
+    let currentVaultID: UUID?
     let currentVaultRole: VaultRole
     let locationScope: NoteLocationScope
     let resolvedIdentityPaths: Set<String>
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let requestLifecycle: (NoteLifecycleRequest) -> Void
+    let canCreateNote: Bool
+    let createUntitledNote: (String?) -> Void
+    let createUntitledFolder: (String?) -> Void
+    let requestFolderLifecycle: (FolderLifecycleRequest) -> Void
+    let moveFolderToTrash: (String) async throws -> Void
+    let copyRelativePath: (String) -> Void
     let revealNote: (String) -> Void
     let setAside: (String) async throws -> Void
     let moveToTrash: (String) async throws -> Void
@@ -1574,6 +1647,7 @@ private struct TreeNodeView: View {
     let onSelect: (WindowDocumentLocation) -> Void
 
     @State private var pendingDestructiveAction: DestructiveAction?
+    @State private var pendingFolderTrashPath: String?
 
     private enum DestructiveAction: String, Identifiable {
         case setAside = "Set Aside"
@@ -1614,6 +1688,29 @@ private struct TreeNodeView: View {
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("scholium.folderRow.\(node.id)")
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .contextMenu { folderContextMenu }
+                .accessibilityActions { folderAccessibilityActions }
+                .confirmationDialog(
+                    "Move Folder to Trash?",
+                    isPresented: Binding(
+                        get: { pendingFolderTrashPath != nil },
+                        set: { if !$0 { pendingFolderTrashPath = nil } }
+                    ),
+                    titleVisibility: .visible
+                ) {
+                    Button("Move Folder and Notes to Trash", role: .destructive) {
+                        guard let path = pendingFolderTrashPath else { return }
+                        pendingFolderTrashPath = nil
+                        performFolderTrash(path)
+                    }
+                    Button("Cancel", role: .cancel) {
+                        pendingFolderTrashPath = nil
+                    }
+                } message: {
+                    Text(
+                        "Move ‘\(node.name)’ and all of its contents to Scholium Trash? Notes keep their identities; other files move with the folder unchanged."
+                    )
+                }
 
                 // Children
                 if isExpanded {
@@ -1726,9 +1823,25 @@ private struct TreeNodeView: View {
                     }
                     Divider()
                     Button {
+                        context.copyRelativePath(note.relativePath)
+                    } label: {
+                        Label("Copy Relative Path", systemImage: "doc.on.doc")
+                    }
+                    Button {
                         context.revealNote(note.relativePath)
                     } label: {
                         Label("Reveal in Finder", systemImage: "folder")
+                    }
+                }
+                .accessibilityActions {
+                    Button("Open in New Tab") {
+                        context.openNote(note, .newTab)
+                    }
+                    Button("Copy Relative Path") {
+                        context.copyRelativePath(note.relativePath)
+                    }
+                    Button("Reveal in Finder") {
+                        context.revealNote(note.relativePath)
                     }
                 }
                 .padding(.leading, CGFloat(node.depth * 12))
@@ -1764,6 +1877,173 @@ private struct TreeNodeView: View {
             update()
         } else {
             withAnimation(.easeInOut(duration: 0.16), update)
+        }
+    }
+
+    @ViewBuilder
+    private var folderContextMenu: some View {
+        if let folderRelativePath = node.folderRelativePath {
+            if canMutateFolder(folderRelativePath) {
+                Button {
+                    context.createUntitledNote(folderRelativePath)
+                } label: {
+                    Label("New Note", systemImage: "doc.badge.plus")
+                }
+                Button {
+                    context.createUntitledFolder(folderRelativePath)
+                } label: {
+                    Label("New Folder", systemImage: "folder.badge.plus")
+                }
+                if let target = folderTarget(folderRelativePath) {
+                    Button {
+                        context.requestFolderLifecycle(.rename(target))
+                    } label: {
+                        Label("Rename Folder…", systemImage: "pencil")
+                    }
+                    Button {
+                        context.requestFolderLifecycle(.move(target))
+                    } label: {
+                        Label("Move Folder…", systemImage: "folder")
+                    }
+                }
+            }
+
+            if !node.children.isEmpty {
+                Button(action: toggleEntireSubtree) {
+                    Label(
+                        subtreeIsExpanded ? "Collapse All" : "Expand All",
+                        systemImage: subtreeIsExpanded
+                            ? "rectangle.compress.vertical"
+                            : "rectangle.expand.vertical"
+                    )
+                }
+            }
+
+            if canMutateFolder(folderRelativePath) || !node.children.isEmpty {
+                Divider()
+            }
+
+            Button {
+                context.copyRelativePath(folderRelativePath)
+            } label: {
+                Label("Copy Relative Path", systemImage: "doc.on.doc")
+            }
+            Button {
+                context.revealNote(folderRelativePath)
+            } label: {
+                Label("Reveal in Finder", systemImage: "folder")
+            }
+            if canMutateFolder(folderRelativePath) {
+                Divider()
+                Button(role: .destructive) {
+                    pendingFolderTrashPath = folderRelativePath
+                } label: {
+                    Label("Move Folder and Notes to Trash…", systemImage: "trash")
+                }
+            }
+        } else if !node.children.isEmpty {
+            Button(action: toggleEntireSubtree) {
+                Label(
+                    subtreeIsExpanded ? "Collapse All" : "Expand All",
+                    systemImage: subtreeIsExpanded
+                        ? "rectangle.compress.vertical"
+                        : "rectangle.expand.vertical"
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var folderAccessibilityActions: some View {
+        if let folderRelativePath = node.folderRelativePath {
+            if canMutateFolder(folderRelativePath) {
+                Button("New Note") {
+                    context.createUntitledNote(folderRelativePath)
+                }
+                Button("New Folder") {
+                    context.createUntitledFolder(folderRelativePath)
+                }
+                if let target = folderTarget(folderRelativePath) {
+                    Button("Rename Folder") {
+                        context.requestFolderLifecycle(.rename(target))
+                    }
+                    Button("Move Folder") {
+                        context.requestFolderLifecycle(.move(target))
+                    }
+                }
+                Button("Move Folder and Notes to Trash") {
+                    pendingFolderTrashPath = folderRelativePath
+                }
+            }
+            Button("Copy Relative Path") {
+                context.copyRelativePath(folderRelativePath)
+            }
+            Button("Reveal in Finder") {
+                context.revealNote(folderRelativePath)
+            }
+        }
+        if !node.children.isEmpty {
+            Button(subtreeIsExpanded ? "Collapse All" : "Expand All") {
+                toggleEntireSubtree()
+            }
+        }
+    }
+
+    private var subtreeFolderIDs: Set<String> {
+        Set([node.id]).union(node.children.reduce(into: Set<String>()) { result, child in
+            guard child.isFolder else { return }
+            result.formUnion(child.folderIDs)
+        })
+    }
+
+    private var subtreeIsExpanded: Bool {
+        subtreeFolderIDs.isSubset(of: expandedFolders)
+    }
+
+    private func toggleEntireSubtree() {
+        let update = {
+            if subtreeIsExpanded {
+                expandedFolders.subtract(subtreeFolderIDs)
+            } else {
+                expandedFolders.formUnion(subtreeFolderIDs)
+            }
+        }
+        if reduceMotion {
+            update()
+        } else {
+            withAnimation(.easeInOut(duration: 0.16), update)
+        }
+    }
+
+    private func canCreateNote(in folderRelativePath: String) -> Bool {
+        guard context.canCreateNote else { return false }
+        let candidate = "\(folderRelativePath)/Untitled.md"
+        return !context.currentVaultRole.allowsCritique
+            || !CritiquePlacement.isManagedCritiquePath(candidate)
+    }
+
+    private func canMutateFolder(_ folderRelativePath: String) -> Bool {
+        canCreateNote(in: folderRelativePath)
+    }
+
+    private func folderTarget(_ relativePath: String) -> FolderLifecycleTarget? {
+        guard let vaultID = context.currentVaultID else { return nil }
+        return FolderLifecycleTarget(vaultID: vaultID, relativePath: relativePath)
+    }
+
+    private func performFolderTrash(_ relativePath: String) {
+        Task {
+            do {
+                try await context.moveFolderToTrash(relativePath)
+            } catch {
+                context.showError(
+                    String(
+                        localized: "Could not move this folder to Trash. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    )
+                )
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 import ScholiumContracts
 import Foundation
 import ScholiumCore
+import OSLog
 
 enum WorkspaceAccessConfiguration: Sendable {
     case live(
@@ -12,6 +13,7 @@ enum WorkspaceAccessConfiguration: Sendable {
 struct WorkspaceServices: Sendable {
     let manifest: TriptychManifest
     let repositories: [UUID: VaultRepository]
+    let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
     let researchSkillStore: ResearchSkillStore
@@ -78,10 +80,146 @@ enum DerivedRefreshFailureDisposition: Sendable {
     }
 }
 
+struct VaultSourceCatalogDelta: Sendable {
+    var upserts: Set<String> = []
+    var deletions: Set<String> = []
+    var refreshFolders = false
+
+    mutating func merge(_ other: Self) {
+        for path in other.deletions {
+            upserts.remove(path)
+            deletions.insert(path)
+        }
+        for path in other.upserts {
+            deletions.remove(path)
+            upserts.insert(path)
+        }
+        refreshFolders = refreshFolders || other.refreshFolders
+    }
+}
+
+enum SourceCatalogPreparation: Sendable {
+    case none
+    case delta([UUID: VaultSourceCatalogDelta])
+    case fullReconcile
+
+    static func inferred(from publication: RefreshPublication) -> Self {
+        switch publication {
+        case .sourceCommitted(let id, _):
+            .delta([id.vaultID: VaultSourceCatalogDelta(
+                upserts: [id.relativePath]
+            )])
+        case .liveInventory, .researchRecords:
+            .none
+        case .explicit, .runtimeReloaded:
+            .fullReconcile
+        }
+    }
+
+    static func merged(_ preparations: [Self]) -> Self {
+        guard !preparations.contains(where: {
+            if case .fullReconcile = $0 { true } else { false }
+        }) else { return .fullReconcile }
+        var merged: [UUID: VaultSourceCatalogDelta] = [:]
+        for preparation in preparations {
+            guard case .delta(let changes) = preparation else { continue }
+            for (vaultID, change) in changes {
+                merged[vaultID, default: VaultSourceCatalogDelta()].merge(change)
+            }
+        }
+        return merged.isEmpty ? .none : .delta(merged)
+    }
+}
+
+private enum WorkspaceRefreshCycleError: LocalizedError {
+    case graphGenerationExhausted
+
+    var errorDescription: String? {
+        "Workspace graph generation IDs were exhausted."
+    }
+}
+
+private struct WorkspaceSourceInventoryInput: Sendable {
+    let order: Int
+    let vaultID: UUID
+    let catalog: VaultSourceCatalog
+}
+
+private struct WorkspaceSourceInventorySnapshot: Sendable {
+    let order: Int
+    let vaultID: UUID
+    let snapshot: VaultSourceCatalogSnapshot
+}
+
+private struct WorkspaceRefreshPayload: Sendable {
+    let publication: RefreshPublication
+    let failureDisposition: DerivedRefreshFailureDisposition
+    let sourceCatalogPreparation: SourceCatalogPreparation
+
+    static func merged(_ payloads: [Self]) throws -> Self {
+        guard let first = payloads.first else { throw CancellationError() }
+        guard payloads.count > 1 else { return first }
+        var affectedVaultIDs: Set<UUID> = []
+        var includesCommittedMutation = false
+        for payload in payloads {
+            switch payload.failureDisposition {
+            case .staleAfterCommittedMutation(let affected):
+                includesCommittedMutation = true
+                affectedVaultIDs.formUnion(affected)
+            case .failed(let affected):
+                affectedVaultIDs.formUnion(affected)
+            }
+        }
+        return Self(
+            publication: mergedPublication(payloads.map(\.publication)),
+            failureDisposition: includesCommittedMutation
+                ? .staleAfterCommittedMutation(affectedVaultIDs: affectedVaultIDs)
+                : .failed(affectedVaultIDs: affectedVaultIDs),
+            sourceCatalogPreparation: .merged(
+                payloads.map(\.sourceCatalogPreparation)
+            )
+        )
+    }
+
+    private static func mergedPublication(
+        _ publications: [RefreshPublication]
+    ) -> RefreshPublication {
+        if publications.allSatisfy({
+            if case .researchRecords = $0 { true } else { false }
+        }) { return .researchRecords }
+        if publications.allSatisfy({
+            if case .liveInventory = $0 { true } else { false }
+        }) { return .liveInventory }
+        if publications.allSatisfy({
+            if case .runtimeReloaded = $0 { true } else { false }
+        }) { return .runtimeReloaded }
+        if publications.allSatisfy({
+            if case .explicit = $0 { true } else { false }
+        }) { return .explicit }
+        if case .sourceCommitted(let firstID, let firstKind) = publications[0],
+           publications.dropFirst().allSatisfy({ publication in
+               guard case .sourceCommitted(let id, let kind) = publication else {
+                   return false
+               }
+               return id == firstID && kind == firstKind
+           }) {
+            return .sourceCommitted(firstID, firstKind)
+        }
+        // One event generation cannot publish several source identities or
+        // heterogeneous semantic causes. A complete inventory event carries
+        // every changed note from the merged snapshot instead.
+        return .explicit
+    }
+}
+
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.
 public actor WorkspaceHandle {
+    private nonisolated static let refreshLogger = Logger(
+        subsystem: "com.scholium.app",
+        category: "WorkspaceRefresh"
+    )
     public nonisolated let id: UUID
     public nonisolated let runtimeIdentity: TriptychRuntimeIdentity
     public nonisolated let assignment: TriptychAssignment
@@ -94,14 +232,20 @@ public actor WorkspaceHandle {
     let services: WorkspaceServices
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
+    private(set) var latestRefreshMeasurement: WorkspaceRefreshMeasurement
     private var nextGraphGeneration = 2
-    private var refreshRequest: UInt64 = 0
-    private var appliedRefreshRequest: UInt64 = 0
+    private var refreshCoordinator: WorkspaceRefreshCoordinator<
+        WorkspaceRefreshPayload,
+        WorkspaceSnapshot
+    >!
     private var derivedStateRequiresRefresh = false
     private var isShutDown = false
     private var liveWatcherTask: Task<Void, Never>?
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
+    private var activeSourceMutationID: UUID?
+    private var refreshCycleIsActive = false
+    private var sourceGateWaiters: [CheckedContinuation<Void, Never>] = []
     private var didCompleteActivationReconciliation = false
     /// Plaintext activity keys live only for this open WorkspaceHandle. The
     /// durable grant store keeps a digest, so reopening never reconstructs a
@@ -114,6 +258,9 @@ public actor WorkspaceHandle {
         services: WorkspaceServices,
         leases: [SecurityScopeLease],
         initialSnapshot: WorkspaceSnapshot,
+        initialRefreshMeasurement: WorkspaceRefreshMeasurement,
+        initialWorkspaceGeneration: UInt64,
+        reference: WorkspaceHandleReference,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations
@@ -128,10 +275,21 @@ public actor WorkspaceHandle {
         self.services = services
         self.leases = leases
         currentSnapshot = initialSnapshot
+        latestRefreshMeasurement = initialRefreshMeasurement
         self.documents = documents
         self.discovery = discovery
         self.research = research
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
+        refreshCoordinator = WorkspaceRefreshCoordinator(
+            startingAfter: initialWorkspaceGeneration
+        ) {
+            requestID, payloads in
+            let handle = try await reference.requireHandle()
+            return try await handle.performRefreshCycle(
+                requestID: requestID,
+                payloads: payloads
+            )
+        }
     }
 
     static func open(
@@ -215,6 +373,14 @@ public actor WorkspaceHandle {
                 triptychID: manifest.id,
                 vaults: Array(assignment.vaults.values)
             )
+            let priorWorkspaceGeneration = try await openedSearchIndex.index
+                .workspaceGeneration()
+            guard priorWorkspaceGeneration < UInt64(Int.max) else {
+                throw SearchIndexError.invalidDocuments(
+                    "Search workspace generation IDs were exhausted."
+                )
+            }
+            let initialWorkspaceGeneration = priorWorkspaceGeneration + 1
 
             let triptychStorage = applicationSupportURL
                 .appendingPathComponent("Triptychs", isDirectory: true)
@@ -278,6 +444,9 @@ public actor WorkspaceHandle {
             let services = WorkspaceServices(
                 manifest: manifest,
                 repositories: repositories,
+                sourceCatalogs: Dictionary(uniqueKeysWithValues: pooledVaults.map {
+                    ($0.key, $0.value.sourceCatalog)
+                }),
                 searchIndex: openedSearchIndex.index,
                 controlStore: controlStore,
                 researchSkillStore: researchSkillStore,
@@ -322,15 +491,18 @@ public actor WorkspaceHandle {
             let preOpenInventory = mode == .live
                 ? try await sourceInventory(
                     assignment: assignment,
-                    repositories: services.repositories
+                    sourceCatalogs: services.sourceCatalogs
                 )
                 : nil
-            let initialSnapshot = try await WorkspaceSnapshotBuilder.build(
+            let initialBuild = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
                 services: services,
-                graphGeneration: 1
+                graphGeneration: 1,
+                workspaceGeneration: initialWorkspaceGeneration
             )
+            let initialSnapshot = initialBuild.snapshot
+            logRefresh(initialBuild.measurement, publicationDuration: nil)
             try Task.checkCancellation()
             let reference = WorkspaceHandleReference(workspaceID: assignment.id)
             let documentOperations = DocumentOperations(reference: reference)
@@ -346,6 +518,9 @@ public actor WorkspaceHandle {
                 services: services,
                 leases: leases,
                 initialSnapshot: initialSnapshot,
+                initialRefreshMeasurement: initialBuild.measurement,
+                initialWorkspaceGeneration: initialWorkspaceGeneration,
+                reference: reference,
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations
@@ -394,22 +569,28 @@ public actor WorkspaceHandle {
         let targetDocuments = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
             currentSnapshot.document(id: id).map { (id, $0.document) }
         })
+        let targetProfiles = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
+            currentSnapshot.document(id: id).map { (id, $0.schemaProfile) }
+        })
         return DocumentPreviewCatalogBuilder.build(
             source: source,
             sourceFingerprint: sourceFingerprint,
             graph: graph,
-            documents: targetDocuments
+            documents: targetDocuments,
+            profiles: targetProfiles
         )
     }
 
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
+        await refreshCoordinator.shutdown()
         let watcher = liveWatcherTask
         let refresh = liveIndexRefreshTask?.task
         liveWatcherTask = nil
         liveIndexRefreshTask = nil
         pendingLiveEvents.removeAll()
+        signalSourceGateChange()
         watcher?.cancel()
         refresh?.cancel()
         await watcher?.value
@@ -463,6 +644,11 @@ public actor WorkspaceHandle {
         content: String
     ) async throws -> NoteDocument {
         try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
         let repository = try repository(vaultID: id.vaultID)
         let registeredVault = try vault(id: id.vaultID)
         if registeredVault.role.allowsCritique,
@@ -492,25 +678,29 @@ public actor WorkspaceHandle {
             throw error
         }
         if let role = ResearchFunctionTargetRole(vaultRole: registeredVault.role) {
-            let title = document.parsedFrontmatter["title"]?.displayScalar
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let fallbackTitle = (id.relativePath as NSString)
-                .deletingPathExtension
-                .components(separatedBy: "/")
-                .last ?? id.relativePath
+            let title = ResearchNoteTitleResolver.resolve(
+                document: document,
+                vaultRole: registeredVault.role
+            ).title
             let reference = ResearchActivityNoteReference(
                 noteID: identity.id,
                 note: id,
                 role: role,
-                title: title?.isEmpty == false ? title! : fallbackTitle
+                title: title
             )
             _ = try await services.researchActivityStore.recordCreated(note: reference)
         }
+        endSourceMutation(mutationID)
+        ownsMutation = false
         do {
             _ = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: [id.vaultID]
+                ),
+                sourceCatalogPreparation: Self.catalogPreparation(
+                    upserts: [id],
+                    refreshFolderVaultIDs: [id.vaultID]
                 )
             )
         } catch {
@@ -526,30 +716,7 @@ public actor WorkspaceHandle {
         try requireActive()
         let registeredVault = try vault(id: request.id.vaultID)
         let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let researchStatus: AnalysisResearchStatusChoice = request.analysisResearchStatus
-
-        let scope: String?
-        let limitations: [String]
-        switch researchStatus {
-        case .declareNow(let proposedScope, let proposedLimitations):
-            scope = proposedScope.trimmingCharacters(in: .whitespacesAndNewlines)
-            limitations = proposedLimitations
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-        case .notYet:
-            scope = nil
-            limitations = []
-        }
-
-        var frontmatter: [String: YAMLValue] = [:]
-        if registeredVault.role == .sourceCorpus,
-           case .declareNow = researchStatus {
-            var researchUnit: [String: YAMLValue] = ["scope": .string(scope ?? "")]
-            if !limitations.isEmpty {
-                researchUnit["limitations"] = .array(limitations.map(YAMLValue.string))
-            }
-            frontmatter["research_unit"] = .object(researchUnit)
-        }
+        let frontmatter: [String: YAMLValue] = [:]
         let profile: SchemaProfileID = switch registeredVault.role {
         case .sourceCorpus: .analysis
         case .topicKnowledge: .topicMarkdown
@@ -563,35 +730,116 @@ public actor WorkspaceHandle {
         )
         guard issues.isEmpty else { throw DocumentCreationError.invalidMetadata(issues) }
 
-        let content: String
-        if registeredVault.role == .sourceCorpus, let scope, !scope.isEmpty {
-            var lines = [
-                "---",
-                "research_unit:",
-                "  scope: \(Self.yamlQuotedScalar(scope))",
-            ]
-            if !limitations.isEmpty {
-                lines.append("  limitations:")
-                lines.append(contentsOf: limitations.map {
-                    "    - \(Self.yamlQuotedScalar($0))"
-                })
-            }
-            lines.append("---")
-            if !title.isEmpty { lines.append("# \(title)") }
-            content = lines.joined(separator: "\n") + "\n"
-        } else {
-            content = title.isEmpty ? "" : "# \(title)\n"
-        }
+        let content = title.isEmpty ? "" : "# \(title)\n"
         return try await createDocument(request.id, content: content)
     }
 
-    private static func yamlQuotedScalar(_ value: String) -> String {
-        "\"" + value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\t", with: "\\t") + "\""
+    /// Claims the first available default note name through the repository's
+    /// atomic no-replace create. A collision can race any earlier inventory, so
+    /// only the authoritative create result decides whether to advance.
+    func createUntitledNote(
+        inVault vaultID: UUID,
+        folderRelativePath: String?
+    ) async throws -> NoteDocument {
+        var ordinal = 1
+        while true {
+            try Task.checkCancellation()
+            let filename = ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md"
+            let relativePath = if let folderRelativePath, !folderRelativePath.isEmpty {
+                "\(folderRelativePath)/\(filename)"
+            } else {
+                filename
+            }
+            do {
+                return try await createDocument(DocumentCreationRequest(
+                    id: VaultQualifiedNoteID(
+                        vaultID: vaultID,
+                        relativePath: relativePath
+                    ),
+                    title: ""
+                ))
+            } catch VaultRepositoryError.fileAlreadyExists {
+                ordinal += 1
+            } catch VaultRepositoryError.pathCollision {
+                ordinal += 1
+            }
+        }
+    }
+
+    /// Claims one default directory name. The returned path is a location, not
+    /// a new portable identity or research record.
+    func createUntitledFolder(
+        inVault vaultID: UUID,
+        parentRelativePath: String?
+    ) async throws -> VaultRelativeFolderPath {
+        try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
+        let registeredVault = try vault(id: vaultID)
+        if let parentRelativePath,
+           registeredVault.role.allowsCritique,
+           CritiquePlacement.isManagedCritiquePath(
+               parentRelativePath + "/placeholder.md"
+           ) {
+            throw CritiquePlacementError.directCreationRequiresRequestCritique
+        }
+        let repository = try repository(vaultID: vaultID)
+        var ordinal = 1
+        while true {
+            try Task.checkCancellation()
+            let name = ordinal == 1 ? "Untitled Folder" : "Untitled Folder \(ordinal)"
+            let relativePath = if let parentRelativePath, !parentRelativePath.isEmpty {
+                parentRelativePath + "/" + name
+            } else {
+                name
+            }
+            do {
+                let folder = try await repository.createFolder(relativePath: relativePath)
+                endSourceMutation(mutationID)
+                ownsMutation = false
+                do {
+                    _ = try await refreshFolderInventory(vaultID: vaultID)
+                } catch {
+                    throw ScholiumApplicationError.operationCommittedButRefreshFailed(
+                        operation: "Folder creation at \(folder.rawValue)",
+                        reason: error.localizedDescription
+                    )
+                }
+                return folder
+            } catch VaultRepositoryError.fileAlreadyExists {
+                ordinal += 1
+            } catch VaultRepositoryError.pathCollision {
+                ordinal += 1
+            }
+        }
+    }
+
+    func moveFolder(
+        inVault vaultID: UUID,
+        from sourceRelativePath: String,
+        to destinationRelativePath: String
+    ) async throws -> FolderMoveCommit {
+        try await coordinatedMoveFolder(
+            inVault: vaultID,
+            from: sourceRelativePath,
+            to: destinationRelativePath,
+            movesToLifecycle: false
+        )
+    }
+
+    func moveFolderToTrash(
+        inVault vaultID: UUID,
+        relativePath: String
+    ) async throws -> FolderMoveCommit {
+        try await coordinatedMoveFolder(
+            inVault: vaultID,
+            from: relativePath,
+            to: "Trash/" + relativePath,
+            movesToLifecycle: true
+        )
     }
 
     func duplicateDocument(
@@ -600,6 +848,11 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> NoteDocument {
         try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
         let repository = try repository(vaultID: id.vaultID)
         let registeredVault = try vault(id: id.vaultID)
         if registeredVault.role.allowsCritique,
@@ -632,11 +885,20 @@ public actor WorkspaceHandle {
             )
             throw error
         }
+        endSourceMutation(mutationID)
+        ownsMutation = false
         do {
             _ = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: [id.vaultID]
+                ),
+                sourceCatalogPreparation: Self.catalogPreparation(
+                    upserts: [VaultQualifiedNoteID(
+                        vaultID: id.vaultID,
+                        relativePath: destinationRelativePath
+                    )],
+                    refreshFolderVaultIDs: [id.vaultID]
                 )
             )
         } catch {
@@ -654,6 +916,11 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> SaveResult {
         try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
         let repository = try repository(vaultID: id.vaultID)
         let result: SaveResult
         do {
@@ -696,6 +963,8 @@ public actor WorkspaceHandle {
             }
             throw TriptychTransactionError.recoveryRequired(record)
         }
+        endSourceMutation(mutationID)
+        ownsMutation = false
         do {
             _ = try await refresh(
                 publication: .sourceCommitted(id, .save),
@@ -788,6 +1057,11 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> PermanentDeletionCommit {
         try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
         guard id.relativePath.hasPrefix("Trash/") else {
             throw VaultRepositoryError.invalidRelativePath(id.relativePath)
         }
@@ -814,11 +1088,17 @@ public actor WorkspaceHandle {
             expectedRevision: expectedRevision,
             checkpointArea: try checkpointArea(vaultID: id.vaultID)
         )
+        endSourceMutation(mutationID)
+        ownsMutation = false
         do {
             _ = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: [id.vaultID]
+                ),
+                sourceCatalogPreparation: Self.catalogPreparation(
+                    deletions: [id],
+                    refreshFolderVaultIDs: [id.vaultID]
                 )
             )
         } catch {
@@ -834,6 +1114,13 @@ public actor WorkspaceHandle {
         guard !isShutDown else {
             return [ScholiumApplicationError.workspaceShutDown(id).localizedDescription]
         }
+        let mutationID: UUID
+        do {
+            mutationID = try await beginSourceMutation()
+        } catch {
+            return [error.localizedDescription]
+        }
+        defer { endSourceMutation(mutationID) }
         var issues: [String] = []
         for (vaultID, repository) in services.repositories.sorted(by: {
             $0.key.uuidString < $1.key.uuidString
@@ -865,6 +1152,11 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> UnclassifiedClassificationCommit {
         try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
         guard let destinationVault = assignment.vault(for: slot),
               let destinationRepository = services.repositories[destinationVault.id] else {
             throw ScholiumApplicationError.incompleteTriptych(assignment.id)
@@ -895,11 +1187,17 @@ public actor WorkspaceHandle {
             relativePath: commit.destination.relativePath,
             fingerprint: commit.committedRevision
         )
+        endSourceMutation(mutationID)
+        ownsMutation = false
         do {
             _ = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: [destinationVault.id]
+                ),
+                sourceCatalogPreparation: Self.catalogPreparation(
+                    upserts: [commit.destination],
+                    refreshFolderVaultIDs: [destinationVault.id]
                 )
             )
         } catch {
@@ -942,30 +1240,64 @@ public actor WorkspaceHandle {
         publication: RefreshPublication,
         failureDisposition: DerivedRefreshFailureDisposition = .failed(
             affectedVaultIDs: []
-        )
+        ),
+        sourceCatalogPreparation: SourceCatalogPreparation? = nil
     ) async throws -> WorkspaceSnapshot {
         try requireActive()
-        refreshRequest &+= 1
-        let request = refreshRequest
-        let graphGeneration = nextGraphGeneration
-        nextGraphGeneration &+= 1
+        return try await refreshCoordinator.request(WorkspaceRefreshPayload(
+            publication: publication,
+            failureDisposition: failureDisposition,
+            sourceCatalogPreparation: sourceCatalogPreparation
+                ?? .inferred(from: publication)
+        ))
+    }
+
+    private func performRefreshCycle(
+        requestID: RefreshRequestID,
+        payloads: [WorkspaceRefreshPayload]
+    ) async throws -> WorkspaceSnapshot {
+        try await beginRefreshCycle()
+        defer { endRefreshCycle() }
+        let payload = try WorkspaceRefreshPayload.merged(payloads)
         let snapshot: WorkspaceSnapshot
+        let measurement: WorkspaceRefreshMeasurement
         do {
-            snapshot = try await WorkspaceSnapshotBuilder.build(
+            try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
+            guard nextGraphGeneration < Int.max else {
+                throw WorkspaceRefreshCycleError.graphGenerationExhausted
+            }
+            let indexedWorkspaceGeneration = try await services.searchIndex
+                .workspaceGeneration()
+            guard indexedWorkspaceGeneration < UInt64(Int.max) else {
+                throw SearchIndexError.invalidDocuments(
+                    "Search workspace generation IDs were exhausted."
+                )
+            }
+            let workspaceGeneration = max(
+                requestID.rawValue,
+                indexedWorkspaceGeneration + 1
+            )
+            let graphGeneration = nextGraphGeneration
+            nextGraphGeneration += 1
+            let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
                 services: services,
-                graphGeneration: graphGeneration
+                graphGeneration: graphGeneration,
+                workspaceGeneration: workspaceGeneration
             )
+            snapshot = build.snapshot
+            measurement = build.measurement
+            latestRefreshMeasurement = measurement
         } catch {
-            if !Task.isCancelled, !isShutDown, request > appliedRefreshRequest {
-                // A newer failed attempt supersedes older in-flight results in
-                // exactly the same way as a newer successful refresh.
-                appliedRefreshRequest = request
+            for catalog in services.sourceCatalogs.values {
+                await catalog.discardPendingMeasurement()
+            }
+            if !Task.isCancelled, !isShutDown {
                 derivedStateRequiresRefresh = true
                 await events.publishDerivedStateChanged(
                     snapshot: currentSnapshot,
-                    status: failureDisposition.status(
+                    status: payload.failureDisposition.status(
                         for: error,
                         lastKnownGood: currentSnapshot
                     )
@@ -974,19 +1306,89 @@ public actor WorkspaceHandle {
             throw error
         }
         try requireActive()
-        guard request > appliedRefreshRequest else { return currentSnapshot }
-        appliedRefreshRequest = request
         let previous = currentSnapshot
         currentSnapshot = snapshot
         let confirmsEarlierFailure = derivedStateRequiresRefresh
         derivedStateRequiresRefresh = false
+        let publicationStart = ContinuousClock().now
         await publish(
-            publication,
+            payload.publication,
             previous: previous,
             snapshot: snapshot,
             confirmsEarlierFailure: confirmsEarlierFailure
         )
+        Self.logRefresh(
+            measurement,
+            publicationDuration: publicationStart.duration(to: ContinuousClock().now)
+        )
         return snapshot
+    }
+
+    private nonisolated static func logRefresh(
+        _ measurement: WorkspaceRefreshMeasurement,
+        publicationDuration: Duration?
+    ) {
+        refreshLogger.info(
+            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
+        )
+    }
+
+    private func prepareSourceCatalogs(
+        _ preparation: SourceCatalogPreparation
+    ) async throws {
+        // Snapshot/CLI runtimes have no native watcher. Every publication must
+        // therefore stat-reconcile all three catalogs so an external addition,
+        // deletion, or unreadable source in another vault cannot be hidden by
+        // an otherwise precise local mutation. Unchanged notes are not read or
+        // reparsed because SourceVersion remains the cache gate.
+        if mode == .snapshot {
+            for catalog in services.sourceCatalogs.values {
+                try await catalog.reconcile()
+            }
+            return
+        }
+        switch preparation {
+        case .fullReconcile:
+            for catalog in services.sourceCatalogs.values {
+                try await catalog.reconcile()
+            }
+        case .none:
+            break
+        case .delta(let changes):
+            for (vaultID, change) in changes {
+                guard let catalog = services.sourceCatalogs[vaultID] else {
+                    throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
+                }
+                try await catalog.apply(
+                    upserts: change.upserts,
+                    deletions: change.deletions,
+                    refreshFolders: change.refreshFolders
+                )
+            }
+        }
+    }
+
+    private static func catalogPreparation(
+        upserts: [VaultQualifiedNoteID] = [],
+        deletions: [VaultQualifiedNoteID] = [],
+        refreshFolderVaultIDs: Set<UUID> = []
+    ) -> SourceCatalogPreparation {
+        var changes: [UUID: VaultSourceCatalogDelta] = [:]
+        for id in deletions {
+            changes[id.vaultID, default: VaultSourceCatalogDelta()]
+                .deletions.insert(id.relativePath)
+        }
+        for id in upserts {
+            var change = changes[id.vaultID, default: VaultSourceCatalogDelta()]
+            change.deletions.remove(id.relativePath)
+            change.upserts.insert(id.relativePath)
+            changes[id.vaultID] = change
+        }
+        for vaultID in refreshFolderVaultIDs {
+            changes[vaultID, default: VaultSourceCatalogDelta()]
+                .refreshFolders = true
+        }
+        return changes.isEmpty ? .none : .delta(changes)
     }
 
     private func publish(
@@ -1159,7 +1561,7 @@ public actor WorkspaceHandle {
         do {
             let observed = try await Self.sourceInventory(
                 assignment: assignment,
-                repositories: services.repositories
+                sourceCatalogs: services.sourceCatalogs
             )
             let published = sourceRevisions(in: currentSnapshot)
             let changedDuringActivation = observed != preOpenInventory
@@ -1194,7 +1596,59 @@ public actor WorkspaceHandle {
         var journal = pendingLiveEvents[vaultID] ?? VaultWatchEventJournal(capacity: 256)
         journal.append(event)
         pendingLiveEvents[vaultID] = journal
-        guard liveIndexRefreshTask == nil else { return }
+        startLiveIndexRefreshIfNeeded()
+    }
+
+    private func beginSourceMutation() async throws -> UUID {
+        while activeSourceMutationID != nil || refreshCycleIsActive {
+            try requireActive()
+            await waitForSourceGateChange()
+        }
+        try requireActive()
+        let id = UUID()
+        activeSourceMutationID = id
+        return id
+    }
+
+    private func endSourceMutation(_ id: UUID) {
+        precondition(activeSourceMutationID == id)
+        activeSourceMutationID = nil
+        signalSourceGateChange()
+        startLiveIndexRefreshIfNeeded()
+    }
+
+    private func beginRefreshCycle() async throws {
+        while activeSourceMutationID != nil || refreshCycleIsActive {
+            try requireActive()
+            await waitForSourceGateChange()
+        }
+        try requireActive()
+        refreshCycleIsActive = true
+    }
+
+    private func endRefreshCycle() {
+        precondition(refreshCycleIsActive)
+        refreshCycleIsActive = false
+        signalSourceGateChange()
+    }
+
+    private func waitForSourceGateChange() async {
+        await withCheckedContinuation { continuation in
+            sourceGateWaiters.append(continuation)
+        }
+    }
+
+    private func signalSourceGateChange() {
+        let waiters = sourceGateWaiters
+        sourceGateWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    private func startLiveIndexRefreshIfNeeded() {
+        guard !isShutDown,
+              activeSourceMutationID == nil,
+              !pendingLiveEvents.isEmpty,
+              liveIndexRefreshTask == nil else { return }
 
         let token = UUID()
         let task = Task { [weak self] in
@@ -1206,6 +1660,7 @@ public actor WorkspaceHandle {
 
     private func runLiveIndexRefresh(token: UUID) async {
         while !isShutDown, !pendingLiveEvents.isEmpty {
+            guard activeSourceMutationID == nil else { break }
             let pending = pendingLiveEvents
             pendingLiveEvents.removeAll()
             var changedVaultIDs: Set<UUID> = []
@@ -1249,6 +1704,15 @@ public actor WorkspaceHandle {
                     )
                     guard !changedVaultIDs.isEmpty else { continue }
                 }
+                guard activeSourceMutationID == nil else {
+                    for vaultID in changedVaultIDs {
+                        var journal = pendingLiveEvents[vaultID]
+                            ?? VaultWatchEventJournal(capacity: 256)
+                        journal.append(.reconciliationRequired(sequence: 0))
+                        pendingLiveEvents[vaultID] = journal
+                    }
+                    break
+                }
                 _ = try await refresh(
                     publication: .liveInventory,
                     failureDisposition: .failed(
@@ -1264,6 +1728,7 @@ public actor WorkspaceHandle {
         }
         if liveIndexRefreshTask?.token == token {
             liveIndexRefreshTask = nil
+            startLiveIndexRefreshIfNeeded()
         }
     }
 
@@ -1272,23 +1737,22 @@ public actor WorkspaceHandle {
         var changed: Set<UUID> = []
         for vaultID in vaultIDs {
             do {
-                let repository = try repository(vaultID: vaultID)
-                let paths = try await repository.markdownRelativePaths(
-                    includeLifecycle: true
-                )
+                guard let catalog = services.sourceCatalogs[vaultID] else {
+                    throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
+                }
+                let source = try await catalog.snapshot(refreshFolders: false)
                 let publishedForVault = published.filter {
                     $0.key.vaultID == vaultID
                 }
-                guard paths.count == publishedForVault.count else {
+                guard source.documents.count == publishedForVault.count else {
                     changed.insert(vaultID)
                     continue
                 }
-                for path in paths {
+                for document in source.documents {
                     let id = VaultQualifiedNoteID(
                         vaultID: vaultID,
-                        relativePath: path
+                        relativePath: document.relativePath
                     )
-                    let document = try await repository.load(relativePath: path)
                     if publishedForVault[id] != document.fingerprint {
                         changed.insert(vaultID)
                         break
@@ -1304,20 +1768,48 @@ public actor WorkspaceHandle {
 
     private static func sourceInventory(
         assignment: TriptychAssignment,
-        repositories: [UUID: VaultRepository]
+        sourceCatalogs: [UUID: VaultSourceCatalog]
     ) async throws -> [VaultQualifiedNoteID: DocumentFingerprint] {
-        var observed: [VaultQualifiedNoteID: DocumentFingerprint] = [:]
-        for slot in WorkspaceVaultSlot.allCases {
+        var inputs: [WorkspaceSourceInventoryInput] = []
+        for (order, slot) in WorkspaceVaultSlot.allCases.enumerated() {
             try Task.checkCancellation()
             guard let vault = assignment.vault(for: slot),
-                  let repository = repositories[vault.id] else {
+                  let catalog = sourceCatalogs[vault.id] else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
-            let paths = try await repository.markdownRelativePaths(includeLifecycle: true)
-            for path in paths {
+            inputs.append(WorkspaceSourceInventoryInput(
+                order: order,
+                vaultID: vault.id,
+                catalog: catalog
+            ))
+        }
+        let sources = try await withThrowingTaskGroup(
+            of: WorkspaceSourceInventorySnapshot.self
+        ) { group in
+            for input in inputs {
+                group.addTask {
+                    try Task.checkCancellation()
+                    return WorkspaceSourceInventorySnapshot(
+                        order: input.order,
+                        vaultID: input.vaultID,
+                        snapshot: try await input.catalog.snapshot()
+                    )
+                }
+            }
+            var loaded: [WorkspaceSourceInventorySnapshot] = []
+            for try await source in group {
+                loaded.append(source)
+            }
+            return loaded.sorted { $0.order < $1.order }
+        }
+        var observed: [VaultQualifiedNoteID: DocumentFingerprint] = [:]
+        for source in sources {
+            for document in source.snapshot.documents {
                 try Task.checkCancellation()
-                let document = try await repository.load(relativePath: path)
-                observed[VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)] =
+                observed[VaultQualifiedNoteID(
+                    vaultID: source.vaultID,
+                    relativePath: document.relativePath
+                )] =
                     document.fingerprint
             }
         }
@@ -1583,6 +2075,11 @@ public actor WorkspaceHandle {
         validatesCritiquePlacement: Bool
     ) async throws -> TriptychMoveCommit {
         try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
         let destination = VaultQualifiedNoteID(
             vaultID: source.vaultID,
             relativePath: destinationRelativePath
@@ -1647,11 +2144,18 @@ public actor WorkspaceHandle {
             identityFailure = error
         }
 
+        endSourceMutation(mutationID)
+        ownsMutation = false
         do {
             _ = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: Set(repositories.keys)
+                ),
+                sourceCatalogPreparation: Self.catalogPreparation(
+                    upserts: [commit.destination] + commit.rewrites.map(\.note),
+                    deletions: [commit.movedNote],
+                    refreshFolderVaultIDs: [source.vaultID]
                 )
             )
         } catch {
@@ -1662,6 +2166,234 @@ public actor WorkspaceHandle {
         }
         if let identityFailure { throw identityFailure }
         return commit
+    }
+
+    private func coordinatedMoveFolder(
+        inVault vaultID: UUID,
+        from sourceRelativePath: String,
+        to destinationRelativePath: String,
+        movesToLifecycle: Bool
+    ) async throws -> FolderMoveCommit {
+        try requireActive()
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
+        let sourceFolder: VaultRelativeFolderPath
+        let destinationFolder: VaultRelativeFolderPath
+        do {
+            sourceFolder = try VaultRelativeFolderPath(sourceRelativePath)
+            destinationFolder = try VaultRelativeFolderPath(destinationRelativePath)
+        } catch {
+            throw VaultRepositoryError.invalidRelativePath(
+                sourceRelativePath + " → " + destinationRelativePath
+            )
+        }
+        guard WorkspaceDocumentLifecycle(
+            relativePath: sourceFolder.rawValue + "/placeholder.md"
+        ) == .active else {
+            throw VaultRepositoryError.invalidRelativePath(sourceFolder.rawValue)
+        }
+        let destinationLifecycle = WorkspaceDocumentLifecycle(
+            relativePath: destinationFolder.rawValue + "/placeholder.md"
+        )
+        guard movesToLifecycle ? destinationLifecycle == .trash : destinationLifecycle == .active else {
+            throw VaultRepositoryError.invalidRelativePath(destinationFolder.rawValue)
+        }
+
+        let registeredVault = try vault(id: vaultID)
+        let sourceIsManagedCritiqueFolder = CritiquePlacement.isManagedCritiquePath(
+            sourceFolder.rawValue + "/placeholder.md"
+        )
+        let destinationIsManagedCritiqueFolder = CritiquePlacement.isManagedCritiquePath(
+            destinationFolder.rawValue + "/placeholder.md"
+        )
+        if registeredVault.role.allowsCritique,
+           sourceIsManagedCritiqueFolder || destinationIsManagedCritiqueFolder {
+            throw CritiquePlacementError.crossesCritiqueBoundary(
+                source: sourceFolder.rawValue,
+                destination: destinationFolder.rawValue
+            )
+        }
+        guard let vaultSnapshot = currentSnapshot.vault(id: vaultID) else {
+            throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
+        }
+        let sourcePrefix = sourceFolder.rawValue + "/"
+        let destinationPrefix = destinationFolder.rawValue + "/"
+        let descendants = vaultSnapshot.documents
+            .filter { $0.id.relativePath.hasPrefix(sourcePrefix) }
+            .sorted { $0.id.relativePath < $1.id.relativePath }
+        var noteMoves: [FolderNoteMovePlan] = []
+        for note in descendants {
+            guard case .resolved(let stableNoteID) = note.stableIdentity else {
+                throw NoteIdentityRecoveryError.identityUnresolved(note.id.relativePath)
+            }
+            let suffix = note.id.relativePath.dropFirst(sourcePrefix.count)
+            noteMoves.append(FolderNoteMovePlan(
+                stableNoteID: stableNoteID,
+                source: note.id,
+                destination: VaultQualifiedNoteID(
+                    vaultID: vaultID,
+                    relativePath: destinationPrefix + suffix
+                ),
+                expectedRevision: note.fingerprint
+            ))
+        }
+
+        let plan: FolderIncomingLinkRewritePlan
+        let repositories: [UUID: VaultRepository]
+        if !movesToLifecycle {
+            repositories = services.repositories
+            plan = try await workspaceFolderMovePlan(
+                vaultID: vaultID,
+                sourceFolder: sourceFolder,
+                destinationFolder: destinationFolder,
+                noteMoves: noteMoves
+            )
+        } else {
+            repositories = [vaultID: try repository(vaultID: vaultID)]
+            plan = FolderIncomingLinkRewritePlan(
+                vaultID: vaultID,
+                sourceFolder: sourceFolder,
+                destinationFolder: destinationFolder,
+                graphGeneration: currentSnapshot.discovery.catalog.graph?.generation ?? 0,
+                noteMoves: noteMoves,
+                rewrites: []
+            )
+        }
+
+        let coordinator = TriptychFolderMoveCoordinator(
+            triptychID: services.manifest.id,
+            repositories: repositories,
+            recoveryStore: services.transactionRecoveryStore
+        )
+        let commit = try await coordinator.move(plan)
+
+        var identityFailure: Error?
+        do {
+            _ = try await services.controlStore.moveIdentities(commit.noteMoves)
+            let failures = await services.identityRecoveryCoordinator.resumePendingRebindings(
+                vaultID: vaultID,
+                repository: try repository(vaultID: vaultID),
+                migrateCritiquePaths: assignment.vault(for: .output)?.id == vaultID
+            )
+            let movedIDs = Set(commit.noteMoves.map(\.stableNoteID))
+            if let failure = failures.first(where: {
+                movedIDs.contains($0.rebinding.noteID)
+            }) {
+                identityFailure = NoteIdentityMigrationError.incomplete(failure.message)
+            }
+        } catch {
+            identityFailure = error
+        }
+
+        let affectedVaultIDs = Set(plan.rewrites.map { $0.source.vaultID })
+            .union([vaultID])
+        endSourceMutation(mutationID)
+        ownsMutation = false
+        do {
+            if commit.noteMoves.isEmpty, plan.rewrites.isEmpty {
+                _ = try await refreshFolderInventory(vaultID: vaultID)
+            } else {
+                _ = try await refresh(
+                    publication: .explicit,
+                    failureDisposition: .staleAfterCommittedMutation(
+                        affectedVaultIDs: affectedVaultIDs
+                    ),
+                    sourceCatalogPreparation: Self.catalogPreparation(
+                        upserts: commit.noteMoves.map(\.destination)
+                            + commit.rewrites.map(\.note),
+                        deletions: commit.noteMoves.map(\.source),
+                        refreshFolderVaultIDs: [vaultID]
+                    )
+                )
+            }
+        } catch {
+            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
+                operation: "Folder move from \(sourceFolder.rawValue) to \(destinationFolder.rawValue)",
+                reason: error.localizedDescription
+            )
+        }
+        if let identityFailure { throw identityFailure }
+        return commit
+    }
+
+    /// Serially republishes directory classifications after an empty-folder
+    /// mutation. Unchanged source versions avoid Markdown reads and parses;
+    /// the correctness-first pipeline may still reassemble the in-memory graph
+    /// and synchronize an unchanged Search manifest.
+    private func refreshFolderInventory(vaultID: UUID) async throws
+        -> WorkspaceSnapshot
+    {
+        try await refresh(
+            publication: .explicit,
+            failureDisposition: .staleAfterCommittedMutation(
+                affectedVaultIDs: [vaultID]
+            ),
+            sourceCatalogPreparation: Self.catalogPreparation(
+                refreshFolderVaultIDs: [vaultID]
+            )
+        )
+    }
+
+    private func workspaceFolderMovePlan(
+        vaultID: UUID,
+        sourceFolder: VaultRelativeFolderPath,
+        destinationFolder: VaultRelativeFolderPath,
+        noteMoves: [FolderNoteMovePlan]
+    ) async throws -> FolderIncomingLinkRewritePlan {
+        var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
+        for registeredVault in orderedVaults() {
+            let repository = try repository(vaultID: registeredVault.id)
+            for path in try await repository.markdownRelativePaths() {
+                let document = try await repository.load(relativePath: path)
+                documents[VaultQualifiedNoteID(
+                    vaultID: registeredVault.id,
+                    relativePath: path
+                )] = document
+            }
+        }
+        for move in noteMoves {
+            guard let current = documents[move.source],
+                  current.fingerprint == move.expectedRevision else {
+                throw VaultRepositoryError.conflict(
+                    expected: move.expectedRevision,
+                    current: documents[move.source]?.fingerprint ?? move.expectedRevision
+                )
+            }
+        }
+        let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let vaultRoles = Dictionary(uniqueKeysWithValues: orderedVaults().map {
+            ($0.id, $0.role)
+        })
+        let catalog = documents.map { id, document in
+            let role = vaultRoles[id.vaultID] ?? .other
+            return LinkCatalogNote(
+                vaultID: id.vaultID,
+                document: document,
+                profile: WorkflowProfileResolver.resolve(
+                    vaultRole: role,
+                    frontmatter: document.parsedFrontmatter,
+                    relativePath: document.relativePath
+                ),
+                semantic: semantics[id]
+            )
+        }
+        let graph = LinkGraphBuilder.build(
+            generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
+            catalog: catalog,
+            documents: semantics,
+            resolutionScope: .workspace
+        )
+        return IncomingLinkRewriter.folderPlan(
+            documents: documents,
+            graph: graph,
+            vaultID: vaultID,
+            sourceFolder: sourceFolder,
+            destinationFolder: destinationFolder,
+            noteMoves: noteMoves
+        )
     }
 
     private func workspaceMovePlan(
@@ -1680,10 +2412,19 @@ public actor WorkspaceHandle {
             }
         }
         let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let vaultRoles = Dictionary(uniqueKeysWithValues: orderedVaults().map {
+            ($0.id, $0.role)
+        })
         let catalog = documents.map { id, document in
-            LinkCatalogNote(
+            let role = vaultRoles[id.vaultID] ?? .other
+            return LinkCatalogNote(
                 vaultID: id.vaultID,
                 document: document,
+                profile: WorkflowProfileResolver.resolve(
+                    vaultRole: role,
+                    frontmatter: document.parsedFrontmatter,
+                    relativePath: document.relativePath
+                ),
                 semantic: semantics[id]
             )
         }

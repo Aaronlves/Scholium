@@ -1,6 +1,7 @@
 import ScholiumContracts
 import Combine
 import Foundation
+import OSLog
 import ScholiumApplication
 #if canImport(AppKit)
 import AppKit
@@ -133,6 +134,10 @@ struct FileAgentApplicationPreferenceStore: AgentApplicationPreferencePersisting
 /// coordinates editor flushes across windows, and owns app-only services.
 @MainActor
 final class WorkspaceStore: ObservableObject {
+    private static let publicationLogger = Logger(
+        subsystem: "com.scholium.app",
+        category: "WorkspacePublication"
+    )
     let applicationSupportURL: URL
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
@@ -158,19 +163,10 @@ final class WorkspaceStore: ObservableObject {
     private var eventGates: [UUID: WorkspaceEventGenerationGate] = [:]
     private var editorFlushRegistrations: [UUID: WorkspaceEditorFlushRegistration] = [:]
 
-    init() {
-        if let isolatedHome = ScholiumRuntimeIsolation.homeURL() {
-            applicationSupportURL = isolatedHome.appendingPathComponent(
-                "ApplicationSupport",
-                isDirectory: true
-            )
-        } else {
-            applicationSupportURL = (try? ScholiumPaths.sharedApplicationSupportURL())
-                ?? FileManager.default.temporaryDirectory.appendingPathComponent(
-                    "Scholium",
-                    isDirectory: true
-                )
-        }
+    init(applicationSupportURL requestedURL: URL) throws {
+        let applicationSupportURL = requestedURL.standardizedFileURL
+        try Self.validateApplicationSupportURL(applicationSupportURL)
+        self.applicationSupportURL = applicationSupportURL
         let workspaceURL = applicationSupportURL.appendingPathComponent(
             "Workspace",
             isDirectory: true
@@ -185,6 +181,33 @@ final class WorkspaceStore: ObservableObject {
         agentApplicationHandoff = AgentApplicationHandoffController(
             applicationSupportURL: applicationSupportURL
         )
+    }
+
+    private static func validateApplicationSupportURL(_ url: URL) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: url,
+            withIntermediateDirectories: true
+        )
+        let values = try url.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+        ])
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+
+        let probe = url.appendingPathComponent(
+            ".scholium-storage-probe-\(UUID().uuidString.lowercased())",
+            isDirectory: false
+        )
+        do {
+            try Data().write(to: probe, options: .withoutOverwriting)
+            try fileManager.removeItem(at: probe)
+        } catch {
+            try? fileManager.removeItem(at: probe)
+            throw error
+        }
     }
 
     deinit {
@@ -310,6 +333,16 @@ final class WorkspaceStore: ObservableObject {
 
     func saveWindowSession(_ snapshot: WindowSessionSnapshot) async throws {
         try await applicationRuntime.saveWindowSession(snapshot)
+    }
+
+    func saveWindowSession(
+        _ snapshot: WindowSessionSnapshot,
+        attempt: LifecycleAttemptID
+    ) async throws {
+        try await applicationRuntime.saveWindowSession(
+            snapshot,
+            generation: attempt.rawValue
+        )
     }
 
     private func workspaceHandle(id: UUID) async throws -> WorkspaceHandle {
@@ -474,7 +507,9 @@ final class WorkspaceStore: ObservableObject {
             zotero: WorkspaceSettingsZoteroCapabilities(
                 zoteroConnectionInfo: { [self] in await zoteroBridge.connectionInfo() },
                 openZotero: { [self] in await zoteroBridge.openZotero() },
-                forgetZoteroCache: { [self] in try await zoteroBridge.forgetCache() },
+                clearZoteroConnectionHistory: {
+                    [self] in try await zoteroBridge.clearConnectionHistory()
+                },
                 refreshZoteroLibraryInfo: { [self] in
                     try await zoteroBridge.refreshLibraryInfo()
                 }
@@ -805,10 +840,15 @@ final class WorkspaceStore: ObservableObject {
               handle.runtimeIdentity.activationID == activationID else { return }
         var gate = eventGates[triptychID] ?? WorkspaceEventGenerationGate()
         guard gate.accept(event) else { return }
+        let publicationStart = ContinuousClock().now
         eventGates[triptychID] = gate
         workspaceEvents[triptychID] = event
         workspaceSnapshots[triptychID] = event.snapshot
         workspaceEventGenerations[triptychID] = event.generation
         workspaceDerivedRefreshStatuses[triptychID] = event.derivedRefreshStatus
+        let publicationDuration = publicationStart.duration(to: ContinuousClock().now)
+        Self.publicationLogger.info(
+            "generation=\(event.generation, privacy: .public) notes=\(event.snapshot.vaults.flatMap(\.documents).count, privacy: .public) mainActorPublish=\(String(describing: publicationDuration), privacy: .public)"
+        )
     }
 }

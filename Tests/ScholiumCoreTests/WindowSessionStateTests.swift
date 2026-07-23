@@ -54,6 +54,21 @@ struct WindowSessionStateTests {
         #expect(normalized.scrollPositions == ["Present.md": 0.8])
     }
 
+    @Test("A late older lifecycle generation cannot replace newer window state")
+    func staleWriteGenerationIsRejected() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WindowSessionSnapshotStore(applicationSupportURL: root)
+        let id = UUID()
+        let newer = WindowSessionSnapshot(id: id, inspectorMode: "actions")
+        let older = WindowSessionSnapshot(id: id, inspectorMode: "overview")
+
+        try await store.save(newer, generation: 2)
+        try await store.save(older, generation: 1)
+
+        #expect(try await store.load(id: id) == newer)
+    }
+
     @Test("Normalization preserves a selected document from a different browsed vault")
     func normalizationPreservesIndependentLibraryVault() {
         let browsedVaultID = UUID()

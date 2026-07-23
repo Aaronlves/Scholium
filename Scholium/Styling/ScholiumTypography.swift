@@ -254,14 +254,14 @@ enum ScholiumInterfaceTypography {
     /// remain distinct from their more tightly grouped content.
     static let apparatusLabel = Font.system(size: 10, weight: .semibold)
 
-    /// Operational Inspector text remains system sans-serif. Research-object
-    /// names and researcher-authored judgments use the editorial serif roles.
+    /// Operational labels remain system sans-serif. Explanations, values, and
+    /// researcher-authored text use the editorial serif role below.
     static let apparatusBody = Font.system(size: 11, weight: .regular)
-    static let apparatusMetadata = Font.system(size: 9.5, weight: .regular)
+    static let apparatusMetadata = Font.system(size: 10, weight: .regular)
     static let apparatusActionTitle = Font.system(size: 12, weight: .semibold)
     static let apparatusResearchContent = ScholiumTypography.swiftUIReadingFont(
         size: 12,
-        relativeTo: .caption
+        relativeTo: .body
     )
     static let reviewValue = ScholiumTypography.swiftUIReadingFont(
         size: 18,

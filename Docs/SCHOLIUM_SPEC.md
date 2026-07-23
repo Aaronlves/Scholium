@@ -216,6 +216,12 @@ Application Support owns:
   Critique, and Research Record data; and
 - self-contained Triptych checkpoints.
 
+Production requires the real per-user Application Support root before it may
+construct a workspace runtime or any machine-owned store. Failure to resolve,
+contain, create, or verify that root never falls back to a temporary directory
+and never creates an implicit read-only runtime. QA may substitute only an
+explicit isolated root supplied by its launch contract.
+
 ### 3.4 Triptych Guide and AI instructions
 
 The agent-facing Guide states vault roles, researcher-owned Works organization,
@@ -328,29 +334,45 @@ top clearance belongs to the scrolling document.
 
 ### 5.2 Properties
 
-Each vault has one profile for visible fields, order, disclosure, and editable
-allowlist; no folder/note layouts exist. Identity, fingerprints, provenance,
-and app facts are protected in Properties but visible in exact Source YAML.
+Properties keeps three independent contracts: canonical vocabulary and
+ownership, the default About profile, and creation requirements. Visibility
+does not imply recognition or editability. Analysis, Topic, and Work have no
+required creation property; the interface uses no asterisk or required-looking
+marker. Cross-field validation remains fail-closed for values that are supplied.
 
-The optional Research Unit has one shape:
+Each vault may configure visible About fields and order from its role-specific
+About catalog; no folder/note layouts or default disclosure state exist.
+Complete Properties is an explicit editing destination. Identity,
+fingerprints, provenance, protected-machine fields, and app facts are not
+ordinary Properties controls even when exact Source YAML contains them.
 
-```yaml
-research_unit:
-  scope: "Introduction and Chapters 1–4"
-  limitations:
-    - "Chapters 5–8 and the appendix have not been analyzed."
-```
+`research_unit` is role-aware:
 
-When present, `scope` is non-empty and `limitations` contains only material
-claim boundaries—never role, identity, links, confidence, coverage percentage,
-reading passes, timestamps, or derived facts.
+- Analysis accepts `completion` and/or `limitations`;
+- Topic and Work accept `scope` and/or `limitations`; Work labels `scope`
+  **Research Scope**.
 
-New Analysis offers **Declare Now** or **Not Yet**. Not Yet writes no mapping
-or sentinel and blocks no Annotation, Comment, Discuss, Write, Fidelity, or
-Settle action. Existing Analyses receive no migration. Topics and Works use the
-same optional mapping only when it adds a durable boundary not already clear
-from title, body, or links. An authorized agent edit follows the Research
-Activity Grant, conflict, and source-preservation rules.
+Empty mappings, unknown members, wrong member types, or members from another
+role are invalid. Removing one member preserves the others; only removing the
+last non-empty member removes the mapping. Limitations are material claim
+boundaries, never identity, links, confidence, timestamps, derived facts, or a
+generic workflow state. An authorized agent edit follows the Research Activity
+Grant, conflict, fingerprint, and exact-source preservation rules.
+
+Analysis `completion` is `complete`, `incomplete`, or a quoted ratio such as
+`"6/11"`. A ratio requires a positive total and `0 <= completed <= total`.
+It states represented material only: it quietly reminds the researcher of
+incompleteness but does not identify units, certify adequacy, create a ledger,
+gate work, enter Search, or duplicate a Limitation. A single article in an
+edited collection may use the binary form. The researcher or an authorized
+agent chooses the form; Scholium never infers it from Zotero type, children,
+or page count.
+
+Analysis retains YAML `title` for source identity and agent indexing but About
+does not show it. Analysis resolves display identity as YAML `title`, then the
+first H1, then filename. Topic and Work do not recognize YAML `title`; both use
+the first H1, then filename. One shared resolver supplies Workspace, Search,
+Link Graph, and Research Functions.
 
 Creation/modification times are app-owned Research Record facts, not
 Properties; existing timestamp keys remain exact custom source.
@@ -364,12 +386,66 @@ low with unrated notes afterward. No global cross-debate ranking exists;
 Scholium neither generates nor presents Project Relevance. Existing
 `relevance` and `relevance_rating` keys remain preserved custom data.
 
-About and Properties present `research_unit` as Scope first and every non-empty
-Limitation second. Absence is quiet and writes nothing. A role-specific
-top-level `status` is separate production progress, never time, settlement, or
-truth. See Appendix A.
+About omits absent fields without explanatory empty copy. Its role-specific
+order is defined in Appendix A. `status` has no Scholium semantics, query,
+index, filter, ordering, or UI. Work `deadline`, Topic/Work YAML `title`,
+required markers, and **Open Properties by Default** likewise do not exist.
+Unknown source YAML remains byte-preserved but acquires no retired semantics.
 
-### 5.3 Duplicate, rename, and identity
+### 5.3 Create, duplicate, rename, and identity
+
+**New Note** is an immediate, nonmodal action. The Library-header Add button
+creates an empty Markdown note at the current vault root. **File → New Note**
+and its keyboard shortcut perform the same focused-window action. A folder
+row's **New Note** context action creates inside that exact vault-relative
+folder; the folder row also exposes an accessibility action, so secondary click
+is not the only route to the contextual operation.
+
+An ordinary folder context menu is compact and ordered by semantic group:
+
+1. **New Note**, **New Folder**, **Rename Folder…**, and **Move Folder…**;
+2. **Expand All** or **Collapse All** when the folder has descendants;
+3. **Copy Relative Path** and **Reveal in Finder**;
+4. destructive **Move Folder and Notes to Trash…** at the bottom.
+
+Expansion mutates only window-local disclosure state. Copy and Reveal expose
+the exact existing vault-relative folder without changing research source.
+Ordinary note rows likewise expose **Copy Relative Path** beside their existing
+open, lifecycle, and Finder actions; Open in New Tab, Copy, and Reveal also
+remain available as accessibility actions.
+
+A folder is only a vault-relative filesystem location used for classification.
+It has no UUID, Properties, Research Record, checkpoint identity, or independent
+lifecycle record. Empty folders remain visible in Library. **New Folder**
+immediately and atomically claims `Untitled Folder`, `Untitled Folder 2`, and so
+on inside the clicked folder; it opens no sheet. Rename and Move use one scoped
+sheet only because the researcher must supply a name or destination.
+
+A confirmed folder rename or move flushes every open editor in the Triptych,
+rechecks the complete descendant Markdown path-and-fingerprint inventory, and
+then renames the directory entry once without replacement. Each descendant note
+retains its stable identity; all identity paths are rebound in one portable
+state write, app-owned path projections resume idempotently, and only exact
+already-resolved incoming links are rewritten against one future graph.
+Ambiguous links, a changed inventory, a symlink boundary, moving into the
+source subtree, or any destination collision aborts the operation. A failed
+link transaction rolls back or leaves durable recovery evidence. Non-Markdown
+contents move with the same directory without being parsed or rewritten.
+
+**Move Folder and Notes to Trash…** requires confirmation, moves the directory
+once beneath `Trash/`, and gives each descendant note the ordinary Trash
+location semantics while preserving its stable identity. The folder itself
+still has no lifecycle identity. Managed Critiques and ambiguous legacy folder
+projections omit all source-mutating folder actions. Every contextual operation
+has an equivalent accessibility action; secondary click is never the only path.
+
+Scholium atomically claims the first available path in the sequence
+`Untitled.md`, `Untitled 2.md`, `Untitled 3.md`, and so on. It never replaces an
+existing or comparison-equivalent path. A concurrent collision advances to the
+next name; another error stops without creating a substitute elsewhere.
+Successful creation selects and opens the note. Creation never presents a
+sheet, popover, naming form, or required-properties step; naming and Properties
+remain later explicit edits.
 
 Paths are locations; notes have stable app-owned identities. Duplication creates
 a new identity with no inherited Settlement or Research Activity and records
@@ -449,19 +525,26 @@ the current role-valid note:
 
 | Target | Functions, in order |
 | --- | --- |
-| Analysis or Topic | **Work with Agent, Fidelity** |
-| Work | **Work with Agent, Critique, Fidelity, Manuscript** |
+| Analysis or Topic | **Discuss, Write, Check Fidelity** |
+| Work | **Discuss, Write, Critique, Check Fidelity, Manuscript** |
 
-Work with Agent first asks for **Discuss** or **Write**. Discuss is read-only.
-Write opens the internal Develop method for an Analysis or Topic and the
-internal Revise method for a Work. These implementation methods are never
-top-level Actions launchers.
+**Work with Agent** is a static grouping title, never a launcher, menu, or
+intermediate choice screen. Its **Discuss** and **Write** rows are directly
+reachable. Discuss is read-only. Write opens the internal Develop method for an
+Analysis or Topic and the internal Revise method for a Work; those method names
+remain implementation identities rather than additional launchers.
+
+**Check Fidelity** prepares the complete Fidelity Research Function with its
+selected scope, exact revisions, Materials, method skills, and agent handoff.
+Selecting the row never synthesizes a result or Research Activity event; only
+validated agent completion against the exact revision may do so.
 
 These stable operations are not a taxonomy of philosophy. There is no Manage
 Comments doorway, Review state, or embedded settlement sheet.
 
 The optional-agent journey is choose function, inspect context, prepare durable
-run, hand off, explicitly paste/submit when needed, then inspect source/status.
+run, hand off, explicitly paste/submit when needed, then inspect source and
+run state.
 Hide technical identities unless repair or recovery needs them.
 
 Beta uses provider-neutral copy-first handoff. **Copy and Choose Agent App…**
@@ -510,8 +593,7 @@ finished Discuss with no confirmed write creates Discussed; once the researcher
 chooses Write, completion creates Developed or Revised instead and never also
 creates Discussed.
 
-Work with Agent asks for **Discuss** or **Write** before preparation. Write then
-asks the researcher to authorize exactly one scope:
+The direct **Write** row asks the researcher to authorize exactly one scope:
 
 - **Current Note**;
 - **Selected Notes**, initially empty and explicitly chosen by the researcher;
@@ -904,7 +986,7 @@ temporarily selects **This Note**. Dismissal restores the prior scope unless the
 researcher explicitly changed it, cancels work, rejects stale results, and
 clears query/results while retaining scope and saved searches.
 
-Beta Search contract v3 uses one deterministic local SQLite FTS5 corpus for
+Beta Search contract v4 uses one deterministic local SQLite FTS5 corpus for
 the active Triptych. **This Vault** is a predicate over that corpus and
 **Triptych** uses it without a vault predicate, so BM25 statistics remain
 comparable across Analyses, Topics, and Works. **This Note** instead searches
@@ -917,8 +999,9 @@ corpus but remain searchable while they are the open **This Note**.
 The finite expert syntax is space-as-AND, escaped exact phrases, trailing
 prefix `*`, clause exclusion, lexical fields `title`, `alias`, `heading`,
 `body`, `author`, `year`, `tag`, `footnote`, and `path`, and structured fields
-`status`, `callout`, and `has:broken-link`. Structured filter-only
-queries are valid. A query containing only excluded free text is invalid.
+`callout` and `has:broken-link`. Structured filter-only queries are valid. A
+query containing only excluded free text is invalid. `status` produces an
+explicit unsupported-field diagnostic because it is not a Scholium property.
 Unknown fields or canonical values, removed `vault`, `role`, or `metadata`
 fields, malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
 regular-expression, fuzzy, range, or nested syntax produce an inline query
@@ -1010,30 +1093,38 @@ uses neither an online Web API credential nor a researcher-deployed server.
 Its absence blocks no core workflow.
 
 **Settings → Integrations → Zotero** shows connection status, **Open Zotero**,
-**Test Connection**, **Refresh Library Information**, **Forget Cached Zotero
-Data**, last successful time, and a concise local/read-only privacy statement.
+**Test Connection**, **Refresh Library Information**, **Clear Connection
+History**, last successful time, and a concise local/read-only privacy statement.
 When disabled, direct the researcher to **Allow other applications on this
 computer to communicate with Zotero** in Zotero's Advanced settings.
 
-### 15.2 Matching and presentation
+### 15.2 Protected Analysis task context
 
-Match by `zotero_item_key`, then DOI/ISBN, citation key, exact title + author +
-year, then researcher choice. Never choose ambiguity silently. A confirmed key
-may be written through the permitted Property path.
+`zotero_item_key` is an Analysis-only protected-machine field. It is absent
+from About and ordinary Properties. Scholium has no **Create Analysis from
+Zotero**, matching, comparison, confirmation, or metadata-overwrite flow. Only
+a protected machine or authorized agent mutation may write the key through the
+current-fingerprint boundary.
 
-An Analysis inspector shows only its identified item as **Zotero Source**. A
-Topic or Work shows **Zotero Sources from Linked Analyses**: deduplicated items
-from outgoing links to Analyses carrying keys—never incoming
-backlinks, bibliography text, transitive Connections, Zotero children,
-Unclassified, or the wider library.
+When any Analysis Research Function begins preparation with a non-empty key,
+Application performs one exact local item read and automatically attaches the
+catalogued `scholium-zotero-integration` System Skill. The immutable function
+snapshot is labelled **Zotero bibliographic metadata** and may carry item key,
+item type, title, complete creator roles, date/year, language, container,
+volume, issue, pages, edition, series, publisher, place, DOI, ISBN, ISSN,
+citation key, URL, abstract, tags, Collections, and modification time.
 
-Show title, authors, year, container, volume/issue/pages when available,
-primary identifier, and citation key; expanded detail may add abstract,
-publisher, edition, URL, collections, and modification date. **Open in Zotero**
-is the only source action. Scholium does not enumerate, download, reveal, or
-open attachments. Unavailable Zotero names the condition and may show
-timestamped cached metadata. Built-in integration never changes Zotero data,
-files, or live SQLite.
+The same run reuses that snapshot when resumed; every new run reads Zotero
+again. No metadata cache crosses tasks. Unavailable Zotero, a missing item, or
+an invalid response adds one nonblocking warning and never prevents the agent
+from continuing with available evidence or leaving unnecessary fields absent.
+No key and non-Analysis targets perform no read and emit no Zotero warning.
+
+Task metadata is never written into Markdown or displayed in Inspector.
+Abstract, tags, and Collections remain bibliographic metadata, never paper
+content or philosophical evidence. Attachments, Zotero Notes, annotations,
+PDFs, and full text never enter automatic context. Built-in integration never
+changes Zotero data, files, or live SQLite.
 
 ### 15.3 Recommended Bibliography
 
@@ -1094,6 +1185,16 @@ formatting requires an explicit Triptych-local binding. If MCP is unavailable,
 report the boundary without global configuration scans or database bypass.
 
 ## 16. Onboarding
+
+Before onboarding or workspace restoration, one app-owned bootstrap state is
+either **Starting**, **Ready**, or **Storage Unavailable**. Only Ready contains
+the validated Application Support location and may construct `WorkspaceStore`
+or `WorkspaceRuntime`. Storage Unavailable replaces the app root with a
+nonmodal recoverable failure page; **Retry** is the default action, **Details**
+reveals selectable diagnostic text, and **Quit** remains available. New Window,
+New Triptych, and all workspace commands stay disabled. Retry performs a fresh
+validation and enters the ordinary workspace or onboarding route only after it
+succeeds; no temporary or implicit read-only workspace exists in the meantime.
 
 First launch, **New Triptych…**, and missing registration use one narrow
 Bootstrap window. It asks one decision at a time—Analyses, Topics, Works, then
@@ -1168,8 +1269,16 @@ native presentation and state ownership without restating each workflow.
 - Preserve menu, toolbar, keyboard, pointer, focus, accessibility, cancel,
   compare, retry, conflict, and recovery routes. Hover, drag, color, motion,
   secondary click, and gestures are never the only route to a core task.
+- Gate all workspace composition behind the single Application Support
+  bootstrap owner. A storage failure is an app-root state, not a workspace
+  sheet, alert loop, hidden temporary runtime, or view-local fallback.
 
 ### 18.2 Workspace shell and Document tabs
+
+The configured shell exists only after Application Support reaches Ready.
+While storage is unavailable, no workspace route, window session, repository,
+watcher, index, or restore task may be constructed, and workspace commands are
+disabled rather than queued against a hidden runtime.
 
 Each configured window contains exactly one native `NSSplitViewController`
 with three sibling items:
@@ -1247,8 +1356,8 @@ Quick Open exists.
 
 Menus follow researcher tasks:
 
-- **File:** Triptych/window/note create/open; Import; Duplicate; Move/Rename;
-  Reveal; Checkpoint create/restore.
+- **File:** Triptych/window create/open; direct **New Note** at the focused
+  vault root; Import; Duplicate; Move/Rename; Reveal; Checkpoint create/restore.
 - **Edit:** editing and **Edit Properties…**.
 - **View:** Search, document mode/text size, Sidebar, Research Inspector.
 - **Research:** role-valid functions and **Show Research Record**, never
@@ -1267,6 +1376,14 @@ Menus follow researcher tasks:
   24pt height. Use weight, color, indentation, and symbols—not size. Notes are
   one line without sublines and expose full titles accessibly. At most one
   redundant state mark precedes title; selection remains visible off-focus.
+- The Library-header Add button directly creates at the current vault root.
+  Every ordinary folder row offers direct **New Note** and **New Folder**, then
+  **Rename Folder…**, **Move Folder…**, conditional subtree expansion/collapse,
+  Copy Relative Path, Reveal in Finder, and destructive **Move Folder and Notes
+  to Trash…**. Equivalent accessibility actions provide non-secondary-click
+  routes. Neither creation action opens a sheet. Library enumerates empty real
+  directories. Protected machine-managed folders and ambiguous legacy
+  projections retain only safe nonmutating navigation.
 - LIBRARY shows no total. Triptych-wide ATTENTION follows scope before Library,
   with the same 10pt edge, warning symbol, and count. It expands/focuses an
   inline full-width queue, never a modal/Research destination; Inspector may
@@ -1341,7 +1458,8 @@ routes. Document Text Size is per-window and source-neutral.
 
 Properties performs targeted frontmatter edits and distinguishes absent,
 empty, invalid, derived, and not-applicable. Exact YAML stays available in
-Source. About shows Scope, then every non-empty Limitation; absence is quiet.
+Source. About follows the role-specific catalog in Appendix A; absence is
+quiet, and `zotero_item_key` and Analysis title are never selectable there.
 
 ### 18.5 Contextual research and Actions
 
@@ -1366,14 +1484,12 @@ changing its mode.
 Overview presents only compact current-note projections, in this order:
 
 1. **Needs Attention:** current-note count, distinct actionable kinds, and a
-   Show All route to Library's complete queue. It contains no empty decorative
-   copy and no independently styled verdict.
-2. **About:** role, Scope, every non-empty Limitation, then researcher-defined
-   property fields in the order configured for that vault. Properties edits the
-   displayed selection and order. There is no separate Research Status, Key
-   Properties, Provenance, or Derived State section.
-3. **Zotero Source:** existing read-only matching, confirmation, and Open in
-   Zotero behavior, without attachment browsing.
+   full-row Show All route to Library's complete queue. At zero it retains the
+   heading and `0` but no reassurance sentence or decorative verdict.
+2. **About:** only non-empty role-specific fields in Appendix A. Scope and each
+   Limitation use reading blocks. **Edit Properties** is a native full-row
+   action; About has no Customize route. There is no Research Status, Key
+   Properties, Provenance, Derived State, or Zotero section.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and
@@ -1390,8 +1506,9 @@ Connect begins with three expanded, independently collapsible groups:
 Within a group, explicit links sort supports, supported by, incompatible, then
 neutral. Minimal ↑, ↓, ×, and — marks state predicate and direction; titles
 wrap. Do not open a second panel merely to show a title. Preserve source
-anchors. Connect shows the same freshness state before its groups. Stale or
-failed state keeps the last complete graph readable and offers Retry.
+anchors. An empty group retains its heading and `0` without **None**. Connect
+shows the same freshness state before its groups. Stale or failed state keeps
+the last complete graph readable and offers a full-row Retry action.
 
 Actions begins with **Research Activity**, a compact horizontal HUD of all
 actual durable events for the current note, followed by transient response or
@@ -1432,24 +1549,43 @@ default with a partial adjacent node when space permits. Trackpad, mouse-wheel,
 Previous/Next, arrow-key, focus, and VoiceOver routes remain equivalent. Reduce
 Motion changes scroll position without spring or node-growth animation.
 
-The lower-right HUD control is Settle. It is not an Open Comment control.
-Actions then presents role-valid launchers: Work with Agent and Fidelity for an
-Analysis or Topic, plus Critique and Manuscript for a Work. Availability fails
-closed while checking; an unavailable action is disabled and states its first
-actionable repair reason. Each launcher is a wrapping native row with a
-standard small Open control, ordinary keyboard focus, and a complete
-accessibility label. No top-level Dialogue, Develop, Revise, or Review launcher
-is visible.
+Research Activity retains its heading and count when empty and shows no empty
+card. Settle remains a direct action rather than an Open Comment control.
+Actions then presents the static **Work with Agent** heading with direct
+**Discuss** and **Write** rows, followed by role-valid **Critique**, **Check
+Fidelity**, and **Manuscript** rows. Availability fails closed while checking;
+an unavailable action states only its first executable repair. **Open Research
+Record**, Show All, Retry, and Edit Properties use the same row treatment.
+
+Functional text is never a generic blue link or a separate **Open** button.
+Every action is one native full-row button with a direct symbol, title,
+optional explanation, and only when useful a trailing chevron or shortcut.
+Body and secondary colors, hover surface, focus ring, button semantics, and
+the full hit region make interaction recognizable without depending on color,
+hover, or pointer use.
+
+All section headings across Overview, Connect, Actions, and Research Activity
+use one Apparatus heading token. Its provisional starting point is 10pt system
+semibold, 0.7pt tracking, and secondary text color. English localization
+supplies uppercase strings; runtime code never forces case, so Chinese and
+other languages retain natural writing.
 
 Inspector layout uses named `ScholiumGrid.Apparatus` variables rather than
-leaf-view spacing literals. The mode strip is a non-scrolling three-column grid
-with a 40pt owned height, 20pt outer edges, 20pt column gaps, 11pt system labels,
-and a restrained underline. Sections start 16pt below the tab rule and use a
-10pt heading-to-content gap, 6pt content-row gap, 2pt multiline leading, and
-16pt content-to-rule gap. Action rows use 10pt vertical insets, 4pt copy gaps,
-and 8pt before the right-aligned Open control. Section headings remain visually
-separate while content within one section reads as a tighter whole. These
-values adapt for localization and accessibility rather than allowing clipping.
+leaf-view literals. Short facts form one section-level two-column grid with a
+shared label column and first-baseline alignment. If the available width or
+localized labels cannot fit, the complete grid becomes stacked; individual
+rows never switch independently. Scope, Research Scope, Limitations, and other
+long researcher prose always use a reading block: label on its own line and
+Alegreya content on the next line with a 12pt leading indent. Labels and action
+names remain system sans semibold; field values, explanations, and research
+prose use Alegreya; exact paths and revisions remain monospaced. Counts use
+monospaced digits without changing the surrounding face.
+
+Provisional rhythm is a 28pt minimum scanning/action row, 12pt Alegreya with
+approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
+reading blocks, and 16pt between sections. The native comparison catalog and
+human review may revise typography, grid, indent, and spacing while preserving
+semantics, interaction, researcher control, and accessibility.
 
 Document has no bottom Research Strip or hidden-Inspector duplicate. Function
 handoff remains keyboard/VoiceOver reachable; its sheet survives launch and
@@ -1500,6 +1636,7 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Settle / Settled | 暂定 / 已暂定 |
 | Fidelity / Critique | 核查 / 评析 |
 | Attention / Connect | 关注 / 连接 |
+| Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
 | Annotation / Comment / Response | 批注 / 评论 / 回应 |
 | Research Activity / Research Record | 研究活动 / 研究记录 |
@@ -1544,14 +1681,16 @@ native safe area once; the titlebar owns vertical alignment.
 
 ### 19.2 Typography and color
 
-- System sans is interface language: navigation names, chrome, menus, controls,
-  Settings, alerts, paths, status, dates, and dense metadata. The fixed
-  **Scholium** Alegreya wordmark is the only identity exception.
+- System sans is interface structure: navigation names, chrome, menus,
+  controls, Settings, alerts, section headings, field labels, action names,
+  dates, and compact scanning cues. The fixed **Scholium** Alegreya wordmark
+  remains the identity exception.
 - **Alegreya** is for Read/Live Preview prose and may identify content-derived
-  titles, linked research objects, researcher judgments, or major headings when
-  density, scaling, and mixed-script fallback remain legible.
+  titles, linked research objects, researcher judgments, field values,
+  explanations, Scope, Limitations, and other research content when density,
+  scaling, and mixed-script fallback remain legible.
 - **Victor Mono** is for Source, code, exact excerpts, anchored review content,
-  revision identities, and diffs.
+  revision identities, paths, stable identifiers, and diffs.
 - The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
   **2.0** line spacing, **1em** paragraph spacing, **0.02em** tracking,
   justified text, and no hyphenation. Line width is configurable from
@@ -1671,6 +1810,10 @@ a new recorded decision.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, function panels, conflict comparison, and
   Research Record close.
+- Direct note creation has pointer, **File → New Note**, keyboard-shortcut, and
+  accessibility routes. A successful action moves selection to the created
+  note; a failure leaves the current selection and source unchanged and reports
+  the reason without opening a naming dialog.
 - Lifecycle destination headings expose the localized name and successful
   count as one heading; active footer entries expose selection. The retained
   Library hierarchy is accessibility-hidden while a destination is active.
@@ -1697,6 +1840,11 @@ a new recorded decision.
 - A lifecycle timeout preserves the affected editor buffer, restores a useful
   focus target, and exposes retry without treating local presentation-state
   persistence as research-content failure.
+- The Storage Unavailable root page exposes an immediate, keyboard-default
+  Retry; selectable Details; and Quit with current VoiceOver names, values,
+  focus order, and failure text. It remains legible under Increase Contrast and
+  does not rely on animation, transparency, or color to communicate failure or
+  recovery.
 
 Beta and 1.0 require complete keyboard and VoiceOver coverage for the declared
 core and no unresolved critical/high-severity accessibility defects. A medium-
@@ -1793,7 +1941,8 @@ only in Git history.
 | **D-094** | 3.2, 18.2 | **D-095** | 18.2, 20 |
 | **D-096** | 8.5, 14 | **D-097** | 19.5 |
 | **D-098** | 13, 18.3, 20 | **D-100** | 5.1, 18.4, 19.2–19.4, 20 |
-| **D-101** | 1–2, 5–11, 13–14, 18–22 | | |
+| **D-101** | 1–2, 5–11, 13–14, 18–22 | **D-102** | 5.2, 8.1, 13, 15.2, 18.4–18.7, 19.2–19.3, Appendix A |
+| **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
 
 Clean-cutover inventory:
 
@@ -1833,7 +1982,7 @@ Clean-cutover inventory:
   release bundles; retain no prior icon, Appearance-derived variant, mirrored
   copy, interface-glyph reuse, or packaging-specific replacement.
 - **D-098:** retain exactly one Triptych lexical corpus, the three public
-  scopes, finite contract-v3 syntax, exact-identity precedence, symmetric CJK
+  scopes, finite contract-v4 syntax, exact-identity precedence, symmetric CJK
   verification, versioned freshness, a separate direct Related section, and
   the non-dimming opaque command surface and full-row editorial result-target
   treatment; retain no per-vault federation, hidden scope/filter bypass,
@@ -1859,6 +2008,47 @@ Clean-cutover inventory:
   qualification, ResearcherComment, and Dialogue records remain read-only
   migration inputs only and create no current product state without independent
   evidence.
+- **D-102:** supersede D-101 wherever it specified the former Properties,
+  Zotero-in-Inspector, Work-with-Agent launcher, or action-row presentation.
+  Separate canonical property vocabulary, default About profiles, and creation
+  requirements; require no creation properties or required-looking markers.
+  Remove all `status` semantics and Search support, Work `deadline`, Topic/Work
+  YAML `title`, default Properties disclosure, About Customize, and visual
+  Zotero presentation. Use role-aware Research Units: Analysis Completion plus
+  Limitations, Topic/Work Scope plus Limitations, with Work labelled Research
+  Scope. Resolve titles through the shared role-aware fallback. Treat
+  `zotero_item_key` as an Analysis-only protected-machine field and attach one
+  exact, labelled, nonblocking Zotero bibliographic snapshot plus the formal
+  integration Skill to each eligible Research Function; never cache it across
+  tasks, show it in Inspector, copy it into Markdown, or treat metadata as
+  source evidence. Use one Inspector heading token, fact grids, long-text
+  reading blocks, quiet meaningful empty states, native full-row actions,
+  direct Discuss/Write rows under a static Work with Agent heading, and full
+  Research Function preparation for Check Fidelity. No compatibility layer is
+  retained for this pre-production cutover; unknown YAML remains exact source
+  without recognized semantics.
+- **D-103:** make New Note a direct focused-window action rather than a
+  lifecycle sheet. Library Add and File/keyboard create an empty, selected note
+  at the current vault root; a folder context action and accessibility
+  equivalent create in that exact folder. Claim the first available
+  `Untitled[ N].md` path atomically, retry only path collisions, never replace
+  source, and omit the operation in protected machine-managed folders. Treat a
+  folder only as a path classification, enumerate empty folders, and add direct
+  `Untitled Folder[ N]` creation plus Rename, Move, and confirmed Move Folder
+  and Notes to Trash. A folder operation renames one directory entry after a
+  complete descendant-note revision preflight; notes—not folders—retain stable
+  IDs, receive one batch path rebinding, and drive exact incoming-link and
+  app-owned path migration. Non-Markdown descendants move byte-unchanged.
+  Complete the menu with conditional Expand/Collapse All, Copy Relative Path,
+  Reveal in Finder, note-row Copy Relative Path, and equivalent accessibility
+  actions. Fail closed on managed Critiques, ambiguous projections, symlinks,
+  destination/subtree collisions, stale inventory, or incomplete rollback.
+- **D-104:** require a validated real per-user Application Support root before
+  constructing production workspace state. Retain no temporary-directory
+  fallback, implicit read-only runtime, queued workspace command, or modal
+  alert loop. Storage failure owns the app root with default Retry, selectable
+  Details, and Quit; retry revalidates from scratch. QA may use only an
+  explicitly supplied isolated root.
 
 Unresolved work must not be described as complete:
 
@@ -1872,31 +2062,29 @@ Unresolved work must not be described as complete:
 
 ## Appendix A. Default property profiles
 
-Existing/custom YAML remains authoritative and losslessly preserved. Profiles
-define recommended human-facing fields; they do not migrate notes, erase
-unknown data, or inject absent YAML. App-owned creation/modification time stays
-out of frontmatter. Research Unit uses the exact shape and constraints in 5.2.
-
-For a long source, expand one source-level Analysis's Scope only to represented
-material and put unread/excluded material in Limitations. Separate segment
-Analyses require explicit researcher choice or independent scholarly identity.
+Existing/custom YAML remains authoritative and losslessly preserved. Canonical
+vocabulary defines recognized meaning; About defines the default read-only
+projection; creation requirements are empty for every role. Profiles never
+inject absent YAML, erase unknown source, or turn visibility into editability.
+App-owned time and provenance remain outside frontmatter. Research Unit follows
+the role-aware constraints in §5.2.
 
 ### Analyses
 
-| Group | Property | YAML | Rule |
+| YAML | Ownership | Default About | Rule |
 | --- | --- | --- | --- |
-| About | Title | `title` | Required source title. |
-| About | Authors | `authors` | Required author list. |
-| About | Year | `year` | Required publication year. |
-| About | Type | `type` | Optional publication form. |
-| About | Tags | `tags` | Optional retrieval terms. |
-| About | Research Unit | `research_unit` | Optional at creation; Scope and Limitations appear first when present. |
-| Source | Access | `access` | Extent of consulted material. |
-| Source | Text Reliability | `text_reliability` | Reliability of consulted text. |
-| Source | Locators | `locators` | Citation stability/checkability. |
-| Progress | Status | `status` | `draft`, `complete`, or `reviewed`, relative to Research Unit. |
-| Assessment | Debate Importance | `debate_importance` | Optional whole number 0–10. |
-| Assessment | Debate Scope | `debate_importance_scope` | Required with Debate Importance. |
+| `title` | Researcher | No | Source identity; resolver fallback is H1, then filename. |
+| `research_unit` | Researcher | Completion, then every Limitation | Optional `completion` and/or `limitations`. |
+| `authors` | Researcher | Yes | Author list. |
+| `year` | Researcher | Yes | Publication year. |
+| `type` | Researcher | Yes | Publication form. |
+| `access` | Researcher | Combined Source Basis | Extent of consulted material. |
+| `text_reliability` | Researcher | Combined Source Basis | Reliability of consulted text. |
+| `locators` | Researcher | Combined Source Basis | Citation stability/checkability. |
+| `tags` | Researcher | No | Retrieval terms. |
+| `debate_importance` | Researcher | No | Optional whole number 0–10. |
+| `debate_importance_scope` | Researcher | No | Must appear with Debate Importance. |
+| `zotero_item_key` | Protected machine | No | Exact task-context identity; not ordinarily editable. |
 
 Debate Importance follows 5.2 and never means project relevance, quality,
 truth, prestige, or citation count. Relevance keys remain custom source.
@@ -1905,31 +2093,27 @@ truth, prestige, or citation count. Relevance keys remain custom source.
 
 Topic YAML is optional.
 
-| Group | Property | YAML | Rule |
+| YAML | Ownership | Default About | Rule |
 | --- | --- | --- | --- |
-| About | Title | `title` | Optional when filename/H1 identifies the Topic. |
-| About | Aliases | `aliases` | Search and link alternatives. |
-| About | Tags | `tags` | Optional retrieval terms. |
-| About | Research Unit | `research_unit` | Optional conceptual/debate boundary. |
-| Progress | Status | `status` | `seed`, `developing`, or `maintained`; never settlement. |
+| `research_unit` | Researcher | Scope, then every Limitation | Optional `scope` and/or `limitations`. |
+| `aliases` | Researcher | Yes | Search and link alternatives. |
+| `tags` | Researcher | No | Retrieval terms. |
+
+Topic identity is first H1, then filename. YAML `title` is not recognized.
 
 ### Works
 
-| Group | Property | YAML | Rule |
+| YAML | Ownership | Default About | Rule |
 | --- | --- | --- | --- |
-| About | Title | `title` | Required Work title. |
-| About | Authors | `authors` | Optional co-authors. |
-| About | Kind | `kind` | Paper, chapter, book, talk, review, teaching material, etc. |
-| About | Tags | `tags` | Optional retrieval terms. |
-| About | Research Unit | `research_unit` | Optional project-question/argument boundary. |
-| Progress | Status | `status` | `planning`, `drafting`, `revising`, `review`, `ready`, `submitted`, `published`, or `archived`. |
-| Use | Venue | `venue` | Intended/actual journal, publisher, course, or event. |
-| Use | Deadline | `deadline` | Relevant delivery/submission date. |
+| `research_unit` | Researcher | Research Scope, then every Limitation | Optional `scope` and/or `limitations`. |
+| `kind` | Researcher | Yes | Paper, chapter, book, talk, review, teaching material, etc. |
+| `authors` | Researcher | Yes | Co-authors when relevant. |
+| `venue` | Researcher | Yes | Intended or actual journal, publisher, course, or event. |
+| `tags` | Researcher | No | Retrieval terms. |
 
-Works status is production state, never argumentative quality, evidential
-sufficiency, acceptance probability, or project governance. Only canonical
-keys receive typed semantics; other non-machine fields remain custom.
-Targeted edits never normalize unrelated source.
+Work identity is first H1, then filename. YAML `title`, `status`, and `deadline`
+are not recognized. Only canonical keys receive typed semantics; all other
+source remains custom and targeted edits never normalize it.
 
 ## Appendix B. Default Critique prompt for Works
 

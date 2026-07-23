@@ -152,17 +152,22 @@ struct ZoteroMetadataTests {
               {"creatorType":"editor","firstName":"Ignored","lastName":"Editor"}
             ],
             "date": "2012",
+            "language": "en",
             "publicationTitle": "The Philosophical Quarterly",
             "volume": "62",
             "issue": "249",
             "pages": "684-704",
+            "series": "Values and Reasons",
             "DOI": "10.1111/example",
             "ISBN": "978-1-2345-6789-0",
+            "ISSN": "0031-8094",
             "citationKey": "ChappellFittingness2012",
             "abstractNote": "A source abstract.",
             "publisher": "Example Press",
+            "place": "Oxford",
             "edition": "2",
             "url": "https://example.test/item",
+            "tags": [{"tag":"fittingness"},{"tag":"value"}],
             "collections": ["COLL0001"],
             "dateModified": "2026-07-12T10:30:00Z"
           }
@@ -170,19 +175,31 @@ struct ZoteroMetadataTests {
         """#
         let result = try #require(ZoteroMetadataDecoder.decodeItems(from: Data(json.utf8)).first)
         #expect(result.key == "META0001")
+        #expect(result.itemType == "journalArticle")
+        #expect(result.title == "Fittingness")
+        #expect(result.creators == [
+            ZoteroCreatorMetadata(role: "author", name: "Richard Chappell"),
+            ZoteroCreatorMetadata(role: "editor", name: "Ignored Editor"),
+        ])
         #expect(result.authors == ["Richard Chappell"])
+        #expect(result.date == "2012")
         #expect(result.year == 2012)
+        #expect(result.language == "en")
         #expect(result.containerTitle == "The Philosophical Quarterly")
         #expect(result.volume == "62")
         #expect(result.issue == "249")
         #expect(result.pages == "684-704")
+        #expect(result.series == "Values and Reasons")
         #expect(result.doi == "10.1111/example")
         #expect(result.isbn == "978-1-2345-6789-0")
+        #expect(result.issn == "0031-8094")
         #expect(result.citationKey == "ChappellFittingness2012")
         #expect(result.abstract == "A source abstract.")
         #expect(result.publisher == "Example Press")
+        #expect(result.place == "Oxford")
         #expect(result.edition == "2")
         #expect(result.url == "https://example.test/item")
+        #expect(result.tags == ["fittingness", "value"])
         #expect(result.collectionKeys == ["COLL0001"])
         #expect(result.dateModified != nil)
     }

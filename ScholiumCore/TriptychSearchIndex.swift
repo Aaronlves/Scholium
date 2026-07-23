@@ -14,6 +14,15 @@ public struct TriptychSearchIndexOpenResult: Sendable {
     }
 }
 
+/// One transaction-bound change set for a disposable Triptych search index.
+/// The workspace generation is persisted in the same transaction and prevents
+/// an older refresh from publishing after a newer source generation.
+struct SearchIndexDelta: Sendable {
+    let workspaceGeneration: UInt64
+    let upserts: [SearchIndexDocument]
+    let deletions: [VaultQualifiedNoteID]
+}
+
 public actor TriptychSearchIndex {
     private let triptychID: UUID
     private let databaseURL: URL
@@ -27,6 +36,7 @@ public actor TriptychSearchIndex {
     private var currentAvailability: SearchAvailability
     private var recoveredGeneratedDatabase: Bool
     private var activeSynchronization: ActiveSynchronization?
+    private var latestWorkspaceGeneration: UInt64 = 0
 
     private struct ActiveSynchronization {
         let id: UUID
@@ -66,6 +76,9 @@ public actor TriptychSearchIndex {
         try writerDatabase.execute("PRAGMA journal_mode=WAL;")
         try writerDatabase.execute("PRAGMA synchronous=NORMAL;")
         try database.execute("PRAGMA query_only=ON;")
+        latestWorkspaceGeneration = try Self.readWorkspaceGeneration(
+            in: database
+        )
         if let generation = try Self.readGeneration(in: database, triptychID: triptychID),
            generation.sequence > 0 {
             currentAvailability = .current(generation)
@@ -82,7 +95,7 @@ public actor TriptychSearchIndex {
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString.lowercased(), isDirectory: true)
             .appendingPathComponent("indexes", isDirectory: true)
-            .appendingPathComponent("search-v3.sqlite", isDirectory: false)
+            .appendingPathComponent("search-v4.sqlite", isDirectory: false)
     }
 
     /// Replaces only a disposable generated database. The v1 files and all
@@ -108,7 +121,7 @@ public actor TriptychSearchIndex {
                 withIntermediateDirectories: true
             )
             let stagingURL = databaseURL.deletingLastPathComponent()
-                .appendingPathComponent(".search-v3-staging-\(UUID().uuidString).sqlite")
+                .appendingPathComponent(".search-v4-staging-\(UUID().uuidString).sqlite")
             do {
                 do {
                     let staged = try SearchV3SQLiteDatabase(path: stagingURL.path)
@@ -119,7 +132,7 @@ public actor TriptychSearchIndex {
                 }
                 guard Darwin.rename(stagingURL.path, databaseURL.path) == 0 else {
                     throw SearchIndexError.sqlite(
-                        "could not atomically publish a rebuilt Search v3 database"
+                        "could not atomically publish a rebuilt Search v4 database"
                     )
                 }
                 for suffix in ["-wal", "-shm"] {
@@ -157,14 +170,36 @@ public actor TriptychSearchIndex {
         try Self.readGeneration(in: database, triptychID: triptychID)
     }
 
+    public func workspaceGeneration() throws -> UInt64 {
+        let stored = try Self.readWorkspaceGeneration(in: database)
+        latestWorkspaceGeneration = max(latestWorkspaceGeneration, stored)
+        return latestWorkspaceGeneration
+    }
+
     public func synchronize(
         _ documents: [SearchIndexDocument]
     ) async throws -> TriptychSearchIndexSyncResult {
-        try Task.checkCancellation()
+        let latest = try workspaceGeneration()
+        guard latest < UInt64(Int.max) else {
+            throw SearchIndexError.invalidDocuments(
+                "Search workspace generation IDs were exhausted."
+            )
+        }
+        let workspaceGeneration = latest + 1
+        return try await synchronize(
+            documents,
+            workspaceGeneration: workspaceGeneration
+        )
+    }
 
-        // Workspace refreshes are serialized, but waiting for an earlier WAL
-        // writer does not monopolize the actor: Search can continue to read
-        // the complete last-good generation in the meantime.
+    public func synchronize(
+        _ documents: [SearchIndexDocument],
+        workspaceGeneration: UInt64
+    ) async throws -> TriptychSearchIndexSyncResult {
+        try Task.checkCancellation()
+        // Finish the one older writer before validating the new request. This
+        // lets the recursive retry compare against the generation that writer
+        // actually committed instead of the pre-wait watermark.
         if let active = activeSynchronization {
             do {
                 _ = try await finishSynchronization(active)
@@ -175,8 +210,30 @@ public actor TriptychSearchIndex {
                 // repair a failed earlier refresh.
             }
             try Task.checkCancellation()
-            return try await synchronize(documents)
+            return try await synchronize(
+                documents,
+                workspaceGeneration: workspaceGeneration
+            )
         }
+
+        guard workspaceGeneration <= UInt64(Int.max) else {
+            throw SearchIndexError.invalidDocuments(
+                "Search workspace generation cannot be represented by SQLite."
+            )
+        }
+        let storedWorkspaceGeneration = try Self.readWorkspaceGeneration(
+            in: database
+        )
+        latestWorkspaceGeneration = max(
+            latestWorkspaceGeneration,
+            storedWorkspaceGeneration
+        )
+        guard workspaceGeneration > latestWorkspaceGeneration else {
+            throw SearchIndexError.invalidDocuments(
+                "Refused stale workspace generation \(workspaceGeneration); latest requested generation is \(latestWorkspaceGeneration)."
+            )
+        }
+        latestWorkspaceGeneration = workspaceGeneration
 
         let desired = try Self.validatedDocuments(documents)
         let manifestHash = Self.manifestHash(for: Array(desired.values))
@@ -192,8 +249,27 @@ public actor TriptychSearchIndex {
                 evidentialLayer: value.evidentialLayer
             ))
         })
+        let changedKeys = desired.keys.filter { stored[$0] != desiredState[$0] }
+        let removedKeys = Set(stored.keys).subtracting(desired.keys)
+        let delta = SearchIndexDelta(
+            workspaceGeneration: workspaceGeneration,
+            upserts: changedKeys.compactMap { desired[$0] },
+            deletions: try removedKeys.map {
+                try Self.noteReference(documentKey: $0)
+            }
+        )
         if previous?.sourceManifestHash == manifestHash, stored == desiredState,
            let previous {
+            try writerDatabase.transaction {
+                try Self.requireNewerWorkspaceGeneration(
+                    workspaceGeneration,
+                    in: writerDatabase
+                )
+                try writerDatabase.execute(
+                    "UPDATE search_index_state SET workspace_generation = ? WHERE singleton = 1;",
+                    bindings: [.int(Int(workspaceGeneration))]
+                )
+            }
             currentAvailability = .current(previous)
             return TriptychSearchIndexSyncResult(
                 generation: previous,
@@ -236,9 +312,8 @@ public actor TriptychSearchIndex {
         }
         let task = Task.detached(priority: .utility) {
             try Self.publish(
+                delta: delta,
                 desired: desired,
-                desiredState: desiredState,
-                stored: stored,
                 manifestHash: manifestHash,
                 previous: previous,
                 recoveredGeneratedDatabase: recovered,
@@ -312,9 +387,8 @@ public actor TriptychSearchIndex {
     }
 
     private nonisolated static func publish(
+        delta: SearchIndexDelta,
         desired: [String: SearchIndexDocument],
-        desiredState: [String: IndexedProjectionState],
-        stored: [String: IndexedProjectionState],
         manifestHash: String,
         previous: SearchGenerationID?,
         recoveredGeneratedDatabase: Bool,
@@ -325,20 +399,38 @@ public actor TriptychSearchIndex {
     ) throws -> TriptychSearchIndexSyncResult {
         try database.transaction {
             try Task.checkCancellation()
-            let removed = Set(stored.keys).subtracting(desired.keys)
-            for key in removed.sorted() {
-                try deleteDocument(key: key, from: database)
-            }
-            let orderedKeys = desired.keys.sorted()
-            for (offset, key) in orderedKeys.enumerated() {
-                try Task.checkCancellation()
-                guard let document = desired[key] else { continue }
-                if stored[key] != desiredState[key] {
-                    try deleteDocument(key: key, from: database)
-                    try insert(document, into: database)
+            try requireNewerWorkspaceGeneration(
+                delta.workspaceGeneration,
+                in: database
+            )
+            for deletion in delta.deletions.sorted(by: {
+                if $0.vaultID != $1.vaultID {
+                    return $0.vaultID.uuidString < $1.vaultID.uuidString
                 }
+                return $0.relativePath < $1.relativePath
+            }) {
+                try deleteDocument(
+                    key: documentKey(
+                        vaultID: deletion.vaultID,
+                        path: deletion.relativePath
+                    ),
+                    from: database
+                )
+            }
+            let orderedUpserts = delta.upserts.sorted {
+                documentKey(vaultID: $0.vaultID, path: $0.relativePath)
+                    < documentKey(vaultID: $1.vaultID, path: $1.relativePath)
+            }
+            for (offset, document) in orderedUpserts.enumerated() {
+                try Task.checkCancellation()
+                let key = documentKey(
+                    vaultID: document.vaultID,
+                    path: document.relativePath
+                )
+                try deleteDocument(key: key, from: database)
+                try insert(document, into: database)
                 let completed = offset + 1
-                if completed == orderedKeys.count || completed.isMultiple(of: 32) {
+                if completed == orderedUpserts.count || completed.isMultiple(of: 32) {
                     progress?(completed)
                 }
             }
@@ -362,13 +454,16 @@ public actor TriptychSearchIndex {
                 )
             }
             try database.execute(
-                "UPDATE search_index_state SET sequence = sequence + 1, source_manifest_hash = ? WHERE singleton = 1;",
-                bindings: [.text(manifestHash)]
+                "UPDATE search_index_state SET sequence = sequence + 1, workspace_generation = ?, source_manifest_hash = ? WHERE singleton = 1;",
+                bindings: [
+                    .int(Int(delta.workspaceGeneration)),
+                    .text(manifestHash),
+                ]
             )
             try Task.checkCancellation()
         }
         guard let published = try readGeneration(in: database, triptychID: triptychID) else {
-            throw SearchIndexError.invalidDocuments("Search v3 did not publish a generation")
+            throw SearchIndexError.invalidDocuments("Search v4 did not publish a generation")
         }
         let disposition: SearchIndexSyncDisposition
         if recoveredGeneratedDatabase {
@@ -435,7 +530,7 @@ public actor TriptychSearchIndex {
                     hasMore: false
                 )
             }
-            let boundedLimit = min(max(1, request.limit), SearchContractV3.maximumCLIResults)
+            let boundedLimit = min(max(1, request.limit), SearchContractV4.maximumCLIResults)
             switch request.executionScope {
             case .currentNote(let source):
                 return try searchCurrentNote(
@@ -583,8 +678,14 @@ public actor TriptychSearchIndex {
             rawContent: source.source
         )
         let exactIndexedRevision = indexed?.fingerprint == note.fingerprint
+        let role = descriptor?.role ?? .other
         let projection = SearchDocumentProjection(
             document: note,
+            profile: WorkflowProfileResolver.resolve(
+                vaultRole: role,
+                frontmatter: note.parsedFrontmatter,
+                relativePath: note.relativePath
+            ),
             review: exactIndexedRevision ? indexed?.review : "unreviewed",
             hasBrokenLink: exactIndexedRevision ? (indexed?.hasBrokenLink ?? false) : false
         )
@@ -592,7 +693,7 @@ public actor TriptychSearchIndex {
             rowID: indexed?.rowID ?? -1,
             vaultID: source.noteID.vaultID,
             vaultName: descriptor?.name ?? source.noteID.vaultID.uuidString,
-            vaultRole: descriptor?.role ?? .other,
+            vaultRole: role,
             relativePath: source.noteID.relativePath,
             stableNoteID: ["note_id", "paper_id", "topic_id", "output_id"]
                 .compactMap { note.parsedFrontmatter[$0]?.searchStrings.first }
@@ -606,13 +707,12 @@ public actor TriptychSearchIndex {
             ),
             pathKey: SearchTextNormalization.normalize(source.noteID.relativePath),
             aliases: projection.aliases,
-            status: projection.status,
             review: projection.review,
             calloutRoles: projection.calloutRoles,
             hasBrokenLink: projection.hasBrokenLink,
             fingerprint: note.fingerprint,
-            evidentialLayer: Self.evidentialLayer(for: descriptor?.role ?? .other),
-            roleOrder: Self.roleOrder(descriptor?.role ?? .other),
+            evidentialLayer: Self.evidentialLayer(for: role),
+            roleOrder: Self.roleOrder(role),
             sourceLineStarts: projection.sourceLineStartsUTF16,
             segments: projection.segments
         )
@@ -805,7 +905,7 @@ public actor TriptychSearchIndex {
         try database.query(
             """
             SELECT vault_id, vault_name, role, relative_path, stable_note_id, title,
-                   normalized_title, title_key, filename_key, path_key, status, review, callout_roles,
+                   normalized_title, title_key, filename_key, path_key, review, callout_roles,
                    has_broken_link, fingerprint_sha256, fingerprint_byte_count,
                    evidential_layer, role_order, line_starts
             FROM search_documents WHERE id = ?;
@@ -817,12 +917,12 @@ public actor TriptychSearchIndex {
                   let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
                   let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
                   let titleKey = row.text(at: 7), let filenameKey = row.text(at: 8),
-                  let pathKey = row.text(at: 9), let sha = row.text(at: 14),
-                  let layerText = row.text(at: 16),
+                  let pathKey = row.text(at: 9), let sha = row.text(at: 13),
+                  let layerText = row.text(at: 15),
                   let layer = EvidentialLayer(rawValue: layerText) else { return }
             let aliases = try self.aliases(documentID: rowID)
             let segments = try self.segments(documentID: rowID)
-            let lineStarts = (row.text(at: 18).flatMap { $0.data(using: .utf8) })
+            let lineStarts = (row.text(at: 17).flatMap { $0.data(using: .utf8) })
                 .flatMap { try? JSONDecoder().decode([Int].self, from: $0) } ?? [0]
             document = StoredSearchDocument(
                 rowID: rowID,
@@ -837,16 +937,15 @@ public actor TriptychSearchIndex {
                 filenameKey: filenameKey,
                 pathKey: pathKey,
                 aliases: aliases,
-                status: row.text(at: 10),
-                review: row.text(at: 11),
-                calloutRoles: Set((row.text(at: 12) ?? "").split(separator: " ").map(String.init)),
-                hasBrokenLink: row.int(at: 13) == 1,
+                review: row.text(at: 10),
+                calloutRoles: Set((row.text(at: 11) ?? "").split(separator: " ").map(String.init)),
+                hasBrokenLink: row.int(at: 12) == 1,
                 fingerprint: DocumentFingerprint(
                     sha256: sha,
-                    byteCount: row.int(at: 15)
+                    byteCount: row.int(at: 14)
                 ),
                 evidentialLayer: layer,
-                roleOrder: row.int(at: 17),
+                roleOrder: row.int(at: 16),
                 sourceLineStarts: lineStarts,
                 segments: segments
             )
@@ -1024,9 +1123,9 @@ public actor TriptychSearchIndex {
             INSERT INTO search_documents(
                 document_key, vault_id, vault_name, role, role_order, relative_path,
                 stable_note_id, title, normalized_title, title_key, filename_key, path_key,
-                fingerprint_sha256, fingerprint_byte_count, evidential_layer, status, review,
+                fingerprint_sha256, fingerprint_byte_count, evidential_layer, review,
                 callout_roles, has_broken_link, projection_hash, line_starts
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(documentKey(vaultID: item.vaultID, path: item.relativePath)),
@@ -1042,8 +1141,7 @@ public actor TriptychSearchIndex {
                 )),
                 .text(SearchTextNormalization.normalize(item.relativePath)),
                 .text(item.document.fingerprint.sha256), .int(item.document.fingerprint.byteCount),
-                .text(item.evidentialLayer.rawValue), .optionalText(projection.status),
-                .optionalText(projection.review),
+                .text(item.evidentialLayer.rawValue), .optionalText(projection.review),
                 .text(" " + projection.calloutRoles.sorted().joined(separator: " ") + " "),
                 .int(projection.hasBrokenLink ? 1 : 0), .text(projection.projectionHash),
                 .text(lineStarts),
@@ -1132,6 +1230,7 @@ public actor TriptychSearchIndex {
             singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
             triptych_id TEXT NOT NULL,
             sequence INTEGER NOT NULL,
+            workspace_generation INTEGER NOT NULL,
             schema_version INTEGER NOT NULL,
             query_contract_version INTEGER NOT NULL,
             tokenizer_policy_version INTEGER NOT NULL,
@@ -1139,9 +1238,9 @@ public actor TriptychSearchIndex {
             source_manifest_hash TEXT NOT NULL
         );
         INSERT INTO search_index_state VALUES(
-            1, '\(triptychID.uuidString.lowercased())', 0,
-            \(SearchContractV3.schemaVersion), \(SearchContractV3.contractVersion),
-            \(SearchContractV3.tokenizerPolicyVersion), \(SearchContractV3.rankingPolicyVersion), ''
+            1, '\(triptychID.uuidString.lowercased())', 0, 0,
+            \(SearchContractV4.schemaVersion), \(SearchContractV4.contractVersion),
+            \(SearchContractV4.tokenizerPolicyVersion), \(SearchContractV4.rankingPolicyVersion), ''
         );
         CREATE TABLE search_vaults(
             vault_id TEXT PRIMARY KEY,
@@ -1165,7 +1264,6 @@ public actor TriptychSearchIndex {
             fingerprint_sha256 TEXT NOT NULL,
             fingerprint_byte_count INTEGER NOT NULL,
             evidential_layer TEXT NOT NULL,
-            status TEXT,
             review TEXT,
             callout_roles TEXT NOT NULL,
             has_broken_link INTEGER NOT NULL,
@@ -1234,10 +1332,10 @@ public actor TriptychSearchIndex {
         }
         guard let values,
               values.0 == triptychID.uuidString.lowercased(),
-              values.1 == SearchContractV3.schemaVersion,
-              values.2 == SearchContractV3.contractVersion,
-              values.3 == SearchContractV3.tokenizerPolicyVersion,
-              values.4 == SearchContractV3.rankingPolicyVersion else {
+              values.1 == SearchContractV4.schemaVersion,
+              values.2 == SearchContractV4.contractVersion,
+              values.3 == SearchContractV4.tokenizerPolicyVersion,
+              values.4 == SearchContractV4.rankingPolicyVersion else {
             throw SearchIndexError.incompatibleSchema
         }
         let definition = try database.scalarText(
@@ -1276,8 +1374,51 @@ public actor TriptychSearchIndex {
         return result
     }
 
+    private static func readWorkspaceGeneration(
+        in database: SearchV3SQLiteDatabase
+    ) throws -> UInt64 {
+        var result = 0
+        try database.query(
+            "SELECT workspace_generation FROM search_index_state WHERE singleton = 1;"
+        ) { row in
+            result = row.int(at: 0)
+        }
+        guard result >= 0 else { throw SearchIndexError.incompatibleSchema }
+        return UInt64(result)
+    }
+
+    private static func requireNewerWorkspaceGeneration(
+        _ requested: UInt64,
+        in database: SearchV3SQLiteDatabase
+    ) throws {
+        let current = try readWorkspaceGeneration(in: database)
+        guard requested > current else {
+            throw SearchIndexError.invalidDocuments(
+                "Refused stale workspace generation \(requested); persisted generation is \(current)."
+            )
+        }
+    }
+
     private static func documentKey(vaultID: UUID, path: String) -> String {
         "\(vaultID.uuidString.lowercased())/\(path)"
+    }
+
+    private static func noteReference(
+        documentKey: String
+    ) throws -> VaultQualifiedNoteID {
+        guard let separator = documentKey.firstIndex(of: "/"),
+              let vaultID = UUID(uuidString: String(documentKey[..<separator])) else {
+            throw SearchIndexError.invalidDocuments(
+                "Stored Search document key is malformed."
+            )
+        }
+        let path = String(documentKey[documentKey.index(after: separator)...])
+        guard !path.isEmpty else {
+            throw SearchIndexError.invalidDocuments(
+                "Stored Search document path is empty."
+            )
+        }
+        return VaultQualifiedNoteID(vaultID: vaultID, relativePath: path)
     }
 
     private static func roleOrder(_ role: VaultRole) -> Int {
@@ -1331,7 +1472,6 @@ private struct StoredSearchDocument {
     let filenameKey: String
     let pathKey: String
     let aliases: [String]
-    let status: String?
     let review: String?
     let calloutRoles: Set<String>
     let hasBrokenLink: Bool
@@ -1376,7 +1516,6 @@ private enum SearchV3Matcher {
                 return lexical.excluded ? !matched : matched
             case .structured(let structured):
                 let matched: Bool = switch structured.field {
-                case .status: document.status == structured.value
                 case .review:
                     if structured.value == SearchReviewState.reviewed.rawValue {
                         document.review != nil
@@ -1422,7 +1561,6 @@ private enum SearchV3Matcher {
             for clause in ast.clauses {
                 guard case .structured(let structured) = clause else { continue }
                 let field: SearchMatchedField = switch structured.field {
-                case .status: .status
                 case .review: .review
                 case .callout: .callout
                 case .has: .brokenLink
@@ -1809,7 +1947,6 @@ private enum SearchV3HitBuilder {
         case .author: "Author"
         case .year: "Year"
         case .tag: "Tag"
-        case .status: "Status"
         case .review: "Review"
         case .body: "Body"
         case .callout: "Callout"
@@ -1846,7 +1983,7 @@ private final class SearchV3SQLiteDatabase: @unchecked Sendable {
             nil
         ) != SQLITE_OK {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) }
-                ?? "could not open Search v3 database"
+                ?? "could not open Search v4 database"
             let code = handle.map { sqlite3_extended_errcode($0) }
             if let handle { sqlite3_close(handle) }
             if code.map({ ($0 & 0xFF) == SQLITE_CORRUPT || ($0 & 0xFF) == SQLITE_NOTADB }) == true {
@@ -1988,7 +2125,7 @@ private struct SearchV3SQLiteStatement {
                 }
             }
             guard result == SQLITE_OK else {
-                throw SearchIndexError.sqlite("could not bind a Search v3 parameter")
+                throw SearchIndexError.sqlite("could not bind a Search v4 parameter")
             }
         }
     }

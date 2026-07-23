@@ -41,9 +41,27 @@ struct VaultPathResolver: Sendable {
         )
     }
 
+    func comparisonKey(for path: VaultRelativeFolderPath) -> VaultPathComparisonKey {
+        VaultPathComparisonKey(
+            path,
+            caseSensitive: caseSensitive,
+            normalizationSensitive: normalizationSensitive
+        )
+    }
+
     func unresolvedURL(for path: MarkdownRelativePath) throws -> URL {
         let candidate = canonicalRoot
             .appendingPathComponent(path.rawValue, isDirectory: false)
+            .standardizedFileURL
+        guard contains(candidate) else {
+            throw VaultRepositoryError.outsideVault(path.rawValue)
+        }
+        return candidate
+    }
+
+    func unresolvedURL(for path: VaultRelativeFolderPath) throws -> URL {
+        let candidate = canonicalRoot
+            .appendingPathComponent(path.rawValue, isDirectory: true)
             .standardizedFileURL
         guard contains(candidate) else {
             throw VaultRepositoryError.outsideVault(path.rawValue)
@@ -67,6 +85,36 @@ struct VaultPathResolver: Sendable {
                   let relative = VaultPath.relativePath(for: url, in: canonicalRoot),
                   let existing = try? MarkdownRelativePath(relative),
                   comparisonKey(for: existing) == requestedKey else { continue }
+            throw VaultRepositoryError.pathCollision(
+                existing: existing.rawValue,
+                requested: requested.rawValue
+            )
+        }
+    }
+
+    func validateNoCollision(
+        for requested: VaultRelativeFolderPath,
+        ignoring ignored: VaultRelativeFolderPath? = nil,
+        fileManager: FileManager = .default
+    ) throws {
+        let requestedKey = comparisonKey(for: requested)
+        let ignoredKey = ignored.map(comparisonKey(for:))
+        guard let enumerator = fileManager.enumerator(
+            at: canonicalRoot,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return }
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if values.isSymbolicLink == true {
+                enumerator.skipDescendants()
+                continue
+            }
+            guard values.isDirectory == true,
+                  let relative = VaultPath.relativePath(for: url, in: canonicalRoot),
+                  let existing = try? VaultRelativeFolderPath(relative) else { continue }
+            let existingKey = comparisonKey(for: existing)
+            guard existingKey == requestedKey, existingKey != ignoredKey else { continue }
             throw VaultRepositoryError.pathCollision(
                 existing: existing.rawValue,
                 requested: requested.rawValue

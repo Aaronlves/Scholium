@@ -3,7 +3,6 @@ import SwiftUI
 
 struct NoteLifecycleActions {
     let putBackDestination: @MainActor (String) -> String?
-    let create: @MainActor (String, String, AnalysisResearchStatusChoice) async throws -> Void
     let duplicate: @MainActor (NoteLifecycleTarget, String) async throws -> Void
     let move: @MainActor (NoteLifecycleTarget, String) async throws -> Void
     let putBack: @MainActor (String) async throws -> Void
@@ -14,31 +13,12 @@ struct NoteLifecycleView: View {
     @Environment(\.dismiss) private var dismiss
 
     let request: NoteLifecycleRequest
-    let vaultRole: VaultRole
     let actions: NoteLifecycleActions
 
-    @State private var title = ""
     @State private var destination = ""
-    @State private var researchStatusChoice: AnalysisResearchStatusChoiceKind = .notYet
-    @State private var researchUnitScope = ""
-    @State private var researchUnitLimitationsText = ""
     @State private var classificationSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var isWorking = false
     @State private var errorMessage: String?
-
-    private var isAnalysisCreation: Bool {
-        if case .create = request {
-            return vaultRole == .sourceCorpus
-        }
-        return false
-    }
-
-    private var researchUnitLimitations: [String] {
-        researchUnitLimitationsText
-            .split(whereSeparator: { $0.isNewline })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
 
     var body: some View {
         ScrollView {
@@ -47,68 +27,6 @@ struct NoteLifecycleView: View {
                     Label(sheetTitle, systemImage: symbol)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                }
-
-                if request == .create {
-                    adaptiveField(
-                        "Title",
-                        wide: {
-                            TextField("Untitled note", text: $title)
-                                .frame(minWidth: 300)
-                        },
-                        compact: {
-                            TextField("Untitled note", text: $title)
-                        }
-                    )
-
-                    if isAnalysisCreation {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label("Research Status", systemImage: "scope")
-                                .font(.headline)
-                            Text("Declare the source material this Analysis will represent now, or begin the Analysis without a declaration.")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Picker("Research Status", selection: $researchStatusChoice) {
-                                Text("Declare Now").tag(AnalysisResearchStatusChoiceKind.declareNow)
-                                Text("Not Yet").tag(AnalysisResearchStatusChoiceKind.notYet)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .accessibilityIdentifier("scholium.newNote.researchStatusChoice")
-
-                            if researchStatusChoice == .declareNow {
-                                adaptiveField(
-                                    "Scope",
-                                    wide: {
-                                        TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
-                                            .frame(minWidth: 300)
-                                            .accessibilityLabel("Research Status Scope")
-                                            .accessibilityIdentifier("scholium.newNote.researchUnitScope")
-                                    },
-                                    compact: {
-                                        TextField("For example, Introduction and Chapters 1–4", text: $researchUnitScope)
-                                            .accessibilityLabel("Research Status Scope")
-                                            .accessibilityIdentifier("scholium.newNote.researchUnitScope")
-                                    }
-                                )
-
-                                adaptiveField(
-                                    "Limitations",
-                                    wide: { limitationsEditor(minWidth: 300) },
-                                    compact: { limitationsEditor(minWidth: 0) }
-                                )
-                            } else {
-                                Text("No scope declaration is written. You can edit, annotate, comment, or use Work with Agent, then add Scope and Limitations later.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("scholium.newNote.researchStatus")
-                    }
                 }
 
                 if case .classify = request {
@@ -170,9 +88,6 @@ struct NoteLifecycleView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(
                             destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                || (isAnalysisCreation
-                                    && researchStatusChoice == .declareNow
-                                    && researchUnitScope.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                 || isWorking
                         )
                         .keyboardShortcut(.defaultAction)
@@ -223,25 +138,8 @@ struct NoteLifecycleView: View {
         .pickerStyle(.segmented)
     }
 
-    private func limitationsEditor(minWidth: CGFloat) -> some View {
-        TextEditor(text: $researchUnitLimitationsText)
-            .font(.body)
-            .frame(minWidth: minWidth, maxWidth: .infinity, minHeight: 72)
-            .scrollContentBackground(.hidden)
-            .padding(4)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-            }
-            .accessibilityLabel("Research Status Limitations")
-            .accessibilityHint("Enter one material boundary per line")
-            .accessibilityIdentifier("scholium.newNote.researchUnitLimitations")
-    }
-
     private var sheetTitle: String {
         switch request {
-        case .create: "New Note"
         case .duplicate: "Duplicate Note"
         case .move: "Move or Rename Note"
         case .putBack: "Put Back Note"
@@ -251,7 +149,6 @@ struct NoteLifecycleView: View {
 
     private var actionTitle: String {
         switch request {
-        case .create: "Create"
         case .duplicate: "Duplicate"
         case .move: "Move"
         case .putBack: "Put Back"
@@ -261,7 +158,6 @@ struct NoteLifecycleView: View {
 
     private var symbol: String {
         switch request {
-        case .create: "doc.badge.plus"
         case .duplicate: "plus.square.on.square"
         case .move: "folder"
         case .putBack: "arrow.uturn.backward"
@@ -271,8 +167,6 @@ struct NoteLifecycleView: View {
 
     private var helpText: String {
         switch request {
-        case .create:
-            "Scholium creates a Markdown file at this vault-relative location. Existing files are never replaced."
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
         case .move:
@@ -285,12 +179,7 @@ struct NoteLifecycleView: View {
     }
 
     private func configureDefaults() {
-        researchStatusChoice = .notYet
-        researchUnitScope = ""
-        researchUnitLimitationsText = ""
         switch request {
-        case .create:
-            destination = "Untitled.md"
         case .duplicate(let target):
             let base = (target.relativePath as NSString).deletingPathExtension
             destination = base + " Copy.md"
@@ -308,12 +197,6 @@ struct NoteLifecycleView: View {
         Task {
             do {
                 switch request {
-                case .create:
-                    try await actions.create(
-                        destination,
-                        title,
-                        analysisResearchStatus
-                    )
                 case .duplicate(let source):
                     try await actions.duplicate(source, destination)
                 case .move(let source):
@@ -331,18 +214,4 @@ struct NoteLifecycleView: View {
         }
     }
 
-    private var analysisResearchStatus: AnalysisResearchStatusChoice {
-        guard isAnalysisCreation, researchStatusChoice == .declareNow else {
-            return .notYet
-        }
-        return .declareNow(
-            scope: researchUnitScope,
-            limitations: researchUnitLimitations
-        )
-    }
-}
-
-private enum AnalysisResearchStatusChoiceKind: Hashable {
-    case declareNow
-    case notYet
 }

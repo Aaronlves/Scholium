@@ -5,7 +5,7 @@ import ScholiumContracts
 /// Groups and their ordering are GUI policy only. Property meaning,
 /// requiredness, allowed values, aliases, and validation remain in Core.
 enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
-    case researchStatus
+    case researchUnit
     case about
     case source
     case progress
@@ -16,7 +16,7 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
 
     var label: String {
         switch self {
-        case .researchStatus: ScholiumL10n.dynamicString("Research Status")
+        case .researchUnit: ScholiumL10n.dynamicString("Research Unit")
         case .about: ScholiumL10n.dynamicString("About")
         case .source: ScholiumL10n.dynamicString("Source")
         case .progress: ScholiumL10n.dynamicString("Progress")
@@ -29,7 +29,7 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
 
     var order: Int {
         switch self {
-        case .researchStatus: 0
+        case .researchUnit: 0
         case .about: 1
         case .source: 2
         case .progress: 3
@@ -51,7 +51,7 @@ enum PropertyControlStyle: String, CaseIterable, Hashable, Sendable {
     case tagEditor
     case textListEditor
     case choicePicker
-    case researchStatus
+    case researchUnit
 }
 
 /// Human-facing metadata for one canonical Core property.
@@ -115,13 +115,12 @@ enum PropertyPresentationCatalog {
         item("tags", "Tags", nil, .about, 4, .tagEditor),
         item(
             "research_unit", "Research Unit",
-            "Declare the source scope represented by this Analysis and any material limitations.",
-            .researchStatus, 0, .researchStatus
+            "Record represented completion and any material limitations; this does not judge analytical adequacy.",
+            .researchUnit, 0, .researchUnit
         ),
         item("access", "Access", "Extent of source material available for the analysis.", .source, 0, .choicePicker),
         item("text_reliability", "Text Reliability", "Reliability of the text actually consulted.", .source, 1, .choicePicker),
         item("locators", "Locators", "Whether citations can be checked at stable locations.", .source, 2, .choicePicker),
-        item("status", "Status", "State of the analysis, not a judgment about the source.", .progress, 0, .choicePicker),
         item(
             "debate_importance", "Debate Importance",
             "Optional whole-number 0–10 assessment within the separately named debate scope; not project relevance, quality, truth, prestige, or citation count.",
@@ -135,22 +134,17 @@ enum PropertyPresentationCatalog {
     ]
 
     private static let topic: [PropertyPresentation] = [
-        item("title", "Title", "Optional when the filename and first heading already identify the Topic.", .about, 0, .textField),
-        item("aliases", "Aliases", "Alternative names used for finding and linking the Topic.", .about, 1, .textListEditor),
-        item("tags", "Tags", nil, .about, 2, .tagEditor),
-        item("research_unit", "Research Unit", "Optional conceptual or debate boundary plus material limitations.", .researchStatus, 0, .researchStatus),
-        item("status", "Status", "Development of the note, not settlement of the Topic.", .progress, 0, .choicePicker),
+        item("aliases", "Aliases", "Alternative names used for finding and linking the Topic.", .about, 0, .textListEditor),
+        item("tags", "Tags", nil, .about, 1, .tagEditor),
+        item("research_unit", "Research Unit", "Optional conceptual or debate scope plus material limitations.", .researchUnit, 0, .researchUnit),
     ]
 
     private static let work: [PropertyPresentation] = [
-        item("title", "Title", "Title of the Work.", .about, 0, .textField),
-        item("authors", "Authors", "Use for co-authored work; omit for an ordinary single-author vault.", .about, 1, .textListEditor),
-        item("kind", "Kind", "Optional form of the authored Work.", .about, 2, .choicePicker),
-        item("tags", "Tags", nil, .about, 3, .tagEditor),
-        item("research_unit", "Research Unit", "Optional project question, argumentative domain, or bounded Work scope plus material limitations.", .researchStatus, 0, .researchStatus),
-        item("status", "Status", "Production state, not philosophical quality or acceptance probability.", .progress, 0, .choicePicker),
+        item("authors", "Authors", "Use for co-authored work; omit for an ordinary single-author vault.", .about, 0, .textListEditor),
+        item("kind", "Kind", "Optional form of the authored Work.", .about, 1, .choicePicker),
+        item("tags", "Tags", nil, .about, 2, .tagEditor),
+        item("research_unit", "Research Unit", "Optional Research Scope plus material limitations.", .researchUnit, 0, .researchUnit),
         item("venue", "Venue", "Journal, publisher, course, event, or other destination.", .use, 0, .textField),
-        item("deadline", "Deadline", nil, .use, 1, .dateField),
     ]
 
     private static func item(

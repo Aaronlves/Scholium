@@ -387,6 +387,77 @@ public actor TriptychControlStore {
         return payload.records[index]
     }
 
+    /// Rebinds every note moved by one directory rename in one portable-state
+    /// write. Folder paths themselves are deliberately absent from this store.
+    /// The method is idempotent when every identity already names its intended
+    /// destination.
+    public func moveIdentities(
+        _ moves: [FolderNoteMoveCommit]
+    ) throws -> [NoteIdentityRecord] {
+        guard !moves.isEmpty else { return [] }
+        let ids = moves.map(\.stableNoteID)
+        guard Set(ids).count == ids.count else {
+            throw TriptychControlError.invalidManifest
+        }
+        let destinations = moves.map {
+            "\($0.destination.vaultID.uuidString):\($0.destination.relativePath)"
+        }
+        guard Set(destinations).count == destinations.count else {
+            throw TriptychControlError.invalidManifest
+        }
+
+        var payload = try identityPayload()
+        let movingIDs = Set(ids)
+        for move in moves {
+            guard let record = payload.records.first(where: {
+                $0.id == move.stableNoteID
+            }), record.vaultID == move.source.vaultID,
+                  move.source.vaultID == move.destination.vaultID,
+                  record.relativePath == move.source.relativePath
+                    || record.relativePath == move.destination.relativePath else {
+                throw TriptychControlError.invalidIdentityCandidate(move.stableNoteID)
+            }
+            guard !payload.records.contains(where: {
+                !movingIDs.contains($0.id)
+                    && $0.vaultID == move.destination.vaultID
+                    && $0.relativePath == move.destination.relativePath
+            }) else {
+                throw TriptychControlError.identityPathAlreadyAssigned(
+                    move.destination.relativePath
+                )
+            }
+        }
+
+        let timestamp = Date()
+        var updated: [NoteIdentityRecord] = []
+        for move in moves {
+            guard let index = payload.records.firstIndex(where: {
+                $0.id == move.stableNoteID
+            }) else {
+                throw TriptychControlError.invalidIdentityCandidate(move.stableNoteID)
+            }
+            let previousPath = payload.records[index].relativePath
+            payload.records[index].relativePath = move.destination.relativePath
+            payload.records[index].fingerprint = move.committedRevision
+            payload.records[index].updatedAt = timestamp
+            if previousPath != move.destination.relativePath {
+                Self.enqueuePendingRebinding(
+                    NoteIdentityPendingRebinding(
+                        noteID: move.stableNoteID,
+                        vaultID: move.destination.vaultID,
+                        previousRelativePath: previousPath,
+                        relativePath: move.destination.relativePath,
+                        fingerprint: move.committedRevision
+                    ),
+                    in: &payload.pendingRebindings
+                )
+            }
+            updated.append(payload.records[index])
+        }
+        try encode(payload, to: identitiesURL)
+        return updated.sorted { $0.relativePath < $1.relativePath }
+    }
+
     public func duplicateIdentity(
         from sourceID: UUID,
         to relativePath: String,

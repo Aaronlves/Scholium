@@ -9,6 +9,20 @@ Apply `scholium-core-protocol`. This protected System Skill governs how an exter
 
 The skill file supplies the instruction contract; it does not itself create an MCP transport. If the supported Zotero MCP capability is unavailable, report that exact limitation and continue only from sources already available within the task.
 
+## Prepared Analysis Research Function
+
+When a prepared packet contains a labelled **Zotero bibliographic metadata**
+snapshot, Application has already performed the one permitted exact item read.
+Treat that immutable snapshot as the complete Zotero context for the run. Do
+not probe, search, inspect the item again, fetch an attachment, or replace the
+snapshot with newer library state. A warning in the snapshot is nonblocking:
+continue from available sources and fill only information genuinely needed by
+the function. Abstract, tags, and Collections remain metadata rather than
+paper content or philosophical evidence. Never copy the snapshot into Markdown.
+
+The remaining sections govern explicit external-agent Zotero operations when
+no prepared snapshot supplies the bounded result.
+
 ## Supported MCP transport
 
 Scholium's supported transport is the installed Scholium CLI or MCP adapter, including the first-party `scholium zotero mcp serve` stdio service. Use `scholium zotero mcp config --format json` for the external-agent configuration and `scholium zotero mcp status` to report command availability; add `--probe` only for the data-free MCP initialize lifecycle. If the installed adapter is unavailable, report that limitation rather than searching developer directories or trying to build Scholium.

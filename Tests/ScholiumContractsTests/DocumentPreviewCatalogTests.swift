@@ -33,7 +33,8 @@ struct DocumentPreviewCatalogTests {
             source: sourceID,
             sourceFingerprint: source.fingerprint,
             graph: graph,
-            documents: [sourceID: source, targetID: target]
+            documents: [sourceID: source, targetID: target],
+            profiles: [targetID: .analysis]
         )
 
         #expect(preview.contractVersion == 1)

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SearchMatchedField: String, Codable, Hashable, Sendable {
-    case title, alias, heading, author, year, tag, status, review, body, callout, footnote, path
+    case title, alias, heading, author, year, tag, review, body, callout, footnote, path
     case brokenLink = "broken_link"
 }
 
@@ -99,7 +99,6 @@ public struct SearchIndexDocument: Sendable {
     public let authors: [String]
     public let year: String?
     public let tags: [String]
-    public let status: String?
     public let review: String?
     public let document: NoteDocument
     public let semantic: MarkdownSemanticDocument
@@ -116,17 +115,66 @@ public struct SearchIndexDocument: Sendable {
         review: String? = nil,
         hasBrokenLink: Bool = false
     ) {
+        self.init(
+            vaultID: vaultID,
+            vaultName: vaultName,
+            vaultRole: vaultRole,
+            document: document,
+            resolvedSemantic: semantic ?? MarkdownSemanticDocument(
+                parsing: document
+            ),
+            sourceProjection: nil,
+            review: review,
+            hasBrokenLink: hasBrokenLink
+        )
+    }
+
+    package init(
+        vaultID: UUID,
+        vaultName: String,
+        vaultRole: VaultRole,
+        document: NoteDocument,
+        semantic: MarkdownSemanticDocument,
+        cachedSourceProjection: SearchDocumentProjection,
+        review: String? = nil,
+        hasBrokenLink: Bool = false
+    ) {
+        self.init(
+            vaultID: vaultID,
+            vaultName: vaultName,
+            vaultRole: vaultRole,
+            document: document,
+            resolvedSemantic: semantic,
+            sourceProjection: cachedSourceProjection,
+            review: review,
+            hasBrokenLink: hasBrokenLink
+        )
+    }
+
+    private init(
+        vaultID: UUID,
+        vaultName: String,
+        vaultRole: VaultRole,
+        document: NoteDocument,
+        resolvedSemantic: MarkdownSemanticDocument,
+        sourceProjection cachedSourceProjection: SearchDocumentProjection?,
+        review: String?,
+        hasBrokenLink: Bool
+    ) {
         self.vaultID = vaultID
         self.vaultName = vaultName
         self.vaultRole = vaultRole
         self.document = document
-        self.semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
+        self.semantic = resolvedSemantic
         relativePath = document.relativePath
         stableNoteID = ["note_id", "paper_id", "topic_id", "output_id"]
             .compactMap { document.parsedFrontmatter[$0]?.searchStrings.first }
             .first
-        title = document.parsedFrontmatter["title"]?.searchStrings.first
-            ?? (document.relativePath as NSString).lastPathComponent.replacingOccurrences(of: ".md", with: "")
+        title = ResearchNoteTitleResolver.resolve(
+            document: document,
+            vaultRole: vaultRole,
+            semantic: self.semantic
+        ).title
         aliases = document.parsedFrontmatter["aliases"]?.searchStrings
             ?? document.parsedFrontmatter["alias"]?.searchStrings
             ?? []
@@ -135,12 +183,18 @@ public struct SearchIndexDocument: Sendable {
             ?? []
         year = document.parsedFrontmatter["year"]?.displayScalar
         tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
-        status = document.parsedFrontmatter["status"]?.displayScalar
         self.review = review
         self.hasBrokenLink = hasBrokenLink
-        projection = SearchDocumentProjection(
+        let sourceProjection = cachedSourceProjection ?? SearchDocumentProjection(
             document: document,
-            semantic: self.semantic,
+            profile: WorkflowProfileResolver.resolve(
+                vaultRole: vaultRole,
+                frontmatter: document.parsedFrontmatter,
+                relativePath: document.relativePath
+            ),
+            semantic: self.semantic
+        )
+        projection = sourceProjection.applyingDynamicState(
             review: review,
             hasBrokenLink: hasBrokenLink
         )

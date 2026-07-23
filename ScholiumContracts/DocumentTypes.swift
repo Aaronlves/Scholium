@@ -207,7 +207,18 @@ public struct NoteDocument: Sendable {
         guard validationWarnings.isEmpty else {
             throw VaultRepositoryError.invalidFrontmatter(validationWarnings.joined(separator: "\n"))
         }
-        let patched = Self.patch(frontmatter: rawFrontmatter, edits: edits, newline: newlineStyle.sequence)
+        let patched: String
+        do {
+            patched = try FrontmatterPatchPlanner.plan(
+                frontmatter: rawFrontmatter,
+                edits: edits,
+                newline: newlineStyle.sequence
+            ).patchedFrontmatter
+        } catch let refusal as FrontmatterPatchRefusal {
+            throw VaultRepositoryError.invalidFrontmatter(
+                refusal.localizedDescription
+            )
+        }
         do {
             let value = try Yams.load(yaml: patched)
             guard value == nil || value is [String: Any] else {
@@ -267,102 +278,4 @@ public struct NoteDocument: Sendable {
         return (text.endIndex, text.endIndex)
     }
 
-    private static func patch(
-        frontmatter: String,
-        edits: [String: FrontmatterEditValue],
-        newline: String
-    ) -> String {
-        var lines = frontmatter.components(separatedBy: newline)
-        let hadTrailingNewline = frontmatter.hasSuffix(newline)
-        if hadTrailingNewline, lines.last == "" { lines.removeLast() }
-
-        for key in edits.keys.sorted() {
-            guard let edit = edits[key] else { continue }
-            let startIndex = lines.firstIndex { line in
-                guard !line.hasPrefix(" "), !line.hasPrefix("\t"), let colon = line.firstIndex(of: ":") else { return false }
-                return line[..<colon].trimmingCharacters(in: .whitespaces) == key
-            }
-
-            var endIndex: Int?
-            if let startIndex {
-                var candidate = startIndex + 1
-                while candidate < lines.count {
-                    let line = lines[candidate]
-                    if line.isEmpty || line.hasPrefix(" ") || line.hasPrefix("\t") { candidate += 1; continue }
-                    break
-                }
-                endIndex = candidate
-            }
-
-            if case .remove = edit {
-                if let startIndex, let endIndex { lines.removeSubrange(startIndex..<endIndex) }
-                continue
-            }
-
-            let replacement = serialize(key: key, value: edit, indent: "", newline: newline)
-            if let startIndex, let endIndex {
-                lines.replaceSubrange(startIndex..<endIndex, with: replacement)
-            } else {
-                lines.append(contentsOf: replacement)
-            }
-        }
-
-        var result = lines.joined(separator: newline)
-        if hadTrailingNewline || !result.isEmpty { result += newline }
-        return result
-    }
-
-    private static func serialize(
-        key: String,
-        value: FrontmatterEditValue,
-        indent: String,
-        newline: String
-    ) -> [String] {
-        let prefix = indent + key
-        switch value {
-        case .string(let value): return ["\(prefix): \(quote(value))"]
-        case .integer(let value): return ["\(prefix): \(value)"]
-        case .double(let value): return ["\(prefix): \(value)"]
-        case .boolean(let value): return ["\(prefix): \(value ? "true" : "false")"]
-        case .array(let values):
-            if values.isEmpty { return ["\(prefix): []"] }
-            return ["\(prefix):"] + values.map { "\(indent)  - \(quote($0))" }
-        case .mapping(let values):
-            if values.isEmpty { return ["\(prefix): {}"] }
-            return ["\(prefix):"] + orderedMappingKeys(values).flatMap { nestedKey -> [String] in
-                guard let nestedValue = values[nestedKey] else { return [] }
-                if case .remove = nestedValue { return [] }
-                return serialize(
-                    key: nestedKey,
-                    value: nestedValue,
-                    indent: indent + "  ",
-                    newline: newline
-                )
-            }
-        case .remove: return []
-        }
-    }
-
-    private static func orderedMappingKeys(
-        _ values: [String: FrontmatterEditValue]
-    ) -> [String] {
-        let preferred = ["scope", "limitations"]
-        return preferred.filter { values[$0] != nil }
-            + values.keys.filter { !preferred.contains($0) }.sorted()
-    }
-
-    private static func quote(_ value: String) -> String {
-        guard !value.isEmpty else { return "\"\"" }
-        let lower = value.lowercased()
-        let ambiguous = ["true", "false", "null", "~"].contains(lower)
-            || Int(value) != nil || Double(value) != nil
-            || value.contains(":") || value.contains("#") || value.contains("[") || value.contains("]")
-            || value.contains("{") || value.contains("}") || value.contains(",") || value.contains("\n")
-            || value.first?.isWhitespace == true || value.last?.isWhitespace == true
-        guard ambiguous else { return value }
-        return "\"" + value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n") + "\""
-    }
 }

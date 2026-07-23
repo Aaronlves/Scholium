@@ -51,18 +51,18 @@ private enum ConnectionPeerGroup: Int, CaseIterable, Hashable {
 
     func title(currentRole: VaultRole) -> String {
         switch (currentRole, self) {
-        case (.sourceCorpus, .analyses): "Neighbor Analyses"
-        case (.sourceCorpus, .topics): "Related Topics"
-        case (.sourceCorpus, .works): "Related Works"
-        case (.topicKnowledge, .analyses): "Related Sources"
-        case (.topicKnowledge, .topics): "Neighbor Topics"
-        case (.topicKnowledge, .works): "Related Works"
-        case (.draftProject, .analyses): "Related Sources"
-        case (.draftProject, .topics): "Related Topics"
-        case (.draftProject, .works): "Neighbor Works"
-        case (.other, .analyses): "Related Analyses"
-        case (.other, .topics): "Related Topics"
-        case (.other, .works): "Related Works"
+        case (.sourceCorpus, .analyses): "NEIGHBOR ANALYSES"
+        case (.sourceCorpus, .topics): "RELATED TOPICS"
+        case (.sourceCorpus, .works): "RELATED WORKS"
+        case (.topicKnowledge, .analyses): "RELATED SOURCES"
+        case (.topicKnowledge, .topics): "NEIGHBOR TOPICS"
+        case (.topicKnowledge, .works): "RELATED WORKS"
+        case (.draftProject, .analyses): "RELATED SOURCES"
+        case (.draftProject, .topics): "RELATED TOPICS"
+        case (.draftProject, .works): "NEIGHBOR WORKS"
+        case (.other, .analyses): "RELATED ANALYSES"
+        case (.other, .topics): "RELATED TOPICS"
+        case (.other, .works): "RELATED WORKS"
         }
     }
 }
@@ -194,7 +194,7 @@ struct ConnectionsInspectorView: View {
                     },
                     content: {
                         Text(group.title(currentRole: projection.currentRole))
-                            .font(ScholiumInterfaceTypography.apparatusLabel)
+                            .scholiumApparatusHeadingStyle()
                             .fixedSize(horizontal: false, vertical: true)
                     },
                     trailing: {
@@ -217,19 +217,7 @@ struct ConnectionsInspectorView: View {
                     alignment: .leading,
                     spacing: ScholiumMetrics.Apparatus.rowSpacing
                 ) {
-                    if items.isEmpty {
-                        ScholiumApparatusRow(
-                            leading: {
-                                Color.clear
-                                    .accessibilityHidden(true)
-                            },
-                            content: {
-                                Text("None")
-                                    .font(ScholiumInterfaceTypography.apparatusBody)
-                                    .foregroundStyle(.secondary)
-                            }
-                        )
-                    } else {
+                    if !items.isEmpty {
                         ForEach(items) { item in
                             CombinedConnectionRow(
                                 item: item,

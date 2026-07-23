@@ -9,6 +9,25 @@ public protocol DocumentUseCases: Sendable {
     func saveUnclassified(relativePath: String, source: String, expectedRevision: DocumentFingerprint) async throws -> NoteDocument
     func create(_ id: VaultQualifiedNoteID, content: String) async throws -> NoteDocument
     func create(_ request: DocumentCreationRequest) async throws -> NoteDocument
+    /// Creates an empty note at the first unoccupied default path in `folderRelativePath`.
+    func createUntitledNote(
+        inVault vaultID: UUID,
+        folderRelativePath: String?
+    ) async throws -> NoteDocument
+    /// Creates the first unoccupied default folder in `parentRelativePath`.
+    func createUntitledFolder(
+        inVault vaultID: UUID,
+        parentRelativePath: String?
+    ) async throws -> VaultRelativeFolderPath
+    func moveFolder(
+        inVault vaultID: UUID,
+        from sourceRelativePath: String,
+        to destinationRelativePath: String
+    ) async throws -> FolderMoveCommit
+    func moveFolderToTrash(
+        inVault vaultID: UUID,
+        relativePath: String
+    ) async throws -> FolderMoveCommit
     func duplicate(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> NoteDocument
     func save(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
     func move(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
@@ -286,7 +305,7 @@ public protocol ZoteroUseCases: Sendable {
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func resolve(source: ZoteroSourceIdentity) async throws -> ZoteroMatchResult
     func resolveCitation(zoteroKey: String) async throws -> ZoteroItemMetadata?
-    func forgetLibraryCache() async throws
+    func clearConnectionHistory() async throws
 }
 
 public protocol WorkspaceEventStreaming: Sendable {

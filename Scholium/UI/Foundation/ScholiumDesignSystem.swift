@@ -714,14 +714,19 @@ enum ScholiumGrid {
         static let modeStripHeight = foundationUnit * 10
         static let modeColumnGap = foundationUnit * 5
         static let headingToContentGap = foundationUnit * 2.5
-        static let contentRowGap = foundationUnit * 1.5
-        static let contentLineSpacing = foundationUnit / 2
+        static let contentRowGap = foundationUnit * 2
+        static let contentLineSpacing = foundationUnit
         static let contentToRuleGap = foundationUnit * 4
         static let actionRowVerticalInset = foundationUnit * 2.5
         static let actionCopyGap = foundationUnit
         static let actionFooterGap = foundationUnit * 2
         static let activityHUDInset = foundationUnit * 2
         static let activityHUDCornerRadius = foundationUnit * 1.5
+        static let factGridMinimumWidth = foundationUnit * 65
+        static let factLabelWidth = foundationUnit * 21
+        static let longTextLabelGap = foundationUnit
+        static let longTextIndent = foundationUnit * 3
+        static let readingBlockGap = foundationUnit * 2
     }
 }
 
@@ -821,6 +826,11 @@ enum ScholiumMetrics {
         static let actionFooterSpacing = ScholiumGrid.Apparatus.actionFooterGap
         static let activityHUDInset = ScholiumGrid.Apparatus.activityHUDInset
         static let activityHUDCornerRadius = ScholiumGrid.Apparatus.activityHUDCornerRadius
+        static let factGridMinimumWidth = ScholiumGrid.Apparatus.factGridMinimumWidth
+        static let factLabelWidth = ScholiumGrid.Apparatus.factLabelWidth
+        static let longTextLabelSpacing = ScholiumGrid.Apparatus.longTextLabelGap
+        static let longTextIndent = ScholiumGrid.Apparatus.longTextIndent
+        static let readingBlockSpacing = ScholiumGrid.Apparatus.readingBlockGap
         /// A fixed symbol track keeps every row's text on the same scan line,
         /// regardless of the optical width of its SF Symbol.
         static let iconColumnWidth = Peripheral.iconColumnWidth

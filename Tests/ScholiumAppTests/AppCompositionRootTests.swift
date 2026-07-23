@@ -29,7 +29,7 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
-        let workspaceStore = WorkspaceStore()
+        let workspaceStore = makeTestWorkspaceStore()
         let first = WindowModel(workspaceStore: workspaceStore)
         let second = WindowModel(workspaceStore: workspaceStore)
 
@@ -173,7 +173,7 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
-        let store = WorkspaceStore()
+        let store = makeTestWorkspaceStore()
         let window = WindowModel(workspaceStore: store)
         let sessionID = UUID()
         await window.restoreWindowSession(id: sessionID)
@@ -213,7 +213,7 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
-        let store = WorkspaceStore()
+        let store = makeTestWorkspaceStore()
         let window = WindowModel(workspaceStore: store)
         let sessionID = UUID()
         await window.restoreWindowSession(id: sessionID)
@@ -227,7 +227,7 @@ struct AppCompositionRootTests {
 
     @Test("Transient document view detachment retains close-time flush without Search saving")
     func transientDocumentDetachmentRetainsCloseFlush() async throws {
-        let store = WorkspaceStore()
+        let store = makeTestWorkspaceStore()
         let window = WindowModel(workspaceStore: store)
         window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
 
@@ -263,7 +263,7 @@ struct AppCompositionRootTests {
         var policy = ScholiumLifecyclePolicy()
         policy.contentFlush = .milliseconds(30)
         let window = WindowModel(
-            workspaceStore: WorkspaceStore(),
+            workspaceStore: makeTestWorkspaceStore(),
             lifecyclePolicy: policy
         )
         window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
@@ -319,9 +319,9 @@ struct AppCompositionRootTests {
         var policy = ScholiumLifecyclePolicy()
         policy.presentationSnapshot = .milliseconds(30)
         let window = WindowModel(
-            workspaceStore: WorkspaceStore(),
+            workspaceStore: makeTestWorkspaceStore(),
             lifecyclePolicy: policy,
-            finalWindowSessionSaver: { _ in
+            finalWindowSessionSaver: { _, _ in
                 await withUnsafeContinuation {
                     (_: UnsafeContinuation<Void, Never>) in
                 }
@@ -366,7 +366,7 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
-        let workspaceStore = WorkspaceStore()
+        let workspaceStore = makeTestWorkspaceStore()
         var firstWindow: WindowModel? = WindowModel(workspaceStore: workspaceStore)
         let secondWindow = WindowModel(workspaceStore: workspaceStore)
         let firstStore: WorkspaceStore = try storedReference(
@@ -444,7 +444,7 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
-        let store = WorkspaceStore()
+        let store = makeTestWorkspaceStore()
         let workspaceID = UUID()
         let initiallyConfigured = try await store.configureTriptychCapabilities(
             paperAnalysisURL: analyses,
@@ -561,7 +561,7 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
-        let store = WorkspaceStore()
+        let store = makeTestWorkspaceStore()
         let configured = try await store.configureTriptychCapabilities(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,

@@ -55,19 +55,19 @@ struct TriptychControlTests {
     @Test("Properties configuration preserves order and removes duplicate fields")
     func propertiesConfigurationOrderingAndDeduplication() {
         var configuration = VaultPropertiesConfiguration(
-            visibleFields: [" status ", "title", "status", "", "authors"],
+            visibleFields: [" authors ", "year", "authors", "", "type"],
             editableFields: ["title", " title ", "tags"]
         )
 
-        #expect(configuration.visibleFields == ["status", "title", "authors"])
+        #expect(configuration.visibleFields == ["authors", "year", "type"])
         #expect(configuration.editableFields == ["title", "tags"])
 
-        configuration.moveVisibleField("authors", to: 0)
-        configuration.setVisible(true, field: " year ")
-        configuration.setVisible(false, field: "title")
+        configuration.moveVisibleField("type", to: 0)
+        configuration.setVisible(true, field: " access ")
+        configuration.setVisible(false, field: "year")
         configuration.editableFields.append(" tags ")
 
-        #expect(configuration.visibleFields == ["authors", "status", "year"])
+        #expect(configuration.visibleFields == ["type", "authors", "access"])
         #expect(configuration.editableFields == ["title", "tags"])
     }
 
@@ -81,19 +81,16 @@ struct TriptychControlTests {
 
         let expected = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                visibleFields: ["authors", "year", "title"],
-                editableFields: ["title", "authors"],
-                isExpanded: true
+                visibleFields: ["authors", "year", "type"],
+                editableFields: ["title", "authors"]
             ),
             .topicKnowledge: VaultPropertiesConfiguration(
-                visibleFields: ["aliases", "status"],
-                editableFields: [],
-                isExpanded: false
+                visibleFields: ["aliases"],
+                editableFields: []
             ),
             .output: VaultPropertiesConfiguration(
-                visibleFields: ["title", "deadline", "venue"],
-                editableFields: ["title", "deadline", "venue"],
-                isExpanded: true
+                visibleFields: ["kind", "authors", "venue"],
+                editableFields: ["kind", "authors", "venue"]
             ),
         ])
 
@@ -101,23 +98,22 @@ struct TriptychControlTests {
         let loaded = try await store.settings()
 
         #expect(loaded.properties == expected.properties)
-        #expect(loaded.properties[.paperAnalysis]?.visibleFields == ["authors", "year", "title"])
+        #expect(loaded.properties[.paperAnalysis]?.visibleFields == ["authors", "year", "type"])
         #expect(loaded.properties[.topicKnowledge]?.editableFields == [])
-        #expect(loaded.properties[.output]?.isExpanded == true)
+        #expect(loaded.properties[.output]?.visibleFields == ["kind", "authors", "venue"])
     }
 
     @Test("Missing vault Properties entries receive role defaults")
     func propertiesConfigurationCompletesTriptych() {
         let settings = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                visibleFields: ["title"],
-                editableFields: ["title"],
-                isExpanded: true
+                visibleFields: ["authors"],
+                editableFields: ["title"]
             ),
         ])
 
         #expect(settings.properties.count == WorkspaceVaultSlot.allCases.count)
-        #expect(settings.properties[.paperAnalysis]?.visibleFields == ["title"])
+        #expect(settings.properties[.paperAnalysis]?.visibleFields == ["authors"])
         #expect(settings.properties[.topicKnowledge] == TriptychSettings.defaultProperties[.topicKnowledge])
         #expect(settings.properties[.output] == TriptychSettings.defaultProperties[.output])
         #expect(settings.properties[.output]?.visibleFields.contains("kind") == true)

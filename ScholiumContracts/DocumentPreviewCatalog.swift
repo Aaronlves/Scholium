@@ -62,7 +62,8 @@ public enum DocumentPreviewCatalogBuilder {
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,
         graph: GraphSnapshot,
-        documents: [VaultQualifiedNoteID: NoteDocument]
+        documents: [VaultQualifiedNoteID: NoteDocument],
+        profiles: [VaultQualifiedNoteID: SchemaProfileID] = [:]
     ) -> DocumentPreviewCatalog {
         guard graph.contractVersion == GraphSnapshot.currentContractVersion else {
             return DocumentPreviewCatalog(
@@ -88,15 +89,15 @@ public enum DocumentPreviewCatalogBuilder {
                     rawContent: excerpt
                 )
                 let rendered = SafeMarkdownRenderer.render(fragment).htmlBody
-                let title = target.parsedFrontmatter["title"]?.scalarString?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let fallbackTitle = ((target.relativePath as NSString).lastPathComponent as NSString)
-                    .deletingPathExtension
+                let title = ResearchNoteTitleResolver.resolve(
+                    document: target,
+                    profile: profiles[destination.note] ?? .genericMarkdown
+                ).title
                 return DocumentLinkPreview(
                     sourceSpan: edge.occurrence.span,
                     target: destination.note,
                     targetFingerprint: target.fingerprint,
-                    title: title.flatMap { $0.isEmpty ? nil : $0 } ?? fallbackTitle,
+                    title: title,
                     relationship: edge.occurrence.vectorKind,
                     fragment: destination.fragment,
                     htmlBody: rendered

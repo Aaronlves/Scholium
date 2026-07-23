@@ -44,6 +44,14 @@ def cjk_character_count(value: str) -> int:
 
 def require_disposable_output(path: Path, allow_outside_tmp: bool) -> Path:
     resolved = path.expanduser().resolve()
+    repository_build = Path(__file__).resolve().parents[2] / ".build"
+    try:
+        resolved.relative_to(repository_build)
+        if resolved == repository_build:
+            raise SystemExit("Refusing to replace the repository .build root itself.")
+        return resolved
+    except ValueError:
+        pass
     if allow_outside_tmp:
         return resolved
     private_tmp = Path("/private/tmp").resolve()
@@ -51,8 +59,8 @@ def require_disposable_output(path: Path, allow_outside_tmp: bool) -> Path:
         resolved.relative_to(private_tmp)
     except ValueError as error:
         raise SystemExit(
-            "RDF-1 generation is destructive and defaults to /tmp. "
-            "Pass --allow-outside-tmp only for an intentionally reviewed fixture location."
+            "RDF-1 generation is destructive and defaults to the repository .build tree. "
+            "Pass --allow-outside-tmp only for an intentionally reviewed external fixture location."
         ) from error
     if resolved == private_tmp:
         raise SystemExit("Refusing to replace /tmp itself.")
@@ -350,8 +358,8 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("/tmp/scholium-rdf1"),
-        help="Disposable output root (default: /tmp/scholium-rdf1)",
+        default=Path(__file__).resolve().parents[2] / ".build/scholium-rdf1",
+        help="Disposable output root (default: repository .build/scholium-rdf1)",
     )
     parser.add_argument("--verify", action="store_true", help="Verify an existing fixture without rewriting it")
     parser.add_argument("--allow-outside-tmp", action="store_true")

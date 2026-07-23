@@ -5,14 +5,26 @@ import ScholiumContracts
 
 @Suite("Vault-relative path normalization")
 struct VaultPathTests {
-    @Test("Equivalent tmp spellings preserve the complete relative path")
-    func tmpAlias() throws {
-        let root = URL(
-            fileURLWithPath: "/tmp/Scholium-VaultPathTests-\(UUID().uuidString)/03-works",
-            isDirectory: true
+    @Test("Equivalent symlink spellings preserve the complete relative path")
+    func equivalentRootAlias() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let base = repositoryRoot
+            .appendingPathComponent(".build/vault-path-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let realParent = base.appendingPathComponent("real", isDirectory: true)
+        let aliasParent = base.appendingPathComponent("alias", isDirectory: true)
+        let realRoot = realParent.appendingPathComponent("03-works", isDirectory: true)
+        try FileManager.default.createDirectory(at: realRoot, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: aliasParent,
+            withDestinationURL: realParent
         )
-        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
-        let critiques = root.appendingPathComponent("Critiques", isDirectory: true)
+        let root = aliasParent.appendingPathComponent("03-works", isDirectory: true)
+        let critiques = realRoot.appendingPathComponent("Critiques", isDirectory: true)
         try FileManager.default.createDirectory(at: critiques, withIntermediateDirectories: true)
         let file = critiques.appendingPathComponent("QA Critique.md")
         try Data("# Critique\n".utf8).write(to: file)

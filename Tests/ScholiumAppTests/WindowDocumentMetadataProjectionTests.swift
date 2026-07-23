@@ -6,22 +6,21 @@ import Testing
 
 @Suite("Window document metadata projection")
 struct WindowDocumentMetadataProjectionTests {
-    @Test("Status uses only the current canonical property")
-    func statusUsesCoreVocabulary() throws {
-        let contract = try #require(
-            PropertyContractCatalog.contract(for: "status", profile: .analysis)
-        )
-        let canonicalSource = """
+    @Test("Status has no semantic projection and remains unknown source YAML")
+    func statusIsNotCoreVocabulary() {
+        let source = """
         ---
-        \(contract.canonicalKey): reviewed
+        status: reviewed
         unknown: untouched
         ---
         Body
         """
-        let canonicalNote = metadataLocation(canonicalSource, role: .sourceCorpus)
+        let note = metadataLocation(source, role: .sourceCorpus)
 
-        #expect(canonicalNote.status == "reviewed")
-        #expect(canonicalNote.rawContent == canonicalSource)
+        #expect(PropertyContractCatalog.contract(for: "status", profile: .analysis) == nil)
+        #expect(note.property(at: "status") == .string("reviewed"))
+        #expect(note.filterableProperties["status"] == nil)
+        #expect(note.rawContent == source)
     }
 
     @Test("Debate Importance follows the Core integer-range contract")
@@ -59,6 +58,45 @@ struct WindowDocumentMetadataProjectionTests {
             #expect(note.debateImportance == item.expected)
             #expect(note.rawContent == source)
         }
+    }
+
+    @Test("Workspace locations reuse the fingerprint-bound title projection")
+    func workspaceLocationUsesCachedTitleProjection() {
+        let document = NoteDocument(
+            relativePath: "Cached.md",
+            rawContent: "# Cached Workspace Title\n\nBody"
+        )
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        let cachedTitle = WorkspaceNoteTitleProjection(
+            document: document,
+            vaultRole: .topicKnowledge,
+            semantic: semantic
+        )
+        let snapshot = WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: document.relativePath
+            ),
+            vaultRole: .topicKnowledge,
+            stableIdentity: .unresolved,
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count,
+                creationDate: nil,
+                modificationDate: nil
+            ),
+            lifecycle: .active,
+            graphCounts: WorkspaceGraphCounts(
+                incoming: 0,
+                outgoing: 0,
+                broken: 0,
+                ambiguous: 0
+            ),
+            cachedTitleProjection: cachedTitle
+        )
+
+        #expect(WindowDocumentLocation.workspace(snapshot).displayName == cachedTitle.resolution.title)
+        #expect(snapshot.cachedTitleProjection?.sourceFingerprint == document.fingerprint)
     }
 
     @Test("App model contains no duplicated status aliases or rating bounds")
@@ -126,7 +164,7 @@ struct WindowDocumentMetadataProjectionTests {
 
         let options = WindowPropertyFilterOptions(notes: [first, second])
 
-        #expect(options.valuesByKey["status"] == ["complete", "reviewed"])
+        #expect(options.valuesByKey["status"] == nil)
         #expect(options.valuesByKey["authors"] == ["Arendt", "Beauvoir", "Weil"])
         #expect(options.valuesByKey["custom"] == ["Alpha", "Beta"])
         #expect(options.valuesByKey["relevance"] == nil)

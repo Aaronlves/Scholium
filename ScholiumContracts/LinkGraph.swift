@@ -24,10 +24,19 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         self.blockAnchors = blockAnchors
     }
 
-    public init(vaultID: UUID, document: NoteDocument, semantic: MarkdownSemanticDocument? = nil) {
+    public init(
+        vaultID: UUID,
+        document: NoteDocument,
+        profile: SchemaProfileID = .genericMarkdown,
+        semantic: MarkdownSemanticDocument? = nil
+    ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
         id = VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath)
-        title = document.parsedFrontmatter["title"]?.nonemptyString
+        title = ResearchNoteTitleResolver.resolve(
+            document: document,
+            profile: profile,
+            semantic: semantic
+        ).title
         aliases = Self.aliases(from: document.parsedFrontmatter["aliases"])
         noteType = document.parsedFrontmatter["note_type"]?.nonemptyString
         headings = semantic.headings

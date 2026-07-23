@@ -7,6 +7,7 @@ enum WindowSheetRoute: Identifiable {
     case createCheckpoint
     case restoreCheckpoint
     case lifecycle(NoteLifecycleRequest)
+    case folderLifecycle(FolderLifecycleRequest)
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
 
@@ -18,6 +19,7 @@ enum WindowSheetRoute: Identifiable {
         case .createCheckpoint: "create-checkpoint"
         case .restoreCheckpoint: "restore-checkpoint"
         case .lifecycle(let request): "lifecycle:\(request.id)"
+        case .folderLifecycle(let request): "folder-lifecycle:\(request.id)"
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
         }

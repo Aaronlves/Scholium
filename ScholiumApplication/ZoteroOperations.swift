@@ -6,23 +6,31 @@ import ScholiumCore
 /// transport. Delivery targets may parse frames and format reports, but Core
 /// locator and server authorities are composed only behind this boundary.
 public actor ZoteroOperations: ZoteroUseCases {
+    typealias RequestLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
     public nonisolated let descriptor: ZoteroMCPTransportDescriptor
 
     private let server: ZoteroMCPServer
-    private let session: URLSession
+    private let loadRequest: RequestLoader
     private var lastSuccessfulConnection: Date?
 
     init(
         descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
-        server: ZoteroMCPServer = ZoteroMCPServer()
+        server: ZoteroMCPServer = ZoteroMCPServer(),
+        requestLoader: RequestLoader? = nil
     ) {
         self.descriptor = descriptor
         self.server = server
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 3
-        configuration.timeoutIntervalForResource = 15
-        configuration.waitsForConnectivity = false
-        session = URLSession(configuration: configuration)
+        if let requestLoader {
+            loadRequest = requestLoader
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 3
+            configuration.timeoutIntervalForResource = 15
+            configuration.waitsForConnectivity = false
+            let session = URLSession(configuration: configuration)
+            loadRequest = { request in try await session.data(for: request) }
+        }
     }
 
     /// Locates the configured transport without launching it or reading
@@ -88,7 +96,7 @@ public actor ZoteroOperations: ZoteroUseCases {
         )
     }
 
-    public func forgetLibraryCache() async throws {
+    public func clearConnectionHistory() async throws {
         lastSuccessfulConnection = nil
     }
 
@@ -208,7 +216,7 @@ public actor ZoteroOperations: ZoteroUseCases {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await loadRequest(request)
         } catch {
             throw ZoteroUseCaseError.appUnavailable
         }

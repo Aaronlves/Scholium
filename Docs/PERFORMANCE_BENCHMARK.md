@@ -64,14 +64,15 @@ reasons, correctness, machine, and artifact.
 ## Canonical RDF-1 fixture
 
 `Tools/Scripts/generate-rdf1.py` is the canonical deterministic no-RNG RDF-1
-generator. It writes only to `/tmp` unless an intentionally reviewed run passes
-`--allow-outside-tmp`.
+generator. Repository verification keeps its disposable fixture beneath the
+ignored `.build/` tree. External fixture locations require the explicit
+reviewed-location flag.
 
 ```bash
 python3 Tools/Scripts/generate-rdf1.py \
-  --output /tmp/scholium-rdf1
+  --output .build/scholium-rdf1
 python3 Tools/Scripts/generate-rdf1.py \
-  --output /tmp/scholium-rdf1 \
+  --output .build/scholium-rdf1 \
   --verify
 ```
 
@@ -87,14 +88,96 @@ Its `manifest.json` records:
 - fixed warm, alternate, and cold document paths; and
 - fixed English and CJK Search queries with expected result identities.
 
+Architecture-stability comparisons use this same verified RDF-1 tree and the
+same resolved Xcode toolchain on both sides. The `WorkspaceRefresh` log records
+workspace generation; enumerated, read, and parsed file counts; exact source
+bytes retained by the snapshot; and enumeration, read, parse, graph, Search,
+assembly, Application publication, and total durations. The
+`WorkspacePublication` log separately records note count and synchronous
+MainActor/Combine delivery time. Both logs contain counts and durations only,
+never Triptych IDs, paths, titles, queries, or source. Capture one cold open,
+then the same declared single-note add/edit/rename/delete sequence; a different
+fixture manifest, toolchain, or sequence is not a valid before/after comparison.
+Per-vault source durations are work sums; when the three independent catalog
+actors prepare concurrently, those sums intentionally overlap and may exceed
+the end-to-end wall-clock `total`.
+
 Never cite RDF-1, import it into a research vault, or use it as philosophical
 evidence.
+
+## Architecture refresh diagnostic baseline — 2026-07-23
+
+This is regression-diagnostic evidence, not a G7 product-gate result. The
+serialized `ArchitectureStabilityMeasurementTests` run used exact RDF-1 tree
+`bcef4ae9addf1dd01752cb5d21fb3309f7c487eb53b0b0b9e7df048f785997f9` on
+Mac16,12 (Apple M4, 16 GB), macOS 27.0 build 26A5388g, Xcode 27.0 build
+27A5218g, and Swift 6.4. The test passed its count/equivalence assertions.
+
+| Step | Enumerated | Read | Parsed | Source Search projections | Snapshot source bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Cold open | 800 | 800 | 800 | 800 | 820,719 |
+| Add | 0 | 1 | 1 | 1 | 820,756 |
+| Edit | 0 | 1 | 1 | 1 | 820,755 |
+| Rename | 0 | 1 | 1 | 1 | 820,755 |
+| Delete | 0 | 0 | 0 | 0 | 820,719 |
+
+Durations below are milliseconds from the final retained diagnostic sequence.
+“Vault source work” is the sum of enumeration + exact read + Markdown semantic
+parse + source Search projection across all three vaults; those actors overlap.
+“Search” is dynamic projection plus transactional SQLite synchronization.
+`Total` is the end-to-end builder wall clock.
+
+| Step | Vault source work (sum) | Identity | Graph | Research state | Search | Snapshot assembly | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cold open | 1,726.59 | 58.97 | 47.56 | 0.27 | 33.44 | 14.68 | 924.57 |
+| Add | 3.02 | 62.93 | 47.17 | 0.27 | 31.75 | 14.16 | 168.41 |
+| Edit | 0.57 | 63.66 | 47.28 | 0.29 | 32.05 | 14.66 | 169.58 |
+| Rename | 2.87 | 70.04 | 47.35 | 0.27 | 32.05 | 14.34 | 175.75 |
+| Delete | 2.20 | 59.59 | 47.85 | 0.27 | 31.89 | 14.58 | 165.84 |
+
+The same fixture and toolchain isolated three changes:
+
+| Cut | Cold open | Add | Edit | Rename | Delete |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Cached-source baseline | 15,799.30 | 970.00 | 969.07 | 980.25 | 958.56 |
+| Linear source projection | 2,419.82 | 971.99 | 969.43 | 982.24 | 972.85 |
+| Same-generation identity reuse | 1,613.47 | 167.10 | 166.80 | 174.65 | 163.73 |
+| Bounded three-vault preparation | 924.57 | 168.41 | 169.58 | 175.75 | 165.84 |
+
+`SearchDocumentProjection` now advances monotonic UTF-16 cursors instead of
+rescanning the accumulated String for every character. The isolated
+100,000-CJK-character projection changed from 7,244.00 ms to 208 ms while exact
+source-range tests remained green. Snapshot assembly reuses the current
+generation's resolved identity projection instead of rereading one identity
+record per Work; ambiguous, pending, unresolved, or failed identity state still
+fails closed. This reduced assembly from about 821 ms to about 14 ms. Finally,
+the three vault catalogs prepare immutable generations concurrently while one
+`WorkspaceRefreshCoordinator` still serializes Graph, Search synchronization,
+snapshot publication, failure, and retry. Cold builder wall time is about 94.1%
+lower than the cached-source baseline without splitting the public
+`WorkspaceSnapshot` or implementing an incremental graph.
+
+A three-sample Debug scenario also exercised the complete warm-library launch
+boundary: launch request through publication and AppKit layout of all 267
+Analyses rows. Every sample completed with the expected count.
+
+| Diagnostic cut | Sample 0 | Sample 1 | Sample 2 |
+| --- | ---: | ---: | ---: |
+| Linear projection only | 4,467.48 | 2,980.77 | 2,999.21 |
+| Plus identity reuse | 3,656.65 | 2,233.21 | 2,288.31 |
+| Plus bounded vault concurrency | 3,583.66 | 1,533.85 | 1,562.20 |
+
+The first sample includes a materially variable OS/Accessibility cold-launch
+cost. Three Debug samples do not establish p50, p95, Release behavior, or G7.
+`WorkspacePublication` also emits the synchronous MainActor publication
+duration in app runs; the direct builder diagnostic does not substitute for
+that delivery or visible-UI boundary.
 
 ## Instrumented interaction contracts
 
 Recording requires a supported metric, safe run ID, sample index, and existing
-`/tmp` JSONL parent. Records contain timing and correctness counts only—never a
-query, note path/title, or research text.
+run-owned isolated JSONL parent. Records contain timing and correctness counts
+only—never a query, note path/title, or research text.
 
 - Warm library launch starts immediately before the XCUITest launch request
   and ends after the 267-note Analyses list is published and AppKit has laid it
@@ -172,8 +255,8 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" \
   ./Tools/Scripts/run-performance-benchmarks.sh \
   --app .build/qa-runtime/Scholium-QA.app \
-  --fixture /tmp/scholium-rdf1 \
-  --output /tmp/scholium-performance-scenario \
+  --fixture .build/scholium-rdf1 \
+  --output .build/scholium-performance-scenario \
   --scenario
 ```
 
@@ -186,7 +269,7 @@ SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1 \
 DEVELOPER_DIR="$developer_dir" \
   ./Tools/Scripts/run-performance-benchmarks.sh \
   --app "/path/to/Scholium.app" \
-  --fixture /tmp/scholium-rdf1 \
+  --fixture .build/scholium-rdf1 \
   --output "/path/outside/the/repository/g7" \
   --gate
 ```

@@ -3,6 +3,7 @@ import Foundation
 public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
     case noteSave
     case noteMove
+    case folderMove
     case unclassifiedClassification
     case permanentDeletion
 }
@@ -10,6 +11,7 @@ public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
 public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
     case savedNote
     case movedNote
+    case movedFolder
     case incomingLinkRewrite
     case classifiedSource
     case classifiedDestination

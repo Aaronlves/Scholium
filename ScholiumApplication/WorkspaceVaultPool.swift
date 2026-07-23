@@ -19,6 +19,7 @@ actor PooledWorkspaceVault {
     nonisolated let vault: RegisteredVault
     nonisolated let rootURL: URL
     nonisolated let repository: VaultRepository
+    nonisolated let sourceCatalog: VaultSourceCatalog
 
     private let securityScopeURL: URL?
     private let watcher: WorkspaceFileEventWatcher?
@@ -30,12 +31,14 @@ actor PooledWorkspaceVault {
         vault: RegisteredVault,
         rootURL: URL,
         repository: VaultRepository,
+        sourceCatalog: VaultSourceCatalog,
         securityScopeURL: URL?,
         watcher: WorkspaceFileEventWatcher?
     ) {
         self.vault = vault
         self.rootURL = rootURL
         self.repository = repository
+        self.sourceCatalog = sourceCatalog
         self.securityScopeURL = securityScopeURL
         self.watcher = watcher
     }
@@ -46,7 +49,7 @@ actor PooledWorkspaceVault {
         watcherTask = Task { [weak self] in
             for await event in events {
                 guard !Task.isCancelled, let self else { return }
-                await self.publish(event)
+                await self.receive(event)
             }
             guard !Task.isCancelled, let self else { return }
             await self.reportUnexpectedWatcherTermination()
@@ -90,7 +93,30 @@ actor PooledWorkspaceVault {
 
     private func publish(_ event: VaultWatchEvent) {
         for subscriber in subscribers.values {
-            subscriber.continuation.yield(event)
+            let result = subscriber.continuation.yield(event)
+            if case .dropped = result {
+                // Each borrower owns an independently bounded queue. If that
+                // queue loses an event, replace the newest slot with an
+                // explicit reconcile request rather than pretending the
+                // remaining path delta is complete.
+                subscriber.continuation.yield(.reconciliationRequired(
+                    sequence: event.sequence,
+                    rootChanged: event.rootChanged
+                ))
+            }
+        }
+    }
+
+    private func receive(_ event: VaultWatchEvent) async {
+        do {
+            try await sourceCatalog.apply(event)
+            publish(event)
+        } catch {
+            await sourceCatalog.requireFullReconcile()
+            publish(.reconciliationRequired(
+                sequence: event.sequence,
+                rootChanged: event.rootChanged
+            ))
         }
     }
 
@@ -280,6 +306,10 @@ actor WorkspaceVaultPool {
                 vault: registeredVault,
                 rootURL: rootURL,
                 repository: repository,
+                sourceCatalog: VaultSourceCatalog(
+                    repository: repository,
+                    vaultRole: registeredVault.role
+                ),
                 securityScopeURL: securityScopeURL,
                 watcher: watcher
             )

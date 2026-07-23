@@ -20,17 +20,15 @@ extension WorkspaceHandle {
         guard let role = ResearchFunctionTargetRole(vaultRole: context.vault.role) else {
             throw ResearchOperationError.commentUnavailable(context.vault.role)
         }
-        let title = context.document.parsedFrontmatter["title"]?.displayScalar
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackTitle = (noteID.relativePath as NSString)
-            .deletingPathExtension
-            .components(separatedBy: "/")
-            .last ?? noteID.relativePath
+        let title = ResearchNoteTitleResolver.resolve(
+            document: context.document,
+            vaultRole: context.vault.role
+        ).title
         let reference = ResearchActivityNoteReference(
             noteID: context.identity.id,
             note: noteID,
             role: role,
-            title: title?.isEmpty == false ? title! : fallbackTitle
+            title: title
         )
         let settlement = try await services.researchActivityStore.settle(
             note: reference,
@@ -573,17 +571,15 @@ extension WorkspaceHandle {
               let completedAt = round.completedAt else {
             throw CritiqueRegistryError.incompleteDispositions(roundID)
         }
-        let title = context.document.parsedFrontmatter["title"]?.displayScalar
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackTitle = (workNote.relativePath as NSString)
-            .deletingPathExtension
-            .components(separatedBy: "/")
-            .last ?? workNote.relativePath
+        let title = ResearchNoteTitleResolver.resolve(
+            document: context.document,
+            vaultRole: context.vault.role
+        ).title
         let reference = ResearchActivityNoteReference(
             noteID: context.identity.id,
             note: workNote,
             role: .work,
-            title: title?.isEmpty == false ? title! : fallbackTitle
+            title: title
         )
         _ = try await services.researchActivityStore.appendEvent(
             ResearchActivityEvent(
@@ -640,13 +636,10 @@ extension WorkspaceHandle {
         }
 
         let repository = try repository(vaultID: workID.vaultID)
-        let workTitle = workContext.document.parsedFrontmatter["title"]?.scalarString
-            ?? currentSnapshot.discovery.catalog.notes.first(where: {
-                $0.reference.vaultID == workID.vaultID
-                    && $0.reference.relativePath == workID.relativePath
-            })?.title
-            ?? (workID.relativePath as NSString).lastPathComponent
-                .replacingOccurrences(of: ".md", with: "")
+        let workTitle = ResearchNoteTitleResolver.resolve(
+            document: workContext.document,
+            vaultRole: workContext.vault.role
+        ).title
         let requestedAt = Date()
         let checkpoint = if let preparedCheckpoint {
             preparedCheckpoint

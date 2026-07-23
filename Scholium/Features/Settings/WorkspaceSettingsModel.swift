@@ -63,7 +63,7 @@ struct WorkspaceSettingsMachineCapabilities {
 struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo
     let openZotero: () async -> Void
-    let forgetZoteroCache: () async throws -> Void
+    let clearZoteroConnectionHistory: () async throws -> Void
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
 }
 
@@ -356,8 +356,8 @@ final class WorkspaceSettingsModel: ObservableObject {
         await capabilities?.zotero.openZotero()
     }
 
-    func forgetZoteroCache() async throws {
-        try await capabilities?.zotero.forgetZoteroCache()
+    func clearZoteroConnectionHistory() async throws {
+        try await capabilities?.zotero.clearZoteroConnectionHistory()
     }
 
     func refreshZoteroLibraryInfo() async throws -> ZoteroLibraryInfo {

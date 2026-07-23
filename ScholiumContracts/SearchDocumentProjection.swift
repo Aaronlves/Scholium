@@ -76,25 +76,28 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public let calloutRoles: Set<String>
     public let footnotes: String
     public let path: String
-    public let status: String?
-    public let review: String?
-    public let hasBrokenLink: Bool
+    public private(set) var review: String?
+    public private(set) var hasBrokenLink: Bool
     public let sourceLineStartsUTF16: [Int]
     public let segments: [SearchTextSegment]
-    public let projectionHash: String
+    public private(set) var projectionHash: String
 
     public init(
         document: NoteDocument,
+        profile: SchemaProfileID = .genericMarkdown,
         semantic: MarkdownSemanticDocument? = nil,
         review: String? = nil,
         hasBrokenLink: Bool = false
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
-        let titleValue = document.parsedFrontmatter["title"]?.searchStrings.first
+        let titleResolution = ResearchNoteTitleResolver.resolve(
+            document: document,
+            profile: profile,
+            semantic: semantic
+        )
+        let titleValue = titleResolution.title
         title = titleValue
-            ?? (document.relativePath as NSString).lastPathComponent
-                .replacingOccurrences(of: ".md", with: "")
-        titleUsesFilenameFallback = titleValue == nil
+        titleUsesFilenameFallback = titleResolution.source == .filename
         aliases = document.parsedFrontmatter["aliases"]?.searchStrings
             ?? document.parsedFrontmatter["alias"]?.searchStrings
             ?? []
@@ -105,9 +108,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         year = document.parsedFrontmatter["year"]?.displayScalar
         tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
         path = document.relativePath
-        status = document.parsedFrontmatter["status"].map {
-            $0.displayScalar.lowercased()
-        }
         self.review = review?.lowercased()
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
@@ -136,8 +136,24 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let frontmatterRange = document.frontmatterByteRange.flatMap {
             sourceLocator.utf16Range(forUTF8Range: $0)
         }
-        if titleValue != nil {
+        if titleResolution.source == .analysisProperty {
             appendMetadata([title], field: .title, preferredRange: frontmatterRange)
+        } else if titleResolution.source == .firstLevelOneHeading,
+                  let heading = semantic.headings.first(where: { $0.level == 1 }) {
+            let range = heading.span.utf16Range
+            builtSegments.append(SearchProjectionBuilder.segment(
+                field: .title,
+                ordinal: builtSegments.count,
+                text: title,
+                sourceRange: range,
+                source: document.rawContent,
+                sourceLocator: sourceLocator,
+                explicitMap: SearchProjectionBuilder.alignedFragments(
+                    text: title,
+                    sourceRange: range,
+                    source: document.rawContent
+                )
+            ))
         } else {
             builtSegments.append(SearchProjectionBuilder.segment(
                 field: .title,
@@ -244,10 +260,42 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         callouts = builtSegments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
         footnotes = builtSegments.filter { $0.field == .footnote }.map(\.text).joined(separator: "\n")
 
-        let stableMaterial = builtSegments.map {
+        projectionHash = Self.hash(
+            segments: builtSegments,
+            review: self.review,
+            hasBrokenLink: hasBrokenLink
+        )
+    }
+
+    /// Reuses the source-derived visible-text and exact-offset projection when
+    /// only graph or legacy-review state changed. Source catalog versions bind
+    /// the cached projection to the exact `NoteDocument`; this copy operation
+    /// updates only the dynamic Search fields and their projection hash.
+    func applyingDynamicState(
+        review: String?,
+        hasBrokenLink: Bool
+    ) -> SearchDocumentProjection {
+        var updated = self
+        updated.review = review?.lowercased()
+        updated.hasBrokenLink = hasBrokenLink
+        updated.projectionHash = Self.hash(
+            segments: updated.segments,
+            review: updated.review,
+            hasBrokenLink: hasBrokenLink
+        )
+        return updated
+    }
+
+    private static func hash(
+        segments: [SearchTextSegment],
+        review: String?,
+        hasBrokenLink: Bool
+    ) -> String {
+        let stableMaterial = segments.map {
             "\($0.field.rawValue)\u{1F}\($0.ordinal)\u{1F}\($0.normalizedText)"
-        }.joined(separator: "\u{1E}") + "\u{1D}\(status ?? "")\u{1D}\(self.review ?? "")\u{1D}\(hasBrokenLink)"
-        projectionHash = SHA256.hash(data: Data(stableMaterial.utf8))
+        }.joined(separator: "\u{1E}")
+            + "\u{1D}\(review ?? "")\u{1D}\(hasBrokenLink)"
+        return SHA256.hash(data: Data(stableMaterial.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
     }
@@ -264,7 +312,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         case .callout: callouts
         case .footnote: footnotes
         case .path: path
-        case .status: status ?? ""
         case .review: review ?? ""
         case .brokenLink: ""
         }
@@ -338,6 +385,7 @@ private enum SearchProjectionBuilder {
         explicitMap: [SearchVisibleFragment]?
     ) -> (text: String, map: [SearchSegmentOffset]) {
         var normalized = ""
+        var normalizedUTF16Count = 0
         var map: [SearchSegmentOffset] = []
         var hasPendingWhitespace = false
         var pendingWhitespaceSource: Range<Int>?
@@ -374,8 +422,9 @@ private enum SearchProjectionBuilder {
                     continue
                 }
                 if hasPendingWhitespace {
-                    let lower = normalized.utf16.count
+                    let lower = normalizedUTF16Count
                     normalized.append(" ")
+                    normalizedUTF16Count += 1
                     if let pendingWhitespaceSource {
                         map.append(SearchSegmentOffset(
                             normalizedUTF16LowerBound: lower,
@@ -388,9 +437,10 @@ private enum SearchProjectionBuilder {
                     pendingWhitespaceSource = nil
                 }
                 let folded = SearchTextNormalization.lexicalNormalize(String(character))
-                let lower = normalized.utf16.count
+                let lower = normalizedUTF16Count
                 normalized += folded
-                let upper = normalized.utf16.count
+                normalizedUTF16Count += folded.utf16.count
+                let upper = normalizedUTF16Count
                 if let mappedSource {
                     map.append(SearchSegmentOffset(
                         normalizedUTF16LowerBound: lower,
@@ -502,6 +552,7 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     private let excludedFullSourceRanges: [Range<Int>]
     private(set) var text = ""
     private(set) var fragments: [SearchVisibleFragment] = []
+    private var textUTF16Count = 0
 
     init(
         source: String,
@@ -549,9 +600,10 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         if let fullRange, excludedFullSourceRanges.contains(where: { overlaps($0, fullRange) }) {
             return
         }
-        let start = text.utf16.count
+        let start = textUTF16Count
         text += value
-        let end = text.utf16.count
+        textUTF16Count += value.utf16.count
+        let end = textUTF16Count
         let exact = relative.map { range in
             (source as NSString).substring(with: NSRange(
                 location: range.lowerBound,
@@ -567,10 +619,11 @@ private struct SearchVisibleTextCollector: MarkupWalker {
 
     private mutating func appendSeparator(_ value: String) {
         guard !text.isEmpty, !text.hasSuffix(value) else { return }
-        let start = text.utf16.count
+        let start = textUTF16Count
         text += value
+        textUTF16Count += value.utf16.count
         fragments.append(SearchVisibleFragment(
-            textRange: start..<text.utf16.count,
+            textRange: start..<textUTF16Count,
             sourceRange: nil,
             exact: false
         ))

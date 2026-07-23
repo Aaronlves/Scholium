@@ -4,7 +4,7 @@ import SQLite3
 import Testing
 @testable import ScholiumCore
 
-@Suite("Triptych Search v3 index")
+@Suite("Triptych Search v4 index")
 struct TriptychSearchIndexTests {
     @Test("One corpus ranks exact identity before lexical results and applies vault scope")
     func unifiedCorpusAndScope() async throws {
@@ -26,12 +26,12 @@ struct TriptychSearchIndexTests {
             fixture.item(
                 vault: fixture.topics,
                 path: "Autonomy.md",
-                source: "---\ntitle: Autonomy\naliases: [Self-government]\n---\nA compact concept."
+                source: "---\naliases: [Self-government]\n---\n# Autonomy\n\nA compact concept."
             ),
             fixture.item(
                 vault: fixture.works,
                 path: "Chapter.md",
-                source: "---\ntitle: Chapter\n---\nThis chapter develops autonomy."
+                source: "# Chapter\n\nThis chapter develops autonomy."
             ),
         ]
         let publication = try await index.synchronize(documents)
@@ -63,12 +63,12 @@ struct TriptychSearchIndexTests {
             fixture.item(
                 vault: fixture.works,
                 path: "A-weak.md",
-                source: "---\ntitle: Autonomy\nstatus: draft\n---\nA brief note."
+                source: "# Autonomy\n\nA brief note."
             ),
             fixture.item(
                 vault: fixture.works,
                 path: "Z-strong.md",
-                source: "---\ntitle: Autonomy\nstatus: draft\n---\nAutonomy autonomy autonomy autonomy."
+                source: "# Autonomy\n\nAutonomy autonomy autonomy autonomy."
             ),
             fixture.item(
                 vault: fixture.topics,
@@ -78,14 +78,14 @@ struct TriptychSearchIndexTests {
         ])
 
         let exact = try await index.search(fixture.request(
-            "autonomy status:draft",
+            "autonomy",
             scope: .triptych
         ))
         #expect(Array(exact.results.map(\.relativePath).prefix(2)) == ["Z-strong.md", "A-weak.md"])
         #expect(exact.results.prefix(2).allSatisfy { $0.rankReason == .exactTitle })
 
         let fielded = try await index.search(fixture.request(
-            "title:Autonomy status:draft",
+            "title:Autonomy",
             scope: .triptych
         ))
         #expect(fielded.results.first?.rankReason == .exactTitle)
@@ -128,6 +128,74 @@ struct TriptychSearchIndexTests {
         #expect(response.results.first?.evidentialLayer == .topicNote)
     }
 
+    @Test("A stale workspace generation cannot replace the last complete index")
+    func staleWorkspaceGenerationIsRejected() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID
+        )
+        let peerOpenedBeforePublication = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID
+        )
+        let current = fixture.item(
+            vault: fixture.topics,
+            path: "Current.md",
+            source: "# Current\n\ncurrent-generation-term"
+        )
+        let stale = fixture.item(
+            vault: fixture.topics,
+            path: "Stale.md",
+            source: "# Stale\n\nstale-generation-term"
+        )
+        let published = try await index.synchronize(
+            [current],
+            workspaceGeneration: 5
+        )
+
+        await #expect(throws: SearchIndexError.self) {
+            _ = try await peerOpenedBeforePublication.synchronize(
+                [stale],
+                workspaceGeneration: 5
+            )
+        }
+
+        await #expect(throws: SearchIndexError.self) {
+            _ = try await index.synchronize(
+                [stale],
+                workspaceGeneration: 4
+            )
+        }
+        #expect(try await index.generation() == published.generation)
+        #expect(try await index.search(
+            fixture.request("current-generation-term", scope: .triptych)
+        ).results.map(\.relativePath) == ["Current.md"])
+        #expect(try await index.search(
+            fixture.request("stale-generation-term", scope: .triptych)
+        ).results.isEmpty)
+
+        let unchanged = try await index.synchronize(
+            [current],
+            workspaceGeneration: 6
+        )
+        #expect(unchanged.disposition == .unchanged)
+        #expect(unchanged.generation == published.generation)
+
+        let reopened = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID
+        )
+        await #expect(throws: SearchIndexError.self) {
+            _ = try await reopened.synchronize(
+                [stale],
+                workspaceGeneration: 5
+            )
+        }
+        #expect(try await reopened.generation() == published.generation)
+    }
+
     @Test("Exact identity is never lost behind ten thousand filtered collisions")
     func exactIdentityHasNoCandidateCutoff() async throws {
         let fixture = try Fixture()
@@ -140,18 +208,18 @@ struct TriptychSearchIndexTests {
             fixture.item(
                 vault: fixture.analyses,
                 path: String(format: "Collisions/%05d.md", number),
-                source: "---\ntitle: Autonomy\nstatus: archived\n---\nCollision \(number)."
+                source: "---\ntitle: Autonomy\n---\n> [!orientation] Collision\n> Collision \(number)."
             )
         }
         documents.append(fixture.item(
             vault: fixture.works,
             path: "zzzz-target.md",
-            source: "---\ntitle: Autonomy\nstatus: draft\n---\nThe intended exact result."
+            source: "# Autonomy\n\n> [!state] Intended\n> The intended exact result."
         ))
         _ = try await index.synchronize(documents)
 
         let response = try await index.search(SearchRequest(
-            query: "autonomy status:draft",
+            query: "autonomy callout:state",
             presentationScope: .triptych,
             executionScope: .triptych,
             limit: 1
@@ -193,14 +261,13 @@ struct TriptychSearchIndexTests {
         let disk = fixture.item(
             vault: fixture.topics,
             path: "Set Aside/Current.md",
-            source: "---\ntitle: Current\nstatus: developing\n---\nDisk text."
+            source: "# Current\n\nDisk text."
         )
         _ = try await index.synchronize([])
         let editorSource = """
-        ---
-        title: Current
-        status: developing
-        ---
+        # Current
+        > [!state] In progress
+
         autonomy appears here.
         A second autonomy appears here.
         """
@@ -214,7 +281,7 @@ struct TriptychSearchIndexTests {
             editorRevision: 7
         )
         let request = SearchRequest(
-            query: "autonomy status:developing",
+            query: "autonomy callout:state",
             presentationScope: .thisNote,
             executionScope: .currentNote(snapshot),
             limit: 100
@@ -223,13 +290,13 @@ struct TriptychSearchIndexTests {
         #expect(response.results.count == 2)
         #expect(response.results.allSatisfy { $0.vaultRole == .topicKnowledge })
         #expect(response.results.allSatisfy { $0.sourceRange != nil })
-        #expect(response.results.map(\.sourceLine) == [5, 6])
+        #expect(response.results.map(\.sourceLine) == [4, 5])
         #expect(response.freshnessToken.rawValue.contains(snapshot.editorSessionID.uuidString.lowercased()))
 
         let indexed = try await index.search(fixture.request("autonomy", scope: .triptych))
         #expect(indexed.results.isEmpty)
         let filterOnly = try await index.search(SearchRequest(
-            query: "status:developing",
+            query: "callout:state",
             presentationScope: .thisNote,
             executionScope: .currentNote(snapshot),
             limit: 100
@@ -567,10 +634,10 @@ struct TriptychSearchIndexTests {
         init() throws {
             root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
                 .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v3-test-artifacts", isDirectory: true)
+                .appendingPathComponent("search-v4-test-artifacts", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v3.sqlite")
+            databaseURL = root.appendingPathComponent("search-v4.sqlite")
         }
 
         func item(

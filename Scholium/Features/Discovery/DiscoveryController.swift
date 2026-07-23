@@ -7,7 +7,6 @@ struct DiscoveryFilterState: Equatable, Sendable {
     var hasExplicitConnections = false
     var hasMalformedMetadata = false
     var tag: String?
-    var status: String?
     var author: String?
     var year: Int?
     var propertyKey: String?
@@ -197,7 +196,7 @@ final class DiscoveryController: ObservableObject {
             failSearch(error.localizedDescription, for: request)
             throw error
         }
-        let limit = SearchContractV3.maximumInterfaceResults
+        let limit = SearchContractV4.maximumInterfaceResults
 
         do {
             let response = try await search(SearchRequest(

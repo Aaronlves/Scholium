@@ -11,12 +11,14 @@ final class DocumentTransitionCoordinator {
     func enqueue(
         prepare: @escaping @MainActor () async throws -> Void,
         operation: @escaping @MainActor () async throws -> Void,
-        didFail: @escaping @MainActor (Error) -> Void
+        didFail: @escaping @MainActor (Error) -> Void,
+        didFinish: @escaping @MainActor () -> Void = {}
     ) {
         generation &+= 1
         let requestedGeneration = generation
         let previous = tail
         tail = Task { [weak self] in
+            defer { didFinish() }
             _ = await previous?.value
             guard let self, requestedGeneration == generation else { return }
             do {

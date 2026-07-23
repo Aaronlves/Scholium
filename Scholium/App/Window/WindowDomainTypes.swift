@@ -83,7 +83,6 @@ struct NoteLifecycleTarget: Identifiable, Equatable, Sendable {
 }
 
 enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
-    case create
     case duplicate(NoteLifecycleTarget)
     case move(NoteLifecycleTarget)
     case putBack(String)
@@ -91,11 +90,43 @@ enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
 
     var id: String {
         switch self {
-        case .create: "create"
         case .duplicate(let target): "duplicate:\(target.id)"
         case .move(let target): "move:\(target.id)"
         case .putBack(let path): "put-back:\(path)"
         case .classify(let path): "classify:\(path)"
+        }
+    }
+}
+
+/// A folder is addressed only by its current vault-relative path. Unlike a
+/// note lifecycle target, it deliberately carries no stable identifier.
+struct FolderLifecycleTarget: Identifiable, Equatable, Sendable {
+    let vaultID: UUID
+    let relativePath: String
+
+    var id: String {
+        "\(vaultID.uuidString.lowercased()):\(relativePath)"
+    }
+
+    var name: String {
+        relativePath.split(separator: "/").last.map(String.init) ?? relativePath
+    }
+}
+
+enum FolderLifecycleRequest: Identifiable, Equatable, Sendable {
+    case rename(FolderLifecycleTarget)
+    case move(FolderLifecycleTarget)
+
+    var target: FolderLifecycleTarget {
+        switch self {
+        case .rename(let target), .move(let target): target
+        }
+    }
+
+    var id: String {
+        switch self {
+        case .rename(let target): "rename-folder:\(target.id)"
+        case .move(let target): "move-folder:\(target.id)"
         }
     }
 }

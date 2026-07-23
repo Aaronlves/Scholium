@@ -55,15 +55,24 @@ struct ContractBoundaryTests {
         let id = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "New.md")
         let request = DocumentCreationRequest(
             id: id,
-            title: "New",
-            analysisResearchStatus: .declareNow(
-                scope: "One source",
-                limitations: ["No comparative claim"]
-            )
+            title: "New"
         )
 
         #expect(request.id == id)
-        #expect(request.researchUnitLimitations == ["No comparative claim"])
+        #expect(request.title == "New")
         #expect(WorkspaceRegistryError.incompleteWorkspace.localizedDescription.contains("incomplete"))
+    }
+
+    @Test("Folder paths are relative locations rather than Markdown identities")
+    func folderPathContract() throws {
+        let path = try VaultRelativeFolderPath("Sources/现象学")
+        #expect(path.rawValue == "Sources/现象学")
+        #expect(path.components.map(String.init) == ["Sources", "现象学"])
+        #expect(throws: VaultRelativeFolderPathError.self) {
+            try VaultRelativeFolderPath("../Outside")
+        }
+        #expect(throws: VaultRelativeFolderPathError.self) {
+            try VaultRelativeFolderPath("Sources/")
+        }
     }
 }

@@ -4,9 +4,12 @@ set -euo pipefail
 ROOT="${0:A:h:h:h}"
 SCRATCH="${ROOT}/.build/verification"
 RELEASE_SCRATCH="${ROOT}/.build/verification-release"
+TEST_TEMP="${ROOT}/.build/verification-tmp"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export DEVELOPER_DIR
-rm -rf "${SCRATCH}" "${RELEASE_SCRATCH}"
+rm -rf "${SCRATCH}" "${RELEASE_SCRATCH}" "${TEST_TEMP}"
+mkdir -p "${TEST_TEMP}"
+export TMPDIR="${TEST_TEMP}"
 
 # The Core resource tree is the sole repository authority for release-shipped
 # product Skills. Every package must ship the local reference files named by
@@ -106,6 +109,7 @@ while IFS= read -r file; do
   [[ -z "${file}" ]] && continue
   case "${file}" in
     "${ROOT}/Scholium/App/ScholiumApp.swift"|\
+    "${ROOT}/Scholium/App/ApplicationBootstrapController.swift"|\
     "${ROOT}/Scholium/App/Window/WindowWorkspaceController.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
     "${ROOT}/ScholiumCLI/CLIContext.swift") ;;
@@ -226,12 +230,25 @@ python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
 run_swift_test_product() {
   local test_product="$1"
   local attempt log command_status
-  local -a parallelism_arguments
+  local -a parallelism_arguments selection_arguments
   parallelism_arguments=()
+  selection_arguments=(--filter "${test_product}")
+  if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
+    # Runtime microbenchmarks need a quiet process boundary. Running them
+    # beside graph, index, and filesystem stress suites measures scheduler
+    # contention instead of the declared workload. They run immediately after
+    # the complete nonperformance Core set, with the same build and thresholds.
+    selection_arguments+=(--skip 'PerformanceRegressionMicrobenchmarkTests')
+  fi
   if [[ "${test_product}" == "ScholiumAppTests" ]]; then
     # This target owns AppKit windows and WebKit processes. Make Swift
     # Testing's in-process execution order explicit at that shared boundary.
     parallelism_arguments=(--no-parallel)
+  fi
+  if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
+    # The canonical RDF-1 refresh measurement needs its own quiet process
+    # boundary so graph/Search timings are not scheduler-contention artifacts.
+    selection_arguments+=(--skip 'ArchitectureStabilityMeasurementTests')
   fi
   mkdir -p "${SCRATCH}"
   for attempt in 1 2 3; do
@@ -241,7 +258,7 @@ run_swift_test_product() {
       --package-path "${ROOT}" \
       --scratch-path "${SCRATCH}" \
       "${parallelism_arguments[@]}" \
-      --filter "${test_product}" 2>&1 | tee "${log}"
+      "${selection_arguments[@]}" 2>&1 | tee "${log}"
     command_status=${pipestatus[1]}
     set -e
     if (( command_status == 0 )); then
@@ -263,6 +280,19 @@ for test_product in \
   ScholiumApplicationTests \
   ScholiumAppTests; do
   run_swift_test_product "${test_product}"
+  if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
+    swift test \
+      --package-path "${ROOT}" \
+      --scratch-path "${SCRATCH}" \
+      --no-parallel \
+      --filter 'ScholiumCoreTests.PerformanceRegressionMicrobenchmarkTests'
+  elif [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
+    swift test \
+      --package-path "${ROOT}" \
+      --scratch-path "${SCRATCH}" \
+      --no-parallel \
+      --filter 'ScholiumApplicationTests.ArchitectureStabilityMeasurementTests'
+  fi
 done
 
 # Public Application signatures must be expressible entirely in Contracts and

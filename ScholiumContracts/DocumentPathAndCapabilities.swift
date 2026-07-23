@@ -59,6 +59,56 @@ public struct MarkdownRelativePath: Codable, Hashable, Sendable,
     }
 }
 
+public enum VaultRelativeFolderPathError: LocalizedError, Equatable, Sendable {
+    case invalid(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalid(let path):
+            "Invalid vault-relative folder path: \(path)"
+        }
+    }
+}
+
+/// Byte-preserving display spelling for one directory path relative to a
+/// vault. A folder is a location and classification aid, never a durable note
+/// identity. `/` is the only separator; backslashes remain filename content.
+public struct VaultRelativeFolderPath: Codable, Hashable, Sendable,
+    CustomStringConvertible
+{
+    public let rawValue: String
+
+    public init(_ rawValue: String) throws {
+        guard !rawValue.isEmpty,
+              !rawValue.hasPrefix("/"),
+              !rawValue.hasSuffix("/"),
+              !rawValue.contains("\0") else {
+            throw VaultRelativeFolderPathError.invalid(rawValue)
+        }
+        let components = rawValue.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else {
+            throw VaultRelativeFolderPathError.invalid(rawValue)
+        }
+        self.rawValue = rawValue
+    }
+
+    public var description: String { rawValue }
+
+    public var components: [Substring] {
+        rawValue.split(separator: "/", omittingEmptySubsequences: false)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        try self.init(container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 public struct VaultPathComparisonKey: Hashable, Sendable {
     public let value: String
 
@@ -67,7 +117,31 @@ public struct VaultPathComparisonKey: Hashable, Sendable {
         caseSensitive: Bool,
         normalizationSensitive: Bool
     ) {
-        var compared = path.rawValue
+        self.init(
+            rawValue: path.rawValue,
+            caseSensitive: caseSensitive,
+            normalizationSensitive: normalizationSensitive
+        )
+    }
+
+    public init(
+        _ path: VaultRelativeFolderPath,
+        caseSensitive: Bool,
+        normalizationSensitive: Bool
+    ) {
+        self.init(
+            rawValue: path.rawValue,
+            caseSensitive: caseSensitive,
+            normalizationSensitive: normalizationSensitive
+        )
+    }
+
+    private init(
+        rawValue: String,
+        caseSensitive: Bool,
+        normalizationSensitive: Bool
+    ) {
+        var compared = rawValue
         if !normalizationSensitive {
             compared = compared.precomposedStringWithCanonicalMapping
         }

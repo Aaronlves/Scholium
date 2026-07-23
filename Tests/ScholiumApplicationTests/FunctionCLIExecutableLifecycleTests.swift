@@ -5,8 +5,8 @@ import Testing
 
 @Suite("Executable Research Function CLI lifecycle")
 struct FunctionCLIExecutableLifecycleTests {
-    @Test("The real CLI exposes the Search v3 text and JSONL contracts")
-    func searchV3Contract() async throws {
+    @Test("The real CLI exposes the Search v4 text and JSONL contracts")
+    func searchV4Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_FUNCTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
@@ -28,7 +28,7 @@ struct FunctionCLIExecutableLifecycleTests {
             try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
         }
         #expect(records.first?["type"] as? String == "search_summary")
-        #expect(records.first?["contract_version"] as? Int == SearchContractV3.contractVersion)
+        #expect(records.first?["contract_version"] as? Int == SearchContractV4.contractVersion)
         #expect(records.first?["scope"] as? String == SearchPresentationScope.triptych.rawValue)
         #expect(records.dropFirst().allSatisfy { $0["type"] as? String == "search_result" })
         #expect(records.dropFirst().allSatisfy { $0["score"] == nil && $0["index_generation"] == nil })
@@ -136,7 +136,7 @@ struct FunctionCLIExecutableLifecycleTests {
         #expect(shownDialogueRun.snapshot == dialogue.snapshot)
 
         let shownResult = try cli.run([
-            "dialogue", "show", dialogue.runID.uuidString,
+            "discuss", "show", dialogue.runID.uuidString,
             "--triptych", fixture.assignment.id.uuidString,
             "--format", "json",
         ])
@@ -150,7 +150,7 @@ struct FunctionCLIExecutableLifecycleTests {
         try Data("Synthetic attributed transport evidence only.\n".utf8)
             .write(to: replyURL, options: .atomic)
         _ = try cli.run([
-            "dialogue", "reply", dialogue.runID.uuidString,
+            "discuss", "reply", dialogue.runID.uuidString,
             "--triptych", fixture.assignment.id.uuidString,
             "--agent", "CLI Acceptance Fixture",
             "--from", replyURL.path,
@@ -158,7 +158,7 @@ struct FunctionCLIExecutableLifecycleTests {
         let replied = try decoder.decode(
             DialogueEntry.self,
             from: try cli.run([
-                "dialogue", "show", dialogue.runID.uuidString,
+                "discuss", "show", dialogue.runID.uuidString,
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ]).stdout
@@ -169,7 +169,7 @@ struct FunctionCLIExecutableLifecycleTests {
             runID: dialogue.runID,
             confirmationToken: dialogue.snapshot.confirmationToken,
             finalTargetFingerprint: fixture.analysisTarget.fingerprint,
-            summary: "Recorded synthetic Dialogue transport evidence.",
+            summary: "Recorded synthetic Discuss transport evidence.",
             didModifyTarget: false
         )
         let dialogueCompleted = try decoder.decode(
@@ -257,6 +257,11 @@ struct FunctionCLIExecutableLifecycleTests {
             sha256: readAfter.sha256,
             byteCount: Data(readAfter.content.utf8).count
         )
+        let reviseActivityCompletion = try Self.activityCompletion(
+            for: finalizedRevise,
+            candidateModifiedNotes: [fixture.workTarget.note],
+            summary: "Reported the candidate Work path after the synthetic revision."
+        )
 
         let awaiting = try decoder.decode(
             ResearchFunctionCompletion.self,
@@ -269,7 +274,8 @@ struct FunctionCLIExecutableLifecycleTests {
                 confirmationToken: revise.snapshot.confirmationToken,
                 finalTargetFingerprint: finalWorkFingerprint,
                 summary: "Reported a synthetic Work revision.",
-                didModifyTarget: true
+                didModifyTarget: true,
+                activityCompletion: reviseActivityCompletion
             ))).stdout
         )
         #expect(awaiting.state == .awaitingFidelity)
@@ -607,6 +613,27 @@ struct FunctionCLIExecutableLifecycleTests {
 
     private static func readPayload(_ data: Data) throws -> CLIReadPayload {
         try JSONDecoder().decode(CLIReadPayload.self, from: data)
+    }
+
+    private static func activityCompletion(
+        for preparation: ResearchFunctionPreparation,
+        candidateModifiedNotes: [VaultQualifiedNoteID],
+        summary: String
+    ) throws -> ResearchActivityCompletionSubmission {
+        let prefix = "Activity key: "
+        let key = try #require(
+            preparation.instructions
+                .split(separator: "\n")
+                .map(String.init)
+                .first(where: { $0.hasPrefix(prefix) })?
+                .dropFirst(prefix.count)
+        )
+        return ResearchActivityCompletionSubmission(
+            activityID: try #require(preparation.snapshot.activityID),
+            activityKey: String(key),
+            candidateModifiedNotes: candidateModifiedNotes,
+            summary: summary
+        )
     }
 
     private static func bibliographyCandidate(

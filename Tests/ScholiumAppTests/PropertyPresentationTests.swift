@@ -24,7 +24,9 @@ struct PropertyPresentationTests {
     func descriptorsResolveToCoreContracts() {
         for profile in PropertyPresentationCatalog.currentProfiles {
             let presentations = PropertyPresentationCatalog.presentations(for: profile)
-            let contracts = PropertyContractCatalog.contracts(for: profile)
+            let contracts = PropertyContractCatalog.contracts(for: profile).filter {
+                $0.ownership == .researcher
+            }
 
             #expect(Set(presentations.map(\.key)) == Set(contracts.map(\.canonicalKey)))
             for presentation in presentations {
@@ -61,7 +63,7 @@ struct PropertyPresentationTests {
         authors: [A]
         year: 2026
         research_unit:
-          scope: Complete source
+          completion: "6/11"
         status: draft
         ---
         Body
@@ -72,12 +74,14 @@ struct PropertyPresentationTests {
         )
         let model = PropertyEditorModel(note: note)
 
-        let status = try #require(model.presentFields.first { $0.key == "status" })
-        let invalidStatus = model.updating(note.frontmatter, field: status, text: "unknown")
+        #expect(!model.allFields.contains { $0.key == "status" })
+
+        let type = try #require(model.availableFields.first { $0.key == "type" })
+        let invalidType = model.updating(note.frontmatter, field: type, text: "web_page")
         #expect(model.validationIssues(
-            proposedFrontmatter: invalidStatus,
+            proposedFrontmatter: invalidType,
             researchUnitEdit: nil,
-            changedKeys: ["status"]
+            changedKeys: ["type"]
         ).map(\.code).contains(.valueNotAllowed))
 
         let importance = try #require(model.availableFields.first { $0.key == "debate_importance" })
@@ -93,13 +97,13 @@ struct PropertyPresentationTests {
 
     @Test("Semantic edit preserves custom YAML, comments, BOM, CRLF, and body bytes")
     func targetedEditPreservesCustomBytes() throws {
-        let source = "\u{FEFF}---\r\n# keep this comment\r\nstatus: draft\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body\r\n\r\nKeep me.\r\n"
+        let source = "\u{FEFF}---\r\n# keep this comment\r\nstatus: draft\r\ntype: book\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body\r\n\r\nKeep me.\r\n"
         let document = NoteDocument(relativePath: "current.md", rawContent: source)
         let note = workspaceLocation(document, role: .sourceCorpus)
         let model = PropertyEditorModel(note: note)
-        let status = try #require(model.presentFields.first { $0.key == "status" })
+        let type = try #require(model.presentFields.first { $0.key == "type" })
 
-        let proposed = model.updating(note.frontmatter, field: status, text: "complete")
+        let proposed = model.updating(note.frontmatter, field: type, text: "journal_article")
         let edits = PropertyEditorModel.frontmatterEdits(
             from: note.frontmatter,
             to: proposed
@@ -109,8 +113,76 @@ struct PropertyPresentationTests {
         #expect(result.hasPrefix("\u{FEFF}---\r\n"))
         #expect(result.contains("# keep this comment\r\n"))
         #expect(result.contains("unknown:\r\n  nested: 'exact value'\r\n"))
-        #expect(result.contains("status: complete\r\n"))
+        #expect(result.contains("status: draft\r\n"))
+        #expect(result.contains("type: journal_article\r\n"))
         #expect(NoteDocument(relativePath: "current.md", rawContent: result).body == document.body)
+    }
+
+    @Test("Removing one Research Unit member preserves the other members")
+    func researchUnitMembersAreIndependent() throws {
+        let source = """
+        ---
+        research_unit:
+          completion: "6/11"
+          limitations:
+            - Missing appendix
+        unknown: untouched
+        ---
+        Body
+        """
+        let document = NoteDocument(relativePath: "analysis.md", rawContent: source)
+        let edit = ResearchUnitEdit.set(
+            completion: nil,
+            scope: nil,
+            limitations: ["Missing appendix"]
+        )
+        let result = try document.applying(
+            .frontmatter(["research_unit": edit.coreValue]),
+            timestampKey: nil
+        )
+        let reparsed = NoteDocument(relativePath: "analysis.md", rawContent: result)
+        let declaration = ResearchUnitDeclaration(
+            frontmatter: reparsed.parsedFrontmatter,
+            profile: .analysis
+        )
+
+        #expect(declaration.completion == nil)
+        #expect(declaration.limitations == ["Missing appendix"])
+        #expect(declaration.state == .declared)
+        #expect(result.contains("unknown: untouched"))
+        #expect(result.contains("Body"))
+    }
+
+    @Test("Default About profiles keep role-aware semantic order")
+    func defaultAboutProfiles() {
+        #expect(AboutProfileCatalog.entries(for: .analysis, visibleFields: nil) == [
+            .completion,
+            .limitations,
+            .property("authors"),
+            .property("year"),
+            .property("type"),
+            .sourceBasis,
+        ])
+        #expect(AboutProfileCatalog.entries(for: .topicMarkdown, visibleFields: nil) == [
+            .scope(label: "Scope"),
+            .limitations,
+            .property("aliases"),
+        ])
+        #expect(AboutProfileCatalog.entries(for: .draftProject, visibleFields: nil) == [
+            .scope(label: "Research Scope"),
+            .limitations,
+            .property("kind"),
+            .property("authors"),
+            .property("venue"),
+        ])
+        #expect(!AboutProfileCatalog.entries(
+            for: .analysis,
+            visibleFields: ["title", "zotero_item_key", "authors"]
+        ).contains(.property("title")))
+        #expect(!AboutProfileCatalog.entries(
+            for: .analysis,
+            visibleFields: ["title", "zotero_item_key", "authors"]
+        ).contains(.property("zotero_item_key")))
     }
 
     @Test("Malformed frontmatter fails closed through Core")

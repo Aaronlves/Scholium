@@ -907,6 +907,9 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// evidence whose identifiers alone do not change when their content is
     /// edited.
     public let evidenceRevisions: [DocumentFingerprint]
+    /// Analysis-only, task-scoped bibliographic context. This projection is
+    /// never written back to Markdown and is not a source-evidence claim.
+    public let zoteroBibliographicContext: ZoteroBibliographicContext?
     public let fidelityHandoff: ResearchFunctionFidelityHandoff?
     /// Present only for Fidelity runs.
     public let fidelityInvocation: FidelityInvocationKind?
@@ -925,6 +928,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         requiredChildFunctions: [ResearchFunctionID] = [],
         preparedOutput: ResearchFunctionOutputSnapshot? = nil,
         evidenceRevisions: [DocumentFingerprint] = [],
+        zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         fidelityHandoff: ResearchFunctionFidelityHandoff? = nil,
         fidelityInvocation: FidelityInvocationKind? = nil,
         confirmationToken: UUID = UUID(),
@@ -943,6 +947,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         }
         self.preparedOutput = preparedOutput
         self.evidenceRevisions = evidenceRevisions
+        self.zoteroBibliographicContext = zoteroBibliographicContext
         self.fidelityHandoff = fidelityHandoff
         self.fidelityInvocation = request.function == .fidelity
             ? (fidelityInvocation ?? .manual)

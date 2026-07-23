@@ -76,6 +76,7 @@ struct WorkspaceRuntimeTests {
             let analysis = try #require(event.snapshot.document(id: fixture.analysisNoteID))
             #expect(analysis.document.rawContent.contains("Freedom enables action"))
             #expect(analysis.fileMetadata.byteCount == analysis.document.sourceBytes.count)
+            #expect(analysis.fileMetadata.modificationDate != nil)
             #expect(analysis.graphCounts.incoming == 0)
         } else {
             Issue.record("The first event was not the initial complete snapshot.")
@@ -402,7 +403,7 @@ struct WorkspaceRuntimeTests {
         await runtime.shutdown()
     }
 
-    @Test("Two Triptychs share one pooled vault repository, index, and watcher")
+    @Test("Two Triptychs share one pooled vault repository and watcher but retain independent indexes")
     func sharedVaultPoolFansOutToBothTriptychs() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
@@ -467,6 +468,274 @@ struct WorkspaceRuntimeTests {
         #expect(await secondIterator.next() == nil)
     }
 
+    @Test("Shared vaults cannot cross-contaminate results, broken links, or legacy Review projection")
+    func sharedVaultSearchIsolation() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        try Data("# FirstTriptychTerm\n\n[[Missing First]]\n".utf8).write(
+            to: fixture.topicsURL.appendingPathComponent("Freedom.md"),
+            options: .atomic
+        )
+        let secondAssignment = try await fixture.makeSecondLiveAssignmentSharingAnalyses()
+        let secondTopic = fixture.rootURL
+            .appendingPathComponent("Second Triptych/Topics/Other.md")
+        try Data("# SecondTriptychTerm\n\n[[Missing Second]]\n".utf8).write(
+            to: secondTopic,
+            options: .atomic
+        )
+
+        let warmRuntime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let warmFirst = try await warmRuntime.openWorkspace(id: fixture.assignment.id)
+        _ = try await warmRuntime.openWorkspace(id: secondAssignment.id)
+        let sharedNote = try #require(
+            try await warmFirst.snapshot().document(id: fixture.analysisNoteID)
+        )
+        let sharedStableID = try #require(sharedNote.stableIdentity.resolvedID)
+        await warmRuntime.shutdown()
+
+        let review = HumanReviewRecord(
+            noteID: sharedStableID,
+            vaultID: fixture.analysisNoteID.vaultID,
+            relativePath: fixture.analysisNoteID.relativePath,
+            completedReviews: [CompletedHumanReview(
+                fingerprint: sharedNote.fingerprint,
+                qualification: .qualified,
+                reviewNote: "First Triptych compatibility evidence"
+            )]
+        )
+        try seedLegacyReview(
+            review,
+            triptychID: fixture.assignment.id,
+            applicationSupportURL: fixture.applicationSupportURL
+        )
+
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let first = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let second = try await runtime.openWorkspace(id: secondAssignment.id)
+
+        func results(_ query: String, in handle: WorkspaceHandle) async throws
+            -> [SearchHit]
+        {
+            try await handle.discovery.search(SearchRequest(
+                query: query,
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 50
+            )).results
+        }
+
+        #expect(try await results("FirstTriptychTerm", in: first).map(\.relativePath)
+            == ["Freedom.md"])
+        #expect(try await results("FirstTriptychTerm", in: second).isEmpty)
+        #expect(try await results("SecondTriptychTerm", in: first).isEmpty)
+        #expect(try await results("SecondTriptychTerm", in: second).map(\.relativePath)
+            == ["Other.md"])
+        #expect(try await results("has:broken-link", in: first).map(\.relativePath)
+            == ["Freedom.md"])
+        #expect(try await results("has:broken-link", in: second).map(\.relativePath)
+            == ["Other.md"])
+        #expect(try await results("review:qualified", in: first).map(\.relativePath)
+            == ["Agency.md"])
+        #expect(try await results("review:qualified", in: second).isEmpty)
+
+        let firstIndex = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(
+                fixture.assignment.id.uuidString.lowercased(),
+                isDirectory: true
+            )
+            .appendingPathComponent("indexes/search-v4.sqlite")
+        let secondIndex = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(
+                secondAssignment.id.uuidString.lowercased(),
+                isDirectory: true
+            )
+            .appendingPathComponent("indexes/search-v4.sqlite")
+        #expect(firstIndex != secondIndex)
+        #expect(FileManager.default.fileExists(atPath: firstIndex.path))
+        #expect(FileManager.default.fileExists(atPath: secondIndex.path))
+        await runtime.shutdown()
+    }
+
+    @Test("Source catalog deltas equal a clean rebuild and one save parses only one file")
+    func sourceCatalogIncrementalEquivalence() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        for index in 0..<5 {
+            try Data("# Extra \(index)\n\nCached projection \(index).\n".utf8).write(
+                to: fixture.analysesURL.appendingPathComponent("Extra \(index).md")
+            )
+        }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let services = await handle.services
+        let original = try await handle.documents.load(fixture.analysisNoteID)
+        _ = try await handle.documents.save(
+            fixture.analysisNoteID,
+            changeSet: .body("Freedom enables precisely bounded action.\n"),
+            expectedRevision: original.fingerprint
+        )
+        let catalog = try #require(
+            services.sourceCatalogs[fixture.analysisNoteID.vaultID]
+        )
+        let saveProjection = try await catalog.snapshot(refreshFolders: false)
+        #expect(saveProjection.measurement.enumeratedFiles == 6)
+        #expect(saveProjection.measurement.readFiles == 1)
+        #expect(saveProjection.measurement.parsedDocuments == 1)
+
+        try await catalog.apply(VaultWatchEvent(
+            added: [],
+            modified: [],
+            deleted: [fixture.analysisNoteID.relativePath],
+            sequence: 0,
+            requiresFullRescan: false,
+            rootChanged: false
+        ))
+        #expect(try await catalog.snapshot(refreshFolders: false).documents
+            .contains { $0.relativePath == fixture.analysisNoteID.relativePath })
+
+        let addedURL = fixture.analysesURL.appendingPathComponent("Added.md")
+        try Data("# Added\n\n[[Missing Added]]\n".utf8).write(to: addedURL)
+        try await catalog.apply(VaultWatchEvent(
+            added: ["Added.md"],
+            modified: [],
+            deleted: [],
+            sequence: 1,
+            requiresFullRescan: false,
+            rootChanged: false
+        ))
+        let addedProjection = try await catalog.snapshot(refreshFolders: false)
+        #expect(addedProjection.measurement.enumeratedFiles == 0)
+        #expect(addedProjection.measurement.readFiles == 1)
+        #expect(addedProjection.measurement.parsedDocuments == 1)
+        let renamedURL = fixture.analysesURL.appendingPathComponent("Renamed.md")
+        try FileManager.default.moveItem(at: addedURL, to: renamedURL)
+        try await catalog.apply(VaultWatchEvent(
+            added: ["Renamed.md"],
+            modified: [],
+            deleted: ["Added.md"],
+            sequence: 2,
+            requiresFullRescan: false,
+            rootChanged: false
+        ))
+        try FileManager.default.removeItem(at: renamedURL)
+        try await catalog.apply(VaultWatchEvent(
+            added: [],
+            modified: [],
+            deleted: ["Renamed.md"],
+            sequence: 3,
+            requiresFullRescan: false,
+            rootChanged: false
+        ))
+        try await catalog.apply(.reconciliationRequired(sequence: 4))
+
+        let incremental = try await catalog.snapshot(refreshFolders: false)
+        let clean = try await VaultSourceCatalog(
+            repository: try #require(
+                services.repositories[fixture.analysisNoteID.vaultID]
+            ),
+            vaultRole: .sourceCorpus
+        ).snapshot(refreshFolders: false)
+        #expect(incremental.documents.map(\.relativePath)
+            == clean.documents.map(\.relativePath))
+        #expect(incremental.documents.map(\.fingerprint)
+            == clean.documents.map(\.fingerprint))
+        #expect(incremental.sourceVersions == clean.sourceVersions)
+        #expect(incremental.fileMetadata == clean.fileMetadata)
+        #expect(Set(incremental.semantics.keys) == Set(clean.semantics.keys))
+        #expect(incremental.folders == clean.folders)
+
+        let incrementalWorkspace = try await handle.discovery.refresh()
+        let incrementalResults = try await handle.discovery.search(SearchRequest(
+            query: "precisely bounded",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        await runtime.shutdown()
+
+        let cleanRuntime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let cleanHandle = try await cleanRuntime.openWorkspace(id: fixture.assignment.id)
+        let cleanWorkspace = try await cleanHandle.snapshot()
+        let cleanResults = try await cleanHandle.discovery.search(SearchRequest(
+            query: "precisely bounded",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        let incrementalDocuments = incrementalWorkspace.vaults.flatMap(\.documents)
+        let cleanDocuments = cleanWorkspace.vaults.flatMap(\.documents)
+        #expect(incrementalDocuments.map(\.id) == cleanDocuments.map(\.id))
+        #expect(incrementalDocuments.map(\.fingerprint) == cleanDocuments.map(\.fingerprint))
+        #expect(incrementalDocuments.map(\.lifecycle) == cleanDocuments.map(\.lifecycle))
+        #expect(incrementalWorkspace.discovery.catalog.graph?.diagnostics
+            == cleanWorkspace.discovery.catalog.graph?.diagnostics)
+        #expect(incrementalResults.results.map(\.vaultID)
+            == cleanResults.results.map(\.vaultID))
+        #expect(incrementalResults.results.map(\.relativePath)
+            == cleanResults.results.map(\.relativePath))
+        await cleanRuntime.shutdown()
+    }
+
+    @Test("A failed source reconcile retains the prior complete catalog generation")
+    func failedCatalogReconcileIsTransactional() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let failureURL = fixture.analysesURL.appendingPathComponent("Z-Failure.md")
+        let failureSource = "# Failure sentinel\n\nOriginal.\n"
+        try Data(failureSource.utf8).write(to: failureURL)
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let services = await handle.services
+        let catalog = try #require(
+            services.sourceCatalogs[fixture.analysisNoteID.vaultID]
+        )
+        let initial = try await catalog.snapshot(refreshFolders: false)
+        let initialGeneration = initial.generation
+        let initialTarget = try #require(initial.documents.first {
+            $0.relativePath == fixture.analysisNoteID.relativePath
+        })
+        let targetURL = fixture.analysesURL.appendingPathComponent(
+            fixture.analysisNoteID.relativePath
+        )
+        try Data("# Changed during failed reconcile\n".utf8).write(to: targetURL)
+        try Data([0xFF, 0xFE, 0xFF]).write(to: failureURL)
+
+        await #expect(throws: (any Error).self) {
+            try await catalog.reconcile()
+        }
+        try Data(failureSource.utf8).write(to: failureURL)
+        let retained = try await catalog.snapshot(refreshFolders: false)
+        #expect(retained.generation == initialGeneration)
+        #expect(retained.documents.first {
+            $0.relativePath == fixture.analysisNoteID.relativePath
+        }?.fingerprint == initialTarget.fingerprint)
+
+        try await catalog.reconcile()
+        let repaired = try await catalog.snapshot(refreshFolders: false)
+        #expect(repaired.generation > initialGeneration)
+        #expect(repaired.documents.first {
+            $0.relativePath == fixture.analysisNoteID.relativePath
+        }?.fingerprint != initialTarget.fingerprint)
+        await runtime.shutdown()
+    }
+
     @Test("Delayed self FSEvents do not rebuild a published save generation")
     func selfEventIsNoOp() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
@@ -487,6 +756,33 @@ struct WorkspaceRuntimeTests {
         #expect(await handle.events.publishedGeneration == committedGeneration)
         await runtime.shutdown()
     }
+}
+
+private struct LegacyReviewFixturePayload: Codable {
+    let schemaVersion: Int
+    let records: [UUID: HumanReviewRecord]
+}
+
+private func seedLegacyReview(
+    _ review: HumanReviewRecord,
+    triptychID: UUID,
+    applicationSupportURL: URL
+) throws {
+    let storage = applicationSupportURL
+        .appendingPathComponent("Triptychs", isDirectory: true)
+        .appendingPathComponent(triptychID.uuidString, isDirectory: true)
+        .appendingPathComponent("human-review", isDirectory: true)
+    try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try encoder.encode(LegacyReviewFixturePayload(
+        schemaVersion: 1,
+        records: [review.id: review]
+    )).write(
+        to: storage.appendingPathComponent("human-reviews.json"),
+        options: .atomic
+    )
 }
 
 struct ApplicationFixture: Sendable {

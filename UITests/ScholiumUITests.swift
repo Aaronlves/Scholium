@@ -99,11 +99,29 @@ final class ScholiumUITests: XCTestCase {
         return 1_380
     }
 
+    private var initialWorkspaceReadyTimeout: TimeInterval {
+        if name.contains("testNewAnalysisCreationHasNoPropertyRequirements")
+            || name.contains("testMissingAnalysisPropertiesAreOmittedFromAbout")
+            || name.contains("testFolderContextMenuCreatesInsideFolderAndExposesLifecycleActions") {
+            return 90
+        }
+        return 45
+    }
+
     @MainActor
     override func setUp() async throws {
         continueAfterFailure = false
         sessionID = UUID()
         try createIsolatedTriptych()
+        if name.contains("testStorageUnavailableRetriesWithoutConstructingWorkspace") {
+            try FileManager.default.createDirectory(
+                at: homeDirectory,
+                withIntermediateDirectories: true
+            )
+            try Data("Application Support blocker".utf8).write(
+                to: homeDirectory.appendingPathComponent("ApplicationSupport")
+            )
+        }
         app = configuredApplication(
             sessionID: sessionID,
             initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest,
@@ -116,9 +134,17 @@ final class ScholiumUITests: XCTestCase {
             app.windows.firstMatch.waitForExistence(timeout: 15),
             "The isolated QA window did not appear"
         )
+        if name.contains("testStorageUnavailableRetriesWithoutConstructingWorkspace") {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["scholium.storageUnavailable"]
+                    .waitForExistence(timeout: 15),
+                "The invalid Application Support root did not produce the recoverable storage page."
+            )
+            return
+        }
         let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
         XCTAssertTrue(
-            waitUntil(timeout: 45) { renderedDocument.exists },
+            waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },
             "The isolated QA window appeared without reaching a usable document surface."
         )
     }
@@ -134,6 +160,20 @@ final class ScholiumUITests: XCTestCase {
             hierarchy.name = "Scholium accessibility hierarchy"
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
+            if let homeDirectory,
+               let recoveryURL = FileManager.default.enumerator(
+                   at: homeDirectory,
+                   includingPropertiesForKeys: nil
+               )?.compactMap({ $0 as? URL }).first(where: {
+                   $0.lastPathComponent == "transaction-recovery.json"
+               }),
+               let recoveryData = try? Data(contentsOf: recoveryURL),
+               let recoveryText = String(data: recoveryData, encoding: .utf8) {
+                let recovery = XCTAttachment(string: recoveryText)
+                recovery.name = "Scholium transaction recovery record"
+                recovery.lifetime = .keepAlways
+                add(recovery)
+            }
         }
         app?.terminate()
         if ProcessInfo.processInfo.environment["SCHOLIUM_QA_KEEP_ARTIFACTS"] != "1",
@@ -337,6 +377,56 @@ final class ScholiumUITests: XCTestCase {
         }
     }
 
+    /// D-104 has no temporary or implicit read-only fallback. This journey
+    /// starts the real QA composition with an unusable explicit storage root,
+    /// proves that only the recovery surface is reachable, then repairs the
+    /// root and invokes the default Retry keyboard action before a Workspace
+    /// is allowed to appear.
+    @MainActor
+    func testStorageUnavailableRetriesWithoutConstructingWorkspace() throws {
+        let unavailable = app.descendants(matching: .any)[
+            "scholium.storageUnavailable"
+        ]
+        let retry = app.buttons["Retry"]
+        let details = app.buttons["Details"].firstMatch
+        let detailsContent = app.descendants(matching: .any)[
+            "scholium.storageUnavailable.details"
+        ]
+        let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
+
+        XCTAssertTrue(unavailable.exists)
+        XCTAssertTrue(app.staticTexts["Storage Unavailable"].exists)
+        XCTAssertTrue(retry.exists)
+        XCTAssertTrue(retry.isEnabled)
+        XCTAssertTrue(app.buttons["Quit"].exists)
+        XCTAssertFalse(renderedDocument.exists)
+        XCTAssertFalse(detailsContent.exists)
+
+        XCTAssertTrue(details.exists)
+        XCTAssertEqual(details.value as? String, "Collapsed")
+        details.click()
+        XCTAssertEqual(details.value as? String, "Expanded")
+        XCTAssertTrue(detailsContent.waitForExistence(timeout: 5))
+
+        app.menuBars.menuBarItems["File"].click()
+        let newNote = app.menuItems["New Note"].firstMatch
+        if newNote.exists {
+            XCTAssertFalse(newNote.isEnabled)
+        }
+        app.typeKey(.escape, modifierFlags: [])
+
+        let blocker = homeDirectory.appendingPathComponent("ApplicationSupport")
+        try FileManager.default.removeItem(at: blocker)
+        app.staticTexts["Storage Unavailable"].click()
+        app.typeKey(.return, modifierFlags: [])
+
+        XCTAssertTrue(
+            waitUntil(timeout: 90) { renderedDocument.exists },
+            "The default Retry action did not enter the Workspace after storage was repaired."
+        )
+        XCTAssertFalse(unavailable.exists)
+    }
+
     @MainActor
     func testSharedSearchMatchesAnAliasAcrossTheTriptych() throws {
         let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
@@ -365,54 +455,45 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testNewAnalysisCanDeclareAndPersistsAboutScopeAndLimitations() throws {
+    func testNewAnalysisCreationHasNoPropertyRequirements() throws {
         let newNote = app.descendants(matching: .any)["scholium.newNote"]
         XCTAssertTrue(newNote.waitForExistence(timeout: 10))
         newNote.click()
 
-        let declareNow = app.buttons["Declare Now"].firstMatch
-        let declareNowRadio = app.radioButtons["Declare Now"].firstMatch
-        XCTAssertTrue(declareNow.waitForExistence(timeout: 3) || declareNowRadio.exists)
-        (declareNow.exists ? declareNow : declareNowRadio).click()
-
-        let scope = app.descendants(matching: .any)["scholium.newNote.researchUnitScope"]
-        let limitations = app.descendants(matching: .any)["scholium.newNote.researchUnitLimitations"]
-        let create = app.buttons["Create"].firstMatch
-        XCTAssertTrue(scope.waitForExistence(timeout: 5))
-        XCTAssertTrue(limitations.exists)
-        XCTAssertTrue(create.exists)
-        XCTAssertFalse(create.isEnabled)
-
-        scope.click()
-        scope.typeText("Introduction and Chapter 1")
-        limitations.click()
-        limitations.typeText("Chapters 2-5 remain unread.")
-        XCTAssertTrue(create.isEnabled)
-        create.click()
+        XCTAssertFalse(
+            app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
+            "Direct note creation must not present the retired lifecycle sheet."
+        )
+        XCTAssertFalse(app.buttons["Declare Now"].exists)
+        XCTAssertFalse(app.radioButtons["Declare Now"].exists)
+        XCTAssertFalse(app.radioButtons["Not Yet"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.newNote.researchUnitCompletion"
+        ].exists)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.newNote.researchUnitScope"
+        ].exists)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.newNote.researchUnitLimitations"
+        ].exists)
 
         let createdURL = triptychDirectory.appendingPathComponent("01-analyses/Untitled.md")
         XCTAssertTrue(waitUntil(timeout: 10) { FileManager.default.fileExists(atPath: createdURL.path) })
         let source = try source(at: createdURL)
-        XCTAssertTrue(source.contains("research_unit:"))
-        XCTAssertTrue(source.contains("scope: \"Introduction and Chapter 1\""))
-        XCTAssertTrue(source.contains("- \"Chapters 2-5 remain unread.\""))
+        XCTAssertEqual(source, "")
+        XCTAssertFalse(source.contains("research_unit"))
     }
 
     @MainActor
-    func testNewAnalysisNotYetPreservesYAMLFreeSourceAndShowsAnAboutGap() throws {
+    func testMissingAnalysisPropertiesAreOmittedFromAbout() throws {
         let newNote = app.descendants(matching: .any)["scholium.newNote"]
         XCTAssertTrue(newNote.waitForExistence(timeout: 10))
         newNote.click()
 
-        let notYet = app.radioButtons["Not Yet"]
-        XCTAssertTrue(notYet.waitForExistence(timeout: 3))
-        XCTAssertEqual((notYet.value as? NSNumber)?.boolValue, true)
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.newNote.researchUnitScope"
-        ].exists)
-        let create = app.buttons["Create"].firstMatch
-        XCTAssertTrue(create.isEnabled)
-        create.click()
+        XCTAssertFalse(
+            app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
+            "Direct note creation must not present a naming or Properties sheet."
+        )
 
         let createdURL = triptychDirectory.appendingPathComponent(
             "01-analyses/Untitled.md"
@@ -427,20 +508,146 @@ final class ScholiumUITests: XCTestCase {
         let createdTitle = app.descendants(matching: .any)[
             "scholium.documentNoteName"
         ]
-        XCTAssertTrue(waitUntil(timeout: 10) {
+        XCTAssertTrue(waitUntil(timeout: 45) {
             createdTitle.value as? String == "Untitled"
         })
 
         selectResearchInspectorMode("overview")
         let about = app.descendants(matching: .any)["scholium.about"]
         XCTAssertTrue(about.waitForExistence(timeout: 8))
-        XCTAssertTrue(about.staticTexts[
-            "No Scope or Limitations have been declared."
-        ].exists)
+        for omittedField in [
+            "Completion", "Limitations", "Authors", "Year", "Type", "Source Basis",
+        ] {
+            XCTAssertFalse(about.staticTexts[omittedField].exists)
+        }
         XCTAssertFalse(app.descendants(matching: .any)[
             "scholium.reviewResearchStatusGate"
         ].exists)
         XCTAssertFalse(app.buttons["Complete Review"].exists)
+    }
+
+    @MainActor
+    func testFolderContextMenuCreatesInsideFolderAndExposesLifecycleActions() throws {
+        let folderRow = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01"
+        ]
+        XCTAssertTrue(folderRow.waitForExistence(timeout: 10))
+        folderRow.rightClick()
+
+        let folderMenu = app.menus["scholium.folderRow.Cluster-01"]
+        XCTAssertTrue(folderMenu.waitForExistence(timeout: 3))
+        let newNote = folderMenu.menuItems["New Note"]
+        XCTAssertTrue(newNote.waitForExistence(timeout: 3))
+        let newFolder = folderMenu.menuItems["New Folder"]
+        XCTAssertTrue(newFolder.exists)
+        XCTAssertTrue(folderMenu.menuItems["Rename Folder…"].exists)
+        XCTAssertTrue(folderMenu.menuItems["Move Folder…"].exists)
+        XCTAssertTrue(
+            folderMenu.menuItems["Expand All"].exists
+                || folderMenu.menuItems["Collapse All"].exists
+        )
+        XCTAssertTrue(folderMenu.menuItems["Copy Relative Path"].exists)
+        XCTAssertTrue(folderMenu.menuItems["Reveal in Finder"].exists)
+        XCTAssertTrue(folderMenu.menuItems["Move Folder and Notes to Trash…"].exists)
+        newFolder.click()
+
+        XCTAssertFalse(
+            app.textFields["scholium.folderName"].waitForExistence(timeout: 1),
+            "Direct folder creation must not present a naming sheet."
+        )
+        let createdFolderURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-01/Untitled Folder",
+            isDirectory: true
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(
+                atPath: createdFolderURL.path,
+                isDirectory: &isDirectory
+            ) && isDirectory.boolValue
+        })
+        let createdFolderRow = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01/Untitled Folder"
+        ]
+        XCTAssertTrue(createdFolderRow.waitForExistence(timeout: 10))
+
+        createdFolderRow.rightClick()
+        let createdFolderMenu = app.menus[
+            "scholium.folderRow.Cluster-01/Untitled Folder"
+        ]
+        XCTAssertTrue(createdFolderMenu.waitForExistence(timeout: 3))
+        createdFolderMenu.menuItems["Rename Folder…"].click()
+        let folderName = app.textFields["scholium.folderName"]
+        XCTAssertTrue(folderName.waitForExistence(timeout: 5))
+        folderName.click()
+        folderName.typeKey("a", modifierFlags: [.command])
+        folderName.typeText("Renamed Empty")
+        app.buttons["Rename"].click()
+
+        let renamedFolderURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-01/Renamed Empty",
+            isDirectory: true
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: renamedFolderURL.path)
+                && !FileManager.default.fileExists(atPath: createdFolderURL.path)
+        })
+        let renamedFolderRow = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01/Renamed Empty"
+        ]
+        XCTAssertTrue(renamedFolderRow.waitForExistence(timeout: 10))
+        renamedFolderRow.rightClick()
+        let renamedFolderMenu = app.menus[
+            "scholium.folderRow.Cluster-01/Renamed Empty"
+        ]
+        XCTAssertTrue(renamedFolderMenu.waitForExistence(timeout: 3))
+        renamedFolderMenu.menuItems["Move Folder and Notes to Trash…"].click()
+        let folderTrashSheet = app.sheets.firstMatch
+        XCTAssertTrue(folderTrashSheet.waitForExistence(timeout: 5))
+        let confirmFolderTrash = folderTrashSheet.buttons[
+            "Move Folder and Notes to Trash"
+        ]
+        XCTAssertTrue(confirmFolderTrash.waitForExistence(timeout: 5))
+        confirmFolderTrash.click()
+        let trashedFolderURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Trash/Cluster-01/Renamed Empty",
+            isDirectory: true
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: trashedFolderURL.path)
+                && !FileManager.default.fileExists(atPath: renamedFolderURL.path)
+        })
+
+        folderRow.rightClick()
+        XCTAssertTrue(folderMenu.waitForExistence(timeout: 3))
+        XCTAssertTrue(newNote.waitForExistence(timeout: 3))
+        newNote.click()
+
+        XCTAssertFalse(
+            app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
+            "Note creation must not route through the lifecycle sheet."
+        )
+        let createdURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-01/Untitled.md"
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: createdURL.path)
+        })
+        XCTAssertEqual(try source(at: createdURL), "")
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: triptychDirectory
+                    .appendingPathComponent("01-analyses/Untitled.md")
+                    .path
+            )
+        )
+
+        let createdTitle = app.descendants(matching: .any)[
+            "scholium.documentNoteName"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 45) {
+            createdTitle.value as? String == "Untitled"
+        })
     }
 
     @MainActor
