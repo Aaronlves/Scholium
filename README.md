@@ -29,6 +29,14 @@ still being shaped with care. If you value philosophical craft, durable
 plain-text archives, and tools that assist without claiming your judgment, we
 hope you will feel at home here.
 
+Scholium is also becoming a place where researchers govern the methods by
+which agents participate. It quietly preserves operational facts, invites
+agents to report bounded scholarly outcomes, and records researcher judgment
+only when the researcher deliberately expresses it. It neither demands a
+complete account of inquiry nor invents one. Method Skills may be inspected,
+edited, replaced, or disabled; exact source, authority, provenance, conflict,
+and recovery remain protected by Scholium.
+
 ## Documentation
 
 Use the smallest authority set that answers the question:
@@ -71,6 +79,11 @@ researcher-managed folders; Scholium does not register or manage projects. See
 [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) for code
 ownership and [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for
 precise evidence and remaining gaps.
+
+The researcher-governed Actions, directly editable Working Method Skills,
+classified Skills settings, standing permissions, unified Discussion, and
+portable two-panel Research Record adopted by D-106 are target migration work;
+they are not yet reachable merely because the specification now requires them.
 
 ## Requirements
 

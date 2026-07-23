@@ -23,6 +23,12 @@ Scholium 写给那些希望“让软件安静，让思想响亮”的人：专�
 如果您珍视哲学技艺、持久的纯文本档案，以及只协助您而不替您作判断的工具，
 我们希望您会喜欢这里。
 
+Scholium 也将成为一个由研究者治理 Agent 参与方法的地方。它安静地保存可以
+验证的操作事实，邀请 Agent 报告有边界的学术结果，并且只在研究者主动表达时
+记录研究者的判断。它既不要求一份完整的研究心理档案，也不自行编造这样的档案。
+方法 Skills 可以被检查、直接编辑、替换或停用；准确来源、权限、来源记录、冲突
+与恢复仍由 Scholium 的受保护机制负责。
+
 ## 文档
 
 请使用足以回答问题的最小权威集合：
@@ -50,13 +56,19 @@ Scholium 写给那些希望“让软件安静，让思想响亮”的人：专�
 `ScholiumContracts`，内部 I/O 位于 `ScholiumCore`，macOS 应用与 CLI 共享
 一个无界面的 `ScholiumApplication` 层。Core 不是公共产品，两个交付目标都
 不能导入它。当前可达行为包括多脉络注册与窗口路由、脉络控制、安全的笔记生命
-周期、研究者评审、对话、评析、笔记历史、完整脉络恢复点、带修订检查的 CLI
-直接写入、研究库范围的属性、未分类导入、统一搜索、受保护的 CSS 片段、仅限
-localhost 的 Zotero 读取，以及供外部 agent 选择使用的第一方 Zotero MCP
-服务。Canvas 已从产品中移除。“写作”文件夹仍是研究者自行管理的普通文件夹；
+周期、Comment、当前由 Function 支撑的 Discussion、评析、机器本地的写入前恢复、
+完整脉络恢复点、带修订检查的 CLI 直接写入、研究库范围的属性、未分类导入、统一
+搜索、受保护的 CSS 片段、仅限 localhost 的 Zotero 读取，以及供外部 Agent
+选择使用的第一方 Zotero MCP 服务。Canvas 已从产品中移除。“写作”文件夹仍是
+研究者自行管理的普通文件夹；
 Scholium 不注册或管理项目。代码所有权请参阅
 [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)，精确证据与剩余缺口请参阅
 [实现状态](Docs/IMPLEMENTATION_STATUS.md)。
+
+D-106 已经把研究者治理的 Actions、可直接编辑的 Working Method Skills、分类的
+Skills 设置、standing permissions、统一 Discussion 和可移植的双栏 Research
+Record 纳入目标规范；它们仍属于迁移工作，不能因为规范已经采用就被描述为当前
+可达功能。
 
 ## 环境要求
 

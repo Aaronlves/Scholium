@@ -1,6 +1,6 @@
 # Scholium Implementation Status
 
-**Audited:** 2026-07-23
+**Audited:** 2026-07-24
 **Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
 **Scope:** current reachability, verification evidence, migration debt, and open
 acceptance only. This ledger cannot redefine the target specification.
@@ -26,6 +26,48 @@ acceptance only. This ledger cannot redefine the target specification.
 | Product Skills | Protected typed resources reject traversal/symlink escape; revisions cover bounded resources and assembly records only loaded conditional resources. Exactly five Workflow packages remain; Discuss is System infrastructure and removed research-record models have no Skill. Source Analyzer, APA 7 verification, and Prose Control are opt-in copy-on-adoption Researcher Skills, not automatic or universal authorities. |
 | Research Guidance | Compatible Triptych Skills may replace or supplement a function and contribute exact Practices through revision-checked bindings; Functions mode sees no package IDs. Citation Fidelity requires an explicit capability/style binding. Opted-in local Skills support guarded proposal, comparison, validation, attributed evaluation, atomic replacement, snapshots, and recovery; bundled packages remain immutable. |
 | Discuss and MCP | Discuss persists per-Triptych defaults and an immutable request-time response contract: Academic Outcome is mandatory and five modules optional; Practices cannot change scope or permissions. Current Discuss completion waits for researcher review and Finish before projecting Discussed. Only Function-backed Discussion records carrying their exact request snapshot are supported. External Zotero MCP remains separate from the built-in reader; only explicit `--probe` performs its read-only initialization lifecycle. |
+
+## Adopted target migrations not yet reachable
+
+D-106 was adopted as target authority on 2026-07-24. This documentation change
+does not make any part of the migration reachable.
+
+| Target migration | Current divergence | First implementation gate |
+| --- | --- | --- |
+| Research Actions | Current Contracts and UI still expose internal Function-era identities and the Analysis/Topic `Discuss, Write, Check Fidelity` matrix. The target exposes role-specific Discuss, Analyze, Synthesize, Write, Critique, and Check Fidelity without a default mode picker. | Introduce versioned public Action contracts while retaining the proven coordinator as an internal mechanism. |
+| Skill ownership and Settings | Current product resources contain five immutable Workflow packages; default editing requires duplication, bindings permit fallback, and Settings presents the prior package organization. The target separates protected System Skills, directly editable Working Methods, bundled references, and disabled-first Researcher Skills, with Methods, Researcher Skills, Permissions, Sources & Integrations, and Recovery & Technical categories. | Replace product Skill definitions and add explicit active/researcher/disabled bindings before changing production Settings. |
+| Discussion and Research Record | Passage Comment and Function-backed Discussion remain separate. Intellectual records remain machine-local and the current utility window is one long projection. | Add the portable versioned record store and unified Discussion contract before cutting over the independent list/detail window. |
+| Permission and continuation | Current write authority is short-lived per run and cannot receive a typed mid-run note-change request. | Add declarative capability envelopes, machine-local policy, request contracts, and independently bounded child phases; never widen a frozen parent grant. |
+| Interface | Actions still contains Research Activity and the old launchers. The target removes the HUD, keeps active Discussion in Actions, provides grouped researcher-created Actions, and keeps Research Record independent. | Approve static native visual proofs before production connection; retain restrained opaque surfaces, typography, fine rules, and native adaptation. |
+| Clean cutover | Current legacy code, stores, tests, and shipped Workflow Skills remain reachable because their replacements do not yet exist. | Delete each superseded repository path in the same step that makes its replacement reachable. Never migrate, delete, or rewrite researcher Markdown, unknown YAML, unrecognized Triptych files, or unsupported legacy data. |
+
+The Product Skill rewrite may inspect the researcher's existing local
+philosophical Skill library as methodological evidence, but it must re-author
+each package for Scholium's Action, source-fidelity, authority, feedback, and
+evaluation contracts. It must not copy package identity, prose, permissions,
+or workflow assumptions wholesale.
+
+The final cutover cannot close until a line-by-line omission audit compares the
+implemented product and D-106 against the originating “A Place Where Thoughts
+Grow Up” proposal and records every intentional deferral. The canonical
+specification controls if exploratory prose and an adopted rule differ.
+
+External research informed the implementation method, not Scholium's product
+meaning: Apple's current [Settings](https://developer.apple.com/design/human-interface-guidelines/settings)
+guidance supports stable related panes, few long-lived settings, and keeping
+task-specific choices in context; its [Lists and
+Tables](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables)
+guidance supports textual list/detail presentation. VS Code's official
+[Contribution Points](https://code.visualstudio.com/api/references/contribution-points)
+show a mature declarative separation among contribution metadata, placement,
+context, and host execution. Zotero's official
+[Settings](https://www.zotero.org/support/preferences) documentation provides a
+research-software example of responsibility-based panes. Obsidian's official
+[plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines)
+reinforce host-owned APIs, disclosed external access, and no hard-coded host
+styling. These sources neither authorize executable Scholium plugins nor prove
+the proposed interface; static proofs, production integration, and researcher
+acceptance remain separate gates.
 
 ## Adopted boundaries with remaining acceptance
 
