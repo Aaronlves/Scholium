@@ -175,7 +175,7 @@ private struct ResearchFunctionResearchData: Encodable {
     let target: ResearchFunctionNamedData
     let materials: [ResearchFunctionNamedData]
     let fidelityTargets: [ResearchFunctionNamedData]
-    let passage: ResearcherCommentAnchor?
+    let passage: CommentAnchor?
     let selectedComments: [DialogueIncludedComment]
 }
 
@@ -449,14 +449,19 @@ extension WorkspaceHandle {
         fidelityInvocation: FidelityInvocationKind? = nil
     ) async throws -> ResearchFunctionPreparation {
         try requireActive()
-        let request = try await expandingSharedFidelityTargets(in: proposedRequest)
-        try request.validate()
+        let expandedRequest = try await expandingSharedFidelityTargets(in: proposedRequest)
+        try expandedRequest.validate()
         let target = try await validateResearchFunctionTarget(
-            request.target,
-            expected: request.target.fingerprint
+            expandedRequest.target,
+            expected: expandedRequest.target.fingerprint
         )
+        let materials = try await validateResearchFunctionMaterials(expandedRequest.materials)
+        let request = try await bindingApplicableCritiqueComments(
+            in: expandedRequest,
+            target: target
+        )
+        try request.validate()
         let zoteroContext = await zoteroBibliographicContext(for: target)
-        let materials = try await validateResearchFunctionMaterials(request.materials)
         _ = try await validateResearchFunctionWriteTargets(request)
         _ = try await validateResearchFunctionFidelityTargets(request)
         let evidence = try await selectedFunctionComments(
@@ -636,12 +641,12 @@ extension WorkspaceHandle {
                 preparation = try await createDiscussion(
                     instruction: request.instruction!,
                     selectedNotes: ([target] + materials).map(\.reference),
-                    includedCommentIDs: Set(request.commentIDs),
+                    includedComments: evidence,
                     requestedDestination: nil,
                     responseProfile: responseProfile,
                     discussionID: runID,
                     functionSnapshot: snapshot,
-                    skillInstructionsOverride: functionInstructions
+                    skillInstructions: functionInstructions
                 )
             } catch let error as ScholiumApplicationError
                 where error.durableMutationWasCommitted {
@@ -1187,7 +1192,7 @@ extension WorkspaceHandle {
             selected: [currentTarget] + currentMaterials
         )
         let currentEvidenceRevisions = try currentEvidence.map {
-            try researchCommentEvidenceRevision($0.comment)
+            try commentExchangeEvidenceRevision($0.exchange)
         }.sorted { lhs, rhs in
             if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
             return lhs.byteCount < rhs.byteCount
@@ -2543,23 +2548,20 @@ extension WorkspaceHandle {
 
             let selectedNoteIDs = [snapshot.request.target.noteID]
                 + snapshot.request.materials.map(\.noteID)
-            var currentComments: [UUID: ResearcherComment] = [:]
-            for noteID in selectedNoteIDs {
-                guard let record = await services.humanReviewStore.record(noteID: noteID) else {
-                    continue
-                }
-                for comment in record.comments {
-                    currentComments[comment.id] = comment
-                }
-            }
-            let currentEvidence = try snapshot.request.commentIDs.map { id in
-                guard let comment = currentComments[id] else {
+            var currentEvidence: [DocumentFingerprint] = []
+            for id in snapshot.request.commentIDs {
+                guard let exchange = await services.researchActivityStore.exchange(id: id),
+                      selectedNoteIDs.contains(exchange.note.noteID),
+                      exchange.status == .finished,
+                      exchange.finishedAt != nil,
+                      exchange.anchor.state == .attached else {
                     throw ResearchFunctionContractError.invalidCompletion(
                         "Selected Comment evidence is no longer available."
                     )
                 }
-                return try researchCommentEvidenceRevision(comment)
-            }.sorted { lhs, rhs in
+                currentEvidence.append(try commentExchangeEvidenceRevision(exchange))
+            }
+            currentEvidence.sort { lhs, rhs in
                 if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
                 return lhs.byteCount < rhs.byteCount
             }
@@ -3277,29 +3279,76 @@ extension WorkspaceHandle {
         selected: [ValidatedFunctionObject]
     ) async throws -> [DialogueIncludedComment] {
         guard !ids.isEmpty else { return [] }
-        let requested = Set(ids)
-        var found: [DialogueIncludedComment] = []
-        for object in selected {
-            guard let record = await services.humanReviewStore.record(
-                noteID: object.reference.noteID
-            ) else { continue }
-            for comment in record.comments where requested.contains(comment.id) {
-                found.append(DialogueIncludedComment(
-                    note: object.reference,
-                    comment: comment
-                ))
+        let objectsByID = Dictionary(
+            uniqueKeysWithValues: selected.map { ($0.reference.noteID, $0) }
+        )
+        var included: [DialogueIncludedComment] = []
+        for id in ids {
+            guard let exchange = await services.researchActivityStore.exchange(id: id),
+                  let object = objectsByID[exchange.note.noteID],
+                  exchange.note.note == object.note.id,
+                  exchange.status == .finished,
+                  exchange.finishedAt != nil,
+                  exchange.anchor.state == .attached,
+                  exchange.anchor.fingerprint == object.note.fingerprint else {
+                throw DialogueError.invalidCommentOwner
             }
+            included.append(DialogueIncludedComment(
+                note: object.reference,
+                exchange: exchange
+            ))
         }
-        guard Set(found.map(\.id)) == requested, found.count == requested.count else {
-            throw DialogueError.invalidCommentOwner
-        }
-        return ids.compactMap { id in found.first { $0.id == id } }
+        return included
+    }
+
+    /// Critique owns Comment selection: every finished Comment attached to the
+    /// target's exact current revision is included automatically. Passage
+    /// Critique narrows that set to overlapping source ranges. Callers cannot
+    /// silently omit applicable Comment evidence or inject stale exchanges.
+    private func bindingApplicableCritiqueComments(
+        in request: ResearchFunctionRequest,
+        target: ValidatedFunctionObject
+    ) async throws -> ResearchFunctionRequest {
+        guard request.function == .critique else { return request }
+        let selection = request.scope?.selection
+        let applicableIDs = await services.researchActivityStore
+            .exchanges(for: target.reference.noteID)
+            .filter { exchange in
+                guard exchange.note.note == target.note.id,
+                      exchange.status == .finished,
+                      exchange.finishedAt != nil,
+                      exchange.anchor.state == .attached,
+                      exchange.anchor.fingerprint == target.note.fingerprint else {
+                    return false
+                }
+                guard request.scope?.kind == .passage else { return true }
+                guard let selection else { return false }
+                return exchange.anchor.utf16Range.lowerBound < selection.utf16Range.upperBound
+                    && selection.utf16Range.lowerBound < exchange.anchor.utf16Range.upperBound
+            }
+            .map(\.id)
+            .sorted { $0.uuidString < $1.uuidString }
+
+        return ResearchFunctionRequest(
+            function: request.function,
+            target: request.target,
+            materials: request.materials,
+            instruction: request.instruction,
+            scope: request.scope,
+            checks: request.checks,
+            commentIDs: applicableIDs,
+            conditionalResources: request.conditionalResources,
+            dialogueResponseModules: request.dialogueResponseModules,
+            writeScope: request.writeScope,
+            authorizedWriteTargets: request.authorizedWriteTargets,
+            fidelityTargets: request.fidelityTargets
+        )
     }
 
     private func functionEvidenceRevisions(
         _ evidence: [DialogueIncludedComment]
     ) throws -> [DocumentFingerprint] {
-        try evidence.map { try researchCommentEvidenceRevision($0.comment) }
+        try evidence.map { try commentExchangeEvidenceRevision($0.exchange) }
     }
 
     private func validatePreparedFunctionOutput(
@@ -3642,13 +3691,13 @@ private func mergedFunctionSkillSnapshots(
     }.sorted { $0.packageID < $1.packageID }
 }
 
-private func researchCommentEvidenceRevision(
-    _ comment: ResearcherComment
+private func commentExchangeEvidenceRevision(
+    _ exchange: CommentExchange
 ) throws -> DocumentFingerprint {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     encoder.outputFormatting = [.sortedKeys]
-    return DocumentFingerprint(data: try encoder.encode(comment))
+    return DocumentFingerprint(data: try encoder.encode(exchange))
 }
 
 private extension String {

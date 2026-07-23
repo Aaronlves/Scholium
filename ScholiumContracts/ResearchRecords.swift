@@ -1,34 +1,12 @@
 import Foundation
 import Markdown
 
-public enum NoteQualification: String, Codable, CaseIterable, Sendable {
-    case qualified
-    case unqualified
-}
-
-/// Researcher-facing state for the exact current fingerprint. Qualification
-/// takes precedence over the generic fact that a revision has been reviewed.
-public enum HumanReviewDisplayState: Equatable, Sendable {
-    case notReviewed
-    case reviewed
-    case qualified
-    case unqualified
-
-    public init(isReviewed: Bool, qualification: NoteQualification?) {
-        switch qualification {
-        case .qualified: self = .qualified
-        case .unqualified: self = .unqualified
-        case nil: self = isReviewed ? .reviewed : .notReviewed
-        }
-    }
-}
-
 public enum CommentAttachmentState: String, Codable, Sendable {
     case attached
     case needsReattachment
 }
 
-public struct ResearcherCommentAnchor: Codable, Hashable, Sendable {
+public struct CommentAnchor: Codable, Hashable, Sendable {
     public var fingerprint: DocumentFingerprint
     public var utf8Range: Range<Int>
     public var utf16Range: Range<Int>
@@ -72,7 +50,7 @@ public struct ResearcherCommentAnchor: Codable, Hashable, Sendable {
 /// Constructs fingerprint-bound comment anchors from exact UTF-16 editor
 /// selections or from a unique Read-mode quotation. All stored offsets are
 /// measured against the full Markdown file, including frontmatter.
-public enum ResearcherCommentAnchorBuilder {
+public enum CommentAnchorBuilder {
     public static let contextLength = 48
 
     public static func anchor(
@@ -80,7 +58,7 @@ public enum ResearcherCommentAnchorBuilder {
         fingerprint: DocumentFingerprint,
         utf16Range: Range<Int>,
         selectedText: String? = nil
-    ) -> ResearcherCommentAnchor? {
+    ) -> CommentAnchor? {
         let nsSource = source as NSString
         guard utf16Range.lowerBound >= 0,
               utf16Range.upperBound > utf16Range.lowerBound,
@@ -117,7 +95,7 @@ public enum ResearcherCommentAnchorBuilder {
         let visibleSelection = selectedText?
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return ResearcherCommentAnchor(
+        return CommentAnchor(
             fingerprint: fingerprint,
             utf8Range: utf8Start..<utf8End,
             utf16Range: utf16Range,
@@ -138,7 +116,7 @@ public enum ResearcherCommentAnchorBuilder {
         contextBefore: String = "",
         contextAfter: String = "",
         in document: NoteDocument
-    ) -> ResearcherCommentAnchor? {
+    ) -> CommentAnchor? {
         let selected = quotation.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !selected.isEmpty else { return nil }
         let candidates = ranges(of: selected, in: document.rawContent)
@@ -181,7 +159,7 @@ public enum ResearcherCommentAnchorBuilder {
     /// This is used to project Source-mode comments over Read mode without
     /// searching the whole rendered document for an ambiguous quotation.
     public static func renderedQuotation(
-        for anchor: ResearcherCommentAnchor,
+        for anchor: CommentAnchor,
         in document: NoteDocument
     ) -> String? {
         guard anchor.state == .attached,
@@ -202,7 +180,7 @@ public enum ResearcherCommentAnchorBuilder {
         contextBefore: String,
         contextAfter: String,
         document: NoteDocument
-    ) -> ResearcherCommentAnchor? {
+    ) -> CommentAnchor? {
         let parsed = Document(parsing: document.body)
         var collector = RenderedCommentTextCollector(source: document.body)
         collector.visit(parsed)
@@ -493,134 +471,6 @@ private struct RenderedCommentSourceMapper {
     }
 }
 
-public struct ResearcherComment: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let author: String
-    public var text: String
-    public var anchor: ResearcherCommentAnchor
-    public let createdAt: Date
-    public var updatedAt: Date
-    public var resolvedAt: Date?
-
-    public init(
-        id: UUID = UUID(),
-        author: String = "Researcher",
-        text: String,
-        anchor: ResearcherCommentAnchor,
-        createdAt: Date = Date(),
-        updatedAt: Date = Date(),
-        resolvedAt: Date? = nil
-    ) {
-        self.id = id
-        self.author = author
-        self.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.anchor = anchor
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.resolvedAt = resolvedAt
-    }
-}
-
-public struct HumanReviewDraft: Codable, Hashable, Sendable {
-    public var fingerprint: DocumentFingerprint
-    public var qualification: NoteQualification?
-    public var reviewNote: String
-    public var updatedAt: Date
-
-    public init(
-        fingerprint: DocumentFingerprint,
-        qualification: NoteQualification? = nil,
-        reviewNote: String = "",
-        updatedAt: Date = Date()
-    ) {
-        self.fingerprint = fingerprint
-        self.qualification = qualification
-        self.reviewNote = reviewNote
-        self.updatedAt = updatedAt
-    }
-}
-
-public struct CompletedHumanReview: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let fingerprint: DocumentFingerprint
-    public let qualification: NoteQualification
-    public let reviewNote: String
-    public let completedAt: Date
-
-    public init(
-        id: UUID = UUID(),
-        fingerprint: DocumentFingerprint,
-        qualification: NoteQualification,
-        reviewNote: String,
-        completedAt: Date = Date()
-    ) {
-        self.id = id
-        self.fingerprint = fingerprint
-        self.qualification = qualification
-        self.reviewNote = reviewNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.completedAt = completedAt
-    }
-}
-
-public struct HumanReviewRecord: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let vaultID: UUID
-    public var relativePath: String
-    public var draft: HumanReviewDraft?
-    public var completedReviews: [CompletedHumanReview]
-    public var comments: [ResearcherComment]
-    public let createdAt: Date
-    public var updatedAt: Date
-
-    public init(
-        noteID: UUID,
-        vaultID: UUID,
-        relativePath: String,
-        draft: HumanReviewDraft? = nil,
-        completedReviews: [CompletedHumanReview] = [],
-        comments: [ResearcherComment] = [],
-        createdAt: Date = Date(),
-        updatedAt: Date = Date()
-    ) {
-        id = noteID
-        self.vaultID = vaultID
-        self.relativePath = relativePath
-        self.draft = draft
-        self.completedReviews = completedReviews.sorted { $0.completedAt < $1.completedAt }
-        self.comments = comments.sorted { $0.createdAt < $1.createdAt }
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-    }
-
-    public var latestReview: CompletedHumanReview? {
-        completedReviews.max { $0.completedAt < $1.completedAt }
-    }
-
-    public func review(for fingerprint: DocumentFingerprint) -> CompletedHumanReview? {
-        completedReviews.last { $0.fingerprint == fingerprint }
-    }
-
-    public func hasChangedSinceReview(current fingerprint: DocumentFingerprint) -> Bool {
-        guard let latestReview else { return false }
-        return latestReview.fingerprint != fingerprint
-    }
-}
-
-/// Compatibility errors for lifecycle migration of the read-only Human Review
-/// archive. The retired Review workflow has no creation or editing errors.
-public enum HumanReviewError: LocalizedError, Sendable {
-    case recordVaultMismatch
-    case recordPathMismatch(expected: String, actual: String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .recordVaultMismatch: return "The earlier Review archive record belongs to a different vault."
-        case .recordPathMismatch(let expected, let actual):
-            return "The earlier Review archive record is at '\(actual)', not the expected path '\(expected)'."
-        }
-    }
-}
-
 public enum ResearchRecordStoreError: LocalizedError, Sendable {
     case unreadableStore(kind: String, reason: String)
     case restorationConflict(kind: String, identity: String)
@@ -669,19 +519,17 @@ public struct DialogueNoteReference: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// A researcher comment captured for one Dialogue request together with the
-/// exact note identity shown to the agent. The note reference is a snapshot of
-/// the title, vault-relative path, and advisory fingerprint at request time.
-///
+/// A finished Comment exchange captured for one Research Function request
+/// together with the exact note identity shown to the agent.
 public struct DialogueIncludedComment: Codable, Hashable, Identifiable, Sendable {
     public let note: DialogueNoteReference
-    public let comment: ResearcherComment
+    public let exchange: CommentExchange
 
-    public var id: UUID { comment.id }
+    public var id: UUID { exchange.id }
 
-    public init(note: DialogueNoteReference, comment: ResearcherComment) {
+    public init(note: DialogueNoteReference, exchange: CommentExchange) {
         self.note = note
-        self.comment = comment
+        self.exchange = exchange
     }
 
 }
@@ -766,9 +614,9 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
     public let includedComments: [DialogueIncludedComment]
     public let preparedInstructions: String
     public let checkpointID: UUID?
-    /// Optional function-run evidence. A resource-unresolved preflight may be
-    /// finalized once without changing its research facts.
-    public let functionSnapshot: ResearchFunctionSnapshot?
+    /// Required current Research Function evidence. Pre-Function Dialogue
+    /// records are unsupported by the clean cutover and are never decoded.
+    public let functionSnapshot: ResearchFunctionSnapshot
     public let functionCompletion: ResearchFunctionCompletion?
     /// Immutable request-time presentation choices.
     public let responseContract: DialogueResponseContract
@@ -804,7 +652,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         includedComments: [DialogueIncludedComment],
         preparedInstructions: String,
         checkpointID: UUID?,
-        functionSnapshot: ResearchFunctionSnapshot? = nil,
+        functionSnapshot: ResearchFunctionSnapshot,
         functionCompletion: ResearchFunctionCompletion? = nil,
         responseContract: DialogueResponseContract = DialogueResponseContract(
             profile: DialogueResponseProfile()
@@ -846,7 +694,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         ) ?? []
         preparedInstructions = try container.decode(String.self, forKey: .preparedInstructions)
         checkpointID = try container.decodeIfPresent(UUID.self, forKey: .checkpointID)
-        functionSnapshot = try container.decodeIfPresent(
+        functionSnapshot = try container.decode(
             ResearchFunctionSnapshot.self,
             forKey: .functionSnapshot
         )
@@ -877,7 +725,7 @@ public struct DialogueEntry: Codable, Hashable, Identifiable, Sendable {
         try container.encode(includedComments, forKey: .includedComments)
         try container.encode(preparedInstructions, forKey: .preparedInstructions)
         try container.encodeIfPresent(checkpointID, forKey: .checkpointID)
-        try container.encodeIfPresent(functionSnapshot, forKey: .functionSnapshot)
+        try container.encode(functionSnapshot, forKey: .functionSnapshot)
         try container.encodeIfPresent(functionCompletion, forKey: .functionCompletion)
         try container.encode(responseContract, forKey: .responseContract)
         try container.encodeIfPresent(requestedDestination, forKey: .requestedDestination)
@@ -942,16 +790,20 @@ public enum DialoguePromptBuilder {
         }
         var commentLines: [String] = []
         for includedComment in context.comments {
-            let comment = includedComment.comment
+            let exchange = includedComment.exchange
             let note = includedComment.note
-            let anchor = comment.anchor
+            let anchor = exchange.anchor
             commentLines.append("- Note: \(note.title)")
+            commentLines.append("  Comment ID: \(exchange.id.uuidString)")
             commentLines.append("  Note ID: \(note.noteID.uuidString)")
             commentLines.append("  Vault: \(note.vaultName)")
             commentLines.append("  Path: \(note.relativePath)")
             commentLines.append("  Location: Lines \(anchor.line)–\(anchor.endLine)")
-            commentLines.append("  Comment: \(comment.text)")
             commentLines.append("  Selected text: \(anchor.quotation)")
+            for turn in exchange.turns {
+                let author = turn.author == .researcher ? "Researcher" : "Agent"
+                commentLines.append("  \(author): \(turn.text)")
+            }
         }
         let replacements = [
             "{{researcher_instruction}}": context.instruction.trimmingCharacters(in: .whitespacesAndNewlines),

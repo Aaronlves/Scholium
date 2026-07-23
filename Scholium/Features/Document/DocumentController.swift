@@ -130,8 +130,6 @@ final class DocumentController: ObservableObject {
     @Published var pendingSourceLine: Int?
     @Published var pendingSourceRange: SearchSourceRange?
     @Published var requestedPresentationMode: NotePresentationMode?
-    @Published var annotationsByPath: [String: [AnnotationRecord]] = [:]
-    @Published var annotationsByNoteID: [UUID: [AnnotationRecord]] = [:]
     @Published var noteIdentityByPath: [String: UUID] = [:]
     @Published var identityAmbiguities: [NoteIdentityAmbiguity] = []
     @Published var pendingIdentityRebindings: [NoteIdentityPendingRebinding] = []

@@ -1636,7 +1636,7 @@ private struct DiscussResponseSettingsView: View {
                     Text("Academic Outcome")
                         .foregroundStyle(.secondary)
                 }
-                Text("Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests or the earlier Dialogue archive.")
+                Text("Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -20,9 +20,7 @@ struct WorkspaceServices: Sendable {
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
     let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
-    let humanReviewStore: HumanReviewStore
     let researchActivityStore: ResearchActivityStore
-    let pageAnnotationStore: PageAnnotationStore
     let dialogueStore: DialogueStore
     let critiqueRegistry: CritiqueRegistry
     let checkpointStore: TriptychCheckpointStore
@@ -385,41 +383,11 @@ public actor WorkspaceHandle {
             let triptychStorage = applicationSupportURL
                 .appendingPathComponent("Triptychs", isDirectory: true)
                 .appendingPathComponent(manifest.id.uuidString, isDirectory: true)
-            let humanReviewStore = HumanReviewStore(
-                storageURL: triptychStorage.appendingPathComponent(
-                    "human-review",
-                    isDirectory: true
-                )
-            )
             let researchActivityStore = ResearchActivityStore(
                 storageURL: triptychStorage.appendingPathComponent(
                     "research-activity",
                     isDirectory: true
                 )
-            )
-            let pageAnnotationStore = PageAnnotationStore(
-                storageURL: triptychStorage.appendingPathComponent(
-                    "page-annotations",
-                    isDirectory: true
-                )
-            )
-            try await pageAnnotationStore.importLegacyAnnotations(
-                await humanReviewStore.allRecords().flatMap { record in
-                    record.comments.map { comment in
-                        AnnotationRecord(
-                            id: comment.id,
-                            noteID: record.id,
-                            vaultID: record.vaultID,
-                            relativePath: record.relativePath,
-                            author: comment.author,
-                            text: comment.text,
-                            anchor: comment.anchor,
-                            createdAt: comment.createdAt,
-                            updatedAt: comment.updatedAt,
-                            resolvedAt: comment.resolvedAt
-                        )
-                    }
-                }
             )
             let dialogueStore = DialogueStore(
                 storageURL: triptychStorage.appendingPathComponent(
@@ -455,9 +423,7 @@ public actor WorkspaceHandle {
                     controlURL: controlURL
                 ),
                 zotero: zotero,
-                humanReviewStore: humanReviewStore,
                 researchActivityStore: researchActivityStore,
-                pageAnnotationStore: pageAnnotationStore,
                 dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
                 checkpointStore: TriptychCheckpointStore(
@@ -467,7 +433,6 @@ public actor WorkspaceHandle {
                 transactionRecoveryStore: transactionRecoveryStore,
                 identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator(
                     control: controlStore,
-                    humanReviews: humanReviewStore,
                     dialogue: dialogueStore,
                     critiques: critiqueRegistry,
                     windowSessions: windowSessionStore
@@ -1073,13 +1038,11 @@ public actor WorkspaceHandle {
         let coordinator = NotePermanentDeletionCoordinator(
             triptychID: services.manifest.id,
             repository: repository,
-            humanReviewStore: services.humanReviewStore,
             dialogueStore: services.dialogueStore,
             critiqueRegistry: services.critiqueRegistry,
             checkpointStore: services.checkpointStore,
             controlStore: services.controlStore,
-            recoveryStore: services.transactionRecoveryStore,
-            pageAnnotationStore: services.pageAnnotationStore
+            recoveryStore: services.transactionRecoveryStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
@@ -1128,13 +1091,11 @@ public actor WorkspaceHandle {
             let coordinator = NotePermanentDeletionCoordinator(
                 triptychID: services.manifest.id,
                 repository: repository,
-                humanReviewStore: services.humanReviewStore,
                 dialogueStore: services.dialogueStore,
                 critiqueRegistry: services.critiqueRegistry,
                 checkpointStore: services.checkpointStore,
                 controlStore: services.controlStore,
-                recoveryStore: services.transactionRecoveryStore,
-                pageAnnotationStore: services.pageAnnotationStore
+                recoveryStore: services.transactionRecoveryStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -1884,16 +1845,10 @@ public actor WorkspaceHandle {
         return currentSnapshot.research
     }
 
-    func humanReview(noteID: UUID) async throws -> HumanReviewRecord? {
-        try requireActive()
-        return await services.humanReviewStore.record(noteID: noteID)
-    }
-
     func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
         try requireActive()
         return await services.dialogueStore.entries(noteID: noteID).filter {
-            $0.functionSnapshot == nil
-                || $0.functionSnapshot?.request.function == .discuss
+            $0.functionSnapshot.request.function == .discuss
         }
     }
 
@@ -1936,8 +1891,7 @@ public actor WorkspaceHandle {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
         return await services.dialogueStore.allEntries().filter {
-            $0.functionSnapshot == nil
-                || $0.functionSnapshot?.request.function == .discuss
+            $0.functionSnapshot.request.function == .discuss
         }
     }
 
@@ -1947,8 +1901,7 @@ public actor WorkspaceHandle {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
         let entry = try await services.dialogueStore.entry(id: id)
-        guard entry.functionSnapshot == nil
-                || entry.functionSnapshot?.request.function == .discuss else {
+        guard entry.functionSnapshot.request.function == .discuss else {
             throw DialogueError.entryNotFound(id)
         }
         return entry

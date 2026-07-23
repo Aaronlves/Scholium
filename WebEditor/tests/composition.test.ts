@@ -9,7 +9,7 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
     expect(compositionRequestPolicy("initialize")).toBe("reject");
     for (const operation of [
       "setMode", "goToLine", "restoreRecovery", "synchronizeCommittedText", "command",
-      "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setPageAnnotations",
+      "setPresentationCSS", "setUserCSS", "setLinkPreviews",
     ]) {
       expect(compositionRequestPolicy(operation)).toBe("defer");
     }

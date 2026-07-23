@@ -1,5 +1,5 @@
 import {EditorState} from "@codemirror/state";
-import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
+import {ensureSyntaxTree} from "@codemirror/language";
 import type {MarkdownEditingDialect} from "./protocol";
 import {markdownLiteralRanges, scanMath} from "./math";
 import {footnotePresentation} from "./footnote-presentation";

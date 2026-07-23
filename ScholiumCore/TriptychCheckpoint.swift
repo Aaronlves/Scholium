@@ -579,33 +579,6 @@ public actor TriptychCheckpointStore {
         return checkpoint
     }
 
-    /// Permanently invalidates every checkpoint that contains the deleted
-    /// note. Scholium removes the complete self-contained checkpoint instead
-    /// of rewriting its inventory, identities, and portable associations in
-    /// place. A corrupt checkpoint cannot be proven free of the note, so it is
-    /// invalidated under the same privacy rule.
-    @discardableResult
-    public func purgeNoteCopies(
-        noteID: UUID,
-        area: TriptychCheckpointArea,
-        currentRelativePath: String
-    ) throws -> [UUID] {
-        let prepared = try preparePurgeNoteCopies(
-            noteID: noteID,
-            area: area,
-            currentRelativePath: currentRelativePath,
-            additionalKeys: []
-        )
-        do {
-            try applyPreparedCheckpointPurge(prepared)
-            try finalizePreparedCheckpointPurge(prepared)
-            return prepared.checkpointIDs
-        } catch {
-            try? rollbackPreparedCheckpointPurge(prepared)
-            throw error
-        }
-    }
-
     func preparePurgeNoteCopies(
         noteID: UUID,
         area: TriptychCheckpointArea,

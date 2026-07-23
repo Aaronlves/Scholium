@@ -5,21 +5,12 @@ import Foundation
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContractV4 {
     public static let contractVersion = 4
-    public static let schemaVersion = 5
+    public static let schemaVersion = 6
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 1
     public static let maximumInterfaceResults = 100
     public static let defaultCLIResults = 20
     public static let maximumCLIResults = 500
-}
-
-/// Canonical current-fingerprint Human Review states available to the finite
-/// `review:` query field.
-public enum SearchReviewState: String, Codable, CaseIterable, Hashable, Sendable {
-    case unreviewed
-    case reviewed
-    case qualified
-    case unqualified
 }
 
 public struct SearchSourceManifestEntry: Codable, Hashable, Sendable {

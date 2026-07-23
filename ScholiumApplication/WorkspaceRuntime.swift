@@ -247,14 +247,6 @@ public actor WorkspaceRuntime: SettingsUseCases {
         }
     }
 
-    /// Returns the stable machine-local identity used to repair older window
-    /// restoration records. The identity authority remains runtime-owned.
-    public func vaultIdentity(id: UUID) async throws -> VaultIdentity? {
-        try requireActive()
-        guard case .live(_, let identities, _, _) = membership else { return nil }
-        return await identities.identity(id: id)
-    }
-
     /// Reconciles one persisted assignment with the stable vault identities
     /// at its registered canonical roots. Source files are not modified.
     public func reconcileWorkspaceIdentity(id: UUID) async throws -> TriptychAssignment {
@@ -481,14 +473,6 @@ public actor WorkspaceRuntime: SettingsUseCases {
         return try await openWorkspace(id: assignment.id)
     }
 
-    public func setDefaultWorkspace(id: UUID) async throws {
-        try requireActive()
-        guard case .live(let registry, _, _, _) = membership else {
-            throw ScholiumApplicationError.runtimeConfigurationUnavailable
-        }
-        try await registry.setDefaultTriptych(id: id)
-    }
-
     public func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
         guard !isShutDown,
               case .live(_, _, let registry, _) = membership,
@@ -616,18 +600,6 @@ public actor WorkspaceRuntime: SettingsUseCases {
             throw ScholiumApplicationError.ambiguousWorkspaceSelector(trimmed)
         }
         return try await openWorkspace(id: match.id)
-    }
-
-    /// Rebuilds one Triptych-level control/research actor set after portable
-    /// control restoration while retaining the runtime-owned per-vault pool.
-    public func reloadWorkspace(id: UUID) async throws -> WorkspaceHandle {
-        try requireActive()
-        let prepared = await detachReplacements([(cacheID: id, workspaceID: id)])
-        let replacements = try await completeReplacements(prepared)
-        if let replacement = replacements[id] {
-            return replacement
-        }
-        return try await openWorkspace(id: id)
     }
 
     /// Cancels in-flight opens, shuts down every cached handle, and prevents

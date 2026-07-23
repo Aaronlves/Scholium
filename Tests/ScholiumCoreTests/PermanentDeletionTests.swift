@@ -5,7 +5,7 @@ import ScholiumContracts
 
 @Suite("Coordinated permanent deletion")
 struct PermanentDeletionTests {
-    @Test("Confirmed deletion purges source, app-owned records, identity, history, and checkpoints")
+    @Test("Confirmed deletion purges source, current records, identity, history, and checkpoints")
     func purgesEveryCurrentRecoverySurface() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("Scholium-PermanentDeletion-\(UUID().uuidString)", isDirectory: true)
@@ -44,22 +44,6 @@ struct PermanentDeletionTests {
             relativePath: path,
             fingerprint: fingerprint
         ))
-        let reviewStore = HumanReviewStore(
-            storageURL: support.appendingPathComponent("Reviews", isDirectory: true)
-        )
-        try await reviewStore.seedLegacyArchiveForTesting([
-            HumanReviewRecord(
-                noteID: identity.id,
-                vaultID: vaultID,
-                relativePath: path,
-                comments: [
-                    ResearcherComment(
-                        text: "Delete this private historical comment too.",
-                        anchor: testCommentAnchor(fingerprint: fingerprint)
-                    ),
-                ]
-            ),
-        ])
         let dialogueStore = DialogueStore(
             storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
         )
@@ -71,13 +55,19 @@ struct PermanentDeletionTests {
             relativePath: path,
             fingerprint: fingerprint
         )
+        let dialogueID = UUID()
         let dialogue = DialogueEntry(
+            id: dialogueID,
             triptychID: triptychID,
             instruction: "Inspect private research.",
             selectedNotes: [reference],
             includedComments: [],
             preparedInstructions: "Private transport context.",
-            checkpointID: UUID()
+            checkpointID: UUID(),
+            functionSnapshot: testDiscussSnapshot(
+                runID: dialogueID,
+                references: [reference]
+            )
         )
         _ = try await dialogueStore.save(dialogue)
         let critiqueRegistry = CritiqueRegistry(controlURL: await control.controlURL)
@@ -115,7 +105,6 @@ struct PermanentDeletionTests {
         let coordinator = NotePermanentDeletionCoordinator(
             triptychID: triptychID,
             repository: repository,
-            humanReviewStore: reviewStore,
             dialogueStore: dialogueStore,
             critiqueRegistry: critiqueRegistry,
             checkpointStore: checkpointStore,
@@ -130,11 +119,9 @@ struct PermanentDeletionTests {
             checkpointArea: .analyses
         )
 
-        #expect(commit.removedHumanReview)
         #expect(commit.removedDialogueIDs == [dialogue.id])
         #expect(commit.invalidatedCheckpointIDs == [checkpoint.id])
         #expect(!FileManager.default.fileExists(atPath: sourceURL.path))
-        #expect(await reviewStore.record(noteID: identity.id) == nil)
         #expect(await dialogueStore.entries(noteID: identity.id).isEmpty)
         #expect(await repository.recoveryEntries(relativePath: path).isEmpty)
         #expect(await checkpointStore.checkpoints().isEmpty)
@@ -168,7 +155,6 @@ struct PermanentDeletionTests {
         #expect(await fixture.repository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
         #expect(await fixture.repository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id) == nil)
-        #expect(await fixture.humanReviewStore.record(noteID: fixture.critiqueIdentity.id) == nil)
         #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).isEmpty)
         #expect(try await fixture.control.identityRecord(
             vaultID: fixture.vaultID,
@@ -184,7 +170,6 @@ struct PermanentDeletionTests {
         arguments: [
             PermanentDeletionFaultPoint.afterCritiqueDeletion,
             .afterSourceDeletion,
-            .afterHumanReviewPurge,
             .afterDialoguePurge,
             .afterCritiqueAssociationPurge,
             .afterCheckpointPurge,
@@ -213,8 +198,6 @@ struct PermanentDeletionTests {
 
         #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
         #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
-        #expect(await fixture.humanReviewStore.record(noteID: fixture.workIdentity.id) != nil)
-        #expect(await fixture.humanReviewStore.record(noteID: fixture.critiqueIdentity.id) != nil)
         #expect(await fixture.dialogueStore.entries(noteID: fixture.workIdentity.id).map(\.id) == [fixture.dialogue.id])
         #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
@@ -251,8 +234,6 @@ struct PermanentDeletionTests {
 
         #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
         #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
-        #expect(await fixture.humanReviewStore.record(noteID: fixture.workIdentity.id) != nil)
-        #expect(await fixture.humanReviewStore.record(noteID: fixture.critiqueIdentity.id) != nil)
         #expect(await fixture.dialogueStore.entries(noteID: fixture.workIdentity.id).map(\.id) == [fixture.dialogue.id])
         #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
@@ -312,7 +293,6 @@ struct PermanentDeletionTests {
         let workFingerprint: DocumentFingerprint
         let workIdentity: NoteIdentityRecord
         let critiqueIdentity: NoteIdentityRecord
-        let humanReviewStore: HumanReviewStore
         let dialogueStore: DialogueStore
         let dialogue: DialogueEntry
         let critiqueDialogue: DialogueEntry
@@ -369,68 +349,53 @@ struct PermanentDeletionTests {
                 relativePath: critiquePath,
                 fingerprint: DocumentFingerprint(content: critiqueSource)
             ))
-            humanReviewStore = HumanReviewStore(
-                storageURL: support.appendingPathComponent("Reviews", isDirectory: true)
-            )
-            try await humanReviewStore.seedLegacyArchiveForTesting([
-                HumanReviewRecord(
-                    noteID: workIdentity.id,
-                    vaultID: vaultID,
-                    relativePath: workPath,
-                    comments: [
-                        ResearcherComment(
-                            text: "Private historical deletion rollback fixture.",
-                            anchor: testCommentAnchor(fingerprint: workFingerprint)
-                        ),
-                    ]
-                ),
-                HumanReviewRecord(
-                    noteID: critiqueIdentity.id,
-                    vaultID: vaultID,
-                    relativePath: critiquePath,
-                    comments: [
-                        ResearcherComment(
-                            text: "Historical Critique-local comment.",
-                            anchor: testCommentAnchor(
-                                fingerprint: DocumentFingerprint(content: critiqueSource)
-                            )
-                        ),
-                    ]
-                ),
-            ])
             dialogueStore = DialogueStore(
                 storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
             )
+            let workReference = DialogueNoteReference(
+                noteID: workIdentity.id,
+                vaultID: vaultID,
+                vaultName: "Works",
+                title: "Work",
+                relativePath: workPath,
+                fingerprint: workFingerprint
+            )
+            let dialogueID = UUID()
             dialogue = DialogueEntry(
+                id: dialogueID,
                 triptychID: triptychID,
                 instruction: "Inspect the Work.",
-                selectedNotes: [DialogueNoteReference(
-                    noteID: workIdentity.id,
-                    vaultID: vaultID,
-                    vaultName: "Works",
-                    title: "Work",
-                    relativePath: workPath,
-                    fingerprint: workFingerprint
-                )],
+                selectedNotes: [workReference],
                 includedComments: [],
                 preparedInstructions: "",
-                checkpointID: UUID()
+                checkpointID: UUID(),
+                functionSnapshot: testDiscussSnapshot(
+                    runID: dialogueID,
+                    references: [workReference]
+                )
             )
             _ = try await dialogueStore.save(dialogue)
+            let critiqueReference = DialogueNoteReference(
+                noteID: critiqueIdentity.id,
+                vaultID: vaultID,
+                vaultName: "Works",
+                title: "Work Critique",
+                relativePath: critiquePath,
+                fingerprint: DocumentFingerprint(content: critiqueSource)
+            )
+            let critiqueDialogueID = UUID()
             critiqueDialogue = DialogueEntry(
+                id: critiqueDialogueID,
                 triptychID: triptychID,
                 instruction: "Inspect the Critique.",
-                selectedNotes: [DialogueNoteReference(
-                    noteID: critiqueIdentity.id,
-                    vaultID: vaultID,
-                    vaultName: "Works",
-                    title: "Work Critique",
-                    relativePath: critiquePath,
-                    fingerprint: DocumentFingerprint(content: critiqueSource)
-                )],
+                selectedNotes: [critiqueReference],
                 includedComments: [],
                 preparedInstructions: "",
-                checkpointID: UUID()
+                checkpointID: UUID(),
+                functionSnapshot: testDiscussSnapshot(
+                    runID: critiqueDialogueID,
+                    references: [critiqueReference]
+                )
             )
             _ = try await dialogueStore.save(critiqueDialogue)
             critiqueRegistry = CritiqueRegistry(controlURL: await control.controlURL)
@@ -471,7 +436,6 @@ struct PermanentDeletionTests {
             NotePermanentDeletionCoordinator(
                 triptychID: triptychID,
                 repository: repository,
-                humanReviewStore: humanReviewStore,
                 dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
                 checkpointStore: checkpointStore,
@@ -486,9 +450,6 @@ struct PermanentDeletionTests {
             return NotePermanentDeletionCoordinator(
                 triptychID: triptychID,
                 repository: try reopenedRepository(),
-                humanReviewStore: HumanReviewStore(
-                    storageURL: support.appendingPathComponent("Reviews", isDirectory: true)
-                ),
                 dialogueStore: DialogueStore(
                     storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
                 ),
@@ -519,16 +480,28 @@ struct PermanentDeletionTests {
     }
 }
 
-private func testCommentAnchor(
-    fingerprint: DocumentFingerprint,
-    quotation: String = "source passage"
-) -> ResearcherCommentAnchor {
-    ResearcherCommentAnchor(
-        fingerprint: fingerprint,
-        utf8Range: 0..<quotation.utf8.count,
-        utf16Range: 0..<quotation.utf16.count,
-        line: 1,
-        endLine: 1,
-        quotation: quotation
+private func testDiscussSnapshot(
+    runID: UUID,
+    references: [DialogueNoteReference]
+) -> ResearchFunctionSnapshot {
+    let reference = references[0]
+    return ResearchFunctionSnapshot(
+        runID: runID,
+        request: ResearchFunctionRequest(
+            function: .discuss,
+            target: ResearchFunctionTarget(
+                noteID: reference.noteID,
+                note: VaultQualifiedNoteID(
+                    vaultID: reference.vaultID,
+                    relativePath: reference.relativePath
+                ),
+                role: .work,
+                fingerprint: reference.fingerprint,
+                title: reference.title
+            ),
+            instruction: "Test discussion"
+        ),
+        recordKind: .discuss,
+        recordID: runID
     )
 }

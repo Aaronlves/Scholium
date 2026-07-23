@@ -353,7 +353,7 @@ private struct ResearchFunctionAgentHandoffView: View {
 }
 
 /// Read-only status projection for a Function-run envelope. It deliberately
-/// does not render an agent exchange, critique prose, settlement, or annotations.
+/// does not render an agent exchange, critique prose, settlement, or source content.
 struct ResearchFunctionRunStatusView: View {
     let record: ResearchFunctionRecordProjection
     let showsFunction: Bool

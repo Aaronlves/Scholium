@@ -34,40 +34,6 @@ struct MarkdownReviewSelection: Equatable, Sendable {
     return utf16LowerBound..<utf16UpperBound
   }
 
-  var lineDescription: String {
-    startLine == endLine ? "Line \(startLine)" : "Lines \(startLine)–\(endLine)"
-  }
-}
-
-// MARK: - Knowledge Base Type
-
-enum KnowledgeBase: String, Codable, CaseIterable, Hashable {
-  case papers
-  case topics
-  case output
-
-  var displayName: String {
-    switch self {
-    case .papers: return ScholiumL10n.dynamicString("Analyses")
-    case .topics: return ScholiumL10n.dynamicString("Topics")
-    case .output: return ScholiumL10n.dynamicString("Works")
-    }
-  }
-
-  var icon: String {
-    switch self {
-    case .papers: return "doc.text"
-    case .topics: return "lightbulb"
-    case .output: return "pencil.and.outline"
-    }
-  }
-
-  static func infer(from path: String) -> KnowledgeBase? {
-    if path.hasPrefix("papers/") || path.contains("/papers/") { return .papers }
-    if path.hasPrefix("topics/") || path.contains("/topics/") { return .topics }
-    if path.hasPrefix("output/") || path.contains("/output/") { return .output }
-    return nil
-  }
 }
 
 // MARK: - Workflow Profile
@@ -94,14 +60,6 @@ enum NoteProfile: String, Codable, Hashable {
     case .topicMarkdown: return .topicKnowledge
     case .draftProject: return .draftProject
     case .genericMarkdown: return .generic
-    }
-  }
-
-  var knowledgeBase: KnowledgeBase {
-    switch self {
-    case .paperAnalysis: .papers
-    case .topicKnowledge: .topics
-    case .draftProject, .generic: .output
     }
   }
 

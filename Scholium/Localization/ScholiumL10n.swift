@@ -226,16 +226,6 @@ enum ScholiumL10n {
             )
         }
 
-        static var groupAccessibilityLabel: LocalizedStringResource {
-            LocalizedStringResource(
-                "researchFunction.group.accessibilityLabel",
-                defaultValue: "Research functions",
-                table: "Interface",
-                bundle: .module,
-                comment: "VoiceOver label for the complete Research Function strip."
-            )
-        }
-
         static var openAccessibilityValue: LocalizedStringResource {
             LocalizedStringResource(
                 "researchFunction.state.open",

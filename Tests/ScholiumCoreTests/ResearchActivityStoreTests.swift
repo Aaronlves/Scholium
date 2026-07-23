@@ -34,7 +34,7 @@ struct ResearchActivityStoreTests {
         let store = ResearchActivityStore(storageURL: fixture.support)
         let note = reference()
         let fingerprint = DocumentFingerprint(content: "A selected passage")
-        let anchor = ResearcherCommentAnchor(
+        let anchor = CommentAnchor(
             fingerprint: fingerprint,
             utf8Range: 0..<3,
             utf16Range: 0..<3,
@@ -70,7 +70,7 @@ struct ResearchActivityStoreTests {
         let store = ResearchActivityStore(storageURL: fixture.support)
         let note = reference()
         let fingerprint = DocumentFingerprint(content: "A selected passage")
-        let anchor = ResearcherCommentAnchor(
+        let anchor = CommentAnchor(
             fingerprint: fingerprint,
             utf8Range: 0..<3,
             utf16Range: 0..<3,
@@ -157,78 +157,6 @@ struct ResearchActivityStoreTests {
 
         let pending = await store.pendingStates(for: note.noteID)
         #expect(Set(pending.compactMap(\.route)) == [.comment, .discuss])
-    }
-
-    @Test("Legacy private comments import as Annotation without creating activity")
-    func legacyCommentsBecomeAnnotationsOnly() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = PageAnnotationStore(storageURL: fixture.support)
-        let activityStore = ResearchActivityStore(storageURL: fixture.support)
-        let note = reference()
-        let annotation = AnnotationRecord(
-            id: UUID(),
-            noteID: note.noteID,
-            vaultID: note.note.vaultID,
-            relativePath: note.note.relativePath,
-            text: "Private reading note",
-            anchor: ResearcherCommentAnchor(
-                fingerprint: DocumentFingerprint(content: "note"),
-                utf8Range: 0..<1,
-                utf16Range: 0..<1,
-                line: 1,
-                endLine: 1,
-                quotation: "n"
-            )
-        )
-
-        try await store.importLegacyAnnotations([annotation])
-        try await store.importLegacyAnnotations([annotation])
-
-        let imported = await store.allAnnotations()
-        #expect(imported.count == 1)
-        #expect(imported.first?.id == annotation.id)
-        #expect(imported.first?.text == annotation.text)
-        #expect(imported.first?.anchor == annotation.anchor)
-        #expect(await activityStore.events(for: note.noteID).isEmpty)
-    }
-
-    @Test("Page Annotation reopens beside the same passage without research activity")
-    func pageAnnotationPersistsAcrossStoreReopen() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let note = reference()
-        let source = "A distinction worth keeping beside the page."
-        let fingerprint = DocumentFingerprint(content: source)
-        let annotation = AnnotationRecord(
-            noteID: note.noteID,
-            vaultID: note.note.vaultID,
-            relativePath: note.note.relativePath,
-            text: "Clarify which sense of distinction is intended.",
-            anchor: ResearcherCommentAnchor(
-                fingerprint: fingerprint,
-                utf8Range: 2..<13,
-                utf16Range: 2..<13,
-                line: 1,
-                endLine: 1,
-                quotation: "distinction"
-            )
-        )
-
-        let firstStore = PageAnnotationStore(storageURL: fixture.support)
-        try await firstStore.add(annotation)
-
-        let reopenedStore = PageAnnotationStore(storageURL: fixture.support)
-        let reopened = await reopenedStore.annotations(for: note.noteID)
-        #expect(reopened.count == 1)
-        #expect(reopened.first?.id == annotation.id)
-        #expect(reopened.first?.noteID == annotation.noteID)
-        #expect(reopened.first?.text == annotation.text)
-        #expect(reopened.first?.anchor == annotation.anchor)
-
-        let activityStore = ResearchActivityStore(storageURL: fixture.support)
-        #expect(await activityStore.events(for: note.noteID).isEmpty)
-        #expect(await activityStore.pendingStates(for: note.noteID).isEmpty)
     }
 
     @Test("Activity key persists only as a digest and completion retries are idempotent")
@@ -318,31 +246,28 @@ struct ResearchActivityStoreTests {
         }
     }
 
-    @Test("Version one store is backed up before migration")
-    func versionOneMigrationCreatesBackup() async throws {
+    @Test("Version one store is refused without migration")
+    func versionOneStoreFailsClosed() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let legacy: [String: Any] = [
             "schemaVersion": 1,
             "events": [],
             "settlements": [],
-            "annotations": [],
             "exchanges": [],
             "pendingStates": [],
             "grants": [],
-            "migratedLegacyAnnotationIDs": [],
         ]
         try JSONSerialization.data(withJSONObject: legacy, options: [.sortedKeys])
             .write(to: fixture.activityFile, options: .atomic)
 
         let store = ResearchActivityStore(storageURL: fixture.support)
-        #expect(await store.healthError() == nil)
-        #expect(FileManager.default.fileExists(atPath: fixture.migrationBackup.path))
-
-        let migrated = try JSONSerialization.jsonObject(
+        #expect(await store.healthError() != nil)
+        #expect(!FileManager.default.fileExists(atPath: fixture.migrationBackup.path))
+        let unchanged = try JSONSerialization.jsonObject(
             with: Data(contentsOf: fixture.activityFile)
         ) as? [String: Any]
-        #expect(migrated?["schemaVersion"] as? Int == 2)
+        #expect(unchanged?["schemaVersion"] as? Int == 1)
     }
 
     private func reference() -> ResearchActivityNoteReference {

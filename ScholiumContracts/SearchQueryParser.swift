@@ -13,7 +13,6 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
 }
 
 public enum SearchStructuredField: String, Codable, CaseIterable, Hashable, Sendable {
-    case review
     case callout
     case has
 }
@@ -136,7 +135,6 @@ public enum SearchQueryParser {
     }
 
     private static let removedFields: Set<String> = ["vault", "role", "metadata", "status"]
-    private static let reviewValues = Set(SearchReviewState.allCases.map(\.rawValue))
     private static let calloutValues = Set(CalloutSemanticRole.allCases.map(\.rawValue))
 
     public static func parse(_ raw: String) -> SearchQueryParseResult {
@@ -176,7 +174,7 @@ public enum SearchQueryParser {
             return SearchQueryParseResult(ast: nil, diagnostics: [
                 SearchQueryDiagnostic(
                     code: .onlyExcludedFreeText,
-                    message: "Add a positive term or a structured review, callout, or broken-link condition.",
+                    message: "Add a positive term or a structured callout or broken-link condition.",
                     utf16LowerBound: range.lowerBound,
                     utf16UpperBound: range.upperBound
                 ),
@@ -344,7 +342,6 @@ public enum SearchQueryParser {
         }
         let normalized = value.text.lowercased()
         let allowed: Set<String> = switch field {
-        case .review: reviewValues
         case .callout: calloutValues
         case .has: ["broken-link"]
         }

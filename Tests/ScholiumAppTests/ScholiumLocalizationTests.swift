@@ -64,7 +64,6 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Connect", locale: simplifiedChinese) == "连接")
         #expect(ScholiumL10n.string("Checkpoint", locale: simplifiedChinese) == "恢复点")
         #expect(ScholiumL10n.string("Snapshot", locale: simplifiedChinese) == "快照")
-        #expect(ScholiumL10n.string("Annotation", locale: simplifiedChinese) == "批注")
         #expect(ScholiumL10n.string("Comment", locale: simplifiedChinese) == "评论")
         #expect(ScholiumL10n.string("Response", locale: simplifiedChinese) == "回应")
         #expect(ScholiumL10n.string("Work with Agent", locale: simplifiedChinese) == "与 Agent 协作")

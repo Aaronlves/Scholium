@@ -61,7 +61,7 @@ struct IdentityResolutionView: View {
                 .accessibilityHint("Choose one previous location, or identify the file as a new note.")
             }
 
-            Text("Confirming a previous note moves its page annotations, earlier Review and Dialogue archives, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file.")
+            Text("Confirming a previous note moves its current Discussion, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -130,7 +130,7 @@ struct IdentityMigrationNotice: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Identity Recovery Required")
                     .font(.headline)
-                Text("This note remains readable, but Annotation, Comment, Research Record, restore, and file changes are unavailable until its records finish moving from \(rebinding.previousRelativePath) to \(rebinding.relativePath).")
+                Text("This note remains readable, but Comment, Research Record, restore, and file changes are unavailable until its records finish moving from \(rebinding.previousRelativePath) to \(rebinding.relativePath).")
                     .fixedSize(horizontal: false, vertical: true)
                 if let message {
                     Text(message)
@@ -190,6 +190,6 @@ struct IdentityAmbiguityNotice: View {
         let opening = ambiguity.candidates.isEmpty
             ? "This file’s prior identity is unresolved."
             : "This file matches \(ambiguity.candidates.count) previous notes."
-        return opening + " You can keep reading, but Annotation, Comment, Research Record, restore, and file changes remain unavailable until you identify it."
+        return opening + " You can keep reading, but Comment, Research Record, restore, and file changes remain unavailable until you identify it."
     }
 }

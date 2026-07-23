@@ -5,92 +5,40 @@ import Testing
 
 @Suite("Application research operations")
 struct ResearchOperationsMutationTests {
-    @Test("Page Annotations and Settlement are revision-bound and publish research state")
-    func annotationsAndSettlement() async throws {
+    @Test("Settlement is revision-bound and publishes research state")
+    func settlementPublishesCurrentRevision() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let note = try #require(try await handle.snapshot().document(id: fixture.analysisID))
-        let stableID = try #require(note.stableIdentity.resolvedID)
-        let quotation = "Exact philosophical claim"
-        let source = note.document.rawContent
-        let range = try #require(source.range(of: quotation))
-        let lowerUTF16 = range.lowerBound.utf16Offset(in: source)
-        let upperUTF16 = range.upperBound.utf16Offset(in: source)
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
-            in: source,
-            fingerprint: note.fingerprint,
-            utf16Range: lowerUTF16..<upperUTF16
-        ))
-
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
         _ = try #require(await iterator.next())
-        let added = try await handle.research.addAnnotation(
-            to: fixture.analysisID,
-            text: "Check the textual support.",
-            anchor: anchor,
-            expectedRevision: note.fingerprint
-        )
-        let annotationID = added.id
-        let event = try #require(await iterator.next())
-        if case .researchRecordsChanged(let changed) = event {
-            #expect(changed.research.annotations.contains { $0.id == annotationID })
-        } else {
-            Issue.record("An Annotation mutation did not publish researchRecordsChanged.")
-        }
-
-        let updated = try await handle.research.updateAnnotation(
-            noteID: stableID,
-            annotationID: annotationID,
-            text: "Check the primary-text support."
-        )
-        #expect(updated.text == "Check the primary-text support.")
-        let resolved = try await handle.research.setAnnotationResolved(
-            noteID: stableID,
-            annotationID: annotationID,
-            resolved: true
-        )
-        #expect(resolved.resolvedAt != nil)
-        let reattached = try await handle.research.reattachAnnotation(
-            to: fixture.analysisID,
-            annotationID: annotationID,
-            anchor: anchor,
-            expectedRevision: note.fingerprint
-        )
-        #expect(reattached.anchor.state == .attached)
-        _ = try await handle.research.reattachAnnotations(
-            to: fixture.analysisID,
-            expectedRevision: note.fingerprint
-        )
-
         let settled = try await handle.research.settle(
             fixture.analysisID,
             expectedRevision: note.fingerprint,
             rationale: "Stable for the current reconstruction."
         )
         #expect(settled.fingerprint == note.fingerprint)
-
-        _ = try await handle.research.deleteAnnotation(
-            noteID: stableID,
-            annotationID: annotationID
-        )
-        #expect(try await handle.research.annotations(noteID: stableID).isEmpty)
+        let event = try #require(await iterator.next())
+        if case .researchRecordsChanged(let changed) = event {
+            #expect(changed.research.settlements.contains { $0.id == settled.id })
+        } else {
+            Issue.record("A Settlement mutation did not publish researchRecordsChanged.")
+        }
 
         try Data("# Analysis\n\nAn external revision.\n".utf8).write(
             to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
             options: .atomic
         )
         await #expect(throws: VaultRepositoryError.self) {
-            _ = try await handle.research.addAnnotation(
-                to: fixture.analysisID,
-                text: "This stale Annotation must not land.",
-                anchor: anchor,
-                expectedRevision: note.fingerprint
+            _ = try await handle.research.settle(
+                fixture.analysisID,
+                expectedRevision: note.fingerprint,
+                rationale: "This stale Settlement must not land."
             )
         }
-        #expect(try await handle.research.annotations(noteID: stableID).isEmpty)
         await runtime.shutdown()
     }
 
@@ -484,7 +432,7 @@ struct ResearchFunctionOperationsTests {
         let unchangedDiscussion = try await handle.research.discussion(id: preparation.runID)
         #expect(unchangedDiscussion.responseContract == discussion.responseContract)
         #expect(unchangedDiscussion.preparedInstructions == discussion.preparedInstructions)
-        #expect(unchangedDiscussion.functionSnapshot?.request == preparation.snapshot.request)
+        #expect(unchangedDiscussion.functionSnapshot.request == preparation.snapshot.request)
         #expect(unchangedDiscussion.responseContract.profileRevision
             != originalProfile.profileRevision)
 
@@ -552,7 +500,7 @@ struct ResearchFunctionOperationsTests {
         let selectionRange = (document.rawContent as NSString).range(
             of: "Exact philosophical claim"
         )
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
+        let anchor = try #require(CommentAnchorBuilder.anchor(
             in: document.rawContent,
             fingerprint: document.fingerprint,
             utf16Range: selectionRange.location..<(selectionRange.location + selectionRange.length)
@@ -591,6 +539,112 @@ struct ResearchFunctionOperationsTests {
         #expect(try await handle.snapshot().research.functionRuns.first {
             $0.id == preparation.runID
         }?.preparedInstructions == packet)
+        await runtime.shutdown()
+    }
+
+    @Test("Whole-note Critique automatically includes every finished current Comment")
+    func wholeCritiqueIncludesFinishedCurrentComments() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let document = try await handle.documents.load(fixture.workID)
+        let first = try await createCommentExchange(
+            for: target,
+            anchor: commentAnchor(in: document, quotation: "claim requiring Critique"),
+            researcherText: "Test the missing premise.",
+            agentText: "The inference needs an explicit bridge premise.",
+            finish: true,
+            handle: handle
+        )
+        let second = try await createCommentExchange(
+            for: target,
+            anchor: commentAnchor(in: document, quotation: "See [[Analysis]]"),
+            researcherText: "Check this evidential link.",
+            agentText: "The linked Analysis supplies context but not support.",
+            finish: true,
+            handle: handle
+        )
+        let unfinished = try await createCommentExchange(
+            for: target,
+            anchor: commentAnchor(in: document, quotation: "Draft Argument"),
+            researcherText: "This exchange is not finished.",
+            agentText: "A reply alone must not count as reviewed evidence.",
+            finish: false,
+            handle: handle
+        )
+
+        let callerSuppliedID = UUID()
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .critique,
+                target: target,
+                scope: .whole,
+                commentIDs: [callerSuppliedID],
+                conditionalResources: []
+            )
+        )
+
+        #expect(Set(preparation.snapshot.request.commentIDs) == Set([first.id, second.id]))
+        #expect(!preparation.snapshot.request.commentIDs.contains(unfinished.id))
+        #expect(!preparation.snapshot.request.commentIDs.contains(callerSuppliedID))
+        #expect(preparation.instructions.contains("Test the missing premise."))
+        #expect(preparation.instructions.contains("The linked Analysis supplies context but not support."))
+        #expect(!preparation.instructions.contains("This exchange is not finished."))
+        await runtime.shutdown()
+    }
+
+    @Test("Passage Critique includes only finished current Comments that overlap the passage")
+    func passageCritiqueIncludesOnlyOverlappingFinishedComments() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let document = try await handle.documents.load(fixture.workID)
+        let passage = try commentAnchor(
+            in: document,
+            quotation: "A claim requiring Critique"
+        )
+        let overlapping = try await createCommentExchange(
+            for: target,
+            anchor: commentAnchor(in: document, quotation: "claim requiring"),
+            researcherText: "Inspect this inference.",
+            agentText: "The selected inference lacks a bridge premise.",
+            finish: true,
+            handle: handle
+        )
+        let outsidePassage = try await createCommentExchange(
+            for: target,
+            anchor: commentAnchor(in: document, quotation: "See [[Analysis]]"),
+            researcherText: "Inspect the link separately.",
+            agentText: "This link falls outside the selected passage.",
+            finish: true,
+            handle: handle
+        )
+
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(
+                function: .critique,
+                target: target,
+                scope: .passage(passage),
+                conditionalResources: []
+            )
+        )
+
+        #expect(preparation.snapshot.request.commentIDs == [overlapping.id])
+        #expect(!preparation.snapshot.request.commentIDs.contains(outsidePassage.id))
+        #expect(preparation.instructions.contains("Inspect this inference."))
+        #expect(!preparation.instructions.contains("Inspect the link separately."))
         await runtime.shutdown()
     }
 
@@ -2146,15 +2200,41 @@ private func researchFunctionTarget(
 private func commentAnchor(
     in document: NoteDocument,
     quotation: String = "Exact philosophical claim"
-) throws -> ResearcherCommentAnchor {
+) throws -> CommentAnchor {
     let range = try #require(document.rawContent.range(of: quotation))
     let lowerUTF16 = range.lowerBound.utf16Offset(in: document.rawContent)
     let upperUTF16 = range.upperBound.utf16Offset(in: document.rawContent)
-    return try #require(ResearcherCommentAnchorBuilder.anchor(
+    return try #require(CommentAnchorBuilder.anchor(
         in: document.rawContent,
         fingerprint: document.fingerprint,
         utf16Range: lowerUTF16..<upperUTF16
     ))
+}
+
+private func createCommentExchange(
+    for target: ResearchFunctionTarget,
+    anchor: CommentAnchor,
+    researcherText: String,
+    agentText: String,
+    finish: Bool,
+    handle: WorkspaceHandle
+) async throws -> CommentExchange {
+    let exchange = try await handle.research.createCommentExchange(CommentExchange(
+        note: ResearchActivityNoteReference(
+            noteID: target.noteID,
+            note: target.note,
+            role: target.role,
+            title: target.title
+        ),
+        anchor: anchor,
+        turns: [CommentExchangeTurn(author: .researcher, text: researcherText)]
+    ))
+    let replied = try await handle.research.appendCommentExchangeTurn(
+        exchangeID: exchange.id,
+        turn: CommentExchangeTurn(author: .agent, text: agentText)
+    )
+    guard finish else { return replied }
+    return try await handle.research.finishCommentExchange(exchangeID: exchange.id)
 }
 
 private func researchActivityCompletion(

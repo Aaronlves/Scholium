@@ -76,7 +76,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public let calloutRoles: Set<String>
     public let footnotes: String
     public let path: String
-    public private(set) var review: String?
     public private(set) var hasBrokenLink: Bool
     public let sourceLineStartsUTF16: [Int]
     public let segments: [SearchTextSegment]
@@ -86,7 +85,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         document: NoteDocument,
         profile: SchemaProfileID = .genericMarkdown,
         semantic: MarkdownSemanticDocument? = nil,
-        review: String? = nil,
         hasBrokenLink: Bool = false
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
@@ -108,7 +106,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         year = document.parsedFrontmatter["year"]?.displayScalar
         tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
         path = document.relativePath
-        self.review = review?.lowercased()
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
 
@@ -262,25 +259,21 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
 
         projectionHash = Self.hash(
             segments: builtSegments,
-            review: self.review,
             hasBrokenLink: hasBrokenLink
         )
     }
 
     /// Reuses the source-derived visible-text and exact-offset projection when
-    /// only graph or legacy-review state changed. Source catalog versions bind
-    /// the cached projection to the exact `NoteDocument`; this copy operation
-    /// updates only the dynamic Search fields and their projection hash.
+    /// only graph state changed. Source catalog versions bind the cached
+    /// projection to the exact `NoteDocument`; this copy operation updates
+    /// only the dynamic Search field and its projection hash.
     func applyingDynamicState(
-        review: String?,
         hasBrokenLink: Bool
     ) -> SearchDocumentProjection {
         var updated = self
-        updated.review = review?.lowercased()
         updated.hasBrokenLink = hasBrokenLink
         updated.projectionHash = Self.hash(
             segments: updated.segments,
-            review: updated.review,
             hasBrokenLink: hasBrokenLink
         )
         return updated
@@ -288,13 +281,12 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
 
     private static func hash(
         segments: [SearchTextSegment],
-        review: String?,
         hasBrokenLink: Bool
     ) -> String {
         let stableMaterial = segments.map {
             "\($0.field.rawValue)\u{1F}\($0.ordinal)\u{1F}\($0.normalizedText)"
         }.joined(separator: "\u{1E}")
-            + "\u{1D}\(review ?? "")\u{1D}\(hasBrokenLink)"
+            + "\u{1D}\(hasBrokenLink)"
         return SHA256.hash(data: Data(stableMaterial.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
@@ -312,7 +304,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         case .callout: callouts
         case .footnote: footnotes
         case .path: path
-        case .review: review ?? ""
         case .brokenLink: ""
         }
     }

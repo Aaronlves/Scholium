@@ -14,10 +14,8 @@ private enum CommentExchangePresentationError: LocalizedError {
 
 struct ContentView: View {
     @EnvironmentObject var appState: WindowModel
-    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openSettings) private var openSettings
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
@@ -321,7 +319,6 @@ struct ContentView: View {
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
             propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
-            annotations: appState.currentDocumentAnnotations,
             commentExchanges: appState.researchController.records?.commentExchanges ?? [],
             requestedCommentExchangeID: appState.requestedCommentExchangeID,
             canComment: appState.canCommentCurrentNote,
@@ -355,29 +352,6 @@ struct ContentView: View {
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             clearPendingSourceRange: { appState.pendingSourceRange = nil },
-            createAnnotation: { anchor, text in
-                guard let path = documentPath else { return }
-                _ = try await appState.addAnnotation(
-                    to: path,
-                    text: text,
-                    anchor: anchor
-                )
-            },
-            updateAnnotation: { annotationID, text in
-                guard let path = documentPath else { return }
-                try await appState.updateAnnotation(
-                    at: path,
-                    annotationID: annotationID,
-                    text: text
-                )
-            },
-            deleteAnnotation: { annotationID in
-                guard let path = documentPath else { return }
-                try await appState.deleteAnnotation(
-                    at: path,
-                    annotationID: annotationID
-                )
-            },
             createCommentExchange: { anchor, message in
                 guard let target = appState.currentResearchFunctionTarget else {
                     throw CommentExchangePresentationError.unavailable

@@ -147,13 +147,6 @@ public actor ZoteroOperations: ZoteroUseCases {
         return .notFound
     }
 
-    public func resolveCitation(zoteroKey: String) async throws -> ZoteroItemMetadata? {
-        switch try await resolve(source: ZoteroSourceIdentity(itemKey: zoteroKey)) {
-        case .matched(let item, _): item
-        case .ambiguous, .notFound, .insufficientMetadata: nil
-        }
-    }
-
     private func match(
         _ identity: ZoteroSourceIdentity,
         searchTerms: [String],

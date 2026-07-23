@@ -29,10 +29,10 @@ public actor TriptychSearchIndex {
     private let configuredVaults: [UUID: RegisteredVault]
     /// Actor-serialized reader. Every indexed query opens a fixed read
     /// transaction so a concurrent WAL publication cannot mix generations.
-    private let database: SearchV3SQLiteDatabase
+    private let database: SearchSQLiteDatabase
     /// A separate connection may publish while the actor serves last-good
     /// reads from `database`.
-    private let writerDatabase: SearchV3SQLiteDatabase
+    private let writerDatabase: SearchSQLiteDatabase
     private var currentAvailability: SearchAvailability
     private var recoveredGeneratedDatabase: Bool
     private var activeSynchronization: ActiveSynchronization?
@@ -63,7 +63,7 @@ public actor TriptychSearchIndex {
             withIntermediateDirectories: true
         )
         let existed = manager.fileExists(atPath: databaseURL.path)
-        database = try SearchV3SQLiteDatabase(path: databaseURL.path)
+        database = try SearchSQLiteDatabase(path: databaseURL.path)
         if existed {
             try Self.validateSchema(in: database, triptychID: triptychID)
         } else {
@@ -72,7 +72,7 @@ public actor TriptychSearchIndex {
         }
         try database.execute("PRAGMA journal_mode=WAL;")
         try database.execute("PRAGMA synchronous=NORMAL;")
-        writerDatabase = try SearchV3SQLiteDatabase(path: databaseURL.path)
+        writerDatabase = try SearchSQLiteDatabase(path: databaseURL.path)
         try writerDatabase.execute("PRAGMA journal_mode=WAL;")
         try writerDatabase.execute("PRAGMA synchronous=NORMAL;")
         try database.execute("PRAGMA query_only=ON;")
@@ -114,7 +114,7 @@ public actor TriptychSearchIndex {
                 ),
                 recoveredCorruption: false
             )
-        } catch let error as SearchIndexError where error.permitsSearchV3Recovery {
+        } catch let error as SearchIndexError where error.permitsSearchRecovery {
             let manager = FileManager.default
             try manager.createDirectory(
                 at: databaseURL.deletingLastPathComponent(),
@@ -124,7 +124,7 @@ public actor TriptychSearchIndex {
                 .appendingPathComponent(".search-v4-staging-\(UUID().uuidString).sqlite")
             do {
                 do {
-                    let staged = try SearchV3SQLiteDatabase(path: stagingURL.path)
+                    let staged = try SearchSQLiteDatabase(path: stagingURL.path)
                     try createSchema(in: staged, triptychID: triptychID)
                     try validateSchema(in: staged, triptychID: triptychID)
                     try staged.execute("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -176,7 +176,9 @@ public actor TriptychSearchIndex {
         return latestWorkspaceGeneration
     }
 
-    public func synchronize(
+    /// Standalone index test support. Workspace production must provide the
+    /// coordinator-owned generation explicitly.
+    func synchronize(
         _ documents: [SearchIndexDocument]
     ) async throws -> TriptychSearchIndexSyncResult {
         let latest = try workspaceGeneration()
@@ -394,7 +396,7 @@ public actor TriptychSearchIndex {
         recoveredGeneratedDatabase: Bool,
         configuredVaults: [UUID: (String, VaultRole)],
         triptychID: UUID,
-        database: SearchV3SQLiteDatabase,
+        database: SearchSQLiteDatabase,
         progress: (@Sendable (Int) -> Void)?
     ) throws -> TriptychSearchIndexSyncResult {
         try database.transaction {
@@ -584,7 +586,7 @@ public actor TriptychSearchIndex {
                 hasMore: false
             )
         }
-        var accepted: [SearchV3Candidate] = []
+        var accepted: [SearchCandidate] = []
         var seen = Set<Int>()
 
         if let identity = ast.identityNeedle {
@@ -603,7 +605,7 @@ public actor TriptychSearchIndex {
                 for candidate in exact {
                     try Task.checkCancellation()
                     guard seen.insert(candidate.document.rowID).inserted,
-                          SearchV3Matcher.satisfies(ast, document: candidate.document) else { continue }
+                          SearchMatcher.satisfies(ast, document: candidate.document) else { continue }
                     accepted.append(candidate)
                     if accepted.count >= limit + 1 { break }
                 }
@@ -616,7 +618,7 @@ public actor TriptychSearchIndex {
             let pageSize = 256
             while accepted.count < limit + 1 {
                 try Task.checkCancellation()
-                let page: [SearchV3Candidate]
+                let page: [SearchCandidate]
                 if ast.positiveLexicalClauses.isEmpty {
                     page = try documentCandidates(
                         vaultID: vaultID,
@@ -636,7 +638,7 @@ public actor TriptychSearchIndex {
                 for candidate in page {
                     try Task.checkCancellation()
                     guard seen.insert(candidate.document.rowID).inserted,
-                          SearchV3Matcher.satisfies(ast, document: candidate.document) else { continue }
+                          SearchMatcher.satisfies(ast, document: candidate.document) else { continue }
                     accepted.append(candidate)
                     if accepted.count >= limit + 1 { break }
                 }
@@ -644,10 +646,10 @@ public actor TriptychSearchIndex {
             }
         }
 
-        accepted.sort(by: SearchV3Candidate.precedes)
+        accepted.sort(by: SearchCandidate.precedes)
         let hasMore = accepted.count > limit
         let hits = accepted.prefix(limit).map {
-            SearchV3HitBuilder.hit(
+            SearchHitBuilder.hit(
                 candidate: $0,
                 ast: ast,
                 freshness: freshness
@@ -686,7 +688,6 @@ public actor TriptychSearchIndex {
                 frontmatter: note.parsedFrontmatter,
                 relativePath: note.relativePath
             ),
-            review: exactIndexedRevision ? indexed?.review : "unreviewed",
             hasBrokenLink: exactIndexedRevision ? (indexed?.hasBrokenLink ?? false) : false
         )
         let document = StoredSearchDocument(
@@ -707,7 +708,6 @@ public actor TriptychSearchIndex {
             ),
             pathKey: SearchTextNormalization.normalize(source.noteID.relativePath),
             aliases: projection.aliases,
-            review: projection.review,
             calloutRoles: projection.calloutRoles,
             hasBrokenLink: projection.hasBrokenLink,
             fingerprint: note.fingerprint,
@@ -716,7 +716,7 @@ public actor TriptychSearchIndex {
             sourceLineStarts: projection.sourceLineStartsUTF16,
             segments: projection.segments
         )
-        guard SearchV3Matcher.satisfies(ast, document: document) else {
+        guard SearchMatcher.satisfies(ast, document: document) else {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
@@ -727,9 +727,9 @@ public actor TriptychSearchIndex {
             )
         }
 
-        let candidate = SearchV3Candidate(
+        let candidate = SearchCandidate(
             document: document,
-            identityPriority: SearchV3Matcher.identityPriority(
+            identityPriority: SearchMatcher.identityPriority(
                 identityNeedle: ast.identityNeedle,
                 document: document
             ),
@@ -737,7 +737,7 @@ public actor TriptychSearchIndex {
         )
         let hits: [SearchHit]
         if let lead = ast.firstPositiveLexicalClause {
-            hits = SearchV3HitBuilder.occurrenceHits(
+            hits = SearchHitBuilder.occurrenceHits(
                 candidate: candidate,
                 ast: ast,
                 lead: lead,
@@ -745,7 +745,7 @@ public actor TriptychSearchIndex {
                 limit: limit
             )
         } else {
-            hits = [SearchV3HitBuilder.hit(
+            hits = [SearchHitBuilder.hit(
                 candidate: candidate,
                 ast: ast,
                 freshness: freshness
@@ -758,7 +758,7 @@ public actor TriptychSearchIndex {
             availability: availability,
             results: hits,
             hasMore: hits.count >= limit
-                && SearchV3Matcher.occurrenceCount(of: ast.firstPositiveLexicalClause, in: document) > limit
+                && SearchMatcher.occurrenceCount(of: ast.firstPositiveLexicalClause, in: document) > limit
         )
     }
 
@@ -782,10 +782,10 @@ public actor TriptychSearchIndex {
         vaultID: UUID?,
         limit: Int,
         offset: Int
-    ) throws -> [SearchV3Candidate] {
+    ) throws -> [SearchCandidate] {
         let lexicalExpression = ast.positiveLexicalClauses.isEmpty
             ? nil
-            : SearchV3Matcher.ftsExpression(for: ast.positiveLexicalClauses)
+            : SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
         var sql = """
         SELECT d.id,
                CASE
@@ -816,7 +816,7 @@ public actor TriptychSearchIndex {
            OR EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?)
            OR d.filename_key = ? OR d.path_key = ?)
         """
-        var bindings = Array(repeating: SearchV3SQLiteBinding.text(identityKey), count: 8)
+        var bindings = Array(repeating: SearchSQLiteBinding.text(identityKey), count: 8)
         if let lexicalExpression {
             sql += " AND search_fts MATCH ?"
             bindings.append(.text(lexicalExpression))
@@ -828,10 +828,10 @@ public actor TriptychSearchIndex {
         sql += " ORDER BY identity_priority, lexical_rank, d.normalized_title, d.role_order, d.path_key, d.relative_path LIMIT ? OFFSET ?;"
         bindings.append(.int(limit))
         bindings.append(.int(offset))
-        var result: [SearchV3Candidate] = []
+        var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
             guard let document = try self.loadDocument(rowID: row.int(at: 0)) else { return }
-            result.append(SearchV3Candidate(
+            result.append(SearchCandidate(
                 document: document,
                 identityPriority: row.int(at: 1),
                 lexicalRank: row.double(at: 2)
@@ -845,8 +845,8 @@ public actor TriptychSearchIndex {
         vaultID: UUID?,
         limit: Int,
         offset: Int
-    ) throws -> [SearchV3Candidate] {
-        let expression = SearchV3Matcher.ftsExpression(for: ast.positiveLexicalClauses)
+    ) throws -> [SearchCandidate] {
+        let expression = SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
         var sql = """
         SELECT d.id,
                bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 6.0, 4.0, 5.0, 2.0, 2.0, 1.0) AS lexical_rank
@@ -854,7 +854,7 @@ public actor TriptychSearchIndex {
         JOIN search_documents d ON d.id = search_fts.document_id
         WHERE search_fts MATCH ?
         """
-        var bindings: [SearchV3SQLiteBinding] = [.text(expression)]
+        var bindings: [SearchSQLiteBinding] = [.text(expression)]
         if let vaultID {
             sql += " AND d.vault_id = ?"
             bindings.append(.text(vaultID.uuidString.lowercased()))
@@ -862,10 +862,10 @@ public actor TriptychSearchIndex {
         sql += " ORDER BY lexical_rank, d.normalized_title, d.role_order, d.path_key, d.relative_path LIMIT ? OFFSET ?;"
         bindings.append(.int(limit))
         bindings.append(.int(offset))
-        var result: [SearchV3Candidate] = []
+        var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
             guard let document = try self.loadDocument(rowID: row.int(at: 0)) else { return }
-            result.append(SearchV3Candidate(
+            result.append(SearchCandidate(
                 document: document,
                 identityPriority: 10,
                 lexicalRank: row.double(at: 1)
@@ -878,9 +878,9 @@ public actor TriptychSearchIndex {
         vaultID: UUID?,
         limit: Int,
         offset: Int
-    ) throws -> [SearchV3Candidate] {
+    ) throws -> [SearchCandidate] {
         var sql = "SELECT id FROM search_documents"
-        var bindings: [SearchV3SQLiteBinding] = []
+        var bindings: [SearchSQLiteBinding] = []
         if let vaultID {
             sql += " WHERE vault_id = ?"
             bindings.append(.text(vaultID.uuidString.lowercased()))
@@ -888,10 +888,10 @@ public actor TriptychSearchIndex {
         sql += " ORDER BY normalized_title, role_order, path_key, relative_path LIMIT ? OFFSET ?;"
         bindings.append(.int(limit))
         bindings.append(.int(offset))
-        var result: [SearchV3Candidate] = []
+        var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
             guard let document = try self.loadDocument(rowID: row.int(at: 0)) else { return }
-            result.append(SearchV3Candidate(
+            result.append(SearchCandidate(
                 document: document,
                 identityPriority: 10,
                 lexicalRank: 0
@@ -905,7 +905,7 @@ public actor TriptychSearchIndex {
         try database.query(
             """
             SELECT vault_id, vault_name, role, relative_path, stable_note_id, title,
-                   normalized_title, title_key, filename_key, path_key, review, callout_roles,
+                   normalized_title, title_key, filename_key, path_key, callout_roles,
                    has_broken_link, fingerprint_sha256, fingerprint_byte_count,
                    evidential_layer, role_order, line_starts
             FROM search_documents WHERE id = ?;
@@ -917,12 +917,12 @@ public actor TriptychSearchIndex {
                   let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
                   let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
                   let titleKey = row.text(at: 7), let filenameKey = row.text(at: 8),
-                  let pathKey = row.text(at: 9), let sha = row.text(at: 13),
-                  let layerText = row.text(at: 15),
+                  let pathKey = row.text(at: 9), let sha = row.text(at: 12),
+                  let layerText = row.text(at: 14),
                   let layer = EvidentialLayer(rawValue: layerText) else { return }
             let aliases = try self.aliases(documentID: rowID)
             let segments = try self.segments(documentID: rowID)
-            let lineStarts = (row.text(at: 17).flatMap { $0.data(using: .utf8) })
+            let lineStarts = (row.text(at: 16).flatMap { $0.data(using: .utf8) })
                 .flatMap { try? JSONDecoder().decode([Int].self, from: $0) } ?? [0]
             document = StoredSearchDocument(
                 rowID: rowID,
@@ -937,15 +937,14 @@ public actor TriptychSearchIndex {
                 filenameKey: filenameKey,
                 pathKey: pathKey,
                 aliases: aliases,
-                review: row.text(at: 10),
-                calloutRoles: Set((row.text(at: 11) ?? "").split(separator: " ").map(String.init)),
-                hasBrokenLink: row.int(at: 12) == 1,
+                calloutRoles: Set((row.text(at: 10) ?? "").split(separator: " ").map(String.init)),
+                hasBrokenLink: row.int(at: 11) == 1,
                 fingerprint: DocumentFingerprint(
                     sha256: sha,
-                    byteCount: row.int(at: 14)
+                    byteCount: row.int(at: 13)
                 ),
                 evidentialLayer: layer,
-                roleOrder: row.int(at: 16),
+                roleOrder: row.int(at: 15),
                 sourceLineStarts: lineStarts,
                 segments: segments
             )
@@ -1005,7 +1004,6 @@ public actor TriptychSearchIndex {
     private struct IndexedMetadata {
         let rowID: Int
         let fingerprint: DocumentFingerprint
-        let review: String?
         let hasBrokenLink: Bool
     }
 
@@ -1013,7 +1011,7 @@ public actor TriptychSearchIndex {
         var result: IndexedMetadata?
         try database.query(
             """
-            SELECT id, fingerprint_sha256, fingerprint_byte_count, review, has_broken_link
+            SELECT id, fingerprint_sha256, fingerprint_byte_count, has_broken_link
             FROM search_documents WHERE vault_id = ? AND relative_path = ?;
             """,
             bindings: [.text(id.vaultID.uuidString.lowercased()), .text(id.relativePath)]
@@ -1022,8 +1020,7 @@ public actor TriptychSearchIndex {
             result = IndexedMetadata(
                 rowID: row.int(at: 0),
                 fingerprint: DocumentFingerprint(sha256: sha, byteCount: row.int(at: 2)),
-                review: row.text(at: 3),
-                hasBrokenLink: row.int(at: 4) == 1
+                hasBrokenLink: row.int(at: 3) == 1
             )
         }
         return result
@@ -1056,7 +1053,7 @@ public actor TriptychSearchIndex {
     }
 
     private nonisolated static func indexedProjectionState(
-        in database: SearchV3SQLiteDatabase
+        in database: SearchSQLiteDatabase
     ) throws -> [String: IndexedProjectionState] {
         var result: [String: IndexedProjectionState] = [:]
         try database.query(
@@ -1111,11 +1108,11 @@ public actor TriptychSearchIndex {
 
     private static func insert(
         _ item: SearchIndexDocument,
-        into database: SearchV3SQLiteDatabase
+        into database: SearchSQLiteDatabase
     ) throws {
         let projection = item.projection
         let lineStarts = String(
-            data: try JSONEncoder.searchV3.encode(projection.sourceLineStartsUTF16),
+            data: try JSONEncoder.searchIndex.encode(projection.sourceLineStartsUTF16),
             encoding: .utf8
         ) ?? "[0]"
         try database.execute(
@@ -1123,9 +1120,9 @@ public actor TriptychSearchIndex {
             INSERT INTO search_documents(
                 document_key, vault_id, vault_name, role, role_order, relative_path,
                 stable_note_id, title, normalized_title, title_key, filename_key, path_key,
-                fingerprint_sha256, fingerprint_byte_count, evidential_layer, review,
+                fingerprint_sha256, fingerprint_byte_count, evidential_layer,
                 callout_roles, has_broken_link, projection_hash, line_starts
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(documentKey(vaultID: item.vaultID, path: item.relativePath)),
@@ -1141,7 +1138,7 @@ public actor TriptychSearchIndex {
                 )),
                 .text(SearchTextNormalization.normalize(item.relativePath)),
                 .text(item.document.fingerprint.sha256), .int(item.document.fingerprint.byteCount),
-                .text(item.evidentialLayer.rawValue), .optionalText(projection.review),
+                .text(item.evidentialLayer.rawValue),
                 .text(" " + projection.calloutRoles.sorted().joined(separator: " ") + " "),
                 .int(projection.hasBrokenLink ? 1 : 0), .text(projection.projectionHash),
                 .text(lineStarts),
@@ -1159,7 +1156,7 @@ public actor TriptychSearchIndex {
         }
         for segment in projection.segments {
             let offsets = String(
-                data: try JSONEncoder.searchV3.encode(segment.offsetMap),
+                data: try JSONEncoder.searchIndex.encode(segment.offsetMap),
                 encoding: .utf8
             ) ?? "[]"
             try database.execute(
@@ -1207,7 +1204,7 @@ public actor TriptychSearchIndex {
 
     private static func deleteDocument(
         key: String,
-        from database: SearchV3SQLiteDatabase
+        from database: SearchSQLiteDatabase
     ) throws {
         var rowID: Int?
         try database.query(
@@ -1222,7 +1219,7 @@ public actor TriptychSearchIndex {
     }
 
     private static func createSchema(
-        in database: SearchV3SQLiteDatabase,
+        in database: SearchSQLiteDatabase,
         triptychID: UUID
     ) throws {
         try database.execute("""
@@ -1264,7 +1261,6 @@ public actor TriptychSearchIndex {
             fingerprint_sha256 TEXT NOT NULL,
             fingerprint_byte_count INTEGER NOT NULL,
             evidential_layer TEXT NOT NULL,
-            review TEXT,
             callout_roles TEXT NOT NULL,
             has_broken_link INTEGER NOT NULL,
             projection_hash TEXT NOT NULL,
@@ -1308,7 +1304,7 @@ public actor TriptychSearchIndex {
     }
 
     private static func validateSchema(
-        in database: SearchV3SQLiteDatabase,
+        in database: SearchSQLiteDatabase,
         triptychID: UUID
     ) throws {
         guard try database.scalarText("PRAGMA quick_check;") == "ok" else {
@@ -1348,7 +1344,7 @@ public actor TriptychSearchIndex {
     }
 
     private static func readGeneration(
-        in database: SearchV3SQLiteDatabase,
+        in database: SearchSQLiteDatabase,
         triptychID: UUID
     ) throws -> SearchGenerationID? {
         var result: SearchGenerationID?
@@ -1375,7 +1371,7 @@ public actor TriptychSearchIndex {
     }
 
     private static func readWorkspaceGeneration(
-        in database: SearchV3SQLiteDatabase
+        in database: SearchSQLiteDatabase
     ) throws -> UInt64 {
         var result = 0
         try database.query(
@@ -1389,7 +1385,7 @@ public actor TriptychSearchIndex {
 
     private static func requireNewerWorkspaceGeneration(
         _ requested: UInt64,
-        in database: SearchV3SQLiteDatabase
+        in database: SearchSQLiteDatabase
     ) throws {
         let current = try readWorkspaceGeneration(in: database)
         guard requested > current else {
@@ -1440,7 +1436,7 @@ public actor TriptychSearchIndex {
 }
 
 private extension SearchIndexError {
-    var permitsSearchV3Recovery: Bool {
+    var permitsSearchRecovery: Bool {
         switch self {
         case .corruptDatabase, .incompatibleSchema: true
         default: false
@@ -1472,7 +1468,6 @@ private struct StoredSearchDocument {
     let filenameKey: String
     let pathKey: String
     let aliases: [String]
-    let review: String?
     let calloutRoles: Set<String>
     let hasBrokenLink: Bool
     let fingerprint: DocumentFingerprint
@@ -1482,7 +1477,7 @@ private struct StoredSearchDocument {
     let segments: [SearchTextSegment]
 }
 
-private struct SearchV3Candidate {
+private struct SearchCandidate {
     let document: StoredSearchDocument
     let identityPriority: Int
     let lexicalRank: Double
@@ -1505,7 +1500,7 @@ private struct SearchV3Candidate {
     }
 }
 
-private enum SearchV3Matcher {
+private enum SearchMatcher {
     static func satisfies(_ ast: SearchQueryAST, document: StoredSearchDocument) -> Bool {
         ast.clauses.allSatisfy { clause in
             switch clause {
@@ -1516,13 +1511,6 @@ private enum SearchV3Matcher {
                 return lexical.excluded ? !matched : matched
             case .structured(let structured):
                 let matched: Bool = switch structured.field {
-                case .review:
-                    if structured.value == SearchReviewState.reviewed.rawValue {
-                        document.review != nil
-                            && document.review != SearchReviewState.unreviewed.rawValue
-                    } else {
-                        document.review == structured.value
-                    }
                 case .callout: document.calloutRoles.contains(structured.value)
                 case .has: structured.value == "broken-link" && document.hasBrokenLink
                 }
@@ -1561,7 +1549,6 @@ private enum SearchV3Matcher {
             for clause in ast.clauses {
                 guard case .structured(let structured) = clause else { continue }
                 let field: SearchMatchedField = switch structured.field {
-                case .review: .review
                 case .callout: .callout
                 case .has: .brokenLink
                 }
@@ -1686,14 +1673,14 @@ private enum SearchV3Matcher {
     }
 }
 
-private enum SearchV3HitBuilder {
+private enum SearchHitBuilder {
     static func hit(
-        candidate: SearchV3Candidate,
+        candidate: SearchCandidate,
         ast: SearchQueryAST,
         freshness: SearchFreshnessToken
     ) -> SearchHit {
         let document = candidate.document
-        let matchedFields = SearchV3Matcher.matchedFields(ast: ast, document: document)
+        let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
         let primary = matchedFields.first ?? .title
         let matched = firstMatch(ast: ast, document: document, preferredField: primary)
         let presentation = snippet(
@@ -1729,17 +1716,17 @@ private enum SearchV3HitBuilder {
     }
 
     static func occurrenceHits(
-        candidate: SearchV3Candidate,
+        candidate: SearchCandidate,
         ast: SearchQueryAST,
         lead: SearchLexicalClause,
         freshness: SearchFreshnessToken,
         limit: Int
     ) -> [SearchHit] {
         let document = candidate.document
-        let matchedFields = SearchV3Matcher.matchedFields(ast: ast, document: document)
+        let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
         var hits: [SearchHit] = []
-        for segment in SearchV3Matcher.matchingSegments(for: lead, in: document) {
-            for range in SearchV3Matcher.occurrences(of: lead.value, in: segment.normalizedText) {
+        for segment in SearchMatcher.matchingSegments(for: lead, in: document) {
+            for range in SearchMatcher.occurrences(of: lead.value, in: segment.normalizedText) {
                 guard hits.count < limit else { return hits }
                 let sourceRange = sourceRange(
                     for: range,
@@ -1783,10 +1770,10 @@ private enum SearchV3HitBuilder {
         preferredField: SearchMatchedField
     ) -> (segment: SearchTextSegment, range: Range<Int>)? {
         for clause in ast.positiveLexicalClauses {
-            let segments = SearchV3Matcher.matchingSegments(for: clause, in: document)
+            let segments = SearchMatcher.matchingSegments(for: clause, in: document)
                 .sorted { ($0.field == preferredField ? 0 : 1) < ($1.field == preferredField ? 0 : 1) }
             for segment in segments {
-                if let range = SearchV3Matcher.occurrences(
+                if let range = SearchMatcher.occurrences(
                     of: clause.value,
                     in: segment.normalizedText
                 ).first {
@@ -1893,7 +1880,7 @@ private enum SearchV3HitBuilder {
         for (clauseIndex, clause) in positiveClauses.enumerated() {
             let occurrences = clauseIndex == 0 && normalizedRange != nil
                 ? [normalizedRange!]
-                : SearchV3Matcher.occurrences(
+                : SearchMatcher.occurrences(
                     of: clause.value,
                     in: segment.normalizedText
                 )
@@ -1947,7 +1934,6 @@ private enum SearchV3HitBuilder {
         case .author: "Author"
         case .year: "Year"
         case .tag: "Tag"
-        case .review: "Review"
         case .body: "Body"
         case .callout: "Callout"
         case .footnote: "Footnote"
@@ -1958,21 +1944,21 @@ private enum SearchV3HitBuilder {
 }
 
 private extension JSONEncoder {
-    static var searchV3: JSONEncoder {
+    static var searchIndex: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }
 }
 
-private enum SearchV3SQLiteBinding {
+private enum SearchSQLiteBinding {
     case text(String)
     case optionalText(String?)
     case int(Int)
     case optionalInt(Int?)
 }
 
-private final class SearchV3SQLiteDatabase: @unchecked Sendable {
+private final class SearchSQLiteDatabase: @unchecked Sendable {
     private var handle: OpaquePointer?
 
     init(path: String) throws {
@@ -2010,7 +1996,7 @@ private final class SearchV3SQLiteDatabase: @unchecked Sendable {
 
     var lastInsertRowID: Int { Int(sqlite3_last_insert_rowid(handle)) }
 
-    func execute(_ sql: String, bindings: [SearchV3SQLiteBinding] = []) throws {
+    func execute(_ sql: String, bindings: [SearchSQLiteBinding] = []) throws {
         if bindings.isEmpty {
             var error: UnsafeMutablePointer<CChar>?
             let result = sqlite3_exec(handle, sql, nil, nil, &error)
@@ -2030,8 +2016,8 @@ private final class SearchV3SQLiteDatabase: @unchecked Sendable {
 
     func query(
         _ sql: String,
-        bindings: [SearchV3SQLiteBinding] = [],
-        row: (SearchV3SQLiteStatement) throws -> Void
+        bindings: [SearchSQLiteBinding] = [],
+        row: (SearchSQLiteStatement) throws -> Void
     ) throws {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement.handle) }
@@ -2075,13 +2061,13 @@ private final class SearchV3SQLiteDatabase: @unchecked Sendable {
         }
     }
 
-    private func prepare(_ sql: String) throws -> SearchV3SQLiteStatement {
+    private func prepare(_ sql: String) throws -> SearchSQLiteStatement {
         var statement: OpaquePointer?
         let result = sqlite3_prepare_v2(handle, sql, -1, &statement, nil)
         guard result == SQLITE_OK, let statement else {
             throw sqliteError(code: result)
         }
-        return SearchV3SQLiteStatement(handle: statement)
+        return SearchSQLiteStatement(handle: statement)
     }
 
     private var lastError: String {
@@ -2100,18 +2086,18 @@ private final class SearchV3SQLiteDatabase: @unchecked Sendable {
     }
 }
 
-private struct SearchV3SQLiteStatement {
+private struct SearchSQLiteStatement {
     let handle: OpaquePointer
 
-    func bind(_ values: [SearchV3SQLiteBinding]) throws {
+    func bind(_ values: [SearchSQLiteBinding]) throws {
         for (offset, value) in values.enumerated() {
             let index = Int32(offset + 1)
             let result: Int32 = switch value {
             case .text(let text):
-                text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchV3SQLiteTransient) }
+                text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchSQLiteTransient) }
             case .optionalText(let text):
                 if let text {
-                    text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchV3SQLiteTransient) }
+                    text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchSQLiteTransient) }
                 } else {
                     sqlite3_bind_null(handle, index)
                 }
@@ -2140,4 +2126,4 @@ private struct SearchV3SQLiteStatement {
     func isNull(at column: Int32) -> Bool { sqlite3_column_type(handle, column) == SQLITE_NULL }
 }
 
-private let searchV3SQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+private let searchSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

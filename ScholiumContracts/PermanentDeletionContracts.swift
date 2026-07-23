@@ -6,7 +6,6 @@ public struct PermanentDeletionCommit: Hashable, Sendable {
     public let relativePath: String
     public let fingerprint: DocumentFingerprint
     public let removedCritiqueDocumentPath: String?
-    public let removedHumanReview: Bool
     public let removedDialogueIDs: [UUID]
     public let removedCritiqueAssociationIDs: [UUID]
     public let invalidatedCheckpointIDs: [UUID]
@@ -17,7 +16,6 @@ public struct PermanentDeletionCommit: Hashable, Sendable {
         relativePath: String,
         fingerprint: DocumentFingerprint,
         removedCritiqueDocumentPath: String? = nil,
-        removedHumanReview: Bool,
         removedDialogueIDs: [UUID],
         removedCritiqueAssociationIDs: [UUID],
         invalidatedCheckpointIDs: [UUID]
@@ -27,7 +25,6 @@ public struct PermanentDeletionCommit: Hashable, Sendable {
         self.relativePath = relativePath
         self.fingerprint = fingerprint
         self.removedCritiqueDocumentPath = removedCritiqueDocumentPath
-        self.removedHumanReview = removedHumanReview
         self.removedDialogueIDs = removedDialogueIDs
         self.removedCritiqueAssociationIDs = removedCritiqueAssociationIDs
         self.invalidatedCheckpointIDs = invalidatedCheckpointIDs

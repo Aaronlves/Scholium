@@ -170,7 +170,7 @@ struct NoteLifecycleView: View {
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
         case .move:
-            "Moving or renaming preserves the note identity, page annotations, earlier Review and Dialogue archives, and Research Record."
+            "Moving or renaming preserves the note identity, Comments, Discussions, and Research Record."
         case .putBack:
             "Put Back returns this note to its exact original vault-relative location. Scholium never renames it or chooses another folder."
         case .classify:

@@ -132,7 +132,7 @@ struct ResearchFunctionMaterialsState: Equatable, Sendable {
     mutating func receive(
         _ loaded: [ResearchFunctionMaterialCandidate],
         target: VaultQualifiedNoteID,
-        passage: ResearcherCommentAnchor?
+        passage: CommentAnchor?
     ) {
         guard !isFrozen else { return }
         candidates = loaded.map { candidate in
@@ -263,7 +263,7 @@ struct ResearchFunctionMaterialsState: Equatable, Sendable {
 
     private static func overlaps(
         _ span: SourceSpan,
-        _ passage: ResearcherCommentAnchor
+        _ passage: CommentAnchor
     ) -> Bool {
         span.utf16LowerBound < passage.utf16Range.upperBound
             && passage.utf16Range.lowerBound < span.utf16UpperBound
@@ -394,14 +394,13 @@ final class ResearchFunctionController: ObservableObject {
 
     @Published var instruction = ""
     @Published var scopeKind: ResearchFunctionScopeKind = .whole
-    @Published var selectedCommentIDs: Set<UUID> = []
     @Published var fidelityChecks: Set<FidelityCheck> = [.content]
     @Published var discussResponseModules: Set<DialogueResponseModule> = []
     @Published private(set) var discussResponseDefaultsLoaded = false
     @Published var writeScope: ResearchWriteScope = .currentNote
     @Published private(set) var selectedWriteTargetIDs: Set<UUID> = []
 
-    private var passageSelection: ResearcherCommentAnchor?
+    private var passageSelection: CommentAnchor?
     private var client: ResearchFunctionClient?
     private var generation: UInt64 = 0
     private var availabilityGeneration: UInt64 = 0
@@ -560,7 +559,7 @@ final class ResearchFunctionController: ObservableObject {
 
     /// Receives immutable durable projections from the current workspace
     /// generation. These survive panel dismissal and never merge Discuss,
-    /// Critique, legacy Review, Comments, or Fidelity findings into one record.
+    /// Critique, Comments, or Fidelity findings into one record.
     func receive(
         _ runs: [ResearchFunctionRecordProjection],
         targetNoteID: UUID?
@@ -591,7 +590,7 @@ final class ResearchFunctionController: ObservableObject {
     func begin(
         target: ResearchFunctionTarget,
         function: ResearchFunctionID,
-        selection: ResearcherCommentAnchor?,
+        selection: CommentAnchor?,
         presentationID: UUID
     ) {
         invalidate(clearAvailability: false)
@@ -603,7 +602,6 @@ final class ResearchFunctionController: ObservableObject {
         fidelityChecks = [.content]
         instruction = ""
         materialsState.beginLoading()
-        selectedCommentIDs = []
         discussResponseModules = []
         discussResponseDefaultsLoaded = false
         writeScope = .currentNote
@@ -709,7 +707,7 @@ final class ResearchFunctionController: ObservableObject {
         target: ResearchFunctionTarget,
         function: ResearchFunctionID,
         presentationID: UUID,
-        passage: ResearcherCommentAnchor?
+        passage: CommentAnchor?
     ) {
         materialsGeneration &+= 1
         let token = materialsGeneration
@@ -741,14 +739,6 @@ final class ResearchFunctionController: ObservableObject {
                       self.presentationID == presentationID else { return }
                 self.materialsState.fail(error.localizedDescription)
             }
-        }
-    }
-
-    func setCommentSelected(_ id: UUID, isSelected: Bool) {
-        if isSelected {
-            selectedCommentIDs.insert(id)
-        } else {
-            selectedCommentIDs.remove(id)
         }
     }
 
@@ -793,7 +783,7 @@ final class ResearchFunctionController: ObservableObject {
             instruction: instruction,
             scope: scope,
             checks: function == .fidelity ? fidelityChecks : [],
-            commentIDs: selectedCommentIDs.sorted { $0.uuidString < $1.uuidString },
+            commentIDs: [],
             dialogueResponseModules: function == .discuss
                 ? DialogueResponseModule.allCases.filter(discussResponseModules.contains)
                 : nil,
@@ -892,7 +882,6 @@ final class ResearchFunctionController: ObservableObject {
         instruction = ""
         scopeKind = .whole
         passageSelection = nil
-        selectedCommentIDs = []
         fidelityChecks = [.content]
         discussResponseModules = []
         discussResponseDefaultsLoaded = false

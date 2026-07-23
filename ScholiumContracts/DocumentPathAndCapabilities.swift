@@ -175,7 +175,6 @@ public enum DocumentLifecycleAction: String, Codable, CaseIterable, Hashable, Se
 public struct DocumentCapabilities: Codable, Equatable, Sendable {
     public let canEditSource: Bool
     public let canComment: Bool
-    public let canHumanReview: Bool
     public let canUseResearchFunctions: Bool
     public let isManagedCritique: Bool
     public let lifecycleActions: Set<DocumentLifecycleAction>
@@ -191,7 +190,6 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
         guard identity == .resolved || isUnclassified else {
             canEditSource = false
             canComment = false
-            canHumanReview = false
             canUseResearchFunctions = false
             lifecycleActions = []
             return
@@ -199,7 +197,6 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
         if isUnclassified {
             canEditSource = true
             canComment = false
-            canHumanReview = false
             canUseResearchFunctions = false
             lifecycleActions = [.classify]
             return
@@ -211,7 +208,6 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
                 || role == .topicKnowledge
                 || role == .draftProject
         )
-        canHumanReview = role.allowsHumanReview && !isManagedCritique && lifecycle == .active
         canUseResearchFunctions = role != .other
             && !isManagedCritique
             && lifecycle == .active

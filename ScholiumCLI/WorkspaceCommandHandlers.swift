@@ -884,7 +884,7 @@ extension ScholiumCLI {
                     within: assignment
                 )
                 let matching = try await research.discussionRecords().filter { entry in
-                    entry.functionSnapshot?.request.function == .discuss
+                    entry.functionSnapshot.request.function == .discuss
                         && entry.selectedNotes.contains {
                         $0.vaultID == vault.id && $0.relativePath == relativePath
                     }
@@ -892,7 +892,7 @@ extension ScholiumCLI {
                 entries = matching
             } else {
                 entries = try await research.discussionRecords().filter {
-                    $0.functionSnapshot?.request.function == .discuss
+                    $0.functionSnapshot.request.function == .discuss
                 }
             }
             if format == "json" {
@@ -912,9 +912,9 @@ extension ScholiumCLI {
                 throw CLIError.usage("Usage: scholium discuss show <discussion-id> [--format json]")
             }
             let entry = try await research.discussion(id: id)
-            guard entry.functionSnapshot?.request.function == .discuss else {
+            guard entry.functionSnapshot.request.function == .discuss else {
                 throw CLIError.unavailable(
-                    "This identifier belongs to an earlier Dialogue archive and is read-only in Research Record."
+                    "This identifier does not belong to a Discuss run."
                 )
             }
             let format = option("--format", in: arguments) ?? "text"
@@ -972,9 +972,9 @@ extension ScholiumCLI {
                 throw CLIError.usage("Discuss replies require --text <reply> or --from <file>.")
             }
             let entry = try await research.discussion(id: id)
-            guard entry.functionSnapshot?.request.function == .discuss else {
+            guard entry.functionSnapshot.request.function == .discuss else {
                 throw CLIError.unavailable(
-                    "This identifier belongs to an earlier Dialogue archive and cannot receive new replies."
+                    "This identifier does not belong to a Discuss run."
                 )
             }
             let noteID: UUID?

@@ -248,12 +248,8 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
 /// mutations are performed only through `ResearchOperations`; this value is
 /// immutable delivery-neutral state for GUI, CLI, and future snapshot readers.
 public struct WorkspaceResearchSnapshot: Sendable {
-    /// Compatibility-only archive. New product behavior never creates or
-    /// projects Human Review records as current research state.
-    public let legacyHumanReviews: [HumanReviewRecord]
     public let activityEvents: [ResearchActivityEvent]
     public let settlements: [SettlementRecord]
-    public let annotations: [AnnotationRecord]
     public let commentExchanges: [CommentExchange]
     public let pendingResearchStates: [PendingResearchState]
     public let activityGrants: [ResearchActivityGrant]
@@ -265,10 +261,8 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let healthIssues: [String]
 
     public init(
-        legacyHumanReviews: [HumanReviewRecord] = [],
         activityEvents: [ResearchActivityEvent] = [],
         settlements: [SettlementRecord] = [],
-        annotations: [AnnotationRecord] = [],
         commentExchanges: [CommentExchange] = [],
         pendingResearchStates: [PendingResearchState] = [],
         activityGrants: [ResearchActivityGrant] = [],
@@ -279,10 +273,8 @@ public struct WorkspaceResearchSnapshot: Sendable {
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         healthIssues: [String]
     ) {
-        self.legacyHumanReviews = legacyHumanReviews
         self.activityEvents = activityEvents
         self.settlements = settlements
-        self.annotations = annotations
         self.commentExchanges = commentExchanges
         self.pendingResearchStates = pendingResearchStates
         self.activityGrants = activityGrants

@@ -237,8 +237,9 @@ Actions. Overview projects compact Attention and role-aware About fields;
 Zotero has no Inspector projection. Connect projects direct and derived
 relations. Actions projects recorded Research Activity and direct role-valid
 full-row operations, with Discuss and Write under a static Work with Agent
-heading. Legacy Review and Dialogue records appear only in the separate
-read-only Research Record archive. The Inspector may navigate or open another
+heading. Current Comment exchanges and Function-backed Discussion appear in
+the separate read-only Research Record window; removed archives have no
+projection. The Inspector may navigate or open another
 note in the Document tabs, but it never owns a document buffer, editing,
 autosave, undo, or conflict state. Those remain exclusively in the Document
 surface and its existing controllers.
@@ -329,10 +330,10 @@ Exact evidence keys prevent duplicate storage or scheduling.
 
 Core separates Skill discovery/bindings (`ResearchSkillStore`), dependency and
 instruction assembly (`ResearchWorkflowAssembler`), checkpoints
-(`TriptychCheckpointStore`), Discussion, Critique, page Annotation, Research
-Activity, and the read-only earlier Review archive. The archive exposes no
-current Review, qualification, or comment-creation API; repositories alone
-mutate revision-checked source.
+(`TriptychCheckpointStore`), current Function-backed Discussion, Comment,
+Critique, and Research Activity. The clean cutover retains no Human Review,
+Qualification, pre-Function Dialogue, ResearcherComment, or app-owned
+Annotation store; repositories alone mutate revision-checked source.
 `RecommendedBibliographyStore` alone owns its atomic portable JSON and never
 mutates notes or Zotero. No omnibus function store exists.
 
@@ -454,10 +455,11 @@ each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
 registry, notification, generation counter, presentation coordinator, custom
 focused key, or manually retained window model participates. The window
 projects Research Activity, Comment exchanges, Write attribution, Critique
-association, provenance, and read-only legacy Review and Dialogue archives
-through a narrow `ResearchRecordContext`. Page Annotations are not chronology
-and never enter this window. It never enters the trailing split item and never
-owns checkpoints, a document buffer, autosave, undo, or conflicts.
+association, provenance, and current Function-backed Discussion through a
+narrow `ResearchRecordContext`. Ordinary Markdown annotations remain in the
+document and never become separate chronology. It never enters the trailing
+split item and never owns checkpoints, a document buffer, autosave, undo, or
+conflicts.
 Closing Research Record therefore cannot reveal or resize Research Inspector.
 
 The Library-owned Attention queue is an inline Library destination, not a sheet
@@ -521,8 +523,8 @@ for explicit `Bundle.module` lookups. `Info.plist` declares `en` and `zh-Hans`.
 the exact resource directory copied into the `ScholiumCore` SwiftPM bundle.
 There is no repository-level source mirror or synchronization step. The official Workflow
 layer contains Development, Critique, Revision, Content Fidelity, and
-Manuscript; Discuss remains System infrastructure and the earlier Review
-archive has no skill. Catalog metadata exposes supported functions, capabilities—including
+Manuscript; Discuss remains System infrastructure and no removed research-record
+model has a Skill. Catalog metadata exposes supported functions, capabilities—including
 `bibliography-recommendation`—and citation styles while retaining supported
 modes only for internal method selection.
 
@@ -784,13 +786,14 @@ Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
 handoff anchor, and delayed restoration requires the same document or Read-load
 generation. It never depends only on throttle-prone animation frames.
 
-Annotation and Comment are not Markdown transformations. Annotation persists
-as app-owned page marginalia keyed by stable note identity and an exact source
-anchor; Read places it beside the corresponding rendered block, while Live
-Preview and Source use a CodeMirror margin widget. It remains outside Research
-Activity and Research Record. Comment requires an exact source selection and
-opens a passage-scoped researcher-agent exchange. Agent replies remain pending
-until the researcher chooses Finish, which alone projects Commented activity.
+Written annotation is authoritative Markdown, including an ordinary semantic
+Callout when a separate visible note is useful; Scholium owns no parallel
+annotation store, overlay, or CodeMirror margin widget. Comment requires an
+exact source selection and opens a passage-scoped researcher-agent exchange.
+Agent replies remain pending until the researcher chooses Finish, which alone
+projects Commented activity. Critique binds all finished Comments attached to
+the exact current Target revision, narrowed to overlapping ranges for Passage
+scope.
 `Command-F` opens Scholium's shared **This Note** Search;
 the embedded CodeMirror Find panel is not part of the product.
 

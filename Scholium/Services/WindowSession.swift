@@ -402,17 +402,6 @@ final class WorkspaceStore: ObservableObject {
         ))
     }
 
-    private func reloadTriptych(id: UUID) async throws -> WorkspaceHandle {
-        let previous = handles[id]?.runtimeIdentity
-        let handle = try await applicationRuntime.reloadWorkspace(id: id)
-        try await install(handle: handle, replacing: previous)
-        return handle
-    }
-
-    func reloadTriptychCapabilities(id: UUID) async throws -> WindowWorkspaceCapabilities {
-        capabilities(from: try await reloadTriptych(id: id))
-    }
-
     func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
         await applicationRuntime.portableContainerURL(forWorksURL: worksURL)
     }

@@ -5,42 +5,6 @@ import Testing
 
 @Suite("Workspace runtime replacement", .serialized)
 struct WorkspaceRuntimeReplacementTests {
-    @Test("Reload hands both existing peers the same replacement before teardown")
-    func reloadHandsOffEveryPeer() async throws {
-        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
-        defer { fixture.remove() }
-        let runtime = liveRuntime(for: fixture)
-        let previous = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let firstStream = await previous.events.events()
-        let secondStream = await previous.events.events()
-        var first = firstStream.makeAsyncIterator()
-        var second = secondStream.makeAsyncIterator()
-        _ = try #require(await first.next())
-        _ = try #require(await second.next())
-
-        let replacement = try await runtime.reloadWorkspace(id: fixture.assignment.id)
-        #expect(replacement !== previous)
-        #expect(try await runtime.openWorkspace(id: fixture.assignment.id) === replacement)
-
-        try await expectReplacement(
-            try #require(await first.next()),
-            previous: previous,
-            replacement: replacement
-        )
-        try await expectReplacement(
-            try #require(await second.next()),
-            previous: previous,
-            replacement: replacement
-        )
-        #expect(await first.next() == nil)
-        #expect(await second.next() == nil)
-        #expect(await previous.events.subscriberCount == 0)
-        #expect(await previous.ownedBackgroundTaskCount == 0)
-        #expect(await replacement.ownedBackgroundTaskCount > 0)
-
-        await runtime.shutdown()
-    }
-
     @Test("Vault registration and Triptych configuration replace every borrower")
     func membershipMutationsHandOffEveryPeer() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)

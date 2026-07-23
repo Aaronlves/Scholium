@@ -111,23 +111,6 @@ struct MarkdownEditorProtocolTests {
         #expect(MarkdownEditorSelectionRange(anchor: 9, head: 4).isNonempty)
     }
 
-    @Test("Page Annotation projection is a nonmutating editor operation")
-    func pageAnnotationProjectionRoundTrip() throws {
-        let annotation = MarkdownEditorPageAnnotation(
-            id: UUID(),
-            from: 4,
-            to: 11,
-            text: "Keep this distinction visible beside the passage.",
-            resolved: false
-        )
-        let operation = MarkdownEditorOperation.setPageAnnotations([annotation])
-        let data = try JSONEncoder().encode(operation)
-        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        #expect(object["type"] as? String == "setPageAnnotations")
-        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
-    }
-
     @Test("Selection snapshots require a nonempty bounded range set and exact identity")
     func selectionSnapshotValidation() {
         let range = MarkdownEditorSelectionRange(anchor: 2, head: 5)

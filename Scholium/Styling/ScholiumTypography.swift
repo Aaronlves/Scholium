@@ -263,12 +263,4 @@ enum ScholiumInterfaceTypography {
         size: 12,
         relativeTo: .body
     )
-    static let reviewValue = ScholiumTypography.swiftUIReadingFont(
-        size: 18,
-        relativeTo: .title3
-    )
-    static let reviewSummary = ScholiumTypography.swiftUIReadingFont(
-        size: 12,
-        relativeTo: .body
-    )
 }

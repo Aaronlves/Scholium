@@ -21372,9 +21372,7 @@
     "setMode",
     "setPresentationCSS",
     "setUserCSS",
-    "setLinkCompletions",
     "setLinkPreviews",
-    "setPageAnnotations",
     "showPreview",
     "showPreviewAt",
     "announceStatus",
@@ -21475,9 +21473,7 @@
         return typeof operation.value === "string" && operation.value.length <= 1e6;
       case "announceStatus":
         return typeof operation.value === "string" && operation.value.length <= 500;
-      case "setLinkCompletions":
       case "setLinkPreviews":
-      case "setPageAnnotations":
         return Array.isArray(operation.value);
       case "showPreviewAt":
         return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
@@ -30449,7 +30445,6 @@ ${fence}
       "setPresentationCSS",
       "setUserCSS",
       "setLinkPreviews",
-      "setPageAnnotations",
       "goToLine",
       "restoreRecovery",
       "synchronizeCommittedText",
@@ -30963,7 +30958,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var bridgeFingerprint = "";
   var documentVersion = 0;
   var exactSource = "";
-  var linkCandidates = [];
   var nextLinkCompletionRequest = 0;
   var pendingLinkCompletionQueries = /* @__PURE__ */ new Map();
   var linkPreviews = [];
@@ -31022,61 +31016,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       );
       return selectionKeepsActivation ? next : null;
     }
-  });
-  var PageAnnotationMarginWidget = class extends WidgetType {
-    constructor(annotation) {
-      super();
-      this.annotation = annotation;
-    }
-    annotation;
-    eq(other) {
-      return this.annotation.id === other.annotation.id && this.annotation.text === other.annotation.text && this.annotation.resolved === other.annotation.resolved && this.annotation.slot === other.annotation.slot;
-    }
-    toDOM() {
-      const marginNote = document.createElement("button");
-      marginNote.type = "button";
-      marginNote.className = `cm-page-annotation-margin${this.annotation.resolved ? " cm-page-annotation-resolved" : ""}`;
-      marginNote.dataset.annotationId = this.annotation.id;
-      marginNote.dataset.scholiumProtected = "page-annotation";
-      marginNote.textContent = this.annotation.text;
-      marginNote.title = this.annotation.text;
-      marginNote.setAttribute("aria-label", `Annotation: ${this.annotation.text}`);
-      marginNote.style.setProperty("--scholium-annotation-slot", String(this.annotation.slot));
-      return marginNote;
-    }
-    ignoreEvent() {
-      return false;
-    }
-  };
-  var setPageAnnotationsEffect = StateEffect.define();
-  var pageAnnotationField = StateField.define({
-    create: () => Decoration.none,
-    update(value, transaction) {
-      let next = value.map(transaction.changes);
-      for (const effect of transaction.effects) {
-        if (!effect.is(setPageAnnotationsEffect)) continue;
-        const ranges = [];
-        for (const annotation of effect.value.filter((item) => item.from >= 0 && item.to > item.from && item.to <= transaction.newDoc.length)) {
-          ranges.push(Decoration.mark({
-            class: `cm-page-annotation${annotation.resolved ? " cm-page-annotation-resolved" : ""}`,
-            attributes: {
-              "data-annotation-id": annotation.id,
-              "data-scholium-protected": "page-annotation",
-              "aria-label": `Annotated passage: ${annotation.text}`,
-              title: annotation.text
-            }
-          }).range(annotation.from, annotation.to));
-          const line = transaction.newDoc.lineAt(annotation.from);
-          ranges.push(Decoration.widget({
-            widget: new PageAnnotationMarginWidget(annotation),
-            side: 1
-          }).range(line.to));
-        }
-        next = Decoration.set(ranges, true);
-      }
-      return next;
-    },
-    provide: (field) => EditorView.decorations.from(field)
   });
   var hiddenSyntax = Decoration.replace({});
   var liveMark = (className) => Decoration.mark({ class: className });
@@ -32335,7 +32274,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     literals2.sort((left, right) => left.from - right.from || left.to - right.to);
     for (const visible of coveredRanges) {
       let line = doc2.lineAt(visible.from);
-      const lastLine = doc2.lineAt(visible.to).number;
       while (line.from <= visible.to) {
         const scanFrom = Math.max(line.from, visible.from);
         const scanTo = Math.min(line.to, visible.to);
@@ -32750,21 +32688,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       idleTimer = window.setTimeout(() => post({ type: "idle", dirty }), 500);
     }
   });
-  var pageAnnotationActivation = EditorView.domEventHandlers({
+  var linkActivation = EditorView.domEventHandlers({
     click(event) {
       if (event.metaKey) {
         const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
-        const target2 = position === null ? null : linkTargetAt(editor.state.doc.toString(), position);
-        if (target2) {
-          post({ type: "linkActivated", target: target2 });
+        const target = position === null ? null : linkTargetAt(editor.state.doc.toString(), position);
+        if (target) {
+          post({ type: "linkActivated", target });
           event.preventDefault();
           return true;
         }
       }
-      const target = event.target instanceof Element ? event.target.closest("[data-annotation-id]") : null;
-      const annotationID = target?.dataset.annotationId;
-      if (!annotationID) return false;
-      post({ type: "annotationActivated", annotationID });
       return false;
     }
   });
@@ -32994,8 +32928,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     structuralInteractionKeymap,
     saveKeymap,
     stateReporter,
-    pageAnnotationField,
-    pageAnnotationActivation,
+    linkActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
     liveProjectionIndexField,
     modeCompartment.of(livePreviewMode),
@@ -33434,14 +33367,8 @@ ${preview.fragment}` : relationship;
       case "setUserCSS":
         editorOperations.setUserCSS(operation.value);
         break;
-      case "setLinkCompletions":
-        editorOperations.setLinkCompletions(operation.value);
-        break;
       case "setLinkPreviews":
         editorOperations.setLinkPreviews(operation.value);
-        break;
-      case "setPageAnnotations":
-        editorOperations.setPageAnnotations(operation.value);
         break;
       case "showPreview":
         showPreviewAtSelection();
@@ -33782,37 +33709,12 @@ ${preview.fragment}` : relationship;
     setUserCSS(css2) {
       setDynamicStyle("scholium-user-css", css2);
     },
-    /** @param {{label: string, insertion: string, detail: string, path: string}[]} candidates */
-    setLinkCompletions(candidates) {
-      linkCandidates = Array.isArray(candidates) ? candidates.slice(0, 2e4) : [];
-    },
     setLinkPreviews(value) {
       linkPreviews = validatedLinkPreviews(value, editor.state.doc.length);
       linkPreviewIndexByRange = new Map(
         linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index])
       );
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
-    },
-    setPageAnnotations(annotations) {
-      const lineSlots = /* @__PURE__ */ new Map();
-      const normalized2 = Array.isArray(annotations) ? annotations.slice(0, 1e4).flatMap((annotation) => {
-        const id2 = typeof annotation?.id === "string" ? annotation.id : "";
-        const from = Number.isInteger(annotation?.from) ? annotation.from : -1;
-        const to = Number.isInteger(annotation?.to) ? annotation.to : -1;
-        if (!id2 || from < 0 || to <= from || to > editor.state.doc.length) return [];
-        const lineNumber = editor.state.doc.lineAt(from).number;
-        const slot = lineSlots.get(lineNumber) ?? 0;
-        lineSlots.set(lineNumber, slot + 1);
-        return [{
-          id: id2,
-          from,
-          to,
-          text: typeof annotation.text === "string" ? annotation.text.slice(0, 500) : "",
-          resolved: annotation.resolved === true,
-          slot
-        }];
-      }) : [];
-      editor.dispatch({ effects: setPageAnnotationsEffect.of(normalized2) });
     },
     /** @param {number} requestedLine */
     goToLine(requestedLine) {

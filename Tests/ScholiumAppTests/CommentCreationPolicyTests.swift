@@ -3,8 +3,8 @@ import ScholiumContracts
 import Testing
 @testable import ScholiumApp
 
-@Suite("Passage Annotation and Comment selection policy")
-struct ResearcherCommentCreationPolicyTests {
+@Suite("Passage Comment selection policy")
+struct CommentCreationPolicyTests {
     @Test("A Comment cannot be created without a selected passage")
     func missingSelectionHasNoAnchor() {
         let note = WindowDocumentLocation.unclassified(NoteDocument(

@@ -80,13 +80,6 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord
-    func annotations(noteID: UUID) async throws -> [AnnotationRecord]
-    func addAnnotation(to note: VaultQualifiedNoteID, text: String, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> AnnotationRecord
-    func updateAnnotation(noteID: UUID, annotationID: UUID, text: String) async throws -> AnnotationRecord
-    func setAnnotationResolved(noteID: UUID, annotationID: UUID, resolved: Bool) async throws -> AnnotationRecord
-    func deleteAnnotation(noteID: UUID, annotationID: UUID) async throws -> AnnotationRecord
-    func reattachAnnotation(to note: VaultQualifiedNoteID, annotationID: UUID, anchor: ResearcherCommentAnchor, expectedRevision: DocumentFingerprint) async throws -> AnnotationRecord
-    func reattachAnnotations(to note: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> [AnnotationRecord]
     func commentExchanges(noteID: UUID) async throws -> [CommentExchange]
     func commentExchange(id: UUID) async throws -> CommentExchange
     func createCommentExchange(_ exchange: CommentExchange) async throws -> CommentExchange
@@ -303,8 +296,6 @@ public protocol ZoteroUseCases: Sendable {
     func handle(requestData: Data) async -> Data?
     func libraryInfo() async -> ZoteroLibraryInfo
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
-    func resolve(source: ZoteroSourceIdentity) async throws -> ZoteroMatchResult
-    func resolveCitation(zoteroKey: String) async throws -> ZoteroItemMetadata?
     func clearConnectionHistory() async throws
 }
 

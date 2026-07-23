@@ -1216,79 +1216,6 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testPageAnnotationPersistsBesidePassageWithoutCreatingResearchActivity() throws {
-        waitForDocumentSurface()
-
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
-        XCTAssertTrue(mode.waitForExistence(timeout: 5))
-        mode.click()
-        let sourceMode = app.menuItems
-            .matching(identifier: "chevron.left.forwardslash.chevron.right")
-            .firstMatch
-        XCTAssertTrue(sourceMode.waitForExistence(timeout: 3))
-        sourceMode.click()
-
-        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
-        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
-        sourceEditor.click()
-        sourceEditor.typeKey(.end, modifierFlags: [.command])
-        sourceEditor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
-
-        app.menuBars.menuBarItems["Insert"].click()
-        let addAnnotation = app.menuItems["Add Annotation…"].firstMatch
-        XCTAssertTrue(addAnnotation.waitForExistence(timeout: 5))
-        XCTAssertTrue(addAnnotation.isEnabled)
-        addAnnotation.click()
-
-        let editor = app.descendants(matching: .any)["scholium.pageAnnotationEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        let annotationText = "Persistent synthetic margin note."
-        let textView = editor.textViews.firstMatch
-        XCTAssertTrue(textView.exists)
-        textView.click()
-        textView.typeText(annotationText)
-        editor.buttons["Save"].click()
-        XCTAssertTrue(waitUntil(timeout: 45) { !editor.exists })
-        XCTAssertTrue(app.buttons["Annotation: \(annotationText)"].waitForExistence(timeout: 8))
-
-        let secondRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
-        let firstRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-        let documentTitle = app.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
-        secondRow.click()
-        XCTAssertTrue(
-            waitUntil(timeout: 15) { documentTitle.value as? String == "QA Autosave B" },
-            "The second note must finish opening before the test returns to the annotated page."
-        )
-        XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
-        firstRow.click()
-        XCTAssertTrue(
-            waitUntil(timeout: 15) { documentTitle.value as? String == "QA Autosave A" },
-            "The annotated note did not finish reopening."
-        )
-
-        mode.click()
-        let readMode = app.menuItems["Read"].firstMatch
-        XCTAssertTrue(readMode.waitForExistence(timeout: 3))
-        readMode.click()
-        XCTAssertTrue(
-            app.buttons["Annotation: \(annotationText)"].waitForExistence(timeout: 30),
-            "The saved Annotation did not return beside its passage after reopening the page."
-        )
-
-        selectResearchInspectorMode("actions")
-        XCTAssertTrue(app.staticTexts["No recorded activity yet."].exists)
-
-        let recordButton = app.buttons["scholium.showResearchRecord"]
-        XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
-        recordButton.click()
-        let record = app.descendants(matching: .any)["scholium.researchRecord"]
-        XCTAssertTrue(record.waitForExistence(timeout: 8))
-        XCTAssertFalse(record.staticTexts[annotationText].exists)
-        XCTAssertFalse(record.staticTexts["Annotation"].exists)
-    }
-
-    @MainActor
     func testDiscussCopiesPreparedReadOnlyRequest() throws {
         waitForDocumentSurface()
         selectResearchInspectorMode("actions")
@@ -1464,12 +1391,6 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(sheet.descendants(matching: .any)[
             "scholium.researchFunctionMaterial.analysis.QA Autosave B.md"
         ].waitForExistence(timeout: 5))
-        XCTAssertFalse(sheet.descendants(matching: .any)[
-            "scholium.humanReviewSheet"
-        ].exists)
-        XCTAssertFalse(sheet.descendants(matching: .any)[
-            "scholium.newResearcherComment"
-        ].exists)
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !panel.exists })
     }

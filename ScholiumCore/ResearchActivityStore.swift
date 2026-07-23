@@ -2,9 +2,6 @@ import Foundation
 import ScholiumContracts
 
 /// App-owned activity, settlement, and communication records.
-/// The store is intentionally independent of legacy Human Review persistence:
-/// it never reuses qualification or Review state as Settlement. Private page
-/// Annotations belong to `PageAnnotationStore` and cannot enter this timeline.
 public actor ResearchActivityStore {
     private static let currentSchemaVersion = 2
 
@@ -32,30 +29,9 @@ public actor ResearchActivityStore {
         if fileManager.fileExists(atPath: fileURL.path) {
             do {
                 let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
-                var decoded = try decoder.decode(Payload.self, from: data)
+                let decoded = try decoder.decode(Payload.self, from: data)
                 switch decoded.schemaVersion {
                 case Self.currentSchemaVersion:
-                    payload = decoded
-                    loadFailure = nil
-                case 1:
-                    let backupURL = storageURL.appendingPathComponent(
-                        "research-activity.v1.backup.json",
-                        isDirectory: false
-                    )
-                    if !fileManager.fileExists(atPath: backupURL.path) {
-                        // The source file remains intact until the migrated
-                        // payload has been validated. Use an exclusive write
-                        // for the immutable backup; Foundation does not allow
-                        // `.atomic` and `.withoutOverwriting` together.
-                        try data.write(to: backupURL, options: .withoutOverwriting)
-                    }
-                    decoded.schemaVersion = Self.currentSchemaVersion
-                    let encoder = JSONEncoder()
-                    encoder.dateEncodingStrategy = .iso8601
-                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                    let migratedData = try encoder.encode(decoded)
-                    _ = try decoder.decode(Payload.self, from: migratedData)
-                    try migratedData.write(to: fileURL, options: .atomic)
                     payload = decoded
                     loadFailure = nil
                 default:

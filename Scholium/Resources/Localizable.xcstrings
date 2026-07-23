@@ -1088,22 +1088,6 @@
         }
       }
     },
-    "Add Annotation…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Add Annotation…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加批注…"
-          }
-        }
-      }
-    },
     "Add Prompt Template" : {
       "localizations" : {
         "en" : {
@@ -1168,18 +1152,18 @@
         }
       }
     },
-    "Add a positive term or a structured review, callout, or broken-link condition." : {
+    "Add a positive term or a structured callout or broken-link condition." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Add a positive term or a structured review, callout, or broken-link condition."
+            "value" : "Add a positive term or a structured callout or broken-link condition."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请添加肯定词项，或 review、callout、broken-link 结构化条件。"
+            "value" : "请添加肯定词项，或 callout、broken-link 结构化条件。"
           }
         }
       }
@@ -1795,54 +1779,6 @@
         }
       }
     },
-    "Annotation" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Annotation"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "批注"
-          }
-        }
-      }
-    },
-    "Annotation Unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Annotation Unavailable"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法使用批注"
-          }
-        }
-      }
-    },
-    "Annotations are unavailable until Scholium can identify this Analysis, Topic, or Work reliably." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Annotations are unavailable until Scholium can identify this Analysis, Topic, or Work reliably."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Scholium 能够可靠识别此分析、议题或写作之前，无法使用批注。"
-          }
-        }
-      }
-    },
     "Any Author" : {
       "localizations" : {
         "en" : {
@@ -1968,6 +1904,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "评估"
+          }
+        }
+      }
+    },
+    "Attempts to establish Application Support storage again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attempts to establish Application Support storage again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次尝试建立 Application Support 存储。"
           }
         }
       }
@@ -3377,18 +3329,18 @@
         }
       }
     },
-    "Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests or the earlier Dialogue archive." : {
+    "Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests or the earlier Dialogue archive."
+            "value" : "Choose the optional scholarly modules included in newly prepared Discuss requests. This setting does not change existing requests."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择新讨论请求包含的可选学术模块。此设置不会更改现有请求或早期对话档案。"
+            "value" : "选择要包含在新准备的讨论请求中的可选学术模块。此设置不会更改现有请求。"
           }
         }
       }
@@ -4021,18 +3973,18 @@
         }
       }
     },
-    "Confirming a previous note moves its page annotations, earlier Review and Dialogue archives, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file." : {
+    "Confirming a previous note moves its current Discussion, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Confirming a previous note moves its page annotations, earlier Review and Dialogue archives, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file."
+            "value" : "Confirming a previous note moves its current Discussion, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认先前笔记会将其页边批注、早期审阅与对话档案、评析关联、研究记录和窗口状态移至当前位置。Scholium 不会更改 Markdown 文件。"
+            "value" : "确认先前笔记会将其当前讨论、评析关联、研究记录和窗口状态移至当前位置。Scholium 不会更改 Markdown 文件。"
           }
         }
       }
@@ -4697,8 +4649,18 @@
     },
     "Could not move this folder to Trash. %@" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "new", "value" : "Could not move this folder to Trash. %@" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法将此文件夹移至纸篓。%@" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not move this folder to Trash. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将此文件夹移至纸篓。%@"
+          }
+        }
       }
     },
     "Could not open %@: %@" : {
@@ -5505,6 +5467,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目的地"
+          }
+        }
+      }
+    },
+    "Details" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Details"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "详细信息"
           }
         }
       }
@@ -9249,8 +9227,18 @@
     },
     "Move" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "new", "value" : "Move" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移动" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Move"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动"
+          }
+        }
       }
     },
     "Move %@ down" : {
@@ -9465,8 +9453,18 @@
     },
     "Move or Rename Folder" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "new", "value" : "Move or Rename Folder" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移动或重命名文件夹" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Move or Rename Folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动或重命名文件夹"
+          }
+        }
       }
     },
     "Move or Rename Note…" : {
@@ -9535,8 +9533,18 @@
     },
     "Moved folder" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "new", "value" : "Moved folder" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已移动的文件夹" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Moved folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移动的文件夹"
+          }
+        }
       }
     },
     "Moves to explicit whole-package maintenance for this Triptych Skill" : {
@@ -12345,6 +12353,22 @@
         }
       }
     },
+    "Quit" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Quit"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出"
+          }
+        }
+      }
+    },
     "Quotation" : {
       "localizations" : {
         "en" : {
@@ -12501,38 +12525,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "只读 Zotero 访问"
-          }
-        }
-      }
-    },
-    "Read-only compatibility history. Earlier Review and Qualification do not become Settlement or current research activity." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Read-only compatibility history. Earlier Review and Qualification do not become Settlement or current research activity."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只读兼容历史。早期审阅和评审结论不会转为暂定或当前研究活动。"
-          }
-        }
-      }
-    },
-    "Read-only compatibility history. Scholium does not infer Commented or Discussed activity from these records." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Read-only compatibility history. Scholium does not infer Commented or Discussed activity from these records."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只读兼容历史。Scholium 不会根据这些记录推断已评论或已讨论活动。"
           }
         }
       }
@@ -14342,86 +14334,6 @@
         }
       }
     },
-    "Attempts to establish Application Support storage again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Attempts to establish Application Support storage again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再次尝试建立 Application Support 存储。"
-          }
-        }
-      }
-    },
-    "Details" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Details"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "详细信息"
-          }
-        }
-      }
-    },
-    "Quit" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Quit"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "退出"
-          }
-        }
-      }
-    },
-    "Scholium cannot establish its Application Support storage." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium cannot establish its Application Support storage."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法建立其 Application Support 存储。"
-          }
-        }
-      }
-    },
-    "Storage Unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Storage Unavailable"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "存储不可用"
-          }
-        }
-      }
-    },
     "Retry" : {
       "localizations" : {
         "en" : {
@@ -15332,6 +15244,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium CLI 状态"
+          }
+        }
+      }
+    },
+    "Scholium cannot establish its Application Support storage." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium cannot establish its Application Support storage."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法建立其 Application Support 存储。"
           }
         }
       }
@@ -16560,6 +16488,22 @@
         }
       }
     },
+    "Shows the storage error details." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows the storage error details."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示存储错误详情。"
+          }
+        }
+      }
+    },
     "Sidebar" : {
       "localizations" : {
         "en" : {
@@ -16976,6 +16920,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 的步骤 %lld"
+          }
+        }
+      }
+    },
+    "Storage Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Storage Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储不可用"
           }
         }
       }
@@ -17710,8 +17670,18 @@
     },
     "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes." : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "new", "value" : "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文件夹仅用于按路径分类。Scholium 会保留每篇下属笔记的稳定身份，并在不更改内容字节的情况下移动非 Markdown 内容。" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹仅用于按路径分类。Scholium 会保留每篇下属笔记的稳定身份，并在不更改内容字节的情况下移动非 Markdown 内容。"
+          }
+        }
       }
     },
     "The last complete Search index remains available. Details: %@" : {
@@ -17758,22 +17728,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此名称用于区分完整的研究领域。“写作”文件夹仍由研究者自行管理，不是应用管理的项目。"
-          }
-        }
-      }
-    },
-    "The note changed before the Annotation could be attached. Select the current passage again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The note changed before the Annotation could be attached. Select the current passage again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "批注附着前笔记已经更改。请重新选择当前段落。"
           }
         }
       }
@@ -18292,18 +18246,18 @@
         }
       }
     },
-    "This cannot be undone. Scholium removes the note, its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it." : {
+    "This cannot be undone. Scholium removes the note, its Comments, Discussions, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This cannot be undone. Scholium removes the note, its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it."
+            "value" : "This cannot be undone. Scholium removes the note, its Comments, Discussions, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此操作无法撤销。Scholium 会移除该笔记、页边批注、早期审阅与对话档案、评析关联、稳定身份、研究记录，以及包含它的每个脉络恢复点。"
+            "value" : "此操作无法撤销。Scholium 会移除该笔记、评论、讨论、评析关联、稳定身份、研究记录，以及包含它的每个脉络恢复点。"
           }
         }
       }
@@ -18453,18 +18407,18 @@
         }
       }
     },
-    "This note remains readable, but Annotation, Comment, Research Record, restore, and file changes are unavailable until its records finish moving from %@ to %@." : {
+    "This note remains readable, but Comment, Research Record, restore, and file changes are unavailable until its records finish moving from %@ to %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This note remains readable, but Annotation, Comment, Research Record, restore, and file changes are unavailable until its records finish moving from %1$@ to %2$@."
+            "value" : "This note remains readable, but Comment, Research Record, restore, and file changes are unavailable until its records finish moving from %1$@ to %2$@."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此笔记仍可阅读，但在其记录从 %1$@ 移至 %2$@ 完成之前，批注、评论、研究记录、恢复和文件更改均不可用。"
+            "value" : "此笔记仍可阅读，但在其记录从 %1$@ 移至 %2$@ 完成之前，评论、研究记录、恢复和文件更改均不可用。"
           }
         }
       }
@@ -19035,22 +18989,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未分类"
-          }
-        }
-      }
-    },
-    "Unfinished earlier Review" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Unfinished earlier Review"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未完成的早期审阅"
           }
         }
       }

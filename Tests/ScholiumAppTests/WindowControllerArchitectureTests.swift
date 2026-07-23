@@ -844,7 +844,7 @@ struct WindowControllerArchitectureTests {
         )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(source.range(
-            of: "private enum AnnotationWorkflowError",
+            of: "private enum ClipboardWorkflowError",
             range: start.upperBound..<source.endIndex
         ))
         let windowModelSource = String(source[start.lowerBound..<end.lowerBound])
@@ -900,7 +900,7 @@ struct WindowControllerArchitectureTests {
         )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(appSource.range(
-            of: "private enum AnnotationWorkflowError",
+            of: "private enum ClipboardWorkflowError",
             range: start.upperBound..<appSource.endIndex
         ))
         let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
@@ -924,7 +924,7 @@ struct WindowControllerArchitectureTests {
             #expect(!windowModelSource.contains(documentOwnedState))
         }
         #expect(controllerSource.contains("@Published var lifecycleMutationGeneration"))
-        #expect(controllerSource.contains("@Published var annotationsByNoteID"))
+        #expect(!controllerSource.contains("@Published var annotationsByNoteID"))
         #expect(controllerSource.contains("@Published var noteIdentityByPath"))
 
         #expect(!windowModelSource.contains("@Published var dialogueInitialNotes"))

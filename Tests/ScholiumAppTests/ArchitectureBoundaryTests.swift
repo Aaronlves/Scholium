@@ -82,8 +82,7 @@ struct ArchitectureBoundaryTests {
 
         #expect(source.contains("private func workspaceHandle(id: UUID)"))
         #expect(source.contains("private func configureTriptych("))
-        #expect(source.contains("private func reloadTriptych(id: UUID)"))
-        #expect(source.contains("func reloadTriptychCapabilities("))
+        #expect(!source.contains("func reloadTriptychCapabilities("))
 
         let installStart = try #require(source.range(of: "private func install("))
         let installEnd = try #require(source.range(

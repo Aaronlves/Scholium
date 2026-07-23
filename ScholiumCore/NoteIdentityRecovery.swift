@@ -3,20 +3,17 @@ import Foundation
 
 public actor NoteIdentityRecoveryCoordinator {
     private let control: TriptychControlStore
-    private let humanReviews: HumanReviewStore
     private let dialogue: DialogueStore
     private let critiques: CritiqueRegistry
     private let windowSessions: WindowSessionSnapshotStore
 
     public init(
         control: TriptychControlStore,
-        humanReviews: HumanReviewStore,
         dialogue: DialogueStore,
         critiques: CritiqueRegistry,
         windowSessions: WindowSessionSnapshotStore
     ) {
         self.control = control
-        self.humanReviews = humanReviews
         self.dialogue = dialogue
         self.critiques = critiques
         self.windowSessions = windowSessions
@@ -125,12 +122,6 @@ public actor NoteIdentityRecoveryCoordinator {
         // Every operation below is idempotent. Completion is persisted only
         // after all stores succeed.
         try await repository.migrateRecoveryLedger(
-            from: rebinding.previousRelativePath,
-            to: rebinding.relativePath
-        )
-        _ = try await humanReviews.migratePathIfPresent(
-            noteID: rebinding.noteID,
-            vaultID: rebinding.vaultID,
             from: rebinding.previousRelativePath,
             to: rebinding.relativePath
         )

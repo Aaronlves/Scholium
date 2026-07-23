@@ -18,7 +18,6 @@ struct DocumentFeatureState {
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let propertiesConfiguration: VaultPropertiesConfiguration?
-    let annotations: [AnnotationRecord]
     let commentExchanges: [CommentExchange]
     let requestedCommentExchangeID: UUID?
     let canComment: Bool
@@ -45,14 +44,9 @@ struct DocumentFeatureActions {
     let clearRequestedPresentationMode: @MainActor () -> Void
     let clearPendingSourceLine: @MainActor () -> Void
     let clearPendingSourceRange: @MainActor () -> Void
-    /// Page-local marginalia, retained separately from agent communication and
-    /// never projected into research activity.
-    let createAnnotation: @MainActor (ResearcherCommentAnchor, String) async throws -> Void
-    let updateAnnotation: @MainActor (UUID, String) async throws -> Void
-    let deleteAnnotation: @MainActor (UUID) async throws -> Void
     /// A deliberate passage-scoped communication exchange with an agent.
     let createCommentExchange: @MainActor (
-        ResearcherCommentAnchor,
+        CommentAnchor,
         String
     ) async throws -> CommentExchange
     let appendCommentExchangeTurn: @MainActor (
@@ -75,7 +69,7 @@ struct DocumentFeatureActions {
     let editProperties: @MainActor () -> Void
     let openResearchFunction: @MainActor (
         ResearchFunctionID,
-        ResearcherCommentAnchor?
+        CommentAnchor?
     ) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
@@ -86,18 +80,18 @@ enum ResearchFunctionSelectionCapture {
         for selection: MarkdownReviewSelection?,
         in source: String,
         relativePath: String
-    ) -> ResearcherCommentAnchor? {
+    ) -> CommentAnchor? {
         guard let selection else { return nil }
         let document = NoteDocument(relativePath: relativePath, rawContent: source)
         if let exactRange = selection.exactUTF16Range {
-            return ResearcherCommentAnchorBuilder.anchor(
+            return CommentAnchorBuilder.anchor(
                 in: source,
                 fingerprint: document.fingerprint,
                 utf16Range: exactRange,
                 selectedText: selection.excerpt
             )
         }
-        return ResearcherCommentAnchorBuilder.anchor(
+        return CommentAnchorBuilder.anchor(
             forRenderedQuotation: selection.excerpt,
             contextBefore: selection.contextBefore,
             contextAfter: selection.contextAfter,
@@ -375,102 +369,16 @@ private struct InspectorModeButton: View {
 }
 // MARK: - Note Content View
 
-private struct PageAnnotationDraft: Identifiable {
-    let annotationID: UUID?
-    let anchor: ResearcherCommentAnchor?
-    let excerpt: String
-    let text: String
-
-    var id: String {
-        annotationID?.uuidString ?? "new:\(anchor?.utf16Range.lowerBound ?? 0)"
-    }
-}
-
-private struct PageAnnotationEditor: View {
-    let draft: PageAnnotationDraft
-    let isSaving: Bool
-    let save: (String) -> Void
-    let delete: (() -> Void)?
-    let cancel: () -> Void
-
-    @State private var text: String
-    @FocusState private var isFocused: Bool
-
-    init(
-        draft: PageAnnotationDraft,
-        isSaving: Bool,
-        save: @escaping (String) -> Void,
-        delete: (() -> Void)?,
-        cancel: @escaping () -> Void
-    ) {
-        self.draft = draft
-        self.isSaving = isSaving
-        self.save = save
-        self.delete = delete
-        self.cancel = cancel
-        _text = State(initialValue: draft.text)
-    }
-
-    private var normalizedText: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(draft.excerpt)
-                .font(ScholiumInterfaceTypography.apparatusMetadata)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-
-            TextEditor(text: $text)
-                .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 72, maxHeight: 132)
-                .focused($isFocused)
-                .accessibilityLabel("Annotation")
-
-            HStack(spacing: 10) {
-                if let delete {
-                    Button("Delete", role: .destructive, action: delete)
-                        .buttonStyle(.borderless)
-                }
-                Spacer(minLength: 8)
-                Button("Cancel", action: cancel)
-                    .buttonStyle(.borderless)
-                Button("Save") { save(normalizedText) }
-                    .buttonStyle(.borderless)
-                    .disabled(normalizedText.isEmpty || isSaving)
-            }
-            .font(ScholiumInterfaceTypography.apparatusMetadata)
-        }
-        .padding(12)
-        .frame(width: 232, alignment: .leading)
-        .background(
-            ScholiumColorRole.surfaceBackground.color,
-            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.07), radius: 9, y: 3)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.pageAnnotationEditor")
-        .onAppear { isFocused = true }
-    }
-}
-
 /// A Comment is a bounded communication exchange, not page marginalia. The
 /// sheet keeps the selected passage and complete turn sequence visible while
 /// only researcher Finish is allowed to create durable HUD activity.
 private struct CommentExchangeRoute: Identifiable {
     let id: UUID
-    let anchor: ResearcherCommentAnchor
+    let anchor: CommentAnchor
     let excerpt: String
     let exchange: CommentExchange?
 
-    init(anchor: ResearcherCommentAnchor, excerpt: String) {
+    init(anchor: CommentAnchor, excerpt: String) {
         id = UUID()
         self.anchor = anchor
         self.excerpt = excerpt
@@ -490,7 +398,7 @@ private struct CommentExchangePanel: View {
 
     let noteTitle: String
     let route: CommentExchangeRoute
-    let create: (ResearcherCommentAnchor, String) async throws -> CommentExchange
+    let create: (CommentAnchor, String) async throws -> CommentExchange
     let append: (UUID, CommentExchangeTurnAuthor, String) async throws -> CommentExchange
     let finish: (UUID) async throws -> CommentExchange
     let handoff: (String) -> Bool
@@ -507,7 +415,7 @@ private struct CommentExchangePanel: View {
     init(
         noteTitle: String,
         route: CommentExchangeRoute,
-        create: @escaping (ResearcherCommentAnchor, String) async throws -> CommentExchange,
+        create: @escaping (CommentAnchor, String) async throws -> CommentExchange,
         append: @escaping (UUID, CommentExchangeTurnAuthor, String) async throws -> CommentExchange,
         finish: @escaping (UUID) async throws -> CommentExchange,
         handoff: @escaping (String) -> Bool,
@@ -809,7 +717,6 @@ private struct CommentExchangePanel: View {
 }
 
 struct NoteContentView: View {
-    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
     let target: DocumentEditingTarget
@@ -817,9 +724,6 @@ struct NoteContentView: View {
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
-    @State private var annotationDraft: PageAnnotationDraft?
-    @State private var isSavingAnnotation = false
-    @State private var annotationError: String?
     @State private var commentRoute: CommentExchangeRoute?
 
     init(
@@ -917,23 +821,6 @@ struct NoteContentView: View {
             .clipped()
         }
         .scholiumSurface(.document)
-        .overlay(alignment: .topTrailing) {
-            if let annotationDraft {
-                PageAnnotationEditor(
-                    draft: annotationDraft,
-                    isSaving: isSavingAnnotation,
-                    save: { saveAnnotation($0) },
-                    delete: annotationDraft.annotationID == nil
-                        ? nil
-                        : { deleteAnnotation(annotationDraft) },
-                    cancel: { self.annotationDraft = nil }
-                )
-                .padding(.top, 72)
-                .padding(.trailing, 22)
-                .transition(.opacity)
-                .zIndex(4)
-            }
-        }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
             actions.beginSearch(invocation)
         })
@@ -973,7 +860,6 @@ struct NoteContentView: View {
                         }
                     }
                 },
-                addAnnotation: requestAnnotationsFromDocument,
                 startComment: requestCommentFromDocument
             )
         ))
@@ -1029,14 +915,6 @@ struct NoteContentView: View {
             Button("Keep Editing", role: .cancel) { editError = nil }
         } message: {
             Text(editError ?? "")
-        }
-        .alert("Annotation Unavailable", isPresented: Binding(
-            get: { annotationError != nil },
-            set: { if !$0 { annotationError = nil } }
-        )) {
-            Button("Dismiss", role: .cancel) { annotationError = nil }
-        } message: {
-            Text(annotationError ?? "")
         }
         .onChange(of: state.requestedPresentationMode) { _, requested in
             guard let requested else { return }
@@ -1165,10 +1043,8 @@ struct NoteContentView: View {
             mode: documentSession.retainedEditorMode,
             presentationCSS: documentPresentationCSS,
             userCSS: state.livePreviewCSS,
-            linkCompletions: [],
             linkCompletionQuery: queryEditorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
-            annotations: currentAnnotations,
             initialScrollFraction: state.initialScrollFraction,
             initialScrollAnchor: editorScrollAnchor,
             onDocumentChange: { updatedSource in
@@ -1189,7 +1065,6 @@ struct NoteContentView: View {
             onRequestSearch: {
                 actions.beginSearch(.findInNote(previousScope: state.ordinarySearchScope))
             },
-            onRequestAnnotation: requestAnnotationsFromDocument,
             onRequestComment: requestCommentFromDocument,
             onLinkActivation: { target in
                 if let url = URL(string: target),
@@ -1200,9 +1075,6 @@ struct NoteContentView: View {
                     actions.openInternalLink(target)
                 }
             },
-            onAnnotationActivation: commentingIsAvailable ? { annotationID in
-                openAnnotation(annotationID)
-            } : nil,
             onScrollFractionChange: {
                 documentSession.observeScrollFraction($0)
                 actions.rememberScrollPosition($0)
@@ -1283,15 +1155,11 @@ struct NoteContentView: View {
             presentationCSS: documentPresentationCSS,
             userCSS: state.readCSS,
             configurationRevision: readConfigurationRevision,
-            annotations: currentAnnotations,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             onLinkClick: {
                 actions.openInternalLink($0)
             },
             onOpenExternalURL: actions.openExternalURL,
-            onAnnotationSelection: commentingIsAvailable ? { selection in
-                openAnnotationComposer(for: selection, source: note.rawContent)
-            } : nil,
             onCommentSelection: commentingIsAvailable ? { selection in
                 openCommentComposer(for: selection, source: note.rawContent)
             } : nil,
@@ -1299,9 +1167,6 @@ struct NoteContentView: View {
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
             },
-            onAnnotationActivation: commentingIsAvailable ? { annotationID in
-                openAnnotation(annotationID)
-            } : nil,
             onRenderingFailure: { reason in
                 actions.enterCSSSafeMode(reason)
                 failedReadFingerprint = noteFingerprint.sha256
@@ -1337,10 +1202,6 @@ struct NoteContentView: View {
         .layoutPriority(1)
     }
 
-    private var currentAnnotations: [AnnotationRecord] {
-        state.annotations
-    }
-
     private var editorScrollAnchor: EditorScrollAnchor? {
         let fingerprint = DocumentFingerprint(content: editingSource).sha256
         guard documentSession.scrollAnchor?.sourceFingerprint == fingerprint else { return nil }
@@ -1356,9 +1217,6 @@ struct NoteContentView: View {
     }
 
     private var readConfigurationRevision: String {
-        let annotationRevision = state.annotations.map {
-            "\($0.id.uuidString):\($0.updatedAt.timeIntervalSinceReferenceDate)"
-        }.joined(separator: ",")
         let previewRevision = documentSession.previewCatalog.map { catalog in
             let targets = catalog.links.map { link in
                 "\(link.sourceSpan.utf16LowerBound)-\(link.sourceSpan.utf16UpperBound):"
@@ -1371,7 +1229,6 @@ struct NoteContentView: View {
             String(state.documentTextScale.bitPattern),
             String(state.appearanceCSS.hashValue),
             String(state.readCSS.hashValue),
-            annotationRevision,
             previewRevision,
         ].joined(separator: ":")
     }
@@ -1505,127 +1362,6 @@ struct NoteContentView: View {
                 )
                 actions.rememberPresentationMode(.read)
             } catch { /* Controller published the recoverable error state. */ }
-        }
-    }
-
-    private func openAnnotationComposer(
-        for selection: MarkdownReviewSelection,
-        source: String
-    ) {
-        guard let anchor = ResearchFunctionSelectionCapture.anchor(
-            for: selection,
-            in: source,
-            relativePath: note.relativePath
-        ) else {
-            actions.notify(
-                "Scholium could not attach this Annotation to one exact passage.",
-                .information
-            )
-            return
-        }
-        annotationDraft = PageAnnotationDraft(
-            annotationID: nil,
-            anchor: anchor,
-            excerpt: selection.excerpt,
-            text: ""
-        )
-    }
-
-    private func openAnnotation(_ annotationID: UUID) {
-        guard let annotation = state.annotations.first(where: { $0.id == annotationID }) else {
-            return
-        }
-        annotationDraft = PageAnnotationDraft(
-            annotationID: annotation.id,
-            anchor: nil,
-            excerpt: annotation.anchor.selectedText ?? annotation.anchor.quotation,
-            text: annotation.text
-        )
-    }
-
-    private func saveAnnotation(_ text: String) {
-        guard let draft = annotationDraft else { return }
-        Task { @MainActor in
-            isSavingAnnotation = true
-            defer { isSavingAnnotation = false }
-            do {
-                if let annotationID = draft.annotationID {
-                    try await actions.updateAnnotation(annotationID, text)
-                } else if let anchor = draft.anchor {
-                    try await actions.createAnnotation(anchor, text)
-                }
-                annotationDraft = nil
-            } catch {
-                annotationError = error.localizedDescription
-            }
-        }
-    }
-
-    private func deleteAnnotation(_ draft: PageAnnotationDraft) {
-        guard let annotationID = draft.annotationID else { return }
-        Task { @MainActor in
-            isSavingAnnotation = true
-            defer { isSavingAnnotation = false }
-            do {
-                try await actions.deleteAnnotation(annotationID)
-                annotationDraft = nil
-            } catch {
-                annotationError = error.localizedDescription
-            }
-        }
-    }
-
-    private func requestAnnotationsFromDocument() {
-        guard commentingIsAvailable else { return }
-        guard isEditing else {
-            guard let selection = documentSession.readSelection else {
-                actions.notify(
-                    "Select a passage in Read, Live Preview, or Source before adding an Annotation.",
-                    .information
-                )
-                return
-            }
-            openAnnotationComposer(for: selection, source: note.rawContent)
-            return
-        }
-        Task { @MainActor in
-            do {
-                let currentSource = try await editorSession.currentText(
-                    for: editorSession.bridgeDocumentID
-                )
-                let selection = try await editorSession.currentSelection(
-                    for: editorSession.bridgeDocumentID,
-                    in: currentSource
-                )
-                guard let selection,
-                      let anchor = ResearchFunctionSelectionCapture.anchor(
-                          for: selection,
-                          in: currentSource,
-                          relativePath: note.relativePath
-                      ) else {
-                    actions.notify(
-                        "Select a passage before adding an Annotation.",
-                        .information
-                    )
-                    editorSession.focus()
-                    return
-                }
-                try await controller.flushForExternalOperation(
-                    session: documentSession,
-                    target: target
-                )
-                annotationDraft = PageAnnotationDraft(
-                    annotationID: nil,
-                    anchor: anchor,
-                    excerpt: selection.excerpt,
-                    text: ""
-                )
-            } catch {
-                actions.notify(
-                    "Scholium could not capture the current editor selection. Keep editing and try again. \(error.localizedDescription)",
-                    .error
-                )
-            }
         }
     }
 
@@ -1958,12 +1694,6 @@ struct ResearchRecordView: View {
                         commentExchangeSection
                         functionRunSection
                         critiqueSection
-                        if currentLegacyReview != nil {
-                            legacyReviewArchiveSection
-                        }
-                        if !currentLegacyDialogues.isEmpty {
-                            legacyDialogueArchiveSection
-                        }
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2192,31 +1922,6 @@ struct ResearchRecordView: View {
             .filter { $0.noteID == noteID }
     }
 
-    private var currentLegacyReview: HumanReviewRecord? {
-        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else {
-            return nil
-        }
-        return researchController.records?.legacyHumanReviews.first {
-            $0.id == noteID
-        }
-    }
-
-    private var currentLegacyDialogues: [DialogueEntry] {
-        guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else {
-            return []
-        }
-        return (researchController.records?.dialogues ?? [])
-            .filter { entry in
-                entry.functionSnapshot == nil
-                    && (entry.selectedNotes.contains { $0.noteID == noteID }
-                        || entry.includedComments.contains { $0.note.noteID == noteID })
-            }
-            .sorted {
-                if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
-                return $0.id.uuidString < $1.id.uuidString
-            }
-    }
-
     private func discussionAwaitsResearcherFinish(
         _ run: ResearchFunctionRecordProjection
     ) -> Bool {
@@ -2356,91 +2061,6 @@ struct ResearchRecordView: View {
                 emptyText("No Critique is associated with this Work.")
             }
         }
-    }
-
-    private var legacyReviewArchiveSection: some View {
-        historySection("Earlier Review Archive", systemImage: "archivebox") {
-            Text("Read-only compatibility history. Earlier Review and Qualification do not become Settlement or current research activity.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let review = currentLegacyReview {
-                ForEach(review.completedReviews.reversed()) { completed in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(completed.qualification.legacyArchiveTitle)
-                                .font(.subheadline.weight(.semibold))
-                            Spacer(minLength: 12)
-                            Text(completed.completedAt.formatted(
-                                date: .abbreviated,
-                                time: .shortened
-                            ))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        if !completed.reviewNote.isEmpty {
-                            Text(completed.reviewNote)
-                                .textSelection(.enabled)
-                        }
-                        Text("Revision SHA-256 \(completed.fingerprint.sha256.prefix(12))…")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                    .padding(.vertical, 3)
-                }
-
-                if let draft = review.draft {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Unfinished earlier Review")
-                            .font(.subheadline.weight(.semibold))
-                        Text(draft.reviewNote.isEmpty ? "No Review Note was saved." : draft.reviewNote)
-                            .textSelection(.enabled)
-                        Text("This draft remains read-only and creates no current state.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 3)
-                }
-            }
-        }
-        .accessibilityIdentifier("scholium.researchRecord.legacyReviewArchive")
-    }
-
-    private var legacyDialogueArchiveSection: some View {
-        historySection("Earlier Dialogue Archive", systemImage: "archivebox") {
-            Text("Read-only compatibility history. Scholium does not infer Commented or Discussed activity from these records.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            ForEach(currentLegacyDialogues) { entry in
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if !entry.instruction.isEmpty {
-                        recordField("Researcher request", value: entry.instruction)
-                    }
-                    ForEach(entry.chronologicalTurns) { turn in
-                        switch turn {
-                        case .researcher(let followUp):
-                            recordField("Researcher follow-up", value: followUp.text)
-                        case .agent(let reply):
-                            recordField(
-                                reply.agentName.isEmpty ? "Agent reply" : reply.agentName,
-                                value: reply.text
-                            )
-                        }
-                    }
-                }
-                .padding(.vertical, 3)
-                if entry.id != currentLegacyDialogues.last?.id { Divider() }
-            }
-        }
-        .accessibilityIdentifier("scholium.researchRecord.legacyDialogueArchive")
     }
 
     @ViewBuilder
@@ -2732,15 +2352,6 @@ private extension ResearchWriteScope {
     }
 }
 
-private extension NoteQualification {
-    var legacyArchiveTitle: String {
-        switch self {
-        case .qualified: "Earlier Qualified Review"
-        case .unqualified: "Earlier Unqualified Review"
-        }
-    }
-}
-
 // MARK: - Preview
 
 #Preview {
@@ -2760,7 +2371,6 @@ private extension NoteQualification {
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
         propertiesConfiguration: nil,
-        annotations: [],
         commentExchanges: [],
         requestedCommentExchangeID: nil,
         canComment: false,
@@ -2786,9 +2396,6 @@ private extension NoteQualification {
         clearRequestedPresentationMode: {},
         clearPendingSourceLine: {},
         clearPendingSourceRange: {},
-        createAnnotation: { _, _ in },
-        updateAnnotation: { _, _ in },
-        deleteAnnotation: { _ in },
         createCommentExchange: { anchor, text in
             CommentExchange(
                 note: ResearchActivityNoteReference(

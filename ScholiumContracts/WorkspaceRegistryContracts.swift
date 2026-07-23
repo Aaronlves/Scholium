@@ -20,10 +20,6 @@ public enum VaultRole: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    public var allowsHumanReview: Bool {
-        self == .sourceCorpus || self == .topicKnowledge
-    }
-
     public var allowsCritique: Bool {
         self == .draftProject
     }

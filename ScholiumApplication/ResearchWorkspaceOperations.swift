@@ -3,7 +3,7 @@ import Foundation
 import ScholiumCore
 
 extension WorkspaceHandle {
-    // MARK: Settlement, Annotation, and Comment exchange
+    // MARK: Settlement and Comment exchange
 
     @discardableResult
     func settle(
@@ -37,130 +37,6 @@ extension WorkspaceHandle {
         )
         try await refreshAfterResearchCommit("The settlement")
         return settlement
-    }
-
-    func annotations(noteID: UUID) async throws -> [AnnotationRecord] {
-        try requireActive()
-        try await requireHealthyPageAnnotationStore()
-        return await services.pageAnnotationStore.annotations(for: noteID)
-    }
-
-    func addAnnotation(
-        to noteID: VaultQualifiedNoteID,
-        text: String,
-        anchor: ResearcherCommentAnchor,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> AnnotationRecord {
-        let context = try await researchContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0 != .other },
-            unavailable: { ResearchOperationError.commentUnavailable($0) }
-        )
-        if anchor.fingerprint != expectedRevision {
-            throw ResearchOperationError.staleCommentRevision
-        }
-        let annotation = AnnotationRecord(
-            noteID: context.identity.id,
-            vaultID: noteID.vaultID,
-            relativePath: noteID.relativePath,
-            text: text,
-            anchor: anchor
-        )
-        try await requireHealthyPageAnnotationStore()
-        let stored = try await services.pageAnnotationStore.add(annotation)
-        try await refreshAfterResearchCommit("The Annotation")
-        return stored
-    }
-
-    func updateAnnotation(
-        noteID: UUID,
-        annotationID: UUID,
-        text: String
-    ) async throws -> AnnotationRecord {
-        try requireActive()
-        try await requireHealthyPageAnnotationStore()
-        let annotation = try await services.pageAnnotationStore.update(
-            noteID: noteID,
-            annotationID: annotationID,
-            text: text
-        )
-        try await refreshAfterResearchCommit("The Annotation")
-        return annotation
-    }
-
-    func setAnnotationResolved(
-        noteID: UUID,
-        annotationID: UUID,
-        resolved: Bool
-    ) async throws -> AnnotationRecord {
-        try requireActive()
-        try await requireHealthyPageAnnotationStore()
-        let annotation = try await services.pageAnnotationStore.setResolved(
-            noteID: noteID,
-            annotationID: annotationID,
-            resolved: resolved
-        )
-        try await refreshAfterResearchCommit("The Annotation")
-        return annotation
-    }
-
-    func deleteAnnotation(
-        noteID: UUID,
-        annotationID: UUID
-    ) async throws -> AnnotationRecord {
-        try requireActive()
-        try await requireHealthyPageAnnotationStore()
-        let annotation = try await services.pageAnnotationStore.remove(
-            noteID: noteID,
-            annotationID: annotationID
-        )
-        try await refreshAfterResearchCommit("The Annotation")
-        return annotation
-    }
-
-    func reattachAnnotation(
-        to noteID: VaultQualifiedNoteID,
-        annotationID: UUID,
-        anchor: ResearcherCommentAnchor,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> AnnotationRecord {
-        let context = try await researchContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0 != .other },
-            unavailable: { ResearchOperationError.commentUnavailable($0) }
-        )
-        guard anchor.fingerprint == expectedRevision else {
-            throw ResearchOperationError.staleCommentRevision
-        }
-        try await requireHealthyPageAnnotationStore()
-        let annotation = try await services.pageAnnotationStore.reattach(
-            noteID: context.identity.id,
-            annotationID: annotationID,
-            anchor: anchor
-        )
-        try await refreshAfterResearchCommit("The Annotation attachment")
-        return annotation
-    }
-
-    func reattachAnnotations(
-        to noteID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> [AnnotationRecord] {
-        let context = try await researchContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0 != .other },
-            unavailable: { ResearchOperationError.commentUnavailable($0) }
-        )
-        try await requireHealthyPageAnnotationStore()
-        let annotations = try await services.pageAnnotationStore.reattachAll(
-            noteID: context.identity.id,
-            to: context.document
-        )
-        try await refreshAfterResearchCommit("The Annotation attachments")
-        return annotations
     }
 
     func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
@@ -372,12 +248,12 @@ extension WorkspaceHandle {
     func createDiscussion(
         instruction: String,
         selectedNotes: [DialogueNoteReference],
-        includedCommentIDs: Set<UUID>,
+        includedComments: [DialogueIncludedComment],
         requestedDestination: String?,
         responseProfile: DialogueResponseProfile?,
-        discussionID requestedDiscussionID: UUID? = nil,
-        functionSnapshot: ResearchFunctionSnapshot? = nil,
-        skillInstructionsOverride: String? = nil
+        discussionID: UUID,
+        functionSnapshot: ResearchFunctionSnapshot,
+        skillInstructions: String
     ) async throws -> DialoguePreparation {
         try requireActive()
         if let issue = await services.dialogueStore.healthError() {
@@ -399,30 +275,15 @@ extension WorkspaceHandle {
             )
         }
         let responseContract = DialogueResponseContract(profile: effectiveProfile)
-        let discussionID = requestedDiscussionID ?? UUID()
-        if let functionSnapshot {
-            guard functionSnapshot.runID == discussionID,
-                  functionSnapshot.recordID == discussionID,
-                  functionSnapshot.request.function == .discuss else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Discuss function evidence does not match its record identity."
-                )
-            }
-        }
-        let skillInstructions = if let skillInstructionsOverride {
-            skillInstructionsOverride
-        } else {
-            try await services.researchSkillStore.instructionAssembly()
+        guard functionSnapshot.runID == discussionID,
+              functionSnapshot.recordID == discussionID,
+              functionSnapshot.request.function == .discuss,
+              Set(functionSnapshot.request.commentIDs) == Set(includedComments.map(\.id)) else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Discuss function evidence does not match its record identity."
+            )
         }
         try await verifyDialogueSelectionIsCurrent(selectedNotes)
-
-        var includedComments: [DialogueIncludedComment] = []
-        for note in selectedNotes {
-            let comments = await services.humanReviewStore.record(noteID: note.noteID)?.comments ?? []
-            includedComments.append(contentsOf: comments
-                .filter { includedCommentIDs.contains($0.id) }
-                .map { DialogueIncludedComment(note: note, comment: $0) })
-        }
 
         let linkedSummary = dialogueLinkedNoteSummary(for: selectedNotes)
         var instructions = DialoguePromptBuilder.build(
@@ -452,12 +313,7 @@ extension WorkspaceHandle {
             instruction: instruction,
             selectedNotes: selectedNotes,
             includedComments: includedComments,
-            // An earlier Dialogue keeps its historical record shape. A
-            // current Discuss run persists the canonical immutable
-            // packet so a prepared run remains recoverable after dismissal.
-            preparedInstructions: functionSnapshot == nil
-                ? ""
-                : skillInstructions + "\n\n" + responseLocator,
+            preparedInstructions: skillInstructions + "\n\n" + responseLocator,
             checkpointID: nil,
             functionSnapshot: functionSnapshot,
             responseContract: responseContract,
@@ -929,12 +785,6 @@ extension WorkspaceHandle {
 
     private func requireHealthyResearchActivityStore() async throws {
         if let issue = await services.researchActivityStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(issue)
-        }
-    }
-
-    private func requireHealthyPageAnnotationStore() async throws {
-        if let issue = await services.pageAnnotationStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(issue)
         }
     }

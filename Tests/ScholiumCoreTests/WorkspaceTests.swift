@@ -49,7 +49,8 @@ struct WorkspaceTests {
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
 
         await #expect(throws: WorkspaceRegistryError.self) {
-            try await registry.configureDefaultTriptych(
+            try await registry.configureTriptych(
+                id: UUID(),
                 paperAnalysis: (papers, UUID()),
                 topicKnowledge: (nestedTopics, UUID()),
                 output: (output, UUID())
@@ -73,7 +74,8 @@ struct WorkspaceTests {
         let topicID = UUID()
         let outputID = UUID()
 
-        let assignment = try await registry.configureDefaultTriptych(
+        let assignment = try await registry.configureTriptych(
+            id: UUID(),
             paperAnalysis: (papers, paperID),
             topicKnowledge: (topics, topicID),
             output: (output, outputID)
@@ -123,39 +125,12 @@ struct WorkspaceTests {
         #expect(restored.last?.vault(for: .paperAnalysis)?.name == "Analyses")
         #expect(first.vault(for: .output)?.canonicalPath == firstURLs.works.path)
         #expect(second.vault(for: .output)?.canonicalPath == secondURLs.works.path)
-        #expect(try await registry.resolveTriptych("Mind").id == secondID)
-        #expect(try await registry.resolveTriptych(firstID.uuidString).id == firstID)
+        #expect(await registry.triptych(id: secondID)?.id == secondID)
+        #expect(await registry.triptych(id: firstID)?.id == firstID)
         #expect(try await registry.resolve(first.vault(for: .paperAnalysis)!.id.uuidString).id
             == first.vault(for: .paperAnalysis)!.id)
         await #expect(throws: WorkspaceRegistryError.self) {
             try await registry.resolve("Analyses")
-        }
-    }
-
-    @Test("Duplicate Triptych names require a UUID selector")
-    func duplicateTriptychNamesAreAmbiguous() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let firstURLs = try makeTriptychFolders(in: base.appendingPathComponent("First", isDirectory: true))
-        let secondURLs = try makeTriptychFolders(in: base.appendingPathComponent("Second", isDirectory: true))
-        let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
-        _ = try await registry.configureTriptych(
-            id: UUID(),
-            name: "Ethics",
-            paperAnalysis: (firstURLs.analyses, UUID()),
-            topicKnowledge: (firstURLs.topics, UUID()),
-            output: (firstURLs.works, UUID())
-        )
-        _ = try await registry.configureTriptych(
-            id: UUID(),
-            name: "Ethics",
-            paperAnalysis: (secondURLs.analyses, UUID()),
-            topicKnowledge: (secondURLs.topics, UUID()),
-            output: (secondURLs.works, UUID())
-        )
-
-        await #expect(throws: WorkspaceRegistryError.self) {
-            try await registry.resolveTriptych("Ethics")
         }
     }
 
@@ -298,13 +273,16 @@ struct WorkspaceTests {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
-        _ = try await registry.configureDefaultTriptych(
+        let triptychID = UUID()
+        _ = try await registry.configureTriptych(
+            id: triptychID,
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (topics, UUID()),
             output: (output, UUID())
         )
 
-        let changed = try await registry.configureDefaultTriptych(
+        let changed = try await registry.configureTriptych(
+            id: triptychID,
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (newTopics, UUID()),
             output: (output, UUID())
@@ -337,7 +315,9 @@ struct WorkspaceTests {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
-        _ = try await registry.configureDefaultTriptych(
+        let triptychID = UUID()
+        _ = try await registry.configureTriptych(
+            id: triptychID,
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (topics, UUID()),
             output: (output, UUID())
@@ -346,7 +326,8 @@ struct WorkspaceTests {
         let repairedTopicID = UUID()
         let repairedOutputID = UUID()
 
-        let repaired = try await registry.configureDefaultTriptych(
+        let repaired = try await registry.configureTriptych(
+            id: triptychID,
             paperAnalysis: (papers, repairedPaperID),
             topicKnowledge: (topics, repairedTopicID),
             output: (output, repairedOutputID)

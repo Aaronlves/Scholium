@@ -73,9 +73,6 @@ struct WorkspaceRuntimeMembershipTests {
         let stableTopics = try #require(fixture.assignment.vault(for: .topicKnowledge))
         let stableWorks = try #require(fixture.assignment.vault(for: .output))
         let runtime = fixture.liveRuntime()
-        let analysesIdentity = try #require(try await runtime.vaultIdentity(id: stableAnalyses.id))
-        #expect(analysesIdentity.id == stableAnalyses.id)
-        #expect(analysesIdentity.canonicalPath == stableAnalyses.canonicalPath)
         let repaired = try await runtime.reconcileWorkspaceIdentity(id: fixture.assignment.id)
         #expect(repaired.vault(for: .paperAnalysis)?.id == stableAnalyses.id)
         #expect(repaired.vault(for: .topicKnowledge)?.id == stableTopics.id)
@@ -116,10 +113,6 @@ struct WorkspaceRuntimeMembershipTests {
         #expect(try await snapshot.registeredVaults().count == 3)
         #expect(try await snapshot.savedSearches() == fixture.savedSearches)
         #expect(try await snapshot.windowSession(id: fixture.session.id) == fixture.session)
-        #expect(try await snapshot.vaultIdentity(
-            id: try #require(fixture.assignment.vault(for: .paperAnalysis)).id
-        ) == nil)
-
         let laterVault = try #require(laterAssignment.vault(for: .paperAnalysis))
         do {
             _ = try await snapshot.resolveVault(laterVault.id.uuidString)
@@ -165,10 +158,6 @@ struct WorkspaceRuntimeMembershipTests {
                 triptychName: "Changed"
             )
         }
-        await expectRuntimeConfigurationUnavailable("change the default Triptych") {
-            try await snapshot.setDefaultWorkspace(id: fixture.assignment.id)
-        }
-
         #expect(try await snapshot.savedSearches() == fixture.savedSearches)
         #expect(try await snapshot.windowSession(id: fixture.session.id) == fixture.session)
         let observer = fixture.liveRuntime()

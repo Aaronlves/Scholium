@@ -233,7 +233,6 @@ struct TriptychControlTests {
         #expect(moved.relativePath == "Folder/A.md")
         #expect(duplicate.id != original.id)
         #expect(duplicate.duplicatedFrom == original.id)
-        #expect(try await store.externalRenameCandidate(vaultID: vaultID, fingerprint: fingerprint) == nil)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).count == 1)
     }
 
@@ -433,10 +432,10 @@ struct TriptychControlTests {
         #expect(pending.noteID == first.id)
         #expect(pending.previousRelativePath == "Old A.md")
         #expect(pending.relativePath == "Moved.md")
-        #expect(try await store.reconcileIdentities(
+        #expect(try await store.reconcileIdentityInventory(
             vaultID: vaultID,
             documents: [("Moved.md", fingerprint)]
-        )["Moved.md"]?.id == first.id)
+        ).identities["Moved.md"]?.id == first.id)
     }
 
     @Test("Identical paths and bytes in different vaults never share identity recovery")

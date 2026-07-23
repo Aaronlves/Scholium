@@ -141,7 +141,6 @@ interface ScholiumWindow extends Window {
   scholiumEditor?: ScholiumEditorAPI;
 }
 interface LinkCandidate { label: string; insertion: string; detail: string; path: string; isAmbiguous: boolean }
-interface PageAnnotation { id: string; from: number; to: number; text: string; resolved: boolean; slot: number }
 interface SourceDelta { from: number; to: number; insert: string }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
 interface SemanticCodeBlockRange extends ProjectionSourceRange { readonly fenced: boolean }
@@ -186,7 +185,6 @@ let bridgeDocumentID = "";
 let bridgeFingerprint = "";
 let documentVersion = 0;
 let exactSource = "";
-let linkCandidates: LinkCandidate[] = [];
 let nextLinkCompletionRequest = 0;
 const pendingLinkCompletionQueries = new Map<
   string,
@@ -267,65 +265,6 @@ const liveBlockActivationField = StateField.define<LiveBlockActivation | null>({
     return selectionKeepsActivation ? next : null;
   },
 });
-class PageAnnotationMarginWidget extends WidgetType {
-  constructor(readonly annotation: PageAnnotation) { super(); }
-
-  eq(other: PageAnnotationMarginWidget) {
-    return this.annotation.id === other.annotation.id
-      && this.annotation.text === other.annotation.text
-      && this.annotation.resolved === other.annotation.resolved
-      && this.annotation.slot === other.annotation.slot;
-  }
-
-  toDOM() {
-    const marginNote = document.createElement("button");
-    marginNote.type = "button";
-    marginNote.className = `cm-page-annotation-margin${this.annotation.resolved ? " cm-page-annotation-resolved" : ""}`;
-    marginNote.dataset.annotationId = this.annotation.id;
-    marginNote.dataset.scholiumProtected = "page-annotation";
-    marginNote.textContent = this.annotation.text;
-    marginNote.title = this.annotation.text;
-    marginNote.setAttribute("aria-label", `Annotation: ${this.annotation.text}`);
-    marginNote.style.setProperty("--scholium-annotation-slot", String(this.annotation.slot));
-    return marginNote;
-  }
-
-  ignoreEvent() { return false; }
-}
-
-const setPageAnnotationsEffect = StateEffect.define<PageAnnotation[]>();
-const pageAnnotationField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(value, transaction) {
-    let next = value.map(transaction.changes);
-    for (const effect of transaction.effects) {
-      if (!effect.is(setPageAnnotationsEffect)) continue;
-      const ranges: Range<Decoration>[] = [];
-      for (const annotation of effect.value.filter((item) => item.from >= 0
-        && item.to > item.from
-        && item.to <= transaction.newDoc.length)) {
-        ranges.push(Decoration.mark({
-          class: `cm-page-annotation${annotation.resolved ? " cm-page-annotation-resolved" : ""}`,
-          attributes: {
-            "data-annotation-id": annotation.id,
-            "data-scholium-protected": "page-annotation",
-            "aria-label": `Annotated passage: ${annotation.text}`,
-            title: annotation.text,
-          },
-        }).range(annotation.from, annotation.to));
-        const line = transaction.newDoc.lineAt(annotation.from);
-        ranges.push(Decoration.widget({
-          widget: new PageAnnotationMarginWidget(annotation),
-          side: 1,
-        }).range(line.to));
-      }
-      next = Decoration.set(ranges, true);
-    }
-    return next;
-  },
-  provide: (field) => EditorView.decorations.from(field),
-});
-
 const hiddenSyntax = Decoration.replace({});
 const liveMark = (className: string) => Decoration.mark({ class: className });
 
@@ -882,32 +821,6 @@ interface LiveBlockProjectionState {
 
 interface LiveTableProjectionState extends LiveBlockProjectionState {
   presentations: readonly TablePresentation[];
-}
-
-function annotateProjectedSourceOffsets(root: HTMLElement, source: string, sourceFrom: number) {
-  root.dataset.sourceOffset = String(sourceFrom);
-  let searchFrom = 0;
-  const candidates = root.querySelectorAll<HTMLElement>([
-    ".scholium-callout-title",
-    ".scholium-callout-content p",
-    ".scholium-callout-content li",
-    ".scholium-callout-content blockquote",
-    ".scholium-callout-content h1",
-    ".scholium-callout-content h2",
-    ".scholium-callout-content h3",
-    ".scholium-callout-content h4",
-    ".scholium-callout-content h5",
-    ".scholium-callout-content h6",
-    ".scholium-callout-content code",
-  ].join(","));
-  for (const candidate of candidates) {
-    const text = candidate.textContent?.trim() ?? "";
-    if (!text) continue;
-    const localOffset = source.indexOf(text, searchFrom);
-    if (localOffset < 0) continue;
-    candidate.dataset.sourceOffset = String(sourceFrom + localOffset);
-    searchFrom = localOffset + text.length;
-  }
 }
 
 function projectedSourceOffsetAt(
@@ -1779,7 +1692,6 @@ function buildLiveDecorations(
 
   for (const visible of coveredRanges) {
     let line = doc.lineAt(visible.from);
-    const lastLine = doc.lineAt(visible.to).number;
     while (line.from <= visible.to) {
       const scanFrom = Math.max(line.from, visible.from);
       const scanTo = Math.min(line.to, visible.to);
@@ -2266,7 +2178,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
   }
 });
 
-const pageAnnotationActivation = EditorView.domEventHandlers({
+const linkActivation = EditorView.domEventHandlers({
   click(event) {
     if (event.metaKey) {
       const position = editor.posAtCoords({x: event.clientX, y: event.clientY});
@@ -2277,15 +2189,6 @@ const pageAnnotationActivation = EditorView.domEventHandlers({
         return true;
       }
     }
-    const target = event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-annotation-id]")
-      : null;
-    const annotationID = target?.dataset.annotationId;
-    if (!annotationID) return false;
-    post({ type: "annotationActivated", annotationID });
-    // Let CodeMirror place the caret normally. The selection toolbar remains
-    // the keyboard-accessible route, while clicking an existing Annotation
-    // opens that exact marginal note without making the editor text inert.
     return false;
   },
 });
@@ -2564,8 +2467,7 @@ const editorExtensions = [
       structuralInteractionKeymap,
       saveKeymap,
       stateReporter,
-      pageAnnotationField,
-      pageAnnotationActivation,
+      linkActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
       liveProjectionIndexField,
       modeCompartment.of(livePreviewMode),
@@ -2991,9 +2893,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setMode": editorOperations.setMode(operation.mode); break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
-  case "setLinkCompletions": editorOperations.setLinkCompletions(operation.value as LinkCandidate[]); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
-  case "setPageAnnotations": editorOperations.setPageAnnotations(operation.value as PageAnnotation[]); break;
   case "showPreview": showPreviewAtSelection(); break;
   case "showPreviewAt": showPreviewAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
@@ -3327,41 +3227,12 @@ const editorOperations = {
     setDynamicStyle("scholium-user-css", css);
   },
 
-  /** @param {{label: string, insertion: string, detail: string, path: string}[]} candidates */
-  setLinkCompletions(candidates: LinkCandidate[]) {
-    linkCandidates = Array.isArray(candidates) ? candidates.slice(0, 20000) : [];
-  },
-
   setLinkPreviews(value: unknown) {
     linkPreviews = validatedLinkPreviews(value, editor.state.doc.length);
     linkPreviewIndexByRange = new Map(
       linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]),
     );
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
-  },
-
-  setPageAnnotations(annotations: PageAnnotation[]) {
-    const lineSlots = new Map<number, number>();
-    const normalized = Array.isArray(annotations)
-      ? annotations.slice(0, 10000).flatMap((annotation) => {
-        const id = typeof annotation?.id === "string" ? annotation.id : "";
-        const from = Number.isInteger(annotation?.from) ? annotation.from : -1;
-        const to = Number.isInteger(annotation?.to) ? annotation.to : -1;
-        if (!id || from < 0 || to <= from || to > editor.state.doc.length) return [];
-        const lineNumber = editor.state.doc.lineAt(from).number;
-        const slot = lineSlots.get(lineNumber) ?? 0;
-        lineSlots.set(lineNumber, slot + 1);
-        return [{
-          id,
-          from,
-          to,
-          text: typeof annotation.text === "string" ? annotation.text.slice(0, 500) : "",
-          resolved: annotation.resolved === true,
-          slot,
-        }];
-      })
-      : [];
-    editor.dispatch({ effects: setPageAnnotationsEffect.of(normalized) });
   },
 
   /** @param {number} requestedLine */

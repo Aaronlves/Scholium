@@ -10,7 +10,7 @@ struct WorkbenchModelsTests {
         let saved = SavedSearch(
             name: "Open objections",
             definition: SearchDefinition(
-                query: #"review:unreviewed callout:state"#,
+                query: #"callout:state -has:broken-link"#,
                 presentationScope: .triptych
             )
         )
@@ -27,7 +27,7 @@ struct WorkbenchModelsTests {
         let store = SavedSearchStore(workspaceStorageURL: base)
         let expected = SavedSearch(
             name: "Unsettled control records",
-            definition: SearchDefinition(query: "review:unreviewed", presentationScope: .triptych),
+            definition: SearchDefinition(query: "has:broken-link", presentationScope: .triptych),
             createdAt: Date(timeIntervalSince1970: 10)
         )
         let olderButFirst = SavedSearch(

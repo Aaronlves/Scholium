@@ -262,45 +262,6 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// Researcher-owned, passage-bound private annotation. This is intentionally
-/// distinct from a Comment exchange with an external agent.
-public struct AnnotationRecord: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let noteID: UUID
-    public let vaultID: UUID
-    public var relativePath: String
-    public let author: String
-    public var text: String
-    public var anchor: ResearcherCommentAnchor
-    public let createdAt: Date
-    public var updatedAt: Date
-    public var resolvedAt: Date?
-
-    public init(
-        id: UUID = UUID(),
-        noteID: UUID,
-        vaultID: UUID,
-        relativePath: String,
-        author: String = "Researcher",
-        text: String,
-        anchor: ResearcherCommentAnchor,
-        createdAt: Date = Date(),
-        updatedAt: Date = Date(),
-        resolvedAt: Date? = nil
-    ) {
-        self.id = id
-        self.noteID = noteID
-        self.vaultID = vaultID
-        self.relativePath = relativePath
-        self.author = author.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.anchor = anchor
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.resolvedAt = resolvedAt
-    }
-}
-
 public enum CommentExchangeStatus: String, Codable, Hashable, Sendable {
     case awaitingReply = "awaiting_reply"
     case responseReady = "response_ready"
@@ -336,7 +297,7 @@ public struct CommentExchangeTurn: Codable, Hashable, Identifiable, Sendable {
 public struct CommentExchange: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let note: ResearchActivityNoteReference
-    public var anchor: ResearcherCommentAnchor
+    public var anchor: CommentAnchor
     public var turns: [CommentExchangeTurn]
     public var status: CommentExchangeStatus
     public let createdAt: Date
@@ -346,7 +307,7 @@ public struct CommentExchange: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         note: ResearchActivityNoteReference,
-        anchor: ResearcherCommentAnchor,
+        anchor: CommentAnchor,
         turns: [CommentExchangeTurn],
         status: CommentExchangeStatus = .awaitingReply,
         createdAt: Date = Date(),

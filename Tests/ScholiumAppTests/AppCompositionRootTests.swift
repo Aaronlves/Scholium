@@ -485,7 +485,25 @@ struct AppCompositionRootTests {
         first.documentController.session(for: sessionKey).editingSource = "first exact buffer"
         second.documentController.session(for: sessionKey).editingSource = "second exact buffer"
 
-        let replacement = try await store.reloadTriptychCapabilities(id: workspaceID)
+        let replacementTopics = fixtureRoot.appendingPathComponent(
+            "Replacement Topics",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(
+            at: replacementTopics,
+            withIntermediateDirectories: true
+        )
+        try Data("# Replacement Topic\n\nA replacement topic.\n".utf8).write(
+            to: replacementTopics.appendingPathComponent("Topic.md")
+        )
+        let replacement = try await store.configureTriptychCapabilities(
+            paperAnalysisURL: analyses,
+            topicKnowledgeURL: replacementTopics,
+            outputURL: works,
+            portableContainerURL: fixtureRoot,
+            triptychID: workspaceID,
+            triptychName: "Rebind Fixture"
+        )
         let replacementHandle = try await store.applicationRuntime.openWorkspace(id: workspaceID)
         let firstReplacement: WindowWorkspaceCapabilities = try storedOptionalValue(
             named: "activeWorkspaceCapabilities",
@@ -737,28 +755,6 @@ struct AppCompositionRootTests {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
         }
 
-        let headingRange = try #require(originalSource.range(of: "Shared"))
-        let headingUTF16Range = headingRange.lowerBound.utf16Offset(in: originalSource)
-            ..< headingRange.upperBound.utf16Offset(in: originalSource)
-        let headingAnchor = try #require(ResearcherCommentAnchorBuilder.anchor(
-            in: originalSource,
-            fingerprint: original.fingerprint,
-            utf16Range: headingUTF16Range
-        ))
-        let addedAnnotation = try await configured.research.addAnnotation(
-            to: originalID,
-            text: "Keep this heading anchored.",
-            anchor: headingAnchor,
-            expectedRevision: original.fingerprint
-        )
-        let annotationID = addedAnnotation.id
-        try await waitUntil("the first window received the new page Annotation") {
-            await firstWindow!.retryIdentityRecovery()
-            return firstWindow!.currentDocumentAnnotations.contains {
-                $0.id == annotationID && $0.anchor.fingerprint == original.fingerprint
-            } == true
-        }
-
         let cleanSource = originalSource + "\nCommitted from the first window.\n"
         let cleanCommit = try await firstWindow!.documentController.save(
             originalID,
@@ -773,14 +769,6 @@ struct AppCompositionRootTests {
         }
         #expect(firstSession.conflict == nil)
         #expect(secondSession.conflict == nil)
-        try await waitUntil("the first window received the reattached page Annotation") {
-            await firstWindow!.retryIdentityRecovery()
-            return firstWindow!.currentDocumentAnnotations.contains {
-                $0.id == annotationID
-                    && $0.anchor.fingerprint == cleanCommit.document.fingerprint
-            }
-        }
-
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
         firstSession.suppressAutosave = true
         firstSession.isEditing = true

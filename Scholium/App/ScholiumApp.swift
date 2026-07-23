@@ -620,7 +620,6 @@ struct ScholiumFocusedEditorActions {
     let canUseSelectedPassage: () -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
-    let addAnnotation: () -> Void
     let startComment: () -> Void
 }
 
@@ -849,12 +848,6 @@ private struct ScholiumCommands: Commands {
                     .disabled(editorActions?.isAvailable(.calloutFlag) != true)
             }
             Divider()
-            Button("Add Annotation…") { editorActions?.addAnnotation() }
-                .keyboardShortcut("a", modifiers: [.command, .option])
-                .disabled(
-                    editorActions?.canUseSelectedPassage() != true
-                        || editorActions?.isComposing == true
-                )
             Button("Comment on Selection…") { editorActions?.startComment() }
                 .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(
@@ -1470,7 +1463,7 @@ final class WindowModel: ObservableObject {
     private var closeAttemptSequence: UInt64 = 0
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
     private var libraryBrowseGeneration: UInt64 = 0
-    private var identityAnnotationRefreshGeneration: UInt64 = 0
+    private var identityRefreshGeneration: UInt64 = 0
     private var savedSearchMutationTail: Task<Void, Never>?
     private var advancedSearchExecutionTask: Task<Void, Never>?
     private var advancedSearchExecutionID: UUID?
@@ -1634,16 +1627,6 @@ final class WindowModel: ObservableObject {
         set { documentController.requestedPresentationMode = newValue }
     }
 
-    var annotationsByPath: [String: [AnnotationRecord]] {
-        get { documentController.annotationsByPath }
-        set { documentController.annotationsByPath = newValue }
-    }
-
-    private(set) var annotationsByNoteID: [UUID: [AnnotationRecord]] {
-        get { documentController.annotationsByNoteID }
-        set { documentController.annotationsByNoteID = newValue }
-    }
-
     var noteIdentityByPath: [String: UUID] {
         get { documentController.noteIdentityByPath }
         set { documentController.noteIdentityByPath = newValue }
@@ -1798,13 +1781,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var currentDocumentAnnotations: [AnnotationRecord] {
-        guard let noteID = currentDocumentDescriptor?.sessionKey.noteID else { return [] }
-        return annotationsByNoteID[noteID]
-            ?? researchController.records?.annotations.filter { $0.noteID == noteID }
-            ?? []
-    }
-
     var currentResearchFunctionTarget: ResearchFunctionTarget? {
         guard let descriptor = currentDocumentDescriptor,
               let note = currentNote,
@@ -1886,10 +1862,6 @@ final class WindowModel: ObservableObject {
 
     var canEditCurrentNote: Bool {
         currentDocumentCapabilities.canEditSource
-    }
-
-    var currentNoteIdentityIsResolved: Bool {
-        currentDocumentDescriptor != nil
     }
 
     var canCommentCurrentNote: Bool {
@@ -1987,7 +1959,7 @@ final class WindowModel: ObservableObject {
                 candidateID: candidateID
             )
             selectedIdentityAmbiguity = nil
-            await refreshIdentityAndAnnotationState()
+            await refreshIdentityState()
         } catch {
             identityResolutionError = error.localizedDescription
             try? await refreshNoteLocationScope()
@@ -2058,35 +2030,6 @@ final class WindowModel: ObservableObject {
             throw NoteIdentityRecoveryError.identityUnresolved(target.relativePath)
         }
         return currentNote.document.fingerprint
-    }
-
-    private func storeAnnotation(
-        _ annotation: AnnotationRecord,
-        path: String,
-        vaultID: UUID
-    ) {
-        var byNote = annotationsByNoteID[annotation.noteID] ?? []
-        if let index = byNote.firstIndex(where: { $0.id == annotation.id }) {
-            byNote[index] = annotation
-        } else {
-            byNote.append(annotation)
-        }
-        byNote.sort { $0.createdAt < $1.createdAt }
-        annotationsByNoteID[annotation.noteID] = byNote
-        if currentRegisteredVault?.id == vaultID {
-            annotationsByPath[path] = byNote
-        }
-    }
-
-    private func removeStoredAnnotation(
-        _ annotation: AnnotationRecord,
-        path: String,
-        vaultID: UUID
-    ) {
-        annotationsByNoteID[annotation.noteID]?.removeAll { $0.id == annotation.id }
-        if currentRegisteredVault?.id == vaultID {
-            annotationsByPath[path]?.removeAll { $0.id == annotation.id }
-        }
     }
 
     func registerEditorFlush(
@@ -2575,7 +2518,7 @@ final class WindowModel: ObservableObject {
 
     func openResearchFunction(
         _ function: ResearchFunctionID,
-        selection: ResearcherCommentAnchor? = nil,
+        selection: CommentAnchor? = nil,
         focusCommentComposer: Bool = false,
         permitsUnavailablePresentation: Bool = false
     ) {
@@ -2606,7 +2549,7 @@ final class WindowModel: ObservableObject {
                     self.showToast(reason, kind: .information)
                     return
                 }
-                let capturedSelection: ResearcherCommentAnchor?
+                let capturedSelection: CommentAnchor?
                 if let selection, selection.fingerprint == target.fingerprint {
                     capturedSelection = selection
                 } else {
@@ -3534,103 +3477,6 @@ final class WindowModel: ObservableObject {
         return imported
     }
 
-    func annotations(for noteID: UUID) async -> [AnnotationRecord] {
-        (try? await researchController.annotations(noteID: noteID)) ?? []
-    }
-
-    @discardableResult
-    func addAnnotation(
-        to path: String,
-        text: String,
-        anchor: ResearcherCommentAnchor
-    ) async throws -> AnnotationRecord {
-        let context = try annotationContext(for: path)
-        let annotation = try await researchController.addAnnotation(
-            to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            text: text,
-            anchor: anchor,
-            expectedRevision: context.fingerprint
-        )
-        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
-        return annotation
-    }
-
-    func updateAnnotation(
-        at path: String,
-        annotationID: UUID,
-        text: String
-    ) async throws {
-        let context = try annotationContext(for: path)
-        let annotation = try await researchController.updateAnnotation(
-            noteID: context.noteID,
-            annotationID: annotationID,
-            text: text
-        )
-        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
-    }
-
-    func setAnnotationResolved(
-        at path: String,
-        annotationID: UUID,
-        resolved: Bool
-    ) async throws {
-        let context = try annotationContext(for: path)
-        let annotation = try await researchController.setAnnotationResolved(
-            noteID: context.noteID,
-            annotationID: annotationID,
-            resolved: resolved
-        )
-        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
-    }
-
-    func deleteAnnotation(at path: String, annotationID: UUID) async throws {
-        let context = try annotationContext(for: path)
-        let annotation = try await researchController.deleteAnnotation(
-            noteID: context.noteID,
-            annotationID: annotationID
-        )
-        removeStoredAnnotation(annotation, path: path, vaultID: context.vaultID)
-    }
-
-    func reattachAnnotation(
-        at path: String,
-        annotationID: UUID,
-        anchor: ResearcherCommentAnchor
-    ) async throws {
-        let context = try annotationContext(for: path)
-        let annotation = try await researchController.reattachAnnotation(
-            to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            annotationID: annotationID,
-            anchor: anchor,
-            expectedRevision: context.fingerprint
-        )
-        storeAnnotation(annotation, path: path, vaultID: context.vaultID)
-    }
-
-    @discardableResult
-    func tryReattachingAnnotations(at path: String) async throws -> [AnnotationRecord] {
-        let context = try annotationContext(for: path)
-        let annotations = try await researchController.reattachAnnotations(
-            to: VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            expectedRevision: context.fingerprint
-        )
-        annotationsByNoteID[context.noteID] = annotations
-        if currentRegisteredVault?.id == context.vaultID {
-            annotationsByPath[path] = annotations
-        }
-        return annotations
-    }
-
-    private func annotationContext(
-        for path: String
-    ) throws -> (noteID: UUID, vaultID: UUID, fingerprint: DocumentFingerprint) {
-        guard canCommentCurrentNote,
-              let context = activeDocumentContext(for: path) else {
-            throw AnnotationWorkflowError.unavailable
-        }
-        return (context.noteID, context.vaultID, context.fingerprint)
-    }
-
     func copyTextToClipboard(_ text: String, recovery: String? = nil) throws {
         NSPasteboard.general.clearContents()
         guard NSPasteboard.general.setString(text, forType: .string) else {
@@ -3698,7 +3544,7 @@ final class WindowModel: ObservableObject {
             .map(WindowDocumentLocation.workspace)
             .sorted(by: notesAreOrdered)
         refreshDocumentRevisions()
-        await refreshIdentityAndAnnotationState()
+        await refreshIdentityState()
         relationshipGraph = workspaceCatalog?.graph
         allTags = notes.orderedTags
         scheduleWorkspaceCatalogRefresh()
@@ -3791,7 +3637,7 @@ final class WindowModel: ObservableObject {
             vaultConfig = targetConfig
             notes = targetNotes
             refreshDocumentRevisions()
-            await refreshIdentityAndAnnotationState()
+            await refreshIdentityState()
             if let snapshot = workspaceStore.snapshot(for: capabilities.id) {
                 receiveWorkspaceSnapshot(
                     snapshot,
@@ -3953,7 +3799,7 @@ final class WindowModel: ObservableObject {
         projectionRefreshToken &+= 1
         let refreshToken = projectionRefreshToken
         let startingVaultID = currentRegisteredVault?.id
-        await refreshIdentityAndAnnotationState()
+        await refreshIdentityState()
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
 
         relationshipGraph = try? await discoveryController.discoverySnapshot().catalog.graph
@@ -4003,7 +3849,7 @@ final class WindowModel: ObservableObject {
             documentController.resetPresentationState()
             notes = loaded.sorted(by: notesAreOrdered)
             refreshDocumentRevisions()
-            await refreshIdentityAndAnnotationState()
+            await refreshIdentityState()
             await refreshWindowProjection()
         } catch {
             showToast(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
@@ -4013,7 +3859,7 @@ final class WindowModel: ObservableObject {
     func refreshNoteLocationScope() async throws {
         notes = try await loadNotes(for: noteLocationScope).sorted(by: notesAreOrdered)
         refreshDocumentRevisions()
-        await refreshIdentityAndAnnotationState()
+        await refreshIdentityState()
         await refreshWindowProjection()
     }
 
@@ -4392,10 +4238,8 @@ final class WindowModel: ObservableObject {
             throw error
         }
 
-        annotationsByPath[path] = nil
         noteIdentityByPath[path] = nil
         if let critiquePath = commit.removedCritiqueDocumentPath {
-            annotationsByPath[critiquePath] = nil
             noteIdentityByPath[critiquePath] = nil
         }
         let deletedPaths = Set([path, commit.removedCritiqueDocumentPath].compactMap { $0 })
@@ -4484,15 +4328,6 @@ final class WindowModel: ObservableObject {
             noteIdentityByPath[sourcePath] = nil
             if identityResolved {
                 noteIdentityByPath[destinationPath] = noteID
-            }
-            if identityResolved, var pageAnnotations = annotationsByPath.removeValue(forKey: sourcePath) {
-                for index in pageAnnotations.indices {
-                    pageAnnotations[index].relativePath = destinationPath
-                }
-                annotationsByPath[destinationPath] = pageAnnotations
-                annotationsByNoteID[noteID] = pageAnnotations
-            } else {
-                annotationsByPath[sourcePath] = nil
             }
         }
         if let descriptor = currentDocumentDescriptor,
@@ -5170,28 +5005,19 @@ final class WindowModel: ObservableObject {
         })
     }
 
-    private func refreshIdentityAndAnnotationState() async {
-        identityAnnotationRefreshGeneration &+= 1
-        let refreshGeneration = identityAnnotationRefreshGeneration
+    private func refreshIdentityState() async {
+        identityRefreshGeneration &+= 1
+        let refreshGeneration = identityRefreshGeneration
         guard noteLocationScope != .unclassified,
               let vault = currentRegisteredVault else {
             noteIdentityByPath = [:]
             identityAmbiguities = []
             pendingIdentityRebindings = []
             identityMigrationFailures = []
-            annotationsByPath = [:]
-            annotationsByNoteID = [:]
             return
         }
         let locationScope = noteLocationScope
-        let noteSnapshot = notes
-        let revisionSnapshot = Dictionary(uniqueKeysWithValues: noteSnapshot.map { note in
-            (
-                note.relativePath,
-                documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
-            )
-        })
-        guard refreshGeneration == identityAnnotationRefreshGeneration,
+        guard refreshGeneration == identityRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
               noteLocationScope == locationScope else { return }
         let recovery: NoteIdentityRecoveryState
@@ -5203,61 +5029,17 @@ final class WindowModel: ObservableObject {
             }
             recovery = vaultSnapshot.identityRecovery
         } catch {
-            guard refreshGeneration == identityAnnotationRefreshGeneration,
+            guard refreshGeneration == identityRefreshGeneration,
                   currentRegisteredVault?.id == vault.id,
                   noteLocationScope == locationScope else { return }
             noteIdentityByPath = [:]
             identityResolutionError = error.localizedDescription
             return
         }
-        guard refreshGeneration == identityAnnotationRefreshGeneration,
+        guard refreshGeneration == identityRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
               noteLocationScope == locationScope else { return }
         let identities = recovery.identities
-
-        var annotationsByStableIdentity = annotationsByNoteID
-        var annotationRefreshFailure: String?
-        do {
-            let snapshot = try await researchController.researchSnapshot()
-            annotationsByStableIdentity = Dictionary(
-                grouping: snapshot.annotations,
-                by: \.noteID
-            )
-        } catch {
-            annotationRefreshFailure = error.localizedDescription
-        }
-        var annotationsForVisiblePaths: [String: [AnnotationRecord]] = [:]
-        for note in noteSnapshot {
-            let path = note.relativePath
-            guard let noteID = identities[path]?.id else { continue }
-            let fingerprint = revisionSnapshot[path] ?? DocumentFingerprint(content: note.rawContent)
-            var pageAnnotations = annotationsByStableIdentity[noteID] ?? []
-            if pageAnnotations.contains(where: { $0.anchor.fingerprint != fingerprint }) {
-                guard refreshGeneration == identityAnnotationRefreshGeneration else { return }
-                do {
-                    pageAnnotations = try await researchController.reattachAnnotations(
-                        to: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
-                        expectedRevision: fingerprint
-                    )
-                    annotationsByStableIdentity[noteID] = pageAnnotations
-                } catch {
-                    annotationRefreshFailure = error.localizedDescription
-                }
-            }
-            guard refreshGeneration == identityAnnotationRefreshGeneration else { return }
-            annotationsForVisiblePaths[path] = pageAnnotations.sorted { $0.createdAt < $1.createdAt }
-        }
-
-        let currentRevisions = Dictionary(uniqueKeysWithValues: notes.map { note in
-            (
-                note.relativePath,
-                documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
-            )
-        })
-        guard refreshGeneration == identityAnnotationRefreshGeneration,
-              currentRegisteredVault?.id == vault.id,
-              noteLocationScope == locationScope,
-              currentRevisions == revisionSnapshot else { return }
 
         for rebinding in recovery.completedRebindings {
             migrateInMemoryPath(
@@ -5285,12 +5067,6 @@ final class WindowModel: ObservableObject {
             }
         }
         refreshSelectedDocumentProjection()
-        annotationsByNoteID = annotationsByStableIdentity
-        annotationsByPath = annotationsForVisiblePaths
-        if let annotationRefreshFailure {
-            refreshStatusText = "Page annotations refresh failed"
-            workspaceCatalogError = "Scholium left the existing page annotations unchanged because their anchors could not be refreshed safely. \(annotationRefreshFailure)"
-        }
     }
 
     private func resetWindowSession() {
@@ -5305,8 +5081,6 @@ final class WindowModel: ObservableObject {
         clearMetadataFilters()
         currentRegisteredVault = nil
         currentVaultRole = .other
-        annotationsByPath = [:]
-        annotationsByNoteID = [:]
         noteIdentityByPath = [:]
         identityAmbiguities = []
         pendingIdentityRebindings = []
@@ -5458,7 +5232,7 @@ final class WindowModel: ObservableObject {
             documentRevisions[activeRecoveryNote.relativePath] = previousByPath[activeRecoveryNote.relativePath]
                 .map { DocumentFingerprint(content: $0.rawContent) }
         }
-        await refreshIdentityAndAnnotationState()
+        await refreshIdentityState()
         relationshipGraph = snapshot.discovery.catalog.graph
         allTags = notes.orderedTags
         workspaceCatalogError = nil
@@ -5574,28 +5348,6 @@ final class WindowModel: ObservableObject {
         return saved
     }
 
-    private func knowledgeBase(for role: VaultRole) -> KnowledgeBase {
-        switch role {
-        case .sourceCorpus: .papers
-        case .topicKnowledge: .topics
-        case .draftProject, .other: .output
-        }
-    }
-
-}
-
-private enum AnnotationWorkflowError: LocalizedError {
-    case unavailable
-    case staleRevision
-
-    var errorDescription: String? {
-        switch self {
-        case .unavailable:
-            return String(localized: "Annotations are unavailable until Scholium can identify this Analysis, Topic, or Work reliably.", table: "Localizable", bundle: .module)
-        case .staleRevision:
-            return String(localized: "The note changed before the Annotation could be attached. Select the current passage again.", table: "Localizable", bundle: .module)
-        }
-    }
 }
 
 private enum ClipboardWorkflowError: LocalizedError {

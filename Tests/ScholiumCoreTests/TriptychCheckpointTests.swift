@@ -455,11 +455,15 @@ struct TriptychCheckpointTests {
         try Data("# Revised\n".utf8).write(to: fixture.analysis, options: .atomic)
         let second = try await store.create(name: "Second", kind: .manual, roots: fixture.roots)
 
-        let invalidated = try await store.purgeNoteCopies(
+        let prepared = try await store.preparePurgeNoteCopies(
             noteID: noteID,
             area: .analyses,
-            currentRelativePath: "Trash/Paper.md"
+            currentRelativePath: "Trash/Paper.md",
+            additionalKeys: []
         )
+        try await store.applyPreparedCheckpointPurge(prepared)
+        try await store.finalizePreparedCheckpointPurge(prepared)
+        let invalidated = prepared.checkpointIDs
 
         #expect(Set(invalidated) == Set([first.id, second.id]))
         #expect(await store.checkpoints().isEmpty)

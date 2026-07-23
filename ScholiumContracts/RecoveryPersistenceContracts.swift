@@ -107,10 +107,8 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public let relativePath: String
     public let expectedRevision: DocumentFingerprint
     public let checkpointArea: TriptychCheckpointArea
-    public let humanReview: HumanReviewRecord?
     public let dialogues: [DialogueEntry]
     public let critiqueNoteID: UUID?
-    public let critiqueHumanReview: HumanReviewRecord?
     public let critiqueDialogues: [DialogueEntry]
     public let critiqueAssociations: [CritiqueAssociation]
     public let identity: PermanentDeletionIdentityBackup?
@@ -118,10 +116,6 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public let sourceDeletion: PreparedPermanentDeletion?
     public let critiqueDeletion: PreparedPermanentDeletion?
     public let checkpointPurge: PreparedCheckpointPurge?
-    /// Present only for deletion journals created after page Annotation
-    /// storage was separated from the legacy Review archive.
-    public let pageAnnotations: [AnnotationRecord]?
-    public let critiquePageAnnotations: [AnnotationRecord]?
 
     public init(
         phase: PermanentDeletionRecoveryPhase,
@@ -130,19 +124,15 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         relativePath: String,
         expectedRevision: DocumentFingerprint,
         checkpointArea: TriptychCheckpointArea,
-        humanReview: HumanReviewRecord?,
         dialogues: [DialogueEntry],
         critiqueNoteID: UUID?,
-        critiqueHumanReview: HumanReviewRecord?,
         critiqueDialogues: [DialogueEntry],
         critiqueAssociations: [CritiqueAssociation],
         identity: PermanentDeletionIdentityBackup?,
         critiqueIdentity: PermanentDeletionIdentityBackup?,
         sourceDeletion: PreparedPermanentDeletion?,
         critiqueDeletion: PreparedPermanentDeletion?,
-        checkpointPurge: PreparedCheckpointPurge?,
-        pageAnnotations: [AnnotationRecord]? = nil,
-        critiquePageAnnotations: [AnnotationRecord]? = nil
+        checkpointPurge: PreparedCheckpointPurge?
     ) {
         self.phase = phase
         self.noteID = noteID
@@ -150,10 +140,8 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         self.relativePath = relativePath
         self.expectedRevision = expectedRevision
         self.checkpointArea = checkpointArea
-        self.humanReview = humanReview
         self.dialogues = dialogues
         self.critiqueNoteID = critiqueNoteID
-        self.critiqueHumanReview = critiqueHumanReview
         self.critiqueDialogues = critiqueDialogues
         self.critiqueAssociations = critiqueAssociations
         self.identity = identity
@@ -161,8 +149,6 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         self.sourceDeletion = sourceDeletion
         self.critiqueDeletion = critiqueDeletion
         self.checkpointPurge = checkpointPurge
-        self.pageAnnotations = pageAnnotations
-        self.critiquePageAnnotations = critiquePageAnnotations
     }
 
     public func updating(
@@ -178,19 +164,15 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             relativePath: relativePath,
             expectedRevision: expectedRevision,
             checkpointArea: checkpointArea,
-            humanReview: humanReview,
             dialogues: dialogues,
             critiqueNoteID: critiqueNoteID,
-            critiqueHumanReview: critiqueHumanReview,
             critiqueDialogues: critiqueDialogues,
             critiqueAssociations: critiqueAssociations,
             identity: identity,
             critiqueIdentity: critiqueIdentity,
             sourceDeletion: sourceDeletion ?? self.sourceDeletion,
             critiqueDeletion: critiqueDeletion ?? self.critiqueDeletion,
-            checkpointPurge: checkpointPurge ?? self.checkpointPurge,
-            pageAnnotations: pageAnnotations,
-            critiquePageAnnotations: critiquePageAnnotations
+            checkpointPurge: checkpointPurge ?? self.checkpointPurge
         )
     }
 }

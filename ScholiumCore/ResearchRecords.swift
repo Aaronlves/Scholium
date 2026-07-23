@@ -8,162 +8,6 @@ private func persistentlyEquivalent<T: Encodable>(_ lhs: T, _ rhs: T) throws -> 
     return try encoder.encode(lhs) == encoder.encode(rhs)
 }
 
-/// Read-only compatibility archive for records created by the retired Human
-/// Review model. Current product workflows cannot create or edit these
-/// records; writes are limited to identity migration, permanent deletion, and
-/// rollback of those lifecycle operations.
-public actor HumanReviewStore {
-    private struct Payload: Codable {
-        let schemaVersion: Int
-        var records: [UUID: HumanReviewRecord]
-    }
-
-    public let storageURL: URL
-    private let fileURL: URL
-    private let fileManager: FileManager
-    private var records: [UUID: HumanReviewRecord]
-    private let loadFailure: String?
-
-    public init(storageURL: URL, fileManager: FileManager = .default) {
-        self.storageURL = storageURL
-        fileURL = storageURL.appendingPathComponent("human-reviews.json")
-        self.fileManager = fileManager
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if fileManager.fileExists(atPath: fileURL.path) {
-            do {
-                let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
-                let payload = try decoder.decode(Payload.self, from: data)
-                records = payload.records
-                loadFailure = payload.schemaVersion == 1
-                    ? nil
-                    : "Unsupported earlier Review archive schema version \(payload.schemaVersion)."
-            } catch {
-                records = [:]
-                loadFailure = error.localizedDescription
-            }
-        } else {
-            records = [:]
-            loadFailure = nil
-        }
-    }
-
-    public func healthError() -> String? {
-        loadFailure.map {
-            ResearchRecordStoreError.unreadableStore(kind: "earlier Review archive", reason: $0)
-                .localizedDescription
-        }
-    }
-
-    public func record(noteID: UUID) -> HumanReviewRecord? {
-        records[noteID]
-    }
-
-    public func record(vaultID: UUID, relativePath: String) -> HumanReviewRecord? {
-        records.values.first { $0.vaultID == vaultID && $0.relativePath == relativePath }
-    }
-
-    public func allRecords() -> [HumanReviewRecord] {
-        records.values.sorted {
-            if $0.updatedAt == $1.updatedAt { return $0.relativePath < $1.relativePath }
-            return $0.updatedAt > $1.updatedAt
-        }
-    }
-
-    /// Permanently removes the complete researcher-owned record for one note.
-    /// This is intentionally distinct from removing an individual comment and
-    /// is used only after the researcher confirms permanent note deletion.
-    @discardableResult
-    public func purge(noteID: UUID) throws -> HumanReviewRecord? {
-        try requireHealthyStore(kind: "earlier Review archive")
-        guard let removed = records[noteID] else { return nil }
-        var proposed = records
-        proposed.removeValue(forKey: noteID)
-        try commit(proposed)
-        return removed
-    }
-
-    func restorePurgedRecord(_ record: HumanReviewRecord) throws {
-        try requireHealthyStore(kind: "earlier Review archive")
-        if let existing = records[record.id] {
-            guard try persistentlyEquivalent(existing, record) else {
-                throw ResearchRecordStoreError.restorationConflict(
-                    kind: "earlier Review archive",
-                    identity: record.id.uuidString
-                )
-            }
-            return
-        }
-        var proposed = records
-        proposed[record.id] = record
-        try commit(proposed)
-    }
-
-    @discardableResult
-    public func migratePathIfPresent(
-        noteID: UUID,
-        vaultID: UUID,
-        from sourcePath: String,
-        to destinationPath: String
-    ) throws -> Bool {
-        guard var record = records[noteID] else { return false }
-        guard record.vaultID == vaultID else { throw HumanReviewError.recordVaultMismatch }
-        if record.relativePath == destinationPath { return false }
-        guard record.relativePath == sourcePath else {
-            throw HumanReviewError.recordPathMismatch(
-                expected: sourcePath,
-                actual: record.relativePath
-            )
-        }
-        record.relativePath = destinationPath
-        record.updatedAt = Date()
-        var proposed = records
-        proposed[noteID] = record
-        try commit(proposed)
-        return true
-    }
-
-    #if DEBUG
-    /// Seeds historical bytes for compatibility and lifecycle tests. This is
-    /// internal to ScholiumCore tests and is not part of a release build.
-    func seedLegacyArchiveForTesting(_ legacyRecords: [HumanReviewRecord]) throws {
-        var proposed = records
-        for record in legacyRecords {
-            proposed[record.id] = record
-        }
-        try commit(proposed)
-    }
-    #endif
-
-    private func commit(_ proposed: [UUID: HumanReviewRecord]) throws {
-        try requireHealthyStore(kind: "earlier Review archive")
-        try fileManager.createDirectory(at: storageURL, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(Payload(schemaVersion: 1, records: proposed))
-
-        // Keep the live authority byte-for-byte equivalent to what another
-        // delivery surface will load. ISO-8601 persistence intentionally
-        // canonicalizes subsecond Dates; retaining the pre-encoded values in
-        // memory would otherwise make GUI and snapshot-CLI projections differ
-        // until the next process launch.
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let canonicalRecords = try decoder.decode(Payload.self, from: data).records
-        try data.write(to: fileURL, options: .atomic)
-        records = canonicalRecords
-    }
-
-    private func requireHealthyStore(kind: String) throws {
-        if let loadFailure {
-            throw ResearchRecordStoreError.unreadableStore(kind: kind, reason: loadFailure)
-        }
-    }
-
-}
-
-
 public enum ResearchFunctionRecordStoreError: LocalizedError, Sendable {
     case runNotFound(UUID)
     case duplicateRun(UUID)
@@ -310,7 +154,7 @@ public actor DialogueStore {
                 let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
                 let payload = try decoder.decode(Payload.self, from: data)
                 entries = payload.entries
-                loadFailure = payload.schemaVersion == 2
+                loadFailure = payload.schemaVersion == 3
                     ? nil
                     : "Unsupported Discussion schema version \(payload.schemaVersion)."
             } catch {
@@ -348,15 +192,15 @@ public actor DialogueStore {
     public func functionRecord(
         runID: UUID
     ) throws -> ResearchFunctionRecordProjection? {
-        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        let matches = entries.values.filter { $0.functionSnapshot.runID == runID }
         guard matches.count <= 1 else {
             throw ResearchFunctionRecordStoreError.duplicateRun(runID)
         }
-        guard let entry = matches.first, let snapshot = entry.functionSnapshot else {
+        guard let entry = matches.first else {
             return nil
         }
         return ResearchFunctionRecordProjection(
-            snapshot: snapshot,
+            snapshot: entry.functionSnapshot,
             completion: entry.functionCompletion,
             preparedInstructions: entry.preparedInstructions
         )
@@ -367,14 +211,12 @@ public actor DialogueStore {
     /// committed evidence; derived workspace snapshots are not an authority for
     /// deduplication or Manuscript child selection.
     public func functionRecords() throws -> [ResearchFunctionRecordProjection] {
-        let records = entries.values.compactMap { entry in
-            entry.functionSnapshot.map {
-                ResearchFunctionRecordProjection(
-                    snapshot: $0,
-                    completion: entry.functionCompletion,
-                    preparedInstructions: entry.preparedInstructions
-                )
-            }
+        let records = entries.values.map { entry in
+            ResearchFunctionRecordProjection(
+                snapshot: entry.functionSnapshot,
+                completion: entry.functionCompletion,
+                preparedInstructions: entry.preparedInstructions
+            )
         }
         guard Set(records.map(\.id)).count == records.count else {
             let duplicated = Dictionary(grouping: records, by: \.id)
@@ -455,13 +297,14 @@ public actor DialogueStore {
         guard completion.runID == runID else {
             throw ResearchFunctionRecordStoreError.completionMismatch(runID)
         }
-        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        let matches = entries.values.filter { $0.functionSnapshot.runID == runID }
         guard matches.count <= 1 else {
             throw ResearchFunctionRecordStoreError.duplicateRun(runID)
         }
-        guard let current = matches.first, let snapshot = current.functionSnapshot else {
+        guard let current = matches.first else {
             throw ResearchFunctionRecordStoreError.runNotFound(runID)
         }
+        let snapshot = current.functionSnapshot
         guard snapshot.request.function == completion.function else {
             throw ResearchFunctionRecordStoreError.completionMismatch(runID)
         }
@@ -495,13 +338,14 @@ public actor DialogueStore {
         instructions: String,
         runID: UUID
     ) throws -> DialogueEntry {
-        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        let matches = entries.values.filter { $0.functionSnapshot.runID == runID }
         guard matches.count <= 1 else {
             throw ResearchFunctionRecordStoreError.duplicateRun(runID)
         }
-        guard let current = matches.first, let snapshot = current.functionSnapshot else {
+        guard let current = matches.first else {
             throw ResearchFunctionRecordStoreError.runNotFound(runID)
         }
+        let snapshot = current.functionSnapshot
         guard current.functionCompletion == nil else {
             throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
         }
@@ -525,7 +369,7 @@ public actor DialogueStore {
     /// Rolls back only an incomplete record created for the named run.
     @discardableResult
     public func discardPreparedFunctionRecord(runID: UUID) throws -> DialogueEntry {
-        let matches = entries.values.filter { $0.functionSnapshot?.runID == runID }
+        let matches = entries.values.filter { $0.functionSnapshot.runID == runID }
         guard matches.count <= 1 else {
             throw ResearchFunctionRecordStoreError.duplicateRun(runID)
         }
@@ -589,12 +433,12 @@ public actor DialogueStore {
             throw DialogueError.invalidReplyTarget
         }
         if let commentID,
-           !entry.includedComments.contains(where: { $0.comment.id == commentID }) {
+           !entry.includedComments.contains(where: { $0.exchange.id == commentID }) {
             throw DialogueError.invalidReplyTarget
         }
         if let noteID, let commentID,
            !entry.includedComments.contains(where: {
-               $0.comment.id == commentID && $0.note.noteID == noteID
+               $0.exchange.id == commentID && $0.note.noteID == noteID
            }) {
             throw DialogueError.invalidReplyTarget
         }
@@ -652,7 +496,7 @@ public actor DialogueStore {
                       let migratedReference else { return included }
                 return DialogueIncludedComment(
                     note: migratedReference,
-                    comment: included.comment
+                    exchange: included.exchange
                 )
             }
             updatedEntries[entryID] = DialogueEntry(
@@ -682,7 +526,7 @@ public actor DialogueStore {
 
     private static func replacingFunctionEvidence(
         in entry: DialogueEntry,
-        snapshot: ResearchFunctionSnapshot?,
+        snapshot: ResearchFunctionSnapshot,
         completion: ResearchFunctionCompletion?
     ) -> DialogueEntry {
         DialogueEntry(
@@ -734,7 +578,7 @@ public actor DialogueStore {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(Payload(schemaVersion: 2, entries: proposed))
+        let data = try encoder.encode(Payload(schemaVersion: 3, entries: proposed))
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let canonicalEntries = try decoder.decode(Payload.self, from: data).entries
@@ -1180,38 +1024,6 @@ public actor CritiqueRegistry {
         }
         guard round.functionCompletion == nil else {
             throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
-        }
-        association.rounds.remove(at: index)
-        var proposed = associations
-        if association.rounds.isEmpty {
-            proposed.removeValue(forKey: associationID)
-        } else {
-            association.updatedAt = Date()
-            proposed[associationID] = association
-        }
-        try commit(proposed)
-        return round
-    }
-
-    /// Critique preparation may persist its round before the function snapshot
-    /// is attached. This rollback key is therefore the immutable round identity
-    /// rather than a run identity. Only an uncompleted round can be removed.
-    @discardableResult
-    public func discardPreparedRound(roundID: UUID) throws -> CritiqueRound {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.id == roundID ? (association.id, index, round) : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(roundID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID] else {
-            throw ResearchFunctionRecordStoreError.runNotFound(roundID)
-        }
-        guard round.functionCompletion == nil else {
-            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(roundID)
         }
         association.rounds.remove(at: index)
         var proposed = associations

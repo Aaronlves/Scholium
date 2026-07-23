@@ -388,12 +388,6 @@ struct WorkspaceRuntimeTests {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let second = try await fixture.makeSecondAssignment(name: "Aardvark")
-        let live = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
-        try await live.setDefaultWorkspace(id: fixture.assignment.id)
-        await live.shutdown()
         let runtime = try await WorkspaceRuntime.snapshot(
             applicationSupportURL: fixture.applicationSupportURL,
             workspaceRegistryStorageURL: fixture.registryStorageURL
@@ -468,7 +462,7 @@ struct WorkspaceRuntimeTests {
         #expect(await secondIterator.next() == nil)
     }
 
-    @Test("Shared vaults cannot cross-contaminate results, broken links, or legacy Review projection")
+    @Test("Shared vaults cannot cross-contaminate ordinary results or broken links")
     func sharedVaultSearchIsolation() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
@@ -482,34 +476,6 @@ struct WorkspaceRuntimeTests {
         try Data("# SecondTriptychTerm\n\n[[Missing Second]]\n".utf8).write(
             to: secondTopic,
             options: .atomic
-        )
-
-        let warmRuntime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
-        let warmFirst = try await warmRuntime.openWorkspace(id: fixture.assignment.id)
-        _ = try await warmRuntime.openWorkspace(id: secondAssignment.id)
-        let sharedNote = try #require(
-            try await warmFirst.snapshot().document(id: fixture.analysisNoteID)
-        )
-        let sharedStableID = try #require(sharedNote.stableIdentity.resolvedID)
-        await warmRuntime.shutdown()
-
-        let review = HumanReviewRecord(
-            noteID: sharedStableID,
-            vaultID: fixture.analysisNoteID.vaultID,
-            relativePath: fixture.analysisNoteID.relativePath,
-            completedReviews: [CompletedHumanReview(
-                fingerprint: sharedNote.fingerprint,
-                qualification: .qualified,
-                reviewNote: "First Triptych compatibility evidence"
-            )]
-        )
-        try seedLegacyReview(
-            review,
-            triptychID: fixture.assignment.id,
-            applicationSupportURL: fixture.applicationSupportURL
         )
 
         let runtime = WorkspaceRuntime(configuration: .live(.init(
@@ -540,10 +506,6 @@ struct WorkspaceRuntimeTests {
             == ["Freedom.md"])
         #expect(try await results("has:broken-link", in: second).map(\.relativePath)
             == ["Other.md"])
-        #expect(try await results("review:qualified", in: first).map(\.relativePath)
-            == ["Agency.md"])
-        #expect(try await results("review:qualified", in: second).isEmpty)
-
         let firstIndex = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(
@@ -756,33 +718,6 @@ struct WorkspaceRuntimeTests {
         #expect(await handle.events.publishedGeneration == committedGeneration)
         await runtime.shutdown()
     }
-}
-
-private struct LegacyReviewFixturePayload: Codable {
-    let schemaVersion: Int
-    let records: [UUID: HumanReviewRecord]
-}
-
-private func seedLegacyReview(
-    _ review: HumanReviewRecord,
-    triptychID: UUID,
-    applicationSupportURL: URL
-) throws {
-    let storage = applicationSupportURL
-        .appendingPathComponent("Triptychs", isDirectory: true)
-        .appendingPathComponent(triptychID.uuidString, isDirectory: true)
-        .appendingPathComponent("human-review", isDirectory: true)
-    try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
-    let encoder = JSONEncoder()
-    encoder.dateEncodingStrategy = .iso8601
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    try encoder.encode(LegacyReviewFixturePayload(
-        schemaVersion: 1,
-        records: [review.id: review]
-    )).write(
-        to: storage.appendingPathComponent("human-reviews.json"),
-        options: .atomic
-    )
 }
 
 struct ApplicationFixture: Sendable {

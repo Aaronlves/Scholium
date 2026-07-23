@@ -348,7 +348,7 @@ struct ResearchFunctionControllerTests {
         let target = target(title: "Agency", path: "Topics/Agency.md")
         let source = "# Agency\nA selected claim.\n"
         let lower = (source as NSString).range(of: "selected claim").location
-        let anchor = ResearcherCommentAnchorBuilder.anchor(
+        let anchor = CommentAnchorBuilder.anchor(
             in: source,
             fingerprint: target.fingerprint,
             utf16Range: lower..<(lower + "selected claim".utf16.count)
@@ -513,7 +513,7 @@ struct ResearchFunctionControllerTests {
     @Test("Materials preserve role and folder ancestors while search and suggestions intersect")
     func materialsHierarchySearchAndSelection() throws {
         let target = target(title: "Source", path: "Source.md")
-        let passage = ResearcherCommentAnchor(
+        let passage = CommentAnchor(
             fingerprint: target.fingerprint,
             utf8Range: 12..<24,
             utf16Range: 12..<24,

@@ -4,8 +4,6 @@ import Foundation
 enum PermanentDeletionFaultPoint: Hashable, Sendable {
     case afterCritiqueDeletion
     case afterSourceDeletion
-    case afterHumanReviewPurge
-    case afterPageAnnotationPurge
     case afterDialoguePurge
     case afterCritiqueAssociationPurge
     case afterCheckpointPurge
@@ -45,59 +43,49 @@ private struct PermanentDeletionInjectedFailure: LocalizedError, Sendable {
 public actor NotePermanentDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
-    private let humanReviewStore: HumanReviewStore
     private let dialogueStore: DialogueStore
     private let critiqueRegistry: CritiqueRegistry
     private let checkpointStore: TriptychCheckpointStore
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
-    private let pageAnnotationStore: PageAnnotationStore?
     private let faultPlan: PermanentDeletionFaultPlan
 
     public init(
         triptychID: UUID,
         repository: VaultRepository,
-        humanReviewStore: HumanReviewStore,
         dialogueStore: DialogueStore,
         critiqueRegistry: CritiqueRegistry,
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
-        recoveryStore: TriptychMutationRecoveryStore,
-        pageAnnotationStore: PageAnnotationStore? = nil
+        recoveryStore: TriptychMutationRecoveryStore
     ) {
         self.triptychID = triptychID
         self.repository = repository
-        self.humanReviewStore = humanReviewStore
         self.dialogueStore = dialogueStore
         self.critiqueRegistry = critiqueRegistry
         self.checkpointStore = checkpointStore
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
-        self.pageAnnotationStore = pageAnnotationStore
         self.faultPlan = .none
     }
 
     init(
         triptychID: UUID,
         repository: VaultRepository,
-        humanReviewStore: HumanReviewStore,
         dialogueStore: DialogueStore,
         critiqueRegistry: CritiqueRegistry,
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
-        pageAnnotationStore: PageAnnotationStore? = nil,
         faultPlan: PermanentDeletionFaultPlan
     ) {
         self.triptychID = triptychID
         self.repository = repository
-        self.humanReviewStore = humanReviewStore
         self.dialogueStore = dialogueStore
         self.critiqueRegistry = critiqueRegistry
         self.checkpointStore = checkpointStore
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
-        self.pageAnnotationStore = pageAnnotationStore
         self.faultPlan = faultPlan
     }
 
@@ -150,11 +138,9 @@ public actor NotePermanentDeletionCoordinator {
             critiqueIdentityRecord = nil
         }
         let critiqueNoteID = critiqueIdentityRecord?.id
-        let critiqueHumanReview: HumanReviewRecord?
         let critiqueDialogues: [DialogueEntry]
         let critiqueIdentityBackup: PermanentDeletionIdentityBackup?
         if let critiqueIdentityRecord {
-            critiqueHumanReview = await humanReviewStore.record(noteID: critiqueIdentityRecord.id)
             critiqueDialogues = await dialogueStore.entries(noteID: critiqueIdentityRecord.id)
             critiqueIdentityBackup = try await controlStore.prepareIdentityPurge(
                 id: critiqueIdentityRecord.id,
@@ -162,24 +148,8 @@ public actor NotePermanentDeletionCoordinator {
                 relativePath: critiqueIdentityRecord.relativePath
             )
         } else {
-            critiqueHumanReview = nil
             critiqueDialogues = []
             critiqueIdentityBackup = nil
-        }
-        let pageAnnotations: [AnnotationRecord]?
-        let critiquePageAnnotations: [AnnotationRecord]?
-        if let pageAnnotationStore {
-            pageAnnotations = await pageAnnotationStore.annotations(for: noteID)
-            if let critiqueNoteID {
-                critiquePageAnnotations = await pageAnnotationStore.annotations(
-                    for: critiqueNoteID
-                )
-            } else {
-                critiquePageAnnotations = nil
-            }
-        } else {
-            pageAnnotations = nil
-            critiquePageAnnotations = nil
         }
 
         var backup = PermanentDeletionRecoveryBackup(
@@ -189,10 +159,8 @@ public actor NotePermanentDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision,
             checkpointArea: checkpointArea,
-            humanReview: await humanReviewStore.record(noteID: noteID),
             dialogues: await dialogueStore.entries(noteID: noteID),
             critiqueNoteID: critiqueNoteID,
-            critiqueHumanReview: critiqueHumanReview,
             critiqueDialogues: critiqueDialogues,
             critiqueAssociations: associations,
             identity: try await controlStore.prepareIdentityPurge(
@@ -203,9 +171,7 @@ public actor NotePermanentDeletionCoordinator {
             critiqueIdentity: critiqueIdentityBackup,
             sourceDeletion: nil,
             critiqueDeletion: nil,
-            checkpointPurge: nil,
-            pageAnnotations: pageAnnotations,
-            critiquePageAnnotations: critiquePageAnnotations
+            checkpointPurge: nil
         )
         var record = makeRecord(
             id: UUID(),
@@ -256,18 +222,8 @@ public actor NotePermanentDeletionCoordinator {
             try await repository.applyPreparedPermanentDeletion(sourceDeletion)
             try faultPlan.trigger(.afterSourceDeletion)
 
-            _ = try await humanReviewStore.purge(noteID: noteID)
-            try faultPlan.trigger(.afterHumanReviewPurge)
-            if let pageAnnotationStore {
-                _ = try await pageAnnotationStore.purge(noteID: noteID)
-                if let critiqueNoteID {
-                    _ = try await pageAnnotationStore.purge(noteID: critiqueNoteID)
-                }
-            }
-            try faultPlan.trigger(.afterPageAnnotationPurge)
             _ = try await dialogueStore.purgeEntries(containing: noteID)
             if let critiqueNoteID {
-                _ = try await humanReviewStore.purge(noteID: critiqueNoteID)
                 _ = try await dialogueStore.purgeEntries(containing: critiqueNoteID)
             }
             try faultPlan.trigger(.afterDialoguePurge)
@@ -308,7 +264,6 @@ public actor NotePermanentDeletionCoordinator {
                 relativePath: relativePath,
                 fingerprint: expectedRevision,
                 removedCritiqueDocumentPath: backup.critiqueDeletion?.relativePath,
-                removedHumanReview: backup.humanReview != nil,
                 removedDialogueIDs: Set((backup.dialogues + backup.critiqueDialogues).map(\.id))
                     .sorted { $0.uuidString < $1.uuidString },
                 removedCritiqueAssociationIDs: backup.critiqueAssociations.map(\.id).sorted {
@@ -394,21 +349,6 @@ public actor NotePermanentDeletionCoordinator {
         if let checkpoints = backup.checkpointPurge {
             do { try await checkpointStore.rollbackPreparedCheckpointPurge(checkpoints) }
             catch { rollbackErrors.append("Checkpoints: \(error.localizedDescription)") }
-        }
-        do { try await humanReviewStore.restorePurgedRecordIfPresent(backup.humanReview) }
-        catch { rollbackErrors.append("Earlier Review archive: \(error.localizedDescription)") }
-        do { try await humanReviewStore.restorePurgedRecordIfPresent(backup.critiqueHumanReview) }
-        catch { rollbackErrors.append("Critique comments: \(error.localizedDescription)") }
-        if let pageAnnotationStore {
-            do { try await pageAnnotationStore.restorePurgedAnnotations(backup.pageAnnotations ?? []) }
-            catch { rollbackErrors.append("Page Annotations: \(error.localizedDescription)") }
-            do {
-                try await pageAnnotationStore.restorePurgedAnnotations(
-                    backup.critiquePageAnnotations ?? []
-                )
-            } catch {
-                rollbackErrors.append("Critique page Annotations: \(error.localizedDescription)")
-            }
         }
         do { try await dialogueStore.restorePurgedEntries(backup.dialogues + backup.critiqueDialogues) }
         catch { rollbackErrors.append("Discussion: \(error.localizedDescription)") }
@@ -575,25 +515,11 @@ public actor NotePermanentDeletionCoordinator {
     }
 
     private func requireHealthyStores() async throws {
-        if let error = await humanReviewStore.healthError() {
-            throw ResearchRecordStoreError.unreadableStore(kind: "earlier Review archive", reason: error)
-        }
         if let error = await dialogueStore.healthError() {
             throw ResearchRecordStoreError.unreadableStore(kind: "Discussion", reason: error)
         }
         if let error = await critiqueRegistry.healthError() {
             throw ResearchRecordStoreError.unreadableStore(kind: "Critique", reason: error)
         }
-        if let pageAnnotationStore,
-           let error = await pageAnnotationStore.healthError() {
-            throw ResearchRecordStoreError.unreadableStore(kind: "Page Annotation", reason: error)
-        }
-    }
-}
-
-private extension HumanReviewStore {
-    func restorePurgedRecordIfPresent(_ record: HumanReviewRecord?) throws {
-        guard let record else { return }
-        try restorePurgedRecord(record)
     }
 }

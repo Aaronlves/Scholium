@@ -145,24 +145,6 @@
         }
       }
     },
-    "researchFunction.group.accessibilityLabel" : {
-      "comment" : "VoiceOver label for the complete Research Function strip.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Research functions"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究功能"
-          }
-        }
-      }
-    },
     "researchFunction.manuscript.help" : {
       "comment" : "Help and accessibility hint for the Manuscript Research Function.",
       "extractionState" : "extracted_with_value",

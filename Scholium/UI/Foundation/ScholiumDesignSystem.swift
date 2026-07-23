@@ -719,7 +719,6 @@ enum ScholiumGrid {
         static let contentToRuleGap = foundationUnit * 4
         static let actionRowVerticalInset = foundationUnit * 2.5
         static let actionCopyGap = foundationUnit
-        static let actionFooterGap = foundationUnit * 2
         static let activityHUDInset = foundationUnit * 2
         static let activityHUDCornerRadius = foundationUnit * 1.5
         static let factGridMinimumWidth = foundationUnit * 65
@@ -823,7 +822,6 @@ enum ScholiumMetrics {
         static let modeColumnSpacing = ScholiumGrid.Apparatus.modeColumnGap
         static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
-        static let actionFooterSpacing = ScholiumGrid.Apparatus.actionFooterGap
         static let activityHUDInset = ScholiumGrid.Apparatus.activityHUDInset
         static let activityHUDCornerRadius = ScholiumGrid.Apparatus.activityHUDCornerRadius
         static let factGridMinimumWidth = ScholiumGrid.Apparatus.factGridMinimumWidth

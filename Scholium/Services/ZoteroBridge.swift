@@ -4,9 +4,6 @@ import Foundation
 import AppKit
 #endif
 
-typealias ZoteroCitation = ZoteroItemMetadata
-typealias ZoteroBridgeError = ZoteroUseCaseError
-
 /// macOS presentation adapter over the Application-owned Zotero capability.
 /// HTTP, decoding, matching, and connection history remain behind `ZoteroUseCases`;
 /// this adapter owns only external-app presentation.
@@ -35,14 +32,6 @@ actor ZoteroBridge {
             NSWorkspace.shared.open(url)
         }
         #endif
-    }
-
-    func resolve(source: ZoteroSourceIdentity) async throws -> ZoteroMatchResult {
-        try await operations.resolve(source: source)
-    }
-
-    func resolveCitation(zoteroKey: String) async throws -> ZoteroCitation? {
-        try await operations.resolveCitation(zoteroKey: zoteroKey)
     }
 
     func openInZotero(zoteroKey: String) {

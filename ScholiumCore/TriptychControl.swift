@@ -571,17 +571,6 @@ public actor TriptychControlStore {
         try encode(payload, to: identitiesURL)
     }
 
-    /// Returns a unique fingerprint match for confirming an external rename.
-    public func externalRenameCandidate(
-        vaultID: UUID,
-        fingerprint: DocumentFingerprint
-    ) throws -> NoteIdentityRecord? {
-        let matches = try identityPayload().records.filter {
-            $0.vaultID == vaultID && $0.fingerprint == fingerprint
-        }
-        return matches.count == 1 ? matches[0] : nil
-    }
-
     /// Reconciles one vault inventory in one atomic portable-state write.
     ///
     /// Exact paths are claimed before fingerprint matching so an external copy
@@ -718,13 +707,6 @@ public actor TriptychControlStore {
                 .filter { $0.vaultID == vaultID }
                 .sorted { $0.relativePath < $1.relativePath }
         )
-    }
-
-    public func reconcileIdentities(
-        vaultID: UUID,
-        documents: [(relativePath: String, fingerprint: DocumentFingerprint)]
-    ) throws -> [String: NoteIdentityRecord] {
-        try reconcileIdentityInventory(vaultID: vaultID, documents: documents).identities
     }
 
     /// Resolves an ambiguous external rename after the researcher has seen the

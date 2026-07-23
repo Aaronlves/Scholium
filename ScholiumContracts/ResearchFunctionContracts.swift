@@ -160,17 +160,17 @@ public enum ResearchFunctionScopeKind: String, Codable, Hashable, Sendable {
 /// text as writable authority.
 public struct ResearchFunctionScope: Codable, Hashable, Sendable {
     public let kind: ResearchFunctionScopeKind
-    public let selection: ResearcherCommentAnchor?
+    public let selection: CommentAnchor?
 
     public static let whole = Self(kind: .whole)
 
-    public static func passage(_ selection: ResearcherCommentAnchor) -> Self {
+    public static func passage(_ selection: CommentAnchor) -> Self {
         Self(kind: .passage, selection: selection)
     }
 
     public init(
         kind: ResearchFunctionScopeKind,
-        selection: ResearcherCommentAnchor? = nil
+        selection: CommentAnchor? = nil
     ) {
         self.kind = kind
         self.selection = selection
@@ -1160,7 +1160,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
 }
 
 /// Durable completion evidence. Fidelity remains attributed structured output,
-/// not a hidden app judgment or a replacement for Human Review or Critique.
+/// not a hidden app judgment or a replacement for researcher acceptance or Critique.
 public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     public let runID: UUID
     public let function: ResearchFunctionID

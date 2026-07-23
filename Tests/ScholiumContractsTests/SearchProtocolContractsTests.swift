@@ -3,7 +3,7 @@ import ScholiumContracts
 import Testing
 
 @Suite("Search v4 contracts")
-struct SearchV3ContractsTests {
+struct SearchProtocolContractsTests {
     @Test("Finite syntax parses AND, escaped phrases, prefix, and exclusion")
     func finiteSyntax() throws {
         let result = SearchQueryParser.parse(#"title:"reflective \"equilibrium\"" autonom* -tag:survey"#)
@@ -35,7 +35,7 @@ struct SearchV3ContractsTests {
     func structuredOnly() throws {
         let positive = SearchQueryParser.parse("callout:state")
         #expect(try #require(positive.ast).isFilterOnly)
-        let negative = SearchQueryParser.parse("-review:reviewed")
+        let negative = SearchQueryParser.parse("-has:broken-link")
         #expect(try #require(negative.ast).isFilterOnly)
         #expect(SearchQueryParser.parse("-autonomy").diagnostics.first?.code == .onlyExcludedFreeText)
     }
@@ -50,7 +50,7 @@ struct SearchV3ContractsTests {
         #expect(status.ast == nil)
         #expect(status.diagnostics.first?.code == .removedField)
         #expect(status.diagnostics.first?.message.contains("not a Scholium property") == true)
-        #expect(SearchQueryParser.parse("review:maybe").diagnostics.first?.code == .unknownStructuredValue)
+        #expect(SearchQueryParser.parse("review:reviewed").diagnostics.first?.code == .unknownField)
         #expect(SearchQueryParser.parse("unknown:value").diagnostics.first?.code == .unknownField)
     }
 
@@ -125,7 +125,6 @@ struct SearchV3ContractsTests {
         let projection = SearchDocumentProjection(
             document: document,
             profile: .analysis,
-            review: "unreviewed",
             hasBrokenLink: true
         )
 
@@ -187,7 +186,7 @@ struct SearchV3ContractsTests {
         )) == decomposed)
     }
 
-    @Test("A cached source projection changes only dynamic review and broken-link state")
+    @Test("A cached source projection changes only dynamic broken-link state")
     func cachedSourceProjection() {
         let document = NoteDocument(
             relativePath: "Cached.md",
@@ -206,7 +205,6 @@ struct SearchV3ContractsTests {
             document: document,
             semantic: semantic,
             cachedSourceProjection: cached,
-            review: "QUALIFIED",
             hasBrokenLink: true
         )
         let rebuilt = SearchIndexDocument(
@@ -215,13 +213,11 @@ struct SearchV3ContractsTests {
             vaultRole: reused.vaultRole,
             document: document,
             semantic: semantic,
-            review: "QUALIFIED",
             hasBrokenLink: true
         )
 
         #expect(reused.projection == rebuilt.projection)
         #expect(reused.projection.segments == cached.segments)
-        #expect(reused.projection.review == "qualified")
         #expect(reused.projection.hasBrokenLink)
         #expect(reused.projection.projectionHash != cached.projectionHash)
     }

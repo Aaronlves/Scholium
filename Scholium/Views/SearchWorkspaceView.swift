@@ -787,7 +787,7 @@ struct SpotlightSearchPanelView: View {
         case .invalidScope:
             String(localized: "Choose This Note, This Vault, or Triptych as the Search scope.")
         case .onlyExcludedFreeText:
-            String(localized: "Add a positive term or a structured review, callout, or broken-link condition.")
+            String(localized: "Add a positive term or a structured callout or broken-link condition.")
         case .needsEditing:
             String(localized: "Edit this saved query before running it with Search v4.")
         }
@@ -801,7 +801,6 @@ struct SpotlightSearchPanelView: View {
         case .author: String(localized: "author")
         case .year: String(localized: "year")
         case .tag: String(localized: "tag")
-        case .review: String(localized: "review")
         case .path: String(localized: "path")
         case .callout: String(localized: "callout")
         case .footnote: String(localized: "footnote")
@@ -905,7 +904,6 @@ private struct WorkspaceSearchResultRow: View {
         case .author: String(localized: "author")
         case .year: String(localized: "year")
         case .tag: String(localized: "tag")
-        case .review: String(localized: "review")
         case .body: String(localized: "body")
         case .callout: String(localized: "callout")
         case .footnote: String(localized: "footnote")

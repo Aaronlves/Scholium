@@ -644,7 +644,6 @@ struct TriptychSearchIndexTests {
             vault: RegisteredVault,
             path: String,
             source: String,
-            review: String? = nil,
             broken: Bool = false
         ) -> SearchIndexDocument {
             SearchIndexDocument(
@@ -652,7 +651,6 @@ struct TriptychSearchIndexTests {
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 document: NoteDocument(relativePath: path, rawContent: source),
-                review: review,
                 hasBrokenLink: broken
             )
         }

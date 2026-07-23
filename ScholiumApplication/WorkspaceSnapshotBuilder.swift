@@ -259,10 +259,6 @@ enum WorkspaceSnapshotBuilder {
         })
 
         let researchStateStart = clock.now
-        // Legacy Human Review is retained strictly for compatibility search
-        // and Research Record history. Current Inspector and Action state is
-        // projected from Research Activity instead.
-        let legacyHumanReviews = await services.humanReviewStore.allRecords()
         let settlements = await services.researchActivityStore.allSettlements()
         let activityGrants = await services.researchActivityStore.grants()
         let latestSettlementByNoteID = Dictionary(
@@ -281,12 +277,6 @@ enum WorkspaceSnapshotBuilder {
                 )
             }
         }
-        let reviewByLocation = Dictionary(
-            legacyHumanReviews.map { record in
-                (VaultQualifiedNoteID(vaultID: record.vaultID, relativePath: record.relativePath), record)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
         let researchStateDuration = researchStateStart.duration(to: clock.now)
         let searchDocumentProjectionStart = clock.now
         var searchDocuments: [SearchIndexDocument] = []
@@ -298,7 +288,6 @@ enum WorkspaceSnapshotBuilder {
                     vaultID: loaded.vault.id,
                     relativePath: document.relativePath
                 )
-                let review = reviewByLocation[id]
                 guard let semantic = loaded.semantics[document.relativePath],
                       let cachedSourceProjection = loaded.searchProjections[
                           document.relativePath
@@ -314,9 +303,6 @@ enum WorkspaceSnapshotBuilder {
                     document: document,
                     semantic: semantic,
                     cachedSourceProjection: cachedSourceProjection,
-                    review: searchReviewState(
-                        review?.review(for: document.fingerprint)
-                    ).rawValue,
                     hasBrokenLink: brokenNoteIDs.contains(id)
                 )
             })
@@ -393,13 +379,7 @@ enum WorkspaceSnapshotBuilder {
         var healthIssues: [String] = []
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
         if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
-        if let issue = await services.humanReviewStore.healthError() {
-            healthIssues.append("Legacy Review archive: \(issue)")
-        }
         if let issue = await services.researchActivityStore.healthError() {
-            healthIssues.append(issue)
-        }
-        if let issue = await services.pageAnnotationStore.healthError() {
             healthIssues.append(issue)
         }
         if let issue = await services.dialogueStore.healthError() {
@@ -497,14 +477,12 @@ enum WorkspaceSnapshotBuilder {
             return $0.id.uuidString < $1.id.uuidString
         }
         let storedFunctionRuns = (
-            allDialogueEntries.compactMap { entry in
-                entry.functionSnapshot.map {
-                    ResearchFunctionRecordProjection(
-                        snapshot: $0,
-                        completion: entry.functionCompletion,
-                        preparedInstructions: entry.preparedInstructions
-                    )
-                }
+            allDialogueEntries.map { entry in
+                ResearchFunctionRecordProjection(
+                    snapshot: entry.functionSnapshot,
+                    completion: entry.functionCompletion,
+                    preparedInstructions: entry.preparedInstructions
+                )
             }
             + critiqueAssociations.flatMap { association in
                 association.rounds.compactMap { round in
@@ -535,10 +513,9 @@ enum WorkspaceSnapshotBuilder {
                 ($0.id, $0.fingerprint)
             }
         )
-        let allAnnotations = await services.pageAnnotationStore
-            .allAnnotations()
-        let legacyCommentsByID: [UUID: ResearcherComment] = Dictionary(
-            legacyHumanReviews.flatMap(\.comments).map { ($0.id, $0) },
+        let allCommentExchanges = await services.researchActivityStore.allExchanges()
+        let commentExchangesByID: [UUID: CommentExchange] = Dictionary(
+            allCommentExchanges.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let functionRuns = storedFunctionRuns.map { run in
@@ -559,12 +536,12 @@ enum WorkspaceSnapshotBuilder {
                 outputIsCurrent = completion.outputFingerprint == nil
             }
             let currentEvidence = try? run.snapshot.request.commentIDs.map { id -> DocumentFingerprint in
-                guard let comment = legacyCommentsByID[id] else {
+                guard let exchange = commentExchangesByID[id] else {
                     throw ResearchFunctionContractError.invalidCompletion(
-                        "Selected legacy Annotation evidence is no longer available."
+                        "Included Comment evidence is no longer available."
                     )
                 }
-                return try legacyAnnotationEvidenceRevision(comment)
+                return try commentEvidenceRevision(exchange)
             }.sorted { lhs, rhs in
                 if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
                 return lhs.byteCount < rhs.byteCount
@@ -602,16 +579,13 @@ enum WorkspaceSnapshotBuilder {
             return run
         }
         let research = WorkspaceResearchSnapshot(
-            legacyHumanReviews: legacyHumanReviews,
             activityEvents: await services.researchActivityStore.allEvents(),
             settlements: settlements,
-            annotations: allAnnotations,
-            commentExchanges: await services.researchActivityStore.allExchanges(),
+            commentExchanges: allCommentExchanges,
             pendingResearchStates: await services.researchActivityStore.allPendingStates(),
             activityGrants: activityGrants,
             dialogues: allDialogueEntries.filter {
-                $0.functionSnapshot == nil
-                    || $0.functionSnapshot?.request.function == .discuss
+                $0.functionSnapshot.request.function == .discuss
             },
             critiques: critiqueAssociations,
             functionRuns: functionRuns,
@@ -672,22 +646,13 @@ enum WorkspaceSnapshotBuilder {
         )
     }
 
-    private static func searchReviewState(
-        _ review: CompletedHumanReview?
-    ) -> SearchReviewState {
-        switch review?.qualification {
-        case .qualified: .qualified
-        case .unqualified: .unqualified
-        case nil: review == nil ? .unreviewed : .reviewed
-        }
-    }
 }
 
-private func legacyAnnotationEvidenceRevision(
-    _ annotation: ResearcherComment
+private func commentEvidenceRevision(
+    _ exchange: CommentExchange
 ) throws -> DocumentFingerprint {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     encoder.outputFormatting = [.sortedKeys]
-    return DocumentFingerprint(data: try encoder.encode(annotation))
+    return DocumentFingerprint(data: try encoder.encode(exchange))
 }

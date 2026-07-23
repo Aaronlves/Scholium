@@ -61,9 +61,9 @@ use-case protocols live in `ScholiumContracts`, internal I/O lives in
 `ScholiumCore`, and one headless `ScholiumApplication` layer is shared by the
 macOS app and CLI. Core is not a public product and neither delivery target can
 import it. Reachable behavior includes multi-Triptych registration
-and window routing, Triptych control, safe note lifecycle, Human Review,
-Dialogue, Critique, machine-local prewrite recovery, whole-Triptych checkpoints, direct
-revision-checked CLI writes, vault-wide Properties, Unclassified import,
+and window routing, Triptych control, safe note lifecycle, Comment, current
+Function-backed Discussion, Critique, machine-local prewrite recovery,
+whole-Triptych checkpoints, direct revision-checked CLI writes, vault-wide Properties, Unclassified import,
 unified search, protected CSS snippets, localhost-only Zotero reading, and a
 first-party optional Zotero MCP service for external agents. The Canvas feature
 has been removed from the product. Works folders remain ordinary

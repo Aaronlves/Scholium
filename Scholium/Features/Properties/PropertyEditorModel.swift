@@ -268,15 +268,6 @@ struct PropertyEditorModel: Sendable {
         }
     }
 
-    private static func parseDate(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-        if let date = formatter.date(from: string) { return date }
-        let fallback = DateFormatter()
-        fallback.dateFormat = "yyyy-MM-dd"
-        return fallback.date(from: string)
-    }
-
     private static func editValue(_ value: YAMLValue) -> FrontmatterEditValue {
         switch value {
         case .string(let value): .string(value)

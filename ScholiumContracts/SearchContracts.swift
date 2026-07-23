@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SearchMatchedField: String, Codable, Hashable, Sendable {
-    case title, alias, heading, author, year, tag, review, body, callout, footnote, path
+    case title, alias, heading, author, year, tag, body, callout, footnote, path
     case brokenLink = "broken_link"
 }
 
@@ -99,7 +99,6 @@ public struct SearchIndexDocument: Sendable {
     public let authors: [String]
     public let year: String?
     public let tags: [String]
-    public let review: String?
     public let document: NoteDocument
     public let semantic: MarkdownSemanticDocument
     public let evidentialLayer: EvidentialLayer
@@ -112,7 +111,6 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         semantic: MarkdownSemanticDocument? = nil,
-        review: String? = nil,
         hasBrokenLink: Bool = false
     ) {
         self.init(
@@ -124,7 +122,6 @@ public struct SearchIndexDocument: Sendable {
                 parsing: document
             ),
             sourceProjection: nil,
-            review: review,
             hasBrokenLink: hasBrokenLink
         )
     }
@@ -136,7 +133,6 @@ public struct SearchIndexDocument: Sendable {
         document: NoteDocument,
         semantic: MarkdownSemanticDocument,
         cachedSourceProjection: SearchDocumentProjection,
-        review: String? = nil,
         hasBrokenLink: Bool = false
     ) {
         self.init(
@@ -146,7 +142,6 @@ public struct SearchIndexDocument: Sendable {
             document: document,
             resolvedSemantic: semantic,
             sourceProjection: cachedSourceProjection,
-            review: review,
             hasBrokenLink: hasBrokenLink
         )
     }
@@ -158,7 +153,6 @@ public struct SearchIndexDocument: Sendable {
         document: NoteDocument,
         resolvedSemantic: MarkdownSemanticDocument,
         sourceProjection cachedSourceProjection: SearchDocumentProjection?,
-        review: String?,
         hasBrokenLink: Bool
     ) {
         self.vaultID = vaultID
@@ -183,7 +177,6 @@ public struct SearchIndexDocument: Sendable {
             ?? []
         year = document.parsedFrontmatter["year"]?.displayScalar
         tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
-        self.review = review
         self.hasBrokenLink = hasBrokenLink
         let sourceProjection = cachedSourceProjection ?? SearchDocumentProjection(
             document: document,
@@ -195,7 +188,6 @@ public struct SearchIndexDocument: Sendable {
             semantic: self.semantic
         )
         projection = sourceProjection.applyingDynamicState(
-            review: review,
             hasBrokenLink: hasBrokenLink
         )
         evidentialLayer = switch vaultRole {

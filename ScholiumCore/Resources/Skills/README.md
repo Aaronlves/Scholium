@@ -36,7 +36,7 @@ Researcher:
 - scholium-prose-control: optional meaning-preserving method for Revise;
 - scholium-citation-verification: optional APA 7 verification and formatting starter for Fidelity.
 
-Discuss is System transport and record infrastructure. Earlier Dialogue and Human Review data are read-only compatibility archives. Source Analyzer is a shipped Researcher Skill, but Source Analysis and skill self-evolution are not Workflow packages or Inspector functions. The agent may analyze a source supplied through Zotero, a local file, or another available channel; Scholium need not store or control the source. Persisting or developing the result in a Scholium note is a separate researcher-authorized action.
+Discuss is System transport and record infrastructure. Only current Function-backed Discussion records are supported. Source Analyzer is a shipped Researcher Skill, but Source Analysis and skill self-evolution are not Workflow packages or Inspector functions. The agent may analyze a source supplied through Zotero, a local file, or another available channel; Scholium need not store or control the source. Persisting or developing the result in a Scholium note is a separate researcher-authorized action.
 
 ## Function routing
 

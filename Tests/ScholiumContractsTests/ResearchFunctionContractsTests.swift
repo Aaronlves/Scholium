@@ -80,7 +80,7 @@ struct ResearchFunctionContractsTests {
             ).validate()
         }
 
-        let anchor = ResearcherCommentAnchor(
+        let anchor = CommentAnchor(
             fingerprint: analysis.fingerprint,
             utf8Range: 2..<7,
             utf16Range: 2..<7,
@@ -392,7 +392,7 @@ struct ResearchFunctionContractsTests {
     @Test("Fidelity evidence identity changes with revision, scope, comments, and loaded audit resources")
     func fidelityEvidenceIdentity() {
         let target = target(role: .analysis)
-        let anchor = ResearcherCommentAnchor(
+        let anchor = CommentAnchor(
             fingerprint: target.fingerprint,
             utf8Range: 0..<5,
             utf16Range: 0..<5,

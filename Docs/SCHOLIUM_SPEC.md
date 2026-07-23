@@ -46,8 +46,9 @@ unrecognized Triptych files.
   the agent read it.
 - A **Comment** is a deliberate passage-scoped communication exchange with an
   agent: researcher request, agent reply, researcher Finish. Only Finish emits
-  the durable **Commented** activity. An **Annotation** is a private,
-  researcher-owned passage note and never emits activity.
+  the durable **Commented** activity. Written annotations remain authoritative
+  Markdown, optionally expressed as semantic Callouts; they are not app-owned
+  records.
 - **Settle** is the researcher's idempotent, fingerprint-bound judgment that
   one saved revision is sufficiently stable for current research. It is neither
   a verdict nor a qualification.
@@ -68,8 +69,8 @@ unrecognized Triptych files.
   only a digest and the frozen Origin, scope, identities, revisions, and expiry.
 - **Research Record** is the note-following detail view for durable research
   activity, Comment exchanges, Critique, and provenance. It is a nonmodal
-  secondary window and contains no versions. Annotation stays with the page
-  and never appears as chronology.
+  secondary window and contains no versions. Ordinary Markdown annotations
+  remain in the document and never appear as separate chronology.
 - A **Checkpoint** is a self-contained, fingerprint-bound snapshot of the
   complete Triptych, distinct from editor Undo.
 
@@ -91,9 +92,9 @@ contextual inspection must work without data loss, shell reconstruction, or
 surprising state changes. Visual metrics are provisional unless required by
 readability, accessibility, source integrity, or native-window behavior.
 
-Scholium supports source-grounded reading, writing, private Annotation,
-deliberate agent communication, Settle, Search, Connect, organization,
-recovery, and provenance. It is not project or reference management,
+Scholium supports source-grounded reading, writing, authoritative Markdown
+annotation, deliberate agent communication, Settle, Search, Connect,
+organization, recovery, and provenance. It is not project or reference management,
 permanent AI chat, or a full Obsidian replacement. The manual core must work
 without Obsidian, Zotero, or agents.
 
@@ -139,7 +140,7 @@ methods remain researcher-owned responsibility.
 
 Keep independent: Origin and confirmed modified identities; vault role and
 location; settlement fingerprint and changed-since-settled state; Critique
-authorship; private Annotations; and Comment or Discuss turns. Agent origin
+authorship; and Comment or Discuss turns. Agent origin
 does not disappear after Finish, Settle, incorporation, or later editing.
 
 Visible labels stay sparse. Location communicates Analysis, Topic, Work, and
@@ -212,7 +213,7 @@ Application Support owns:
   creating a fourth vault, plus the agent application selected for Beta handoff;
 - window sessions and vault-qualified Document tabs;
 - derived indexes, temporary files, and caches;
-- app-owned Research Activity, Settlement, Annotation, Comment, Discuss,
+- app-owned Research Activity, Settlement, Comment, Discuss,
   Critique, and Research Record data; and
 - self-contained Triptych checkpoints.
 
@@ -262,8 +263,8 @@ Analysis, Topic, and ordinary Work notes support:
   Put Back, and permanent deletion;
 - exact-source preservation, conflict detection, atomic writes, and external
   coordination;
-- source-located Connect relations plus distinct passage Annotations and
-  Comments;
+- source-located Connect relations, passage Comments, and authoritative
+  Markdown annotation including semantic Callouts;
 - role-aware Properties and one-note or multi-note Discuss/Write;
 - Search in **This Note**, **This Vault**, or **Triptych**, plus Attention; and
 - Research Record and independent checkpoint recovery.
@@ -451,7 +452,7 @@ Paths are locations; notes have stable app-owned identities. Duplication creates
 a new identity with no inherited Settlement or Research Activity and records
 origin. Confirmed moves/renames preserve records and update resolved incoming
 links. Ambiguous external rename keeps the note readable but blocks
-identity-dependent mutation, Settle, Research Record, Annotation, and Comment
+identity-dependent mutation, Settle, Research Record, and Comment
 attachment until confirmation.
 
 ## 6. Note location, Set Aside, and Trash
@@ -467,7 +468,7 @@ active, Set Aside, or Trash state.
 - **Put Back** restores the exact original vault-relative path and reports a
   conflict rather than inventing another name or destination.
 - **Cancel** changes nothing.
-- **Delete Permanently** purges the note, Annotations, Comment and Discuss
+- **Delete Permanently** purges the note, Comment and Discuss
   exchanges, Settlements, Research Activity, associated Critique, and
   note-specific app state from live storage and every checkpoint. A checkpoint
   that cannot be scrubbed is invalidated and removed; a shared activity record
@@ -477,7 +478,7 @@ Note-specific records follow stable identity into Set Aside and Trash while
 recovery remains possible. Permanent deletion advertises no checkpoint or
 Research Record recovery.
 
-## 7. Settlement, Comments, and Annotations
+## 7. Settlement and Comments
 
 ### 7.1 Settle
 
@@ -492,29 +493,29 @@ the transient **Changed Since Settled** HUD and Attention state. Response ready
 and Awaiting Fidelity appear as nonblocking reminders in the confirmation; the
 researcher retains the judgment.
 
-### 7.2 Comment and Annotation
+### 7.2 Comment and written annotation
 
-Read, Live Preview, and Source expose distinct passage-selection actions.
-**Annotation** creates or edits a private, source-anchored marginal note. It
-remains beside the passage in the page, persists across reopening, and appears
-in neither Research Activity nor Research Record. **Comment** opens a complete
-agent-communication exchange with the exact selection, reply recording, Follow
-Up, and researcher Finish. Finish is the sole operation that appends
-**Commented**. Neither action has a whole-note fallback. Reattachment remains
-available only when quotation and context identify one reliable location.
+Read, Live Preview, and Source expose **Comment** for an exact passage
+selection. Comment opens a complete agent-communication exchange with reply
+recording, Follow Up, and researcher Finish. Finish is the sole operation that
+appends **Commented**. Comment has no whole-note fallback, and reattachment
+remains available only when quotation and context identify one reliable
+location.
 
-### 7.3 Legacy migration
+Scholium has no app-owned Annotation record, marginal-note store, Annotation
+action, or overlay. A researcher annotates a document authoritatively by
+editing its Markdown, including an ordinary semantic Callout when a visibly
+separate note is useful. Scholium never converts retired Annotation records
+into Markdown automatically.
 
-Existing ResearcherComment records import as page Annotations. Existing Human Review
-and qualification records are read-only compatibility archive data: they do not
-create Settled, Attention, or current-state projections. Existing Dialogue data
-does not infer Commented activity.
+### 7.3 Clean cutover
 
-Migration uses versioned decoders, writes an Application Support backup before
-replacing a supported older payload, and fails closed without inventing state.
-Legacy Develop, Revise, Fidelity, or Critique may backfill a corresponding
-activity only when its completed record and exact revision evidence prove the
-event. Research Markdown is never rewritten by this migration.
+Pre-production Human Review, Qualification, ResearcherComment, app-owned
+Annotation, and pre-Function Dialogue payloads are unsupported and are not
+decoded, migrated, projected, searched, or displayed. The cutover does not
+delete, rewrite, or synthesize research Markdown. Current Comment, Discuss,
+Research Activity, Settlement, Critique, and Function records remain distinct
+current authorities.
 
 ## 8. Research Functions and direct agent work
 
@@ -540,7 +541,7 @@ Selecting the row never synthesizes a result or Research Activity event; only
 validated agent completion against the exact revision may do so.
 
 These stable operations are not a taxonomy of philosophy. There is no Manage
-Comments doorway, Review state, or embedded settlement sheet.
+Comments doorway, Review or Annotation state, or embedded settlement sheet.
 
 The optional-agent journey is choose function, inspect context, prepare durable
 run, hand off, explicitly paste/submit when needed, then inspect source and
@@ -603,7 +604,7 @@ The direct **Write** row asks the researcher to authorize exactly one scope:
 Resolved linked notes may be recommended inside Selected Notes but are never
 selected automatically. The authorized set includes only existing active
 Analysis, Topic, and Work identities; it excludes Materials, Critiques,
-Annotations, Comment/Discuss records, lifecycle/control files, generated state,
+Comment/Discuss records, lifecycle/control files, generated state,
 Set Aside, Trash, Unclassified, creation, deletion, and rename. The Origin is
 recorded separately and receives an activity node only if its source actually
 changes. Preparation freezes the scope and identity set for that run.
@@ -656,8 +657,8 @@ prompt logs, or automatic approval queues.
 The supported CLI validates request, activity-key, and Comment identities and
 appends immutable attributed replies under Application Support. Replies may
 address the instruction, one selected note, or one Comment. An agent never
-edits the record database directly, resolves an Annotation, finishes a Comment,
-or declares a source modification authoritative. A non-CLI reply is recorded
+edits the record database directly, finishes a Comment, or declares a source
+modification authoritative. A non-CLI reply is recorded
 only if the researcher returns it manually.
 
 Beta CLI exposes the immutable `responseContract`; missing snapshots are
@@ -669,8 +670,7 @@ and **Research → Show Research Record** routes open the same nonmodal secondar
 utility window without opening, closing, replacing, or revealing Research
 Inspector. It contains scholarly chronology and provenance only; checkpoints
 remain File-owned recovery artifacts. Researchers may use Discuss without an
-agent as a concise record of their own questions and decisions; this never
-turns an Annotation into a Comment.
+agent as a concise record of their own questions and decisions.
 
 ### 8.3 Research Guidance, prompt templates, and skills
 
@@ -856,8 +856,8 @@ available version for recovery, and never reports **Saved**.
 
 1. Create or import an Analysis and write or revise it against the available
    source.
-2. Read it, follow relevant Connect relations, and add private Annotations or
-   passage-specific Comments when useful.
+2. Read it, follow relevant Connect relations, and add Markdown Callouts,
+   direct prose edits, or passage-specific Comments when useful.
 3. Use Work with Agent or Fidelity when useful. Discuss is read-only; Write
    uses Development and may update the explicitly authorized current or
    multi-note set.
@@ -880,8 +880,8 @@ unit; **Entire source** requires source-wide analysis.
 1. Create or update a Topic from Analyses actually used, preserving
    disagreement, limitations, and uncertainty.
 2. Read it and follow Connect relations to sources and Works.
-3. Add Annotations or passage Comments, or use Work with Agent or Fidelity;
-   Discuss is nonmutating and Write uses Development.
+3. Add Markdown Callouts, direct prose edits, or passage Comments, or use Work
+   with Agent or Fidelity; Discuss is nonmutating and Write uses Development.
 4. Decide whether other materially affected notes need updates.
 
 Scholium never auto-merges an Analysis into Topics. It may report relevant
@@ -1008,12 +1008,6 @@ regular-expression, fuzzy, range, or nested syntax produce an inline query
 diagnostic and never silently broaden retrieval. Scope is selected only by the
 visible interface or CLI option.
 
-The existing `review:` field remains decoder/query compatibility for saved
-searches that explicitly inspect legacy Human Review archive values. It is
-labelled **Legacy Review**, creates no current filter menu or status, and never
-maps Reviewed, Qualified, or Unqualified to Settle. This migration adds no new
-Search syntax.
-
 Search indexes only visible semantic text and derived identity/filter fields,
 never raw Markdown source or link destinations. Title, alias, heading, author,
 year, tag, path, canonical callout, footnote, and residual body text are
@@ -1051,7 +1045,7 @@ excluded. **Vector-Link** means only researcher-authored relation markers.
 
 Attention may report possible-orphan conditions, Changed Since Settled, Broken
 Connections, malformed metadata, or unresolved identity. It never infers
-**Superseded**, qualification, or a philosophical verdict, uses age alone, or
+**Superseded** or a philosophical verdict, uses age alone, or
 issues automatic untraced-premise verdicts. Warnings are dismissible; Settings
 controls duration, default seven days. The researcher retains judgment.
 
@@ -1263,7 +1257,7 @@ native presentation and state ownership without restating each workflow.
 - Derive Read, Live Preview, Source, Properties, Search, and research views
   reversibly from authoritative Markdown; projections never reconstruct
   writable source.
-- Distinguish source, researcher prose, agent content, Annotation, Comment,
+- Distinguish source, researcher prose, agent content, Comment,
   Discuss, Write, Settle, Critique, Connect, and diagnostics by text and
   structure, not color alone.
 - Preserve menu, toolbar, keyboard, pointer, focus, accessibility, cancel,
@@ -1543,7 +1537,7 @@ Only **Response ready**, **Awaiting Fidelity**, and **Changed Since Settled**
 may appear as transient actionable nodes. They do not enter completed history.
 Response ready opens its Comment exchange directly; there is no separate Open
 Comment button. Opening, reading, ordinary editing, saving, Search, selecting
-Materials, preparing or copying a handoff, checkpoints, Annotation, failure,
+Materials, preparing or copying a handoff, checkpoints, failure,
 cancellation, and recovery create no HUD event. The latest end is visible by
 default with a partial adjacent node when space permits. Trackpad, mouse-wheel,
 Previous/Next, arrow-key, focus, and VoiceOver routes remain equivalent. Reduce
@@ -1638,7 +1632,7 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Attention / Connect | 关注 / 连接 |
 | Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
-| Annotation / Comment / Response | 批注 / 评论 / 回应 |
+| Comment / Response | 评论 / 回应 |
 | Research Activity / Research Record | 研究活动 / 研究记录 |
 | Set Aside / SET ASIDE | 搁置 |
 | Trash / TRASH | 纸篓 |
@@ -1865,7 +1859,8 @@ package, signing, or performance result.
 
 - Bootstrap success/failure, registration/restoration, and independent windows;
 - create/open/read/edit/save/Search and explicit cross-vault navigation;
-- Live Preview/Source fidelity, formatting, passage Annotation and Comment,
+- Live Preview/Source fidelity, formatting, passage Comment and Markdown
+  Callout authoring,
   and mode changes;
 - About/Properties, optional Research Unit, Settle, and Research Activity;
 - native split resize/visibility, Document tabs without shell reconstruction,
@@ -1895,7 +1890,7 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, agents, or manual filesystem work. |
 | **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, checkpoints/restore, Trash/purge, external rename, and derived failures pass fixture journeys. |
-| **G5 Scholarly transparency** | Annotation, Comment, Discuss, Write, Settle, Critique, Fidelity, provenance, and uncertainty remain visibly distinct. |
+| **G5 Scholarly transparency** | Authoritative Markdown, Comment, Discuss, Write, Settle, Critique, Fidelity, provenance, and uncertainty remain visibly distinct. |
 | **G6 Accessibility/i18n** | Section 20's declared threshold is met. |
 | **G7 Performance** | The packaged-app `PERFORMANCE_BENCHMARK.md` protocol passes on frozen fixture/machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
@@ -1943,6 +1938,7 @@ only in Git history.
 | **D-098** | 13, 18.3, 20 | **D-100** | 5.1, 18.4, 19.2–19.4, 20 |
 | **D-101** | 1–2, 5–11, 13–14, 18–22 | **D-102** | 5.2, 8.1, 13, 15.2, 18.4–18.7, 19.2–19.3, Appendix A |
 | **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
+| **D-105** | 7, 8.1–8.2, 9–11, 13, 18.1, 18.5, 18.7, 22 | | |
 
 Clean-cutover inventory:
 
@@ -2001,13 +1997,13 @@ Clean-cutover inventory:
   Checked, Settled, Critiqued, Revised, and Critique Addressed events; it may
   also project Response ready, Awaiting Fidelity, and Changed Since Settled as
   transient states. Work with Agent distinguishes read-only Discuss from an
-  explicitly scoped multi-target Write. Comment and Annotation are separate
-  passage actions, Settle is revision-bound and idempotent, and short-lived
-  activity keys reduce agent burden without replacing Application-owned
-  containment, fingerprint, conflict, and recovery checks. Legacy Human Review,
-  qualification, ResearcherComment, and Dialogue records remain read-only
-  migration inputs only and create no current product state without independent
-  evidence.
+  explicitly scoped multi-target Write. Comment is the sole app-owned passage
+  action, written annotations remain authoritative Markdown, Settle is
+  revision-bound and idempotent, and short-lived activity keys reduce agent
+  burden without replacing Application-owned
+  containment, fingerprint, conflict, and recovery checks. Pre-production Human
+  Review, Qualification, ResearcherComment, app-owned Annotation, and
+  pre-Function Dialogue payloads are unsupported after the clean cutover.
 - **D-102:** supersede D-101 wherever it specified the former Properties,
   Zotero-in-Inspector, Work-with-Agent launcher, or action-row presentation.
   Separate canonical property vocabulary, default About profiles, and creation
@@ -2049,6 +2045,18 @@ Clean-cutover inventory:
   alert loop. Storage failure owns the app root with default Retry, selectable
   Details, and Quit; retry revalidates from scratch. QA may use only an
   explicitly supplied isolated root.
+- **D-105:** use one clean current research-record model. Retain no Human
+  Review, Qualification, ResearcherComment, app-owned Annotation, pre-Function
+  Dialogue archive, or `review:` Search syntax, projection, database column,
+  saved-query compatibility, UI, store, decoder, migration, or recovery path.
+  Comment remains the sole app-owned passage record and Critique automatically
+  includes finished current-revision Comments applicable to its Whole or
+  Passage scope. Researcher annotations belong in authoritative Markdown as
+  direct prose or semantic Callouts. Never convert retired app-owned records
+  into Markdown or alter research files during this clean cutover. D-105
+  supersedes D-037, D-043, D-084, and D-101 wherever they require the removed
+  records or Annotation surface; their remaining current-workflow rules stay
+  in force.
 
 Unresolved work must not be described as complete:
 

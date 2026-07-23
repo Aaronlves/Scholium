@@ -46,7 +46,7 @@ struct FunctionCLIExecutableLifecycleTests {
         #expect(String(decoding: noMatch.stdout, as: UTF8.self) == "No matches.\n")
 
         let negativeStructured = try cli.run([
-            "search", "-review:reviewed", "--triptych", triptych,
+            "search", "-has:broken-link", "--triptych", triptych,
             "--limit", "1", "--format", "jsonl",
         ])
         let negativeSummary = try #require(
@@ -58,6 +58,11 @@ struct FunctionCLIExecutableLifecycleTests {
             JSONSerialization.jsonObject(with: Data(negativeSummary.utf8)) as? [String: Any]
         )
         #expect(negativeRecord["type"] as? String == "search_summary")
+
+        try cli.expectFailure(
+            ["search", "review:reviewed", "--triptych", triptych],
+            contains: "Unknown Search field review:"
+        )
 
         try cli.expectFailure(
             ["search", "role:analyses", "--triptych", triptych],

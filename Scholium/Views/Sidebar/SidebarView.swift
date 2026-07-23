@@ -1096,7 +1096,7 @@ struct SidebarLifecycleDestinationView: View {
                 onRequestPutBackFocus(item.note.relativePath)
             }
         } message: {
-            Text("This cannot be undone. Scholium removes the note, its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it.")
+            Text("This cannot be undone. Scholium removes the note, its Comments, Discussions, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it.")
         }
     }
 
@@ -2051,7 +2051,7 @@ private struct TreeNodeView: View {
         switch action {
         case .setAside: "Move ‘\(note.title ?? note.displayName)’ out of the active Workspace?"
         case .trash: "Move ‘\(note.title ?? note.displayName)’ to Trash?"
-        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes its page annotations, earlier Review and Dialogue archives, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it. This cannot be undone."
+        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes its Comments, Discussions, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it. This cannot be undone."
         case nil: ""
         }
     }

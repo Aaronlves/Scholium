@@ -122,7 +122,7 @@ struct DocumentLifecycleOperationsTests {
         let settlement = try await handle.research.settle(
             optionalID,
             expectedRevision: optional.fingerprint,
-            rationale: "Settlement is independent of legacy Review status."
+            rationale: "Settlement is bound only to the current revision."
         )
         #expect(settlement.fingerprint == optional.fingerprint)
 
@@ -357,7 +357,6 @@ struct DocumentLifecycleOperationsTests {
 
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
-        #expect(!commit.removedHumanReview)
         #expect(commit.removedDialogueIDs == [dialogue.runID])
         #expect(commit.invalidatedCheckpointIDs.contains(checkpoint.id))
         #expect(dialogue.snapshot.checkpointID == nil)

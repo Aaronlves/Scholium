@@ -119,12 +119,12 @@ is invalid current state and must fail closed rather than inventing a contract.
 ## 9. Current implementation boundary
 
 The current Scholium implementation creates and updates the portable
-`dialogue-response.json` compatibility profile, snapshots the effective profile into each
+`dialogue-response.json` profile, snapshots the effective profile into each
 new Discuss record as `responseContract`, and places the Discussion ID and
 Triptych selector in the copied transport instructions. Agents retrieve the
 exact request snapshot through the supported `scholium discuss show` command;
 they do not read or edit the raw Application Support Dialogue store.
 
-Earlier Dialogue entries without a snapshot are archive state. Scholium
-does not expose them as current Discuss requests, and an external agent must not
-infer or manufacture the missing researcher selection.
+Every supported Discussion carries that immutable Function snapshot. Entries
+without it are unsupported after the clean cutover, and an external agent must
+not infer or manufacture the missing researcher selection.

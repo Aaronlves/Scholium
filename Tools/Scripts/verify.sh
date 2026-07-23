@@ -142,7 +142,7 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|VaultIdentityRegistry|PortableControlAccessRegistry|TriptychControlStore|ResearchSkillStore|HumanReviewStore|DialogueStore|CritiqueRegistry|TriptychCheckpointStore|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NotePermanentDeletionCoordinator|UnclassifiedClassificationCoordinator)[[:space:]]*\(' \
+if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|VaultIdentityRegistry|PortableControlAccessRegistry|TriptychControlStore|ResearchSkillStore|DialogueStore|CritiqueRegistry|TriptychCheckpointStore|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NotePermanentDeletionCoordinator|UnclassifiedClassificationCoordinator)[[:space:]]*\(' \
   "${DELIVERY_ROOTS[@]}"; then
   echo "Application ownership guard failed: a delivery target constructs an Application-owned authority." >&2
   exit 1

@@ -56,7 +56,6 @@ struct ScrollRestoreRequest: Equatable, Sendable {
 final class DocumentSessionModel: ObservableObject {
     let key: DocumentSessionKey?
     let editorSession = MarkdownEditorSession()
-    let editorFlushToken = UUID()
 
     @Published var isEditing = false
     /// Once created for the selected document, the editor surface remains
@@ -274,15 +273,6 @@ final class DocumentSessionStore {
     var leasedOrPinnedSessions: [(DocumentEditingTarget, DocumentSessionModel)] {
         entries.compactMap { target, entry in
             guard entry.leaseCount > 0 || !pinReasons(for: entry.session).isEmpty else {
-                return nil
-            }
-            return (target, entry.session)
-        }
-    }
-
-    var dirtyOrPinnedSessions: [(DocumentEditingTarget, DocumentSessionModel)] {
-        entries.compactMap { target, entry in
-            guard entry.session.hasUnsavedChanges || !pinReasons(for: entry.session).isEmpty else {
                 return nil
             }
             return (target, entry.session)

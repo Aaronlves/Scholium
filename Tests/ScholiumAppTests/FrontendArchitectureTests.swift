@@ -1378,14 +1378,21 @@ struct FrontendArchitectureTests {
         }
     }
 
-    @Test("The retired native Markdown projection has no production path")
-    func retiredNativeMarkdownProjectionIsAbsent() throws {
+    @Test("Retired Markdown projections cannot regain a production path")
+    func retiredMarkdownProjectionsAreAbsent() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let retiredProjection = repository.appendingPathComponent(
             "Scholium/Views/Note/NativeMarkdownEditorView.swift"
+        )
+        let retiredSemanticProjection = repository.appendingPathComponent(
+            "ScholiumContracts/MarkdownSemantics.swift"
+        )
+        let contractsDirectory = repository.appendingPathComponent(
+            "ScholiumContracts",
+            isDirectory: true
         )
         let productionDocument = try String(
             contentsOf: repository.appendingPathComponent(
@@ -1395,6 +1402,14 @@ struct FrontendArchitectureTests {
         )
 
         #expect(!FileManager.default.fileExists(atPath: retiredProjection.path))
+        #expect(!FileManager.default.fileExists(atPath: retiredSemanticProjection.path))
+        for sourceURL in try FileManager.default.contentsOfDirectory(
+            at: contractsDirectory,
+            includingPropertiesForKeys: nil
+        ).filter({ $0.pathExtension == "swift" }) {
+            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            #expect(!source.contains("MarkdownSemanticProjection"))
+        }
         #expect(!productionDocument.contains("NativeMarkdownReadView("))
         #expect(!productionDocument.contains("NativeMarkdownEditorView("))
     }
@@ -1950,65 +1965,9 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("text-align-last:"))
     }
 
-    @Test("Page Annotations remain beside their passage in Read, Live Preview, and Source")
-    func pageAnnotationsUseOneMarginaliaPresentation() throws {
-        let source = "A selected passage."
-        let fingerprint = DocumentFingerprint(content: source)
-        let annotation = AnnotationRecord(
-            noteID: UUID(),
-            vaultID: UUID(),
-            relativePath: "Topic.md",
-            text: "Distinguish the two senses here.",
-            anchor: ResearcherCommentAnchor(
-                fingerprint: fingerprint,
-                utf8Range: 2..<10,
-                utf16Range: 2..<10,
-                line: 1,
-                endLine: 1,
-                quotation: "selected"
-            )
-        )
-        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
-            body: #"<p data-source-utf16-start="0" data-source-utf16-end="19">A selected passage.</p>"#,
-            source: source,
-            documentID: "Topic.md",
-            fingerprint: fingerprint.sha256,
-            annotationEnabled: true,
-            commentEnabled: true,
-            selectionEnabled: true,
-            annotations: [annotation],
-            linkPreviews: [],
-            presentationCSS: "",
-            userCSS: ""
-        )
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-        let editorCSS = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
-            encoding: .utf8
-        )
 
-        #expect(readHTML.contains("applyPageAnnotations"))
-        #expect(readHTML.contains("page-annotation-rail"))
-        #expect(readHTML.contains("page-annotation-margin"))
-        #expect(readHTML.contains("data-annotation-id"))
-        #expect(readHTML.contains("annotationActivated"))
-        #expect(!readHTML.contains("commentActivated"))
-        #expect(editorSource.contains("setPageAnnotations"))
-        #expect(editorSource.contains("PageAnnotationMarginWidget"))
-        #expect(editorSource.contains("annotationActivated"))
-        #expect(editorCSS.contains(".cm-page-annotation-margin"))
-        #expect(!editorSource.contains("setResearcherComments"))
-    }
-
-    @Test("Page Annotations stay outside Research Record while legacy history remains readable")
-    func pageAnnotationsStayOutsideResearchRecord() throws {
+    @Test("App-owned Annotation and legacy archives stay absent after clean cutover")
+    func removedAnnotationAndLegacyArchivesDoNotRegress() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -2019,19 +1978,31 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let readSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
         let recordStart = try #require(source.range(of: "// MARK: - Research Record"))
         let recordEnd = try #require(
             source.range(of: "// MARK: - Preview", range: recordStart.upperBound..<source.endIndex)
         )
         let recordSource = String(source[recordStart.lowerBound..<recordEnd.lowerBound])
 
-        #expect(!recordSource.contains("annotationSection"))
-        #expect(!recordSource.contains("currentAnnotations"))
-        #expect(!recordSource.contains("Page Annotation"))
+        #expect(!source.contains("PageAnnotation"))
+        #expect(!source.contains("AnnotationRecord"))
+        #expect(!editorSource.contains("setPageAnnotations"))
+        #expect(!editorSource.contains("PageAnnotationMarginWidget"))
+        #expect(!readSource.contains("applyPageAnnotations"))
         #expect(recordSource.contains("Write Activities"))
-        #expect(recordSource.contains("Earlier Review Archive"))
-        #expect(recordSource.contains("Earlier Dialogue Archive"))
-        #expect(recordSource.contains("entry.functionSnapshot == nil"))
+        #expect(!recordSource.contains("Earlier Review Archive"))
+        #expect(!recordSource.contains("Earlier Dialogue Archive"))
+        #expect(!recordSource.contains("entry.functionSnapshot == nil"))
     }
 
     @Test("Read and Live Preview share one offline mathematics runtime and font set")
@@ -2089,10 +2060,8 @@ struct FrontendArchitectureTests {
             source: "",
             documentID: "Table.md",
             fingerprint: DocumentFingerprint(content: "").sha256,
-            annotationEnabled: false,
             commentEnabled: false,
             selectionEnabled: false,
-            annotations: [],
             linkPreviews: [],
             presentationCSS: "",
             userCSS: ""
@@ -2114,10 +2083,8 @@ struct FrontendArchitectureTests {
             source: "",
             documentID: "Footnotes.md",
             fingerprint: DocumentFingerprint(content: "").sha256,
-            annotationEnabled: false,
             commentEnabled: false,
             selectionEnabled: false,
-            annotations: [],
             linkPreviews: [],
             presentationCSS: "",
             userCSS: ""
@@ -2154,10 +2121,8 @@ struct FrontendArchitectureTests {
             source: "[[Target]]",
             documentID: "Source.md",
             fingerprint: DocumentFingerprint(content: "[[Target]]").sha256,
-            annotationEnabled: false,
             commentEnabled: false,
             selectionEnabled: false,
-            annotations: [],
             linkPreviews: [preview],
             presentationCSS: "",
             userCSS: ""

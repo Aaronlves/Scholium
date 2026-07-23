@@ -1,7 +1,7 @@
 import Foundation
 
-/// Current applicability of a researcher Settlement. Unlike legacy Review,
-/// it is not a scholarly qualification and never contributes to Search.
+/// Current applicability of a researcher Settlement. It is not a scholarly
+/// qualification and never contributes to Search.
 public struct WorkspaceSettlementState: Codable, Hashable, Sendable {
     public let settledFingerprint: DocumentFingerprint
     public let changedSinceSettled: Bool
@@ -345,43 +345,6 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
             .map { $0 }
     }
 
-    /// Returns only Analysis notes named by resolved links written in the
-    /// opened Topic or Work. Incoming backlinks, bibliography citations,
-    /// and transitive paths are intentionally excluded.
-    public func zoteroSourceAnalyses(
-        linkedFrom reference: VaultNoteReference,
-        analysesVaultID: UUID
-    ) -> [WorkspaceCatalogNote] {
-        guard [.topicKnowledge, .draftProject].contains(reference.vaultRole),
-              let graph else { return [] }
-        let current = VaultQualifiedNoteID(
-            vaultID: reference.vaultID,
-            relativePath: reference.relativePath
-        )
-        let notesByID = Dictionary(uniqueKeysWithValues: notes.map { note in
-            (
-                VaultQualifiedNoteID(
-                    vaultID: note.reference.vaultID,
-                    relativePath: note.reference.relativePath
-                ),
-                note
-            )
-        })
-        var seenZoteroKeys: Set<String> = []
-        return (graph.outgoing[current] ?? []).compactMap { edge in
-            guard let destination = edge.destination?.note,
-                  let note = notesByID[destination],
-                  note.reference.vaultRole == .sourceCorpus,
-                  note.reference.vaultID == analysesVaultID,
-                  let key = note.zoteroItemKey?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .uppercased(),
-                  !key.isEmpty,
-                  seenZoteroKeys.insert(key).inserted else { return nil }
-            return note
-        }
-    }
-
     private static func searchIdentityComparable(_ value: String) -> String {
         SearchTextNormalization.normalize(value)
     }
@@ -431,7 +394,6 @@ public enum WorkspaceCatalogBuilder {
         settlementStates: [String: WorkspaceSettlementState] = [:],
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
-        graphs: [UUID: GraphSnapshot] = [:],
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
     ) -> WorkspaceCatalogSnapshot {
         build(
@@ -441,7 +403,6 @@ public enum WorkspaceCatalogBuilder {
             settlementStates: settlementStates,
             additionalAttention: additionalAttention,
             graph: graph,
-            graphs: graphs,
             identityAmbiguitiesByVault: identityAmbiguitiesByVault
         )
     }
@@ -453,7 +414,6 @@ public enum WorkspaceCatalogBuilder {
         settlementStates: [String: WorkspaceSettlementState] = [:],
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
-        graphs: [UUID: GraphSnapshot] = [:],
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
     ) -> WorkspaceCatalogSnapshot {
         let vaultsByID = Dictionary(uniqueKeysWithValues: vaults.map { ($0.id, $0) })
@@ -636,8 +596,7 @@ public enum WorkspaceCatalogBuilder {
             }
         }
 
-        let diagnosticGraphs = graph.map { [$0] }
-            ?? (graphs.isEmpty ? [relianceGraph] : Array(graphs.values))
+        let diagnosticGraphs = graph.map { [$0] } ?? [relianceGraph]
         for diagnosticGraph in diagnosticGraphs {
             for diagnostic in diagnosticGraph.diagnostics {
                 guard let note = references["\(diagnostic.source.vaultID.uuidString):\(diagnostic.source.relativePath)"] else { continue }

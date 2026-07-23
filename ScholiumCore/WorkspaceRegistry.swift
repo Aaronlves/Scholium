@@ -163,23 +163,6 @@ public actor WorkspaceRegistry {
         return result
     }
 
-    /// Updates the default Triptych instead of creating a second assignment.
-    public func configureDefaultTriptych(
-        paperAnalysis: (url: URL, identityID: UUID),
-        topicKnowledge: (url: URL, identityID: UUID),
-        output: (url: URL, identityID: UUID)
-    ) throws -> TriptychAssignment {
-        let registry = load()
-        let defaultID = registry.defaultTriptychID
-            ?? sortedTriptychs(registry.triptychs).first?.id
-        return try configureTriptych(
-            id: defaultID,
-            paperAnalysis: paperAnalysis,
-            topicKnowledge: topicKnowledge,
-            output: output
-        )
-    }
-
     public func allTriptychs() -> [TriptychAssignment] {
         let registry = load()
         return sortedTriptychs(registry.triptychs).compactMap { assignment(for: $0, in: registry) }
@@ -189,25 +172,6 @@ public actor WorkspaceRegistry {
         let registry = load()
         guard let triptych = registry.triptychs.first(where: { $0.id == id }) else { return nil }
         return assignment(for: triptych, in: registry)
-    }
-
-    public func resolveTriptych(_ selector: String) throws -> TriptychAssignment {
-        let registry = load()
-        if let id = UUID(uuidString: selector),
-           let triptych = registry.triptychs.first(where: { $0.id == id }),
-           let result = assignment(for: triptych, in: registry) {
-            return result
-        }
-        let matches = registry.triptychs.filter {
-            $0.name.caseInsensitiveCompare(selector) == .orderedSame
-        }.compactMap { assignment(for: $0, in: registry) }
-        guard !matches.isEmpty else {
-            throw WorkspaceRegistryError.triptychSelectorNotFound(selector)
-        }
-        guard matches.count == 1 else {
-            throw WorkspaceRegistryError.ambiguousTriptychSelector(selector)
-        }
-        return matches[0]
     }
 
     public func defaultTriptych() -> TriptychAssignment? {

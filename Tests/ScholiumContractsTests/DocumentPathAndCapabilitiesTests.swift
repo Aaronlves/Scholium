@@ -62,7 +62,6 @@ struct DocumentPathAndCapabilitiesTests {
         )
         #expect(!capabilities.canEditSource)
         #expect(!capabilities.canComment)
-        #expect(!capabilities.canHumanReview)
         #expect(!capabilities.canUseResearchFunctions)
         #expect(!capabilities.isManagedCritique)
         #expect(capabilities.lifecycleActions.isEmpty)
@@ -80,7 +79,6 @@ struct DocumentPathAndCapabilitiesTests {
         #expect(capabilities.canEditSource)
         #expect(capabilities.lifecycleActions == [.classify])
         #expect(!capabilities.canComment)
-        #expect(!capabilities.canHumanReview)
         #expect(!capabilities.canUseResearchFunctions)
     }
 
@@ -94,7 +92,6 @@ struct DocumentPathAndCapabilitiesTests {
         )
         #expect(!capabilities.canEditSource)
         #expect(capabilities.canComment)
-        #expect(!capabilities.canHumanReview)
         #expect(!capabilities.canUseResearchFunctions)
         #expect(capabilities.isManagedCritique)
         #expect(!capabilities.allows(.duplicate))

@@ -3,86 +3,8 @@ import Testing
 import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("Legacy archives, page anchors, Discuss, and Critique records")
+@Suite("Page anchors, Discuss, and Critique records")
 struct ResearchRecordsTests {
-    @Test("Legacy Review display state reflects only the archived fingerprint")
-    func humanReviewDisplayState() {
-        #expect(HumanReviewDisplayState(isReviewed: false, qualification: nil) == .notReviewed)
-        #expect(HumanReviewDisplayState(isReviewed: true, qualification: nil) == .reviewed)
-        #expect(HumanReviewDisplayState(isReviewed: true, qualification: .qualified) == .qualified)
-        #expect(HumanReviewDisplayState(isReviewed: true, qualification: .unqualified) == .unqualified)
-    }
-
-    @Test("Legacy Review archives reopen without a current write workflow")
-    func legacyReviewArchiveReopens() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = HumanReviewStore(storageURL: fixture.support)
-        let noteID = UUID()
-        let vaultID = UUID()
-        let fingerprint = DocumentFingerprint(content: "# Note\n")
-        let archivedAt = Date(timeIntervalSince1970: 1_700_000_000)
-        let archived = HumanReviewRecord(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: "Note.md",
-            draft: HumanReviewDraft(
-                fingerprint: fingerprint,
-                qualification: .qualified,
-                reviewNote: "Needs one more source check.",
-                updatedAt: archivedAt
-            ),
-            completedReviews: [
-                CompletedHumanReview(
-                    fingerprint: fingerprint,
-                    qualification: .qualified,
-                    reviewNote: "Historical assessment.",
-                    completedAt: archivedAt
-                ),
-            ],
-            createdAt: archivedAt,
-            updatedAt: archivedAt
-        )
-        try await store.seedLegacyArchiveForTesting([archived])
-
-        let reopened = HumanReviewStore(storageURL: fixture.support)
-        let restored = try #require(await reopened.record(noteID: noteID))
-        #expect(restored == archived)
-        #expect(restored.review(for: fingerprint)?.qualification == .qualified)
-    }
-
-    @Test("Live legacy Review values match their persisted archive projection")
-    func liveLegacyReviewMatchesPersistedProjection() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let noteID = UUID()
-        let vaultID = UUID()
-        let store = HumanReviewStore(storageURL: fixture.support)
-        let archivedAt = Date(timeIntervalSince1970: 1_700_000_100)
-        let archived = HumanReviewRecord(
-            noteID: noteID,
-            vaultID: vaultID,
-            relativePath: "Note.md",
-            completedReviews: [
-                CompletedHumanReview(
-                    fingerprint: DocumentFingerprint(content: "# Note\n"),
-                    qualification: .qualified,
-                    reviewNote: "The live and reopened archive projections must agree.",
-                    completedAt: archivedAt
-                ),
-            ],
-            createdAt: archivedAt,
-            updatedAt: archivedAt
-        )
-        try await store.seedLegacyArchiveForTesting([archived])
-        let live = try #require(await store.record(noteID: noteID))
-        let reopened = HumanReviewStore(storageURL: fixture.support)
-        let persisted = try #require(await reopened.record(noteID: noteID))
-
-        #expect(archived == live)
-        #expect(live == persisted)
-    }
-
     @Test("Live Dialogue and Critique values match persisted delivery projections")
     func liveDialogueAndCritiqueMatchPersistedProjection() async throws {
         let fixture = try Fixture()
@@ -103,13 +25,19 @@ struct ResearchRecordsTests {
             isDirectory: true
         )
         let dialogueStore = DialogueStore(storageURL: dialogueDirectory)
+        let dialogueID = UUID()
         let dialogue = DialogueEntry(
+            id: dialogueID,
             triptychID: UUID(),
             instruction: "Inspect the argument.",
             selectedNotes: [reference],
             includedComments: [],
             preparedInstructions: "Prompt",
-            checkpointID: UUID()
+            checkpointID: UUID(),
+            functionSnapshot: testDiscussSnapshot(
+                runID: dialogueID,
+                references: [reference]
+            )
         )
         let returnedDialogue = try await dialogueStore.save(dialogue)
         let liveDialogue = try await dialogueStore.entry(id: dialogue.id)
@@ -145,17 +73,6 @@ struct ResearchRecordsTests {
         defer { fixture.remove() }
         let corrupt = Data("{not valid json".utf8)
 
-        let reviewDirectory = fixture.support.appendingPathComponent("review", isDirectory: true)
-        try FileManager.default.createDirectory(at: reviewDirectory, withIntermediateDirectories: true)
-        let reviewURL = reviewDirectory.appendingPathComponent("human-reviews.json")
-        try corrupt.write(to: reviewURL)
-        let reviewStore = HumanReviewStore(storageURL: reviewDirectory)
-        #expect(await reviewStore.healthError() != nil)
-        await #expect(throws: ResearchRecordStoreError.self) {
-            _ = try await reviewStore.purge(noteID: UUID())
-        }
-        #expect(try Data(contentsOf: reviewURL) == corrupt)
-
         let dialogueDirectory = fixture.support.appendingPathComponent("dialogue", isDirectory: true)
         try FileManager.default.createDirectory(at: dialogueDirectory, withIntermediateDirectories: true)
         let dialogueURL = dialogueDirectory.appendingPathComponent("dialogue.json")
@@ -171,13 +88,19 @@ struct ResearchRecordsTests {
             fingerprint: DocumentFingerprint(content: "analysis")
         )
         await #expect(throws: ResearchRecordStoreError.self) {
+            let runID = UUID()
             _ = try await dialogueStore.save(DialogueEntry(
+                id: runID,
                 triptychID: UUID(),
                 instruction: "Inspect this note.",
                 selectedNotes: [reference],
                 includedComments: [],
                 preparedInstructions: "Prompt",
-                checkpointID: UUID()
+                checkpointID: UUID(),
+                functionSnapshot: testDiscussSnapshot(
+                    runID: runID,
+                    references: [reference]
+                )
             ))
         }
         await #expect(throws: ResearchRecordStoreError.self) {
@@ -215,19 +138,6 @@ struct ResearchRecordsTests {
         let blocked = fixture.root.appendingPathComponent("not-a-directory")
         try Data("occupied".utf8).write(to: blocked)
 
-        let noteID = UUID()
-        let reviewStore = HumanReviewStore(storageURL: blocked)
-        await #expect(throws: (any Error).self) {
-            try await reviewStore.seedLegacyArchiveForTesting([
-                HumanReviewRecord(
-                    noteID: noteID,
-                    vaultID: UUID(),
-                    relativePath: "Note.md"
-                ),
-            ])
-        }
-        #expect(await reviewStore.record(noteID: noteID) == nil)
-
         let reference = DialogueNoteReference(
             noteID: UUID(),
             vaultID: UUID(),
@@ -237,13 +147,19 @@ struct ResearchRecordsTests {
             fingerprint: DocumentFingerprint(content: "topic")
         )
         let dialogueStore = DialogueStore(storageURL: blocked)
+        let dialogueID = UUID()
         let dialogue = DialogueEntry(
+            id: dialogueID,
             triptychID: UUID(),
             instruction: "Inspect this topic.",
             selectedNotes: [reference],
             includedComments: [],
             preparedInstructions: "Prompt",
-            checkpointID: UUID()
+            checkpointID: UUID(),
+            functionSnapshot: testDiscussSnapshot(
+                runID: dialogueID,
+                references: [reference]
+            )
         )
         await #expect(throws: (any Error).self) {
             _ = try await dialogueStore.save(dialogue)
@@ -265,7 +181,7 @@ struct ResearchRecordsTests {
         #expect(await critiqueStore.association(workNoteID: association.workNoteID) == nil)
     }
 
-    @Test("Permanent deletion purges Review, shared Dialogue, and Critique associations")
+    @Test("Permanent deletion purges shared Discussion and Critique associations")
     func permanentDeletionPurgesAppOwnedRecords() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -273,23 +189,6 @@ struct ResearchRecordsTests {
         let otherNoteID = UUID()
         let vaultID = UUID()
         let fingerprint = DocumentFingerprint(content: "# Work\n")
-
-        let reviewStore = HumanReviewStore(
-            storageURL: fixture.support.appendingPathComponent("review", isDirectory: true)
-        )
-        try await reviewStore.seedLegacyArchiveForTesting([
-            HumanReviewRecord(
-                noteID: noteID,
-                vaultID: vaultID,
-                relativePath: "Trash/Work.md",
-                comments: [
-                    ResearcherComment(
-                        text: "Private historical comment",
-                        anchor: testCommentAnchor()
-                    ),
-                ]
-            ),
-        ])
 
         let deletedReference = DialogueNoteReference(
             noteID: noteID,
@@ -310,13 +209,20 @@ struct ResearchRecordsTests {
         let dialogueStore = DialogueStore(
             storageURL: fixture.support.appendingPathComponent("dialogue", isDirectory: true)
         )
+        let sharedID = UUID()
+        let sharedReferences = [deletedReference, retainedReference]
         let shared = DialogueEntry(
+            id: sharedID,
             triptychID: UUID(),
             instruction: "Compare these notes.",
-            selectedNotes: [deletedReference, retainedReference],
+            selectedNotes: sharedReferences,
             includedComments: [],
             preparedInstructions: "Contains private deleted-note context.",
-            checkpointID: UUID()
+            checkpointID: UUID(),
+            functionSnapshot: testDiscussSnapshot(
+                runID: sharedID,
+                references: sharedReferences
+            )
         )
         _ = try await dialogueStore.save(shared)
 
@@ -329,14 +235,12 @@ struct ResearchRecordsTests {
         )
         _ = try await critiqueStore.save(association)
 
-        #expect(try await reviewStore.purge(noteID: noteID)?.id == noteID)
         #expect(try await dialogueStore.purgeEntries(containing: noteID).map(\.id) == [shared.id])
         #expect(try await critiqueStore.purgeAssociations(
             noteID: noteID,
             relativePath: "Trash/Work.md"
         ).map(\.id) == [association.id])
 
-        #expect(await reviewStore.record(noteID: noteID) == nil)
         #expect(await dialogueStore.entries(noteID: noteID).isEmpty)
         #expect(await dialogueStore.entries(noteID: otherNoteID).isEmpty)
         #expect(await critiqueStore.association(workNoteID: noteID) == nil)
@@ -350,7 +254,7 @@ struct ResearchRecordsTests {
         let range = try #require(source.range(of: selected))
         let lower = range.lowerBound.utf16Offset(in: source)
         let upper = range.upperBound.utf16Offset(in: source)
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
+        let anchor = try #require(CommentAnchorBuilder.anchor(
             in: source,
             fingerprint: document.fingerprint,
             utf16Range: lower..<upper,
@@ -373,7 +277,7 @@ struct ResearchRecordsTests {
             relativePath: "Note.md",
             rawContent: "---\ntitle: Note\n---\nA **strong** claim matters.\n"
         )
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
+        let anchor = try #require(CommentAnchorBuilder.anchor(
             forRenderedQuotation: "A strong claim matters.",
             in: document
         ))
@@ -394,14 +298,14 @@ struct ResearchRecordsTests {
         let sourceSelection = try #require(document.rawContent.range(of: "**Repeated claim.**"))
         let sourceLower = sourceSelection.lowerBound.utf16Offset(in: document.rawContent)
         let sourceUpper = sourceSelection.upperBound.utf16Offset(in: document.rawContent)
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
+        let anchor = try #require(CommentAnchorBuilder.anchor(
             in: document.rawContent,
             fingerprint: document.fingerprint,
             utf16Range: sourceLower..<sourceUpper
         ))
 
         #expect(anchor.quotation == "**Repeated claim.**")
-        #expect(ResearcherCommentAnchorBuilder.renderedQuotation(
+        #expect(CommentAnchorBuilder.renderedQuotation(
             for: anchor,
             in: document
         ) == "Repeated claim.")
@@ -413,12 +317,12 @@ struct ResearchRecordsTests {
             relativePath: "Note.md",
             rawContent: "First **claim** here.\n\nSecond **claim** there.\n"
         )
-        #expect(ResearcherCommentAnchorBuilder.anchor(
+        #expect(CommentAnchorBuilder.anchor(
             forRenderedQuotation: "claim",
             in: document
         ) == nil)
 
-        let anchor = try #require(ResearcherCommentAnchorBuilder.anchor(
+        let anchor = try #require(CommentAnchorBuilder.anchor(
             forRenderedQuotation: "claim",
             contextBefore: "Second ",
             contextAfter: " there.",
@@ -428,39 +332,12 @@ struct ResearchRecordsTests {
         #expect(anchor.quotation == "claim")
     }
 
-    @Test("Legacy Review and Dialogue path migration is idempotent and preserves historical prompt")
+    @Test("Discussion path migration is idempotent and preserves its prepared prompt")
     func appOwnedPathMigration() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let noteID = UUID()
         let vaultID = UUID()
-        let reviewStore = HumanReviewStore(storageURL: fixture.support.appendingPathComponent("review"))
-        try await reviewStore.seedLegacyArchiveForTesting([
-            HumanReviewRecord(
-                noteID: noteID,
-                vaultID: vaultID,
-                relativePath: "Old.md",
-                comments: [
-                    ResearcherComment(
-                        text: "Keep this historical comment.",
-                        anchor: testCommentAnchor()
-                    ),
-                ]
-            ),
-        ])
-        #expect(try await reviewStore.migratePathIfPresent(
-            noteID: noteID,
-            vaultID: vaultID,
-            from: "Old.md",
-            to: "Folder/New.md"
-        ))
-        #expect(try await reviewStore.migratePathIfPresent(
-            noteID: noteID,
-            vaultID: vaultID,
-            from: "Old.md",
-            to: "Folder/New.md"
-        ) == false)
-
         let reference = DialogueNoteReference(
             noteID: noteID,
             vaultID: vaultID,
@@ -471,7 +348,8 @@ struct ResearchRecordsTests {
         )
         let included = DialogueIncludedComment(
             note: reference,
-            comment: ResearcherComment(
+            exchange: testCommentExchange(
+                reference: reference,
                 text: "Revise this.",
                 anchor: testCommentAnchor(fingerprint: reference.fingerprint)
             )
@@ -480,23 +358,30 @@ struct ResearchRecordsTests {
         let followUp = DialogueFollowUpComment(
             text: "Preserve this follow-up.",
             noteID: noteID,
-            commentID: included.comment.id,
+            commentID: included.exchange.id,
             createdAt: Date(timeIntervalSince1970: 1_700_000_200)
         )
         let response = DialogueReply(
             agentName: "Codex",
             text: "Preserve this response.",
             noteID: noteID,
-            commentID: included.comment.id,
+            commentID: included.exchange.id,
             createdAt: Date(timeIntervalSince1970: 1_700_000_201)
         )
+        let entryID = UUID()
         let entry = DialogueEntry(
+            id: entryID,
             triptychID: UUID(),
             instruction: "Revise.",
             selectedNotes: [reference],
             includedComments: [included],
             preparedInstructions: "Historical path: Old.md",
             checkpointID: nil,
+            functionSnapshot: testDiscussSnapshot(
+                runID: entryID,
+                references: [reference],
+                commentIDs: [included.id]
+            ),
             followUpComments: [followUp],
             replies: [response]
         )
@@ -543,9 +428,10 @@ struct ResearchRecordsTests {
             fingerprint: DocumentFingerprint(content: "B"),
             kind: "Concept"
         )
-        let firstComment = ResearcherComment(
+        let firstExchange = testCommentExchange(
+            reference: first,
             text: "Clarify the interpretation in Paper A.",
-            anchor: ResearcherCommentAnchor(
+            anchor: CommentAnchor(
                 fingerprint: first.fingerprint,
                 utf8Range: 0..<1,
                 utf16Range: 0..<1,
@@ -554,9 +440,10 @@ struct ResearchRecordsTests {
                 quotation: "A"
             )
         )
-        let secondComment = ResearcherComment(
+        let secondExchange = testCommentExchange(
+            reference: second,
             text: "Connect the distinction in Topic B.",
-            anchor: ResearcherCommentAnchor(
+            anchor: CommentAnchor(
                 fingerprint: second.fingerprint,
                 utf8Range: 0..<1,
                 utf16Range: 0..<1,
@@ -566,8 +453,8 @@ struct ResearchRecordsTests {
             )
         )
         let includedComments = [
-            DialogueIncludedComment(note: first, comment: firstComment),
-            DialogueIncludedComment(note: second, comment: secondComment),
+            DialogueIncludedComment(note: first, exchange: firstExchange),
+            DialogueIncludedComment(note: second, exchange: secondExchange),
         ]
         let prompt = DialoguePromptBuilder.build(DialoguePromptContext(
             instruction: "Revise the relevant Triptych notes.",
@@ -577,13 +464,21 @@ struct ResearchRecordsTests {
             linkedNoteSummary: "Topic B neutrally links to Paper A; this is not evidence.",
             requestedDestination: "Update relevant notes in Topics when warranted."
         ))
+        let entryID = UUID()
+        let references = [first, second]
         let entry = DialogueEntry(
+            id: entryID,
             triptychID: UUID(),
             instruction: "Revise the relevant Triptych notes.",
-            selectedNotes: [first, second],
+            selectedNotes: references,
             includedComments: includedComments,
             preparedInstructions: prompt,
             checkpointID: UUID(),
+            functionSnapshot: testDiscussSnapshot(
+                runID: entryID,
+                references: references,
+                commentIDs: includedComments.map(\.id)
+            ),
             requestedDestination: "Update relevant notes in Topics when warranted.",
             linkedNoteSummary: "Topic B neutrally links to Paper A; this is not evidence."
         )
@@ -603,19 +498,23 @@ struct ResearchRecordsTests {
         #expect(entry.requestedDestination == "Update relevant notes in Topics when warranted.")
         #expect(prompt.contains("""
         - Note: Paper A
+          Comment ID: \(firstExchange.id.uuidString)
           Note ID: \(first.noteID.uuidString)
           Vault: Analyses
           Path: Paper A.md
           Location: Lines 12–12
-          Comment: Clarify the interpretation in Paper A.
+          Selected text: A
+          Researcher: Clarify the interpretation in Paper A.
         """))
         #expect(prompt.contains("""
         - Note: Topic B
+          Comment ID: \(secondExchange.id.uuidString)
           Note ID: \(second.noteID.uuidString)
           Vault: Topics
           Path: Topic B.md
           Location: Lines 12–12
-          Comment: Connect the distinction in Topic B.
+          Selected text: B
+          Researcher: Connect the distinction in Topic B.
         """))
 
         let updated = try await store.appendReply(
@@ -623,7 +522,7 @@ struct ResearchRecordsTests {
                 agentName: "Codex",
                 text: "I revised the source distinction.",
                 noteID: first.noteID,
-                commentID: firstComment.id
+                commentID: firstExchange.id
             ),
             to: entry.id
         )
@@ -635,7 +534,7 @@ struct ResearchRecordsTests {
                     agentName: "Codex",
                     text: "This target pair is inconsistent.",
                     noteID: second.noteID,
-                    commentID: firstComment.id
+                    commentID: firstExchange.id
                 ),
                 to: entry.id
             )
@@ -668,18 +567,26 @@ struct ResearchRecordsTests {
         )
         let included = DialogueIncludedComment(
             note: note,
-            comment: ResearcherComment(
+            exchange: testCommentExchange(
+                reference: note,
                 text: "Separate textual support from reconstruction.",
                 anchor: testCommentAnchor(fingerprint: note.fingerprint)
             )
         )
+        let entryID = UUID()
         let entry = DialogueEntry(
+            id: entryID,
             triptychID: UUID(),
             instruction: "Clarify the argument without overstating the source.",
             selectedNotes: [note],
             includedComments: [included],
             preparedInstructions: "",
             checkpointID: UUID(),
+            functionSnapshot: testDiscussSnapshot(
+                runID: entryID,
+                references: [note],
+                commentIDs: [included.id]
+            ),
             createdAt: Date(timeIntervalSince1970: 1_000)
         )
         _ = try await store.save(entry)
@@ -693,14 +600,14 @@ struct ResearchRecordsTests {
         let followUp = DialogueFollowUpComment(
             text: "State the remaining interpretive uncertainty explicitly.",
             noteID: note.noteID,
-            commentID: included.comment.id,
+            commentID: included.exchange.id,
             createdAt: Date(timeIntervalSince1970: 1_020)
         )
         let secondResponse = DialogueReply(
             agentName: "Local Agent",
             text: "The note now identifies the unresolved scope question.",
             noteID: note.noteID,
-            commentID: included.comment.id,
+            commentID: included.exchange.id,
             createdAt: Date(timeIntervalSince1970: 1_030)
         )
         _ = try await store.appendReply(response, to: entry.id)
@@ -738,58 +645,40 @@ struct ResearchRecordsTests {
 
     @Test("Every Comment record decoder requires a source anchor")
     func commentRecordDecodersRequireAnchor() throws {
-        let comment = ResearcherComment(
+        let note = DialogueNoteReference(
+            noteID: UUID(),
+            vaultID: UUID(),
+            vaultName: "Analyses",
+            title: "Analysis",
+            relativePath: "Analysis.md",
+            fingerprint: DocumentFingerprint(content: "analysis")
+        )
+        let exchange = testCommentExchange(
+            reference: note,
             text: "This Comment is bound to an exact passage.",
-            anchor: testCommentAnchor()
+            anchor: testCommentAnchor(fingerprint: note.fingerprint)
         )
         var object = try #require(
-            JSONSerialization.jsonObject(with: JSONEncoder().encode(comment)) as? [String: Any]
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(exchange)) as? [String: Any]
         )
         object.removeValue(forKey: "anchor")
         let data = try JSONSerialization.data(withJSONObject: object)
 
         #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(ResearcherComment.self, from: data)
+            _ = try JSONDecoder().decode(CommentExchange.self, from: data)
         }
 
-        let reviewRecord = HumanReviewRecord(
-            noteID: UUID(),
-            vaultID: UUID(),
-            relativePath: "Analysis.md",
-            comments: [comment]
-        )
-        var reviewObject = try #require(
-            JSONSerialization.jsonObject(
-                with: JSONEncoder().encode(reviewRecord)
-            ) as? [String: Any]
-        )
-        var reviewComments = try #require(reviewObject["comments"] as? [[String: Any]])
-        reviewComments[0].removeValue(forKey: "anchor")
-        reviewObject["comments"] = reviewComments
-        let reviewData = try JSONSerialization.data(withJSONObject: reviewObject)
-        #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(HumanReviewRecord.self, from: reviewData)
-        }
-
-        let note = DialogueNoteReference(
-            noteID: reviewRecord.id,
-            vaultID: reviewRecord.vaultID,
-            vaultName: "Analyses",
-            title: "Analysis",
-            relativePath: reviewRecord.relativePath,
-            fingerprint: comment.anchor.fingerprint
-        )
-        let included = DialogueIncludedComment(note: note, comment: comment)
+        let included = DialogueIncludedComment(note: note, exchange: exchange)
         var includedObject = try #require(
             JSONSerialization.jsonObject(
                 with: JSONEncoder().encode(included)
             ) as? [String: Any]
         )
-        var includedComment = try #require(
-            includedObject["comment"] as? [String: Any]
+        var includedExchange = try #require(
+            includedObject["exchange"] as? [String: Any]
         )
-        includedComment.removeValue(forKey: "anchor")
-        includedObject["comment"] = includedComment
+        includedExchange.removeValue(forKey: "anchor")
+        includedObject["exchange"] = includedExchange
         let includedData = try JSONSerialization.data(withJSONObject: includedObject)
         #expect(throws: DecodingError.self) {
             _ = try JSONDecoder().decode(DialogueIncludedComment.self, from: includedData)
@@ -1352,8 +1241,8 @@ struct ResearchRecordsTests {
     private func testCommentAnchor(
         fingerprint: DocumentFingerprint = DocumentFingerprint(content: "Test passage"),
         quotation: String = "Test passage"
-    ) -> ResearcherCommentAnchor {
-        ResearcherCommentAnchor(
+    ) -> CommentAnchor {
+        CommentAnchor(
             fingerprint: fingerprint,
             utf8Range: 0..<quotation.utf8.count,
             utf16Range: 0..<quotation.utf16.count,
@@ -1361,6 +1250,85 @@ struct ResearchRecordsTests {
             endLine: 1,
             quotation: quotation
         )
+    }
+
+    private func testCommentExchange(
+        reference: DialogueNoteReference,
+        text: String,
+        anchor: CommentAnchor
+    ) -> CommentExchange {
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        return CommentExchange(
+            note: ResearchActivityNoteReference(
+                noteID: reference.noteID,
+                note: VaultQualifiedNoteID(
+                    vaultID: reference.vaultID,
+                    relativePath: reference.relativePath
+                ),
+                role: testRole(for: reference),
+                title: reference.title
+            ),
+            anchor: anchor,
+            turns: [CommentExchangeTurn(
+                author: .researcher,
+                text: text,
+                createdAt: timestamp
+            )],
+            status: .finished,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            finishedAt: timestamp
+        )
+    }
+
+    private func testDiscussSnapshot(
+        runID: UUID,
+        references: [DialogueNoteReference],
+        commentIDs: [UUID] = []
+    ) -> ResearchFunctionSnapshot {
+        let targetReference = references[0]
+        let target = ResearchFunctionTarget(
+            noteID: targetReference.noteID,
+            note: VaultQualifiedNoteID(
+                vaultID: targetReference.vaultID,
+                relativePath: targetReference.relativePath
+            ),
+            role: testRole(for: targetReference),
+            fingerprint: targetReference.fingerprint,
+            title: targetReference.title
+        )
+        let materials = references.dropFirst().map { reference in
+            ResearchFunctionMaterial(
+                noteID: reference.noteID,
+                note: VaultQualifiedNoteID(
+                    vaultID: reference.vaultID,
+                    relativePath: reference.relativePath
+                ),
+                role: testRole(for: reference),
+                fingerprint: reference.fingerprint,
+                title: reference.title
+            )
+        }
+        return ResearchFunctionSnapshot(
+            runID: runID,
+            request: ResearchFunctionRequest(
+                function: .discuss,
+                target: target,
+                materials: materials,
+                instruction: "Test discussion",
+                commentIDs: commentIDs
+            ),
+            recordKind: .discuss,
+            recordID: runID
+        )
+    }
+
+    private func testRole(for reference: DialogueNoteReference) -> ResearchFunctionTargetRole {
+        switch reference.vaultName {
+        case "Analyses": .analysis
+        case "Topics": .topic
+        default: .work
+        }
     }
 
     private struct Fixture {

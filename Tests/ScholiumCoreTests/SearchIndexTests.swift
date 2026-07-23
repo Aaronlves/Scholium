@@ -257,13 +257,13 @@ struct SearchIndexTests {
         #expect(try await incremental.generation()?.sourceManifestHash == clean.generation()?.sourceManifestHash)
     }
 
-    @Test("Synchronization tracks derived broken-link and review state")
+    @Test("Synchronization tracks derived broken-link state")
     func synchronizationTracksDerivedState() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
         let source = NoteDocument(relativePath: "A.md", rawContent: "---\ntitle: Alpha\n---\n[[Missing]]")
         let broken = fixture.item(fixture.analyses, document: source, hasBrokenLink: true)
-        let repaired = fixture.item(fixture.analyses, document: source, review: "qualified")
+        let repaired = fixture.item(fixture.analyses, document: source)
         let first = try await index.synchronize([broken])
         #expect(try await index.search(fixture.request("Alpha has:broken-link")).results.map(\.relativePath) == ["A.md"])
         let brokenOnly = try await index.search(fixture.request("has:broken-link"))
@@ -272,12 +272,7 @@ struct SearchIndexTests {
         let second = try await index.synchronize([repaired])
         #expect(second.generation.sequence > first.generation.sequence)
         #expect(try await index.search(fixture.request("Alpha has:broken-link")).results.isEmpty)
-        #expect(try await index.search(fixture.request("Alpha review:reviewed")).results.map(\.relativePath) == ["A.md"])
-        #expect(try await index.search(fixture.request("Alpha review:qualified")).results.map(\.relativePath) == ["A.md"])
-        let reviewOnly = try await index.search(fixture.request("review:qualified"))
-        #expect(reviewOnly.results.first?.matchedFields == [.review])
-        #expect(reviewOnly.results.first?.rankReason == .structuredFilter)
-        #expect(try await index.search(fixture.request("Alpha -review:reviewed")).results.isEmpty)
+        #expect(SearchQueryParser.parse("review:qualified").diagnostics.first?.code == .unknownField)
     }
 
     @Test("An unchanged inventory retains its generation")
@@ -370,7 +365,6 @@ struct SearchIndexTests {
         func item(
             _ vault: RegisteredVault,
             document: NoteDocument,
-            review: String? = nil,
             hasBrokenLink: Bool = false
         ) -> SearchIndexDocument {
             SearchIndexDocument(
@@ -378,7 +372,6 @@ struct SearchIndexTests {
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 document: document,
-                review: review,
                 hasBrokenLink: hasBrokenLink
             )
         }
