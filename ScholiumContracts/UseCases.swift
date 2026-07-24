@@ -183,6 +183,21 @@ public protocol ResearchSkillUseCases: Sendable {
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome
 }
 
+/// App-wide installation spans one or more Triptychs and therefore belongs to
+/// the runtime rather than one active window's `ResearchUseCases` value.
+public protocol ResearchSkillInstallationUseCases: Sendable {
+    func stageResearcherSkillInstallation(
+        from directoryURL: URL
+    ) async throws -> ResearchSkillInstallationPreparation
+
+    func installResearcherSkill(
+        _ preparation: ResearchSkillInstallationPreparation,
+        to triptychIDs: [UUID]
+    ) async throws -> ResearchSkillInstallationOutcome
+
+    func discardResearcherSkillInstallation(preparationID: UUID) async
+}
+
 public protocol ResearchFunctionUseCases: Sendable {
     func availableFunctions(
         for target: ResearchFunctionTarget

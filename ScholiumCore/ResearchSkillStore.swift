@@ -628,7 +628,7 @@ public actor ResearchSkillStore {
                     let installed = try installLocalPackage(
                         id: descriptor.workingPackageID,
                         sources: sources
-                    )
+                    ).package
                     guard installed.revision == expectedRevision,
                           installed.isValid else {
                         throw ResearchSkillBindingError.invalidBindingDocument(
@@ -2177,6 +2177,27 @@ public actor ResearchSkillStore {
         return sourceURL
     }
 
+    func ensureSkillsDirectoryForInstallation() throws {
+        try ensureSkillsDirectory()
+    }
+
+    func installPackageForInstallation(
+        id: String,
+        sources: [String: String],
+        onPublished: @escaping (
+            SecureResearchSkillPackageIO.DirectoryIdentity
+        ) -> Void
+    ) throws -> (
+        package: ResearchSkillPackage,
+        identity: SecureResearchSkillPackageIO.DirectoryIdentity
+    ) {
+        try installLocalPackage(
+            id: id,
+            sources: sources,
+            onPublished: onPublished
+        )
+    }
+
     private func ensureSkillsDirectory() throws {
         if !fileManager.fileExists(atPath: controlURL.path) {
             try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
@@ -2726,7 +2747,7 @@ public actor ResearchSkillStore {
         )
     }
 
-    private static func declaredResourceValidationIssues(
+    static func declaredResourceValidationIssues(
         for package: ResearchSkillPackage,
         availableResourcePaths: Set<String>
     ) -> [String] {
@@ -3026,8 +3047,12 @@ public actor ResearchSkillStore {
 
     private func installLocalPackage(
         id: String,
-        sources: [String: String]
-    ) throws -> ResearchSkillPackage {
+        sources: [String: String],
+        onPublished: ((SecureResearchSkillPackageIO.DirectoryIdentity) -> Void)? = nil
+    ) throws -> (
+        package: ResearchSkillPackage,
+        identity: SecureResearchSkillPackageIO.DirectoryIdentity
+    ) {
         guard Self.isValidIdentifier(id),
               !sources.isEmpty,
               sources.keys.allSatisfy(ResearchSkillMaintenancePath.isAllowed) else {
@@ -3055,6 +3080,22 @@ public actor ResearchSkillStore {
                 packageName: stageName,
                 sources: sources
             )
+            let stageDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+                parentDescriptor: rootDescriptor,
+                name: stageName,
+                path: stageName
+            )
+            let stageIdentity: SecureResearchSkillPackageIO.DirectoryIdentity
+            do {
+                stageIdentity = try SecureResearchSkillPackageIO.identity(
+                    of: stageDescriptor,
+                    path: stageName
+                )
+                Darwin.close(stageDescriptor)
+            } catch {
+                Darwin.close(stageDescriptor)
+                throw error
+            }
             guard try SecureResearchSkillPackageIO.strictPackageSources(
                 rootDescriptor: rootDescriptor,
                 packageID: stageName
@@ -3076,9 +3117,21 @@ public actor ResearchSkillStore {
                 destination: id
             )
             didInstall = true
-            guard fsync(rootDescriptor) == 0,
+            onPublished?(stageIdentity)
+            let installedDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+                parentDescriptor: rootDescriptor,
+                name: id,
+                path: id
+            )
+            defer { Darwin.close(installedDescriptor) }
+            let installedIdentity = try SecureResearchSkillPackageIO.identity(
+                of: installedDescriptor,
+                path: id
+            )
+            guard installedIdentity == stageIdentity,
+                  fsync(rootDescriptor) == 0,
                   try SecureResearchSkillPackageIO.strictPackageSources(
-                      rootDescriptor: rootDescriptor,
+                      packageDescriptor: installedDescriptor,
                       packageID: id
                   ) == sources,
                   try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
@@ -3088,10 +3141,24 @@ public actor ResearchSkillStore {
                 throw ResearchSkillBindingError.workingMethodEditRecoveryRequired(id)
             }
             let installed = try localPackage(id: id)
-            guard installed.revision == Self.packageRevision(sources: sources) else {
+            let recheckedDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+                parentDescriptor: rootDescriptor,
+                name: id,
+                path: id
+            )
+            defer { Darwin.close(recheckedDescriptor) }
+            guard installed.revision == Self.packageRevision(sources: sources),
+                  try SecureResearchSkillPackageIO.identity(
+                      of: recheckedDescriptor,
+                      path: id
+                  ) == installedIdentity,
+                  try SecureResearchSkillPackageIO.strictPackageSources(
+                      packageDescriptor: recheckedDescriptor,
+                      packageID: id
+                  ) == sources else {
                 throw ResearchSkillBindingError.workingMethodEditRecoveryRequired(id)
             }
-            return installed
+            return (installed, installedIdentity)
         } catch {
             if !didInstall {
                 try? SecureResearchSkillPackageIO.removePackage(

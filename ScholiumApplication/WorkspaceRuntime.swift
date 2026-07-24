@@ -77,6 +77,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     public nonisolated let researchGuidance: ResearchGuidanceOperations
     public nonisolated let zotero: ZoteroOperations
     public nonisolated let styles: StyleOperations
+    let researchSkillInstallationStore: ResearchSkillInstallationStore
     private var handles: [UUID: WorkspaceHandle] = [:]
     private var openings: [UUID: Opening] = [:]
     /// A failed replacement must not destroy the activation already borrowed
@@ -89,6 +90,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
         configuration: Configuration,
         zotero injectedZotero: ZoteroOperations? = nil
     ) {
+        researchSkillInstallationStore = ResearchSkillInstallationStore()
         switch configuration {
         case .live(let configuration):
             let identityRegistry = VaultIdentityRegistry(
@@ -607,6 +609,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
+        await researchSkillInstallationStore.discardAll()
 
         let pending = openings.values.map(\.task)
         openings.removeAll()

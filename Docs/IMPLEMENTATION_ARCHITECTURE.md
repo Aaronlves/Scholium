@@ -379,6 +379,34 @@ bootstrap and never runs automatically for a Triptych with an existing
 manifest. Application exposes the same absence-checked operation as the
 explicit repair primitive for the later categorized Settings interface.
 
+`ResearchSkillInstallationStore` owns the app-wide, short-lived staging
+boundary for researcher-selected local directories. It walks the selected
+directory through no-follow descriptors, accepts only bounded regular UTF-8
+`SKILL.md` and one-level `references`, `templates`, or `evals` resources, and
+rejects linked, multiply linked, executable, scripted, nested, oversized, or
+structurally malformed input. Directory enumeration stops as soon as the
+bounded entry ceiling is exceeded rather than first collecting an unbounded
+directory listing. Its public preparation contains only a display
+name, bounded file inventory and fingerprints, method metadata, proposed
+Action placement, and the explicit fact that an Action Profile is still
+required; source paths and bytes remain Core-private and expire from memory.
+`WorkspaceRuntime` resolves the explicitly selected Triptychs and supplies
+their existing `ResearchSkillStore` actors. Core preflights every destination,
+publishes each independently copied package with descriptor-relative
+`RENAME_EXCL`, then repeats the bounded file/link/mode/readback validation.
+Preflight and post-publication validation both reject a package identifier
+still named by an active Action binding or by a retained capability binding;
+malformed binding state fails closed. If a later destination fails, every
+proved task-owned directory is moved out of the executable package namespace
+to a hidden same-volume recovery quarantine. The quarantined inode is not
+recursively deleted, so a late write through an already-open descriptor is
+preserved. A missing or moved package, replaced Skills root, identity mismatch,
+or otherwise unprovable rollback produces a typed recovery-required error.
+Installation creates no binding, Profile, permission approval, or execution
+state, so an unbound package starts disabled and later edits cannot synchronize
+across Triptychs silently. Cleanup and presentation of installation recovery
+quarantines remain later Research Guidance work.
+
 Action execution resolves only that Action-keyed v2 document. Its
 `installed_default`, `researcher_skill`, and `disabled` states are explicit;
 absence, malformed data, missing packages, invalid packages, and role/Action

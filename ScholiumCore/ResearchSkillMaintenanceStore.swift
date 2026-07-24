@@ -11,7 +11,7 @@ enum SecureResearchSkillPackageIO {
     private static let directoryMode = mode_t(0o700)
     private static let fileMode = mode_t(0o600)
 
-    struct DirectoryIdentity: Equatable {
+    struct DirectoryIdentity: Equatable, Sendable {
         let device: dev_t
         let inode: ino_t
     }
@@ -583,10 +583,10 @@ enum SecureResearchSkillPackageIO {
             leaf: leaf,
             path: path
         )
-        guard let source = String(data: data, encoding: .utf8) else {
+        guard String(data: data, encoding: .utf8) != nil else {
             throw ResearchSkillMaintenanceError.invalidResourcePath(path)
         }
-        return source
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func writeAll(_ data: Data, descriptor: Int32, path: String) throws {

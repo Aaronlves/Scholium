@@ -240,6 +240,57 @@ struct WorkspaceRuntimeTests {
         await runtime.shutdown()
     }
 
+    @Test("Runtime installs one reviewed Skill as independent disabled Triptych packages")
+    func runtimeInstallsResearcherSkillAcrossTriptychs() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let second = try await fixture.makeSecondAssignment(name: "Second")
+        let source = fixture.rootURL.appendingPathComponent(
+            "argument-pressure-test",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: source,
+            withIntermediateDirectories: true
+        )
+        let skill = """
+        ---
+        name: Argument Pressure Test
+        description: Return bounded criticism without changing Markdown.
+        scholium:
+          role: specialist
+          supported_actions: [critique]
+          capabilities: []
+          supported_modes: [review]
+          required_skills: []
+        ---
+        Distinguish reconstruction, objection, reply, and residual pressure.
+        """ + "\n"
+        try Data(skill.utf8).write(to: source.appendingPathComponent("SKILL.md"))
+
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment, second]
+        )))
+        let preparation = try await runtime.stageResearcherSkillInstallation(
+            from: source
+        )
+        let outcome = try await runtime.installResearcherSkill(
+            preparation,
+            to: [fixture.assignment.id, second.id]
+        )
+        #expect(outcome.installations.count == 2)
+        #expect(outcome.installations.allSatisfy { !$0.isEnabled })
+
+        let firstHandle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let secondHandle = try await runtime.openWorkspace(id: second.id)
+        #expect(try await firstHandle.research.skillPackage(id: preparation.packageID)
+            .revision == preparation.packageRevision)
+        #expect(try await secondHandle.research.skillPackage(id: preparation.packageID)
+            .revision == preparation.packageRevision)
+        await runtime.shutdown()
+    }
+
     @Test("Cancelled subscribers are removed")
     func subscriberCancellation() async throws {
         let fixture = try await ApplicationFixture.make()

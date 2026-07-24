@@ -104,8 +104,17 @@ Function binding. Direct edits and bundled restores send displaced complete
 packages to the existing machine-local Research Guidance snapshot inventory. A
 cross-volume fallback keeps and reports the hidden portable package rather than
 deleting an inode that may receive a late external write. Classified Skills
-settings, standing permissions, unified Discussion, and the portable two-panel
-Research Record adopted by D-106 remain later migration work.
+settings are not yet production UI, but their installation backend is now
+reachable: one researcher-selected local directory is bounded, inventoried,
+and structurally validated before independently copied, disabled packages are
+atomically published to the explicitly selected Triptychs. A package identifier
+still named by a current or retained active binding is rejected, and partial
+failure moves proved installed copies into hidden nonexecuting recovery
+quarantine rather than deleting possible late external writes. Archives,
+network content, links, executables, scripts, nested resources, and implicit
+Action/permission bindings are rejected. Profile editing, standing permissions,
+unified Discussion, and the portable two-panel Research Record adopted by D-106
+remain later migration work.
 
 ## Requirements
 
