@@ -778,6 +778,72 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.researchFunctionSkillBindingStatus(for: function)
     }
 
+    public func workingMethodBindings()
+        async throws -> ResearchWorkingMethodBindingSnapshot?
+    {
+        let handle = try await reference.requireHandle()
+        return try await handle.workingMethodBindings()
+    }
+
+    public func installDefaultWorkingMethods()
+        async throws -> ResearchWorkingMethodBindingSnapshot
+    {
+        let handle = try await reference.requireHandle()
+        return try await handle.installDefaultWorkingMethods()
+    }
+
+    public func saveWorkingMethod(
+        for actionID: ResearchActionID,
+        source: String,
+        expectedPackageRevision: DocumentFingerprint,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchSkillPackage {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveWorkingMethod(
+            for: actionID,
+            source: source,
+            expectedPackageRevision: expectedPackageRevision,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func disableWorkingMethod(
+        for actionID: ResearchActionID,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.disableWorkingMethod(
+            for: actionID,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func activateResearcherSkill(
+        packageID: String,
+        for actionID: ResearchActionID,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.activateResearcherSkill(
+            packageID: packageID,
+            for: actionID,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    public func restoreBundledWorkingMethod(
+        for actionID: ResearchActionID,
+        expectedPackageState: ResearchWorkingMethodExpectedPackageState,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodRestoreOutcome {
+        let handle = try await reference.requireHandle()
+        return try await handle.restoreBundledWorkingMethod(
+            for: actionID,
+            expectedPackageState: expectedPackageState,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
     public func saveResearchFunctionSkillSelection(
         _ selection: ResearchFunctionSkillSelection,
         expectedBindingRevision: DocumentFingerprint?
@@ -871,6 +937,7 @@ public actor ResearchOperations: ResearchUseCases {
             packageID: packageID
         )
     }
+
 }
 
 /// Delivery-neutral access to the protected bundled research-guidance

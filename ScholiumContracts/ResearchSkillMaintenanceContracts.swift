@@ -333,17 +333,23 @@ public struct ResearchSkillMaintenanceSnapshot: Codable, Hashable, Identifiable,
     public let packageID: String
     public let packageRevision: DocumentFingerprint
     public let createdAt: Date
+    /// Safely observed revision of a displaced package that remains under its
+    /// hidden portable staging name after verified cross-volume snapshot copy.
+    /// Nil means none was observed; callers must still inspect listing issues.
+    public let retainedPortablePackageRevision: DocumentFingerprint?
 
     public init(
         id: UUID,
         packageID: String,
         packageRevision: DocumentFingerprint,
-        createdAt: Date
+        createdAt: Date,
+        retainedPortablePackageRevision: DocumentFingerprint? = nil
     ) {
         self.id = id
         self.packageID = packageID
         self.packageRevision = packageRevision
         self.createdAt = createdAt
+        self.retainedPortablePackageRevision = retainedPortablePackageRevision
     }
 }
 

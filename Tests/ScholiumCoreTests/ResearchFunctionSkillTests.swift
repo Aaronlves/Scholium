@@ -5,18 +5,19 @@ import Testing
 
 @Suite("Research Action Method bindings and maintenance")
 struct ResearchFunctionSkillTests {
-    @Test("Six default Actions resolve distinct bundled Methods and Manuscript stays disabled")
+    @Test("Six default Actions resolve independent Working Methods and Manuscript stays disabled")
     func defaultActionMethodBindings() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = fixture.workingMethodStore()
+        let binding = try await store.installDefaultWorkingMethods()
         let expected: [(ResearchFunctionID, ResearchActionID, String)] = [
-            (.discuss, .discuss, "scholium-discuss"),
-            (.develop, .analyze, "scholium-analyze"),
-            (.develop, .synthesize, "scholium-synthesize"),
-            (.revise, .write, "scholium-write"),
-            (.critique, .critique, "scholium-critique"),
-            (.fidelity, .checkFidelity, "scholium-content-fidelity"),
+            (.discuss, .discuss, "scholium-working-discuss"),
+            (.develop, .analyze, "scholium-working-analyze"),
+            (.develop, .synthesize, "scholium-working-synthesize"),
+            (.revise, .write, "scholium-working-write"),
+            (.critique, .critique, "scholium-working-critique"),
+            (.fidelity, .checkFidelity, "scholium-working-content-fidelity"),
         ]
 
         for (function, actionID, packageID) in expected {
@@ -24,21 +25,644 @@ struct ResearchFunctionSkillTests {
                 for: function,
                 actionID: actionID
             )
-            #expect(resolution.source == .bundledDefault)
+            #expect(resolution.source == .installedDefault)
             #expect(resolution.package?.id == packageID)
             #expect(resolution.package?.supportedActions == [actionID])
             #expect(resolution.package?.supportedFunctions == [function])
             #expect(resolution.issue == nil)
+            #expect(resolution.bindingRevision == binding.revision)
         }
 
         let manuscript = try await store.functionBindingResolution(
             for: .manuscript,
             actionID: .manuscript
         )
-        #expect(manuscript.source == .none)
+        #expect(manuscript.source == .disabled)
         #expect(manuscript.package == nil)
-        #expect(manuscript.issue == .missing)
+        #expect(manuscript.issue == .disabled)
         #expect(manuscript.bundledTemplateAvailable)
+    }
+
+    @Test("Working Methods edit, disable, replace, restore, and reopen without fallback")
+    func workingMethodLifecycle() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.workingMethodStore()
+        let initial = try await store.installDefaultWorkingMethods()
+        let repeated = try await store.installDefaultWorkingMethods()
+        #expect(repeated == initial)
+
+        let initialResolution = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        let working = try #require(initialResolution.package)
+        let workingRevision = try #require(working.revision)
+        let marker = "RESEARCHER_EDITED_ANALYZE_METHOD_4F1B"
+        let edited = try await store.saveWorkingMethod(
+            for: .analyze,
+            source: working.source + "\n\n\(marker)\n",
+            expectedPackageRevision: workingRevision,
+            expectedBindingRevision: initial.revision
+        )
+        #expect(edited.source.contains(marker))
+        #expect(edited.revision != workingRevision)
+
+        let reopened = fixture.workingMethodStore()
+        let reopenedBinding = try #require(
+            try await reopened.workingMethodBindingSnapshot()
+        )
+        #expect(reopenedBinding.revision == initial.revision)
+        let reopenedResolution = try await reopened.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(reopenedResolution.package?.source.contains(marker) == true)
+
+        let disabled = try await reopened.disableWorkingMethod(
+            for: .analyze,
+            expectedBindingRevision: reopenedBinding.revision
+        )
+        let unavailable = try await reopened.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(unavailable.source == .disabled)
+        #expect(unavailable.issue == .disabled)
+        #expect(unavailable.package == nil)
+
+        let researcherMethod = try await reopened.duplicateBundled(
+            id: "scholium-analyze",
+            as: "my-analysis-method"
+        )
+        let replaced = try await reopened.activateResearcherSkill(
+            packageID: researcherMethod.id,
+            for: .analyze,
+            expectedBindingRevision: disabled.revision
+        )
+        let researcherResolution = try await reopened.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(researcherResolution.source == .researcherSkill)
+        #expect(researcherResolution.package?.id == researcherMethod.id)
+
+        await #expect(throws: ResearchSkillBindingError.self) {
+            _ = try await reopened.restoreBundledWorkingMethod(
+                for: .analyze,
+                expectedPackageState: .present(try #require(edited.revision)),
+                expectedBindingRevision: disabled.revision
+            )
+        }
+        #expect(try await reopened.package(id: working.id).source.contains(marker))
+
+        let outcome = try await reopened.restoreBundledWorkingMethod(
+            for: .analyze,
+            expectedPackageState: .present(try #require(edited.revision)),
+            expectedBindingRevision: replaced.revision
+        )
+        #expect(outcome.package.id == "scholium-working-analyze")
+        #expect(outcome.package.revision == workingRevision)
+        #expect(!outcome.package.source.contains(marker))
+        let restoredMethod = try await reopened.resource(
+            id: outcome.package.id,
+            relativePath: "references/method.md"
+        )
+        let bundledMethod = try await reopened.resource(
+            id: "scholium-analyze",
+            relativePath: "references/method.md"
+        )
+        #expect(restoredMethod == bundledMethod)
+
+        try await reopened.delete(
+            id: outcome.package.id,
+            expectedRevision: try #require(outcome.package.revision)
+        )
+        let missingPackage = try await reopened.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(missingPackage.issue == .invalidPackage(outcome.package.id))
+        let reinstalled = try await reopened.restoreBundledWorkingMethod(
+            for: .analyze,
+            expectedPackageState: .missing,
+            expectedBindingRevision: outcome.binding.revision
+        )
+        #expect(reinstalled.package.revision == workingRevision)
+
+        let finalStore = fixture.workingMethodStore()
+        let final = try await finalStore.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(final.source == .installedDefault)
+        #expect(final.package?.id == reinstalled.package.id)
+        #expect(final.package?.revision == reinstalled.package.revision)
+        #expect(final.bindingRevision == reinstalled.binding.revision)
+    }
+
+    @Test("Working Method edits preserve interposed package and binding changes")
+    func workingMethodEditRejectsInterposedChanges() async throws {
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let store = fixture.workingMethodStore()
+            let binding = try await store.installDefaultWorkingMethods()
+            let current = try #require(try await store.functionBindingResolution(
+                for: .develop,
+                actionID: .analyze
+            ).package)
+            let entryPoint = fixture.control.appendingPathComponent(
+                "skills/\(current.id)/SKILL.md"
+            )
+            let externalSource = current.source + "\n\nINTERPOSED_PACKAGE_EDIT\n"
+            let racing = fixture.workingMethodStore(hooks: .init { point in
+                if case .beforePackageReplacement = point {
+                    try Data(externalSource.utf8).write(to: entryPoint, options: .atomic)
+                }
+            })
+
+            await #expect(throws: ResearchSkillError.self) {
+                _ = try await racing.saveWorkingMethod(
+                    for: .analyze,
+                    source: current.source + "\n\nREQUESTED_EDIT\n",
+                    expectedPackageRevision: try #require(current.revision),
+                    expectedBindingRevision: binding.revision
+                )
+            }
+            #expect(try await store.resource(
+                id: current.id,
+                relativePath: "SKILL.md"
+            ) == externalSource)
+        }
+
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let store = fixture.workingMethodStore()
+            let binding = try await store.installDefaultWorkingMethods()
+            let current = try #require(try await store.functionBindingResolution(
+                for: .develop,
+                actionID: .analyze
+            ).package)
+            let originalBinding = try Data(contentsOf: store.workingMethodBindingsURL)
+            let externalBinding: Data = {
+                var data = originalBinding
+                data.append(contentsOf: Data("\n".utf8))
+                return data
+            }()
+            let racing = fixture.workingMethodStore(hooks: .init { point in
+                if case .beforePackageReplacement = point {
+                    try externalBinding.write(
+                        to: store.workingMethodBindingsURL,
+                        options: .atomic
+                    )
+                }
+            })
+
+            await #expect(throws: ResearchSkillBindingError.self) {
+                _ = try await racing.saveWorkingMethod(
+                    for: .analyze,
+                    source: current.source + "\n\nREQUESTED_EDIT\n",
+                    expectedPackageRevision: try #require(current.revision),
+                    expectedBindingRevision: binding.revision
+                )
+            }
+            #expect(try Data(contentsOf: store.workingMethodBindingsURL) == externalBinding)
+            #expect(try await store.package(id: current.id).revision == current.revision)
+        }
+    }
+
+    @Test("Working Method history uses the existing maintenance snapshot lifecycle")
+    func workingMethodHistoryIsRestorable() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.workingMethodStore()
+        let binding = try await store.installDefaultWorkingMethods()
+        let current = try #require(try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        ).package)
+        let originalRevision = try #require(current.revision)
+        let edited = try await store.saveWorkingMethod(
+            for: .analyze,
+            source: current.source + "\n\nSNAPSHOT_LIFECYCLE_EDIT\n",
+            expectedPackageRevision: originalRevision,
+            expectedBindingRevision: binding.revision
+        )
+        let maintenance = ResearchSkillMaintenanceStore(
+            skillStore: store,
+            snapshotRootURL: fixture.snapshotRoot
+        )
+        let listing = try await maintenance.snapshots(packageID: current.id)
+        let original = try #require(listing.snapshots.first {
+            $0.packageRevision == originalRevision
+        })
+        #expect(listing.issues.isEmpty)
+
+        _ = try await maintenance.restore(
+            snapshotID: original.id,
+            expectedCurrentState: .present(try #require(edited.revision))
+        )
+        let restored = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(restored.package?.revision == originalRevision)
+    }
+
+    @Test("Working Method recovery verifies the cross-volume copy fallback")
+    func workingMethodCrossVolumeRecoveryFallback() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.workingMethodStore(forceCopyFallback: true)
+        let binding = try await store.installDefaultWorkingMethods()
+        let current = try #require(try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        ).package)
+        let originalRevision = try #require(current.revision)
+
+        _ = try await store.saveWorkingMethod(
+            for: .analyze,
+            source: current.source + "\n\nCROSS_VOLUME_FALLBACK\n",
+            expectedPackageRevision: originalRevision,
+            expectedBindingRevision: binding.revision
+        )
+        let maintenance = ResearchSkillMaintenanceStore(
+            skillStore: store,
+            snapshotRootURL: fixture.snapshotRoot
+        )
+        let listing = try await maintenance.snapshots(packageID: current.id)
+        let snapshot = try #require(listing.snapshots.first {
+            $0.packageRevision == originalRevision
+        })
+        #expect(snapshot.retainedPortablePackageRevision == originalRevision)
+        let retainedStages = try FileManager.default.contentsOfDirectory(
+            atPath: store.skillsURL.path
+        ).filter { $0.hasPrefix(".working-edit-") }
+        #expect(retainedStages.count == 1)
+        let retainedURL = store.skillsURL.appendingPathComponent(
+            try #require(retainedStages.first),
+            isDirectory: true
+        )
+        try FileManager.default.removeItem(at: retainedURL)
+        let external = fixture.root.appendingPathComponent(
+            "Unsafe Retained Package",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: false)
+        try FileManager.default.createSymbolicLink(
+            at: retainedURL,
+            withDestinationURL: external
+        )
+        let damagedListing = try await maintenance.snapshots(packageID: current.id)
+        #expect(damagedListing.snapshots.contains { $0.id == snapshot.id })
+        #expect(damagedListing.issues.contains {
+            $0.entryName.hasSuffix("/retained-portable")
+        })
+    }
+
+    @Test("A post-archive fault never rolls a Working Method over external state")
+    func workingMethodPostArchiveFaultDoesNotRollback() async throws {
+        enum InjectedFailure: Error { case afterArchive }
+
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let initialStore = fixture.workingMethodStore(forceCopyFallback: true)
+        let binding = try await initialStore.installDefaultWorkingMethods()
+        let current = try #require(try await initialStore.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        ).package)
+        let originalRevision = try #require(current.revision)
+        let editedSource = current.source + "\n\nPOST_ARCHIVE_EDIT\n"
+        let faulting = fixture.workingMethodStore(
+            hooks: .init { point in
+                if case .afterDisplacedPackageArchive = point {
+                    throw InjectedFailure.afterArchive
+                }
+            },
+            forceCopyFallback: true
+        )
+
+        await #expect(throws: ResearchSkillBindingError.self) {
+            _ = try await faulting.saveWorkingMethod(
+                for: .analyze,
+                source: editedSource,
+                expectedPackageRevision: originalRevision,
+                expectedBindingRevision: binding.revision
+            )
+        }
+
+        let reopened = fixture.workingMethodStore()
+        #expect(try await reopened.resource(
+            id: current.id,
+            relativePath: "SKILL.md"
+        ) == editedSource)
+        let listing = try await ResearchSkillMaintenanceStore(
+            skillStore: reopened,
+            snapshotRootURL: fixture.snapshotRoot
+        ).snapshots(packageID: current.id)
+        #expect(listing.snapshots.contains {
+            $0.packageRevision == originalRevision
+                && $0.retainedPortablePackageRevision == originalRevision
+        })
+    }
+
+    @Test("A post-commit binding fault keeps restored package and binding coherent")
+    func restorePostCommitBindingFaultIsRecoverable() async throws {
+        enum InjectedFailure: Error { case afterBindingCommit }
+
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.workingMethodStore()
+        let initial = try await store.installDefaultWorkingMethods()
+        let current = try #require(try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        ).package)
+        let originalRevision = try #require(current.revision)
+        let edited = try await store.saveWorkingMethod(
+            for: .analyze,
+            source: current.source + "\n\nRESTORE_FAULT_EDIT\n",
+            expectedPackageRevision: originalRevision,
+            expectedBindingRevision: initial.revision
+        )
+        let disabled = try await store.disableWorkingMethod(
+            for: .analyze,
+            expectedBindingRevision: initial.revision
+        )
+        let faulting = fixture.workingMethodStore(hooks: .init { point in
+            if case .afterBindingCommit = point {
+                throw InjectedFailure.afterBindingCommit
+            }
+        })
+
+        await #expect(throws: ResearchSkillBindingError.self) {
+            _ = try await faulting.restoreBundledWorkingMethod(
+                for: .analyze,
+                expectedPackageState: .present(try #require(edited.revision)),
+                expectedBindingRevision: disabled.revision
+            )
+        }
+        let reopened = fixture.workingMethodStore()
+        let resolution = try await reopened.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(resolution.source == .installedDefault)
+        #expect(resolution.package?.revision == originalRevision)
+        let maintenance = ResearchSkillMaintenanceStore(
+            skillStore: reopened,
+            snapshotRootURL: fixture.snapshotRoot
+        )
+        let listing = try await maintenance.snapshots(packageID: current.id)
+        #expect(listing.snapshots.contains { $0.packageRevision == edited.revision })
+    }
+
+    @Test("Bootstrap ignores hidden residue but never deletes a stable collision")
+    func workingMethodBootstrapResiduePolicy() async throws {
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let skills = fixture.control.appendingPathComponent("skills", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: skills,
+                withIntermediateDirectories: false
+            )
+            let residue = skills.appendingPathComponent(
+                ".working-install-sch-write-interrupted",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: residue, withIntermediateDirectories: false)
+            let marker = residue.appendingPathComponent("partial.txt")
+            try Data("unfinished".utf8).write(to: marker)
+
+            _ = try await fixture.workingMethodStore().installDefaultWorkingMethods()
+            #expect(try String(contentsOf: marker, encoding: .utf8) == "unfinished")
+        }
+
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let collision = fixture.control.appendingPathComponent(
+                "skills/scholium-working-discuss",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: collision,
+                withIntermediateDirectories: true
+            )
+            let marker = collision.appendingPathComponent("partial.txt")
+            try Data("researcher-owned collision".utf8).write(to: marker)
+            let store = fixture.workingMethodStore()
+
+            await #expect(throws: (any Error).self) {
+                _ = try await store.installDefaultWorkingMethods()
+            }
+            #expect(
+                try String(contentsOf: marker, encoding: .utf8)
+                    == "researcher-owned collision"
+            )
+            #expect(!FileManager.default.fileExists(
+                atPath: store.workingMethodBindingsURL.path
+            ))
+        }
+    }
+
+    @Test("Working Method activation rejects invalid and bundled Method dependencies")
+    func workingMethodDependencyBoundary() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.workingMethodStore()
+        let binding = try await store.installDefaultWorkingMethods()
+        _ = try await store.create(
+            id: "indirect-specialist-leaf",
+            source: Self.analyzeSpecialistSource(
+                id: "indirect-specialist-leaf",
+                dependencies: ["scholium-analyze"]
+            )
+        )
+        let candidates = [
+            ("missing-dependency-method", ["missing-method"]),
+            ("bundled-dependency-method", ["scholium-analyze"]),
+            ("indirect-missing-leaf", ["missing-transitive-method"]),
+            ("indirect-missing-root", ["indirect-missing-leaf"]),
+            ("indirect-bundled-leaf", ["scholium-analyze"]),
+            ("indirect-bundled-root", ["indirect-bundled-leaf"]),
+            ("indirect-specialist-root", ["indirect-specialist-leaf"]),
+            ("cycle-a", ["cycle-b"]),
+            ("cycle-b", ["cycle-a"]),
+        ]
+        var packages: [String: ResearchSkillPackage] = [:]
+        for (id, dependencies) in candidates {
+            packages[id] = try await store.create(
+                id: id,
+                source: Self.analyzeMethodSource(id: id, dependencies: dependencies)
+            )
+        }
+        for id in [
+            "missing-dependency-method",
+            "bundled-dependency-method",
+            "indirect-missing-root",
+            "indirect-bundled-root",
+            "indirect-specialist-root",
+            "cycle-a",
+        ] {
+            await #expect(throws: ResearchSkillBindingError.self) {
+                _ = try await store.activateResearcherSkill(
+                    packageID: try #require(packages[id]).id,
+                    for: .analyze,
+                    expectedBindingRevision: binding.revision
+                )
+            }
+        }
+        let resolution = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(resolution.source == .installedDefault)
+    }
+
+    @Test("Malformed binding v2 closes the Action without bundled fallback")
+    func malformedWorkingMethodBindingFailsClosed() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.workingMethodStore()
+        try FileManager.default.createDirectory(
+            at: fixture.control,
+            withIntermediateDirectories: true
+        )
+        let future = Data(
+            #"{"schema_version":3,"action_bindings":{"analyze":{"state":"disabled"}}}"#.utf8
+        )
+        try future.write(to: store.workingMethodBindingsURL, options: .atomic)
+        let rawRevision = try #require(
+            try await store.workingMethodBindingFileRevision()
+        )
+
+        let resolution = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(resolution.source == .none)
+        #expect(resolution.package == nil)
+        #expect(resolution.bindingRevision == rawRevision)
+        #expect(resolution.bundledTemplateAvailable)
+        guard case .malformed = resolution.issue else {
+            Issue.record("Expected malformed binding v2 to fail closed.")
+            return
+        }
+
+        try Data(repeating: 0x20, count: 1_048_577).write(
+            to: store.workingMethodBindingsURL,
+            options: .atomic
+        )
+        let oversized = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(oversized.package == nil)
+        guard case .malformed = oversized.issue else {
+            Issue.record("Expected oversized binding v2 to fail closed.")
+            return
+        }
+    }
+
+    @Test("A linked control directory cannot redirect Working Method bootstrap")
+    func linkedControlCannotRedirectWorkingMethods() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let external = fixture.root.appendingPathComponent(
+            "External Control",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: external,
+            withIntermediateDirectories: false
+        )
+        try FileManager.default.removeItem(at: fixture.control)
+        try FileManager.default.createSymbolicLink(
+            at: fixture.control,
+            withDestinationURL: external
+        )
+        let store = ResearchSkillStore(controlURL: fixture.control)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await store.installDefaultWorkingMethods()
+        }
+        #expect(
+            try FileManager.default.contentsOfDirectory(atPath: external.path).isEmpty
+        )
+    }
+
+    @Test("A replacement Method must match both the Action and protected Function")
+    func replacementMethodMustMatchExecutionBoundary() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+        let bindings = try await store.installDefaultWorkingMethods()
+        let source = """
+        ---
+        name: mismatched-analysis
+        description: Declares Analyze over the wrong protected execution mechanism.
+        scholium:
+          role: method
+          supported_actions: [analyze]
+          supported_functions: [revise]
+          capabilities: []
+          citation_styles: []
+          allow_evolution: false
+          supported_modes: [analyze]
+          required_skills: []
+        ---
+
+        Keep the mismatch explicit for this failure fixture.
+        """
+        let package = try await store.create(
+            id: "mismatched-analysis",
+            source: source
+        )
+
+        await #expect(throws: ResearchSkillBindingError.self) {
+            _ = try await store.activateResearcherSkill(
+                packageID: package.id,
+                for: .analyze,
+                expectedBindingRevision: bindings.revision
+            )
+        }
+        let protectedShadow = store.skillsURL.appendingPathComponent(
+            "scholium-analyze",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: protectedShadow,
+            withIntermediateDirectories: false
+        )
+        try Data(source.replacingOccurrences(
+            of: "name: mismatched-analysis",
+            with: "name: scholium-analyze"
+        ).replacingOccurrences(
+            of: "supported_functions: [revise]",
+            with: "supported_functions: [develop]"
+        ).utf8).write(
+            to: protectedShadow.appendingPathComponent("SKILL.md"),
+            options: .atomic
+        )
+        await #expect(throws: ResearchSkillBindingError.self) {
+            _ = try await store.activateResearcherSkill(
+                packageID: "scholium-analyze",
+                for: .analyze,
+                expectedBindingRevision: bindings.revision
+            )
+        }
+        let resolution = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(resolution.package?.id == "scholium-working-analyze")
+        #expect(resolution.bindingRevision == bindings.revision)
     }
 
     @Test("Citation status distinguishes template, installed candidate, active binding, and style mismatch")
@@ -46,6 +670,7 @@ struct ResearchFunctionSkillTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
+        _ = try await store.installDefaultWorkingMethods()
 
         let missing = try await store.citationBindingResolution()
         #expect(missing.issue == .missing)
@@ -169,6 +794,7 @@ struct ResearchFunctionSkillTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
+        _ = try await store.installDefaultWorkingMethods()
 
         let selections = try await store.resolvedFunctionPackages(
             for: .revise,
@@ -191,7 +817,7 @@ struct ResearchFunctionSkillTests {
             "references/persistence-method.md",
         ])
         let writing = try #require(selections.first {
-            $0.id == "scholium-write"
+            $0.id == "scholium-working-write"
         })
         #expect(writing.loadedResources.map(\.relativePath) == [
             "SKILL.md",
@@ -217,6 +843,7 @@ struct ResearchFunctionSkillTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
+        _ = try await store.installDefaultWorkingMethods()
 
         let discuss = try await store.resolvedFunctionPackages(
             for: .discuss,
@@ -230,7 +857,7 @@ struct ResearchFunctionSkillTests {
             "references/record-contract.md",
         ])
         let discussMethod = try #require(discuss.first {
-            $0.id == "scholium-discuss"
+            $0.id == "scholium-working-discuss"
         })
         #expect(discussMethod.loadedResources.map(\.relativePath) == [
             "SKILL.md",
@@ -279,14 +906,14 @@ struct ResearchFunctionSkillTests {
     func selfContainedLocalMethodsAreExecutable() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = fixture.workingMethodStore()
+        var bindingRevision = try await store
+            .installDefaultWorkingMethods().revision
         let cases: [(String, ResearchFunctionID, ResearchActionID, ResearchSkillMode)] = [
             ("local-analyze", .develop, .analyze, .analyze),
             ("local-write", .revise, .write, .write),
             ("local-fidelity", .fidelity, .checkFidelity, .audit),
         ]
-        var bindingRevision: DocumentFingerprint?
-
         for (id, function, actionID, mode) in cases {
             let source = """
             ---
@@ -308,11 +935,9 @@ struct ResearchFunctionSkillTests {
             Follow the exact typed Action boundary and use no additional package file.
             """
             let local = try await store.create(id: id, source: source)
-            let saved = try await store.saveFunctionSkillSelection(
-                ResearchFunctionSkillSelection(
-                    function: function,
-                    primaryPackageID: local.id
-                ),
+            let saved = try await store.activateResearcherSkill(
+                packageID: local.id,
+                for: actionID,
                 expectedBindingRevision: bindingRevision
             )
             bindingRevision = saved.revision
@@ -333,17 +958,16 @@ struct ResearchFunctionSkillTests {
     func localFidelityResourcesRemainCheckBounded() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = fixture.workingMethodStore()
+        let initial = try await store.installDefaultWorkingMethods()
         let local = try await store.duplicateBundled(
             id: "scholium-content-fidelity",
             as: "my-content-fidelity"
         )
-        _ = try await store.saveFunctionSkillSelection(
-            ResearchFunctionSkillSelection(
-                function: .fidelity,
-                primaryPackageID: local.id
-            ),
-            expectedBindingRevision: nil
+        _ = try await store.activateResearcherSkill(
+            packageID: local.id,
+            for: .checkFidelity,
+            expectedBindingRevision: initial.revision
         )
 
         let selections = try await store.resolvedFunctionPackages(
@@ -398,8 +1022,8 @@ struct ResearchFunctionSkillTests {
         }
     }
 
-    @Test("A revision-checked legacy Function binding remains bounded by exact Action support")
-    func functionPrimaryActivationIsActionBounded() async throws {
+    @Test("Legacy Function bindings remain byte-stable and cannot authorize Action resolution")
+    func legacyFunctionBindingsArePreservedAndIgnored() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
@@ -417,22 +1041,40 @@ struct ResearchFunctionSkillTests {
         )
         let selected = try await store.functionSkillSelection(for: .develop)
         #expect(selected.primaryPackageID == local.id)
+        let beforeV2 = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
+        #expect(beforeV2.source == .none)
+        #expect(beforeV2.issue == .missing)
+        #expect(beforeV2.package == nil)
+        let legacyBytes = try Data(contentsOf: store.bindingsURL)
+        let legacyDate = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o640, .modificationDate: legacyDate],
+            ofItemAtPath: store.bindingsURL.path
+        )
+        let initial = try await store.installDefaultWorkingMethods()
+        #expect(try Data(contentsOf: store.bindingsURL) == legacyBytes)
+        let preservedAttributes = try FileManager.default.attributesOfItem(
+            atPath: store.bindingsURL.path
+        )
+        #expect((preservedAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o640)
+        #expect((preservedAttributes[.modificationDate] as? Date) == legacyDate)
         let active = try await store.functionBindingResolution(
             for: .develop,
             actionID: .analyze
         )
-        #expect(active.source == .triptychBinding)
-        #expect(active.package?.id == local.id)
-        #expect(active.bindingRevision == saved.revision)
+        #expect(active.source == .installedDefault)
+        #expect(active.package?.id == "scholium-working-analyze")
+        #expect(active.bindingRevision == initial.revision)
 
         let wrongAction = try await store.functionBindingResolution(
             for: .develop,
             actionID: .synthesize
         )
-        #expect(
-            wrongAction.issue
-                == .unsupportedAction(packageID: local.id, actionID: .synthesize)
-        )
+        #expect(wrongAction.source == .installedDefault)
+        #expect(wrongAction.package?.id == "scholium-working-synthesize")
 
         let cleared = try await store.clearFunctionSkillSelection(
             for: .develop,
@@ -443,9 +1085,12 @@ struct ResearchFunctionSkillTests {
             for: .develop,
             actionID: .analyze
         )
-        #expect(fallback.source == .bundledDefault)
-        #expect(fallback.package?.id == "scholium-analyze")
-        #expect(fallback.bindingRevision == cleared.revision)
+        #expect(fallback.source == .installedDefault)
+        #expect(fallback.package?.id == "scholium-working-analyze")
+        #expect(fallback.bindingRevision == initial.revision)
+
+        let currentLegacyRevision = try await store.bindingFileRevision()
+        #expect(cleared.revision == currentLegacyRevision)
 
         await #expect(throws: ResearchSkillBindingError.self) {
             _ = try await store.saveFunctionSkillSelection(
@@ -458,11 +1103,12 @@ struct ResearchFunctionSkillTests {
         }
     }
 
-    @Test("Active specialist and Practice bindings enter the effective function contract")
-    func activeResearcherGuidanceEnrichesFunctionContract() async throws {
+    @Test("Legacy specialist and Practice bindings do not enter Action resolution")
+    func legacyResearcherGuidanceDoesNotEnrichActionContract() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
+        _ = try await store.installDefaultWorkingMethods()
         let prose = try await store.duplicateBundled(
             id: "scholium-prose-control",
             as: "my-prose-control"
@@ -519,20 +1165,145 @@ struct ResearchFunctionSkillTests {
             store: store
         )
         let phase = try #require(envelope.contract.phases.first)
-        #expect(phase.requiredSkillIDs == [
-            "scholium-write",
-            prose.id,
-        ])
-        #expect(phase.selectedPractices == [practice])
-        #expect(envelope.phases[0].packages.contains { $0.id == prose.id })
-        let selectedPractice = try #require(
-            envelope.phases[0].packages.first { $0.id == practices.id }
-        )
-        #expect(selectedPractice.loadedResources.map(\.relativePath) == [
-            "SKILL.md",
-            "references/Philosophical-Expositor.md",
-        ])
+        #expect(phase.requiredSkillIDs == ["scholium-working-write"])
+        #expect(phase.selectedPractices.isEmpty)
+        #expect(!envelope.phases[0].packages.contains { $0.id == prose.id })
+        #expect(!envelope.phases[0].packages.contains { $0.id == practices.id })
         #expect(envelope.isExecutable)
+    }
+
+    @Test("Action assembly cannot mix a changed binding or primary package revision")
+    func actionAssemblyPinsOneExactPrimaryMethod() async throws {
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let store = fixture.workingMethodStore()
+            var binding = try await store.installDefaultWorkingMethods()
+            let methodA = try await store.create(
+                id: "assembly-method-a",
+                source: Self.analyzeMethodSource(
+                    id: "assembly-method-a",
+                    dependencies: []
+                )
+            )
+            let methodB = try await store.create(
+                id: "assembly-method-b",
+                source: Self.analyzeMethodSource(
+                    id: "assembly-method-b",
+                    dependencies: []
+                )
+            )
+            binding = try await store.activateResearcherSkill(
+                packageID: methodA.id,
+                for: .analyze,
+                expectedBindingRevision: binding.revision
+            )
+            let replacementDocument = try binding.document.replacing(
+                ResearchWorkingMethodBinding(
+                    state: .researcherSkill,
+                    packageID: methodB.id
+                ),
+                for: .analyze
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [
+                .prettyPrinted, .sortedKeys, .withoutEscapingSlashes,
+            ]
+            let replacementData = try encoder.encode(replacementDocument)
+            let racing = fixture.workingMethodStore(hooks: .init { point in
+                if case .beforeFunctionPackageResolution(actionID: .analyze) = point {
+                    try replacementData.write(
+                        to: store.workingMethodBindingsURL,
+                        options: .atomic
+                    )
+                }
+            })
+
+            await #expect(throws: ResearchSkillBindingError.self) {
+                _ = try await ResearchWorkflowAssembler.resolveFunction(
+                    Self.analyzeWorkflowContract(),
+                    function: .develop,
+                    actionID: .analyze,
+                    store: racing
+                )
+            }
+            let active = try await store.functionBindingResolution(
+                for: .develop,
+                actionID: .analyze
+            )
+            #expect(active.package?.id == methodB.id)
+        }
+
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let store = fixture.workingMethodStore()
+            _ = try await store.installDefaultWorkingMethods()
+            let current = try #require(try await store.functionBindingResolution(
+                for: .develop,
+                actionID: .analyze
+            ).package)
+            let changedSource = current.source.replacingOccurrences(
+                of: "supported_actions: [analyze]",
+                with: "supported_actions: [synthesize]"
+            )
+            let entryPoint = store.skillsURL
+                .appendingPathComponent(current.id, isDirectory: true)
+                .appendingPathComponent("SKILL.md")
+            let racing = fixture.workingMethodStore(hooks: .init { point in
+                if case .beforeFunctionPackageResolution(actionID: .analyze) = point {
+                    try Data(changedSource.utf8).write(
+                        to: entryPoint,
+                        options: .atomic
+                    )
+                }
+            })
+
+            await #expect(throws: (any Error).self) {
+                _ = try await ResearchWorkflowAssembler.resolveFunction(
+                    Self.analyzeWorkflowContract(),
+                    function: .develop,
+                    actionID: .analyze,
+                    store: racing
+                )
+            }
+        }
+
+        do {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let store = fixture.workingMethodStore()
+            _ = try await store.installDefaultWorkingMethods()
+            let practices = try await store.duplicateBundled(
+                id: "scholium-philosophical-practices",
+                as: "assembly-race-practices"
+            )
+            let selection = ResearchPracticeSelection(
+                packageID: practices.id,
+                practiceID: "philosophical-expositor"
+            )
+            let entryPoint = store.skillsURL
+                .appendingPathComponent(practices.id, isDirectory: true)
+                .appendingPathComponent("SKILL.md")
+            let changedSource = practices.source + "\n\nPRACTICE_RACE_EDIT\n"
+            let racing = fixture.workingMethodStore(hooks: .init { point in
+                if case .beforeFunctionPackageResolution(actionID: .analyze) = point {
+                    try Data(changedSource.utf8).write(
+                        to: entryPoint,
+                        options: .atomic
+                    )
+                }
+            })
+
+            await #expect(throws: (any Error).self) {
+                _ = try await ResearchWorkflowAssembler.resolveFunction(
+                    Self.analyzeWorkflowContract(selectedPractices: [selection]),
+                    function: .develop,
+                    actionID: .analyze,
+                    store: racing
+                )
+            }
+        }
     }
 
     @Test("Reviewer calibrates Critique only")
@@ -1414,6 +2185,85 @@ struct ResearchFunctionSkillTests {
         """
     }
 
+    private static func analyzeMethodSource(
+        id: String,
+        dependencies: [String]
+    ) -> String {
+        """
+        ---
+        name: \(id)
+        description: A dependency-boundary fixture for Analyze.
+        scholium:
+          role: method
+          supported_actions: [analyze]
+          supported_functions: [develop]
+          capabilities: []
+          citation_styles: []
+          allow_evolution: false
+          supported_modes: [analyze]
+          required_skills: [\(dependencies.joined(separator: ", "))]
+        ---
+
+        Exercise only the declared Analyze boundary.
+        """
+    }
+
+    private static func analyzeWorkflowContract(
+        selectedPractices: [ResearchPracticeSelection] = []
+    ) -> ResearchWorkflowContract {
+        let target = ResearchWorkflowObjectReference(
+            kind: .note,
+            identifier: "Analyses/Assembly Fixture.md"
+        )
+        return ResearchWorkflowContract(
+            mode: .analyze,
+            taskObject: "Analyze one source",
+            purpose: "Prove exact primary Method assembly.",
+            originalReadSet: [target],
+            originalWriteSet: [],
+            phases: [ResearchWorkflowPhaseContract(
+                phase: 1,
+                mode: .analyze,
+                purpose: "Analyze without changing the research Note.",
+                requiredSkillIDs: [],
+                selectedPractices: selectedPractices,
+                readSet: [target],
+                writeSet: [],
+                permission: .readOnly,
+                permissionBasis: "",
+                output: "Return one bounded analysis.",
+                stopCondition: "Stop if exact Method identity changes.",
+                durability: .handoff,
+                handoff: ResearchWorkflowHandoff(
+                    summary: "The analysis remains provisional.",
+                    evidenceStatus: "One exact Method revision was required."
+                )
+            )]
+        )
+    }
+
+    private static func analyzeSpecialistSource(
+        id: String,
+        dependencies: [String]
+    ) -> String {
+        """
+        ---
+        name: \(id)
+        description: A specialist dependency-boundary fixture for Analyze.
+        scholium:
+          role: specialist
+          supported_functions: [develop]
+          capabilities: []
+          citation_styles: []
+          allow_evolution: false
+          supported_modes: [analyze]
+          required_skills: [\(dependencies.joined(separator: ", "))]
+        ---
+
+        Exercise only one bounded specialist contribution.
+        """
+    }
+
     private static func maintenanceProposal(
         skillSource: String,
         resources: [String: String] = [:]
@@ -1469,6 +2319,7 @@ private struct Fixture {
     let root: URL
     let control: URL
     let snapshotRoot: URL
+    let workingMethodRecoveryRoot: URL
 
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -1480,6 +2331,7 @@ private struct Fixture {
             "Application Support/Triptychs/Test/research-guidance/skill-snapshots",
             isDirectory: true
         )
+        workingMethodRecoveryRoot = snapshotRoot
         try FileManager.default.createDirectory(
             at: control,
             withIntermediateDirectories: true
@@ -1488,6 +2340,20 @@ private struct Fixture {
 
     func remove() {
         try? FileManager.default.removeItem(at: root)
+    }
+
+    func workingMethodStore(
+        hooks: ResearchWorkingMethodStoreHooks = .none,
+        forceCopyFallback: Bool = false
+    ) -> ResearchSkillStore {
+        ResearchSkillStore(
+            controlURL: control,
+            workingMethodRecoveryStore: ResearchWorkingMethodRecoveryStore(
+                snapshotRootURL: workingMethodRecoveryRoot,
+                forceCopyFallback: forceCopyFallback
+            ),
+            workingMethodHooks: hooks
+        )
     }
 
     func createEvolvablePackage(

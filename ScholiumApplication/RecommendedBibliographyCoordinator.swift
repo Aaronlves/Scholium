@@ -313,7 +313,8 @@ extension WorkspaceHandle {
             issue = .malformedBinding
         case .invalidPackage, .unsupportedFunction, .unsupportedAction:
             issue = .invalidPackage
-        case .missingCapability, .citationStyleMissing, .citationStyleMismatch, .missing:
+        case .missingCapability, .citationStyleMissing, .citationStyleMismatch,
+             .missing, .disabled:
             issue = .missingCapability
         }
         return RecommendedBibliographyMethodStatus(

@@ -338,8 +338,12 @@ public actor WorkspaceHandle {
 
             let controlStore = TriptychControlStore(worksVaultURL: worksURL)
             let controlURL = await controlStore.controlURL
+            let triptychStorage = applicationSupportURL
+                .appendingPathComponent("Triptychs", isDirectory: true)
+                .appendingPathComponent(assignment.id.uuidString, isDirectory: true)
             let manifestURL = controlURL.appendingPathComponent("manifest.json")
-            if FileManager.default.fileExists(atPath: manifestURL.path) {
+            let manifestExists = FileManager.default.fileExists(atPath: manifestURL.path)
+            if manifestExists {
                 let existing = try await controlStore.manifest()
                 guard existing.id == assignment.id else {
                     throw ScholiumApplicationError.manifestIdentityMismatch(
@@ -347,6 +351,27 @@ public actor WorkspaceHandle {
                         actual: existing.id
                     )
                 }
+            }
+
+            let workingMethodRecoveryStore = ResearchWorkingMethodRecoveryStore(
+                snapshotRootURL: triptychStorage
+                    .appendingPathComponent("research-guidance", isDirectory: true)
+                    .appendingPathComponent(
+                        "skill-snapshots",
+                        isDirectory: true
+                    )
+            )
+            let researchSkillStore = ResearchSkillStore(
+                controlURL: controlURL,
+                workingMethodRecoveryStore: workingMethodRecoveryStore
+            )
+            if !manifestExists {
+                // Working Methods are installed before the manifest becomes
+                // the durable new-Triptych marker. A failed or interrupted
+                // bootstrap can therefore retry exact partial task-owned
+                // packages without mutating an established Triptych.
+                _ = try await researchSkillStore
+                    .installDefaultWorkingMethods()
             }
 
             let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
@@ -380,9 +405,6 @@ public actor WorkspaceHandle {
             }
             let initialWorkspaceGeneration = priorWorkspaceGeneration + 1
 
-            let triptychStorage = applicationSupportURL
-                .appendingPathComponent("Triptychs", isDirectory: true)
-                .appendingPathComponent(manifest.id.uuidString, isDirectory: true)
             let researchActivityStore = ResearchActivityStore(
                 storageURL: triptychStorage.appendingPathComponent(
                     "research-activity",
@@ -402,7 +424,6 @@ public actor WorkspaceHandle {
                     isDirectory: true
                 )
             )
-            let researchSkillStore = ResearchSkillStore(controlURL: controlURL)
             let researchSkillMaintenanceStore = ResearchSkillMaintenanceStore(
                 skillStore: researchSkillStore,
                 snapshotRootURL: triptychStorage

@@ -19,15 +19,13 @@ public enum ResearchWorkflowAssembler {
         store: ResearchSkillStore
     ) async throws -> ResolvedResearchWorkflowEnvelope {
         try contract.validate()
-        let activeSelection = try await store.functionSkillSelection(for: function)
         let primaryResolution = try await store.functionBindingResolution(
             for: function,
             actionID: actionID
         )
         let primarySkillIDs = primaryResolution.package.map { [$0.id] } ?? []
-        let effectiveContract = try applying(
-            activeSelection,
-            primarySkillIDs: primarySkillIDs,
+        let effectiveContract = applyingPrimaryMethod(
+            primarySkillIDs,
             to: contract
         )
         try effectiveContract.validate()
@@ -36,7 +34,10 @@ public enum ResearchWorkflowAssembler {
         for phase in effectiveContract.phases {
             let practicePackageIDs = phase.selectedPractices.map(\.packageID)
             let additionalIDs = unique(phase.requiredSkillIDs + practicePackageIDs)
+                .filter { $0 != primaryResolution.package?.id }
             var selectedPaths = conditionalResourcePaths
+            var practicePackageRevisions: [String: DocumentFingerprint] = [:]
+            var practiceReferences: [String: String] = [:]
             var blocking: [String] = []
             var warnings: [String] = []
 
@@ -52,6 +53,19 @@ public enum ResearchWorkflowAssembler {
                         "Practice \(selection.selectionID) is not declared by its package."
                     )
                 }
+                guard let revision = package.revision else {
+                    throw ResearchWorkflowContractError.invalid(
+                        "Practice package has no exact revision: \(selection.packageID)."
+                    )
+                }
+                if let existing = practicePackageRevisions[package.id],
+                   existing != revision {
+                    throw ResearchWorkflowContractError.invalid(
+                        "Practice package changed while the phase was being prepared: \(package.id)."
+                    )
+                }
+                practicePackageRevisions[package.id] = revision
+                practiceReferences[selection.selectionID] = reference
                 selectedPaths[package.id, default: []].insert(reference)
             }
 
@@ -62,15 +76,27 @@ public enum ResearchWorkflowAssembler {
                 citationStyle: citationStyle,
                 additionalSkillIDs: additionalIDs,
                 primaryResourcePaths: primaryResourcePaths,
-                additionalResourcePaths: selectedPaths
+                additionalResourcePaths: selectedPaths,
+                expectedAdditionalPackageRevisions: practicePackageRevisions,
+                primaryResolution: primaryResolution
             )
-            var metadata: [ResearchSkillPackage] = []
-            for package in packages {
-                metadata.append(try await store.package(id: package.id))
+            for selection in phase.selectedPractices {
+                guard let expectedRevision = practicePackageRevisions[selection.packageID],
+                      let reference = practiceReferences[selection.selectionID],
+                      let resolved = packages.first(where: {
+                          $0.id == selection.packageID
+                      }),
+                      resolved.packageRevision == expectedRevision,
+                      resolved.loadedResources.contains(where: {
+                          $0.relativePath == reference
+                      }) else {
+                    throw ResearchWorkflowContractError.invalid(
+                        "Practice package changed while exact resources were being captured: \(selection.packageID)."
+                    )
+                }
             }
             let compatible = Set(
-                metadata.filter { $0.role == "method" }
-                    .flatMap(\.compatiblePracticeIDs)
+                primaryResolution.package?.compatiblePracticeIDs ?? []
             )
             for selection in phase.selectedPractices
             where !compatible.contains(selection.practiceID) {
@@ -113,35 +139,11 @@ public enum ResearchWorkflowAssembler {
         )
     }
 
-    private static func applying(
-        _ selection: ResearchFunctionSkillSelection,
-        primarySkillIDs: [String],
+    private static func applyingPrimaryMethod(
+        _ primarySkillIDs: [String],
         to contract: ResearchWorkflowContract
-    ) throws -> ResearchWorkflowContract {
-        let phases = try contract.phases.map { phase in
-            var practices = phase.selectedPractices
-            var existingByID: [String: ResearchPracticeSelection] = [:]
-            for existing in practices {
-                guard existingByID.updateValue(
-                    existing,
-                    forKey: existing.selectionID
-                ) == nil else {
-                    throw ResearchWorkflowContractError.invalid(
-                        "The task selects Practice \(existing.selectionID) more than once."
-                    )
-                }
-            }
-            for selected in selection.selectedPractices {
-                if let existing = existingByID[selected.selectionID],
-                   existing != selected {
-                    throw ResearchWorkflowContractError.invalid(
-                        "The task and active Triptych binding select Practice \(selected.selectionID) differently. Resolve the methodological conflict in Research Guidance."
-                    )
-                }
-                if existingByID[selected.selectionID] == nil {
-                    practices.append(selected)
-                }
-            }
+    ) -> ResearchWorkflowContract {
+        let phases = contract.phases.map { phase in
             return ResearchWorkflowPhaseContract(
                 phase: phase.phase,
                 mode: phase.mode,
@@ -149,9 +151,8 @@ public enum ResearchWorkflowAssembler {
                 requiredSkillIDs: unique(
                     primarySkillIDs
                         + phase.requiredSkillIDs
-                        + selection.supplementalPackageIDs
                 ),
-                selectedPractices: practices,
+                selectedPractices: phase.selectedPractices,
                 readSet: phase.readSet,
                 writeSet: phase.writeSet,
                 permission: phase.permission,

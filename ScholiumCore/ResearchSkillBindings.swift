@@ -105,11 +105,15 @@ public struct ResearchSkillBindingSnapshot: Hashable, Sendable {
 public enum ResearchSkillBindingSource: String, Codable, Hashable, Sendable {
     case bundledDefault = "bundled_default"
     case triptychBinding = "triptych_binding"
+    case installedDefault = "installed_default"
+    case researcherSkill = "researcher_skill"
+    case disabled
     case none
 }
 
 public enum ResearchSkillBindingIssue: Hashable, Sendable {
     case missing
+    case disabled
     case malformed(String)
     case invalidPackage(String)
     case unsupportedFunction(packageID: String, function: ResearchFunctionID)
@@ -127,8 +131,8 @@ public struct ResearchSkillBindingResolution: Hashable, Sendable {
     public let issue: ResearchSkillBindingIssue?
     public let citationStyle: String?
     /// Fingerprint of the safe raw binding file, even when its contents are
-    /// malformed. Settings can therefore repair a malformed document without
-    /// bypassing revision checks.
+    /// malformed. The retained v1 path can use it for whole-document repair;
+    /// a corresponding v2 Settings repair remains future work.
     public let bindingRevision: DocumentFingerprint?
 
     public init(
@@ -157,6 +161,9 @@ public enum ResearchSkillBindingError: LocalizedError, Sendable {
     case staleBindingFile
     case invalidBindingDocument(String)
     case unresolvedBinding(ResearchSkillBindingIssue)
+    case workingMethodRestoreRecoveryRequired(String)
+    case workingMethodEditRecoveryRequired(String)
+    case workingMethodBindingRecoveryRequired
 
     public var errorDescription: String? {
         switch self {
@@ -168,6 +175,12 @@ public enum ResearchSkillBindingError: LocalizedError, Sendable {
             "Research Skill bindings are invalid. \(reason)"
         case .unresolvedBinding(let issue):
             "Research Skill binding cannot be resolved: \(String(describing: issue))"
+        case .workingMethodRestoreRecoveryRequired(let packageID):
+            "Working Method restoration could not prove one complete package-and-binding outcome for \(packageID). Reload Research Guidance and inspect its recovery snapshots before running this Action."
+        case .workingMethodEditRecoveryRequired(let packageID):
+            "Working Method editing could not prove one authoritative revision for \(packageID). Reload Research Guidance and inspect its recovery snapshots before running this Action."
+        case .workingMethodBindingRecoveryRequired:
+            "Working Method bindings may have committed, but their durable state could not be proved. Reload Research Guidance before making another change."
         }
     }
 }

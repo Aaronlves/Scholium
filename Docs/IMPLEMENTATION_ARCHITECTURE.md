@@ -324,10 +324,23 @@ intellectual procedure. The old conditional Development, Revision, and
 Manuscript resource selectors remain decodable only for legacy machine-local
 records and are no longer offered by current Functions; each Method now loads
 its complete adaptive core, with Write feedback guidance included by default.
-Directly editable Triptych Working Method installation
-and action-keyed bindings remain the next ownership cutover, so current
-Function-keyed researcher bindings are accepted only when the selected package
-also declares the exact Action.
+Before a new Triptych manifest is committed, `ResearchSkillStore` installs six
+independent editable packages under `.scholium/skills/` and atomically writes
+`research-working-method-bindings-v2.json`; Manuscript is represented by an
+explicit disabled state. The initializer is idempotent for an exact interrupted
+bootstrap and never runs automatically for a Triptych with an existing
+manifest. Application exposes the same absence-checked operation as the
+explicit repair primitive for the later categorized Settings interface.
+
+Action execution resolves only that Action-keyed v2 document. Its
+`installed_default`, `researcher_skill`, and `disabled` states are explicit;
+absence, malformed data, missing packages, invalid packages, and role/Action
+incompatibility fail closed without a bundled fallback. The bundled package is
+read only during initial installation or explicit restore. The retained
+Function-keyed `research-skill-bindings.json` file and APIs remain readable for
+legacy Settings and temporary citation/bibliography compatibility. Its primary,
+supplemental, and Practice fields cannot select or compose an Action's Working
+Method.
 
 One delivery-neutral `ResearchFunctionCoordinator` per workspace owns
 availability, preparation, completion, cancellation, and record projection. It
@@ -570,16 +583,25 @@ protocol. Catalog metadata also exposes capabilities—including
 `bibliography-recommendation`—and citation styles while retaining modes only
 for internal package assembly.
 
-Function-method activation remains a transitional Settings-facing capability
-over the same boundary. `ResearchFunctionSkillSelection` represents an
-optional primary replacement, supplemental packages, and exact Practice
-selections for one retained semantic Function. Application lists only valid
-compatible Triptych-local Researcher Skills, validates role and Practice
-compatibility, and performs revision-checked saves through
-`ResearchSkillStore`. Action-aware assembly additionally verifies the exact
-Action, so one legacy Develop binding cannot authorize both Analyze and
-Synthesize. Direct per-Triptych Working Method installation and action-keyed
-binding v2 remain later migration work.
+Function-method activation remains a legacy Settings-facing capability.
+`ResearchFunctionSkillSelection` can still decode and revise the preserved v1
+file so old data remains inspectable, but `ResearchWorkflowAssembler` ignores
+its primary, supplemental, and Practice selections. New Application operations
+edit, disable, replace, and explicitly restore an Action's v2 Working Method
+through exact package and binding revisions. Direct edit and restore exchange
+the complete package through descriptor-relative operations, recheck the v2
+binding before and after package mutation, and publish the displaced package
+through the existing machine-local Research Guidance snapshot lifecycle.
+Same-volume archival moves the displaced inode; cross-volume archival uses a
+verified complete copy and retains the hidden portable inode so a late write
+cannot be discarded. Snapshot listing reports the retained package's observed
+revision separately, and a corrupt retained stage cannot hide the valid
+machine-local snapshot. A binding exchange that commits but cannot complete
+verification is reported as recovery-required without rolling the package back
+into a state that could contradict the active binding. Every prepared run
+captures the resulting exact package and loaded-resource revisions. The
+categorized Methods and Researcher Skills interface remains a later
+production-Settings cutover.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych
@@ -618,6 +640,13 @@ snapshot as a Researcher Skill, and uses atomic replace or guarded missing-
 package installation. An existing displaced package becomes a new undo
 snapshot before replacement; a missing package has no displaced state. The UI
 confirms complete-package replacement before invoking this authority.
+Direct Working Method edit and bundled restore publish their displaced package
+in this same UUID/manifest/package format, so existing listing and restore
+operations remain the sole machine-local recovery owner rather than creating a
+second portable history inside `.scholium`. Cross-volume fallback is the narrow
+exception: the verified snapshot records that its displaced hidden package is
+still retained under `.scholium/skills`; automatic cleanup is intentionally
+not claimed while an external participant may hold its inode open.
 
 ## Vault write and prewrite-recovery boundary
 

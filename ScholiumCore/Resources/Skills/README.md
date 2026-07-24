@@ -31,11 +31,11 @@ Seven ordinary methods each support one researcher-visible Action:
 
 Analyze adapts between initial analysis and reanalysis without exposing a mode selector. Critical pressure is part of its method after source-grounded reconstruction. Synthesize is a separate Topic method. The retained `develop` and `revise` Function identifiers are internal execution compatibility only.
 
-These packages are usable defaults, not best methods or certification. Session 3 supplies and routes the split bundled references; installing directly editable per-Triptych Working Methods, disabling fallback, and restoring references belong to the next ownership cutover.
+These packages are usable defaults, not best methods or certification. A new Triptych copies the first six into independent, directly editable working packages and binds them through Action-keyed binding v2. The bundled packages remain read-only references for initial installation, comparison, and explicit restoration; they are never runtime fallback.
 
-Manuscript is the exception to bundled fallback: its reference ships for explicit duplication or later Profile enablement, but a new run remains disabled until a researcher binds a Triptych-local Method. The retained Function machinery is not an implicit enable route.
+Manuscript ships only as an optional reference. Its new-Triptych v2 state is explicitly disabled, and a run remains unavailable until the researcher activates a compatible Triptych-local Method. The retained Function machinery and legacy Function binding are not implicit enable routes.
 
-Protected System packages are seeded by the Action resolver rather than trusted to an editable Method's dependency list. A local Method may be self-contained or name bounded package resources without copying bundled filenames. Assembly snapshots all package bytes coherently, while selected Practices, citation styles, and Fidelity checks retain their narrower resource selections.
+Protected System packages are seeded by the Action resolver rather than trusted to an editable Method's dependency list. A local Method may be self-contained or name bounded System/specialist dependencies, but no Triptych-local dependency edge may execute another Method: each Action packet contains exactly its one bound complete Method. Assembly snapshots all package bytes coherently, while selected Practices, citation styles, and Fidelity checks retain their narrower resource selections. Direct edits and bundled restores preserve displaced complete packages through the machine-local Research Guidance snapshot inventory; cross-volume fallback also retains and reports the hidden portable package instead of deleting possible late writes.
 
 ### Researcher Skill templates
 
@@ -43,6 +43,6 @@ Protected System packages are seeded by the Action resolver rather than trusted 
 
 ## Catalog and evaluation
 
-`catalog.yaml` schema 4 records protected ownership, exact Action compatibility, retained internal Function compatibility, modes, dependencies, and bounded resources. Assembly selects by Action first and fails closed when an old Function binding names a package that does not support that Action.
+`catalog.yaml` schema 4 records protected ownership, exact Action compatibility, retained internal Function compatibility, modes, dependencies, and bounded resources. Assembly selects the explicit v2 Working Method by Action and fails closed for absent, disabled, invalid, or incompatible state; Function-keyed primary, supplemental, and Practice fields are ignored.
 
 `evals/cases.yaml` is an unexecuted forward prompt/evaluation specification. It enumerates complete source and argument routes, source-unavailable refusal, phase isolation, record boundaries, and adversarial authority cases. Repository tests establish only that its declared Actions, packages, routes, and resources are structurally valid. No runner, agent output, or behavioral oracle is attached yet, so these cases establish neither behavior, philosophical quality, nor Method fidelity.

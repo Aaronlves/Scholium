@@ -3,6 +3,70 @@ import ScholiumContracts
 import ScholiumCore
 
 extension WorkspaceHandle {
+    func installDefaultWorkingMethods()
+        async throws -> ResearchWorkingMethodBindingSnapshot
+    {
+        try requireActive()
+        return try await services.researchSkillStore.installDefaultWorkingMethods()
+    }
+
+    func workingMethodBindings() async throws -> ResearchWorkingMethodBindingSnapshot? {
+        try requireActive()
+        return try await services.researchSkillStore.workingMethodBindingSnapshot()
+    }
+
+    func saveWorkingMethod(
+        for actionID: ResearchActionID,
+        source: String,
+        expectedPackageRevision: DocumentFingerprint,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchSkillPackage {
+        try requireActive()
+        return try await services.researchSkillStore.saveWorkingMethod(
+            for: actionID,
+            source: source,
+            expectedPackageRevision: expectedPackageRevision,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    func disableWorkingMethod(
+        for actionID: ResearchActionID,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot {
+        try requireActive()
+        return try await services.researchSkillStore.disableWorkingMethod(
+            for: actionID,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    func activateResearcherSkill(
+        packageID: String,
+        for actionID: ResearchActionID,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot {
+        try requireActive()
+        return try await services.researchSkillStore.activateResearcherSkill(
+            packageID: packageID,
+            for: actionID,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
+    func restoreBundledWorkingMethod(
+        for actionID: ResearchActionID,
+        expectedPackageState: ResearchWorkingMethodExpectedPackageState,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodRestoreOutcome {
+        try requireActive()
+        return try await services.researchSkillStore.restoreBundledWorkingMethod(
+            for: actionID,
+            expectedPackageState: expectedPackageState,
+            expectedBindingRevision: expectedBindingRevision
+        )
+    }
+
     func researchFunctionSkillBindingStatus(
         for function: ResearchFunctionID
     ) async throws -> ResearchFunctionSkillBindingStatus {

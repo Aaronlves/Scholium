@@ -331,14 +331,13 @@ struct DerivedRefreshStatusTests {
             id: "scholium-manuscript",
             as: "refresh-manuscript-method"
         )
-        let manuscriptStatus = try await handle.research
-            .researchFunctionSkillBindingStatus(for: .manuscript)
-        _ = try await handle.research.saveResearchFunctionSkillSelection(
-            ResearchFunctionSkillSelection(
-                function: .manuscript,
-                primaryPackageID: manuscriptMethod.id
-            ),
-            expectedBindingRevision: manuscriptStatus.bindingRevision
+        let manuscriptBindings = try #require(
+            try await handle.research.workingMethodBindings()
+        )
+        _ = try await handle.research.activateResearcherSkill(
+            packageID: manuscriptMethod.id,
+            for: .manuscript,
+            expectedBindingRevision: manuscriptBindings.revision
         )
 
         let manuscript = try await handle.research.prepareFunction(

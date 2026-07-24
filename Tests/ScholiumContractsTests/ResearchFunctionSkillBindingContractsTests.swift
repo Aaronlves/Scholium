@@ -4,6 +4,79 @@ import Testing
 
 @Suite("Research Function Skill binding contracts")
 struct ResearchFunctionSkillBindingContractsTests {
+    @Test("Working Method binding v2 round-trips explicit ownership states")
+    func workingMethodBindingRoundTrip() throws {
+        let document = try ResearchWorkingMethodBindingDocument(actionBindings: [
+            .analyze: ResearchWorkingMethodBinding(
+                state: .installedDefault,
+                packageID: "scholium-working-analyze"
+            ),
+            .write: ResearchWorkingMethodBinding(
+                state: .researcherSkill,
+                packageID: "my-writing-method"
+            ),
+            .manuscript: ResearchWorkingMethodBinding(state: .disabled),
+        ])
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(document)
+        let encoded = String(decoding: data, as: UTF8.self)
+        #expect(encoded.contains("\"schema_version\":2"))
+        #expect(encoded.contains("\"installed_default\""))
+        #expect(encoded.contains("\"researcher_skill\""))
+        #expect(!encoded.contains("develop"))
+        let decoded = try JSONDecoder().decode(
+            ResearchWorkingMethodBindingDocument.self,
+            from: data
+        )
+
+        #expect(decoded == document)
+        #expect(decoded.schemaVersion == 2)
+        #expect(decoded.binding(for: .analyze)?.state == .installedDefault)
+        #expect(decoded.binding(for: .write)?.state == .researcherSkill)
+        #expect(decoded.binding(for: .manuscript)?.state == .disabled)
+    }
+
+    @Test("Working Method binding v2 rejects ambiguous states and unknown schemas")
+    func workingMethodBindingFailsClosed() throws {
+        #expect(throws: ResearchWorkingMethodBindingContractError.self) {
+            _ = try ResearchWorkingMethodBinding(state: .installedDefault)
+        }
+        #expect(throws: ResearchWorkingMethodBindingContractError.self) {
+            _ = try ResearchWorkingMethodBinding(
+                state: .disabled,
+                packageID: "retained-package"
+            )
+        }
+
+        let future = Data(#"{"schema_version":3,"action_bindings":{}}"#.utf8)
+        #expect(throws: ResearchWorkingMethodBindingContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchWorkingMethodBindingDocument.self,
+                from: future
+            )
+        }
+        let invalidAction = Data(
+            #"{"schema_version":2,"action_bindings":{"Develop":{"state":"disabled"}}}"#.utf8
+        )
+        #expect(throws: ResearchWorkingMethodBindingContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchWorkingMethodBindingDocument.self,
+                from: invalidAction
+            )
+        }
+        let unknownField = Data(
+            #"{"schema_version":2,"action_bindings":{"analyze":{"state":"disabled","intent":"infer me"}}}"#.utf8
+        )
+        #expect(throws: ResearchWorkingMethodBindingContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchWorkingMethodBindingDocument.self,
+                from: unknownField
+            )
+        }
+    }
+
     @Test("A Settings selection round-trips without adding interface presentation data")
     func selectionRoundTrip() throws {
         let selection = ResearchFunctionSkillSelection(

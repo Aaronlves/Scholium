@@ -536,7 +536,7 @@ struct ResearchFunctionOperationsTests {
         #expect(packet.contains("\"skillPackages\""))
         #expect(packet.contains("\"packageRevision\""))
         #expect(packet.contains("\"loadedResources\""))
-        #expect(packet.contains("scholium-analyze"))
+        #expect(packet.contains("scholium-working-analyze"))
         #expect(!packet.contains("profileRevision"))
         #expect(!preparation.awaitsResourceSelection)
         #expect(!packet.contains("## Finalize conditional resources"))
@@ -1430,8 +1430,8 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Settings activation selects Researcher Skills for later function runs")
-    func researcherSkillFunctionActivation() async throws {
+    @Test("Legacy Settings bindings cannot enter Action-keyed runs")
+    func legacySettingsBindingIsExcludedFromActionRun() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1454,9 +1454,7 @@ struct ResearchFunctionOperationsTests {
         let initial = try await handle.research
             .researchFunctionSkillBindingStatus(for: .revise)
         #expect(initial.selection.isEmpty)
-        #expect(initial.candidates.first { $0.packageID == maliciousProse.id }?.name == "Prose Control")
-        #expect(initial.candidates.first { $0.packageID == maliciousProse.id }?.availableRoles
-            == [.supplemental])
+        #expect(!initial.candidates.contains { $0.packageID == maliciousProse.id })
         #expect(initial.candidates.first { $0.packageID == practices.id }?.practiceIDs
             .contains("philosophical-expositor") == true)
 
@@ -1487,22 +1485,61 @@ struct ResearchFunctionOperationsTests {
         let phase = try #require(preparation.snapshot.phases.first {
             $0.function == .revise
         })
-        #expect(phase.skills.contains { $0.packageID == maliciousProse.id })
-        #expect(preparation.instructions.contains(skillInjectionMarker))
+        #expect(!phase.skills.contains { $0.packageID == maliciousProse.id })
+        #expect(!preparation.instructions.contains(skillInjectionMarker))
+        #expect(phase.skills.contains {
+            $0.packageID == "scholium-working-write"
+        })
         #expect(preparation.snapshot.request.authorizedWriteTargets.map(\.note)
             == [fixture.workID])
-        let selectedPractice = try #require(phase.skills.first {
-            $0.packageID == practices.id
-        })
-        #expect(selectedPractice.loadedResources.map(\.relativePath).contains(
-            "references/Philosophical-Expositor.md"
-        ))
+        #expect(!phase.skills.contains { $0.packageID == practices.id })
 
         let cleared = try await handle.research.clearResearchFunctionSkillSelection(
             for: .revise,
             expectedBindingRevision: active.bindingRevision
         )
         #expect(cleared.selection.isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("An established Triptych without binding v2 is not silently bootstrapped")
+    func establishedTriptychDoesNotReceiveImplicitWorkingMethods() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let bindingURL = fixture.rootURL
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent(
+                "research-working-method-bindings-v2.json",
+                isDirectory: false
+            )
+        try FileManager.default.removeItem(at: bindingURL)
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        #expect(try await handle.research.workingMethodBindings() == nil)
+        #expect(!FileManager.default.fileExists(atPath: bindingURL.path))
+
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let develop = try #require(
+            try await handle.research.availableFunctions(for: analysis).first {
+                $0.function == .develop
+            }
+        )
+        #expect(!develop.isEnabled)
+        #expect(develop.repairReasons.contains { $0.code == .missingWorkflow })
+
+        let repaired = try await handle.research.installDefaultWorkingMethods()
+        #expect(repaired.document.binding(for: .analyze)?.state == .installedDefault)
+        let repairedDevelop = try #require(
+            try await handle.research.availableFunctions(for: analysis).first {
+                $0.function == .develop
+            }
+        )
+        #expect(repairedDevelop.isEnabled)
         await runtime.shutdown()
     }
 
@@ -1634,14 +1671,13 @@ struct ResearchFunctionOperationsTests {
             id: "scholium-manuscript",
             as: "my-manuscript-method"
         )
-        let manuscriptStatus = try await handle.research
-            .researchFunctionSkillBindingStatus(for: .manuscript)
-        _ = try await handle.research.saveResearchFunctionSkillSelection(
-            ResearchFunctionSkillSelection(
-                function: .manuscript,
-                primaryPackageID: manuscriptMethod.id
-            ),
-            expectedBindingRevision: manuscriptStatus.bindingRevision
+        let manuscriptBindings = try #require(
+            try await handle.research.workingMethodBindings()
+        )
+        _ = try await handle.research.activateResearcherSkill(
+            packageID: manuscriptMethod.id,
+            for: .manuscript,
+            expectedBindingRevision: manuscriptBindings.revision
         )
 
         let manuscript = try await handle.research.prepareFunction(

@@ -80,10 +80,15 @@ researcher-managed folders; Scholium does not register or manage projects. See
 ownership and [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for
 precise evidence and remaining gaps.
 
-The public Action contracts and split bundled Method references are now
-reachable foundations: Analyze and Synthesize resolve separately while the
-old Function identifiers stay protected inside the execution layer. Directly
-editable Triptych Working Methods, classified Skills settings, standing
+The public Action contracts, split bundled Method references, and independent
+Triptych Working Methods are now reachable foundations. A new Triptych installs
+six editable working packages plus an explicit disabled Manuscript binding.
+An Action's primary Method is selected only by binding v2 and never falls back
+to a bundled reference or legacy Function binding. Direct edits and bundled
+restores send displaced complete packages to the existing machine-local
+Research Guidance snapshot inventory. A cross-volume fallback keeps and reports
+the hidden portable package rather than deleting an inode that may receive a
+late external write. Classified Skills settings, standing
 permissions, unified Discussion, and the portable two-panel Research Record
 adopted by D-106 remain later migration work.
 
@@ -311,7 +316,7 @@ Authoritative research remains in the selected Markdown vaults. Machine-local re
 ~/Library/Application Support/Scholium/
 ```
 
-A small portable `.scholium/` directory beside Works stores only the Triptych manifest, Triptych-local settings, Properties configuration, Critique configuration and associations, identity mappings, Unclassified Markdown, and researcher-managed direct Skill packages under `.scholium/skills/<skill-id>/`. Each package has `SKILL.md` and may have bounded one-level `references/` or `templates/` resources. It contains no project registry, bookmarks, absolute paths, passwords, indexes, window sessions, or private review history.
+A small portable `.scholium/` directory beside Works stores only the Triptych manifest, Triptych-local settings, Properties configuration, Critique configuration and associations, identity mappings, Unclassified Markdown, the Action-keyed Working Method binding document, and Triptych-owned Skill packages under `.scholium/skills/<skill-id>/`. The latter include independently editable Working Methods and researcher-managed packages. Each package has `SKILL.md` and may have bounded one-level `references/`, `templates/`, or `evals/` resources. Verified cross-volume recoveries may also retain hidden displaced packages under `.scholium/skills`; their observed revisions are reported through the machine-local snapshot listing and they are never treated as active. The control directory contains no project registry, bookmarks, absolute paths, passwords, indexes, window sessions, or private review history. The retained `research-skill-bindings.json` file is legacy for Function-keyed primary, supplemental, and Practice selection; those fields neither select nor compose the primary Method of a current Action. Citation and bibliography capability bindings remain there temporarily and are reported as migration debt.
 
 Every authoritative app write must validate containment and the expected revision, preserve the previous bytes, validate frontmatter, write atomically, and report conflicts without discarding the editor buffer. Derived search, graph, render, and diagnostic state is disposable and must never reconstruct writable source.
 

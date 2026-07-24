@@ -3262,7 +3262,7 @@ extension WorkspaceHandle {
         citation: Bool = false
     ) -> ResearchFunctionRepairReason {
         switch issue {
-        case .missing:
+        case .missing, .disabled:
             return ResearchFunctionRepairReason(
                 code: citation ? .missingCapability : .missingWorkflow,
                 function: function,
@@ -3422,7 +3422,7 @@ extension WorkspaceHandle {
     ) -> ResearchCitationMethodIssue? {
         guard let issue else { return nil }
         switch issue {
-        case .missing:
+        case .missing, .disabled:
             return ResearchCitationMethodIssue(code: .missing)
         case .malformed:
             return ResearchCitationMethodIssue(code: .malformedBinding)

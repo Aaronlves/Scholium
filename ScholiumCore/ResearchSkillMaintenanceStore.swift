@@ -7,7 +7,7 @@ import Darwin
 /// or another linked ancestor. All replacement work remains relative to the
 /// already-open Skills directory, so swapping a parent path cannot redirect a
 /// write into another project or arbitrary filesystem location.
-private enum SecureResearchSkillPackageIO {
+enum SecureResearchSkillPackageIO {
     private static let directoryMode = mode_t(0o700)
     private static let fileMode = mode_t(0o600)
 
@@ -227,6 +227,28 @@ private enum SecureResearchSkillPackageIO {
         }
     }
 
+    static func moveEntryExclusively(
+        sourceParentDescriptor: Int32,
+        source: String,
+        destinationParentDescriptor: Int32,
+        destination: String
+    ) throws {
+        let result = source.withCString { sourceName in
+            destination.withCString { destinationName in
+                renameatx_np(
+                    sourceParentDescriptor,
+                    sourceName,
+                    destinationParentDescriptor,
+                    destinationName,
+                    UInt32(RENAME_EXCL)
+                )
+            }
+        }
+        guard result == 0 else {
+            throw failure(destination, operation: "archive displaced Working Method state")
+        }
+    }
+
     static func removePackage(rootDescriptor: Int32, packageName: String) throws {
         let packageDescriptor = packageName.withCString {
             openat(rootDescriptor, $0, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
@@ -443,7 +465,8 @@ private enum SecureResearchSkillPackageIO {
     static func readDataFile(
         parentDescriptor: Int32,
         leaf: String,
-        path: String
+        path: String,
+        maximumByteCount: Int? = nil
     ) throws -> Data {
         let descriptor = leaf.withCString {
             openat(parentDescriptor, $0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
@@ -457,6 +480,10 @@ private enum SecureResearchSkillPackageIO {
               (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else {
             throw ResearchSkillMaintenanceError.invalidResourcePath(path)
         }
+        if let maximumByteCount,
+           metadata.st_size > off_t(maximumByteCount) {
+            throw failure(path, operation: "read bounded data file")
+        }
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
@@ -468,9 +495,82 @@ private enum SecureResearchSkillPackageIO {
                 if errno == EINTR { continue }
                 throw failure(path, operation: "read package resource")
             }
+            if let maximumByteCount,
+               data.count + Int(count) > maximumByteCount {
+                throw failure(path, operation: "read bounded data file")
+            }
             data.append(contentsOf: buffer.prefix(Int(count)))
         }
         return data
+    }
+
+    static func dataFileIfPresent(
+        parentDescriptor: Int32,
+        leaf: String,
+        path: String,
+        maximumByteCount: Int? = nil
+    ) throws -> Data? {
+        var metadata = stat()
+        let result = leaf.withCString {
+            fstatat(parentDescriptor, $0, &metadata, AT_SYMLINK_NOFOLLOW)
+        }
+        if result != 0, errno == ENOENT { return nil }
+        guard result == 0,
+              (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else {
+            throw failure(path, operation: "inspect data file")
+        }
+        return try readDataFile(
+            parentDescriptor: parentDescriptor,
+            leaf: leaf,
+            path: path,
+            maximumByteCount: maximumByteCount
+        )
+    }
+
+    static func createDataFile(
+        parentDescriptor: Int32,
+        leaf: String,
+        data: Data,
+        path: String
+    ) throws {
+        let descriptor = leaf.withCString {
+            openat(
+                parentDescriptor,
+                $0,
+                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+                fileMode
+            )
+        }
+        guard descriptor >= 0 else {
+            throw failure(path, operation: "create data file")
+        }
+        do {
+            try writeAll(data, descriptor: descriptor, path: path)
+            guard fsync(descriptor) == 0 else {
+                throw failure(path, operation: "flush data file")
+            }
+            Darwin.close(descriptor)
+        } catch {
+            Darwin.close(descriptor)
+            throw error
+        }
+    }
+
+    static func removeDataFile(
+        parentDescriptor: Int32,
+        leaf: String,
+        path: String
+    ) throws {
+        var metadata = stat()
+        let inspect = leaf.withCString {
+            fstatat(parentDescriptor, $0, &metadata, AT_SYMLINK_NOFOLLOW)
+        }
+        if inspect != 0, errno == ENOENT { return }
+        guard inspect == 0,
+              (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+              leaf.withCString({ unlinkat(parentDescriptor, $0, 0) }) == 0 else {
+            throw failure(path, operation: "remove data file")
+        }
     }
 
     static func readUTF8File(
@@ -521,23 +621,279 @@ private enum SecureResearchSkillPackageIO {
     }
 }
 
+struct ResearchWorkingMethodRecoveryReservation: Sendable {
+    let id: UUID
+    let packageID: String
+    let packageRevision: DocumentFingerprint
+}
+
+/// Archives a displaced Working Method package into the existing machine-local
+/// Research Guidance snapshot root. Same-volume moves preserve late writes
+/// through open descriptors. Cross-volume vaults use a verified snapshot copy,
+/// recheck the source, and retain the hidden portable source inode so late
+/// writes cannot be discarded. Published UUID directories use the existing
+/// maintenance snapshot format, so listing and restore remain owned by
+/// ResearchSkillMaintenanceStore rather than portable Skill storage.
+public final class ResearchWorkingMethodRecoveryStore: @unchecked Sendable {
+    public let snapshotRootURL: URL
+
+    private let lock = NSLock()
+    private let forceCopyFallback: Bool
+
+    public init(snapshotRootURL: URL) {
+        self.snapshotRootURL = snapshotRootURL.standardizedFileURL
+        forceCopyFallback = false
+    }
+
+    init(snapshotRootURL: URL, forceCopyFallback: Bool) {
+        self.snapshotRootURL = snapshotRootURL.standardizedFileURL
+        self.forceCopyFallback = forceCopyFallback
+    }
+
+    func reserve(
+        packageID: String,
+        packageRevision: DocumentFingerprint
+    ) -> ResearchWorkingMethodRecoveryReservation {
+        ResearchWorkingMethodRecoveryReservation(
+            id: UUID(),
+            packageID: packageID,
+            packageRevision: packageRevision
+        )
+    }
+
+    @discardableResult
+    func archive(
+        sourceParentDescriptor: Int32,
+        sourceName: String,
+        reservation: ResearchWorkingMethodRecoveryReservation
+    ) throws -> ResearchSkillMaintenanceSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let rootDescriptor = try openSnapshotRoot()
+        defer { Darwin.close(rootDescriptor) }
+        guard flock(rootDescriptor, LOCK_EX) == 0 else {
+            throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+        }
+        defer { _ = flock(rootDescriptor, LOCK_UN) }
+        let rootIdentity = try SecureResearchSkillPackageIO.identity(
+            of: rootDescriptor,
+            path: snapshotRootURL.path
+        )
+        let temporaryName = ".creating-\(reservation.id.uuidString)"
+        let destinationName = reservation.id.uuidString
+        let sources = try SecureResearchSkillPackageIO.strictPackageSources(
+            rootDescriptor: sourceParentDescriptor,
+            packageID: sourceName
+        )
+        guard Self.packageRevision(sources: sources) == reservation.packageRevision else {
+            throw ResearchSkillError.stalePackage(reservation.packageID)
+        }
+        guard try !SecureResearchSkillPackageIO.directoryExists(
+            parentDescriptor: rootDescriptor,
+            name: temporaryName,
+            path: temporaryName
+        ), try !SecureResearchSkillPackageIO.directoryExists(
+            parentDescriptor: rootDescriptor,
+            name: destinationName,
+            path: destinationName
+        ) else {
+            throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+        }
+        guard temporaryName.withCString({
+            mkdirat(rootDescriptor, $0, mode_t(0o700))
+        }) == 0 else {
+            throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+        }
+        let temporaryDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+            parentDescriptor: rootDescriptor,
+            name: temporaryName,
+            path: temporaryName
+        )
+        defer { Darwin.close(temporaryDescriptor) }
+
+        var retainedPortableName: String?
+        do {
+            if forceCopyFallback {
+                throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+            }
+            try SecureResearchSkillPackageIO.moveEntryExclusively(
+                sourceParentDescriptor: sourceParentDescriptor,
+                source: sourceName,
+                destinationParentDescriptor: temporaryDescriptor,
+                destination: "package"
+            )
+        } catch {
+            try SecureResearchSkillPackageIO.createPackage(
+                rootDescriptor: temporaryDescriptor,
+                packageName: "package",
+                sources: sources
+            )
+            guard try SecureResearchSkillPackageIO.strictPackageSources(
+                rootDescriptor: temporaryDescriptor,
+                packageID: "package"
+            ) == sources,
+                  try SecureResearchSkillPackageIO.strictPackageSources(
+                      rootDescriptor: sourceParentDescriptor,
+                      packageID: sourceName
+                  ) == sources else {
+                throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+            }
+            // A cross-volume copy cannot atomically preserve late writes to
+            // an already-open source inode. Keep the hidden portable package
+            // and surface its live revision through the snapshot listing for
+            // explicit researcher-authorized cleanup.
+            retainedPortableName = sourceName
+        }
+
+        let manifest = ResearchSkillMaintenanceSnapshotManifest(
+            id: reservation.id,
+            packageID: reservation.packageID,
+            packageRevision: reservation.packageRevision,
+            retainedPortablePackageName: retainedPortableName
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let manifestData = try encoder.encode(manifest)
+        try SecureResearchSkillPackageIO.createDataFile(
+            parentDescriptor: temporaryDescriptor,
+            leaf: "manifest.json",
+            data: manifestData,
+            path: "\(temporaryName)/manifest.json"
+        )
+        guard fsync(sourceParentDescriptor) == 0,
+              fsync(temporaryDescriptor) == 0,
+              fsync(rootDescriptor) == 0,
+              try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
+                  snapshotRootURL,
+                  identity: rootIdentity
+              ) else {
+            throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+        }
+        try SecureResearchSkillPackageIO.movePackageExclusively(
+            rootDescriptor: rootDescriptor,
+            source: temporaryName,
+            destination: destinationName
+        )
+        guard fsync(rootDescriptor) == 0,
+              try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
+                  snapshotRootURL,
+                  identity: rootIdentity
+              ) else {
+            throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+        }
+        let snapshotDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+            parentDescriptor: rootDescriptor,
+            name: destinationName,
+            path: destinationName
+        )
+        defer { Darwin.close(snapshotDescriptor) }
+        guard try SecureResearchSkillPackageIO.strictPackageSources(
+            rootDescriptor: snapshotDescriptor,
+            packageID: "package"
+        ) == sources,
+              try SecureResearchSkillPackageIO.readDataFile(
+                  parentDescriptor: snapshotDescriptor,
+                  leaf: "manifest.json",
+                  path: "\(destinationName)/manifest.json",
+                  maximumByteCount: 64 * 1024
+              ) == manifestData else {
+            throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
+        }
+        return ResearchSkillMaintenanceSnapshot(
+            id: manifest.id,
+            packageID: manifest.packageID,
+            packageRevision: manifest.packageRevision,
+            createdAt: manifest.createdAt,
+            retainedPortablePackageRevision: try retainedPortableName.map { name in
+                Self.packageRevision(sources: try SecureResearchSkillPackageIO
+                    .strictPackageSources(
+                        rootDescriptor: sourceParentDescriptor,
+                        packageID: name
+                    ))
+            }
+        )
+    }
+
+    private func openSnapshotRoot() throws -> Int32 {
+        let parent = snapshotRootURL.deletingLastPathComponent()
+        try validateExistingDirectoryChain(to: parent)
+        try FileManager.default.createDirectory(
+            at: parent,
+            withIntermediateDirectories: true
+        )
+        try validateExistingDirectoryChain(to: parent)
+        if !FileManager.default.fileExists(atPath: snapshotRootURL.path) {
+            try FileManager.default.createDirectory(
+                at: snapshotRootURL,
+                withIntermediateDirectories: false
+            )
+        }
+        try validateExistingDirectoryChain(to: snapshotRootURL)
+        return try SecureResearchSkillPackageIO.openAbsoluteDirectory(snapshotRootURL)
+    }
+
+    private func validateExistingDirectoryChain(to directory: URL) throws {
+        let path = directory.standardizedFileURL.path
+        guard path.hasPrefix("/") else {
+            throw ResearchSkillMaintenanceError.invalidResourcePath(path)
+        }
+        var cursor = URL(fileURLWithPath: "/", isDirectory: true)
+        for component in (path as NSString).pathComponents where component != "/" {
+            cursor.appendPathComponent(component, isDirectory: true)
+            guard FileManager.default.fileExists(atPath: cursor.path) else { continue }
+            let values = try cursor.resourceValues(
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            )
+            let platformAlias = values.isSymbolicLink == true
+                && ["/var", "/tmp", "/etc"].contains(cursor.path)
+            guard platformAlias
+                    || (values.isDirectory == true && values.isSymbolicLink != true) else {
+                throw ResearchSkillMaintenanceError.invalidResourcePath(
+                    cursor.lastPathComponent
+                )
+            }
+        }
+    }
+
+    private static func packageRevision(
+        sources: [String: String]
+    ) -> DocumentFingerprint {
+        var bytes = Data()
+        for path in sources.keys.sorted() {
+            let data = Data((sources[path] ?? "").utf8)
+            bytes.append(Data(path.utf8))
+            bytes.append(0)
+            bytes.append(Data(String(data.count).utf8))
+            bytes.append(0)
+            bytes.append(data)
+            bytes.append(0)
+        }
+        return DocumentFingerprint(data: bytes)
+    }
+}
+
 private struct ResearchSkillMaintenanceSnapshotManifest: Codable, Hashable {
     let schemaVersion: Int
     let id: UUID
     let packageID: String
     let packageRevision: DocumentFingerprint
     let createdAt: Date
+    let retainedPortablePackageName: String?
 
     init(
         id: UUID,
         packageID: String,
         packageRevision: DocumentFingerprint,
+        retainedPortablePackageName: String? = nil,
         createdAt: Date = Date()
     ) {
         schemaVersion = 1
         self.id = id
         self.packageID = packageID
         self.packageRevision = packageRevision
+        self.retainedPortablePackageName = retainedPortablePackageName
         self.createdAt = createdAt
     }
 }
@@ -879,11 +1235,26 @@ public actor ResearchSkillMaintenanceStore {
                 guard packageID == nil || loaded.manifest.packageID == packageID else {
                     continue
                 }
+                let retainedRevision: DocumentFingerprint?
+                do {
+                    retainedRevision = try retainedPortableRevision(
+                        for: loaded.manifest
+                    )
+                } catch {
+                    retainedRevision = nil
+                    issues.append(ResearchSkillMaintenanceSnapshotIssue(
+                        entryName: "\(entryName)/retained-portable",
+                        snapshotID: id,
+                        code: .unsafeEntry,
+                        summary: "The machine-local snapshot is valid, but its optional retained portable package could not be inspected. \(error.localizedDescription)"
+                    ))
+                }
                 result.append(ResearchSkillMaintenanceSnapshot(
                     id: loaded.manifest.id,
                     packageID: loaded.manifest.packageID,
                     packageRevision: loaded.manifest.packageRevision,
-                    createdAt: loaded.manifest.createdAt
+                    createdAt: loaded.manifest.createdAt,
+                    retainedPortablePackageRevision: retainedRevision
                 ))
             } catch let error as ResearchSkillMaintenanceSnapshotReadError {
                 issues.append(ResearchSkillMaintenanceSnapshotIssue(
@@ -917,6 +1288,40 @@ public actor ResearchSkillMaintenanceStore {
             snapshots: sorted,
             issues: issues.sorted { $0.entryName < $1.entryName }
         )
+    }
+
+    private func retainedPortableRevision(
+        for manifest: ResearchSkillMaintenanceSnapshotManifest
+    ) throws -> DocumentFingerprint? {
+        guard let name = try validatedRetainedPortableName(manifest) else { return nil }
+        let rootDescriptor = try SecureResearchSkillPackageIO.openSkillsRoot(
+            skillStore.skillsURL
+        )
+        defer { Darwin.close(rootDescriptor) }
+        guard try SecureResearchSkillPackageIO.directoryExists(
+            parentDescriptor: rootDescriptor,
+            name: name,
+            path: name
+        ) else { return nil }
+        return Self.packageRevision(sources: try SecureResearchSkillPackageIO
+            .strictPackageSources(
+                rootDescriptor: rootDescriptor,
+                packageID: name
+            ))
+    }
+
+    private func validatedRetainedPortableName(
+        _ manifest: ResearchSkillMaintenanceSnapshotManifest
+    ) throws -> String? {
+        guard let name = manifest.retainedPortablePackageName else { return nil }
+        let pattern = #"^\.working-(?:edit|method)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"#
+        guard name.range(of: pattern, options: .regularExpression) != nil else {
+            throw ResearchSkillMaintenanceSnapshotReadError(
+                .invalidManifest,
+                "The snapshot names an invalid retained portable package."
+            )
+        }
+        return name
     }
 
     private func packageURL(id: String) throws -> URL {
