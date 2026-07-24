@@ -135,6 +135,12 @@ public enum PropertyContractCatalog {
         contract(for: key, profile: profile)?.canonicalKey
     }
 
+    /// Protected machine keys remain recognizable source vocabulary but can
+    /// never become a researcher-editable Action Profile boundary.
+    static func isProtectedMachineKey(_ key: String) -> Bool {
+        protectedMachineKeys.contains(key)
+    }
+
     /// Validates a parsed document without changing its exact source or
     /// reconstructing YAML. A malformed mapping produces an envelope issue
     /// and remains readable through the original `NoteDocument`.
@@ -251,6 +257,11 @@ public enum PropertyContractCatalog {
     private static let topicProfile = CachedProfile(contracts: topicContracts)
     private static let workProfile = CachedProfile(contracts: workContracts)
     private static let genericProfile = CachedProfile(contracts: [])
+    private static let protectedMachineKeys = Set(
+        (analysisContracts + topicContracts + workContracts)
+            .filter { $0.ownership == .protectedMachine }
+            .map(\.canonicalKey)
+    )
 
     private static func cachedProfile(for profile: SchemaProfileID) -> CachedProfile {
         switch profile {

@@ -136,7 +136,7 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
         try self.init(validatingID: id, executionKind: executionKind)
     }
 
-    fileprivate init(
+    init(
         validatingID id: ResearchActionID,
         executionKind: ResearchActionExecutionKind
     ) throws {

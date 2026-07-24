@@ -291,7 +291,9 @@ Core skill, checkpoint, record, and repository authorities
 checks, availability/repair codes, runs, submissions, fingerprints, and
 `ResearchFunctionUseCases`. Workspace `ResearchUseCases` composes record,
 checkpoint, Skill, function, and bibliography capabilities. Contracts contain
-no labels, symbols, package storage, YAML inspection, or layout.
+no application-defined labels, symbols, package storage, YAML inspection, or
+layout. Researcher-owned Profile labels are declarative data, not interface
+code.
 
 D-106's staged public layer now begins in `ScholiumContracts` with validated
 `ResearchActionID`, public execution kinds and Target roles, role-filtered
@@ -299,13 +301,34 @@ default definitions, and a fail-closed versioned `ResearchActionSnapshot`.
 That snapshot contains no `ResearchFunctionID`. A separate versioned
 `ResearchActionRecordIdentity` fixes the complete Action projection allowed in
 future portable records to the Action ID alone; execution kind, Target role,
-and protected Function identity are not record fields. An internal-only
-`ResearchActionFunctionMapping` in `ScholiumApplication` maps Analysis and
-Synthesis to Develop, Write to Revise, and the remaining public execution
-kinds to their protected Function mechanisms after role validation. The same
-internal adapter now derives the exact bundled Action from Function plus
-Target role for the retained coordinator. Core Skill resolution accepts that
-Action identity explicitly: Analysis Develop resolves `scholium-analyze`,
+and protected Function identity are not record fields.
+
+`ResearchActionProfile` schema 1 adds a bounded declarative configuration
+contract without making it executable. It permits only note picker, passage
+anchor, Material selector, source reference, bounded text, Boolean, and
+enumeration modules. Profile, module, choice, and capability objects reject
+unknown fields; every label, identifier, list, property boundary, selection,
+text limit, module count, and choice count has an explicit byte or count
+ceiling. Raw package and file-size preflight belongs to the later installation
+boundary rather than the Codable value. The capability declaration contains
+readable roles and a candidate existing-note write ceiling only. Its two
+operations are Markdown modification and property-limited modification; it
+contains no grant, policy, destructive lifecycle operation, conflict overwrite,
+or executable payload. Property-limited modification rejects every key owned
+by Scholium's protected machine-property catalog.
+Applicable Targets must remain readable, picker roles must remain inside that
+scope, execution kinds impose their direct-write role maximum, and Analyze
+requires one matching required source-reference module. These are structural
+declarations for a future authority intersection, not current permission or
+preparation state. No Profile file store, binding, digest, resolver, UI, or run
+snapshot integration exists yet.
+
+An internal-only `ResearchActionFunctionMapping` in `ScholiumApplication` maps
+Analysis and Synthesis to Develop, Write to Revise, and the remaining public
+execution kinds to their protected Function mechanisms after role validation.
+The same internal adapter now derives the exact bundled Action from Function
+plus Target role for the retained coordinator. Core Skill resolution accepts
+that Action identity explicitly: Analysis Develop resolves `scholium-analyze`,
 Topic Develop resolves `scholium-synthesize`, and a package bound to one fails
 closed for the other. The existing Function use cases, UI, CLI, binding v1,
 and machine-local records remain the current runtime. No Action snapshot
@@ -360,8 +383,9 @@ loaded Skill package/resource revisions; a validated
 `methodContract` supplies bounded method guidance; and provenance-labelled
 `researchData` carries Markdown, YAML-derived values, citations, bibliographic
 metadata, and records only as serialized data. The current packet schema has
-no Action Profile, so protected Core prose neither invents one nor treats that
-future field as a missing current requirement. Researcher Skills may change
+no resolved Action Profile or Profile revision, so protected Core prose neither
+invents one nor treats the contract's existence as current authority.
+Researcher Skills may change
 method, never fingerprints, checkpoints, conflict handling, containment,
 recovery, or typed permissions. Agent completion is revalidated against those
 Application-owned constraints regardless of text found in any data field.

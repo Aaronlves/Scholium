@@ -80,17 +80,21 @@ researcher-managed folders; Scholium does not register or manage projects. See
 ownership and [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for
 precise evidence and remaining gaps.
 
-The public Action contracts, split bundled Method references, and independent
-Triptych Working Methods are now reachable foundations. A new Triptych installs
-six editable working packages plus an explicit disabled Manuscript binding.
-An Action's primary Method is selected only by binding v2 and never falls back
-to a bundled reference or legacy Function binding. Direct edits and bundled
-restores send displaced complete packages to the existing machine-local
-Research Guidance snapshot inventory. A cross-volume fallback keeps and reports
-the hidden portable package rather than deleting an inode that may receive a
-late external write. Classified Skills settings, standing
-permissions, unified Discussion, and the portable two-panel Research Record
-adopted by D-106 remain later migration work.
+The public Action and bounded Action Profile contracts, split bundled Method
+references, and independent Triptych Working Methods are now reachable
+foundations. Profiles can describe only seven native module kinds, bounded
+presentation values, source and feedback requirements, and a candidate
+existing-note capability ceiling; they cannot carry executable code or grant
+authority. No Profile storage, Settings editor, resolver, or run integration is
+reachable yet. A new Triptych installs six editable working packages plus an
+explicit disabled Manuscript binding. An Action's primary Method is selected
+only by binding v2 and never falls back to a bundled reference or legacy
+Function binding. Direct edits and bundled restores send displaced complete
+packages to the existing machine-local Research Guidance snapshot inventory. A
+cross-volume fallback keeps and reports the hidden portable package rather than
+deleting an inode that may receive a late external write. Classified Skills
+settings, standing permissions, unified Discussion, and the portable two-panel
+Research Record adopted by D-106 remain later migration work.
 
 ## Requirements
 
