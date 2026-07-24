@@ -8,7 +8,7 @@ extension ScholiumCLI {
     ) async throws {
         guard let subcommand = arguments.first else {
             throw CLIError.usage(
-                "Usage: scholium function <available|prepare|show|prepare-fidelity|select-resources|complete|cancel> ..."
+                "Usage: scholium function <available|prepare|show|prepare-fidelity|complete|cancel> ..."
             )
         }
         let encoder = researchFunctionEncoder()
@@ -106,33 +106,6 @@ extension ScholiumCLI {
             default:
                 throw CLIError.usage(
                     "Function prepare-fidelity supports --format json or markdown."
-                )
-            }
-
-        case "select-resources":
-            guard let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium function select-resources --from <json|-> [--triptych <selector>] --format json|markdown"
-                )
-            }
-            let submission = try decoder.decode(
-                ResearchFunctionResourceSelectionSubmission.self,
-                from: researchFunctionInput(input)
-            )
-            let assignment = try await context.selectedTriptych(
-                selector: option("--triptych", in: arguments)
-            )
-            let handle = try await context.handle(for: assignment)
-            let preparation = try await handle.research.selectFunctionResources(submission)
-            switch option("--format", in: arguments) ?? "markdown" {
-            case "json":
-                write(String(decoding: try encoder.encode(preparation), as: UTF8.self) + "\n")
-            case "markdown":
-                write(preparation.instructions)
-                if !preparation.instructions.hasSuffix("\n") { write("\n") }
-            default:
-                throw CLIError.usage(
-                    "Function select-resources supports --format json or markdown."
                 )
             }
 

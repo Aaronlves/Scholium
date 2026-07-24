@@ -397,8 +397,6 @@ final class ResearchFunctionController: ObservableObject {
     @Published var fidelityChecks: Set<FidelityCheck> = [.content]
     @Published var discussResponseModules: Set<DialogueResponseModule> = []
     @Published private(set) var discussResponseDefaultsLoaded = false
-    @Published var writeScope: ResearchWriteScope = .currentNote
-    @Published private(set) var selectedWriteTargetIDs: Set<UUID> = []
 
     private var passageSelection: CommentAnchor?
     private var client: ResearchFunctionClient?
@@ -438,10 +436,7 @@ final class ResearchFunctionController: ObservableObject {
     }
 
     var selectedMaterials: [ResearchFunctionMaterial] {
-        let writeIDs = Set(authorizedWriteTargets.map(\.noteID))
-        return materialsState.selectedMaterials.filter {
-            !writeIDs.contains($0.noteID)
-        }
+        materialsState.selectedMaterials
     }
 
     var isWriteFunction: Bool {
@@ -449,45 +444,9 @@ final class ResearchFunctionController: ObservableObject {
         return [.develop, .revise].contains(activeFunction)
     }
 
-    var writeTargetCandidates: [ResearchFunctionMaterialCandidate] {
-        materialsState.candidates
-    }
-
     var authorizedWriteTargets: [ResearchFunctionTarget] {
         guard isWriteFunction, let target else { return [] }
-        let candidateTargets = writeTargetCandidates.map {
-            ResearchFunctionTarget(
-                noteID: $0.material.noteID,
-                note: $0.material.note,
-                role: $0.material.role,
-                lifecycle: $0.material.lifecycle,
-                fingerprint: $0.material.fingerprint,
-                title: $0.material.title
-            )
-        }
-        let targets: [ResearchFunctionTarget]
-        switch writeScope {
-        case .currentNote:
-            targets = [target]
-        case .selectedNotes:
-            targets = ([target] + candidateTargets).filter {
-                selectedWriteTargetIDs.contains($0.noteID)
-            }
-        case .analysesAndTopics:
-            targets = ([target] + candidateTargets).filter {
-                $0.role == .analysis || $0.role == .topic
-            }
-        case .entireTriptych:
-            targets = [target] + candidateTargets
-        }
-        var seen: Set<UUID> = []
-        return targets.filter { seen.insert($0.noteID).inserted }.sorted {
-            if $0.role != $1.role { return $0.role.rawValue < $1.role.rawValue }
-            if $0.title != $1.title {
-                return $0.title.localizedStandardCompare($1.title) == .orderedAscending
-            }
-            return $0.note < $1.note
-        }
+        return [target]
     }
 
     var scope: ResearchFunctionScope? {
@@ -604,8 +563,6 @@ final class ResearchFunctionController: ObservableObject {
         materialsState.beginLoading()
         discussResponseModules = []
         discussResponseDefaultsLoaded = false
-        writeScope = .currentNote
-        selectedWriteTargetIDs = []
         phase = .loading
 
         let token = generation
@@ -658,31 +615,10 @@ final class ResearchFunctionController: ObservableObject {
     }
 
     func sendMaterials(_ action: ResearchFunctionMaterialsAction) {
-        switch action {
-        case .retry:
+        if case .retry = action {
             retryMaterials()
-        case .setSelected(let id, let selected):
-            if selected { selectedWriteTargetIDs.remove(id) }
-            materialsState.apply(action)
-        default:
-            materialsState.apply(action)
-        }
-    }
-
-    func setWriteScope(_ scope: ResearchWriteScope) {
-        guard isWriteFunction, !materialsState.isFrozen else { return }
-        writeScope = scope
-    }
-
-    func setWriteTargetSelected(_ id: UUID, isSelected: Bool) {
-        guard isWriteFunction,
-              writeScope == .selectedNotes,
-              !materialsState.isFrozen else { return }
-        if isSelected {
-            selectedWriteTargetIDs.insert(id)
-            materialsState.apply(.remove(id))
         } else {
-            selectedWriteTargetIDs.remove(id)
+            materialsState.apply(action)
         }
     }
 
@@ -787,7 +723,7 @@ final class ResearchFunctionController: ObservableObject {
             dialogueResponseModules: function == .discuss
                 ? DialogueResponseModule.allCases.filter(discussResponseModules.contains)
                 : nil,
-            writeScope: [.develop, .revise].contains(function) ? writeScope : nil,
+            writeScope: [.develop, .revise].contains(function) ? .currentNote : nil,
             authorizedWriteTargets: [.develop, .revise].contains(function)
                 ? authorizedWriteTargets
                 : nil
@@ -885,8 +821,6 @@ final class ResearchFunctionController: ObservableObject {
         fidelityChecks = [.content]
         discussResponseModules = []
         discussResponseDefaultsLoaded = false
-        writeScope = .currentNote
-        selectedWriteTargetIDs = []
         phase = .idle
         if clearAvailability { availability = [:] }
     }

@@ -658,6 +658,47 @@ struct ResearchFunctionControllerTests {
         #expect(controller.materialsViewState.query.isEmpty)
     }
 
+    @Test("Write preparation fixes authority to the current Target")
+    func writePreparationUsesCurrentTargetOnly() async throws {
+        let controller = ResearchFunctionController()
+        var capturedRequest: ResearchFunctionRequest?
+        controller.bind(client(
+            availableFunctions: { _ in [
+                ResearchFunctionAvailability(function: .revise, isEnabled: true),
+            ] },
+            prepare: { request in
+                capturedRequest = request
+                return ResearchFunctionPreparation(
+                    snapshot: ResearchFunctionSnapshot(
+                        request: request,
+                        recordKind: .functionEnvelope
+                    ),
+                    instructions: "Prepared"
+                )
+            }
+        ))
+        let work = target(
+            title: "Chapter",
+            path: "Works/Chapter.md",
+            role: .work
+        )
+        controller.begin(
+            target: work,
+            function: .revise,
+            selection: nil,
+            presentationID: UUID()
+        )
+        await waitUntil { controller.canPrepare }
+        let candidate = try #require(controller.materialCandidates.first)
+        controller.sendMaterials(.setSelected(candidate.id, true))
+        controller.prepare()
+        await waitUntil { capturedRequest != nil }
+
+        #expect(capturedRequest?.writeScope == .currentNote)
+        #expect(capturedRequest?.authorizedWriteTargets.map(\.noteID) == [work.noteID])
+        #expect(capturedRequest?.materials == [candidate.material])
+    }
+
     @Test("Function leaves preserve the compiler-enforced delivery boundary")
     func sourceBoundaries() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -769,7 +810,7 @@ struct ResearchFunctionControllerTests {
             runs: []
         )
         #expect(workPresentation.items.map(\.id) == [
-            .discuss, .revise, .critique, .fidelity, .manuscript,
+            .discuss, .revise, .critique, .fidelity,
         ])
         #expect(workPresentation.items[2].isEnabled == true)
         #expect(workPresentation.items[2].statusSummary

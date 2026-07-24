@@ -182,8 +182,9 @@ public enum FidelityCheck: String, Codable, CaseIterable, Hashable, Sendable {
     case citations
 }
 
-/// Agent-selected conditional package resources. These values are semantic
-/// choices in the function API, never Strip buttons or package identifiers.
+/// Decode-compatible identifiers from the retired conditional Method
+/// selector. Current Actions expose no resource-choice phase and reject every
+/// nonempty selection; these cases remain only for old machine-local payloads.
 public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, Hashable, Sendable {
     case developmentExploration = "development_exploration"
     case developmentSynthesis = "development_synthesis"
@@ -227,14 +228,11 @@ public enum ResearchFunctionConditionalResourceKind: String, Codable, Hashable, 
 }
 
 public extension ResearchFunctionID {
-    /// Conditional method references available to an external agent after it
-    /// has inspected the fixed Target and read-only Materials. An empty
-    /// selection still applies the complete primary method; these values are
-    /// not an exhaustive taxonomy of philosophical activity.
+    /// The split bundled Methods are complete and adaptive. Legacy conditional
+    /// resource values remain decodable for old machine-local records, but no
+    /// current Function exposes them as a researcher or agent mode selector.
     var conditionalResources: [ResearchFunctionConditionalResource] {
-        ResearchFunctionConditionalResource.allCases.filter {
-            $0.function == self
-        }
+        []
     }
 
 }
@@ -416,9 +414,9 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     /// Values remain ordered by `DialogueResponseModule.allCases` so App and
     /// CLI encoders produce one stable wire representation.
     public let dialogueResponseModules: [DialogueResponseModule]?
-    /// Frozen write authorization selected by the researcher. `target` remains
-    /// the origin note from which the action was invoked; it is not
-    /// automatically part of a multi-note write set.
+    /// Frozen write authorization retained in the Function-era wire shape.
+    /// Current Analyze, Synthesize, and Write runs require `.currentNote` and
+    /// the exact Target as their sole authorized write Target.
     public let writeScope: ResearchWriteScope?
     public let authorizedWriteTargets: [ResearchFunctionTarget]
     /// One shared Fidelity run may audit every Application-confirmed target
@@ -475,9 +473,9 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         }
     }
 
-    /// Nil is a deliberate preflight state for functions with conditional
-    /// method references. An explicit empty set finalizes the run with the
-    /// complete primary method and no conditional reference.
+    /// Current split Methods never wait for a secondary mode choice. Nil and
+    /// an explicit empty set remain distinguishable only for compatibility
+    /// with already-decoded machine-local records.
     public var awaitsResourceSelection: Bool {
         conditionalResources == nil && !function.conditionalResources.isEmpty
     }
@@ -528,8 +526,8 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         guard materials.allSatisfy({ $0.lifecycle == .active && !$0.title.isEmpty }) else {
             throw ResearchFunctionContractError.inactiveMaterial
         }
-        let isMultiTargetWrite = [.develop, .revise].contains(function)
-        if isMultiTargetWrite {
+        let isWriteFunction = [.develop, .revise].contains(function)
+        if isWriteFunction {
             guard let writeScope, !authorizedWriteTargets.isEmpty else {
                 throw ResearchFunctionContractError.invalidWriteScope
             }
@@ -551,21 +549,11 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             }) else {
                 throw ResearchFunctionContractError.writeTargetRepeatedAsMaterial
             }
-            switch writeScope {
-            case .currentNote:
-                guard authorizedWriteTargets.count == 1,
-                      authorizedWriteTargets[0].noteID == target.noteID,
-                      authorizedWriteTargets[0].note == target.note else {
-                    throw ResearchFunctionContractError.invalidWriteScope
-                }
-            case .analysesAndTopics:
-                guard authorizedWriteTargets.allSatisfy({
-                    $0.role == .analysis || $0.role == .topic
-                }) else {
-                    throw ResearchFunctionContractError.invalidWriteScope
-                }
-            case .selectedNotes, .entireTriptych:
-                break
+            guard writeScope == .currentNote,
+                  authorizedWriteTargets.count == 1,
+                  authorizedWriteTargets[0].noteID == target.noteID,
+                  authorizedWriteTargets[0].note == target.note else {
+                throw ResearchFunctionContractError.invalidWriteScope
             }
         } else if writeScope != nil || !authorizedWriteTargets.isEmpty {
             throw ResearchFunctionContractError.unexpectedWriteScope
@@ -594,7 +582,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             throw ResearchFunctionContractError.duplicateComment
         }
         guard (conditionalResources ?? []).allSatisfy({
-            $0.function == function
+            function.conditionalResources.contains($0)
         }) else {
             throw ResearchFunctionContractError.invalidMethodSelection
         }
@@ -698,9 +686,8 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     }
 }
 
-/// Agent-side finalization of a method-unresolved preflight. Interface
-/// launchers never construct this value or expose its semantic method
-/// references as interface modes.
+/// Decode-compatible transport for retired conditional-resource preflights.
+/// No current Function produces a continuation that accepts this value.
 public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Sendable {
     public let runID: UUID
     public let confirmationToken: UUID
@@ -1393,7 +1380,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
         case .invalidWriteScope:
             "The selected Write scope does not match its frozen note set."
         case .unexpectedWriteScope:
-            "Only Develop and Revise may carry a multi-note Write scope."
+            "Only the current Analyze, Synthesize, or Write Action may carry its exact current Target as write scope."
         case .duplicateWriteTarget:
             "Each authorized Write target may appear only once."
         case .inactiveWriteTarget:

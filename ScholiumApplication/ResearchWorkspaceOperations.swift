@@ -466,7 +466,7 @@ extension WorkspaceHandle {
         preparedCheckpoint: TriptychCheckpoint? = nil,
         roundID: UUID = UUID(),
         functionSnapshotBuilder: ((ResearchFunctionOutputSnapshot) -> ResearchFunctionSnapshot)? = nil,
-        skillInstructionsOverride: String? = nil
+        skillInstructionsOverride: ((ResearchFunctionOutputSnapshot) throws -> String)? = nil
     ) async throws -> CritiquePreparation {
         let workContext = try await researchContext(
             for: workID,
@@ -621,10 +621,18 @@ extension WorkspaceHandle {
             }
         }
 
+        let outputSnapshot = ResearchFunctionOutputSnapshot(
+            note: VaultQualifiedNoteID(
+                vaultID: workID.vaultID,
+                relativePath: critiquePath
+            ),
+            fingerprint: preparedRevision
+        )
+
         let skillInstructions: String
         do {
             if let skillInstructionsOverride {
-                skillInstructions = skillInstructionsOverride
+                skillInstructions = try skillInstructionsOverride(outputSnapshot)
             } else {
             let contract = try ResearchWorkflowRouteContracts.critique(
                 work: ResearchWorkflowObjectReference(
@@ -663,13 +671,6 @@ extension WorkspaceHandle {
             throw requestError
         }
 
-        let outputSnapshot = ResearchFunctionOutputSnapshot(
-            note: VaultQualifiedNoteID(
-                vaultID: workID.vaultID,
-                relativePath: critiquePath
-            ),
-            fingerprint: preparedRevision
-        )
         let functionSnapshot = functionSnapshotBuilder?(outputSnapshot)
         if let functionSnapshot {
             guard functionSnapshot.runID == roundID,

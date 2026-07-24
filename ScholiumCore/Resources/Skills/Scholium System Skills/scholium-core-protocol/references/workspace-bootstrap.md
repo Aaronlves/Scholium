@@ -52,9 +52,9 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 ## Scholium routing
 
 - Apply the protected Scholium Core Protocol to every Scholium task.
-- Select one primary Workflow Skill, or an explicit Mixed sequence for genuinely multi-operation work.
+- Select one primary Method Skill, or an explicit isolated sequence for genuinely multi-operation work.
 - Load Scholium Research Integration for live Triptych reads, writes, Properties, Research Units, or Discuss persistence.
-- Load Scholium Discuss Response for a Discussion ID or request-scoped response contract.
+- Load Scholium Discussion Protocol for a Discussion ID; the ordinary Discuss Method supplies the intellectual procedure.
 - Load only explicitly selected Researcher Skills and Practices; never scan arbitrary global skill directories.
 
 ## Workspace boundaries
@@ -71,7 +71,7 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 Do not include:
 
 - the bootstrap instruction itself;
-- full Workflow methods or Philosophical Practices;
+- full Method prose or optional Philosophical Practices;
 - guessed paths, preferences, permissions, or methodological commitments;
 - Discussion transcripts, prompt templates, hidden prompts, temporary task context, credentials, or secrets;
 - claims that the researcher authored the initial generated wording;

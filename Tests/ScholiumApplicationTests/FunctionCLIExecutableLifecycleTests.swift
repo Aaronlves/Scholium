@@ -197,46 +197,9 @@ struct FunctionCLIExecutableLifecycleTests {
                 "function", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(reviseRequest)).stdout
         )
-        #expect(revise.awaitsResourceSelection)
-
-        let premature = ResearchFunctionCompletionSubmission(
-            runID: revise.runID,
-            confirmationToken: revise.snapshot.confirmationToken,
-            finalTargetFingerprint: fixture.workTarget.fingerprint,
-            summary: "This completion must be refused before method selection.",
-            didModifyTarget: false
-        )
-        try cli.expectFailure([
-            "function", "complete", "--from", "-",
-            "--triptych", fixture.assignment.id.uuidString,
-            "--format", "json",
-        ], stdin: try encoder.encode(premature), contains: "conditional methods")
-
-        let wrongConfirmation = ResearchFunctionResourceSelectionSubmission(
-            runID: revise.runID,
-            confirmationToken: UUID(),
-            resources: []
-        )
-        try cli.expectFailure([
-            "function", "select-resources", "--from", "-",
-            "--triptych", fixture.assignment.triptych.name,
-            "--format", "json",
-        ], stdin: try encoder.encode(wrongConfirmation), contains: "does not match")
-
-        let methodSelection = ResearchFunctionResourceSelectionSubmission(
-            runID: revise.runID,
-            confirmationToken: revise.snapshot.confirmationToken,
-            resources: []
-        )
-        let finalizedRevise = try decoder.decode(
-            ResearchFunctionPreparation.self,
-            from: try cli.run([
-                "function", "select-resources", "--from", "-",
-                "--triptych", fixture.assignment.triptych.name,
-                "--format", "json",
-            ], stdin: try encoder.encode(methodSelection)).stdout
-        )
-        #expect(finalizedRevise.snapshot.request.conditionalResources == [])
+        #expect(!revise.awaitsResourceSelection)
+        #expect(revise.snapshot.request.conditionalResources == nil)
+        let finalizedRevise = revise
 
         let readBefore = try Self.readPayload(try cli.run([
             "read", "Works:Draft Argument.md", "--format", "json",

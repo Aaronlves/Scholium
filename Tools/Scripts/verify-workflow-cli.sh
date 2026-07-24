@@ -90,7 +90,7 @@ markdown = (scratch / "assembly.md").read_text()
 assert validation["structurally_valid"] is True
 assert validation["executable"] is True
 packages = {package["id"]: package for package in validation["phases"][0]["packages"]}
-assert "scholium-development" in packages
+assert "scholium-analyze" in packages
 practice = packages["scholium-philosophical-practices"]
 loaded = {resource["relative_path"] for resource in practice["loaded_resources"]}
 assert "references/Historical-Interpreter.md" in loaded

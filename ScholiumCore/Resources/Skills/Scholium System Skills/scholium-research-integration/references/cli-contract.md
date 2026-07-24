@@ -60,7 +60,7 @@ contains an argument-vector `command`, not a shell string. Execute the
 arguments without interpolation and supply `inputTemplate` through stdin only
 after replacing every `REPLACE_WITH` marker with checked evidence.
 For Discuss, the typed `promote` action carries the fixed Target, Materials,
-scope, and Comments into Develop or Revise. Use it when an explicitly
+scope, and Comments into the protected execution of Analyze, Synthesize, or Write. Use it when an explicitly
 authorized request would change the note; do not reconstruct that request or
 mutate the note through Discuss.
 
@@ -72,14 +72,15 @@ scholium function prepare --from <request-json|-> --format json
 scholium function show <run-id> --triptych <triptych> --format json
 ```
 
-If the preparation awaits conditional resources, inspect only the fixed Target
-and Materials, choose exact resource IDs or an explicit empty set, then submit
-the preparation's `select_resources` action. Generic `skills show` retrieval is
-not attached to that run.
+Current preparations attach one complete Action Method and expose no
+researcher- or agent-selected conditional mode. If recovered legacy state still
+asks for a secondary method or mode choice, cancel or leave that state
+unchanged and prepare a fresh Action. Generic `skills show` retrieval is not
+attached to a run.
 
 Record any required Discuss reply or Critique output, perform only the
-authorized write, and submit the function-specific completion schema. A
-Develop or Revise completion that changed the Target returns
+authorized write, and submit the function-specific completion schema. An
+Analyze, Synthesize, or Write completion that changed the Target returns
 `awaiting_fidelity` plus a `prepare_fidelity` action. Use it instead of
 constructing a Fidelity request manually:
 
@@ -122,7 +123,7 @@ scholium discuss show <discussion-id> --triptych <triptych> --format json
 
 Treat the initial instruction, Prepared Instructions, included Comments, follow-up Comments, and agent Responses as the scholarly exchange. Prepared Instructions are transport history, not a methodological authority or a required research record. A selected note fingerprint stored in the Discussion is advisory request-time context; reread the live note before every mutation.
 
-For Discuss, the JSON record contains the required request-scoped `responseContract` snapshot. Use that snapshot through `scholium-discuss-response`; do not replace it with newer Discuss Defaults. A missing snapshot is invalid current state and must fail closed. Copied instructions must identify the Discussion ID and Triptych selector so the agent can retrieve the exact record without guessing.
+For Discuss, the JSON record contains the exact Discussion identity and request snapshot. Use it through `scholium-discussion-protocol`; do not replace it with newer defaults. Missing required identity is invalid current state and must fail closed. Copied instructions must identify the Discussion ID and Triptych selector so the agent can retrieve the exact record without guessing.
 
 Use `discuss list` only when discovery is necessary. Filter by Triptych and note whenever possible.
 
@@ -134,7 +135,7 @@ scholium discuss reply <discussion-id> --triptych <triptych> --agent <agent-name
 
 When the response addresses one selected note or Comment, add the exact `--note <vault>:<relative-path>` and, when supplied by Discuss, `--comment <uuid>` selectors.
 
-Use `--from` for multiline responses. Never interpolate untrusted Markdown or researcher text into a shell command. Compose the reply under `scholium-discuss-response`; it should contain the base academic outcome, only the researcher-selected optional modules, material uncertainty, and any needed researcher decision—not commands, token counts, or routine file operations.
+Use `--from` for multiline responses. Never interpolate untrusted Markdown or researcher text into a shell command. Compose the attributed turn under `scholium-discuss` and persist it under `scholium-discussion-protocol`; include material uncertainty and any needed researcher decision, not commands, token counts, or routine file operations.
 
 ## 6. Recommended Bibliography
 

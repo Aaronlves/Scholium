@@ -507,7 +507,6 @@ enum ResearchGuidancePresentation {
         .critique,
         .revise,
         .fidelity,
-        .manuscript,
     ]
 
     static func repairPrompts(
@@ -600,9 +599,11 @@ enum ResearchGuidancePresentation {
             return "Active automatically — \(skill.automaticModes.map(\.displayName).joined(separator: ", "))"
         }
 
-        if skill.origin == .bundled, skill.skillClass == .workflow {
+        if skill.origin == .bundled, skill.skillClass == .method {
             let defaultFunctions = validMethodStatuses.compactMap { status in
-                status.selection.primaryPackageID == nil && skill.supports(status.function)
+                status.function != .manuscript
+                    && status.selection.primaryPackageID == nil
+                    && skill.supports(status.function)
                     ? status.function
                     : nil
             }
@@ -648,9 +649,9 @@ enum ResearchGuidancePresentation {
         for status in methodStatuses.values where status.issue == nil {
             if let primaryPackageID = status.selection.primaryPackageID {
                 seeds.insert(primaryPackageID)
-            } else {
+            } else if status.function != .manuscript {
                 for skill in skills where skill.origin == .bundled
-                    && skill.skillClass == .workflow
+                    && skill.skillClass == .method
                     && skill.isValid
                     && skill.supports(status.function) {
                     seeds.insert(skill.id)
@@ -1171,7 +1172,7 @@ private struct ResearchFunctionMethodSettingsView: View {
 
                 if let status {
                     if status.candidates.isEmpty {
-                        Text("No compatible Triptych method is installed for \(selectedFunction.interfaceTitle). The built-in workflow remains active.")
+                        Text("No compatible Triptych method is installed for \(selectedFunction.interfaceTitle). The bundled Method remains active.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {

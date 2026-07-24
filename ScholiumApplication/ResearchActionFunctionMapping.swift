@@ -28,10 +28,49 @@ enum ResearchActionFunctionMapping {
         }
         return function
     }
+
+    /// Derives the public bundled Action selected by the retained Function
+    /// coordinator for the exact Target role. This is a transition adapter,
+    /// not a second source of product semantics.
+    static func definition(
+        for function: ResearchFunctionID,
+        targetRole: ResearchFunctionTargetRole
+    ) throws -> ResearchActionDefinition {
+        let definition: ResearchActionDefinition = switch function {
+        case .discuss: .discuss
+        case .develop:
+            switch targetRole {
+            case .analysis: .analyze
+            case .topic: .synthesize
+            case .work:
+                throw ResearchActionContractError.invalidTargetRole(
+                    actionID: .analyze,
+                    executionKind: .analysis,
+                    role: .work
+                )
+            }
+        case .fidelity: .checkFidelity
+        case .critique: .critique
+        case .revise: .write
+        case .manuscript: .manuscript
+        }
+        try definition.validate(targetRole: targetRole.actionTargetRole)
+        return definition
+    }
 }
 
 private extension ResearchActionTargetRole {
     var functionTargetRole: ResearchFunctionTargetRole {
+        switch self {
+        case .analysis: .analysis
+        case .topic: .topic
+        case .work: .work
+        }
+    }
+}
+
+private extension ResearchFunctionTargetRole {
+    var actionTargetRole: ResearchActionTargetRole {
         switch self {
         case .analysis: .analysis
         case .topic: .topic

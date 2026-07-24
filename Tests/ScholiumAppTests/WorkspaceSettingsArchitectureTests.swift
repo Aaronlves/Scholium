@@ -233,9 +233,9 @@ struct WorkspaceSettingsArchitectureTests {
     @Test("Skill summary uses exact ownership and actual binding status")
     func skillSummaryPresentation() {
         let builtIn = makeSkill(
-            id: "scholium-development",
+            id: "scholium-analyze",
             origin: .bundled,
-            skillClass: .workflow,
+            skillClass: .method,
             updatePolicy: "release-managed-duplicable",
             supportedFunctions: [.develop]
         )
@@ -244,6 +244,13 @@ struct WorkspaceSettingsArchitectureTests {
             origin: .triptych,
             skillClass: .researcher,
             supportedFunctions: [.develop]
+        )
+        let manuscript = makeSkill(
+            id: "scholium-manuscript",
+            origin: .bundled,
+            skillClass: .method,
+            updatePolicy: "release-managed-duplicable",
+            supportedFunctions: [.manuscript]
         )
         let defaultStatus = ResearchFunctionSkillBindingStatus(
             function: .develop,
@@ -266,6 +273,20 @@ struct WorkspaceSettingsArchitectureTests {
             for: triptych,
             allSkills: [builtIn, triptych],
             methodStatuses: [.develop: defaultStatus],
+            citationStatus: nil,
+            loadState: .loaded
+        ) == "Not active")
+        let manuscriptStatus = ResearchFunctionSkillBindingStatus(
+            function: .manuscript,
+            candidates: [],
+            selection: ResearchFunctionSkillSelection(function: .manuscript),
+            bindingRevision: nil,
+            issue: nil
+        )
+        #expect(ResearchGuidancePresentation.statusLabel(
+            for: manuscript,
+            allSkills: [manuscript],
+            methodStatuses: [.manuscript: manuscriptStatus],
             citationStatus: nil,
             loadState: .loaded
         ) == "Not active")
@@ -319,7 +340,7 @@ struct WorkspaceSettingsArchitectureTests {
         ) })
     }
 
-    @Test("Ownership labels do not weaken System and Workflow duplication rules")
+    @Test("Ownership labels do not weaken System and Method duplication rules")
     func duplicationRulesRemainClassSpecific() {
         let system = makeSkill(
             id: "scholium-core-protocol",
@@ -327,18 +348,18 @@ struct WorkspaceSettingsArchitectureTests {
             skillClass: .system,
             updatePolicy: "release-managed-protected"
         )
-        let workflow = makeSkill(
-            id: "scholium-revision",
+        let method = makeSkill(
+            id: "scholium-write",
             origin: .bundled,
-            skillClass: .workflow,
+            skillClass: .method,
             updatePolicy: "release-managed-duplicable",
             supportedFunctions: [.revise]
         )
 
         #expect(ResearchGuidancePresentation.ownershipLabel(for: system) == "Built-in")
-        #expect(ResearchGuidancePresentation.ownershipLabel(for: workflow) == "Built-in")
+        #expect(ResearchGuidancePresentation.ownershipLabel(for: method) == "Built-in")
         #expect(!system.canDuplicate)
-        #expect(workflow.canDuplicate)
+        #expect(method.canDuplicate)
     }
 
     @Test("Concurrent Settings restoration does not drop the visible Vaults refresh")

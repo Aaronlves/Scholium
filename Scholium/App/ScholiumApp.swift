@@ -975,8 +975,6 @@ private struct ScholiumCommands: Commands {
                     )
                     Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
                         .disabled(!researchFunctionIsAvailable(.fidelity))
-                    Button("Manuscript") { researchFunctionActions?.open(.manuscript) }
-                        .disabled(!researchFunctionIsAvailable(.manuscript))
                 }
             }
             Divider()

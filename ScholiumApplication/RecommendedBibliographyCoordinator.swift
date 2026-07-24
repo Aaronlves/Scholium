@@ -311,7 +311,7 @@ extension WorkspaceHandle {
             issue = nil
         case .malformed:
             issue = .malformedBinding
-        case .invalidPackage, .unsupportedFunction:
+        case .invalidPackage, .unsupportedFunction, .unsupportedAction:
             issue = .invalidPackage
         case .missingCapability, .citationStyleMissing, .citationStyleMismatch, .missing:
             issue = .missingCapability

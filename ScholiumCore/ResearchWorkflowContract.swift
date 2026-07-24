@@ -11,6 +11,7 @@ public enum ResearchWorkflowAssembler {
     public static func resolveFunction(
         _ contract: ResearchWorkflowContract,
         function: ResearchFunctionID,
+        actionID: ResearchActionID,
         fidelityChecks: Set<FidelityCheck> = [],
         citationStyle: String? = nil,
         primaryResourcePaths: Set<String> = [],
@@ -19,7 +20,10 @@ public enum ResearchWorkflowAssembler {
     ) async throws -> ResolvedResearchWorkflowEnvelope {
         try contract.validate()
         let activeSelection = try await store.functionSkillSelection(for: function)
-        let primaryResolution = try await store.functionBindingResolution(for: function)
+        let primaryResolution = try await store.functionBindingResolution(
+            for: function,
+            actionID: actionID
+        )
         let primarySkillIDs = primaryResolution.package.map { [$0.id] } ?? []
         let effectiveContract = try applying(
             activeSelection,
@@ -53,6 +57,7 @@ public enum ResearchWorkflowAssembler {
 
             let packages = try await store.resolvedFunctionPackages(
                 for: function,
+                actionID: actionID,
                 fidelityChecks: fidelityChecks,
                 citationStyle: citationStyle,
                 additionalSkillIDs: additionalIDs,
@@ -64,7 +69,7 @@ public enum ResearchWorkflowAssembler {
                 metadata.append(try await store.package(id: package.id))
             }
             let compatible = Set(
-                metadata.filter { $0.role == "workflow" }
+                metadata.filter { $0.role == "method" }
                     .flatMap(\.compatiblePracticeIDs)
             )
             for selection in phase.selectedPractices
@@ -196,7 +201,7 @@ public enum ResearchWorkflowAssembler {
                 selectedPaths[package.id] = ["SKILL.md"]
             }
             let compatible = Set(
-                packages.filter { $0.role == "workflow" }
+                packages.filter { $0.role == "method" }
                     .flatMap(\.compatiblePracticeIDs)
             )
             for selection in phase.selectedPractices {

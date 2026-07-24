@@ -77,8 +77,8 @@ struct ResearchSkillStoreTests {
         #expect(assembly.contains(
             "prepared workflows attach exact resources"
         ))
-        #expect(assembly.contains("Read references/method.md completely"))
-        #expect(!assembly.contains("# Critique Method"))
+        #expect(assembly.contains("Read `references/method.md`"))
+        #expect(!assembly.contains("# Critique method"))
     }
 
     @Test("Non-UTF-8 skill source remains visible as a recoverable structural error")
@@ -208,26 +208,26 @@ struct ResearchSkillStoreTests {
         let store = ResearchSkillStore(controlURL: fixture.control)
 
         let duplicated = try await store.duplicateBundled(
-            id: "scholium-development",
-            as: "development-copy"
+            id: "scholium-analyze",
+            as: "analysis-copy"
         )
         #expect(duplicated.origin == .triptych)
-        #expect(duplicated.id == "development-copy")
+        #expect(duplicated.id == "analysis-copy")
+        #expect(duplicated.supportedActions == [.analyze])
         let duplicatedResources = try await store.resourcePaths(id: duplicated.id)
         #expect(duplicatedResources.contains("SKILL.md"))
         #expect(duplicatedResources.contains("references/method.md"))
-        #expect(duplicatedResources.contains("references/synthesis.md"))
         #expect(try await store.resource(
             id: duplicated.id,
             relativePath: "references/method.md"
-        ).contains("Choose the intellectual operation"))
+        ).contains("reconstruct before evaluating"))
         let analyzer = try await store.duplicateBundled(
             id: "scholium-source-analyzer",
             as: "my-source-analyzer"
         )
         #expect(analyzer.origin == .triptych)
         #expect(analyzer.skillClass == .researcher)
-        #expect(analyzer.role == "workflow")
+        #expect(analyzer.role == "method")
         #expect(analyzer.supportedFunctions.isEmpty)
         #expect(analyzer.supportedModes == [.analyze])
         #expect(try await store.resourcePaths(id: analyzer.id).contains(
@@ -397,27 +397,27 @@ struct ResearchSkillStoreTests {
                 dependencies: ["scholium-core-protocol"]
             )
         )
-        let workflow = try await store.create(
-            id: "local-workflow",
+        let method = try await store.create(
+            id: "local-method-complete",
             source: Self.routedSource(
-                name: "Local Workflow",
+                name: "Local Complete Method",
                 role: "workflow",
                 modes: ["analyze"],
                 dependencies: ["local-method"]
             )
         )
 
-        #expect(workflow.role == "workflow")
-        #expect(workflow.supportedModes == [.analyze])
-        #expect(workflow.requiredSkillIDs == ["local-method"])
+        #expect(method.role == "method")
+        #expect(method.supportedModes == [.analyze])
+        #expect(method.requiredSkillIDs == ["local-method"])
         let resolved = try await store.resolvedPackages(
             for: .analyze,
-            requestedSkillIDs: ["local-workflow"]
+            requestedSkillIDs: ["local-method-complete"]
         )
         #expect(resolved.map(\.id) == [
             "scholium-core-protocol",
             "local-method",
-            "local-workflow",
+            "local-method-complete",
         ])
     }
 
@@ -535,6 +535,7 @@ struct ResearchSkillStoreTests {
         #expect(copy.origin == .triptych)
         #expect(copy.role == "practice")
         #expect(copy.supportedModes.contains(.review))
+        #expect(copy.supportedActions.contains(.critique))
         #expect(copy.requiredSkillIDs == ["scholium-core-protocol"])
         #expect(copy.practiceResources["reviewer"] == "references/Reviewer.md")
         #expect(source.contains("scholium:"))

@@ -327,6 +327,20 @@ struct DerivedRefreshStatusTests {
         let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
         defer { try? FileManager.default.removeItem(at: invalidURL) }
 
+        let manuscriptMethod = try await handle.research.duplicateBundledSkill(
+            id: "scholium-manuscript",
+            as: "refresh-manuscript-method"
+        )
+        let manuscriptStatus = try await handle.research
+            .researchFunctionSkillBindingStatus(for: .manuscript)
+        _ = try await handle.research.saveResearchFunctionSkillSelection(
+            ResearchFunctionSkillSelection(
+                function: .manuscript,
+                primaryPackageID: manuscriptMethod.id
+            ),
+            expectedBindingRevision: manuscriptStatus.bindingRevision
+        )
+
         let manuscript = try await handle.research.prepareFunction(
             ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
         )

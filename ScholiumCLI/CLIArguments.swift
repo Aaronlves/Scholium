@@ -195,7 +195,6 @@ extension ScholiumCLI {
             "function prepare": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "function show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "function prepare-fidelity": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
-            "function select-resources": .init(pathLength: 2, options: ["--from": .value, "--triptych": .value, "--format": .value]),
             "function complete": .init(pathLength: 2, options: ["--from": .value, "--triptych": .value, "--format": .value]),
             "function cancel": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "bibliography prepare": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),

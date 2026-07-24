@@ -1,19 +1,19 @@
 ---
 name: scholium-prose-control
-description: Improve the clarity, movement, organization, and audience-fit of existing philosophical prose without changing its thesis, claims, concepts, definitions, distinctions, inferences, objections and replies, source roles, scope, modality, qualifications, or epistemic status. Use only as an explicitly selected researcher-owned specialist within Revise. Do not invent content, repair arguments substantively, change philosophical commitments, conduct Critique, or format citations.
+description: Improve the clarity, movement, organization, and audience-fit of existing philosophical prose without changing its thesis, claims, concepts, definitions, distinctions, inferences, objections and replies, source roles, scope, modality, qualifications, or epistemic status. Use only as an explicitly selected researcher-owned specialist within Write. Do not invent content, repair arguments substantively, change philosophical commitments, conduct Critique, or format citations.
 ---
 
 # Scholium Prose Control
 
-Apply `scholium-core-protocol` and the `scholium-revision` permission boundary. Treat this package as an editable, researcher-owned specialist method. It controls how existing philosophical content is expressed; it does not decide what the researcher should believe or silently repair the philosophy.
+Apply `scholium-core-protocol` and the `scholium-write` permission boundary. Treat this package as an editable, researcher-owned specialist method. It controls how existing philosophical content is expressed; it does not decide what the researcher should believe or silently repair the philosophy.
 
 An adopted copy belongs to the researcher. The researcher may replace its style models, priorities, examples, and output preferences, and Scholium releases must not overwrite that copy.
 
 ## Establish the prose-control packet
 
 ```text
-Research Function: revise
-Primary Workflow: scholium-revision
+Research Action: write
+Active Method: scholium-write
 Selected Researcher Skill: scholium-prose-control plus exact package revision
 Exact target and current fingerprint when durable:
 Genre, audience, stage, and requested length:
@@ -27,7 +27,7 @@ Stop condition:
 Durability:
 ```
 
-Selection of Prose Control does not grant file-edit permission. Follow the current Revise packet, checkpoint, exact Target, and write range.
+Selection of Prose Control does not grant file-edit permission. Follow the current Write packet, checkpoint, exact Target, and write range.
 
 ## Record the preservation ledger
 

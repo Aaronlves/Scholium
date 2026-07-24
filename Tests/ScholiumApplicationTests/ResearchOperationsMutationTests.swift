@@ -407,7 +407,7 @@ struct ResearchFunctionOperationsTests {
         #expect(preparation.snapshot.checkpointID == nil)
         #expect(preparation.instructions.contains("Target and Materials are read-only"))
         #expect(preparation.instructions.contains(
-            "return to Work with Agent and begin a separately authorized Write"
+            "begin a separately authorized Analyze Action"
         ))
         #expect(try await handle.snapshot().research.functionRuns.first {
             $0.id == preparation.runID
@@ -449,7 +449,7 @@ struct ResearchFunctionOperationsTests {
         _ = try await handle.research.appendDiscussionReply(
             DialogueReply(
                 agentName: "Research Agent",
-                text: "The requested change requires promotion to Develop.",
+                text: "The requested change requires a separately authorized Analyze Action.",
                 createdAt: preparation.snapshot.preparedAt.addingTimeInterval(1)
             ),
             to: preparation.runID
@@ -531,14 +531,23 @@ struct ResearchFunctionOperationsTests {
         #expect(packet.contains("\"quotation\" : \"Exact philosophical claim\""))
         #expect(packet.contains("\"line\""))
         #expect(packet.contains("\"utf8Range\""))
-        #expect(preparation.awaitsResourceSelection)
-        #expect(packet.contains("## Finalize conditional resources"))
-        #expect(packet.contains("scholium function select-resources"))
-        #expect(!packet.contains("scholium function complete --from"))
-        #expect(packet.contains("scholium function cancel"))
-        #expect(try await handle.snapshot().research.functionRuns.first {
+        #expect(packet.contains("\"mode\" : \"analyze\""))
+        #expect(packet.contains("\"action\" : \"analyze\""))
+        #expect(packet.contains("\"skillPackages\""))
+        #expect(packet.contains("\"packageRevision\""))
+        #expect(packet.contains("\"loadedResources\""))
+        #expect(packet.contains("scholium-analyze"))
+        #expect(!packet.contains("profileRevision"))
+        #expect(!preparation.awaitsResourceSelection)
+        #expect(!packet.contains("## Finalize conditional resources"))
+        #expect(!packet.contains("scholium function select-resources"))
+        #expect(packet.contains("scholium function complete --from"))
+        let storedRun = try #require(try await handle.snapshot().research.functionRuns.first {
             $0.id == preparation.runID
-        }?.preparedInstructions == packet)
+        })
+        let persistedPacket = try #require(storedRun.preparedInstructions)
+        #expect(packet.hasPrefix(persistedPacket))
+        #expect(!persistedPacket.contains("## Write authorization"))
         await runtime.shutdown()
     }
 
@@ -648,8 +657,8 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("External resource selection finalizes the same run with only exact conditional resources")
-    func resourceSelectionFinalizesSameRun() async throws {
+    @Test("Split Methods are complete and expose no legacy conditional mode selection")
+    func splitMethodsNeedNoResourceSelection() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -672,113 +681,15 @@ struct ResearchFunctionOperationsTests {
                 materials: [material]
             )
         )
-        let checkpointCount = try await handle.research.checkpoints().checkpoints.count
         let baseResources = Set(preflight.snapshot.phases
             .flatMap(\.skills)
             .flatMap(\.loadedResources)
             .map(\.relativePath))
         #expect(baseResources.contains("references/method.md"))
         #expect(!baseResources.contains("references/synthesis.md"))
-
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeFunction(
-                ResearchFunctionCompletionSubmission(
-                    runID: preflight.runID,
-                    confirmationToken: preflight.snapshot.confirmationToken,
-                    finalTargetFingerprint: target.fingerprint,
-                    finalMaterialFingerprints: [material.noteID: material.fingerprint],
-                    summary: "This must not bypass resource selection.",
-                    didModifyTarget: false
-                )
-            )
-        }
-
-        let submission = ResearchFunctionResourceSelectionSubmission(
-            runID: preflight.runID,
-            confirmationToken: preflight.snapshot.confirmationToken,
-            resources: [.developmentSynthesis]
-        )
-        let finalized = try await handle.research.selectFunctionResources(submission)
-        #expect(!finalized.awaitsResourceSelection)
-        #expect(finalized.snapshot.request.conditionalResources == [.developmentSynthesis])
-        #expect(finalized.runID == preflight.runID)
-        #expect(finalized.snapshot.recordID == preflight.snapshot.recordID)
-        #expect(finalized.snapshot.checkpointID == preflight.snapshot.checkpointID)
-        #expect(finalized.snapshot.preparedAt == preflight.snapshot.preparedAt)
-        #expect(finalized.snapshot.confirmationToken == preflight.snapshot.confirmationToken)
-        #expect(finalized.instructions.contains("scholium function complete --from"))
-        let finalizedResources = Set(finalized.snapshot.phases
-            .flatMap(\.skills)
-            .flatMap(\.loadedResources)
-            .map(\.relativePath))
-        #expect(finalizedResources.contains("references/method.md"))
-        #expect(finalizedResources.contains("references/synthesis.md"))
-        #expect(!finalizedResources.contains("references/exploration.md"))
-        #expect(!finalizedResources.contains("references/expression.md"))
-        #expect(try await handle.research.checkpoints().checkpoints.count == checkpointCount)
-
-        let repeated = try await handle.research.selectFunctionResources(submission)
-        #expect(repeated.snapshot == finalized.snapshot)
-        #expect(repeated.instructions == finalized.instructions)
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.selectFunctionResources(
-                ResearchFunctionResourceSelectionSubmission(
-                    runID: preflight.runID,
-                    confirmationToken: preflight.snapshot.confirmationToken,
-                    resources: [.developmentExploration]
-                )
-            )
-        }
-
-        let baseOnlyPreflight = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(
-                function: .develop,
-                target: target,
-                materials: [material]
-            )
-        )
-        let baseOnly = try await handle.research.selectFunctionResources(
-            ResearchFunctionResourceSelectionSubmission(
-                runID: baseOnlyPreflight.runID,
-                confirmationToken: baseOnlyPreflight.snapshot.confirmationToken,
-                resources: []
-            )
-        )
-        #expect(baseOnly.snapshot.request.conditionalResources == [])
-        #expect(!baseOnly.snapshot.phases.flatMap(\.skills)
-            .flatMap(\.loadedResources).contains {
-                $0.relativePath == "references/synthesis.md"
-            })
-
-        let stalePreflight = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(
-                function: .develop,
-                target: target,
-                materials: [material]
-            )
-        )
-        let topic = try await handle.documents.load(fixture.topicID)
-        _ = try await handle.documents.save(
-            fixture.topicID,
-            changeSet: .exactContent(topic.rawContent + "\nChanged after preflight.\n"),
-            expectedRevision: topic.fingerprint
-        )
-        let checkpointCountBeforeStaleSelection = try await handle.research
-            .checkpoints().checkpoints.count
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.selectFunctionResources(
-                ResearchFunctionResourceSelectionSubmission(
-                    runID: stalePreflight.runID,
-                    confirmationToken: stalePreflight.snapshot.confirmationToken,
-                    resources: [.developmentSynthesis]
-                )
-            )
-        }
-        #expect(try await handle.research.checkpoints().checkpoints.count
-            == checkpointCountBeforeStaleSelection)
-        #expect(try await handle.snapshot().research.functionRuns.first {
-            $0.id == stalePreflight.runID
-        }?.snapshot.request.conditionalResources == nil)
+        #expect(!preflight.awaitsResourceSelection)
+        #expect(preflight.instructions.contains("scholium function complete --from"))
+        try await handle.research.cancelFunction(runID: preflight.runID)
         await runtime.shutdown()
     }
 
@@ -875,17 +786,13 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("One keyed Write projects only confirmed notes and expands Fidelity across the confirmed set")
-    func multiTargetWriteAndSharedFidelity() async throws {
+    @Test("Action-backed write phases reject multi-note grants before checkpoint")
+    func actionWriteScopeIsCurrentTargetOnly() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let nestedTopicID = VaultQualifiedNoteID(
-            vaultID: fixture.topicID.vaultID,
-            relativePath: "Debates/Nested Topic.md"
-        )
-        let origin = try await researchFunctionTarget(
+        let analysis = try await researchFunctionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -895,138 +802,48 @@ struct ResearchFunctionOperationsTests {
             role: .topic,
             handle: handle
         )
-        let nestedTopic = try await researchFunctionTarget(
-            nestedTopicID,
-            role: .topic,
-            handle: handle
-        )
         let work = try await researchFunctionTarget(
             fixture.workID,
             role: .work,
             handle: handle
         )
-        let write = try await handle.research.prepareFunction(
+        let checkpointCount = try await handle.research.checkpoints().checkpoints.count
+        let invalidRequests = [
             ResearchFunctionRequest(
                 function: .develop,
-                target: origin,
-                conditionalResources: [],
+                target: analysis,
                 writeScope: .selectedNotes,
-                authorizedWriteTargets: [origin, topic, nestedTopic, work]
-            )
-        )
-
-        func append(_ suffix: String, to note: VaultQualifiedNoteID) async throws {
-            let document = try await handle.documents.load(note)
-            _ = try await handle.documents.save(
-                note,
-                changeSet: .exactContent(document.rawContent + "\n\(suffix)\n"),
-                expectedRevision: document.fingerprint
-            )
-        }
-        try await append("Changed but not reported by the agent.", to: fixture.analysisID)
-        try await append("Developed through the shared activity.", to: fixture.topicID)
-        try await append("Revised through the shared activity.", to: fixture.workID)
-
-        let activityCompletion = try researchActivityCompletion(
-            for: write,
-            candidateModifiedNotes: [fixture.topicID, nestedTopicID, fixture.workID],
-            summary: "Updated the warranted Topic and Work targets."
-        )
-        let writeCompletion = try await handle.research.completeFunction(
-            ResearchFunctionCompletionSubmission(
-                runID: write.runID,
-                confirmationToken: write.snapshot.confirmationToken,
-                summary: "Updated the warranted Topic and Work targets.",
-                didModifyTarget: true,
-                activityCompletion: activityCompletion
-            )
-        )
-        #expect(writeCompletion.state == .awaitingFidelity)
-
-        let afterWrite = try await handle.snapshot()
-        let grant = try #require(afterWrite.research.activityGrants.first {
-            $0.activityID == write.runID
-        })
-        let report = try #require(grant.completionReport)
-        #expect(Set(report.confirmedModifiedNotes.map(\.noteID)) == [
-            topic.noteID,
-            work.noteID,
-        ])
-        #expect(report.unmodifiedNotes.map(\.noteID) == [nestedTopic.noteID])
-        #expect(report.unreportedChangedNotes.map(\.noteID) == [origin.noteID])
-
-        let projected = afterWrite.research.activityEvents.filter {
-            $0.activityID == write.runID
-        }
-        #expect(projected.count == 2)
-        #expect(projected.contains {
-            $0.note.noteID == topic.noteID && $0.kind == .developed
-        })
-        #expect(projected.contains {
-            $0.note.noteID == work.noteID && $0.kind == .revised
-        })
-        #expect(!projected.contains { $0.note.noteID == origin.noteID })
-        #expect(projected.allSatisfy {
-            $0.confirmedModifiedNoteCount == 2 && $0.unmodifiedNoteCount == 1
-        })
-        #expect(afterWrite.discovery.catalog.attention.contains {
-            $0.kind == .changeAttributionNeeded
-                && $0.note.vaultID == fixture.analysisID.vaultID
-                && $0.note.relativePath == fixture.analysisID.relativePath
-        })
-
-        let currentTopic = try await researchFunctionTarget(
-            fixture.topicID,
-            role: .topic,
-            handle: handle
-        )
-        let currentWork = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-        let fidelity = try await handle.research.prepareFunction(
+                authorizedWriteTargets: [analysis, topic]
+            ),
             ResearchFunctionRequest(
-                function: .fidelity,
-                target: currentTopic,
-                checks: [.content]
-            )
+                function: .develop,
+                target: topic,
+                writeScope: .analysesAndTopics,
+                authorizedWriteTargets: [analysis, topic]
+            ),
+            ResearchFunctionRequest(
+                function: .revise,
+                target: work,
+                writeScope: .entireTriptych,
+                authorizedWriteTargets: [analysis, topic, work]
+            ),
+        ]
+
+        for request in invalidRequests {
+            await #expect(throws: ResearchFunctionContractError.self) {
+                _ = try await handle.research.prepareFunction(request)
+            }
+        }
+        #expect(try await handle.research.checkpoints().checkpoints.count == checkpointCount)
+
+        let valid = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
         )
-        #expect(Set(fidelity.snapshot.request.resolvedFidelityTargets.map(\.noteID)) == [
-            topic.noteID,
-            work.noteID,
+        #expect(valid.snapshot.request.writeScope == .currentNote)
+        #expect(valid.snapshot.request.authorizedWriteTargets.map(\.noteID) == [
+            analysis.noteID,
         ])
-        _ = try await handle.research.completeFunction(
-            ResearchFunctionCompletionSubmission(
-                runID: fidelity.runID,
-                confirmationToken: fidelity.snapshot.confirmationToken,
-                finalTargetFingerprint: currentTopic.fingerprint,
-                summary: "Checked both confirmed revisions.",
-                didModifyTarget: false,
-                fidelityTargetSubmissions: [
-                    ResearchFunctionFidelityTargetSubmission(
-                        noteID: currentTopic.noteID,
-                        note: currentTopic.note,
-                        fingerprint: currentTopic.fingerprint,
-                        outcomes: [.passedContent]
-                    ),
-                    ResearchFunctionFidelityTargetSubmission(
-                        noteID: currentWork.noteID,
-                        note: currentWork.note,
-                        fingerprint: currentWork.fingerprint,
-                        outcomes: [.passedContent]
-                    ),
-                ]
-            )
-        )
-        let afterFidelity = try await handle.snapshot().research
-        #expect(afterFidelity.activityEvents.filter {
-            $0.activityID == fidelity.runID && $0.kind == .fidelityChecked
-        }.count == 2)
-        #expect(afterFidelity.pendingResearchStates.allSatisfy {
-            ![topic.noteID, work.noteID].contains($0.noteID)
-                || $0.kind != .awaitingFidelity
-        })
+        try await handle.research.cancelFunction(runID: valid.runID)
         await runtime.shutdown()
     }
 
@@ -1365,7 +1182,7 @@ struct ResearchFunctionOperationsTests {
         #expect(develop.snapshot.fidelityHandoff?.preparedTargetFingerprint == target.fingerprint)
         #expect(!develop.instructions.contains("## Isolated phase 2: fidelity"))
         #expect(develop.instructions.contains(
-            "Awaiting Fidelity only for confirmed changes"
+            "Awaiting Fidelity only for a confirmed change"
         ))
         let developmentResources = Set(develop.snapshot.phases
             .first { $0.function == .develop }?.skills
@@ -1581,13 +1398,13 @@ struct ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let source = """
         ---
-        name: Conflicting Development
+        name: Conflicting Analyze
         description: A researcher-owned draft with a protected identifier.
         ---
         Keep the method explicit.
         """ + "\n"
         let packageURL = fixture.rootURL.appendingPathComponent(
-            ".scholium/skills/scholium-development",
+            ".scholium/skills/scholium-analyze",
             isDirectory: true
         )
         try FileManager.default.createDirectory(
@@ -1602,7 +1419,7 @@ struct ResearchFunctionOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let inspected = await handle.research.inspectSkillDraft(
-            id: "scholium-development",
+            id: "scholium-analyze",
             source: source,
             origin: .triptych
         )
@@ -1748,6 +1565,15 @@ struct ResearchFunctionOperationsTests {
             )
         )
         let critiqueOutput = try #require(critique.snapshot.preparedOutput)
+        #expect(critique.snapshot.request.authorizedWriteTargets.isEmpty)
+        #expect(critique.instructions.contains(#""output" : {"#))
+        #expect(critique.instructions.contains(critiqueOutput.note.relativePath))
+        #expect(critique.instructions.contains(critiqueOutput.fingerprint.sha256))
+        #expect(critique.snapshot.skills.first {
+            $0.packageID == "scholium-research-integration"
+        }?.loadedResources.contains {
+            $0.relativePath == "references/persistence-method.md"
+        } == true)
         #expect(try await handle.snapshot().research.functionRuns.first {
             $0.id == critique.runID
         }?.preparedInstructions == critique.instructions)
@@ -1789,10 +1615,44 @@ struct ResearchFunctionOperationsTests {
         #expect(critiqueCompletion.outputFingerprint == savedCritique.document.fingerprint)
         #expect(try await handle.documents.load(fixture.workID).fingerprint == work.fingerprint)
 
+        let defaultManuscript = try #require(
+            try await handle.research.availableFunctions(for: work).first {
+                $0.function == .manuscript
+            }
+        )
+        #expect(!defaultManuscript.isEnabled)
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.prepareFunction(
+                ResearchFunctionRequest(
+                    function: .manuscript,
+                    target: work,
+                    conditionalResources: []
+                )
+            )
+        }
+        let manuscriptMethod = try await handle.research.duplicateBundledSkill(
+            id: "scholium-manuscript",
+            as: "my-manuscript-method"
+        )
+        let manuscriptStatus = try await handle.research
+            .researchFunctionSkillBindingStatus(for: .manuscript)
+        _ = try await handle.research.saveResearchFunctionSkillSelection(
+            ResearchFunctionSkillSelection(
+                function: .manuscript,
+                primaryPackageID: manuscriptMethod.id
+            ),
+            expectedBindingRevision: manuscriptStatus.bindingRevision
+        )
+
         let manuscript = try await handle.research.prepareFunction(
             ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
         )
         #expect(manuscript.snapshot.requiredChildFunctions.isEmpty)
+        #expect(manuscript.snapshot.skills.first {
+            $0.packageID == "scholium-core-protocol"
+        }?.loadedResources.contains {
+            $0.relativePath == "references/mixed-mode.md"
+        } == true)
         #expect(!manuscript.instructions.contains("Critique, then Revise, then Fidelity"))
         let revise = try await handle.research.prepareFunction(
             ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])

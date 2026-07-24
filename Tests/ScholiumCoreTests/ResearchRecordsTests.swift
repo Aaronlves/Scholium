@@ -822,7 +822,7 @@ struct ResearchRecordsTests {
         #expect(persisted.rounds.first?.completedAt != nil)
     }
 
-    @Test("Dialogue function evidence advances monotonically and incomplete preparation rolls back")
+    @Test("Complete Method evidence advances monotonically and incomplete preparation rolls back")
     func dialogueFunctionEvidenceLifecycle() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -870,38 +870,18 @@ struct ResearchRecordsTests {
         _ = try await store.save(entry)
         #expect(try await store.functionRecord(runID: snapshot.runID)?.snapshot == snapshot)
 
-        let finalizedRequest = try snapshot.request.selectingResources([])
-        let finalizedSnapshot = ResearchFunctionSnapshot(
-            runID: snapshot.runID,
-            request: finalizedRequest,
-            recordKind: snapshot.recordKind,
-            recordID: snapshot.recordID,
-            checkpointID: snapshot.checkpointID,
-            skills: snapshot.skills,
-            phases: snapshot.phases,
-            requiredChildFunctions: snapshot.requiredChildFunctions,
-            preparedOutput: snapshot.preparedOutput,
-            evidenceRevisions: snapshot.evidenceRevisions,
-            fidelityHandoff: snapshot.fidelityHandoff,
-            confirmationToken: snapshot.confirmationToken,
-            preparedAt: snapshot.preparedAt
-        )
-        let finalized = try await store.finalizeFunctionPreflight(
-            snapshot: finalizedSnapshot,
-            instructions: "Finalized instructions",
+        let unchanged = try await store.finalizeFunctionPreflight(
+            snapshot: snapshot,
+            instructions: "Prepared instructions",
             runID: snapshot.runID
         )
-        #expect(finalized.functionSnapshot == finalizedSnapshot)
-        #expect(finalized.preparedInstructions == "Finalized instructions")
-        #expect(finalized.checkpointID == checkpointID)
-        _ = try await store.finalizeFunctionPreflight(
-            snapshot: finalizedSnapshot,
-            instructions: "Finalized instructions",
-            runID: snapshot.runID
-        )
-        let conflictingSnapshot = ResearchFunctionSnapshot(
+        #expect(unchanged.functionSnapshot == snapshot)
+        #expect(unchanged.checkpointID == checkpointID)
+
+        let obsoleteSelectionRequest = try snapshot.request.selectingResources([])
+        let obsoleteSelectionSnapshot = ResearchFunctionSnapshot(
             runID: snapshot.runID,
-            request: try snapshot.request.selectingResources([.developmentSynthesis]),
+            request: obsoleteSelectionRequest,
             recordKind: snapshot.recordKind,
             recordID: snapshot.recordID,
             checkpointID: snapshot.checkpointID,
@@ -916,8 +896,8 @@ struct ResearchRecordsTests {
         )
         await #expect(throws: ResearchFunctionRecordStoreError.self) {
             _ = try await store.finalizeFunctionPreflight(
-                snapshot: conflictingSnapshot,
-                instructions: "Different instructions",
+                snapshot: obsoleteSelectionSnapshot,
+                instructions: "Obsolete conditional selection",
                 runID: snapshot.runID
             )
         }

@@ -3,28 +3,42 @@ import ScholiumContracts
 import Testing
 @testable import ScholiumCore
 
-@Suite("Research Function Skill bindings and maintenance")
+@Suite("Research Action Method bindings and maintenance")
 struct ResearchFunctionSkillTests {
-    @Test("Five Workflow functions resolve one independently permissioned package")
-    func fiveWorkflowFunctionBindings() async throws {
+    @Test("Six default Actions resolve distinct bundled Methods and Manuscript stays disabled")
+    func defaultActionMethodBindings() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
-        let expected: [ResearchFunctionID: String] = [
-            .develop: "scholium-development",
-            .critique: "scholium-critique",
-            .revise: "scholium-revision",
-            .fidelity: "scholium-content-fidelity",
-            .manuscript: "scholium-manuscript",
+        let expected: [(ResearchFunctionID, ResearchActionID, String)] = [
+            (.discuss, .discuss, "scholium-discuss"),
+            (.develop, .analyze, "scholium-analyze"),
+            (.develop, .synthesize, "scholium-synthesize"),
+            (.revise, .write, "scholium-write"),
+            (.critique, .critique, "scholium-critique"),
+            (.fidelity, .checkFidelity, "scholium-content-fidelity"),
         ]
 
-        for (function, packageID) in expected {
-            let resolution = try await store.functionBindingResolution(for: function)
+        for (function, actionID, packageID) in expected {
+            let resolution = try await store.functionBindingResolution(
+                for: function,
+                actionID: actionID
+            )
             #expect(resolution.source == .bundledDefault)
             #expect(resolution.package?.id == packageID)
+            #expect(resolution.package?.supportedActions == [actionID])
             #expect(resolution.package?.supportedFunctions == [function])
             #expect(resolution.issue == nil)
         }
+
+        let manuscript = try await store.functionBindingResolution(
+            for: .manuscript,
+            actionID: .manuscript
+        )
+        #expect(manuscript.source == .none)
+        #expect(manuscript.package == nil)
+        #expect(manuscript.issue == .missing)
+        #expect(manuscript.bundledTemplateAvailable)
     }
 
     @Test("Citation status distinguishes template, installed candidate, active binding, and style mismatch")
@@ -74,6 +88,7 @@ struct ResearchFunctionSkillTests {
 
         let selections = try await store.resolvedFunctionPackages(
             for: .fidelity,
+            actionID: .checkFidelity,
             fidelityChecks: [.citations],
             citationStyle: "apa-7"
         )
@@ -149,15 +164,16 @@ struct ResearchFunctionSkillTests {
         #expect(repaired.issue == nil)
     }
 
-    @Test("Function assembly snapshots only selected conditional resources")
+    @Test("Action assembly snapshots the complete exact Method resources")
     func exactSelectiveResources() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
 
         let selections = try await store.resolvedFunctionPackages(
-            for: .develop,
-            primaryResourcePaths: ["references/synthesis.md"]
+            for: .revise,
+            actionID: .write,
+            primaryResourcePaths: ["references/feedback.md"]
         )
         let core = try #require(selections.first {
             $0.id == "scholium-core-protocol"
@@ -166,38 +182,230 @@ struct ResearchFunctionSkillTests {
         #expect(!core.loadedResources.map(\.relativePath).contains(
             "references/agent-transport.md"
         ))
-        let development = try #require(selections.first {
-            $0.id == "scholium-development"
+        let integration = try #require(selections.first {
+            $0.id == "scholium-research-integration"
         })
-        #expect(development.loadedResources.map(\.relativePath) == [
+        #expect(integration.loadedResources.map(\.relativePath) == [
             "SKILL.md",
-            "references/method.md",
-            "references/synthesis.md",
+            "references/cli-contract.md",
+            "references/persistence-method.md",
         ])
-        #expect(!development.loadedResources.map(\.relativePath).contains(
-            "references/exploration.md"
-        ))
-        #expect(development.loadedResources.allSatisfy {
+        let writing = try #require(selections.first {
+            $0.id == "scholium-write"
+        })
+        #expect(writing.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/feedback.md",
+            "references/method.md",
+        ])
+        #expect(writing.loadedResources.allSatisfy {
             $0.revision == DocumentFingerprint(content: $0.source)
         })
 
         await #expect(throws: ResearchSkillBindingError.self) {
             _ = try await store.resolvedFunctionPackages(
                 for: .fidelity,
+                actionID: .checkFidelity,
                 fidelityChecks: [.citations],
                 citationStyle: "apa-7"
             )
         }
     }
 
-    @Test("A revision-checked function binding activates and clears one local primary method")
-    func functionPrimaryActivation() async throws {
+    @Test("Protected mechanism resources follow the exact Action boundary")
+    func protectedMechanismResourcesAreActionBounded() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+
+        let discuss = try await store.resolvedFunctionPackages(
+            for: .discuss,
+            actionID: .discuss
+        )
+        let discussionProtocol = try #require(discuss.first {
+            $0.id == "scholium-discussion-protocol"
+        })
+        #expect(discussionProtocol.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/record-contract.md",
+        ])
+        let discussMethod = try #require(discuss.first {
+            $0.id == "scholium-discuss"
+        })
+        #expect(discussMethod.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/method.md",
+            "references/response-contract.md",
+        ])
+        let discussIntegration = try #require(discuss.first {
+            $0.id == "scholium-research-integration"
+        })
+        #expect(discussIntegration.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/cli-contract.md",
+        ])
+
+        let fidelity = try await store.resolvedFunctionPackages(
+            for: .fidelity,
+            actionID: .checkFidelity,
+            fidelityChecks: [.content]
+        )
+        let fidelityIntegration = try #require(fidelity.first {
+            $0.id == "scholium-research-integration"
+        })
+        #expect(fidelityIntegration.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/cli-contract.md",
+        ])
+
+        let critique = try await store.resolvedFunctionPackages(
+            for: .critique,
+            actionID: .critique
+        )
+        let critiqueIntegration = try #require(critique.first {
+            $0.id == "scholium-research-integration"
+        })
+        #expect(critiqueIntegration.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/cli-contract.md",
+            "references/persistence-method.md",
+        ])
+        #expect((discuss + fidelity).flatMap(\.loadedResources).allSatisfy {
+            $0.revision == DocumentFingerprint(content: $0.source)
+        })
+    }
+
+    @Test("Self-contained local Methods retain protected mechanism without bundled filenames")
+    func selfContainedLocalMethodsAreExecutable() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+        let cases: [(String, ResearchFunctionID, ResearchActionID, ResearchSkillMode)] = [
+            ("local-analyze", .develop, .analyze, .analyze),
+            ("local-write", .revise, .write, .write),
+            ("local-fidelity", .fidelity, .checkFidelity, .audit),
+        ]
+        var bindingRevision: DocumentFingerprint?
+
+        for (id, function, actionID, mode) in cases {
+            let source = """
+            ---
+            name: \(id)
+            description: A self-contained researcher Method used to prove bounded assembly.
+            scholium:
+              role: method
+              supported_actions: [\(actionID.rawValue)]
+              supported_functions: [\(function.rawValue)]
+              capabilities: []
+              citation_styles: []
+              allow_evolution: false
+              supported_modes: [\(mode.rawValue)]
+              required_skills: []
+            ---
+
+            # Self-contained Method
+
+            Follow the exact typed Action boundary and use no additional package file.
+            """
+            let local = try await store.create(id: id, source: source)
+            let saved = try await store.saveFunctionSkillSelection(
+                ResearchFunctionSkillSelection(
+                    function: function,
+                    primaryPackageID: local.id
+                ),
+                expectedBindingRevision: bindingRevision
+            )
+            bindingRevision = saved.revision
+
+            let selections = try await store.resolvedFunctionPackages(
+                for: function,
+                actionID: actionID,
+                fidelityChecks: function == .fidelity ? [.content] : []
+            )
+            let primary = try #require(selections.first { $0.id == local.id })
+            #expect(primary.loadedResources.map(\.relativePath) == ["SKILL.md"])
+            #expect(selections.contains { $0.id == "scholium-core-protocol" })
+            #expect(selections.contains { $0.id == "scholium-research-integration" })
+        }
+    }
+
+    @Test("A local Fidelity copy loads only the selected check resource")
+    func localFidelityResourcesRemainCheckBounded() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = ResearchSkillStore(controlURL: fixture.control)
         let local = try await store.duplicateBundled(
-            id: "scholium-development",
-            as: "my-development"
+            id: "scholium-content-fidelity",
+            as: "my-content-fidelity"
+        )
+        _ = try await store.saveFunctionSkillSelection(
+            ResearchFunctionSkillSelection(
+                function: .fidelity,
+                primaryPackageID: local.id
+            ),
+            expectedBindingRevision: nil
+        )
+
+        let selections = try await store.resolvedFunctionPackages(
+            for: .fidelity,
+            actionID: .checkFidelity,
+            fidelityChecks: [.content]
+        )
+        let primary = try #require(selections.first { $0.id == local.id })
+        #expect(primary.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/content.md",
+        ])
+        #expect(!primary.loadedResources.contains {
+            $0.relativePath == "references/citations.md"
+        })
+    }
+
+    @Test("An external Skill edit between routing and capture fails closed")
+    func interposedLocalSkillEditCannotCreateMixedSnapshot() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+        let source = """
+        ---
+        name: snapshot-method
+        description: A bounded snapshot race fixture.
+        scholium:
+          role: method
+          supported_actions: [analyze]
+          supported_functions: [develop]
+          capabilities: []
+          citation_styles: []
+          allow_evolution: false
+          supported_modes: [analyze]
+          required_skills: []
+        ---
+
+        # Snapshot Method
+        """
+        let package = try await store.create(id: "snapshot-method", source: source)
+        let expectedRevision = try #require(package.revision)
+        let sourceURL = store.skillsURL
+            .appendingPathComponent(package.id, isDirectory: true)
+            .appendingPathComponent("SKILL.md", isDirectory: false)
+        try Data((source + "\nExternal edit.\n").utf8).write(to: sourceURL, options: .atomic)
+
+        await #expect(throws: ResearchSkillError.self) {
+            _ = try await store.packageResourceSnapshot(
+                id: package.id,
+                expectedRevision: expectedRevision
+            )
+        }
+    }
+
+    @Test("A revision-checked legacy Function binding remains bounded by exact Action support")
+    func functionPrimaryActivationIsActionBounded() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+        let local = try await store.duplicateBundled(
+            id: "scholium-analyze",
+            as: "my-analysis-method"
         )
 
         let saved = try await store.saveFunctionSkillSelection(
@@ -209,19 +417,34 @@ struct ResearchFunctionSkillTests {
         )
         let selected = try await store.functionSkillSelection(for: .develop)
         #expect(selected.primaryPackageID == local.id)
-        let active = try await store.functionBindingResolution(for: .develop)
+        let active = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
         #expect(active.source == .triptychBinding)
         #expect(active.package?.id == local.id)
         #expect(active.bindingRevision == saved.revision)
+
+        let wrongAction = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .synthesize
+        )
+        #expect(
+            wrongAction.issue
+                == .unsupportedAction(packageID: local.id, actionID: .synthesize)
+        )
 
         let cleared = try await store.clearFunctionSkillSelection(
             for: .develop,
             expectedBindingRevision: saved.revision
         )
         #expect(try await store.functionSkillSelection(for: .develop).isEmpty)
-        let fallback = try await store.functionBindingResolution(for: .develop)
+        let fallback = try await store.functionBindingResolution(
+            for: .develop,
+            actionID: .analyze
+        )
         #expect(fallback.source == .bundledDefault)
-        #expect(fallback.package?.id == "scholium-development")
+        #expect(fallback.package?.id == "scholium-analyze")
         #expect(fallback.bindingRevision == cleared.revision)
 
         await #expect(throws: ResearchSkillBindingError.self) {
@@ -292,11 +515,12 @@ struct ResearchFunctionSkillTests {
         let envelope = try await ResearchWorkflowAssembler.resolveFunction(
             contract,
             function: .revise,
+            actionID: .write,
             store: store
         )
         let phase = try #require(envelope.contract.phases.first)
         #expect(phase.requiredSkillIDs == [
-            "scholium-revision",
+            "scholium-write",
             prose.id,
         ])
         #expect(phase.selectedPractices == [practice])
@@ -325,7 +549,7 @@ struct ResearchFunctionSkillTests {
             practiceID: "reviewer"
         )
 
-        #expect(try await store.compatiblePracticeIDs(for: .critique) == ["reviewer"])
+        #expect((try await store.compatiblePracticeIDs(for: .critique)).contains("reviewer"))
         #expect(!(try await store.compatiblePracticeIDs(for: .revise)).contains("reviewer"))
         #expect(!(try await store.compatiblePracticeIDs(for: .fidelity)).contains("reviewer"))
         #expect((try await store.compatiblePracticeIDs(for: .manuscript)).isEmpty)
@@ -349,6 +573,23 @@ struct ResearchFunctionSkillTests {
                 expectedBindingRevision: saved.revision
             )
         }
+    }
+
+    @Test("Legacy Develop guidance exposes only Practices shared by Analyze and Synthesize")
+    func legacyDevelopPracticeCompatibilityIsIntersection() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = ResearchSkillStore(controlURL: fixture.control)
+
+        #expect(try await store.compatiblePracticeIDs(for: .develop) == [
+            "argument-reconstructionist",
+            "conceptual-analyst",
+            "dialectical-partner",
+        ])
+        #expect(!(try await store.compatiblePracticeIDs(for: .develop)
+            .contains("research-explorer")))
+        #expect(!(try await store.compatiblePracticeIDs(for: .develop)
+            .contains("systematizer")))
     }
 
     @Test("Whole-package revisions bind every retained resource")
@@ -685,7 +926,7 @@ struct ResearchFunctionSkillTests {
             skillStore: store,
             snapshotRootURL: fixture.snapshotRoot
         )
-        let bundled = try await store.bundledPackage(id: "scholium-development")
+        let bundled = try await store.bundledPackage(id: "scholium-analyze")
         await #expect(throws: ResearchSkillMaintenanceError.self) {
             _ = try await maintenance.prepare(ResearchSkillMaintenanceRequest(
                 packageID: bundled.id,

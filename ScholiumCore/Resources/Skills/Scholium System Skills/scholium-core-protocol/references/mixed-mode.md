@@ -8,7 +8,7 @@ Declare every phase before executing it:
 Phase:
 Mode:
 Purpose:
-Required official Workflow Skill:
+Required Method Skill:
 Required System adapter, if any:
 Optional Researcher Skills or Practices:
 Read set:
@@ -40,7 +40,7 @@ Before every phase, including the first:
 
 1. reread the original instruction;
 2. clear the preceding retrieval set, write set, permission, status assumptions, method instructions, and stop condition;
-3. select the phase's official Workflow Skill;
+3. select the phase's exact Method Skill;
 4. rebuild context from sources and explicit handoffs;
 5. determine optional Practices for this phase only;
 6. record the phase's own durability expectation.
@@ -68,27 +68,27 @@ A handoff is an input, not settled knowledge. The receiving phase must reassess 
 
 ## 5. Common phase boundaries
 
-### Analysis to development
+### Source examination to Analyze
 
 Pass source claims, locators, reconstructions, and unresolved alternatives. Do not pass project-use candidates as accepted commitments.
 
-### Analysis to integration
+### Analyze to Synthesize
 
 Pass the source-facing analysis, access limits, locators, layer labels, proposed evidential role, exact target candidates, and unresolved checks. Select `scholium-research-integration` independently; the analysis phase supplies neither write permission nor settled project use.
 
-### Development to writing
+### Analyze or Synthesize to Write
 
 Pass the selected or still-competing formulations, argument structure, objections, replies, costs, and researcher decisions. If no formulation is selected, writing must preserve the alternatives rather than choose silently.
 
-### Writing to audit
+### Write to Check Fidelity
 
 Pass the exact changed fingerprint, source-dependent claims, substantive changes, and outstanding content or researcher-installed specialist checks.
 
-### Review to revision
+### Critique to Write
 
 Pass findings as proposed burdens. A review does not supply feedback disposition or edit permission. Record which findings the researcher accepts before revision when the choice is substantive.
 
-### Feedback to revision
+### Feedback to Write
 
 Pass the faithful feedback item, researcher disposition, bounded revision task, and checks to rerun. A recommended disposition is insufficient.
 
@@ -108,7 +108,7 @@ Continue with later phases only when they remain meaningful and authorized despi
 
 ## 7. Audit scheduling
 
-Collect pending Fidelity handoffs by exact Target fingerprint, scope, selected checks, evidence revisions, and package-resource revisions. Prepare one terminal Fidelity function for each distinct final audit key after the last substantive edit. Reuse an existing completion for the same key, mark it stale when Target or evidence changes, and never let Fidelity schedule itself.
+Collect pending Check Fidelity handoffs by exact Target fingerprint, scope, selected checks, evidence revisions, and package-resource revisions. Prepare one terminal Check Fidelity Action for each distinct final audit key after the last substantive edit. Reuse an existing completion for the same key, mark it stale when Target or evidence changes, and never let Check Fidelity schedule itself.
 
 If the target changes after audit, mark the previous result stale for the new fingerprint. If a matching audit already exists for the same fingerprint, scope, and evidence, reuse it and report that decision.
 

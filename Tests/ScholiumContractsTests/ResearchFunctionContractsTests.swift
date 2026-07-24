@@ -96,8 +96,8 @@ struct ResearchFunctionContractsTests {
         ).validate()
     }
 
-    @Test("Conditional resources use the current resource vocabulary")
-    func resourceSelectionCodable() throws {
+    @Test("Legacy conditional resources remain decodable but are not active Method modes")
+    func legacyResourceSelectionIsInactive() throws {
         let target = target(role: .analysis)
         let inherited = ResearchFunctionRequest(function: .develop, target: target)
         let explicitEmpty = ResearchFunctionRequest(
@@ -107,22 +107,17 @@ struct ResearchFunctionContractsTests {
         )
         #expect(inherited.conditionalResources == nil)
         #expect(explicitEmpty.conditionalResources == [])
-        #expect(inherited.awaitsResourceSelection)
+        #expect(!inherited.awaitsResourceSelection)
         #expect(!explicitEmpty.awaitsResourceSelection)
-        #expect(ResearchFunctionID.develop.conditionalResources.contains(
-            .developmentSynthesis
-        ))
+        #expect(ResearchFunctionID.develop.conditionalResources.isEmpty)
         #expect(ResearchFunctionID.discuss.conditionalResources.isEmpty)
         #expect(ResearchFunctionConditionalResource.developmentSynthesis.kind == .method)
         #expect(ResearchFunctionConditionalResource.revisionOutputContracts.kind == .template)
         #expect(ResearchFunctionConditionalResource.manuscriptGates.kind == .checklist)
 
-        let finalized = try inherited.selectingResources([.developmentSynthesis])
-        #expect(finalized.conditionalResources == [.developmentSynthesis])
-        #expect(finalized.target == inherited.target)
-        #expect(finalized.materials == inherited.materials)
-        #expect(finalized.instruction == inherited.instruction)
-        #expect(!finalized.awaitsResourceSelection)
+        #expect(throws: ResearchFunctionContractError.self) {
+            try inherited.selectingResources([.developmentSynthesis])
+        }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -137,9 +132,20 @@ struct ResearchFunctionContractsTests {
         )
         #expect(inheritedRoundTrip.conditionalResources == nil)
         #expect(explicitRoundTrip.conditionalResources == [])
-        let encodedRequest = String(decoding: try encoder.encode(finalized), as: UTF8.self)
+        let legacy = ResearchFunctionRequest(
+            function: .develop,
+            target: target,
+            conditionalResources: [.developmentSynthesis]
+        )
+        let encodedRequest = String(decoding: try encoder.encode(legacy), as: UTF8.self)
         #expect(encodedRequest.contains("conditional_resources"))
-        #expect(!encodedRequest.contains("\"methods\""))
+        #expect(try decoder.decode(
+            ResearchFunctionRequest.self,
+            from: encoder.encode(legacy)
+        ) == legacy)
+        #expect(throws: ResearchFunctionContractError.self) {
+            try legacy.validate()
+        }
 
         let submission = ResearchFunctionResourceSelectionSubmission(
             runID: UUID(),
@@ -236,8 +242,8 @@ struct ResearchFunctionContractsTests {
         #expect(String(decoding: try encoder.encode(decoded), as: UTF8.self) == "\"discuss\"")
     }
 
-    @Test("Write authorization and shared Fidelity targets survive request persistence")
-    func multiTargetRequestRoundTrip() throws {
+    @Test("Legacy multi-target writes round-trip but cannot authorize a current Action")
+    func legacyMultiTargetWriteRoundTripIsInactive() throws {
         let analysis = target(role: .analysis)
         let topic = target(role: .topic)
         let write = ResearchFunctionRequest(
@@ -247,8 +253,6 @@ struct ResearchFunctionContractsTests {
             writeScope: .selectedNotes,
             authorizedWriteTargets: [analysis, topic]
         )
-        try write.validate()
-
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         let storedWrite = try decoder.decode(
@@ -261,6 +265,9 @@ struct ResearchFunctionContractsTests {
             analysis.noteID,
             topic.noteID,
         ])
+        #expect(throws: ResearchFunctionContractError.self) {
+            try storedWrite.validate()
+        }
 
         let fidelity = ResearchFunctionRequest(
             function: .fidelity,

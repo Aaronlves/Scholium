@@ -53,14 +53,6 @@ public actor ResearchFunctionCoordinator {
         return try await handle.attachingAgentActions(to: automatic)
     }
 
-    public func selectFunctionResources(
-        _ submission: ResearchFunctionResourceSelectionSubmission
-    ) async throws -> ResearchFunctionPreparation {
-        let handle = try await reference.requireHandle()
-        let preparation = try await handle.selectResearchFunctionResources(submission)
-        return try await handle.attachingAgentActions(to: preparation)
-    }
-
     public func completeFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion {
@@ -155,6 +147,7 @@ private struct ResearchFunctionAuthorityBinding: Encodable {
 }
 
 private struct ResearchFunctionTaskDirective: Encodable {
+    let action: ResearchActionID
     let function: ResearchFunctionID
     let triptychID: String
     let runID: String
@@ -163,7 +156,40 @@ private struct ResearchFunctionTaskDirective: Encodable {
     let researcherInstruction: String
     let readSet: [ResearchFunctionAuthorityBinding]
     let writeSet: [ResearchFunctionAuthorityBinding]
+    /// A separately prepared non-Target output such as the current Critique
+    /// record. Its identity and revision are authority, unlike explanatory
+    /// prose appended for readability.
+    let output: ResearchFunctionOutputSnapshot?
     let checks: [FidelityCheck]
+    let skillPackages: [ResearchFunctionSkillAuthorityBinding]
+}
+
+private struct ResearchFunctionSkillAuthorityBinding: Encodable {
+    let packageID: String
+    let origin: ResearchSkillOrigin
+    let version: String
+    let packageRevision: DocumentFingerprint
+    let loadedResources: [ResearchFunctionSkillResourceAuthorityBinding]
+
+    init(_ selection: ResolvedResearchSkillSelection) {
+        packageID = selection.id
+        origin = selection.origin
+        version = selection.version
+        packageRevision = selection.packageRevision
+        loadedResources = selection.loadedResources.map(
+            ResearchFunctionSkillResourceAuthorityBinding.init
+        )
+    }
+}
+
+private struct ResearchFunctionSkillResourceAuthorityBinding: Encodable {
+    let relativePath: String
+    let revision: DocumentFingerprint
+
+    init(_ resource: ResolvedResearchSkillResource) {
+        relativePath = resource.relativePath
+        revision = resource.revision
+    }
 }
 
 private struct ResearchFunctionNamedData: Encodable {
@@ -201,8 +227,15 @@ extension WorkspaceHandle {
             }
 
             if reasons.isEmpty {
+                let action = try ResearchActionFunctionMapping.definition(
+                    for: function,
+                    targetRole: target.role
+                )
                 let resolution = try await services.researchSkillStore
-                    .functionBindingResolution(for: function)
+                    .functionBindingResolution(
+                        for: function,
+                        actionID: action.id
+                    )
                 if let issue = resolution.issue {
                     reasons.append(repairReason(for: issue, function: function))
                 }
@@ -511,8 +544,7 @@ extension WorkspaceHandle {
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
         let activityAuthorization: ResearchActivityGrantAuthorization?
-        if [.develop, .revise].contains(request.function),
-           !request.awaitsResourceSelection {
+        if [.develop, .revise].contains(request.function) {
             do {
                 activityAuthorization = try await issueResearchActivityGrant(
                     request: request,
@@ -676,7 +708,10 @@ extension WorkspaceHandle {
         let entry = DialogueEntry(
             id: runID,
             triptychID: services.manifest.id,
-            instruction: request.instruction ?? defaultFunctionInstruction(request.function),
+            instruction: request.instruction ?? defaultFunctionInstruction(
+                request.function,
+                targetRole: request.target.role
+            ),
             selectedNotes: ([target] + materials).map(\.reference),
             includedComments: evidence,
             preparedInstructions: functionInstructions,
@@ -718,185 +753,6 @@ extension WorkspaceHandle {
         )
     }
 
-    /// Finalizes only the conditional method resources of an already
-    /// validated read-only preflight. The Target, Materials, evidence,
-    /// checkpoint, record identity, and previously resolved package revisions
-    /// remain fixed; no delivery adapter chooses a philosophical method.
-    func selectResearchFunctionResources(
-        _ submission: ResearchFunctionResourceSelectionSubmission
-    ) async throws -> ResearchFunctionPreparation {
-        try requireActive()
-        let stored = try await storedFunctionRecord(runID: submission.runID)
-        let preflight = stored.snapshot
-        guard preflight.confirmationToken == submission.confirmationToken else {
-            throw ResearchFunctionContractError.confirmationMismatch
-        }
-        guard !preflight.request.function.conditionalResources.isEmpty else {
-            throw ResearchFunctionContractError.methodSelectionNotRequired(
-                preflight.request.function
-            )
-        }
-        if let selected = preflight.request.conditionalResources {
-            guard selected == submission.resources else {
-                throw ResearchFunctionContractError.methodSelectionAlreadyResolved(
-                    submission.runID
-                )
-            }
-            return ResearchFunctionPreparation(
-                snapshot: preflight,
-                instructions: try await deliveryInstructions(for: stored),
-                state: stored.completion?.state ?? .prepared,
-                reusedCompletion: stored.completion
-            )
-        }
-        guard stored.completion == nil else {
-            throw ResearchFunctionContractError.completionAlreadyRecorded(
-                submission.runID
-            )
-        }
-
-        let request = try preflight.request.selectingResources(submission.resources)
-        let target = try await validateResearchFunctionTarget(
-            request.target,
-            expected: request.target.fingerprint
-        )
-        let materials = try await validateResearchFunctionMaterials(request.materials)
-        _ = try await validateResearchFunctionWriteTargets(request)
-        _ = try await validateResearchFunctionFidelityTargets(request)
-        let evidence = try await selectedFunctionComments(
-            ids: request.commentIDs,
-            selected: [target] + materials
-        )
-        let evidenceRevisions = try functionEvidenceRevisions(evidence)
-        guard evidenceRevisions == preflight.evidenceRevisions else {
-            throw ResearchFunctionContractError.targetChanged
-        }
-        try await validatePreparedFunctionOutput(preflight.preparedOutput)
-
-        let fidelityChecks = preflight.fidelityHandoff?.checks ?? []
-        let phases = try await resolveResearchFunctionPhases(
-            request,
-            automaticFidelityChecks: fidelityChecks,
-            includeZoteroIntegration: preflight.zoteroBibliographicContext != nil
-        )
-        let phaseSnapshots = phases.enumerated().map { index, resolved in
-            ResearchFunctionPhaseSnapshot(
-                phase: index + 1,
-                function: resolved.function,
-                skills: resolved.envelope.phases
-                    .flatMap(\.packages)
-                    .map(ResearchFunctionSkillSnapshot.init),
-                citationStyle: resolved.citationStyle
-            )
-        }
-        let allSkills = mergedFunctionSkillSnapshots(
-            phaseSnapshots.flatMap(\.skills)
-        )
-        let activityAuthorization: ResearchActivityGrantAuthorization?
-        if [.develop, .revise].contains(request.function) {
-            activityAuthorization = try await issueResearchActivityGrant(
-                request: request,
-                activityID: preflight.runID,
-                issuedAt: preflight.preparedAt
-            )
-            activeResearchActivityKeys[preflight.runID] = activityAuthorization?.activityKey
-        } else {
-            activityAuthorization = nil
-        }
-        let snapshot = ResearchFunctionSnapshot(
-            runID: preflight.runID,
-            request: request,
-            recordKind: preflight.recordKind,
-            recordID: preflight.recordID,
-            checkpointID: preflight.checkpointID,
-            activityID: activityAuthorization?.grant.activityID,
-            skills: allSkills,
-            phases: phaseSnapshots,
-            requiredChildFunctions: preflight.requiredChildFunctions,
-            preparedOutput: preflight.preparedOutput,
-            evidenceRevisions: preflight.evidenceRevisions,
-            zoteroBibliographicContext: preflight.zoteroBibliographicContext,
-            fidelityHandoff: preflight.fidelityHandoff,
-            fidelityInvocation: preflight.fidelityInvocation,
-            confirmationToken: preflight.confirmationToken,
-            preparedAt: preflight.preparedAt
-        )
-        var instructions = try renderFunctionInstructions(
-            request: request,
-            phases: phases,
-            selectedComments: evidence,
-            runID: preflight.runID,
-            confirmationToken: preflight.confirmationToken,
-            fidelityHandoffChecks: fidelityChecks,
-            zoteroContext: preflight.zoteroBibliographicContext
-        )
-        if let output = preflight.preparedOutput {
-            instructions += "\n\n" + researchFunctionCritiqueOutputBinding(output)
-        }
-        let deliveryInstructions = try researchActivityDeliveryInstructions(
-            base: instructions,
-            request: request,
-            runID: preflight.runID,
-            confirmationToken: preflight.confirmationToken,
-            authorization: activityAuthorization
-        )
-
-        // Close the read/resolve race. Core then enforces that this is only a
-        // resource extension of the same whole-package revisions.
-        do {
-            _ = try await validateResearchFunctionTarget(
-                request.target,
-                expected: request.target.fingerprint
-            )
-            _ = try await validateResearchFunctionMaterials(request.materials)
-            _ = try await validateResearchFunctionWriteTargets(request)
-            _ = try await validateResearchFunctionFidelityTargets(request)
-            let finalEvidence = try await selectedFunctionComments(
-                ids: request.commentIDs,
-                selected: [target] + materials
-            )
-            guard try functionEvidenceRevisions(finalEvidence) == preflight.evidenceRevisions else {
-                throw ResearchFunctionContractError.targetChanged
-            }
-            try await validatePreparedFunctionOutput(preflight.preparedOutput)
-            switch stored {
-            case .dialogue:
-                _ = try await services.dialogueStore.finalizeFunctionPreflight(
-                    snapshot: snapshot,
-                    // The raw activity key is delivery-only and never enters
-                    // the durable Dialogue record.
-                    instructions: instructions,
-                    runID: submission.runID
-                )
-            case .critique:
-                _ = try await services.critiqueRegistry.finalizeFunctionPreflight(
-                    snapshot: snapshot,
-                    instructions: instructions,
-                    runID: submission.runID
-                )
-            }
-        } catch {
-            if let activityID = activityAuthorization?.grant.activityID {
-                _ = try? await services.researchActivityStore.revokeGrant(
-                    activityID: activityID
-                )
-                activeResearchActivityKeys[preflight.runID] = nil
-            }
-            throw error
-        }
-        let refreshWarning = try await recoverableResearchRefreshWarning {
-            try await refreshAfterCommittedOperation(
-                "The Research Function method selection",
-                publication: .researchRecords
-            )
-        }
-        return ResearchFunctionPreparation(
-            snapshot: snapshot,
-            instructions: deliveryInstructions,
-            derivedRefreshWarning: refreshWarning
-        )
-    }
-
     private func prepareCritiqueFunction(
         _ request: ResearchFunctionRequest,
         phases: [ResolvedFunctionPhase],
@@ -914,15 +770,6 @@ extension WorkspaceHandle {
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
         let passage = request.scope?.selection?.quotation ?? ""
-        let exactInstructions = try renderFunctionInstructions(
-            request: request,
-            phases: phases,
-            selectedComments: selectedComments,
-            runID: runID,
-            confirmationToken: confirmationToken,
-            fidelityHandoffChecks: [],
-            zoteroContext: zoteroContext
-        )
         let preparation: CritiquePreparation
         var refreshWarning: String?
         do {
@@ -951,7 +798,18 @@ extension WorkspaceHandle {
                         preparedAt: preparedAt
                     )
                 },
-                skillInstructionsOverride: exactInstructions
+                skillInstructionsOverride: { output in
+                    try self.renderFunctionInstructions(
+                        request: request,
+                        phases: phases,
+                        selectedComments: selectedComments,
+                        runID: runID,
+                        confirmationToken: confirmationToken,
+                        fidelityHandoffChecks: [],
+                        zoteroContext: zoteroContext,
+                        preparedOutput: output
+                    )
+                }
             )
         } catch let error as ScholiumApplicationError
             where error.durableMutationWasCommitted {
@@ -962,9 +820,24 @@ extension WorkspaceHandle {
             }
             refreshWarning = error.localizedDescription
             scheduleResearchFunctionRefreshRecovery()
+            guard let recoveredOutput = association.rounds.first(where: {
+                $0.id == runID
+            })?.functionSnapshot?.preparedOutput else {
+                throw ResearchFunctionContractError.preparationNotFound(runID)
+            }
+            let recoveredInstructions = try renderFunctionInstructions(
+                request: request,
+                phases: phases,
+                selectedComments: selectedComments,
+                runID: runID,
+                confirmationToken: confirmationToken,
+                fidelityHandoffChecks: [],
+                zoteroContext: zoteroContext,
+                preparedOutput: recoveredOutput
+            )
             preparation = CritiquePreparation(
                 association: association,
-                instructions: exactInstructions,
+                instructions: recoveredInstructions,
                 checkpoint: checkpoint
             )
         } catch {
@@ -986,6 +859,16 @@ extension WorkspaceHandle {
         guard let output = snapshot.preparedOutput else {
             throw ResearchFunctionContractError.preparationNotFound(runID)
         }
+        let exactInstructions = try renderFunctionInstructions(
+            request: request,
+            phases: phases,
+            selectedComments: selectedComments,
+            runID: runID,
+            confirmationToken: confirmationToken,
+            fidelityHandoffChecks: [],
+            zoteroContext: zoteroContext,
+            preparedOutput: output
+        )
         let outputBinding = researchFunctionCritiqueOutputBinding(output)
         return ResearchFunctionPreparation(
             snapshot: snapshot,
@@ -1006,11 +889,6 @@ extension WorkspaceHandle {
         let snapshot = stored.snapshot
         guard snapshot.confirmationToken == submission.confirmationToken else {
             throw ResearchFunctionContractError.confirmationMismatch
-        }
-        guard !snapshot.request.awaitsResourceSelection else {
-            throw ResearchFunctionContractError.methodSelectionRequired(
-                submission.runID
-            )
         }
         if let existing = stored.completion {
             switch existing.state {
@@ -1782,8 +1660,13 @@ extension WorkspaceHandle {
                     ? request.checks
                     : automaticFidelityChecks)
                 : []
+            let action = try ResearchActionFunctionMapping.definition(
+                for: function,
+                targetRole: request.target.role
+            )
             let contract = researchWorkflowContract(
                 request: request,
+                action: action,
                 phaseFunction: function,
                 phase: index + 1,
                 fidelityChecks: checks,
@@ -1802,19 +1685,14 @@ extension WorkspaceHandle {
             } else {
                 citationStyle = nil
             }
-            let selectedResources: Set<ResearchFunctionConditionalResource>
-            if let resources = request.conditionalResources {
-                selectedResources = resources
-            } else {
-                // One-click Strip preparation is a read-only preflight. It
-                // loads the complete primary method but no speculative
-                // conditional reference; the external agent finalizes the
-                // semantic selection after inspecting the real work.
-                selectedResources = []
-            }
+            // Current split Methods are complete. Nonempty values are retained
+            // only for decoding legacy machine-local snapshots and cannot pass
+            // validation for a new run.
+            let selectedResources = request.conditionalResources ?? []
             let envelope = try await ResearchWorkflowAssembler.resolveFunction(
                 contract,
                 function: function,
+                actionID: action.id,
                 fidelityChecks: checks,
                 citationStyle: citationStyle,
                 primaryResourcePaths: function == request.function
@@ -1849,6 +1727,7 @@ extension WorkspaceHandle {
 
     private func researchWorkflowContract(
         request: ResearchFunctionRequest,
+        action: ResearchActionDefinition,
         phaseFunction: ResearchFunctionID,
         phase: Int,
         fidelityChecks: Set<FidelityCheck>,
@@ -1856,8 +1735,7 @@ extension WorkspaceHandle {
     ) -> ResearchWorkflowContract {
         let target = workflowReference(request.target)
         let materials = request.materials.map(workflowReference)
-        let writes = (phaseFunction == .develop || phaseFunction == .revise)
-            && !request.awaitsResourceSelection
+        let writes = phaseFunction == .develop || phaseFunction == .revise
         let writeTargets = writes
             ? request.authorizedWriteTargets.map(workflowReference)
             : []
@@ -1869,8 +1747,8 @@ extension WorkspaceHandle {
         )).filter { $0 != target }.sorted { lhs, rhs in
             lhs.identifier < rhs.identifier
         }
-        let mode = skillMode(for: phaseFunction)
-        let purpose = phasePurpose(function: phaseFunction, request: request)
+        let mode = skillMode(for: action.id)
+        let purpose = phasePurpose(actionID: action.id)
         let phaseContract = ResearchWorkflowPhaseContract(
             phase: 1,
             mode: mode,
@@ -1890,7 +1768,7 @@ extension WorkspaceHandle {
             stopCondition: "Stop when the declared phase output is complete or its evidence cannot support it.",
             durability: writes ? .durableUpdate : .handoff,
             handoff: ResearchWorkflowHandoff(
-                summary: "Provisional \(phaseFunction.rawValue) phase output.",
+                summary: "Provisional \(action.id.rawValue) phase output.",
                 evidenceStatus: "Reassess against the exact Target and Material fingerprints.",
                 basis: [target] + materials + additionalReadTargets,
                 candidateTargets: writeTargets,
@@ -1903,7 +1781,7 @@ extension WorkspaceHandle {
         )
         return ResearchWorkflowContract(
             mode: mode,
-            taskObject: "Research Function \(request.function.rawValue), phase \(phase)",
+            taskObject: "Research Action \(action.id.rawValue), phase \(phase)",
             purpose: purpose,
             originalReadSet: [target] + materials + additionalReadTargets,
             originalWriteSet: writeTargets,
@@ -1918,18 +1796,34 @@ extension WorkspaceHandle {
         runID: UUID,
         confirmationToken: UUID,
         fidelityHandoffChecks: Set<FidelityCheck>,
-        zoteroContext: ZoteroBibliographicContext?
+        zoteroContext: ZoteroBibliographicContext?,
+        preparedOutput: ResearchFunctionOutputSnapshot? = nil
     ) throws -> String {
         let isKeyedWrite = [.develop, .revise].contains(request.function)
         let includesFingerprint = !isKeyedWrite
+        let action = try ResearchActionFunctionMapping.definition(
+            for: request.function,
+            targetRole: request.target.role
+        )
+        var seenSkillIDs: Set<String> = []
+        let skillPackages = phases
+            .flatMap(\.envelope.phases)
+            .flatMap(\.packages)
+            .filter { seenSkillIDs.insert($0.id).inserted }
+            .sorted { $0.id < $1.id }
+            .map(ResearchFunctionSkillAuthorityBinding.init)
         let directive = ResearchFunctionTaskDirective(
+            action: action.id,
             function: request.function,
             triptychID: services.manifest.id.uuidString.lowercased(),
             runID: runID.uuidString.lowercased(),
             confirmationToken: confirmationToken.uuidString.lowercased(),
             scope: request.scope?.kind ?? .whole,
             researcherInstruction: request.instruction
-                ?? defaultFunctionInstruction(request.function),
+                ?? defaultFunctionInstruction(
+                    request.function,
+                    targetRole: request.target.role
+                ),
             readSet: [ResearchFunctionAuthorityBinding(
                 request.target,
                 includesFingerprint: includesFingerprint
@@ -1950,7 +1844,9 @@ extension WorkspaceHandle {
                     includesFingerprint: false
                 )
             },
-            checks: request.checks.sorted { $0.rawValue < $1.rawValue }
+            output: preparedOutput,
+            checks: request.checks.sorted { $0.rawValue < $1.rawValue },
+            skillPackages: skillPackages
         )
         let researchData = ResearchFunctionResearchData(
             target: ResearchFunctionNamedData(
@@ -2000,21 +1896,25 @@ extension WorkspaceHandle {
             }
         }
         let boundary: String
-        if request.awaitsResourceSelection {
-            boundary = "This is a read-only conditional-resource preflight. Inspect the fixed Target and Materials only; the checkpoint does not authorize mutation. Select only the needed conditional resources through the function API and execute only the finalized packet."
-        } else {
-            switch request.function {
-            case .develop, .revise:
-                boundary = "Only the researcher-frozen Write targets are writable. Materials are read-only. The activity key does not authorize creating, deleting, or renaming notes. Scholium performs revision, identity, and containment checks at completion."
+        switch request.function {
+            case .develop:
+                let targetKind = request.target.role == .analysis ? "Analysis" : "Topic"
+                boundary = "Only the exact current \(targetKind) Target is writable in this Action. Materials are read-only. The activity key does not authorize creating, deleting, or renaming notes. Scholium performs revision, identity, and containment checks at completion."
+            case .revise:
+                boundary = "Only the exact current Work Target is writable in this Action. Materials are read-only. The activity key does not authorize creating, deleting, or renaming notes. Scholium performs revision, identity, and containment checks at completion."
             case .critique:
                 boundary = "The Work Target and Materials are read-only. Findings may be written only to the separate Critique record prepared by Scholium."
             case .manuscript:
                 boundary = "This run coordinates only. Prepare each needed Critique, Revise, or Fidelity activity as an independently permissioned child run. Critique is optional. A substantive Revise must carry final Content Fidelity evidence; an independent Fidelity child is needed only when that evidence is not already attached to the exact final revision."
             case .discuss:
-                boundary = "The Target and Materials are read-only. If the request requires a note change, return to Work with Agent and begin a separately authorized Write."
+                let nextAction = switch request.target.role {
+                case .analysis: "Analyze"
+                case .topic: "Synthesize"
+                case .work: "Write"
+                }
+                boundary = "The Target and Materials are read-only. If the exchange warrants a note change, begin a separately authorized \(nextAction) Action."
             case .fidelity:
                 boundary = "The Target and Materials are read-only. Recheck every fingerprint before use and stop on drift."
-            }
         }
         sections += ["", boundary, ""]
         for (index, phase) in phases.enumerated() {
@@ -2037,31 +1937,6 @@ extension WorkspaceHandle {
                 : phase.envelope.renderedInstructions
             sections += [phaseInstructions, ""]
         }
-        if request.awaitsResourceSelection {
-            let resources = request.function.conditionalResources.sorted {
-                $0.rawValue < $1.rawValue
-            }
-            let selection = ResearchFunctionResourceSelectionSubmission(
-                runID: runID,
-                confirmationToken: confirmationToken,
-                resources: []
-            )
-            sections += [
-                "## Finalize conditional resources",
-                "",
-                "After read-only inspection, choose only the conditional references genuinely needed by the philosophical work. These are internal resource selections, not interface modes or an exhaustive list of intellectual operations.",
-                "Available semantic resource IDs: \(resources.map(\.rawValue).joined(separator: ", "))",
-                "An explicit empty resources array is correct when the complete primary method is sufficient, including ordinary concept clarification or argument construction and repair.",
-                "Do not retrieve an unattached conditional reference with the generic skills command for this run; that would fall outside its loaded-resource evidence.",
-                "Resource-selection submission template (JSON):",
-                try renderFunctionJSON(selection),
-                "Finalize with: scholium function select-resources --from <file|-> --triptych \(services.manifest.id.uuidString.lowercased()) --format markdown",
-                "Execute only the finalized packet returned by that command. It retains this run, checkpoint, Target, Materials, and confirmation token while recording the exact conditional resources loaded.",
-                "Recover this run later with: scholium function show \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased()) --format markdown",
-                "Cancel this preflight with: scholium function cancel \(runID.uuidString.lowercased()) --triptych \(services.manifest.id.uuidString.lowercased())",
-            ]
-            return sections.joined(separator: "\n")
-        }
         if request.function == .manuscript {
             sections += [
                 "Do not edit from this coordination packet. Use the function API for only the child activities this manuscript pass actually needs. When completing Manuscript, select the exact completed child runs; the latest selected Revise must bind Content Fidelity evidence for the final Work revision, either on its own completion or through a later independent Fidelity child.",
@@ -2076,7 +1951,7 @@ extension WorkspaceHandle {
         }
         if isKeyedWrite {
             sections += [
-                "Report completion once with the delivery-only activity key and the paths you believe changed. Do not calculate or transcribe fingerprints. Scholium checks the entire frozen authorization itself and creates Awaiting Fidelity only for confirmed changes.",
+                "Report completion once with the delivery-only activity key and the exact current Target path if you believe it changed. Do not calculate or transcribe fingerprints. Scholium checks the frozen Target authorization itself and creates Awaiting Fidelity only for a confirmed change.",
                 "The keyed completion block is appended only to the live delivery packet. It is not persisted in this Research Record.",
             ]
             return sections.joined(separator: "\n")
@@ -2296,66 +2171,54 @@ extension WorkspaceHandle {
             return actions
         }
 
-        if snapshot.request.awaitsResourceSelection {
-            let selection = ResearchFunctionResourceSelectionSubmission(
-                runID: snapshot.runID,
-                confirmationToken: snapshot.confirmationToken,
-                resources: []
+        if snapshot.request.function == .discuss,
+           let recordID = snapshot.recordID {
+            actions.insert(AgentCommandAction(
+                kind: .reply,
+                label: "Record the attributed Discuss response",
+                command: [
+                    "scholium", "discuss", "reply",
+                    recordID.uuidString.lowercased(),
+                    "--triptych", services.manifest.id.uuidString.lowercased(),
+                    "--agent", "REPLACE_WITH_AGENT_NAME",
+                    "--from", "-",
+                ],
+                inputTemplate: "REPLACE_WITH_ATTRIBUTED_DISCUSS_RESPONSE"
+            ), at: 0)
+
+            let promotedFunction: ResearchFunctionID =
+                snapshot.request.target.role == .work ? .revise : .develop
+            let promotedAction = try ResearchActionFunctionMapping.definition(
+                for: promotedFunction,
+                targetRole: snapshot.request.target.role
+            )
+            let promotedRequest = ResearchFunctionRequest(
+                function: promotedFunction,
+                target: snapshot.request.target,
+                materials: snapshot.request.materials,
+                instruction: "REPLACE_WITH_AUTHORIZED_NOTE_CHANGE",
+                scope: snapshot.request.scope,
+                commentIDs: snapshot.request.commentIDs
             )
             actions.insert(AgentCommandAction(
-                kind: .selectResources,
-                label: "Finalize conditional resources",
+                kind: .promote,
+                label: "Begin separately authorized \(promotedAction.id.rawValue.capitalized)",
                 command: functionCommand([
-                    "select-resources", "--from", "-", "--format", "json",
+                    "prepare", "--from", "-", "--format", "json",
                 ]),
-                inputTemplate: try renderFunctionJSON(selection)
-            ), at: 0)
-        } else {
-            if snapshot.request.function == .discuss,
-               let recordID = snapshot.recordID {
-                actions.insert(AgentCommandAction(
-                    kind: .reply,
-                    label: "Record the attributed Discuss response",
-                    command: [
-                        "scholium", "discuss", "reply",
-                        recordID.uuidString.lowercased(),
-                        "--triptych", services.manifest.id.uuidString.lowercased(),
-                        "--agent", "REPLACE_WITH_AGENT_NAME",
-                        "--from", "-",
-                    ],
-                    inputTemplate: "REPLACE_WITH_ATTRIBUTED_DISCUSS_RESPONSE"
-                ), at: 0)
-
-                let promotedFunction: ResearchFunctionID =
-                    snapshot.request.target.role == .work ? .revise : .develop
-                let promotedRequest = ResearchFunctionRequest(
-                    function: promotedFunction,
-                    target: snapshot.request.target,
-                    materials: snapshot.request.materials,
-                    instruction: "REPLACE_WITH_AUTHORIZED_NOTE_CHANGE",
-                    scope: snapshot.request.scope,
-                    commentIDs: snapshot.request.commentIDs
-                )
-                actions.insert(AgentCommandAction(
-                    kind: .promote,
-                    label: "Promote an authorized note change to \(promotedFunction.rawValue.capitalized)",
-                    command: functionCommand([
-                        "prepare", "--from", "-", "--format", "json",
-                    ]),
-                    inputTemplate: try renderFunctionJSON(promotedRequest)
-                ), at: 1)
-            }
-            actions.insert(AgentCommandAction(
-                kind: .complete,
-                label: "Submit function completion",
-                command: functionCommand(["complete", "--from", "-", "--format", "json"]),
-                inputTemplate: try renderCompletionTemplate(
-                    request: snapshot.request,
-                    runID: snapshot.runID,
-                    confirmationToken: snapshot.confirmationToken
-                )
-            ), at: actions.first?.kind == .reply ? 2 : 0)
+                inputTemplate: try renderFunctionJSON(promotedRequest)
+            ), at: 1)
         }
+        actions.insert(AgentCommandAction(
+            kind: .complete,
+            label: "Submit function completion",
+            command: functionCommand(["complete", "--from", "-", "--format", "json"]),
+            inputTemplate: try renderCompletionTemplate(
+                request: snapshot.request,
+                runID: snapshot.runID,
+                confirmationToken: snapshot.confirmationToken
+            )
+        ), at: actions.first?.kind == .reply ? 2 : 0)
         actions.append(AgentCommandAction(
             kind: .cancel,
             label: "Cancel this uncompleted run",
@@ -3359,7 +3222,7 @@ extension WorkspaceHandle {
             .load(relativePath: output.note.relativePath)
         guard document.fingerprint == output.fingerprint else {
             throw ResearchFunctionContractError.invalidCompletion(
-                "The prepared Critique output changed before method selection was finalized."
+                "The prepared Critique output changed before the run could be completed."
             )
         }
     }
@@ -3419,6 +3282,12 @@ extension WorkspaceHandle {
                 packageID: packageID
             )
         case .unsupportedFunction(let packageID, _):
+            return ResearchFunctionRepairReason(
+                code: .invalidWorkflow,
+                function: function,
+                packageID: packageID
+            )
+        case .unsupportedAction(let packageID, _):
             return ResearchFunctionRepairReason(
                 code: .invalidWorkflow,
                 function: function,
@@ -3561,6 +3430,8 @@ extension WorkspaceHandle {
             return ResearchCitationMethodIssue(code: .invalidPackage, selectedPackageID: id)
         case .unsupportedFunction(let id, _):
             return ResearchCitationMethodIssue(code: .invalidPackage, selectedPackageID: id)
+        case .unsupportedAction(let id, _):
+            return ResearchCitationMethodIssue(code: .invalidPackage, selectedPackageID: id)
         case .missingCapability:
             return ResearchCitationMethodIssue(code: .missingCapability)
         case .citationStyleMissing(let id):
@@ -3597,28 +3468,29 @@ private func workflowReference(
     )
 }
 
-private func skillMode(for function: ResearchFunctionID) -> ResearchSkillMode {
-    switch function {
+private func skillMode(for actionID: ResearchActionID) -> ResearchSkillMode {
+    switch actionID {
     case .discuss: .discuss
-    case .develop: .develop
+    case .analyze: .analyze
+    case .synthesize: .synthesize
+    case .write: .write
     case .critique: .review
-    case .fidelity: .audit
-    case .revise: .write
+    case .checkFidelity: .audit
     case .manuscript: .manuscript
+    default: .all
     }
 }
 
-private func phasePurpose(
-    function: ResearchFunctionID,
-    request: ResearchFunctionRequest
-) -> String {
-    switch function {
-    case .discuss: "Respond to the researcher's question without changing the Target."
-    case .develop: "Develop the Analysis or Topic through the method appropriate to the actual philosophical work."
-    case .fidelity: "Audit the final revision for the selected content-fidelity checks."
-    case .critique: "Assess the Work independently and write findings only to the separate Critique record."
-    case .revise: "Revise the fixed current Work Target within the explicit request."
-    case .manuscript: "Coordinate only the independently permissioned research functions needed for the current Work."
+private func phasePurpose(actionID: ResearchActionID) -> String {
+    switch actionID {
+    case .discuss: "Respond to the researcher's question without changing Markdown."
+    case .analyze: "Analyze or reanalyze the accessible source in the current Analysis."
+    case .synthesize: "Synthesize warranted material into the current Topic only."
+    case .write: "Write only within the frozen current Work scope."
+    case .critique: "Assess the Work independently and return attributed findings without editing it."
+    case .checkFidelity: "Check the exact revision for the selected content-fidelity checks."
+    case .manuscript: "Coordinate only the independently authorized Work phases actually needed."
+    default: "Perform the bounded Action without enlarging its authority."
     }
 }
 
@@ -3630,17 +3502,23 @@ func researchFunctionCritiqueOutputBinding(
 
     Write Critique to: \(output.note.relativePath)
     Prepared Critique revision: \(output.fingerprint.sha256) (\(output.fingerprint.byteCount) bytes)
-    This separate Critique document is the only writable output. Recheck its revision before writing, keep the Work and Materials unchanged, and submit its final fingerprint with function completion.
+    The typed task directive binds this separate Critique document as the only writable output. Recheck its revision before writing, keep the Work and Materials unchanged, and submit its final fingerprint with function completion.
     """
 }
 
-private func defaultFunctionInstruction(_ function: ResearchFunctionID) -> String {
+private func defaultFunctionInstruction(
+    _ function: ResearchFunctionID,
+    targetRole: ResearchFunctionTargetRole
+) -> String {
     switch function {
     case .discuss: "Respond to the researcher's question."
-    case .develop: "Develop the current Analysis or Topic."
-    case .fidelity: "Audit the current note for content fidelity."
+    case .develop:
+        targetRole == .analysis
+            ? "Analyze or reanalyze the accessible source in the current Analysis."
+            : "Synthesize warranted material into the current Topic."
+    case .fidelity: "Check the current note for content fidelity."
     case .critique: "Critique the current Work."
-    case .revise: "Revise the current Work."
+    case .revise: "Write the authorized change in the current Work."
     case .manuscript: "Coordinate work on the manuscript as a whole."
     }
 }

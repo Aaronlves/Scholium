@@ -1,107 +1,48 @@
-# Scholium Product Skill Packages
+# Scholium product Skills
 
-> **Status:** Canonical release-shipped product sources. `ScholiumCore/Resources/Skills` is the sole repository authority and the SwiftPM-bundled resource tree; edit it directly and verify the package before release.
+This tree is the release-managed source for Scholium's protected mechanism, bundled Method references, and optional Researcher Skill templates. A Skill is a bounded UTF-8 package with a required `SKILL.md` entry point and optional one-level `references/`, `templates/`, or `evals/` resources.
 
-These are philosophy-facing research packages, not development-agent skills. They pursue warranted philosophical results, preserve source and researcher fidelity, and support a precise, reviewable knowledge base. Technical adapters remain subordinate to that purpose.
+## Ownership layers
 
-## Ownership
+### System Skills
 
-- System Skills are protected, bundled, and release-managed.
-- Workflow Skills are official and release-managed. A researcher may duplicate one into an independent Triptych-local Researcher Skill.
-- Researcher Skills and Practices are editable after adoption and are never overwritten by a release.
+System Skills are protected mechanism only:
 
-Runtime discovery is bounded to the release catalog plus direct packages under .scholium/skills/<skill-id>/. Scholium does not scan global Codex or plugin directories and does not infer capability from filenames.
+- `scholium-core-protocol` owns identity, revision, authority, privacy, completion, and Research Record boundaries;
+- `scholium-research-integration` adapts prepared Actions to protected reads and writes;
+- `scholium-discussion-protocol` owns Discussion identity and persistence, not philosophical dialogue method;
+- `scholium-zotero-integration` owns bounded library access.
 
-## Package map
+They cannot be edited or replaced by a research method.
 
-System:
+### Bundled Method references
 
-- scholium-core-protocol: universal integrity and phase isolation;
-- scholium-research-integration: bounded Triptych reads, writes, and records;
-- scholium-discuss-response: note-nonmutating Discuss transport and attributed response persistence;
-- scholium-zotero-integration: bounded optional library transport.
+Seven ordinary methods each support one researcher-visible Action:
 
-Workflow — exactly five:
+| Action | Method package | Target |
+| --- | --- | --- |
+| Discuss | `scholium-discuss` | Analysis, Topic, or Work; no Markdown write |
+| Analyze | `scholium-analyze` | current Analysis |
+| Synthesize | `scholium-synthesize` | current Topic |
+| Write | `scholium-write` | current Work |
+| Critique | `scholium-critique` | current Work; read-only |
+| Check Fidelity | `scholium-content-fidelity` | Analysis, Topic, or Work; read-only |
+| Manuscript | `scholium-manuscript` | current Work; optional and hidden by default |
 
-- scholium-development: Develop an Analysis or Topic. Exploration, concept work, argument work, synthesis, and expression are conditional resources selected from the real burden.
-- scholium-critique: assess an exact Work or passage read-only and write a separate Critique.
-- scholium-revision: revise the current Work, including explicit received-feedback disposition.
-- scholium-content-fidelity: run revision-bound Content checks and coordinate optional bound Citations checks read-only.
-- scholium-manuscript: coordinate the smallest declared plan of isolated Revise, Fidelity, and optional Critique phases while the current Work remains the only document Target.
+Analyze adapts between initial analysis and reanalysis without exposing a mode selector. Critical pressure is part of its method after source-grounded reconstruction. Synthesize is a separate Topic method. The retained `develop` and `revise` Function identifiers are internal execution compatibility only.
 
-Researcher:
+These packages are usable defaults, not best methods or certification. Session 3 supplies and routes the split bundled references; installing directly editable per-Triptych Working Methods, disabling fallback, and restoring references belong to the next ownership cutover.
 
-- scholium-philosophical-practices: optional editable Practice overlays;
-- scholium-source-analyzer: complete optional method for an external agent to analyze papers, books, chapters, and other philosophically relevant sources without invoking a Scholium Research Function;
-- scholium-prose-control: optional meaning-preserving method for Revise;
-- scholium-citation-verification: optional APA 7 verification and formatting starter for Fidelity.
+Manuscript is the exception to bundled fallback: its reference ships for explicit duplication or later Profile enablement, but a new run remains disabled until a researcher binds a Triptych-local Method. The retained Function machinery is not an implicit enable route.
 
-Discuss is System transport and record infrastructure. Only current Function-backed Discussion records are supported. Source Analyzer is a shipped Researcher Skill, but Source Analysis and skill self-evolution are not Workflow packages or Inspector functions. The agent may analyze a source supplied through Zotero, a local file, or another available channel; Scholium need not store or control the source. Persisting or developing the result in a Scholium note is a separate researcher-authorized action.
+Protected System packages are seeded by the Action resolver rather than trusted to an editable Method's dependency list. A local Method may be self-contained or name bounded package resources without copying bundled filenames. Assembly snapshots all package bytes coherently, while selected Practices, citation styles, and Fidelity checks retain their narrower resource selections.
 
-## Function routing
+### Researcher Skill templates
 
-Catalog supported_functions binds packages to semantic Research Function IDs. The visible function selects a function, never a package ID or internal method. When an intellectual task needs a complete philosophical method, Application resolves exactly one eligible official Workflow or explicitly compatible complete Researcher Skill, its dependency closure, explicit Triptych bindings, and only the conditional resources needed for the run. System Skills are transport and integrity authorities, not philosophical methods; Practices only supplement the primary method. Direct Source Analysis may use Source Analyzer without a Research Function.
+`scholium-philosophical-practices`, `scholium-source-analyzer`, `scholium-prose-control`, and `scholium-citation-verification` remain optional copy-on-adoption templates. They never activate merely because they are present, cannot grant authority, and do not supersede the active ordinary Method.
 
-`supported_modes` is internal package-routing metadata. It is not interface language or write permission. A one-click run with conditional resources first produces a read-only preflight containing the complete primary method. After inspecting the real work, the external agent finalizes an explicit semantic selection—including an empty selection when the primary method is sufficient—through the function API. The same run then records whole-package revisions and the exact conditional resources attached to its immutable execution packet.
+## Catalog and evaluation
 
-Function boundaries:
+`catalog.yaml` schema 4 records protected ownership, exact Action compatibility, retained internal Function compatibility, modes, dependencies, and bounded resources. Assembly selects by Action first and fails closed when an old Function binding names a package that does not support that Action.
 
-- Develop: Analysis or Topic Target; Materials read-only.
-- Critique: Work Target read-only; separate Critique writable.
-- Revise: current Work Target only writable; Materials read-only.
-- Fidelity: every Target role read-only; Content always available, Citations capability-bound.
-- Manuscript: current Work Target only; every phase independently prepared.
-
-Discuss is note-nonmutating: it may read the fixed Target and Materials and append an attributed response to the Discussion. An explicit note-changing request requires a separate Develop or Revise authorization before mutation. Write-capable functions require a Before Agent Work checkpoint and end with a pending revision-specific Fidelity handoff. Scholium has no embedded agent runtime, so awaiting or missing Fidelity must never be presented as an automatic audit.
-
-Prepared Function JSON exposes typed, shell-safe `nextActions`. Agents recover
-state with `function show`, finalize only declared conditional resources, and
-use `function prepare-fidelity` for a changed Develop or Revise parent instead
-of reconstructing a child request. `version`, `doctor`, and hierarchical `help`
-are the cold-start discovery boundary; strict parsing never silently ignores a
-misspelled option.
-
-## Capability and citation bindings
-
-Catalog capabilities describes declared behavior, not philosophical authority. Citation packages additionally declare citation_styles and an explicit citation_style_resources mapping. The included APA starter declares:
-
-- supported_functions: fidelity
-- capabilities: citation-verification and citation-formatting
-- citation_styles: apa-7
-- citation_style_resources: apa-7 to references/apa-7-starter.md
-
-Application determines whether a bundled template is available, a valid Triptych-local package exists, an explicit package-and-style binding is active, or a binding is malformed or missing. Core validates the selected semantic style against the local package and loads its declared resource rather than guessing from a filename. A missing or mismatched style disables the Citations route with a typed repair reason. The APA starter never silently answers Chicago, MLA, Oxford, MHRA, legal, ancient-text, journal-house, or unspecified-style requests.
-
-## Selective assembly
-
-An ordinary run contains:
-
-1. scholium-core-protocol;
-2. exactly one complete primary Workflow or explicitly compatible complete Researcher Skill when the intellectual task requires one, except Discuss;
-3. the research-integration or Discuss System adapters required by the operation;
-4. only explicitly selected Researcher Skills or Practices;
-5. only conditional resources actually needed.
-
-The protected Core entry keeps universal philosophical integrity, researcher-authority, privacy, permission, and exact-version audit rules in every run. Generic cold-session Skill discovery and resource-retrieval syntax is a conditional transport reference rather than ordinary prepared-function context. A selected Practice still loads the shared philosophical and composition foundation plus its exact resource; the directory of unselected Practices is maintenance context only.
-
-Manuscript is an orchestrator. It declares only the role-valid Work phases actually warranted from Revise, Fidelity, and optional Critique; it does not impose one universal sequence, depend on, or concatenate every Workflow package. Application resolves each needed phase independently, resets Target and Material fingerprints, evidence, permission, and write scope, and preserves a labeled handoff. Conceptual or argumentative development of the Work occurs inside Revise; Develop remains Analysis/Topic-only and never creates a second Target.
-
-## Recommended Bibliography
-
-Recommended Bibliography is an Analysis-only Research inspector capability, not a Research Function or note appendix. The bundled Source Analyzer supplies its complete default method. Application locks the Analysis revision, stores reading leads in `.scholium/recommended-bibliography.json`, distinguishes duplicate or ambiguous identities conservatively, and performs no note or Zotero write. Zero recommendations is valid. The CLI exposes `bibliography prepare`, `show`, `complete`, and `cancel`; Scholium retains normalization and duplicate discrimination rather than exposing a semantic-ranking command.
-
-## Researcher-skill evolution
-
-Self-evolution is Research Guidance maintenance, not a Strip function and never an automatic consequence of research work. Only an opted-in Triptych-local Researcher Skill may be evolved. Bundled System and Workflow packages are immutable.
-
-A maintenance transaction requires the expected whole-package revision, a bounded replacement containing SKILL.md plus optional one-level references, templates, and evals, successful structural evaluation, and an explicit confirmation token. Core snapshots the complete old package, replaces atomically, reads back and fingerprints the new package, and can restore the snapshot. Failure leaves or restores the earlier package; partial packages never become visible.
-
-## Evidence and evaluation
-
-catalog.yaml owns IDs, ownership, routing modes, function compatibility, capabilities, citation styles, dependencies, and update policy. Each package owns its method and conditional resources. evals/cases.yaml covers positive, boundary, and adversarial function behavior; evals/REAL_WORKFLOW_ASSESSMENT.md defines field acceptance.
-
-Repository and catalog tests prove packaging, routing, containment, revisions, and transaction behavior. They do not prove philosophical truth or that an external agent complied with every method. Field trials must inspect the actual output, evidence use, write set, and reported uncertainty.
-
-## Universal standard
-
-Pursue the best warranted philosophical result available under the actual evidence. Maintain fidelity, precision, accuracy, non-fabrication, privacy, and researcher authority. Keep source material, interpretation, reconstruction, evaluation, agent proposal, researcher commitment, and durable settlement distinct. Missing evidence narrows or stops the result; it never licenses invention.
+`evals/cases.yaml` is an unexecuted forward prompt/evaluation specification. It enumerates complete source and argument routes, source-unavailable refusal, phase isolation, record boundaries, and adversarial authority cases. Repository tests establish only that its declared Actions, packages, routes, and resources are structurally valid. No runner, agent output, or behavioral oracle is attached yet, so these cases establish neither behavior, philosophical quality, nor Method fidelity.

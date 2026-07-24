@@ -67,7 +67,7 @@ public enum ResearchSkillMode: String, Codable, CaseIterable, Hashable, Sendable
 
 public enum ResearchSkillClass: String, Codable, CaseIterable, Hashable, Sendable {
     case system
-    case workflow
+    case method
     case researcher
 }
 
@@ -79,6 +79,11 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
     public let skillClass: ResearchSkillClass
     public let role: String
     public let version: String
+    /// Researcher-visible Actions for which this package is a complete method.
+    ///
+    /// Protected Function identifiers remain a compatibility detail; Action
+    /// identity is the semantic routing boundary for bundled methods.
+    public let supportedActions: [ResearchActionID]
     public let supportedFunctions: [ResearchFunctionID]
     public let capabilities: [ResearchSkillCapability]
     public let citationStyles: [String]
@@ -90,7 +95,7 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
     /// adapter may support every mode while remaining opt-in except for one
     /// app-owned route such as Discuss.
     public let automaticModes: [ResearchSkillMode]
-    /// Researcher-owned Practice identifiers that may refine this Workflow Skill.
+    /// Researcher-owned Practice identifiers that may refine this Method Skill.
     ///
     /// These are routing hints, not dependencies, permissions, or endorsements.
     public let compatiblePracticeIDs: [String]
@@ -110,6 +115,7 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         skillClass: ResearchSkillClass,
         role: String,
         version: String,
+        supportedActions: [ResearchActionID] = [],
         supportedFunctions: [ResearchFunctionID] = [],
         capabilities: [ResearchSkillCapability] = [],
         citationStyles: [String] = [],
@@ -128,6 +134,7 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         self.skillClass = skillClass
         self.role = role
         self.version = version
+        self.supportedActions = Self.unique(supportedActions)
         self.supportedFunctions = Self.unique(supportedFunctions)
         self.capabilities = Self.unique(capabilities)
         self.citationStyles = Self.unique(citationStyles.map {
@@ -157,6 +164,10 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         supportedFunctions.contains(function)
     }
 
+    public func supports(_ actionID: ResearchActionID) -> Bool {
+        supportedActions.contains(actionID)
+    }
+
     public func provides(_ capability: ResearchSkillCapability) -> Bool {
         capabilities.contains(capability)
     }
@@ -172,6 +183,7 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
         case skillClass = "class"
         case role
         case version
+        case supportedActions = "supported_actions"
         case supportedFunctions = "supported_functions"
         case capabilities
         case citationStyles = "citation_styles"
@@ -194,6 +206,10 @@ public struct ResearchSkillCatalogEntry: Codable, Hashable, Identifiable, Sendab
             skillClass: try container.decode(ResearchSkillClass.self, forKey: .skillClass),
             role: try container.decode(String.self, forKey: .role),
             version: try container.decode(String.self, forKey: .version),
+            supportedActions: try container.decodeIfPresent(
+                [ResearchActionID].self,
+                forKey: .supportedActions
+            ) ?? [],
             supportedFunctions: try container.decodeIfPresent(
                 [ResearchFunctionID].self,
                 forKey: .supportedFunctions
@@ -280,7 +296,7 @@ public enum ResearchSkillCatalogError: LocalizedError, Sendable {
 /// The release-managed catalog. It deliberately has no API for scanning an
 /// arbitrary directory or importing global agent configuration.
 public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let status: String
@@ -327,9 +343,14 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
                     "Skill \(entry.id) must declare at least one supported mode."
                 )
             }
-            guard entry.skillClass != .workflow || !entry.supportedFunctions.isEmpty else {
+            guard entry.skillClass != .method || entry.supportedFunctions.count == 1 else {
                 throw ResearchSkillCatalogError.malformedCatalog(
-                    "Workflow Skill \(entry.id) must declare at least one supported function."
+                    "Method Skill \(entry.id) must declare one protected execution function."
+                )
+            }
+            guard entry.skillClass != .method || entry.supportedActions.count == 1 else {
+                throw ResearchSkillCatalogError.malformedCatalog(
+                    "Method Skill \(entry.id) must declare exactly one researcher-visible Action."
                 )
             }
             guard entry.citationStyles.allSatisfy({ style in
@@ -426,7 +447,7 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
 
     /// Returns a stable, dependency-closed list for one ordinary mode.
     ///
-    /// Automatic System packages are always selected. Workflow, Researcher,
+    /// Automatic System packages are always selected. Method, Researcher,
     /// and optional adapter packages remain opt-in by ID. This keeps ordinary
     /// assembly bounded while allowing a requested adapter to participate in
     /// any mode it explicitly supports.
@@ -504,7 +525,7 @@ public struct ResearchSkillCatalog: Codable, Hashable, Sendable {
         }
         let expectedRoot: String = switch skillClass {
         case .system: "Scholium System Skills"
-        case .workflow: "Scholium Workflow Skills"
+        case .method: "Scholium Method Skills"
         case .researcher: "Researcher Skills"
         }
         return components[0] == expectedRoot

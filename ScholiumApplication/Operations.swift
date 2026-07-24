@@ -378,12 +378,6 @@ public actor ResearchOperations: ResearchUseCases {
         try await functionCoordinator.prepareAutomaticFidelity(parentRunID: parentRunID)
     }
 
-    public func selectFunctionResources(
-        _ submission: ResearchFunctionResourceSelectionSubmission
-    ) async throws -> ResearchFunctionPreparation {
-        try await functionCoordinator.selectFunctionResources(submission)
-    }
-
     public func completeFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion {

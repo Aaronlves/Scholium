@@ -4889,6 +4889,22 @@
         }
       }
     },
+    "Current Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Current Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前笔记"
+          }
+        }
+      }
+    },
     "Current Work version" : {
       "localizations" : {
         "en" : {
@@ -10304,6 +10320,22 @@
         }
       }
     },
+    "No compatible Triptych method is installed for %@. The bundled Method remains active." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No compatible Triptych method is installed for %@. The bundled Method remains active."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装与 %@ 兼容的脉络方法；捆绑方法仍然有效。"
+          }
+        }
+      }
+    },
     "No compatible Triptych method is installed for %arg. The built-in workflow remains active." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -10755,6 +10787,22 @@
         }
       }
     },
+    "Only %@ may be changed in this phase. Additional Note changes require a separately authorized phase." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Only %@ may be changed in this phase. Additional Note changes require a separately authorized phase."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此阶段仅可更改 %@。其他笔记更改需要单独授权的阶段。"
+          }
+        }
+      }
+    },
     "Only escaped quotes and backslashes are valid inside a Search phrase." : {
       "localizations" : {
         "en" : {
@@ -10767,6 +10815,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索短语中只允许转义引号和反斜杠。"
+          }
+        }
+      }
+    },
+    "Only the current Note may be changed in this phase." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Only the current Note may be changed in this phase."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此阶段仅可更改当前笔记。"
           }
         }
       }
@@ -19881,6 +19945,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可写范围"
+          }
+        }
+      }
+    },
+    "Writable target" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Writable target"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可写目标"
           }
         }
       }

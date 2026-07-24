@@ -27,6 +27,11 @@ extension ResearchSkillCatalog {
                 )
             }
             let modes = try modeValues(raw["supported_modes"], field: "supported_modes", id: id)
+            let actions = try actionValues(
+                raw["supported_actions"],
+                field: "supported_actions",
+                id: id
+            )
             let functions = try functionValues(
                 raw["supported_functions"],
                 field: "supported_functions",
@@ -70,6 +75,7 @@ extension ResearchSkillCatalog {
                 skillClass: skillClass,
                 role: role,
                 version: version,
+                supportedActions: actions,
                 supportedFunctions: functions,
                 capabilities: capabilities,
                 citationStyles: citationStyles,
@@ -84,6 +90,22 @@ extension ResearchSkillCatalog {
             )
         }
         return try Self(schemaVersion: schemaVersion, status: status, entries: entries)
+    }
+
+    private static func actionValues(
+        _ rawValue: Any?,
+        field: String,
+        id: String
+    ) throws -> [ResearchActionID] {
+        let values = try stringValues(rawValue, field: field, id: id)
+        return try values.map { value in
+            guard let actionID = ResearchActionID(rawValue: value) else {
+                throw ResearchSkillCatalogError.malformedCatalog(
+                    "Skill \(id) declares an invalid \(field) value: \(value)."
+                )
+            }
+            return actionID
+        }
     }
 
     /// Yams may bridge a YAML integer through Foundation when the catalog is

@@ -44,6 +44,7 @@ public actor ResearchSkillStore {
                 role: package.role,
                 version: package.version,
                 updatePolicy: package.updatePolicy,
+                supportedActions: package.supportedActions,
                 supportedFunctions: package.supportedFunctions,
                 capabilities: package.capabilities,
                 citationStyles: package.citationStyles,
@@ -437,7 +438,7 @@ public actor ResearchSkillStore {
     }
 
     /// Reads the complete Settings-owned Researcher Skill profile for one
-    /// semantic function. Absence means the release-managed primary workflow
+    /// semantic function. Absence means the release-managed primary Method
     /// runs without a researcher-owned refinement.
     public func functionSkillSelection(
         for function: ResearchFunctionID
@@ -536,7 +537,7 @@ public actor ResearchSkillStore {
         if let primaryPackageID {
             let package = try package(id: primaryPackageID)
             guard package.supports(function),
-                  package.role == "workflow"
+                  package.role == "method"
                     || (package.role == "specialist"
                         && !composesWithFunction(package, function: function)) else {
                 return []
@@ -545,14 +546,19 @@ public actor ResearchSkillStore {
         }
         let candidates = try skills().filter {
             $0.origin == .bundled
-                && $0.skillClass == .workflow
+                && $0.skillClass == .method
                 && $0.supports(function)
                 && $0.isValid
         }
-        guard candidates.count == 1, let package = candidates.first else {
-            return []
+        guard let first = candidates.first else { return [] }
+        // Binding v1 is still Function-keyed. When one protected Function
+        // serves more than one Action, expose only Practices declared
+        // compatible by every candidate Method; never widen one Action from
+        // the other. Action-keyed bindings replace this compatibility bridge.
+        return candidates.dropFirst().reduce(Set(first.compatiblePracticeIDs)) {
+            compatible, package in
+            compatible.intersection(package.compatiblePracticeIDs)
         }
-        return Set(package.compatiblePracticeIDs)
     }
 
     /// Resolves the complete Source Analyzer used by the Analysis-only
@@ -571,7 +577,7 @@ public actor ResearchSkillStore {
             $0.origin == .triptych
                 && $0.isValid
                 && $0.provides(.bibliographyRecommendation)
-                && $0.role == "workflow"
+                && $0.role == "method"
         }
         let document: ResearchSkillBindingDocument?
         do {
@@ -634,7 +640,7 @@ public actor ResearchSkillStore {
             let package = try localPackage(id: packageID)
             guard package.origin == .triptych,
                   package.isValid,
-                  package.role == "workflow",
+                  package.role == "method",
                   package.provides(.bibliographyRecommendation) else {
                 throw ResearchSkillBindingError.invalidBindingDocument(
                     "The bibliography method must be a valid Triptych-local complete Source Analyzer."
@@ -656,23 +662,28 @@ public actor ResearchSkillStore {
         )
     }
 
-    /// Resolves the official function package or one explicit Triptych
-    /// override. Missing bindings never cause a filename or global-directory
-    /// search.
+    /// Resolves the bundled Method for one public Action or one explicit
+    /// Triptych override. The protected Function remains part of the current
+    /// execution layer, but can no longer collapse Analyze and Synthesize into
+    /// one ambiguous package.
     public func functionBindingResolution(
-        for function: ResearchFunctionID
+        for function: ResearchFunctionID,
+        actionID: ResearchActionID
     ) throws -> ResearchSkillBindingResolution {
         let rawBindingRevision = try? bindingFileRevision()
         let all = try skills()
         let localCandidates = all.filter {
-            $0.origin == .triptych && $0.isValid && $0.supports(function)
-        }.map(\.id)
-        let primaryClass: ResearchSkillClass = function == .discuss ? .system : .workflow
-        let bundledCandidates = all.filter {
-            $0.origin == .bundled
-                && $0.skillClass == primaryClass
+            $0.origin == .triptych
                 && $0.isValid
                 && $0.supports(function)
+                && $0.supports(actionID)
+        }.map(\.id)
+        let bundledCandidates = all.filter {
+            $0.origin == .bundled
+                && $0.skillClass == .method
+                && $0.isValid
+                && $0.supports(function)
+                && $0.supports(actionID)
         }
         let snapshot: ResearchSkillBindingSnapshot?
         do {
@@ -718,11 +729,33 @@ public actor ResearchSkillStore {
                     bindingRevision: rawBindingRevision
                 )
             }
+            guard bound.supports(actionID) else {
+                return ResearchSkillBindingResolution(
+                    source: .triptychBinding,
+                    bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                    installedCandidateIDs: localCandidates,
+                    issue: .unsupportedAction(packageID: id, actionID: actionID),
+                    bindingRevision: rawBindingRevision
+                )
+            }
             return ResearchSkillBindingResolution(
                 source: .triptychBinding,
                 package: bound,
                 bundledTemplateAvailable: !bundledCandidates.isEmpty,
                 installedCandidateIDs: localCandidates,
+                bindingRevision: rawBindingRevision
+            )
+        }
+
+        // Manuscript is an optional bundled reference, not a default Action.
+        // A researcher must explicitly bind a Triptych-local Method before
+        // the retained Function transport may prepare a new run.
+        if actionID == .manuscript {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                bundledTemplateAvailable: !bundledCandidates.isEmpty,
+                installedCandidateIDs: localCandidates,
+                issue: .missing,
                 bindingRevision: rawBindingRevision
             )
         }
@@ -734,7 +767,9 @@ public actor ResearchSkillStore {
                 installedCandidateIDs: localCandidates,
                 issue: bundledCandidates.isEmpty
                     ? .missing
-                    : .malformed("More than one bundled package supports \(function.rawValue)."),
+                    : .malformed(
+                        "More than one bundled Method supports Action \(actionID.rawValue)."
+                    ),
                 bindingRevision: rawBindingRevision
             )
         }
@@ -844,25 +879,36 @@ public actor ResearchSkillStore {
         )
     }
 
-    /// Resolves one function and fingerprints only the conditional resources
-    /// selected for this run. The package revision still covers the complete
+    /// Resolves one Action-specific Method and fingerprints the exact resources
+    /// loaded for this run. The package revision still covers the complete
     /// bounded package.
     public func resolvedFunctionPackages(
         for function: ResearchFunctionID,
+        actionID: ResearchActionID,
         fidelityChecks: Set<FidelityCheck> = [],
         citationStyle: String? = nil,
         additionalSkillIDs: [String] = [],
         primaryResourcePaths: Set<String> = [],
         additionalResourcePaths: [String: Set<String>] = [:]
     ) throws -> [ResolvedResearchSkillSelection] {
-        let primaryResolution = try functionBindingResolution(for: function)
+        let primaryResolution = try functionBindingResolution(
+            for: function,
+            actionID: actionID
+        )
         guard let primary = primaryResolution.package, primaryResolution.issue == nil else {
             throw ResearchSkillBindingError.unresolvedBinding(
                 primaryResolution.issue ?? .missing
             )
         }
 
-        var requestedIDs = [primary.id] + additionalSkillIDs
+        // Protected Action mechanism is Application-owned. A researcher
+        // Method may omit or even misstate dependencies without detaching the
+        // exact read/write and completion adapter from a mediated run.
+        var requestedIDs = [primary.id, "scholium-research-integration"]
+            + additionalSkillIDs
+        if actionID == .discuss {
+            requestedIDs.append("scholium-discussion-protocol")
+        }
         var resolvedCitationID: String?
         var resolvedCitationStyle: String?
         if function == .fidelity, fidelityChecks.contains(.citations) {
@@ -883,7 +929,7 @@ public actor ResearchSkillStore {
         }
 
         let packages = try resolvedPackages(
-            for: Self.skillMode(for: function),
+            for: Self.skillMode(for: actionID),
             requestedSkillIDs: Self.unique(requestedIDs)
         )
         var selections: [ResolvedResearchSkillSelection] = []
@@ -891,17 +937,58 @@ public actor ResearchSkillStore {
             guard let packageRevision = package.revision else {
                 throw ResearchSkillError.invalidPackage(package.id, package.validationIssues)
             }
-            let available = try resourcePaths(id: package.id)
+            let resourceSnapshot = try packageResourceSnapshot(
+                id: package.id,
+                expectedRevision: packageRevision
+            )
             var selected: Set<String> = ["SKILL.md"]
+            selected.formUnion(Self.requiredSystemResourcePaths(
+                for: package.id,
+                actionID: actionID
+            ))
             if package.id == primary.id {
-                selected.formUnion(Self.defaultResourcePaths(
-                    for: function,
+                let actionDefaults = Self.defaultResourcePaths(
+                    for: actionID,
                     fidelityChecks: fidelityChecks
-                ))
+                )
+                if package.origin == .bundled {
+                    selected.formUnion(actionDefaults)
+                } else {
+                    // A researcher Method may be self-contained. Reused
+                    // conventional filenames are loaded when present, but
+                    // their absence never imposes Scholium's bundled layout.
+                    selected.formUnion(actionDefaults.filter {
+                        resourceSnapshot[$0] != nil
+                    })
+                }
                 selected.formUnion(primaryResourcePaths)
             }
+            if package.origin == .triptych, package.role != "practice" {
+                var declared = Self.declaredResourceClosure(
+                    in: resourceSnapshot
+                )
+                if package.id == primary.id {
+                    let selectedDefaults = Self.defaultResourcePaths(
+                        for: actionID,
+                        fidelityChecks: fidelityChecks
+                    )
+                    let allActionDefaults = Self.defaultResourcePaths(
+                        for: actionID,
+                        fidelityChecks: Set(FidelityCheck.allCases)
+                    )
+                    declared.subtract(allActionDefaults.subtracting(selectedDefaults))
+                }
+                if package.id == resolvedCitationID,
+                   let resolvedCitationStyle {
+                    let unselectedStyles = Set(package.citationStyleResources.values)
+                        .subtracting([
+                            package.citationStyleResources[resolvedCitationStyle]
+                        ].compactMap { $0 })
+                    declared.subtract(unselectedStyles)
+                }
+                selected.formUnion(declared)
+            }
             if package.id == resolvedCitationID {
-                selected.insert("references/verification-method.md")
                 guard let resolvedCitationStyle,
                       let styleResource = package.citationStyleResources[
                         resolvedCitationStyle
@@ -915,10 +1002,9 @@ public actor ResearchSkillStore {
             selected.formUnion(additionalResourcePaths[package.id] ?? [])
             var loaded: [ResolvedResearchSkillResource] = []
             for path in selected.sorted() {
-                guard available.contains(path) else {
+                guard let source = resourceSnapshot[path] else {
                     throw ResearchSkillCatalogError.resourceMissing("\(package.id)/\(path)")
                 }
-                let source = try resource(id: package.id, relativePath: path)
                 loaded.append(ResolvedResearchSkillResource(
                     relativePath: path,
                     revision: DocumentFingerprint(content: source),
@@ -930,15 +1016,34 @@ public actor ResearchSkillStore {
                 origin: package.origin,
                 version: package.version,
                 packageRevision: packageRevision,
-                availableResourcePaths: available,
+                availableResourcePaths: resourceSnapshot.keys.sorted(),
                 loadedResources: loaded
             ))
         }
         return selections
     }
 
+    /// Captures one coherent bounded package revision. The caller supplies the
+    /// revision observed during routing; an external edit between routing and
+    /// resource capture fails closed instead of combining old identity with
+    /// new or mixed instruction bytes.
+    func packageResourceSnapshot(
+        id: String,
+        expectedRevision: DocumentFingerprint
+    ) throws -> [String: String] {
+        let paths = try resourcePaths(id: id)
+        var sources: [String: String] = [:]
+        for path in paths {
+            sources[path] = try resource(id: id, relativePath: path)
+        }
+        guard Self.packageRevision(sources: sources) == expectedRevision else {
+            throw ResearchSkillError.stalePackage(id)
+        }
+        return sources
+    }
+
     /// Selectively assembles only the dependency closure for the requested
-    /// mode. Official Workflow and Researcher packages are opt-in by ID;
+    /// mode. Bundled Method and Researcher packages are opt-in by ID;
     /// default mode assembly contains only the required protected System
     /// packages. Mixed mode keeps every phase in its own envelope.
     public func instructionAssembly(
@@ -1285,7 +1390,7 @@ public actor ResearchSkillStore {
             }
             guard package.origin == .triptych,
                   package.isValid,
-                  package.role == "workflow",
+                  package.role == "method",
                   package.provides(.bibliographyRecommendation) else {
                 throw ResearchSkillBindingError.invalidBindingDocument(
                     "The bibliography method binding lacks the required capability."
@@ -1329,7 +1434,7 @@ public actor ResearchSkillStore {
             )
             guard package.role != "practice",
                   !isCitationMethod(package),
-                  package.role == "workflow"
+                  package.role == "method"
                     || (package.role == "specialist"
                         && !composesWithFunction(package, function: selection.function)) else {
                 throw ResearchSkillBindingError.invalidBindingDocument(
@@ -1639,38 +1744,77 @@ public actor ResearchSkillStore {
         id.range(of: #"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"#, options: .regularExpression) != nil
     }
 
-    private static func skillMode(for function: ResearchFunctionID) -> ResearchSkillMode {
-        switch function {
+    private static func skillMode(for actionID: ResearchActionID) -> ResearchSkillMode {
+        switch actionID {
         case .discuss: .discuss
-        case .develop: .develop
-        case .fidelity: .audit
+        case .analyze: .analyze
+        case .synthesize: .synthesize
+        case .write: .write
         case .critique: .review
-        case .revise: .write
+        case .checkFidelity: .audit
         case .manuscript: .manuscript
+        default: .all
         }
     }
 
     private static func defaultResourcePaths(
-        for function: ResearchFunctionID,
+        for actionID: ResearchActionID,
         fidelityChecks: Set<FidelityCheck>
     ) -> Set<String> {
-        switch function {
-        case .discuss:
-            ["references/response-contract.md", "references/response-method.md"]
-        case .develop:
+        switch actionID {
+        case .analyze, .synthesize, .critique, .manuscript:
             ["references/method.md"]
-        case .fidelity:
+        case .discuss:
+            ["references/method.md", "references/response-contract.md"]
+        case .write:
+            ["references/method.md", "references/feedback.md"]
+        case .checkFidelity:
             Set([
                 fidelityChecks.contains(.content) ? "references/content.md" : nil,
                 fidelityChecks.contains(.citations) ? "references/citations.md" : nil,
             ].compactMap { $0 })
-        case .critique:
-            ["references/method.md"]
-        case .revise:
-            ["references/method.md"]
-        case .manuscript:
-            ["references/method.md"]
+        default:
+            []
         }
+    }
+
+    private static func requiredSystemResourcePaths(
+        for packageID: String,
+        actionID: ResearchActionID
+    ) -> Set<String> {
+        switch packageID {
+        case "scholium-core-protocol" where actionID == .manuscript:
+            return ["references/mixed-mode.md"]
+        case "scholium-research-integration":
+            var resources: Set<String> = ["references/cli-contract.md"]
+            if [.analyze, .synthesize, .write, .critique].contains(actionID) {
+                resources.insert("references/persistence-method.md")
+            }
+            return resources
+        case "scholium-discussion-protocol" where actionID == .discuss:
+            return ["references/record-contract.md"]
+        default:
+            return []
+        }
+    }
+
+    /// Researcher-owned packages are not required to mirror Scholium's
+    /// bundled file layout. Load only bounded resources explicitly named by
+    /// their entry point or another already-declared resource.
+    private static func declaredResourceClosure(
+        in sources: [String: String]
+    ) -> Set<String> {
+        var selected: Set<String> = []
+        var pending = ["SKILL.md"]
+        while let path = pending.popLast() {
+            guard let source = sources[path] else { continue }
+            for candidate in sources.keys where candidate != "SKILL.md" {
+                if source.contains(candidate), selected.insert(candidate).inserted {
+                    pending.append(candidate)
+                }
+            }
+        }
+        return selected
     }
 
     private static func injectedResearcherRoutingMetadata(
@@ -1694,6 +1838,7 @@ public actor ResearchSkillStore {
         var routing = [
             "scholium:",
             "  role: \(entry.role)",
+            "  supported_actions: [\(entry.supportedActions.map(\.rawValue).joined(separator: ", "))]",
             "  supported_functions: [\(entry.supportedFunctions.map(\.rawValue).joined(separator: ", "))]",
             "  capabilities: [\(entry.capabilities.map(\.rawValue).joined(separator: ", "))]",
             "  citation_styles: [\(entry.citationStyles.joined(separator: ", "))]",

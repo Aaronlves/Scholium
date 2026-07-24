@@ -113,6 +113,7 @@ public enum ResearchSkillBindingIssue: Hashable, Sendable {
     case malformed(String)
     case invalidPackage(String)
     case unsupportedFunction(packageID: String, function: ResearchFunctionID)
+    case unsupportedAction(packageID: String, actionID: ResearchActionID)
     case missingCapability(ResearchSkillCapability)
     case citationStyleMissing(packageID: String)
     case citationStyleMismatch(packageID: String, requested: String)

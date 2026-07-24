@@ -1,6 +1,6 @@
 # Academic Prose Control
 
-This editable profile governs meaning-preserving prose realization only. Revision owns substantive architecture and argument repair; selected Practices own optional philosophical lenses. Do not infer a literature judgment, thesis, objection, reply, or conceptual repair from prose preference.
+This editable profile governs meaning-preserving prose realization only. Write owns substantive architecture and argument repair; selected Practices own optional philosophical lenses. Do not infer a literature judgment, thesis, objection, reply, or conceptual repair from prose preference.
 
 ## Paragraph function
 

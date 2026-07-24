@@ -22,6 +22,7 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
     public let role: String
     public let version: String
     public let updatePolicy: String
+    public let supportedActions: [ResearchActionID]
     public let supportedFunctions: [ResearchFunctionID]
     public let capabilities: [ResearchSkillCapability]
     public let citationStyles: [String]
@@ -56,6 +57,7 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
         role: String = "specialist",
         version: String = "local",
         updatePolicy: String = "researcher-owned",
+        supportedActions: [ResearchActionID] = [],
         supportedFunctions: [ResearchFunctionID] = [],
         capabilities: [ResearchSkillCapability] = [],
         citationStyles: [String] = [],
@@ -78,6 +80,7 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
         self.role = role
         self.version = version
         self.updatePolicy = updatePolicy
+        self.supportedActions = Self.unique(supportedActions)
         self.supportedFunctions = Self.unique(supportedFunctions)
         self.capabilities = Self.unique(capabilities)
         self.citationStyles = Self.unique(citationStyles.map {
@@ -108,6 +111,10 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
         supportedFunctions.contains(function)
     }
 
+    public func supports(_ actionID: ResearchActionID) -> Bool {
+        supportedActions.contains(actionID)
+    }
+
     public func provides(_ capability: ResearchSkillCapability) -> Bool {
         capabilities.contains(capability)
     }
@@ -124,6 +131,7 @@ public struct ResearchSkillPackage: Identifiable, Hashable, Sendable {
             role: role,
             version: version,
             updatePolicy: updatePolicy,
+            supportedActions: supportedActions,
             supportedFunctions: supportedFunctions,
             capabilities: capabilities,
             citationStyles: citationStyles,

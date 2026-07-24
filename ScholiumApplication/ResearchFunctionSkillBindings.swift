@@ -92,7 +92,7 @@ extension WorkspaceHandle {
             if package.role == "practice" {
                 guard function != .discuss else { continue }
                 roles = [.practice]
-            } else if package.role == "workflow" {
+            } else if package.role == "method" {
                 guard function != .discuss else { continue }
                 roles = [.primary]
             } else {

@@ -39,7 +39,7 @@ struct ResearchFunctionsPresentation {
         case .analysis, .topic:
             [.discuss, .develop, .fidelity]
         case .work:
-            [.discuss, .revise, .critique, .fidelity, .manuscript]
+            [.discuss, .revise, .critique, .fidelity]
         }
 
         let items = orderedFunctions.map { function in

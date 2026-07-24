@@ -1,12 +1,13 @@
-schema_version: 3
+schema_version: 4
 status: active
 packages:
   - id: scholium-core-protocol
     name: Scholium Core Protocol
-    description: Keep every Scholium task philosophy-facing, truth-pursuing, source-faithful, researcher-controlled, and oriented toward a precise, reviewable knowledge base.
+    description: Enforce identity, revision, permission, checkpoint, conflict, completion, privacy, and Research Record boundaries without supplying an intellectual method.
     class: system
     role: protocol
-    version: 0.8.0-draft
+    version: 1.0.0-draft
+    supported_actions: []
     supported_functions: []
     capabilities: []
     citation_styles: []
@@ -18,10 +19,11 @@ packages:
 
   - id: scholium-research-integration
     name: Scholium Research Integration
-    description: Connect Research Functions to configured Triptychs through protected reads, bounded durable updates, role-aware Research Units and Properties, and scholarly record persistence.
+    description: Resolve prepared Actions through protected exact reads, authorized persistence, property boundaries, and validated completion without supplying philosophical content.
     class: system
     role: application-adapter
-    version: 0.6.0-draft
+    version: 1.0.0-draft
+    supported_actions: []
     supported_functions: []
     capabilities: []
     citation_styles: []
@@ -31,27 +33,29 @@ packages:
     update_policy: release-managed-protected
     path: Scholium System Skills/scholium-research-integration
 
-  - id: scholium-discuss-response
-    name: Scholium Discuss Response
-    description: Resolve a request-scoped Discuss contract, compose selected scholarly response modules, and persist one concise attributed Response without granting note-edit permission.
+  - id: scholium-discussion-protocol
+    name: Scholium Discussion Protocol
+    description: Preserve Discussion identity, anchors, attributed turns, note-nonmutation, feedback provenance, and Finish semantics without supplying the discussion method.
     class: system
     role: protocol
-    version: 0.4.0-draft
+    version: 1.0.0-draft
+    supported_actions: []
     supported_functions: [discuss]
     capabilities: []
     citation_styles: []
-    supported_modes: [all]
+    supported_modes: [discuss]
     automatic_modes: [discuss]
     required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-protected
-    path: Scholium System Skills/scholium-discuss-response
+    path: Scholium System Skills/scholium-discussion-protocol
 
   - id: scholium-zotero-integration
     name: Scholium Zotero Integration
     description: Supply bounded research-library retrieval and explicitly requested guarded imports without treating bibliographic metadata as philosophical evidence.
     class: system
     role: application-adapter
-    version: 0.5.0-draft
+    version: 0.6.0-draft
+    supported_actions: []
     supported_functions: []
     capabilities: []
     citation_styles: []
@@ -61,91 +65,129 @@ packages:
     update_policy: release-managed-protected
     path: Scholium System Skills/scholium-zotero-integration
 
-  - id: scholium-development
-    name: Development
-    description: Develop one Analysis or Topic through the question, concept, argument, synthesis, or expression work required by the actual philosophical burden.
-    class: workflow
-    role: workflow
+  - id: scholium-discuss
+    name: Discuss
+    description: Conduct a bounded philosophical exchange about a passage, whole Note, or focal Notes without changing Markdown.
+    class: method
+    role: method
     version: 1.0.0-draft
+    supported_actions: [discuss]
+    supported_functions: [discuss]
+    capabilities: []
+    citation_styles: []
+    supported_modes: [discuss]
+    compatible_practices: [dialectical-partner, conceptual-analyst, argument-reconstructionist]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
+    update_policy: release-managed-duplicable
+    path: Scholium Method Skills/scholium-discuss
+
+  - id: scholium-analyze
+    name: Analyze
+    description: Analyze or reanalyze an accessible source into its current Analysis, reconstructing before applying attributed critical pressure.
+    class: method
+    role: method
+    version: 1.0.0-draft
+    supported_actions: [analyze]
     supported_functions: [develop]
     capabilities: []
     citation_styles: []
-    supported_modes: [develop]
-    compatible_practices: [research-explorer, historical-interpreter, conceptual-analyst, argument-reconstructionist, dialectical-partner, systematizer, thesis-architect, philosophical-expositor]
-    required_skills: [scholium-core-protocol]
+    supported_modes: [analyze]
+    compatible_practices: [research-explorer, historical-interpreter, conceptual-analyst, argument-reconstructionist, dialectical-partner]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-duplicable
-    path: Scholium Workflow Skills/scholium-development
+    path: Scholium Method Skills/scholium-analyze
 
-  - id: scholium-critique
-    name: Critique
-    description: Assess an exact Work or passage independently and write only a separate attributed Critique record.
-    class: workflow
-    role: workflow
+  - id: scholium-synthesize
+    name: Synthesize
+    description: Integrate verified Analyses, source-grounded results, and reliable information into one current problem-centered Topic.
+    class: method
+    role: method
     version: 1.0.0-draft
-    supported_functions: [critique]
+    supported_actions: [synthesize]
+    supported_functions: [develop]
     capabilities: []
     citation_styles: []
-    supported_modes: [review]
-    compatible_practices: [reviewer]
-    required_skills: [scholium-core-protocol]
+    supported_modes: [synthesize]
+    compatible_practices: [conceptual-analyst, argument-reconstructionist, dialectical-partner, systematizer]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-duplicable
-    path: Scholium Workflow Skills/scholium-critique
+    path: Scholium Method Skills/scholium-synthesize
 
-  - id: scholium-revision
-    name: Revision
-    description: Revise the current Work, including bounded substantive writing and explicit received-feedback dispositions, without writing to Materials.
-    class: workflow
-    role: workflow
+  - id: scholium-write
+    name: Write
+    description: Draft or revise the current Work within the smallest authorized scope while preserving researcher commitments and explicit source roles.
+    class: method
+    role: method
     version: 1.0.0-draft
+    supported_actions: [write]
     supported_functions: [revise]
     capabilities: []
     citation_styles: []
     supported_modes: [write, feedback]
     compatible_practices: [thesis-architect, philosophical-expositor, systematizer, conceptual-analyst, dialectical-partner]
-    required_skills: [scholium-core-protocol]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-duplicable
-    path: Scholium Workflow Skills/scholium-revision
+    path: Scholium Method Skills/scholium-write
+
+  - id: scholium-critique
+    name: Critique
+    description: Assess an exact Work or passage independently and return an attributed read-only scholarly Critique.
+    class: method
+    role: method
+    version: 1.0.0-draft
+    supported_actions: [critique]
+    supported_functions: [critique]
+    capabilities: []
+    citation_styles: []
+    supported_modes: [review]
+    compatible_practices: [reviewer, dialectical-partner]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
+    update_policy: release-managed-duplicable
+    path: Scholium Method Skills/scholium-critique
 
   - id: scholium-content-fidelity
     name: Content Fidelity
-    description: Audit an exact Analysis, Topic, or Work revision for philosophical content fidelity and coordinate explicitly bound citation checks without editing the Target.
-    class: workflow
-    role: specialist
+    description: Check one exact Analysis, Topic, or Work revision for source, conceptual, argumentative, and evidential-role fidelity without editing it.
+    class: method
+    role: method
     version: 1.0.0-draft
+    supported_actions: [check-fidelity]
     supported_functions: [fidelity]
     capabilities: []
     citation_styles: []
     supported_modes: [audit]
     compatible_practices: [historical-interpreter, conceptual-analyst, argument-reconstructionist]
-    required_skills: [scholium-core-protocol]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-duplicable
-    path: Scholium Workflow Skills/scholium-content-fidelity
+    path: Scholium Method Skills/scholium-content-fidelity
 
   - id: scholium-manuscript
     name: Manuscript
-    description: Coordinate the smallest declared plan of isolated Revise, Fidelity, and optional Critique phases while keeping the current Work as the only document Target.
-    class: workflow
-    role: workflow
+    description: Coordinate the smallest explicit sequence of independently authorized Work phases; bundled as an optional hidden Action.
+    class: method
+    role: method
     version: 1.0.0-draft
+    supported_actions: [manuscript]
     supported_functions: [manuscript]
     capabilities: []
     citation_styles: []
     supported_modes: [manuscript]
     compatible_practices: []
-    required_skills: [scholium-core-protocol]
+    required_skills: [scholium-core-protocol, scholium-research-integration]
     update_policy: release-managed-duplicable
-    path: Scholium Workflow Skills/scholium-manuscript
+    path: Scholium Method Skills/scholium-manuscript
 
   - id: scholium-philosophical-practices
     name: Scholium Philosophical Practices
-    description: Provide an editable researcher-owned library of philosophical Practice references.
+    description: Provide an editable researcher-owned library of optional philosophical Practice references.
     class: researcher
     role: practice
-    version: 0.6.0-template
-    supported_functions: [develop, critique, revise, fidelity]
+    version: 0.7.0-template
+    supported_actions: [discuss, analyze, synthesize, write, critique, check-fidelity]
+    supported_functions: [discuss, develop, critique, revise, fidelity]
     capabilities: []
     citation_styles: []
-    supported_modes: [analyze, develop, review, write, feedback, audit]
+    supported_modes: [discuss, analyze, synthesize, review, write, feedback, audit]
     required_skills: [scholium-core-protocol]
     practice_resources:
       research-explorer: references/Research-Explorer.md
@@ -162,10 +204,11 @@ packages:
 
   - id: scholium-source-analyzer
     name: Source Analyzer
-    description: Provide a complete editable researcher-owned method for external agents to analyze philosophical and philosophically relevant sources without requiring a Scholium Research Function.
+    description: Provide an editable researcher-owned external source method for bibliography screening and source work outside a Scholium Research Action.
     class: researcher
-    role: workflow
-    version: 1.1.0-template
+    role: method
+    version: 1.2.0-template
+    supported_actions: []
     supported_functions: []
     capabilities: [bibliography-recommendation]
     citation_styles: []
@@ -177,24 +220,26 @@ packages:
 
   - id: scholium-prose-control
     name: Scholium Prose Control
-    description: Provide an editable researcher-owned method for improving Work prose without changing substantive commitments.
+    description: Provide an editable researcher-owned specialist for improving Work prose without changing substantive commitments.
     class: researcher
     role: specialist
-    version: 0.3.0-template
+    version: 0.4.0-template
+    supported_actions: [write]
     supported_functions: [revise]
     capabilities: []
     citation_styles: []
     supported_modes: [write]
-    required_skills: [scholium-core-protocol, scholium-revision]
+    required_skills: [scholium-core-protocol, scholium-write]
     update_policy: copy-on-adoption-researcher-owned
     path: Researcher Skills/scholium-prose-control
 
   - id: scholium-citation-verification
     name: Citation Verification — APA 7 Starter
-    description: Provide an editable researcher-owned starter for metadata, quotation, locator, atomic source-support, and APA 7 checks inside Fidelity.
+    description: Provide an editable researcher-owned starter for metadata, quotation, locator, atomic source-support, and APA 7 checks inside Content Fidelity.
     class: researcher
     role: specialist
-    version: 0.3.0-template
+    version: 0.4.0-template
+    supported_actions: [check-fidelity]
     supported_functions: [fidelity]
     capabilities: [citation-verification, citation-formatting]
     citation_styles: [apa-7]

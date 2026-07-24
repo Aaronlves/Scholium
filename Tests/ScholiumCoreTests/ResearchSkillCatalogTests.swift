@@ -4,23 +4,29 @@ import Yams
 import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("Protected Skill catalog and Discuss response contracts")
+@Suite("Protected Skill catalog and bundled Method contracts")
 struct ResearchSkillCatalogTests {
     @Test("The bundled catalog loads official packages and their resources")
     func loadsCatalogAndResources() throws {
         let catalog = try BundledResearchSkillLibrary.catalog()
         #expect(catalog.schemaVersion == ResearchSkillCatalog.currentSchemaVersion)
-        #expect(catalog.schemaVersion == 3)
+        #expect(catalog.schemaVersion == 4)
         #expect(catalog.entries.contains { $0.id == "scholium-core-protocol" })
-        #expect(catalog.entries.contains { $0.id == "scholium-development" })
+        #expect(catalog.entries.contains { $0.id == "scholium-analyze" })
+        #expect(catalog.entries.contains { $0.id == "scholium-synthesize" })
         #expect(catalog.entries.contains { $0.id == "scholium-manuscript" })
-        #expect(catalog.entries.filter { $0.skillClass == .workflow }.map(\.id).sorted() == [
+        #expect(catalog.entries.filter { $0.skillClass == .method }.map(\.id).sorted() == [
+            "scholium-analyze",
             "scholium-content-fidelity",
             "scholium-critique",
-            "scholium-development",
+            "scholium-discuss",
             "scholium-manuscript",
-            "scholium-revision",
+            "scholium-synthesize",
+            "scholium-write",
         ])
+        #expect(catalog.entries.filter { $0.skillClass == .method }.allSatisfy {
+            $0.supportedActions.count == 1 && $0.role == "method"
+        })
         #expect(catalog.entries.contains {
             $0.id == "scholium-citation-verification"
                 && $0.skillClass == .researcher
@@ -36,12 +42,12 @@ struct ResearchSkillCatalogTests {
         #expect(catalog.entries.contains {
             $0.id == "scholium-source-analyzer"
                 && $0.skillClass == .researcher
-                && $0.role == "workflow"
+                && $0.role == "method"
                 && $0.supportedFunctions.isEmpty
                 && $0.supportedModes == [.analyze]
                 && $0.automaticModes.isEmpty
         })
-        let writing = try catalog.entry(id: "scholium-revision")
+        let writing = try catalog.entry(id: "scholium-write")
         let core = try catalog.entry(id: "scholium-core-protocol")
         let practices = try catalog.entry(id: "scholium-philosophical-practices")
         #expect(writing.compatiblePracticeIDs.contains("philosophical-expositor"))
@@ -62,9 +68,10 @@ struct ResearchSkillCatalogTests {
         let analyzer = try catalog.entry(id: "scholium-source-analyzer")
 
         #expect(analyzer.skillClass == .researcher)
-        #expect(analyzer.role == "workflow")
+        #expect(analyzer.role == "method")
         #expect(analyzer.updatePolicy == "copy-on-adoption-researcher-owned")
         #expect(analyzer.supportedFunctions.isEmpty)
+        #expect(analyzer.supportedActions.isEmpty)
         #expect(analyzer.supportedModes == [.analyze])
         #expect(analyzer.capabilities == [.bibliographyRecommendation])
         #expect(analyzer.compatiblePracticeIDs == [
@@ -105,6 +112,40 @@ struct ResearchSkillCatalogTests {
         #expect(canonicalFiles["catalog.yaml"] != nil)
         #expect(canonicalFiles["README.md"] != nil)
         #expect(canonicalFiles.keys.contains { $0.hasSuffix("/SKILL.md") })
+        #expect(!canonicalFiles.keys.contains {
+            $0.hasPrefix("Scholium Workflow Skills/")
+        })
+    }
+
+    @Test("Every product Skill follows the bounded Agent Skills entry contract")
+    func productSkillsFollowEntryContract() throws {
+        let catalog = try BundledResearchSkillLibrary.catalog()
+        let retiredModeInstruction = "select" + "_resources"
+        for entry in catalog.entries {
+            let source = try BundledResearchSkillLibrary.source(for: entry)
+            let lines = source.components(separatedBy: .newlines)
+            #expect(lines.count < 500)
+            #expect(lines.first == "---")
+            let closing = try #require(lines.dropFirst().firstIndex(of: "---"))
+            let metadata = try #require(
+                try Yams.load(yaml: lines[1..<closing].joined(separator: "\n"))
+                    as? [String: Any]
+            )
+            #expect(metadata["name"] as? String == entry.id)
+            let description = try #require(metadata["description"] as? String)
+            #expect(!description.isEmpty)
+            #expect(description.utf8.count <= 1_024)
+            #expect(try BundledResearchSkillLibrary.resourcePaths(for: entry).allSatisfy(
+                ResearchSkillResourcePath.isAllowed
+            ))
+            for path in try BundledResearchSkillLibrary.resourcePaths(for: entry) {
+                let resource = try BundledResearchSkillLibrary.resource(
+                    for: entry,
+                    relativePath: path
+                )
+                #expect(!resource.contains(retiredModeInstruction))
+            }
+        }
     }
 
     @Test("The APA starter remains an optional complete researcher package")
@@ -115,6 +156,7 @@ struct ResearchSkillCatalogTests {
         #expect(citation.skillClass == .researcher)
         #expect(citation.updatePolicy == "copy-on-adoption-researcher-owned")
         #expect(citation.supportedModes == [.audit])
+        #expect(citation.supportedActions == [.checkFidelity])
         #expect(citation.supportedFunctions == [.fidelity])
         #expect(Set(citation.capabilities) == [.citationVerification, .citationFormatting])
         #expect(citation.citationStyles == ["apa-7"])
@@ -142,7 +184,7 @@ struct ResearchSkillCatalogTests {
         #expect(prose.automaticModes.isEmpty)
         #expect(prose.requiredSkillIDs == [
             "scholium-core-protocol",
-            "scholium-revision",
+            "scholium-write",
         ])
         #expect(try BundledResearchSkillLibrary.resourcePaths(for: prose) == [
             "SKILL.md",
@@ -150,7 +192,7 @@ struct ResearchSkillCatalogTests {
         ])
     }
 
-    @Test("Forward workflow cases reference valid packages, modes, and resources")
+    @Test("Forward Action cases reference valid methods, modes, routes, and resources")
     func forwardWorkflowCasesRemainStructurallyRoutable() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -162,7 +204,7 @@ struct ResearchSkillCatalogTests {
         )
         let source = try String(contentsOf: casesURL, encoding: .utf8)
         let document = try #require(try Yams.load(yaml: source) as? [String: Any])
-        #expect(document["schema_version"] as? Int == 2)
+        #expect(document["schema_version"] as? Int == 3)
         #expect(document["status"] as? String == "forward-test-specification")
 
         let cases = try #require(document["cases"] as? [[String: Any]])
@@ -187,9 +229,26 @@ struct ResearchSkillCatalogTests {
                 #expect(resolvedMode != nil)
             }
 
+            let actionID = (workflowCase["expected_action"] as? String)
+                .flatMap(ResearchActionID.init(rawValue:))
+            if workflowCase["expected_action"] != nil {
+                #expect(actionID != nil)
+            }
+            let expectedFunction = (workflowCase["expected_function"] as? String)
+                .flatMap(ResearchFunctionID.init(rawValue:))
+            if workflowCase["expected_function"] != nil {
+                #expect(expectedFunction != nil)
+            }
+
             if let primaryID = workflowCase["expected_primary"] as? String,
                primaryID.hasPrefix("scholium-") {
-                _ = try catalog.entry(id: primaryID)
+                let primary = try catalog.entry(id: primaryID)
+                if primary.skillClass == .method, let actionID {
+                    #expect(primary.supports(actionID))
+                }
+                if primary.skillClass == .method, let expectedFunction {
+                    #expect(primary.supports(expectedFunction))
+                }
             }
 
             for (field, expectedClass) in [
@@ -216,15 +275,8 @@ struct ResearchSkillCatalogTests {
                 #expect(requested.allSatisfy(assembled.contains))
             }
 
-            for phase in workflowCase["expected_phases"] as? [String] ?? [] {
-                if phase.hasPrefix("scholium-") {
-                    _ = try catalog.entry(id: phase)
-                } else {
-                    #expect(
-                        ResearchSkillMode(rawValue: phase) != nil
-                            || ResearchFunctionID(rawValue: phase) != nil
-                    )
-                }
+            for phase in workflowCase["expected_route"] as? [String] ?? [] {
+                #expect(ResearchActionID(rawValue: phase) != nil)
             }
 
             if let relativePath = workflowCase["expected_reference"] as? String {
@@ -235,6 +287,9 @@ struct ResearchSkillCatalogTests {
                     .contains(relativePath))
             }
         }
+        #expect(seenIDs.contains("source-route-complete"))
+        #expect(seenIDs.contains("argument-route-complete"))
+        #expect(seenIDs.contains("analyze-source-unavailable"))
     }
 
     @Test("Catalog metadata cannot point across ownership roots or omit routing fields")
@@ -248,7 +303,7 @@ struct ResearchSkillCatalogTests {
             version: "1.0.0",
             supportedModes: [.all],
             updatePolicy: "release-managed-protected",
-            resourcePath: "Scholium Workflow Skills/scholium-safe"
+            resourcePath: "Scholium Method Skills/scholium-safe"
         )
         #expect(throws: ResearchSkillCatalogError.self) {
             _ = try ResearchSkillCatalog(entries: [unsafePath])
@@ -268,6 +323,39 @@ struct ResearchSkillCatalogTests {
         #expect(throws: ResearchSkillCatalogError.self) {
             _ = try ResearchSkillCatalog(entries: [missingModes])
         }
+
+        let missingAction = ResearchSkillCatalogEntry(
+            id: "scholium-safe",
+            name: "Safe",
+            description: "A test Method package.",
+            skillClass: .method,
+            role: "method",
+            version: "1.0.0",
+            supportedFunctions: [.develop],
+            supportedModes: [.analyze],
+            updatePolicy: "release-managed-duplicable",
+            resourcePath: "Scholium Method Skills/scholium-safe"
+        )
+        #expect(throws: ResearchSkillCatalogError.self) {
+            _ = try ResearchSkillCatalog(entries: [missingAction])
+        }
+
+        let multipleFunctions = ResearchSkillCatalogEntry(
+            id: "scholium-safe",
+            name: "Safe",
+            description: "A test Method package.",
+            skillClass: .method,
+            role: "method",
+            version: "1.0.0",
+            supportedActions: [.analyze],
+            supportedFunctions: [.develop, .revise],
+            supportedModes: [.analyze],
+            updatePolicy: "release-managed-duplicable",
+            resourcePath: "Scholium Method Skills/scholium-safe"
+        )
+        #expect(throws: ResearchSkillCatalogError.self) {
+            _ = try ResearchSkillCatalog(entries: [multipleFunctions])
+        }
     }
 
     @Test("Selected package resources are bounded and explicitly retrievable")
@@ -285,13 +373,11 @@ struct ResearchSkillCatalogTests {
             relativePath: "SKILL.md"
         )
         for protectedCapacity in [
-            "Truth-pursuing",
-            "Fidelity-caring",
-            "Knowledge-base-constructing",
-            "Preserve epistemic integrity",
-            "Preserve researcher authority",
-            "Protect private research",
-            "Schedule audits once",
+            "Effective authority is the intersection",
+            "Do not infer the researcher's belief, intention",
+            "Do not transmit Works content to another service",
+            "Scholium-owned records may contain only",
+            "A Skill may declare a need. It cannot grant itself access",
         ] {
             #expect(coreEntry.contains(protectedCapacity))
         }
@@ -307,7 +393,7 @@ struct ResearchSkillCatalogTests {
             "scholium skills catalog --triptych <triptych> --format text"
         ))
         #expect(transport.contains(
-            "scholium skills show <workflow-skill-id> --triptych <triptych> --format text"
+            "scholium skills show <method-skill-id> --triptych <triptych> --format text"
         ))
         #expect(transport.contains(
             "--resource <relative-path> --format text"
@@ -320,6 +406,22 @@ struct ResearchSkillCatalogTests {
             for: core,
             relativePath: "references/mixed-mode.md"
         ).contains("Mixed"))
+
+        let critique = try catalog.entry(id: "scholium-critique")
+        let critiqueMethod = try BundledResearchSkillLibrary.resource(
+            for: critique,
+            relativePath: "references/method.md"
+        )
+        for requirement in [
+            "Overall Assessment",
+            "Materials Consulted and Limitations",
+            "exact Work identity and starting fingerprint",
+            "original line",
+            "short quotation",
+            "Traced, Untraced, Disputed, or Beyond Sources",
+        ] {
+            #expect(critiqueMethod.contains(requirement))
+        }
         #expect(throws: ResearchSkillCatalogError.self) {
             _ = try BundledResearchSkillLibrary.resource(
                 for: core,
@@ -328,15 +430,21 @@ struct ResearchSkillCatalogTests {
         }
     }
 
-    @Test("Discuss assembly is dependency closed and does not include unrelated workflows")
+    @Test("Discuss assembly keeps protected mechanics separate from its ordinary Method")
     func discussAssemblyIsSelective() throws {
         let catalog = try BundledResearchSkillLibrary.catalog()
         let ids = try catalog.dependencyClosedIDs(for: .discuss)
         #expect(ids.contains("scholium-core-protocol"))
         #expect(ids.contains("scholium-research-integration"))
-        #expect(ids.contains("scholium-discuss-response"))
-        #expect(!ids.contains("scholium-development"))
-        #expect(!ids.contains("scholium-revision"))
+        #expect(ids.contains("scholium-discussion-protocol"))
+        #expect(!ids.contains("scholium-discuss"))
+        #expect(!ids.contains("scholium-analyze"))
+
+        let withMethod = try catalog.dependencyClosedIDs(
+            for: .discuss,
+            requestedSkillIDs: ["scholium-discuss"]
+        )
+        #expect(withMethod.contains("scholium-discuss"))
     }
 
     @Test("Legacy Dialogue mode decodes as Discuss and re-encodes canonically")
@@ -352,15 +460,20 @@ struct ResearchSkillCatalogTests {
         #expect(String(decoding: try encoder.encode(mode), as: UTF8.self) == "\"discuss\"")
     }
 
-    @Test("Explicit workflow assembly includes only its dependency closure")
-    func explicitWorkflowAssembly() throws {
+    @Test("Explicit Analyze assembly includes only its Method dependency closure")
+    func explicitAnalyzeAssembly() throws {
         let catalog = try BundledResearchSkillLibrary.catalog()
         let ids = try catalog.dependencyClosedIDs(
-            for: .develop,
-            requestedSkillIDs: ["scholium-development"]
+            for: .analyze,
+            requestedSkillIDs: ["scholium-analyze"]
         )
-        #expect(ids == ["scholium-core-protocol", "scholium-development"])
-        #expect(!ids.contains("scholium-revision"))
+        #expect(ids == [
+            "scholium-core-protocol",
+            "scholium-research-integration",
+            "scholium-analyze",
+        ])
+        #expect(!ids.contains("scholium-synthesize"))
+        #expect(!ids.contains("scholium-write"))
     }
 
     @Test("System compatibility is separate from automatic activation")
@@ -370,26 +483,26 @@ struct ResearchSkillCatalogTests {
         let ordinaryReview = try catalog.dependencyClosedIDs(for: .review)
         #expect(ordinaryReview == ["scholium-core-protocol"])
 
-        let reviewWithDiscussion = try catalog.dependencyClosedIDs(
+        let reviewWithMethod = try catalog.dependencyClosedIDs(
             for: .review,
-            requestedSkillIDs: ["scholium-discuss-response"]
+            requestedSkillIDs: ["scholium-critique"]
         )
-        #expect(reviewWithDiscussion.contains("scholium-core-protocol"))
-        #expect(reviewWithDiscussion.contains("scholium-research-integration"))
-        #expect(reviewWithDiscussion.contains("scholium-discuss-response"))
+        #expect(reviewWithMethod.contains("scholium-core-protocol"))
+        #expect(reviewWithMethod.contains("scholium-research-integration"))
+        #expect(reviewWithMethod.contains("scholium-critique"))
 
         let analysisWithZotero = try catalog.dependencyClosedIDs(
-            for: .develop,
-            requestedSkillIDs: ["scholium-development", "scholium-zotero-integration"]
+            for: .analyze,
+            requestedSkillIDs: ["scholium-analyze", "scholium-zotero-integration"]
         )
-        #expect(analysisWithZotero.contains("scholium-development"))
+        #expect(analysisWithZotero.contains("scholium-analyze"))
         #expect(analysisWithZotero.contains("scholium-zotero-integration"))
 
         let discussion = try catalog.dependencyClosedIDs(for: .discuss)
         #expect(discussion == [
             "scholium-core-protocol",
             "scholium-research-integration",
-            "scholium-discuss-response",
+            "scholium-discussion-protocol",
         ])
     }
 
@@ -400,8 +513,12 @@ struct ResearchSkillCatalogTests {
             for: .manuscript,
             requestedSkillIDs: ["scholium-manuscript"]
         )
-        #expect(ids == ["scholium-core-protocol", "scholium-manuscript"])
-        #expect(!ids.contains("scholium-revision"))
+        #expect(ids == [
+            "scholium-core-protocol",
+            "scholium-research-integration",
+            "scholium-manuscript",
+        ])
+        #expect(!ids.contains("scholium-write"))
         #expect(!ids.contains("scholium-critique"))
     }
 
@@ -410,17 +527,25 @@ struct ResearchSkillCatalogTests {
         let catalog = try BundledResearchSkillLibrary.catalog()
         let phases = try catalog.mixedDependencyClosedIDs([
             ResearchSkillAssemblyPhase(
-                mode: .develop,
-                skillIDs: ["scholium-development"]
+                mode: .analyze,
+                skillIDs: ["scholium-analyze"]
             ),
             ResearchSkillAssemblyPhase(
                 mode: .write,
-                skillIDs: ["scholium-revision"]
+                skillIDs: ["scholium-write"]
             ),
         ])
         #expect(phases.count == 2)
-        #expect(phases[0] == ["scholium-core-protocol", "scholium-development"])
-        #expect(phases[1] == ["scholium-core-protocol", "scholium-revision"])
+        #expect(phases[0] == [
+            "scholium-core-protocol",
+            "scholium-research-integration",
+            "scholium-analyze",
+        ])
+        #expect(phases[1] == [
+            "scholium-core-protocol",
+            "scholium-research-integration",
+            "scholium-write",
+        ])
     }
 
     @Test("A Triptych-local package cannot shadow a protected package")

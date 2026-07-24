@@ -5,7 +5,7 @@ description: Provide editable, researcher-owned philosophical Practice reference
 
 # Scholium Philosophical Practices
 
-Treat this package as researcher-owned methodology. The researcher may edit, combine, add, or retire named Practices. Official Workflow Skills remain complete without this package.
+Treat this package as researcher-owned methodology. The researcher may edit, combine, add, or retire named Practices. Bundled Method Skills remain complete without this package.
 
 ## Shared foundation
 

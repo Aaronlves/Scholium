@@ -40,7 +40,7 @@ struct CLIApplicationDelegationTests {
         #expect(sources.function.contains("handle.research.prepareFunction(request)"))
         #expect(sources.function.contains("handle.research.functionRun(id: runID)"))
         #expect(sources.function.contains("handle.research.prepareAutomaticFidelity("))
-        #expect(sources.function.contains("handle.research.selectFunctionResources(submission)"))
+        #expect(!sources.function.contains("select-resources"))
         #expect(sources.function.contains("handle.research.completeFunction(submission)"))
         #expect(sources.function.contains("handle.research.cancelFunction(runID: runID)"))
         #expect(!sources.function.contains("import " + "ScholiumCore"))
@@ -50,7 +50,7 @@ struct CLIApplicationDelegationTests {
         #expect(!sources.function.contains("createCheckpoint"))
     }
 
-    @Test("Function CLI JSON request and completion values round-trip without loss")
+    @Test("Function CLI preserves legacy conditional values without making them active")
     func functionJSONRoundTrips() throws {
         let target = ResearchFunctionTarget(
             noteID: UUID(),
@@ -95,6 +95,9 @@ struct CLIApplicationDelegationTests {
             ResearchFunctionRequest.self,
             from: encoder.encode(request)
         ) == request)
+        #expect(throws: ResearchFunctionContractError.self) {
+            try request.validate()
+        }
         #expect(try decoder.decode(
             ResearchFunctionCompletionSubmission.self,
             from: encoder.encode(submission)

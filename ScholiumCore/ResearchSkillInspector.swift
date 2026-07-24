@@ -31,6 +31,7 @@ enum ResearchSkillInspector {
         var description = ""
         var localRole = "specialist"
         var localModes: [ResearchSkillMode] = [.all]
+        var localActions: [ResearchActionID] = []
         var localFunctions: [ResearchFunctionID] = []
         var localCapabilities: [ResearchSkillCapability] = []
         var localCitationStyles: [String] = []
@@ -58,6 +59,7 @@ enum ResearchSkillInspector {
                     }
                     let allowed = Set([
                         "role",
+                        "supported_actions",
                         "supported_functions",
                         "capabilities",
                         "citation_styles",
@@ -79,13 +81,22 @@ enum ResearchSkillInspector {
                         )
                     }
                     if let role = routing["role"] as? String,
-                       ["workflow", "practice", "specialist"].contains(role) {
-                        localRole = role
+                       ["method", "workflow", "practice", "specialist"].contains(role) {
+                        // `workflow` remains a read-compatible spelling for
+                        // existing researcher-owned packages. New writes use
+                        // the Method vocabulary without rewriting source.
+                        localRole = role == "workflow" ? "method" : role
                     } else {
                         issues.append(
-                            "scholium.role must be workflow, practice, or specialist."
+                            "scholium.role must be method, practice, or specialist."
                         )
                     }
+                    localActions = Self.localEnumValues(
+                        routing["supported_actions"],
+                        field: "supported_actions",
+                        parse: ResearchActionID.init(rawValue:),
+                        issues: &issues
+                    )
                     localFunctions = Self.localEnumValues(
                         routing["supported_functions"],
                         field: "supported_functions",
@@ -164,6 +175,7 @@ enum ResearchSkillInspector {
             role: catalogEntry?.role ?? localRole,
             version: catalogEntry?.version ?? "local",
             updatePolicy: catalogEntry?.updatePolicy ?? "researcher-owned",
+            supportedActions: catalogEntry?.supportedActions ?? localActions,
             supportedFunctions: catalogEntry?.supportedFunctions ?? localFunctions,
             capabilities: catalogEntry?.capabilities ?? localCapabilities,
             citationStyles: catalogEntry?.citationStyles ?? localCitationStyles,

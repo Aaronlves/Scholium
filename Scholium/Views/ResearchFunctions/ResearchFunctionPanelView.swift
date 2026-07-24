@@ -69,16 +69,7 @@ struct ResearchFunctionPanelView: View {
 
                         if controller.isWriteFunction,
                            let target = controller.target {
-                            ResearchFunctionWriteScopeSection(
-                                scope: controller.writeScope,
-                                target: target,
-                                candidates: controller.writeTargetCandidates,
-                                selectedIDs: controller.selectedWriteTargetIDs,
-                                authorizedCount: controller.authorizedWriteTargets.count,
-                                isFrozen: controller.materialsViewState.isFrozen,
-                                setScope: controller.setWriteScope,
-                                setSelected: controller.setWriteTargetSelected
-                            )
+                            ResearchFunctionWriteScopeSection(target: target)
                         }
 
                         if controller.phase == .loading {
@@ -553,129 +544,26 @@ struct ResearchFunctionTargetSection: View {
 }
 
 struct ResearchFunctionWriteScopeSection: View {
-    let scope: ResearchWriteScope
     let target: ResearchFunctionTarget
-    let candidates: [ResearchFunctionMaterialCandidate]
-    let selectedIDs: Set<UUID>
-    let authorizedCount: Int
-    let isFrozen: Bool
-    let setScope: (ResearchWriteScope) -> Void
-    let setSelected: (UUID, Bool) -> Void
 
     var body: some View {
         ResearchFunctionSection(title: "Write", symbol: "pencil.line") {
-            VStack(alignment: .leading, spacing: 10) {
-                Picker(
-                    "Writable range",
-                    selection: Binding(
-                        get: { scope },
-                        set: { newScope in setScope(newScope) }
-                    )
-                ) {
-                    ForEach(ResearchWriteScope.allCases, id: \.self) { value in
-                        Text(value.interfaceTitle).tag(value)
-                    }
-                }
-                .pickerStyle(.menu)
-                .disabled(isFrozen)
-                .accessibilityIdentifier("scholium.researchFunction.writeScope")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Current Note")
+                    .font(.body.weight(.medium))
 
-                Text(scope.interfaceDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if scope == .selectedNotes {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 7) {
-                            writeTargetToggle(
-                                id: target.noteID,
-                                title: target.title,
-                                path: target.note.relativePath,
-                                isSuggested: false
-                            )
-                            ForEach(candidates) { candidate in
-                                writeTargetToggle(
-                                    id: candidate.id,
-                                    title: candidate.material.title,
-                                    path: candidate.material.note.relativePath,
-                                    isSuggested: !candidate.suggestionReasons.isEmpty
-                                )
-                            }
-                        }
-                        .padding(.trailing, 6)
-                    }
-                    .frame(minHeight: 100, maxHeight: 220)
-                    .accessibilityLabel("Selectable Write targets")
-                }
-
-                Text("Writable notes: \(authorizedCount)")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(authorizedCount == 0 ? .red : .secondary)
-
-                Text("Linked notes may be recommended, but Scholium never selects them automatically. Materials remain read-only and cannot also be Write targets.")
+                Text("Only \(target.title) may be changed in this phase. Additional Note changes require a separately authorized phase.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .accessibilityIdentifier("scholium.researchFunction.writeAuthorization")
-    }
-
-    private func writeTargetToggle(
-        id: UUID,
-        title: String,
-        path: String,
-        isSuggested: Bool
-    ) -> some View {
-        Toggle(
-            isOn: Binding(
-                get: { selectedIDs.contains(id) },
-                set: { setSelected(id, $0) }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Writable target")
+            .accessibilityValue(target.title)
+            .accessibilityHint(
+                "Only the current Note may be changed in this phase."
             )
-        ) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if isSuggested {
-                    Text("Linked recommendation")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.tint)
-                }
-            }
-        }
-        .toggleStyle(.checkbox)
-        .disabled(isFrozen)
-        .accessibilityHint(
-            isSuggested
-                ? "Recommended from a direct connection. It is not selected automatically."
-                : "Include this existing note in the frozen Write authorization."
-        )
-    }
-}
-
-private extension ResearchWriteScope {
-    var interfaceTitle: String {
-        switch self {
-        case .currentNote: "Current Note"
-        case .selectedNotes: "Selected Notes"
-        case .analysesAndTopics: "Analyses and Topics"
-        case .entireTriptych: "Entire Triptych"
-        }
-    }
-
-    var interfaceDescription: String {
-        switch self {
-        case .currentNote:
-            "Only the origin note may be changed. This is the recommended default."
-        case .selectedNotes:
-            "Only notes you explicitly select below may be changed."
-        case .analysesAndTopics:
-            "All active ordinary Analyses and Topics are frozen as the maximum Write set."
-        case .entireTriptych:
-            "All active ordinary Analyses, Topics, and Works are frozen as the maximum Write set."
+            .accessibilityIdentifier("scholium.researchFunction.writeScope")
         }
     }
 }

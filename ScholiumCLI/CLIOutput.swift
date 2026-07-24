@@ -81,7 +81,6 @@ extension ScholiumCLI {
           scholium function prepare --from <json|-> --format json|markdown
           scholium function show <run-id> [--triptych <selector>] --format json|markdown
           scholium function prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown
-          scholium function select-resources --from <json|-> [--triptych <selector>] --format json|markdown
           scholium function complete --from <json|-> [--triptych <selector>] --format json
           scholium function cancel <run-id> [--triptych <selector>]
           scholium bibliography prepare --from <json|-> --format json|markdown
@@ -176,7 +175,6 @@ private extension ScholiumCLI {
             "function prepare": "Usage: scholium function prepare --from <request-json|-> --format json|markdown",
             "function show": "Usage: scholium function show <run-id> [--triptych <selector>] --format json|markdown",
             "function prepare-fidelity": "Usage: scholium function prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Develop or Revise run.",
-            "function select-resources": "Usage: scholium function select-resources --from <selection-json|-> [--triptych <selector>] --format json|markdown",
             "function complete": "Usage: scholium function complete --from <completion-json|-> [--triptych <selector>] --format json",
             "function cancel": "Usage: scholium function cancel <run-id> [--triptych <selector>] [--format json]",
             "bibliography prepare": "Usage: scholium bibliography prepare --from <request-json|-> --format json|markdown",

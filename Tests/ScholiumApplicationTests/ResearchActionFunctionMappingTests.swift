@@ -24,6 +24,33 @@ struct ResearchActionFunctionMappingTests {
         }
     }
 
+    @Test("The retained Function coordinator recovers the exact bundled Action from Target role")
+    func reverseCompatibilityMapping() throws {
+        let cases: [(ResearchFunctionID, ResearchFunctionTargetRole, ResearchActionID)] = [
+            (.discuss, .work, .discuss),
+            (.develop, .analysis, .analyze),
+            (.develop, .topic, .synthesize),
+            (.revise, .work, .write),
+            (.critique, .work, .critique),
+            (.fidelity, .analysis, .checkFidelity),
+            (.manuscript, .work, .manuscript),
+        ]
+
+        for (function, role, actionID) in cases {
+            #expect(try ResearchActionFunctionMapping.definition(
+                for: function,
+                targetRole: role
+            ).id == actionID)
+        }
+
+        #expect(throws: ResearchActionContractError.self) {
+            try ResearchActionFunctionMapping.definition(
+                for: .develop,
+                targetRole: .work
+            )
+        }
+    }
+
     @Test("Custom Actions inherit only their declared execution boundary")
     func customMapping() throws {
         let identifier = try #require(

@@ -302,29 +302,53 @@ future portable records to the Action ID alone; execution kind, Target role,
 and protected Function identity are not record fields. An internal-only
 `ResearchActionFunctionMapping` in `ScholiumApplication` maps Analysis and
 Synthesis to Develop, Write to Revise, and the remaining public execution
-kinds to their protected Function mechanisms after role validation. The
-existing Function coordinator, use cases, UI, CLI, and machine-local records
-remain the current runtime. No Action snapshot becomes execution authority,
-and no current record store writes the new identity until the later resolver
-and portable-record cutovers; those cutovers must use the record identity
-contract rather than serializing a Function ID.
+kinds to their protected Function mechanisms after role validation. The same
+internal adapter now derives the exact bundled Action from Function plus
+Target role for the retained coordinator. Core Skill resolution accepts that
+Action identity explicitly: Analysis Develop resolves `scholium-analyze`,
+Topic Develop resolves `scholium-synthesize`, and a package bound to one fails
+closed for the other. The existing Function use cases, UI, CLI, binding v1,
+and machine-local records remain the current runtime. No Action snapshot
+becomes execution authority, and no current record store writes the new
+identity until the later resolver and portable-record cutovers; those cutovers
+must use the record identity contract rather than serializing a Function ID.
+
+The product Skill catalog schema 4 separates protected mechanism from ordinary
+method prose. `ResearchSkillClass.method` packages each declare exactly one
+public Action plus the retained internal Function. Discuss is an ordinary
+Method and `scholium-discussion-protocol` is its automatic mechanism-only
+adapter. Analyze, Synthesize, Write, Critique, Content Fidelity, and optional
+hidden Manuscript are similarly distinct bundled Method references. System
+Skills own authority and persistence boundaries; they cannot supply the
+intellectual procedure. The old conditional Development, Revision, and
+Manuscript resource selectors remain decodable only for legacy machine-local
+records and are no longer offered by current Functions; each Method now loads
+its complete adaptive core, with Write feedback guidance included by default.
+Directly editable Triptych Working Method installation
+and action-keyed bindings remain the next ownership cutover, so current
+Function-keyed researcher bindings are accepted only when the selected package
+also declares the exact Action.
 
 One delivery-neutral `ResearchFunctionCoordinator` per workspace owns
-availability, preparation, resource finalization, completion, cancellation,
-and record projection. It resolves/rechecks identities, inputs, resources,
-checkpoints, records, and final fingerprints and rolls back partial work.
-Unresolved conditional resources persist the normal identities as a read-only
-preflight. `selectFunctionResources` must submit typed resources or an explicit
-empty selection before mutation/completion; Core's
-`finalizeFunctionPreflight` atomically extends the same snapshot with only
-selected references/revisions. Public `ResearchOperations` delegates here;
+availability, preparation, completion, cancellation, and record projection. It
+resolves/rechecks identities, inputs, Action-specific Methods, protected
+resources, checkpoints, records, and final fingerprints and rolls back partial
+work. Current preparations load one complete Method plus the exact required
+System references and never enter conditional-resource finalization. The
+legacy selection payload remains Codable for machine-local state, but no
+public Use Case, CLI command, next action, or rendered packet exposes its
+retired finalizer. Public `ResearchOperations` delegates here;
 Dialogue/Critique have no alternate preparation path.
 
 Rendered function input keeps three typed layers distinct: `taskDirective`
-contains the authorized operation and read/write sets; a validated
+contains the explicit public Action, retained Function transport, read/write
+sets, a separately typed Critique-output binding when applicable, and exact
+loaded Skill package/resource revisions; a validated
 `methodContract` supplies bounded method guidance; and provenance-labelled
 `researchData` carries Markdown, YAML-derived values, citations, bibliographic
-metadata, and records only as serialized data. Researcher Skills may change
+metadata, and records only as serialized data. The current packet schema has
+no Action Profile, so protected Core prose neither invents one nor treats that
+future field as a missing current requirement. Researcher Skills may change
 method, never fingerprints, checkpoints, conflict handling, containment,
 recovery, or typed permissions. Agent completion is revalidated against those
 Application-owned constraints regardless of text found in any data field.
@@ -537,29 +561,44 @@ for explicit `Bundle.module` lookups. `Info.plist` declares `en` and `zh-Hans`.
 
 `ScholiumCore/Resources/Skills/` is the sole canonical product-skill tree and
 the exact resource directory copied into the `ScholiumCore` SwiftPM bundle.
-There is no repository-level source mirror or synchronization step. The official Workflow
-layer contains Development, Critique, Revision, Content Fidelity, and
-Manuscript; Discuss remains System infrastructure and no removed research-record
-model has a Skill. Catalog metadata exposes supported functions, capabilities—including
-`bibliography-recommendation`—and citation styles while retaining supported
-modes only for internal method selection.
+There is no repository-level source mirror or synchronization step. Catalog
+schema 4 separates protected System mechanism from ordinary bundled Methods.
+Discuss, Analyze, Synthesize, Write, Critique, Content Fidelity, and optional
+Manuscript each declare exactly one public Action and one retained protected
+Function. Discuss method prose is separate from its automatic Discussion
+protocol. Catalog metadata also exposes capabilities—including
+`bibliography-recommendation`—and citation styles while retaining modes only
+for internal package assembly.
 
-Function-method activation is a separate Settings-facing capability over the
-same boundary. `ResearchFunctionSkillSelection` represents an optional primary
-replacement, supplemental packages, and exact Practice selections for one
-semantic function. Application lists only valid compatible Triptych-local
-Researcher Skills, validates role and Practice compatibility, and performs
-revision-checked saves through `ResearchSkillStore`. The assembler composes the
-persisted selection into the effective phase contract. The frontend receives
-friendly candidate names only in Research Guidance; Functions mode and CLI never
-choose package IDs.
+Function-method activation remains a transitional Settings-facing capability
+over the same boundary. `ResearchFunctionSkillSelection` represents an
+optional primary replacement, supplemental packages, and exact Practice
+selections for one retained semantic Function. Application lists only valid
+compatible Triptych-local Researcher Skills, validates role and Practice
+compatibility, and performs revision-checked saves through
+`ResearchSkillStore`. Action-aware assembly additionally verifies the exact
+Action, so one legacy Develop binding cannot authorize both Analyze and
+Synthesize. Direct per-Triptych Working Method installation and action-keyed
+binding v2 remain later migration work.
 
-Conditional run resources use `ResearchFunctionConditionalResource` plus an
-explicit `method`, `template`, or `checklist` kind.
-`ResearchFunctionResourceSelectionSubmission` encodes `resources`; request
-JSON encodes `conditional_resources`; selection JSON encodes `resources`.
-Already-prepared runs complete from immutable snapshots. New Critique runs
-never select the retired competing report template.
+Action assembly seeds protected Core, Research Integration, and Discussion
+mechanism independently of any editable Method dependency list. A Triptych
+Method may be self-contained or name its own bounded resources; it is never
+required to mirror bundled `references/` filenames. Package identity and all
+resource bytes are captured as one coherent revision, so an interposed
+external Skill edit fails closed instead of producing a mixed snapshot.
+Practice resources remain exact selections, and Fidelity resources remain
+bounded to the checks selected for that run.
+
+The split Methods load a complete adaptive core and expose no secondary
+researcher or agent mode choice. Legacy
+`ResearchFunctionConditionalResource` and selection payloads remain decodable
+for existing machine-local records, but every current Function advertises an
+empty resource vocabulary, validation rejects nonempty selections, and the
+old selection command is absent from public CLI/help. Current
+Analyze, Synthesize, and Write requests also require the exact current Target
+as their sole write Target; additional Note writes require later independent
+child phases rather than a widened parent grant.
 
 Researcher Skill evolution is an independent Research Guidance maintenance
 slice. Contracts carry the expected revision, complete

@@ -205,10 +205,6 @@ public protocol ResearchFunctionUseCases: Sendable {
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation
 
-    func selectFunctionResources(
-        _ submission: ResearchFunctionResourceSelectionSubmission
-    ) async throws -> ResearchFunctionPreparation
-
     func completeFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion

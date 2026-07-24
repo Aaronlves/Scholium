@@ -80,10 +80,12 @@ researcher-managed folders; Scholium does not register or manage projects. See
 ownership and [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for
 precise evidence and remaining gaps.
 
-The researcher-governed Actions, directly editable Working Method Skills,
-classified Skills settings, standing permissions, unified Discussion, and
-portable two-panel Research Record adopted by D-106 are target migration work;
-they are not yet reachable merely because the specification now requires them.
+The public Action contracts and split bundled Method references are now
+reachable foundations: Analyze and Synthesize resolve separately while the
+old Function identifiers stay protected inside the execution layer. Directly
+editable Triptych Working Methods, classified Skills settings, standing
+permissions, unified Discussion, and the portable two-panel Research Record
+adopted by D-106 remain later migration work.
 
 ## Requirements
 
@@ -291,7 +293,7 @@ traces, canonical workspace catalog and Attention output, exact reads,
 Dialogue replies, resumable Research Functions, Recommended Bibliography, and
 revision-checked direct note operations. JSON Function results include typed
 next actions; use `function show` for recovery and `function prepare-fidelity`
-after a changed Develop or Revise run. Existing-note mutations require the
+after a changed Analyze, Synthesize, or Write run. Existing-note mutations require the
 current SHA-256 returned by `scholium read --format json`.
 
 For isolated CLI testing:
