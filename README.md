@@ -86,7 +86,18 @@ foundations. Profiles can describe only seven native module kinds, bounded
 presentation values, source and feedback requirements, and a candidate
 existing-note capability ceiling; they cannot carry executable code or grant
 authority. No Profile storage, Settings editor, resolver, or run integration is
-reachable yet. A new Triptych installs six editable working packages plus an
+reachable yet. Analyze now requires one explicitly bound, fingerprinted regular
+file: either a local selection or an exact Zotero parent/attachment identity
+confirmed against a selected local file. Persisted bookmarks and paths remain in
+machine-local Application Support; run snapshots retain only the safe route,
+identity, filename, and fingerprint. A changed, missing, symlinked, unreadable,
+or unavailable source blocks Analyze instead of falling back to the Analysis
+note, including when a prepared or legacy run is resumed or completed. Zotero
+attachment resolution remains an exact no-redirect localhost read. Permanent
+Analysis deletion removes its machine-local locator through the deletion
+recovery boundary. The binding capability and repair status are implemented, while the
+production modular source picker remains part of the later interface cutover.
+A new Triptych installs six editable working packages plus an
 explicit disabled Manuscript binding. An Action's primary Method is selected
 only by binding v2 and never falls back to a bundled reference or legacy
 Function binding. Direct edits and bundled restores send displaced complete

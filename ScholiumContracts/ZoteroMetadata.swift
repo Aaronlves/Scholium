@@ -58,6 +58,9 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
     case invalidResponse
     case invalidItemKey
     case invalidAnalysisReference
+    case attachmentMissing(String)
+    case attachmentIdentityMismatch
+    case invalidAttachmentURL
 
     public var errorDescription: String? {
         switch self {
@@ -73,19 +76,27 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
             "The selected Zotero item has an invalid item key. Refresh Zotero and choose the item again."
         case .invalidAnalysisReference:
             "The Zotero source can be confirmed only for an Analysis in this Triptych."
+        case .attachmentMissing(let key):
+            "Zotero attachment \(key) was not found."
+        case .attachmentIdentityMismatch:
+            "The selected Zotero attachment does not belong to the expected item."
+        case .invalidAttachmentURL:
+            "Zotero did not return a readable local file URL for the attachment."
         }
     }
 }
 
 /// The complete network boundary for Zotero reads. The generated request is
 /// always a bodyless GET to Zotero Desktop's loopback API and can address only
-/// item searches, one exact item, or one exact collection label.
+/// item searches, one exact item, one exact collection label, or one exact
+/// attachment's local `/file/view/url` endpoint.
 public enum ZoteroLocalRequestPolicy {
     public static func makeReadRequest(
         path: String,
         query: [URLQueryItem] = []
     ) -> URLRequest? {
         guard allowed(path: path),
+              (!isAttachmentFileURL(path) || query.isEmpty),
               Set(query.map(\.name)).isSubset(of: [
                 "format", "itemType", "q", "qmode", "limit",
               ]),
@@ -105,7 +116,10 @@ public enum ZoteroLocalRequestPolicy {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.httpBody = nil
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(
+            isAttachmentFileURL(path) ? "text/plain" : "application/json",
+            forHTTPHeaderField: "Accept"
+        )
         request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
         return request
     }
@@ -113,11 +127,30 @@ public enum ZoteroLocalRequestPolicy {
     private static func allowed(path: String) -> Bool {
         if path == "items" { return true }
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
-        guard components.count == 2,
-              components[0] == "items" || components[0] == "collections" else {
-            return false
+        if components.count == 2,
+           components[0] == "items" || components[0] == "collections" {
+            return validObjectKey(String(components[1]))
         }
-        let key = String(components[1])
+        if components.count == 5,
+           components[0] == "items",
+           components[2] == "file",
+           components[3] == "view",
+           components[4] == "url" {
+            return validObjectKey(String(components[1]))
+        }
+        return false
+    }
+
+    private static func isAttachmentFileURL(_ path: String) -> Bool {
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        return components.count == 5
+            && components[0] == "items"
+            && components[2] == "file"
+            && components[3] == "view"
+            && components[4] == "url"
+    }
+
+    private static func validObjectKey(_ key: String) -> Bool {
         return !key.isEmpty
             && key.unicodeScalars.allSatisfy {
                 CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"

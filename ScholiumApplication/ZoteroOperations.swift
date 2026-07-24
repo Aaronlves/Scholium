@@ -2,6 +2,19 @@ import ScholiumContracts
 import Foundation
 import ScholiumCore
 
+final class ZoteroNoRedirectDelegate: NSObject, URLSessionTaskDelegate,
+    @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+}
+
 /// Runtime-owned, delivery-neutral access to Scholium's first-party Zotero
 /// transport. Delivery targets may parse frames and format reports, but Core
 /// locator and server authorities are composed only behind this boundary.
@@ -13,6 +26,26 @@ public actor ZoteroOperations: ZoteroUseCases {
     private let server: ZoteroMCPServer
     private let loadRequest: RequestLoader
     private var lastSuccessfulConnection: Date?
+
+    struct ResolvedAttachment: Hashable, Sendable {
+        let itemKey: String
+        let attachmentKey: String
+        let displayName: String
+        let fileURL: URL
+    }
+
+    private struct AttachmentEnvelope: Decodable {
+        struct Payload: Decodable {
+            let key: String?
+            let itemType: String
+            let parentItem: String?
+            let title: String?
+            let filename: String?
+        }
+
+        let key: String
+        let data: Payload
+    }
 
     init(
         descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
@@ -28,7 +61,11 @@ public actor ZoteroOperations: ZoteroUseCases {
             configuration.timeoutIntervalForRequest = 3
             configuration.timeoutIntervalForResource = 15
             configuration.waitsForConnectivity = false
-            let session = URLSession(configuration: configuration)
+            let session = URLSession(
+                configuration: configuration,
+                delegate: ZoteroNoRedirectDelegate(),
+                delegateQueue: nil
+            )
             loadRequest = { request in try await session.data(for: request) }
         }
     }
@@ -147,6 +184,74 @@ public actor ZoteroOperations: ZoteroUseCases {
         return .notFound
     }
 
+    func resolveAttachment(
+        itemKey rawItemKey: String,
+        attachmentKey rawAttachmentKey: String
+    ) async throws -> ResolvedAttachment {
+        guard let itemKey = normalizedItemKey(rawItemKey),
+              let attachmentKey = normalizedItemKey(rawAttachmentKey),
+              itemKey != attachmentKey else {
+            throw ZoteroUseCaseError.attachmentIdentityMismatch
+        }
+        let envelopeData: Data
+        do {
+            envelopeData = try await request(
+                path: "items/\(attachmentKey)",
+                query: [URLQueryItem(name: "format", value: "json")]
+            )
+        } catch ZoteroUseCaseError.itemMissing {
+            throw ZoteroUseCaseError.attachmentMissing(attachmentKey)
+        }
+        let envelope: AttachmentEnvelope
+        do {
+            envelope = try JSONDecoder().decode(AttachmentEnvelope.self, from: envelopeData)
+        } catch {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+        guard normalizedItemKey(envelope.key) == attachmentKey,
+              normalizedItemKey(envelope.data.key ?? envelope.key) == attachmentKey,
+              envelope.data.itemType.lowercased() == "attachment",
+              normalizedItemKey(envelope.data.parentItem) == itemKey else {
+            throw ZoteroUseCaseError.attachmentIdentityMismatch
+        }
+
+        let urlData: Data
+        do {
+            urlData = try await request(
+                path: "items/\(attachmentKey)/file/view/url",
+                query: []
+            )
+        } catch ZoteroUseCaseError.itemMissing {
+            throw ZoteroUseCaseError.attachmentMissing(attachmentKey)
+        }
+        guard let rawURL = String(data: urlData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              let fileURL = URL(string: rawURL),
+              fileURL.isFileURL,
+              fileURL.host == nil,
+              fileURL.path.hasPrefix("/"),
+              let components = URLComponents(
+                  url: fileURL,
+                  resolvingAgainstBaseURL: false
+              ),
+              components.query == nil,
+              components.fragment == nil else {
+            throw ZoteroUseCaseError.invalidAttachmentURL
+        }
+        let displayName = nonempty(envelope.data.filename)
+            ?? nonempty(envelope.data.title)
+            ?? fileURL.lastPathComponent
+        guard !displayName.isEmpty else {
+            throw ZoteroUseCaseError.invalidAttachmentURL
+        }
+        return ResolvedAttachment(
+            itemKey: itemKey,
+            attachmentKey: attachmentKey,
+            displayName: displayName,
+            fileURL: fileURL.standardizedFileURL
+        )
+    }
+
     private func match(
         _ identity: ZoteroSourceIdentity,
         searchTerms: [String],
@@ -213,7 +318,8 @@ public actor ZoteroOperations: ZoteroUseCases {
         } catch {
             throw ZoteroUseCaseError.appUnavailable
         }
-        guard let http = response as? HTTPURLResponse else {
+        guard let http = response as? HTTPURLResponse,
+              http.url == request.url else {
             throw ZoteroUseCaseError.invalidResponse
         }
         switch http.statusCode {

@@ -237,8 +237,21 @@ struct ZoteroMetadataTests {
         )
         #expect(itemRequest.url?.path == "/api/users/0/items/FXS00026")
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "collections/COLL0001") != nil)
+        let attachmentURLRequest = try #require(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                path: "items/ATTACH02/file/view/url"
+            )
+        )
+        #expect(attachmentURLRequest.value(forHTTPHeaderField: "Accept") == "text/plain")
+        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
+            path: "items/ATTACH02/file/view/url",
+            query: [URLQueryItem(name: "format", value: "json")]
+        ) == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/FXS00026/children") == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "attachments/FXS00026") == nil)
+        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
+            path: "items/../file/view/url"
+        ) == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "../items") == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(
             path: "items",

@@ -55,6 +55,185 @@ struct ZoteroOperationsTests {
         #expect(await operations.handle(requestData: notification) == nil)
         await runtime.shutdown()
     }
+
+    @Test("An exact Zotero attachment resolves only its parent identity and local file URL")
+    func exactAttachmentResolution() async throws {
+        let sourceURL = URL(fileURLWithPath: "/private/source/Article.pdf")
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Article",
+            "filename": "Article.pdf"
+          }
+        }
+        """
+        let script = AttachmentRequestScript(responses: [
+            (200, Data(envelope.utf8)),
+            (200, Data(sourceURL.absoluteString.utf8)),
+        ])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+        let resolved = try await operations.resolveAttachment(
+            itemKey: "parent01",
+            attachmentKey: "attach02"
+        )
+        #expect(resolved.itemKey == "PARENT01")
+        #expect(resolved.attachmentKey == "ATTACH02")
+        #expect(resolved.displayName == "Article.pdf")
+        #expect(resolved.fileURL == sourceURL)
+        #expect(await script.paths() == [
+            "/api/users/0/items/ATTACH02",
+            "/api/users/0/items/ATTACH02/file/view/url",
+        ])
+    }
+
+    @Test("A Zotero attachment from another parent fails before file lookup")
+    func attachmentParentMismatch() async throws {
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "OTHER001",
+            "title": "Article",
+            "filename": "Article.pdf"
+          }
+        }
+        """
+        let script = AttachmentRequestScript(responses: [
+            (200, Data(envelope.utf8)),
+        ])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+        await #expect(throws: ZoteroUseCaseError.self) {
+            _ = try await operations.resolveAttachment(
+                itemKey: "PARENT01",
+                attachmentKey: "ATTACH02"
+            )
+        }
+        #expect(await script.paths().count == 1)
+    }
+
+    @Test("A relative file URL cannot become a process-relative attachment path")
+    func relativeAttachmentURLFailsClosed() async throws {
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Article",
+            "filename": "Article.pdf"
+          }
+        }
+        """
+        let script = AttachmentRequestScript(responses: [
+            (200, Data(envelope.utf8)),
+            (200, Data("file:relative.pdf".utf8)),
+        ])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+
+        do {
+            _ = try await operations.resolveAttachment(
+                itemKey: "PARENT01",
+                attachmentKey: "ATTACH02"
+            )
+            Issue.record("A relative attachment URL must fail closed.")
+        } catch let error as ZoteroUseCaseError {
+            guard case .invalidAttachmentURL = error else {
+                Issue.record("Unexpected Zotero error: \(error)")
+                return
+            }
+        }
+        #expect(await script.paths().count == 2)
+    }
+
+    @Test("A response from any URL other than the exact loopback request is rejected")
+    func redirectedResponseFailsClosed() async throws {
+        let remoteURL = try #require(URL(string: "https://example.invalid/items"))
+        let operations = ZoteroOperations(requestLoader: { _ in
+            let response = try #require(HTTPURLResponse(
+                url: remoteURL,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            ))
+            return (Data("[]".utf8), response)
+        })
+
+        do {
+            _ = try await operations.refreshLibraryInfo()
+            Issue.record("A redirected Zotero response must fail closed.")
+        } catch let error as ZoteroUseCaseError {
+            guard case .invalidResponse = error else {
+                Issue.record("Unexpected Zotero error: \(error)")
+                return
+            }
+        }
+    }
+
+    @Test("The default Zotero transport declines redirects before following them")
+    func redirectDelegateDeclinesRedirect() async throws {
+        let original = try #require(URL(string: "http://127.0.0.1:23119/api/users/0/items"))
+        let remote = try #require(URL(string: "https://example.invalid/items"))
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let task = session.dataTask(with: original)
+        let response = try #require(HTTPURLResponse(
+            url: original,
+            statusCode: 302,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Location": remote.absoluteString]
+        ))
+        let decision: URLRequest? = await withCheckedContinuation { continuation in
+            ZoteroNoRedirectDelegate().urlSession(
+                session,
+                task: task,
+                willPerformHTTPRedirection: response,
+                newRequest: URLRequest(url: remote),
+                completionHandler: { continuation.resume(returning: $0) }
+            )
+        }
+        #expect(decision == nil)
+    }
+}
+
+private actor AttachmentRequestScript {
+    private var responses: [(Int, Data)]
+    private var requestedPaths: [String] = []
+
+    init(responses: [(Int, Data)]) {
+        self.responses = responses
+    }
+
+    func load(_ request: URLRequest) throws -> (Data, URLResponse) {
+        guard let url = request.url, !responses.isEmpty else {
+            throw URLError(.badServerResponse)
+        }
+        requestedPaths.append(url.path)
+        let next = responses.removeFirst()
+        guard let response = HTTPURLResponse(
+            url: url,
+            statusCode: next.0,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        ) else {
+            throw URLError(.badServerResponse)
+        }
+        return (next.1, response)
+    }
+
+    func paths() -> [String] { requestedPaths }
 }
 
 private struct Fixture {

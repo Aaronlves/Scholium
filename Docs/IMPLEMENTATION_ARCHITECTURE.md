@@ -323,6 +323,30 @@ declarations for a future authority intersection, not current permission or
 preparation state. No Profile file store, binding, digest, resolver, UI, or run
 snapshot integration exists yet.
 
+`ResearchSourceReference` schema 1 is the only source-access value permitted in
+an Action/Function snapshot or future portable record. It contains a closed
+route, stable source ID, exact Zotero parent/attachment keys when applicable,
+one display-only filename, and a source fingerprint. Its decoder rejects
+unknown fields, route/key mismatch, path-shaped labels, and malformed
+fingerprints. It has no bookmark, absolute path, or source bytes. The transient
+`ResearchSourceBindingRequest` is deliberately non-Codable because its selected
+file URL belongs only to the current machine-local operation.
+
+Core's per-Triptych `ResearchSourceAccessStore` owns the corresponding private
+binding at `Application Support/Triptychs/<id>/source-access/`. It writes a
+single-link mode-0600 atomic file beneath a mode-0700 directory. Owned path
+components are traversed through `openat` without following symlinks. Bookmarks
+request read-only security scope; binding and every reopen acquire that scope
+before filesystem inspection and balance every successful start. Source reads
+open the complete path with macOS `O_NOFOLLOW_ANY`, require an
+`fstat`-verified regular file, hash
+exactly its starting size, then reject growth, truncation, path substitution,
+alias, symlink, directory, stale bookmark, unreadable state, or fingerprint
+change. A valid reselection repairs private permission drift without losing
+peer bindings and atomically replaces corrupt app-owned bytes. Persisted
+absolute paths and bookmark data remain only in this machine-local store. A
+changed or inaccessible source is never replaced with the Analysis note.
+
 An internal-only `ResearchActionFunctionMapping` in `ScholiumApplication` maps
 Analysis and Synthesis to Develop, Write to Revise, and the remaining public
 execution kinds to their protected Function mechanisms after role validation.
@@ -378,8 +402,9 @@ Dialogue/Critique have no alternate preparation path.
 
 Rendered function input keeps three typed layers distinct: `taskDirective`
 contains the explicit public Action, retained Function transport, read/write
-sets, a separately typed Critique-output binding when applicable, and exact
-loaded Skill package/resource revisions; a validated
+sets, the safe source reference when Analyze applies, a separately typed
+Critique-output binding when applicable, and exact loaded Skill
+package/resource revisions; a validated
 `methodContract` supplies bounded method guidance; and provenance-labelled
 `researchData` carries Markdown, YAML-derived values, citations, bibliographic
 metadata, and records only as serialized data. The current packet schema has
@@ -398,6 +423,23 @@ Warnings are data in that snapshot and never fail preparation. Resume reuses
 the stored context; a new run rereads Zotero. No fetched field enters Markdown,
 Inspector, Search, or a cross-task metadata cache.
 
+Analysis Develop now maps to Analyze before preparation and requires one
+freshly resolved source binding before and after checkpoint/Method resolution,
+again on delivery, and before completion. A legacy Analyze snapshot without a
+safe source reference remains decodable evidence but cannot resume or complete.
+Topic Develop remains Synthesize and has no source requirement.
+The assembled machine-local delivery packet may include the validated absolute
+file path as a transient locator; the durable `ResearchFunctionSnapshot`
+retains only `ResearchSourceReference`. Application exposes bind, inspect, and
+remove operations, while the later modular source-picker interface is not yet
+connected. For the Zotero route, `ZoteroOperations` permits only exact bodyless
+loopback GETs, refuses redirects, verifies the exact response URL, parent and
+attachment keys, absolute query-free local file URL, and exact selected path,
+and repeats that identity check through completion. Permanent note deletion
+preflights this private store before mutation and removes the note's locator in
+the committing recovery phase. Zotero unavailability blocks this source route
+even though ordinary bibliographic metadata warnings remain nonblocking.
+
 Write preparation records only a pending Fidelity handoff. Post-edit completion
 stores the final Target fingerprint as `awaitingFidelity`; Application creates
 or reuses an independent read-only child with the same inputs. An agent must
@@ -405,7 +447,8 @@ submit its evidence. Parent advancement validates and links that child (or
 identical completed evidence); direct write-run Fidelity outcomes are rejected.
 Exact evidence keys prevent duplicate storage or scheduling.
 
-Core separates Skill discovery/bindings (`ResearchSkillStore`), dependency and
+Core separates Skill discovery/bindings (`ResearchSkillStore`), machine-local
+source access (`ResearchSourceAccessStore`), dependency and
 instruction assembly (`ResearchWorkflowAssembler`), checkpoints
 (`TriptychCheckpointStore`), current Function-backed Discussion, Comment,
 Critique, and Research Activity. The clean cutover retains no Human Review,

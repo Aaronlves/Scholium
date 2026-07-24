@@ -392,6 +392,24 @@ public actor ResearchOperations: ResearchUseCases {
         try await functionCoordinator.cancelFunction(runID: runID)
     }
 
+    public func sourceAccess(
+        for target: ResearchFunctionTarget
+    ) async throws -> ResearchSourceAccessStatus {
+        try await functionCoordinator.sourceAccess(for: target)
+    }
+
+    public func bindSourceAccess(
+        _ request: ResearchSourceBindingRequest
+    ) async throws -> ResearchSourceReference {
+        try await functionCoordinator.bindSourceAccess(request)
+    }
+
+    public func removeSourceAccess(
+        for target: ResearchFunctionTarget
+    ) async throws {
+        try await functionCoordinator.removeSourceAccess(for: target)
+    }
+
     public func recommendations(
         for target: RecommendedBibliographyTarget
     ) async throws -> RecommendedBibliographyProjection? {

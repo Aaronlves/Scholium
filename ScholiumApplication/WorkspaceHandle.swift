@@ -18,6 +18,7 @@ struct WorkspaceServices: Sendable {
     let controlStore: TriptychControlStore
     let researchSkillStore: ResearchSkillStore
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
+    let researchSourceAccessStore: ResearchSourceAccessStore
     let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
     let researchActivityStore: ResearchActivityStore
@@ -440,6 +441,10 @@ public actor WorkspaceHandle {
                 controlStore: controlStore,
                 researchSkillStore: researchSkillStore,
                 researchSkillMaintenanceStore: researchSkillMaintenanceStore,
+                researchSourceAccessStore: ResearchSourceAccessStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
                 recommendedBibliographyStore: RecommendedBibliographyStore(
                     controlURL: controlURL
                 ),
@@ -1063,7 +1068,8 @@ public actor WorkspaceHandle {
             critiqueRegistry: services.critiqueRegistry,
             checkpointStore: services.checkpointStore,
             controlStore: services.controlStore,
-            recoveryStore: services.transactionRecoveryStore
+            recoveryStore: services.transactionRecoveryStore,
+            sourceAccessStore: services.researchSourceAccessStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
@@ -1116,7 +1122,8 @@ public actor WorkspaceHandle {
                 critiqueRegistry: services.critiqueRegistry,
                 checkpointStore: services.checkpointStore,
                 controlStore: services.controlStore,
-                recoveryStore: services.transactionRecoveryStore
+                recoveryStore: services.transactionRecoveryStore,
+                sourceAccessStore: services.researchSourceAccessStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()

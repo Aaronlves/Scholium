@@ -876,6 +876,8 @@ extension ResearchFunctionRepairReason {
             ScholiumL10n.string("Install and bind a matching Researcher Skill in Settings.")
         case .malformedBinding:
             ScholiumL10n.string("The Researcher Skill binding needs repair in Settings.")
+        case .sourceAccessRequired:
+            ScholiumL10n.string("Choose the exact source again before Analyze.")
         }
     }
 }

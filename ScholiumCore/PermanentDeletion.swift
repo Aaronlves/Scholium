@@ -48,6 +48,7 @@ public actor NotePermanentDeletionCoordinator {
     private let checkpointStore: TriptychCheckpointStore
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
+    private let sourceAccessStore: ResearchSourceAccessStore?
     private let faultPlan: PermanentDeletionFaultPlan
 
     public init(
@@ -57,7 +58,8 @@ public actor NotePermanentDeletionCoordinator {
         critiqueRegistry: CritiqueRegistry,
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
-        recoveryStore: TriptychMutationRecoveryStore
+        recoveryStore: TriptychMutationRecoveryStore,
+        sourceAccessStore: ResearchSourceAccessStore? = nil
     ) {
         self.triptychID = triptychID
         self.repository = repository
@@ -66,6 +68,7 @@ public actor NotePermanentDeletionCoordinator {
         self.checkpointStore = checkpointStore
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
+        self.sourceAccessStore = sourceAccessStore
         self.faultPlan = .none
     }
 
@@ -77,6 +80,7 @@ public actor NotePermanentDeletionCoordinator {
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
+        sourceAccessStore: ResearchSourceAccessStore? = nil,
         faultPlan: PermanentDeletionFaultPlan
     ) {
         self.triptychID = triptychID
@@ -86,6 +90,7 @@ public actor NotePermanentDeletionCoordinator {
         self.checkpointStore = checkpointStore
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
+        self.sourceAccessStore = sourceAccessStore
         self.faultPlan = faultPlan
     }
 
@@ -97,6 +102,10 @@ public actor NotePermanentDeletionCoordinator {
         checkpointArea: TriptychCheckpointArea
     ) async throws -> PermanentDeletionCommit {
         try await requireHealthyStores()
+        // Fail before the first authoritative mutation if machine-local
+        // source bindings cannot be decoded safely. Otherwise a deletion
+        // could reach its commit decision and then strand privacy cleanup.
+        try await sourceAccessStore?.validateStoreHealth()
         guard repository.identity.id == vaultID else {
             throw TriptychTransactionError.invalidPlan(
                 "The permanent-deletion repository does not match the selected vault identity."
@@ -325,6 +334,16 @@ public actor NotePermanentDeletionCoordinator {
         }
         if let checkpoints = backup.checkpointPurge {
             try await checkpointStore.finalizePreparedCheckpointPurge(checkpoints)
+        }
+        // Source locators are machine-local privacy state. Remove them only
+        // after the deletion commit decision; if cleanup fails, the durable
+        // committing journal remains so recovery retries instead of silently
+        // claiming the permanent deletion is fully finalized.
+        if let sourceAccessStore {
+            try await sourceAccessStore.remove(analysisNoteID: backup.noteID)
+            if let critiqueNoteID = backup.critiqueNoteID {
+                try await sourceAccessStore.remove(analysisNoteID: critiqueNoteID)
+            }
         }
         try await recoveryStore.resolve(record.id)
     }

@@ -219,6 +219,20 @@ public protocol ResearchFunctionUseCases: Sendable {
 
 }
 
+public protocol ResearchSourceAccessUseCases: Sendable {
+    func sourceAccess(
+        for target: ResearchFunctionTarget
+    ) async throws -> ResearchSourceAccessStatus
+
+    func bindSourceAccess(
+        _ request: ResearchSourceBindingRequest
+    ) async throws -> ResearchSourceReference
+
+    func removeSourceAccess(
+        for target: ResearchFunctionTarget
+    ) async throws
+}
+
 /// Workspace-level research capabilities used by one window activation.
 /// Feature leaves should prefer the smallest component protocol they need.
 public protocol ResearchUseCases:
@@ -226,6 +240,7 @@ public protocol ResearchUseCases:
     ResearchCheckpointUseCases,
     ResearchSkillUseCases,
     ResearchFunctionUseCases,
+    ResearchSourceAccessUseCases,
     RecommendedBibliographyUseCases
 {
     var skillsURL: URL { get }

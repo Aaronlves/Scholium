@@ -154,10 +154,612 @@ struct ResearchOperationsMutationTests {
         #expect(try await handle.research.recoveryRecords().isEmpty)
         await runtime.shutdown()
     }
+
+    @Test("Permanent Analysis deletion removes its machine-local source locator")
+    func permanentDeletionPurgesSourceAccess() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let bindingURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("source-access", isDirectory: true)
+            .appendingPathComponent("source-bindings-v1.json")
+        let before = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: bindingURL)
+            ) as? [String: Any]
+        )
+        let beforeBindings = try #require(before["bindings"] as? [[String: Any]])
+        #expect(beforeBindings.contains {
+            ($0["analysisNoteID"] as? String) == analysis.noteID.uuidString
+                && ($0["canonicalPath"] as? String) == fixture.analysisSourceURL.path
+        })
+
+        let document = try await handle.documents.load(fixture.analysisID)
+        let trashed = try await handle.documents.move(
+            fixture.analysisID,
+            to: "Trash/Analysis.md",
+            expectedRevision: document.fingerprint
+        )
+        let trashedDocument = try await handle.documents.load(trashed.destination)
+        _ = try await handle.documents.deletePermanently(
+            trashed.destination,
+            expectedRevision: trashedDocument.fingerprint
+        )
+
+        let after = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: bindingURL)
+            ) as? [String: Any]
+        )
+        let afterBindings = try #require(after["bindings"] as? [[String: Any]])
+        #expect(!afterBindings.contains {
+            ($0["analysisNoteID"] as? String) == analysis.noteID.uuidString
+                || ($0["canonicalPath"] as? String) == fixture.analysisSourceURL.path
+        })
+        await runtime.shutdown()
+    }
+
+    @Test("A corrupt source store blocks permanent deletion before source bytes change")
+    func corruptSourceStoreBlocksDeletionPreflight() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let document = try await handle.documents.load(fixture.analysisID)
+        let trashed = try await handle.documents.move(
+            fixture.analysisID,
+            to: "Trash/Analysis.md",
+            expectedRevision: document.fingerprint
+        )
+        let trashedDocument = try await handle.documents.load(trashed.destination)
+        let bindingURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("source-access", isDirectory: true)
+            .appendingPathComponent("source-bindings-v1.json")
+        try Data("corrupt".utf8).write(to: bindingURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: bindingURL.path
+        )
+
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.documents.deletePermanently(
+                trashed.destination,
+                expectedRevision: trashedDocument.fingerprint
+            )
+        }
+        let unchanged = try Data(
+            contentsOf: fixture.analysesURL.appendingPathComponent("Trash/Analysis.md")
+        )
+        #expect(unchanged == trashedDocument.sourceBytes)
+        await runtime.shutdown()
+    }
 }
 
 @Suite("Application Research Function orchestration")
 struct ResearchFunctionOperationsTests {
+    @Test("Analyze requires one current explicit source while Synthesize does not")
+    func analyzeSourceRequirement() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+
+        try await handle.research.removeSourceAccess(for: analysis)
+        let status = try await handle.research.sourceAccess(for: analysis)
+        #expect(status.state == .repairRequired)
+        #expect(status.failure?.code == .missingBinding)
+        let analyzeAvailability = try #require(
+            try await handle.research.availableFunctions(for: analysis).first {
+                $0.function == .develop
+            }
+        )
+        #expect(!analyzeAvailability.isEnabled)
+        #expect(
+            analyzeAvailability.repairReasons.first?.sourceAccessFailure?.code
+                == .missingBinding
+        )
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.prepareFunction(
+                ResearchFunctionRequest(function: .develop, target: analysis)
+            )
+        }
+
+        let synthesis = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: topic)
+        )
+        #expect(synthesis.snapshot.sourceReference == nil)
+
+        let reference = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: analysis,
+                selection: .localFile(fixture.analysisSourceURL)
+            )
+        )
+        let analyze = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        #expect(analyze.snapshot.sourceReference == reference)
+        #expect(analyze.instructions.contains(fixture.analysisSourceURL.path))
+        let snapshotJSON = String(
+            decoding: try JSONEncoder().encode(analyze.snapshot),
+            as: UTF8.self
+        )
+        #expect(!snapshotJSON.contains(fixture.analysisSourceURL.path))
+        #expect(!snapshotJSON.contains("bookmarkData"))
+        let storedRun = try #require(try await handle.snapshot().research.functionRuns.first {
+            $0.id == analyze.runID
+        })
+        let storedInstructions = try #require(storedRun.preparedInstructions)
+        #expect(!storedInstructions.contains(fixture.analysisSourceURL.path))
+        #expect(!storedInstructions.contains("bookmarkData"))
+        await runtime.shutdown()
+    }
+
+    @Test("A prepared Analyze cannot resume or complete after source authority is removed")
+    func preparedAnalyzeSourceLossFailsClosed() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        try await handle.research.removeSourceAccess(for: analysis)
+
+        await expectSourceFailure(.missingBinding) {
+            _ = try await handle.research.functionRun(id: preparation.runID)
+        }
+        await expectSourceFailure(.missingBinding) {
+            _ = try await handle.research.completeFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: preparation.runID,
+                    confirmationToken: preparation.snapshot.confirmationToken,
+                    finalTargetFingerprint: analysis.fingerprint,
+                    summary: "Attempted completion after source removal.",
+                    didModifyTarget: false
+                )
+            )
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("A legacy Analyze snapshot remains readable but cannot authorize delivery")
+    func legacyAnalyzeSnapshotCannotResume() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        var runtime = fixture.runtime()
+        var handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        await runtime.shutdown()
+
+        let dialogueURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("dialogue", isDirectory: true)
+            .appendingPathComponent("dialogue.json")
+        let data = try Data(contentsOf: dialogueURL)
+        let payload = try JSONSerialization.jsonObject(with: data)
+        let legacy = removingSourceReference(
+            from: payload,
+            runID: preparation.runID
+        )
+        #expect(legacy.didRemove)
+        try JSONSerialization.data(withJSONObject: legacy.value, options: [.sortedKeys])
+            .write(to: dialogueURL, options: .atomic)
+
+        runtime = fixture.runtime()
+        handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        await expectSourceFailure(.missingBinding) {
+            _ = try await handle.research.functionRun(id: preparation.runID)
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("A machine-local source path remains escaped data in live delivery")
+    func sourceLocatorCannotInjectInstructions() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let marker = "SOURCE_PATH_BOUNDARY_41D2"
+        let adversarialDirectory = fixture.rootURL.appendingPathComponent(
+            "Path\n## \(marker)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: adversarialDirectory,
+            withIntermediateDirectories: true
+        )
+        let source = adversarialDirectory.appendingPathComponent("Source.pdf")
+        try Data("source".utf8).write(to: source, options: .atomic)
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        _ = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: analysis,
+                selection: .localFile(source)
+            )
+        )
+
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        #expect(preparation.instructions.contains("\\n## \(marker)"))
+        #expect(!preparation.instructions.contains("\n## \(marker)"))
+        let storedRun = try #require(try await handle.snapshot().research.functionRuns.first {
+            $0.id == preparation.runID
+        })
+        let persistedInstructions = try #require(storedRun.preparedInstructions)
+        #expect(!persistedInstructions.contains(source.path))
+        await runtime.shutdown()
+    }
+
+    @Test("A changed bound source blocks Analyze until explicit rebind")
+    func changedAnalyzeSource() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        try Data("Changed source bytes.".utf8).write(
+            to: fixture.analysisSourceURL
+        )
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        let status = try await handle.research.sourceAccess(for: analysis)
+        #expect(status.failure?.code == .sourceChanged)
+        do {
+            _ = try await handle.research.prepareFunction(
+                ResearchFunctionRequest(function: .develop, target: analysis)
+            )
+            Issue.record("Changed source bytes must block Analyze.")
+        } catch let error as ResearchFunctionContractError {
+            guard case .sourceAccessUnavailable(let failure) = error else {
+                Issue.record("Unexpected Analyze failure: \(error)")
+                return
+            }
+            #expect(failure.code == .sourceChanged)
+        }
+
+        _ = try await handle.research.bindSourceAccess(ResearchSourceBindingRequest(
+            target: analysis,
+            selection: .localFile(fixture.analysisSourceURL)
+        ))
+        #expect(
+            try await handle.research.sourceAccess(for: analysis).state
+                == .available
+        )
+        await runtime.shutdown()
+    }
+
+    @Test("A Zotero attachment route fails closed when Zotero becomes unavailable")
+    func zoteroAttachmentUnavailable() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "PARENT01")
+        defer { fixture.remove() }
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Bound Source",
+            "filename": "Bound Source.pdf"
+          }
+        }
+        """
+        let script = ZoteroRequestScript(steps: [
+            .response(status: 200, data: Data(envelope.utf8)),
+            .response(status: 200, data: Data(fixture.analysisSourceURL.absoluteString.utf8)),
+            .transportFailure,
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let reference = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: analysis,
+                selection: .zoteroAttachment(
+                    itemKey: "PARENT01",
+                    attachmentKey: "ATTACH02",
+                    selectedFileURL: fixture.analysisSourceURL
+                )
+            )
+        )
+        #expect(reference.identity.route == .zoteroAttachment)
+        do {
+            _ = try await handle.research.prepareFunction(
+                ResearchFunctionRequest(function: .develop, target: analysis)
+            )
+            Issue.record("Unavailable Zotero must block its attachment route.")
+        } catch let error as ResearchFunctionContractError {
+            guard case .sourceAccessUnavailable(let failure) = error else {
+                Issue.record("Unexpected Analyze failure: \(error)")
+                return
+            }
+            #expect(failure.code == .zoteroUnavailable)
+        }
+        #expect(await script.requestCount() == 3)
+        await runtime.shutdown()
+    }
+
+    @Test("A Zotero attachment cannot authorize a different selected file")
+    func zoteroAttachmentPathMismatch() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "PARENT01")
+        defer { fixture.remove() }
+        let otherFile = fixture.rootURL.appendingPathComponent("Other Source.pdf")
+        try Data("other".utf8).write(to: otherFile, options: .atomic)
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Bound Source",
+            "filename": "Bound Source.pdf"
+          }
+        }
+        """
+        let script = ZoteroRequestScript(steps: [
+            .response(status: 200, data: Data(envelope.utf8)),
+            .response(status: 200, data: Data(fixture.analysisSourceURL.absoluteString.utf8)),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        do {
+            _ = try await handle.research.bindSourceAccess(
+                ResearchSourceBindingRequest(
+                    target: analysis,
+                    selection: .zoteroAttachment(
+                        itemKey: "PARENT01",
+                        attachmentKey: "ATTACH02",
+                        selectedFileURL: otherFile
+                    )
+                )
+            )
+            Issue.record("A different selected file must not satisfy Zotero identity.")
+        } catch let error as ResearchFunctionContractError {
+            guard case .sourceAccessUnavailable(let failure) = error else {
+                Issue.record("Unexpected source binding failure: \(error)")
+                return
+            }
+            #expect(failure.code == .zoteroIdentityMismatch)
+        }
+        #expect(
+            try await handle.research.sourceAccess(for: analysis)
+                .reference?.identity.route == .localFile
+        )
+        #expect(await script.requestCount() == 2)
+        await runtime.shutdown()
+    }
+
+    @Test("A Zotero attachment symlink cannot authorize its real target")
+    func zoteroAttachmentSymlinkFailsClosed() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "PARENT01")
+        defer { fixture.remove() }
+        let link = fixture.rootURL.appendingPathComponent("Zotero Link.pdf")
+        try FileManager.default.createSymbolicLink(
+            at: link,
+            withDestinationURL: fixture.analysisSourceURL
+        )
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Bound Source",
+            "filename": "Bound Source.pdf"
+          }
+        }
+        """
+        let script = ZoteroRequestScript(steps: [
+            .response(status: 200, data: Data(envelope.utf8)),
+            .response(status: 200, data: Data(link.absoluteString.utf8)),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        await expectSourceFailure(.zoteroIdentityMismatch) {
+            _ = try await handle.research.bindSourceAccess(
+                ResearchSourceBindingRequest(
+                    target: analysis,
+                    selection: .zoteroAttachment(
+                        itemKey: "PARENT01",
+                        attachmentKey: "ATTACH02",
+                        selectedFileURL: fixture.analysisSourceURL
+                    )
+                )
+            )
+        }
+        #expect(
+            try await handle.research.sourceAccess(for: analysis)
+                .reference?.identity.route == .localFile
+        )
+        await runtime.shutdown()
+    }
+
+    @Test("A changed Analysis Zotero parent cannot reuse an earlier attachment binding")
+    func zoteroParentDriftFailsClosed() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "PARENT01")
+        defer { fixture.remove() }
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Bound Source",
+            "filename": "Bound Source.pdf"
+          }
+        }
+        """
+        let script = ZoteroRequestScript(steps: [
+            .response(status: 200, data: Data(envelope.utf8)),
+            .response(status: 200, data: Data(fixture.analysisSourceURL.absoluteString.utf8)),
+            .response(status: 200, data: Data(envelope.utf8)),
+            .response(status: 200, data: Data(fixture.analysisSourceURL.absoluteString.utf8)),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        var analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        _ = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: analysis,
+                selection: .zoteroAttachment(
+                    itemKey: "PARENT01",
+                    attachmentKey: "ATTACH02",
+                    selectedFileURL: fixture.analysisSourceURL
+                )
+            )
+        )
+        let document = try await handle.documents.load(fixture.analysisID)
+        let changed = document.rawContent.replacingOccurrences(
+            of: "zotero_item_key: 'PARENT01'",
+            with: "zotero_item_key: 'PARENT99'"
+        )
+        _ = try await handle.documents.save(
+            fixture.analysisID,
+            changeSet: .exactContent(changed),
+            expectedRevision: document.fingerprint
+        )
+        analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        await expectSourceFailure(.zoteroIdentityMismatch) {
+            _ = try await handle.research.prepareFunction(
+                ResearchFunctionRequest(function: .develop, target: analysis)
+            )
+        }
+        #expect(await script.requestCount() == 4)
+        await runtime.shutdown()
+    }
+
+    @Test("An empty Analysis Zotero key does not override an explicit attachment parent")
+    func emptyZoteroKeyUsesExplicitAttachmentIdentity() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "")
+        defer { fixture.remove() }
+        let envelope = """
+        {
+          "key": "ATTACH02",
+          "data": {
+            "key": "ATTACH02",
+            "itemType": "attachment",
+            "parentItem": "PARENT01",
+            "title": "Bound Source",
+            "filename": "Bound Source.pdf"
+          }
+        }
+        """
+        let attachmentResponses: [ZoteroRequestScript.Step] = [
+            .response(status: 200, data: Data(envelope.utf8)),
+            .response(status: 200, data: Data(fixture.analysisSourceURL.absoluteString.utf8)),
+        ]
+        let script = ZoteroRequestScript(steps:
+            attachmentResponses
+                + attachmentResponses
+                + [.response(status: 404, data: Data())]
+                + attachmentResponses
+                + attachmentResponses
+        )
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        _ = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: analysis,
+                selection: .zoteroAttachment(
+                    itemKey: "PARENT01",
+                    attachmentKey: "ATTACH02",
+                    selectedFileURL: fixture.analysisSourceURL
+                )
+            )
+        )
+
+        let preparation = try await handle.research.prepareFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        #expect(preparation.snapshot.sourceReference?.identity.zoteroItemKey == "PARENT01")
+        #expect(await script.requestCount() == 9)
+        await runtime.shutdown()
+    }
+
     @Test("Research metadata remains JSON data and cannot expand typed permissions")
     func researchMetadataIsNotInstructionAuthority() async throws {
         let marker = "PWNED_BOUNDARY_4A1D"
@@ -1961,6 +2563,7 @@ private struct ResearchFixture: Sendable {
     let rootURL: URL
     let applicationSupportURL: URL
     let analysesURL: URL
+    let analysisSourceURL: URL
     let assignment: TriptychAssignment
     let analysisID: VaultQualifiedNoteID
     let topicID: VaultQualifiedNoteID
@@ -1970,7 +2573,13 @@ private struct ResearchFixture: Sendable {
         analysisZoteroKey: String? = nil,
         workZoteroKey: String? = nil
     ) async throws -> Self {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let root = repositoryRoot
+            .appendingPathComponent(".build/test-fixtures", isDirectory: true)
+            .appendingPathComponent(
             "ScholiumApplicationResearchTests-\(UUID().uuidString)",
             isDirectory: true
         )
@@ -1985,6 +2594,11 @@ private struct ResearchFixture: Sendable {
                 withIntermediateDirectories: true
             )
         }
+        let analysisSourceFile = root.appendingPathComponent("Bound Source.pdf")
+        try Data("Exact source fixture bytes.".utf8).write(
+            to: analysisSourceFile,
+            options: .atomic
+        )
 
         let analysisKeyLine = analysisZoteroKey.map {
             "zotero_item_key: '\($0)'\r\n"
@@ -2028,16 +2642,27 @@ private struct ResearchFixture: Sendable {
         let analysisVaultID = try #require(assignment.vault(for: .paperAnalysis)?.id)
         let topicVaultID = try #require(assignment.vault(for: .topicKnowledge)?.id)
         let workVaultID = try #require(assignment.vault(for: .output)?.id)
+        let analysisID = VaultQualifiedNoteID(
+            vaultID: analysisVaultID,
+            relativePath: "Analysis.md"
+        )
+        let sourceTarget = try await researchFunctionTarget(
+            analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        _ = try await handle.research.bindSourceAccess(ResearchSourceBindingRequest(
+            target: sourceTarget,
+            selection: .localFile(analysisSourceFile)
+        ))
         await runtime.shutdown()
         return Self(
             rootURL: root,
             applicationSupportURL: appSupport,
             analysesURL: analyses,
+            analysisSourceURL: analysisSourceFile,
             assignment: assignment,
-            analysisID: VaultQualifiedNoteID(
-                vaultID: analysisVaultID,
-                relativePath: "Analysis.md"
-            ),
+            analysisID: analysisID,
             topicID: VaultQualifiedNoteID(
                 vaultID: topicVaultID,
                 relativePath: "Agency.md"
@@ -2091,6 +2716,54 @@ private func researchFunctionTarget(
         fingerprint: note.fingerprint,
         title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
     )
+}
+
+private func expectSourceFailure(
+    _ expected: ResearchSourceAccessFailureCode,
+    operation: () async throws -> Void
+) async {
+    do {
+        try await operation()
+        Issue.record("Expected source access failure \(expected.rawValue).")
+    } catch let error as ResearchFunctionContractError {
+        guard case .sourceAccessUnavailable(let failure) = error else {
+            Issue.record("Unexpected Research Function failure: \(error)")
+            return
+        }
+        #expect(failure.code == expected)
+    } catch {
+        Issue.record("Unexpected source access error: \(error)")
+    }
+}
+
+private func removingSourceReference(
+    from value: Any,
+    runID: UUID
+) -> (value: Any, didRemove: Bool) {
+    if var dictionary = value as? [String: Any] {
+        var didRemove = false
+        if let rawRunID = dictionary["runID"] as? String,
+           UUID(uuidString: rawRunID) == runID,
+           dictionary["request"] != nil {
+            didRemove = dictionary.removeValue(forKey: "sourceReference") != nil
+        }
+        for (key, child) in dictionary {
+            let result = removingSourceReference(from: child, runID: runID)
+            dictionary[key] = result.value
+            didRemove = didRemove || result.didRemove
+        }
+        return (dictionary, didRemove)
+    }
+    if let array = value as? [Any] {
+        var didRemove = false
+        let updated = array.map { child in
+            let result = removingSourceReference(from: child, runID: runID)
+            didRemove = didRemove || result.didRemove
+            return result.value
+        }
+        return (updated, didRemove)
+    }
+    return (value, false)
 }
 
 private func commentAnchor(

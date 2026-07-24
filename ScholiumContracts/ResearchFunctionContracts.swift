@@ -253,6 +253,7 @@ public enum ResearchFunctionRepairReasonCode: String, Codable, Hashable, Sendabl
     case invalidWorkflow = "invalid_workflow"
     case missingCapability = "missing_capability"
     case malformedBinding = "malformed_binding"
+    case sourceAccessRequired = "source_access_required"
 }
 
 /// A localization-free repair code. Optional associated values identify the
@@ -263,19 +264,22 @@ public struct ResearchFunctionRepairReason: Codable, Hashable, Sendable {
     public let expectedRoles: [ResearchFunctionTargetRole]
     public let capability: ResearchSkillCapability?
     public let packageID: String?
+    public let sourceAccessFailure: ResearchSourceAccessFailure?
 
     public init(
         code: ResearchFunctionRepairReasonCode,
         function: ResearchFunctionID? = nil,
         expectedRoles: [ResearchFunctionTargetRole] = [],
         capability: ResearchSkillCapability? = nil,
-        packageID: String? = nil
+        packageID: String? = nil,
+        sourceAccessFailure: ResearchSourceAccessFailure? = nil
     ) {
         self.code = code
         self.function = function
         self.expectedRoles = Array(Set(expectedRoles)).sorted { $0.rawValue < $1.rawValue }
         self.capability = capability
         self.packageID = packageID
+        self.sourceAccessFailure = sourceAccessFailure
     }
 }
 
@@ -897,6 +901,9 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// Analysis-only, task-scoped bibliographic context. This projection is
     /// never written back to Markdown and is not a source-evidence claim.
     public let zoteroBibliographicContext: ZoteroBibliographicContext?
+    /// Exact source identity and revision validated for Analyze. This safe
+    /// projection contains no bookmark, absolute path, or source bytes.
+    public let sourceReference: ResearchSourceReference?
     public let fidelityHandoff: ResearchFunctionFidelityHandoff?
     /// Present only for Fidelity runs.
     public let fidelityInvocation: FidelityInvocationKind?
@@ -916,6 +923,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         preparedOutput: ResearchFunctionOutputSnapshot? = nil,
         evidenceRevisions: [DocumentFingerprint] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
+        sourceReference: ResearchSourceReference? = nil,
         fidelityHandoff: ResearchFunctionFidelityHandoff? = nil,
         fidelityInvocation: FidelityInvocationKind? = nil,
         confirmationToken: UUID = UUID(),
@@ -935,6 +943,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.preparedOutput = preparedOutput
         self.evidenceRevisions = evidenceRevisions
         self.zoteroBibliographicContext = zoteroBibliographicContext
+        self.sourceReference = sourceReference
         self.fidelityHandoff = fidelityHandoff
         self.fidelityInvocation = request.function == .fidelity
             ? (fidelityInvocation ?? .manual)
@@ -1339,6 +1348,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case invalidFidelityTargets
     case unexpectedFidelityTargets
     case materialChanged(String)
+    case sourceAccessUnavailable(ResearchSourceAccessFailure)
     case duplicateComment
     case invalidScope
     case missingFidelityCheck
@@ -1393,6 +1403,8 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "Only Fidelity may carry a shared target set."
         case .materialChanged(let title):
             "The Material '\(title)' changed while the Research Function was being prepared."
+        case .sourceAccessUnavailable(let failure):
+            "Analyze requires the exact readable source. Source access failed with \(failure.code.rawValue); choose the source again before continuing."
         case .duplicateComment:
             "Each Comment may be selected only once."
         case .invalidScope:
