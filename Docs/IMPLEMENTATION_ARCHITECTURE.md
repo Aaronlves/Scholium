@@ -520,7 +520,12 @@ rows. Prior results remain visible through refresh and failure.
   the bounded native window-shell adapters described below.
 - `Scholium/UI/PreviewCatalog` contains deterministic Debug-only component
   matrices for ready, empty, loading, error, conflict, and long-text states,
-  plus named appearance and accessibility review entry points. Preview code is
+  plus named appearance and accessibility review entry points. Its synthetic
+  research-workflow catalog proves the D-106 Action matrix, modular Skill-run
+  sheet, staged installer, categorized Skill settings, Agent change request,
+  responsive Research Record, and permission-invalid state without resolving
+  or mutating production state. A suppressed Debug window makes that catalog
+  reachable only from an explicitly enabled QA command. Preview code is
   development-only and does not enter the released interface.
 - `ScholiumContracts` contains boundary values, capability protocols,
   deterministic source transformations, immutable snapshots, events, and

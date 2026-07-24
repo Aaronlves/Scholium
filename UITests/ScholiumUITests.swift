@@ -4934,6 +4934,102 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    private func resizeProofWindow(_ window: XCUIElement, toWidth width: CGFloat) {
+        var currentFrame = window.frame
+        guard let screenFrame = NSScreen.main?.frame ?? NSScreen.screens.first?.frame else {
+            XCTFail("The responsive proof requires an attached macOS display.")
+            return
+        }
+
+        let requiredShift = max(
+            0,
+            currentFrame.minX + width - (screenFrame.maxX - 16)
+        )
+        if requiredShift > 0 {
+            let titlebar = window.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.42, dy: 0.025)
+            )
+            titlebar.click(
+                forDuration: 0.15,
+                thenDragTo: titlebar.withOffset(CGVector(dx: -requiredShift - 12, dy: 0))
+            )
+            XCTAssertTrue(waitUntil(timeout: 5) {
+                window.frame.minX < currentFrame.minX - requiredShift / 2
+            })
+            currentFrame = window.frame
+        }
+
+        let widthDelta = width - currentFrame.width
+        let resizeCorner = window.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.996, dy: 0.996)
+        )
+        resizeCorner.click(
+            forDuration: 0.15,
+            thenDragTo: resizeCorner.withOffset(CGVector(dx: widthDelta, dy: 0))
+        )
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            abs(window.frame.width - width) <= QAWorkspaceMetricContract.frameTolerance
+        })
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+
+    @MainActor
+    func testResearchWorkflowInterfaceProofsUseOneAccessibleQARoute() {
+        app.menuBars.menuBarItems["QA"].click()
+        let openProofs = app.menuItems["Open Research Workflow Interface Proofs"]
+        XCTAssertTrue(openProofs.waitForExistence(timeout: 3))
+        openProofs.click()
+
+        let proofWindow = app.windows["Research Workflow Interface Proofs"]
+        XCTAssertTrue(
+            proofWindow.waitForExistence(timeout: 8),
+            "The Debug-only interface proof catalog did not open."
+        )
+        XCTAssertTrue(
+            proofWindow.descendants(matching: .any)["scholium.proofs.action.analyze"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertFalse(proofWindow.staticTexts["Research Activity"].exists)
+        XCTAssertFalse(proofWindow.buttons["Open Research Record"].exists)
+
+        proofWindow.staticTexts["Skill-run Sheet"].click()
+        XCTAssertTrue(proofWindow.buttons["Begin Analyze"].waitForExistence(timeout: 3))
+        XCTAssertTrue(proofWindow.buttons["Nagel, What Is It Like to Be a Bat?.pdf"].exists)
+
+        proofWindow.staticTexts["Skill Installer"].click()
+        XCTAssertTrue(proofWindow.buttons["Install Disabled"].waitForExistence(timeout: 3))
+
+        proofWindow.staticTexts["Skill Settings"].click()
+        XCTAssertTrue(
+            proofWindow.staticTexts["WORKING METHOD SKILLS"].waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(proofWindow.staticTexts["SYSTEM SKILLS"].exists)
+
+        proofWindow.staticTexts["Agent Change Request"].click()
+        XCTAssertTrue(
+            proofWindow.buttons["Allow These Notes Once"].waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(proofWindow.buttons["Continue Without Changes"].exists)
+        XCTAssertTrue(proofWindow.buttons["Cancel the Run"].exists)
+
+        proofWindow.staticTexts["Research Record"].click()
+        resizeProofWindow(proofWindow, toWidth: 1_180)
+        XCTAssertTrue(proofWindow.textFields["Search records"].waitForExistence(timeout: 3))
+        XCTAssertTrue(proofWindow.staticTexts["Date"].exists)
+        XCTAssertTrue(proofWindow.staticTexts["Skill"].exists)
+        XCTAssertTrue(proofWindow.staticTexts["Action"].exists)
+        XCTAssertTrue(proofWindow.staticTexts["Participant"].exists)
+        resizeProofWindow(proofWindow, toWidth: 900)
+        XCTAssertTrue(proofWindow.buttons["Back to Records"].waitForExistence(timeout: 3))
+        resizeProofWindow(proofWindow, toWidth: 1_180)
+
+        proofWindow.staticTexts["State Matrix"].click()
+        XCTAssertTrue(
+            proofWindow.staticTexts["No Researcher Skills"].waitForExistence(timeout: 3)
+        )
+    }
+
+    @MainActor
     private func configuredApplication(
         sessionID: UUID,
         initialWorkspaceWidth: Int? = 1380,
@@ -4960,6 +5056,9 @@ final class ScholiumUITests: XCTestCase {
             "-scholium.settings.selectedPane", "research-guidance",
             "-scholium.settings.researchGuidanceCollection", "skills",
         ]
+        if name.contains("testResearchWorkflowInterfaceProofs") {
+            application.launchArguments += ["--scholium-research-workflow-proofs"]
+        }
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
         }

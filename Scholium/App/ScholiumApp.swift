@@ -153,6 +153,20 @@ struct ScholiumApp: App {
                 ScholiumSettingsRoot(workspaceStore: workspaceStore)
             }
         }
+
+        #if DEBUG
+        Window(
+            "Research Workflow Interface Proofs",
+            id: "scholium-research-workflow-proofs"
+        ) {
+            ResearchWorkflowPreviewCatalog()
+        }
+        .defaultSize(width: 1_080, height: 760)
+        .windowResizability(.automatic)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+        #endif
     }
 }
 
@@ -982,19 +996,29 @@ private struct ScholiumCommands: Commands {
             .disabled(appState?.currentNote == nil)
         }
         #if DEBUG
-        if qaEditorFaultsAreEnabled {
+        if qaEditorFaultsAreEnabled || qaResearchWorkflowProofsAreEnabled {
             CommandMenu("QA") {
-                Button("Simulate Editor Process Termination") {
-                    guard let documentID = editorActions?.documentID else { return }
-                    DistributedNotificationCenter.default().postNotificationName(
-                        Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
-                        object: nil,
-                        userInfo: ["documentID": documentID],
-                        deliverImmediately: true
-                    )
+                if qaEditorFaultsAreEnabled {
+                    Button("Simulate Editor Process Termination") {
+                        guard let documentID = editorActions?.documentID else { return }
+                        DistributedNotificationCenter.default().postNotificationName(
+                            Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
+                            object: nil,
+                            userInfo: ["documentID": documentID],
+                            deliverImmediately: true
+                        )
+                    }
+                    .keyboardShortcut("w", modifiers: [.command, .option, .control])
+                    .disabled(editorActions == nil)
                 }
-                .keyboardShortcut("w", modifiers: [.command, .option, .control])
-                .disabled(editorActions == nil)
+                if qaEditorFaultsAreEnabled && qaResearchWorkflowProofsAreEnabled {
+                    Divider()
+                }
+                if qaResearchWorkflowProofsAreEnabled {
+                    Button("Open Research Workflow Interface Proofs") {
+                        openWindow(id: "scholium-research-workflow-proofs")
+                    }
+                }
             }
         }
         #endif
@@ -1004,6 +1028,13 @@ private struct ScholiumCommands: Commands {
     private var qaEditorFaultsAreEnabled: Bool {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
+    }
+
+    private var qaResearchWorkflowProofsAreEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.scholium.qa"
+            && ProcessInfo.processInfo.arguments.contains(
+                "--scholium-research-workflow-proofs"
+            )
     }
     #endif
 

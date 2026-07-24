@@ -853,41 +853,4 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
     ScholiumMonoComparison()
 }
 
-#Preview("Properties Typography A/B — 320") {
-    PropertiesTypographyComparisonBoard(panelWidth: 320)
-}
-
-#Preview("Properties Typography A/B — Narrow") {
-    PropertiesTypographyComparisonBoard(panelWidth: 248)
-}
-
-#Preview("Properties Typography A/B — Dark") {
-    PropertiesTypographyComparisonBoard(panelWidth: 320)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Properties Typography A/B — Increased Contrast") {
-    PropertiesTypographyComparisonBoard(panelWidth: 320)
-        .environment(
-            \.scholiumVisualEnvironmentOverride,
-            .init(increasedContrast: true)
-        )
-}
-
-#Preview("Scholarly Editorialism — 1380") {
-    ScholarlyEditorialWorkspaceSlice(width: 1_380)
-}
-
-#Preview("Scholarly Editorialism — 1080") {
-    ScholarlyEditorialWorkspaceSlice(width: 1_080)
-}
-
-#Preview("Scholarly Editorialism — 900") {
-    ScholarlyEditorialWorkspaceSlice(width: 900)
-}
-
-#Preview("Scholarly Editorialism — Dark") {
-    ScholarlyEditorialWorkspaceSlice(width: 1_080)
-        .preferredColorScheme(.dark)
-}
 #endif
