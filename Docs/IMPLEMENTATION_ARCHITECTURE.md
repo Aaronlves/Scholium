@@ -293,6 +293,22 @@ checks, availability/repair codes, runs, submissions, fingerprints, and
 checkpoint, Skill, function, and bibliography capabilities. Contracts contain
 no labels, symbols, package storage, YAML inspection, or layout.
 
+D-106's staged public layer now begins in `ScholiumContracts` with validated
+`ResearchActionID`, public execution kinds and Target roles, role-filtered
+default definitions, and a fail-closed versioned `ResearchActionSnapshot`.
+That snapshot contains no `ResearchFunctionID`. A separate versioned
+`ResearchActionRecordIdentity` fixes the complete Action projection allowed in
+future portable records to the Action ID alone; execution kind, Target role,
+and protected Function identity are not record fields. An internal-only
+`ResearchActionFunctionMapping` in `ScholiumApplication` maps Analysis and
+Synthesis to Develop, Write to Revise, and the remaining public execution
+kinds to their protected Function mechanisms after role validation. The
+existing Function coordinator, use cases, UI, CLI, and machine-local records
+remain the current runtime. No Action snapshot becomes execution authority,
+and no current record store writes the new identity until the later resolver
+and portable-record cutovers; those cutovers must use the record identity
+contract rather than serializing a Function ID.
+
 One delivery-neutral `ResearchFunctionCoordinator` per workspace owns
 availability, preparation, resource finalization, completion, cancellation,
 and record projection. It resolves/rechecks identities, inputs, resources,
