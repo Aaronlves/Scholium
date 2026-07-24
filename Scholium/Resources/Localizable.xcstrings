@@ -798,6 +798,38 @@
         }
       }
     },
+    "A Skill declares what it needs. This separate standing policy only decides when Scholium asks the researcher." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A Skill declares what it needs. This separate standing policy only decides when Scholium asks the researcher."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能声明其所需能力。独立的长期政策只决定 Scholium 何时询问研究者。"
+          }
+        }
+      }
+    },
+    "A Skill still used by a Working Method or Action Profile cannot be deleted. Remove its binding first." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A Skill still used by a Working Method or Action Profile cannot be deleted. Remove its binding first."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍由工作方法或操作配置使用的技能不能删除。请先移除其绑定。"
+          }
+        }
+      }
+    },
     "A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder." : {
       "localizations" : {
         "en" : {
@@ -890,6 +922,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关于此写作"
+          }
+        }
+      }
+    },
+    "ACTION PROFILES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ACTION PROFILES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作配置"
           }
         }
       }
@@ -1023,6 +1071,22 @@
         }
       }
     },
+    "Accepted Files" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Accepted Files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受的文件"
+          }
+        }
+      }
+    },
     "Access" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -1036,6 +1100,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查阅范围"
+          }
+        }
+      }
+    },
+    "Action" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作"
+          }
+        }
+      }
+    },
+    "Action Profiles declare requested capabilities here only as inspectable limits. Standing Triptych and per-Skill policies are not yet stored by this build." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Action Profiles declare requested capabilities here only as inspectable limits. Standing Triptych and per-Skill policies are not yet stored by this build."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作配置仅在此处将所需能力声明为可检查的上限。本版本尚不存储脉络或每项技能的长期政策。"
+          }
+        }
+      }
+    },
+    "Action placement" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Action placement"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作位置"
           }
         }
       }
@@ -1088,6 +1200,54 @@
         }
       }
     },
+    "Adapts to window width" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Adapts to window width"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随窗口宽度调整"
+          }
+        }
+      }
+    },
+    "Add Declarative Module" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add Declarative Module"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加声明式模块"
+          }
+        }
+      }
+    },
+    "Add Declarative Module…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add Declarative Module…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加声明式模块…"
+          }
+        }
+      }
+    },
     "Add Prompt Template" : {
       "localizations" : {
         "en" : {
@@ -1100,6 +1260,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加提示词模板"
+          }
+        }
+      }
+    },
+    "Add Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加技能"
           }
         }
       }
@@ -1633,6 +1809,38 @@
         }
       }
     },
+    "Allow These Notes Once" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Allow These Notes Once"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅本次允许这些笔记"
+          }
+        }
+      }
+    },
+    "Allow multiple lines" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Allow multiple lines"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许多行"
+          }
+        }
+      }
+    },
     "Also inspect: %@" : {
       "localizations" : {
         "en" : {
@@ -1779,6 +1987,22 @@
         }
       }
     },
+    "Analyze" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Analyze"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分析"
+          }
+        }
+      }
+    },
     "Any Author" : {
       "localizations" : {
         "en" : {
@@ -1859,6 +2083,22 @@
         }
       }
     },
+    "Applicable Note roles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Applicable Note roles"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适用的笔记角色"
+          }
+        }
+      }
+    },
     "Applied with a restorable snapshot." : {
       "localizations" : {
         "en" : {
@@ -1887,6 +2127,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "应用"
+          }
+        }
+      }
+    },
+    "Article Project" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Article Project"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论文项目"
+          }
+        }
+      }
+    },
+    "Ask Me Every Time" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ask Me Every Time"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次都询问我"
+          }
+        }
+      }
+    },
+    "Ask Me Only for Works" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ask Me Only for Works"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅修改作品时询问我"
+          }
+        }
+      }
+    },
+    "Ask for every additional change" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ask for every additional change"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次新增更改都询问"
           }
         }
       }
@@ -1936,6 +2240,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关注"
+          }
+        }
+      }
+    },
+    "Attention and Salience.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attention and Salience.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attention and Salience.md"
           }
         }
       }
@@ -2182,6 +2502,22 @@
         }
       }
     },
+    "BOUNDARY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "BOUNDARY"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "边界"
+          }
+        }
+      }
+    },
     "Back" : {
       "localizations" : {
         "en" : {
@@ -2210,6 +2546,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "返回研究文档"
+          }
+        }
+      }
+    },
+    "Back to Records" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Back to Records"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回记录"
           }
         }
       }
@@ -2359,6 +2711,22 @@
         }
       }
     },
+    "Bounded Text" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bounded Text"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "限定文本"
+          }
+        }
+      }
+    },
     "Broken Connection" : {
       "localizations" : {
         "en" : {
@@ -2455,6 +2823,22 @@
         }
       }
     },
+    "Button name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Button name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按钮名称"
+          }
+        }
+      }
+    },
     "CJK clauses do not use *. Continuous character matching is automatic." : {
       "localizations" : {
         "en" : {
@@ -2516,6 +2900,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CSS 安全模式：%arg"
+          }
+        }
+      }
+    },
+    "CURRENT BOUNDARY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "CURRENT BOUNDARY"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前边界"
           }
         }
       }
@@ -2584,6 +2984,22 @@
         }
       }
     },
+    "Cancel the Run" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cancel the Run"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消本次运行"
+          }
+        }
+      }
+    },
     "Cancelled" : {
       "localizations" : {
         "en" : {
@@ -2612,6 +3028,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消…"
+          }
+        }
+      }
+    },
+    "Candidate writable roles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Candidate writable roles"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选可写角色"
+          }
+        }
+      }
+    },
+    "Candidate write scope" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Candidate write scope"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选写入范围"
+          }
+        }
+      }
+    },
+    "Capabilities" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Capabilities"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能力声明"
           }
         }
       }
@@ -3040,6 +3504,38 @@
         }
       }
     },
+    "Choices" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choices"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选项"
+          }
+        }
+      }
+    },
+    "Choices as value: Label" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choices as value: Label"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每行一个选项，格式为值：标签"
+          }
+        }
+      }
+    },
     "Choose %@ Folder" : {
       "localizations" : {
         "en" : {
@@ -3233,6 +3729,22 @@
         }
       }
     },
+    "Choose a Triptych before editing an Action Profile." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a Triptych before editing an Action Profile."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先选择一个脉络，再编辑 Action Profile。"
+          }
+        }
+      }
+    },
     "Choose a Triptych destination for each imported note." : {
       "localizations" : {
         "en" : {
@@ -3297,6 +3809,38 @@
         }
       }
     },
+    "Choose one complete, compatible Triptych-local Method. This changes only the current Triptych." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose one complete, compatible Triptych-local Method. This changes only the current Triptych."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个完整且兼容的脉络本地方法。此操作只更改当前脉络。"
+          }
+        }
+      }
+    },
+    "Choose one local Skill directory. Scholium stages only bounded UTF-8 Skill resources and installs disabled copies." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose one local Skill directory. Scholium stages only bounded UTF-8 Skill resources and installs disabled copies."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个本地技能目录。Scholium 只暂存受限的 UTF-8 技能资源，并安装默认停用的副本。"
+          }
+        }
+      }
+    },
     "Choose one previous location, or identify the file as a new note." : {
       "localizations" : {
         "en" : {
@@ -3309,6 +3853,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择一个先前的位置，或将该文件标识为新的笔记。"
+          }
+        }
+      }
+    },
+    "Choose the exact source again before Analyze." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose the exact source again before Analyze."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在分析前重新选择确切来源。"
           }
         }
       }
@@ -3780,6 +4340,22 @@
         }
       }
     },
+    "Compare %@ Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compare %@ Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "比较 %@ 方法"
+          }
+        }
+      }
+    },
     "Compare Changes" : {
       "localizations" : {
         "en" : {
@@ -3808,6 +4384,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "先比较当前脉络，再恢复所选笔记或整个恢复点。"
+          }
+        }
+      }
+    },
+    "Compare with Bundled Reference" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compare with Bundled Reference"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与内置参考版本比较"
           }
         }
       }
@@ -3909,6 +4501,22 @@
         }
       }
     },
+    "Conceptual distinctions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Conceptual distinctions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "概念区分"
+          }
+        }
+      }
+    },
     "Configuration" : {
       "localizations" : {
         "en" : {
@@ -3937,6 +4545,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "配置名称"
+          }
+        }
+      }
+    },
+    "Configuration unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Configuration unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置不可用"
           }
         }
       }
@@ -3989,6 +4613,22 @@
         }
       }
     },
+    "Conflicts" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Conflicts"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冲突"
+          }
+        }
+      }
+    },
     "Connect" : {
       "localizations" : {
         "en" : {
@@ -4001,6 +4641,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "连接"
+          }
+        }
+      }
+    },
+    "Connect remains a separate Inspector area. Research Record remains an independent window." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Connect remains a separate Inspector area. Research Record remains an independent window."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接仍是检查器中的独立区域。研究记录仍使用独立窗口。"
           }
         }
       }
@@ -4098,6 +4754,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "继续"
+          }
+        }
+      }
+    },
+    "Continue Without Changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Continue Without Changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续但不作更改"
           }
         }
       }
@@ -4391,6 +5063,54 @@
         }
       }
     },
+    "Could Not Create Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Create Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法创建技能"
+          }
+        }
+      }
+    },
+    "Could Not Install Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Install Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法安装技能"
+          }
+        }
+      }
+    },
+    "Could Not Manage Researcher Skills" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Manage Researcher Skills"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法管理研究者技能"
+          }
+        }
+      }
+    },
     "Could Not Manage Skills" : {
       "localizations" : {
         "en" : {
@@ -4471,6 +5191,22 @@
         }
       }
     },
+    "Could Not Replace Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Replace Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法替换方法"
+          }
+        }
+      }
+    },
     "Could Not Save" : {
       "localizations" : {
         "en" : {
@@ -4483,6 +5219,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法保存"
+          }
+        }
+      }
+    },
+    "Could Not Save Action Profile" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Save Action Profile"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存操作配置"
           }
         }
       }
@@ -4515,6 +5267,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法保存讨论默认设置"
+          }
+        }
+      }
+    },
+    "Could Not Save Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Save Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存方法"
           }
         }
       }
@@ -4579,6 +5347,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法更新引用方法"
+          }
+        }
+      }
+    },
+    "Could Not Update Methods" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could Not Update Methods"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新方法"
           }
         }
       }
@@ -4695,6 +5479,22 @@
         }
       }
     },
+    "Create Action" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create Action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建操作"
+          }
+        }
+      }
+    },
     "Create Checkpoint" : {
       "localizations" : {
         "en" : {
@@ -4723,6 +5523,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建恢复点…"
+          }
+        }
+      }
+    },
+    "Create Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建技能"
           }
         }
       }
@@ -4792,6 +5608,38 @@
         }
       }
     },
+    "Create an Action from an identifier explicitly declared by this Skill. The Action starts hidden until its Profile is valid and deliberately shown." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create an Action from an identifier explicitly declared by this Skill. The Action starts hidden until its Profile is valid and deliberately shown."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此技能明确声明的标识符创建操作。操作初始为隐藏状态，只有配置有效且研究者主动选择显示后才会出现。"
+          }
+        }
+      }
+    },
+    "Create one disabled Triptych-local package and declare its first custom Action identifier. Edit the full method before showing it in Actions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create one disabled Triptych-local package and declare its first custom Action identifier. Edit the full method before showing it in Actions."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建一个默认停用的脉络本地包，并声明其首个自定义操作标识符。请先完整编辑方法，再将它显示在操作中。"
+          }
+        }
+      }
+    },
     "Created" : {
       "localizations" : {
         "en" : {
@@ -4804,6 +5652,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已创建"
+          }
+        }
+      }
+    },
+    "Created %lld independent Profile copies." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Created %lld independent Profile copies."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已创建 %lld 个独立配置副本。"
           }
         }
       }
@@ -5001,6 +5865,22 @@
         }
       }
     },
+    "Custom Action identifier" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Custom Action identifier"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义操作标识符"
+          }
+        }
+      }
+    },
     "Custom top-level YAML field" : {
       "localizations" : {
         "en" : {
@@ -5029,6 +5909,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自定义"
+          }
+        }
+      }
+    },
+    "DECLARED CAPABILITIES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "DECLARED CAPABILITIES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "声明的能力"
           }
         }
       }
@@ -5150,6 +6046,22 @@
         }
       }
     },
+    "Declarations can narrow a later grant; they cannot grant authority by themselves." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Declarations can narrow a later grant; they cannot grant authority by themselves."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "声明可以收窄之后的授权，但不能自行授予权限。"
+          }
+        }
+      }
+    },
     "Declare the scope within which this note's claims apply. Limitations are optional and should describe material boundaries." : {
       "localizations" : {
         "en" : {
@@ -5215,6 +6127,38 @@
         }
       }
     },
+    "Default behavior" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Default behavior"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认行为"
+          }
+        }
+      }
+    },
+    "Default on" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Default on"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认开启"
+          }
+        }
+      }
+    },
     "Delete" : {
       "localizations" : {
         "en" : {
@@ -5227,6 +6171,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除"
+          }
+        }
+      }
+    },
+    "Delete Action" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete Action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除操作"
+          }
+        }
+      }
+    },
+    "Delete Action Profile?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete Action Profile?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除操作配置？"
           }
         }
       }
@@ -5323,6 +6299,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除提示词模板"
+          }
+        }
+      }
+    },
+    "Delete Researcher Skill?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete Researcher Skill?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除研究者技能？"
           }
         }
       }
@@ -5536,6 +6528,22 @@
         }
       }
     },
+    "Dialectical structure" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dialectical structure"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "辩证结构"
+          }
+        }
+      }
+    },
     "Different revision" : {
       "localizations" : {
         "en" : {
@@ -5568,6 +6576,38 @@
         }
       }
     },
+    "Directory" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Directory"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目录"
+          }
+        }
+      }
+    },
+    "Disable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Disable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停用"
+          }
+        }
+      }
+    },
     "Disable All Snippets" : {
       "localizations" : {
         "en" : {
@@ -5596,6 +6636,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已停用"
+          }
+        }
+      }
+    },
+    "Disabled and hidden" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Disabled and hidden"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停用并隐藏"
+          }
+        }
+      }
+    },
+    "Discard Unsaved Changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Discard Unsaved Changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放弃未保存的更改"
           }
         }
       }
@@ -5644,6 +6716,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "讨论默认设置已保存"
+          }
+        }
+      }
+    },
+    "Discussion, 25 July 2026" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Discussion, 25 July 2026"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讨论，2026 年 7 月 25 日"
           }
         }
       }
@@ -5824,6 +6912,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "处置"
+          }
+        }
+      }
+    },
+    "Dissertation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dissertation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "学位论文"
           }
         }
       }
@@ -6069,6 +7173,38 @@
         }
       }
     },
+    "Each Triptych owns directly editable Working Methods. Bundled references are used only when you explicitly compare or restore." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Each Triptych owns directly editable Working Methods. Bundled references are used only when you explicitly compare or restore."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个脉络都拥有可直接编辑的工作方法。只有在研究者明确比较或恢复时才会使用内置参考版本。"
+          }
+        }
+      }
+    },
+    "Each selected Triptych receives an independent snapshot. Installation does not create hidden synchronization." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Each selected Triptych receives an independent snapshot. Installation does not create hidden synchronization."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个选中的脉络都会获得独立快照。安装不会建立隐藏同步。"
+          }
+        }
+      }
+    },
     "Earlier Work version" : {
       "localizations" : {
         "en" : {
@@ -6117,6 +7253,22 @@
         }
       }
     },
+    "Edit %@ Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Edit %@ Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑 %@ 方法"
+          }
+        }
+      }
+    },
     "Edit Managed Copy" : {
       "localizations" : {
         "en" : {
@@ -6129,6 +7281,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑托管副本"
+          }
+        }
+      }
+    },
+    "Edit Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Edit Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑方法"
           }
         }
       }
@@ -6198,6 +7366,54 @@
         }
       }
     },
+    "Editable Triptych Working Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Editable Triptych Working Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可编辑的脉络工作方法"
+          }
+        }
+      }
+    },
+    "Editable for this Triptych. A working method may be changed, disabled, replaced, or restored from its bundled reference." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Editable for this Triptych. A working method may be changed, disabled, replaced, or restored from its bundled reference."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可为当前脉络直接编辑。工作方法可以更改、停用、替换，或从内置参考版本恢复。"
+          }
+        }
+      }
+    },
+    "Editable property keys, one per line" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Editable property keys, one per line"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可编辑的属性键，每行一个"
+          }
+        }
+      }
+    },
     "Edit…" : {
       "localizations" : {
         "en" : {
@@ -6226,6 +7442,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "强调"
+          }
+        }
+      }
+    },
+    "Enable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Enable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用"
+          }
+        }
+      }
+    },
+    "Enable as Work Action" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Enable as Work Action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用为作品操作"
           }
         }
       }
@@ -6422,6 +7670,22 @@
         }
       }
     },
+    "Execution" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Execution"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "执行"
+          }
+        }
+      }
+    },
     "Expand All" : {
       "localizations" : {
         "en" : {
@@ -6519,6 +7783,22 @@
         }
       }
     },
+    "FILES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "FILES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件"
+          }
+        }
+      }
+    },
     "Failure" : {
       "localizations" : {
         "en" : {
@@ -6531,6 +7811,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "失败"
+          }
+        }
+      }
+    },
+    "Feedback" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Feedback"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反馈"
           }
         }
       }
@@ -6621,6 +7917,22 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Filter"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "筛选"
+          }
+        }
+      }
+    },
+    "Filters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Filters"
           }
         },
         "zh-Hans" : {
@@ -7161,6 +8473,22 @@
         }
       }
     },
+    "Help text" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Help text"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助文本"
+          }
+        }
+      }
+    },
     "Hidden" : {
       "localizations" : {
         "en" : {
@@ -7404,6 +8732,22 @@
         }
       }
     },
+    "Identifier" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Identifier"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标识符"
+          }
+        }
+      }
+    },
     "Identity" : {
       "localizations" : {
         "en" : {
@@ -7481,6 +8825,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "插图"
+          }
+        }
+      }
+    },
+    "Immediate Results Triptych" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Immediate Results Triptych"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即时结果脉络"
           }
         }
       }
@@ -7824,6 +9184,22 @@
         }
       }
     },
+    "Independent Triptych Window" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Independent Triptych Window"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "独立脉络窗口"
+          }
+        }
+      }
+    },
     "Indexed %lld of %lld notes." : {
       "localizations" : {
         "en" : {
@@ -7836,6 +9212,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已索引 %1$lld / %2$lld 篇笔记。"
+          }
+        }
+      }
+    },
+    "Inherit Triptych Policy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Inherit Triptych Policy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继承脉络政策"
           }
         }
       }
@@ -7952,6 +9344,22 @@
         }
       }
     },
+    "Inspect machine-local Skill recovery snapshots and reveal portable or legacy files without projecting legacy guidance into current Actions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Inspect machine-local Skill recovery snapshots and reveal portable or legacy files without projecting legacy guidance into current Actions."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查机器本地的技能恢复快照，并显示可移植文件或旧文件，但不把旧指导投射到当前操作中。"
+          }
+        }
+      }
+    },
     "Install" : {
       "localizations" : {
         "en" : {
@@ -7964,6 +9372,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "安装"
+          }
+        }
+      }
+    },
+    "Install Disabled" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install Disabled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装后停用"
+          }
+        }
+      }
+    },
+    "Install Researcher Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install Researcher Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装研究者技能"
+          }
+        }
+      }
+    },
+    "Install To" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install To"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装到"
+          }
+        }
+      }
+    },
+    "Install Working Methods" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install Working Methods"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装工作方法"
+          }
+        }
+      }
+    },
+    "Install a local directory or create a bounded Triptych-local Skill." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install a local directory or create a bounded Triptych-local Skill."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装本地目录，或创建一个受限的脉络本地技能。"
           }
         }
       }
@@ -7984,6 +9472,70 @@
         }
       }
     },
+    "Install from Local Directory…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install from Local Directory…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从本地目录安装…"
+          }
+        }
+      }
+    },
+    "Install or create bounded local Skills, edit their Triptych copy, and configure declarative Actions. Nothing runs or receives authority from this page." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install or create bounded local Skills, edit their Triptych copy, and configure declarative Actions. Nothing runs or receives authority from this page."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装或创建受限的本地技能，编辑其脉络副本，并配置声明式操作。此页面不会运行任何内容，也不会授予权限。"
+          }
+        }
+      }
+    },
+    "Installed Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Installed Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装的技能"
+          }
+        }
+      }
+    },
+    "Installed Skills start disabled. A valid Action Profile and deliberate Show in Actions choice are still required." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Installed Skills start disabled. A valid Action Profile and deliberate Show in Actions choice are still required."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装的技能初始为停用状态。仍需有效的操作配置，并由研究者主动选择在操作中显示。"
+          }
+        }
+      }
+    },
     "Installs the bundled Scholium command in the displayed user-local path" : {
       "localizations" : {
         "en" : {
@@ -7996,6 +9548,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在显示的用户本地路径中安装捆绑的 Scholium 命令"
+          }
+        }
+      }
+    },
+    "Instruction" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Instruction"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说明"
           }
         }
       }
@@ -8028,6 +9596,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完整性检查"
+          }
+        }
+      }
+    },
+    "Interface Proofs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Interface Proofs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "界面证明"
           }
         }
       }
@@ -8244,6 +9828,22 @@
         }
       }
     },
+    "Label" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Label"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签"
+          }
+        }
+      }
+    },
     "Last Connected" : {
       "localizations" : {
         "en" : {
@@ -8305,6 +9905,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "留空以进行以中立源为中心的筛选。"
+          }
+        }
+      }
+    },
+    "Legacy files remain byte-unchanged and cannot authorize a current Action." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Legacy files remain byte-unchanged and cannot authorize a current Action."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旧文件保持字节不变，且不能授权当前操作。"
           }
         }
       }
@@ -8904,6 +10520,22 @@
         }
       }
     },
+    "Long-lived source, citation, bibliography, agent-handoff, and command-line configuration lives here. Action-specific source choice remains in the Action sheet." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Long-lived source, citation, bibliography, agent-handoff, and command-line configuration lives here. Action-specific source choice remains in the Action sheet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "长期的来源、引文、参考书目、Agent 交接和命令行配置位于此处。特定操作的来源选择仍在操作面板中进行。"
+          }
+        }
+      }
+    },
     "Lower headings (H3–H6)" : {
       "localizations" : {
         "en" : {
@@ -8948,6 +10580,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "元数据格式错误"
+          }
+        }
+      }
+    },
+    "Manage" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Manage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理"
           }
         }
       }
@@ -9065,6 +10713,38 @@
         }
       }
     },
+    "Material" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Material"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "材料"
+          }
+        }
+      }
+    },
+    "Material Selector" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Material Selector"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "材料选择器"
+          }
+        }
+      }
+    },
     "Materials are fixed for the prepared instructions." : {
       "localizations" : {
         "en" : {
@@ -9109,6 +10789,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "数学、代码和表格采用 Scholium 克制的公共样式，从而在不同配置间保持语义以及阅读与实时预览的一致性。"
+          }
+        }
+      }
+    },
+    "Maximum UTF-8 bytes: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Maximum UTF-8 bytes: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8 最大字节数：%lld"
+          }
+        }
+      }
+    },
+    "Maximum selections: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Maximum selections: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最多选择数：%lld"
           }
         }
       }
@@ -9177,6 +10889,38 @@
         }
       }
     },
+    "Method prose can guide scholarly work, but it cannot change identity, revision, permission, checkpoint, conflict, completion, or recovery rules." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Method prose can guide scholarly work, but it cannot change identity, revision, permission, checkpoint, conflict, completion, or recovery rules."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法文本可以指导学术工作，但不能更改身份、修订、权限、检查点、冲突、完成或恢复规则。"
+          }
+        }
+      }
+    },
+    "Methods" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Methods"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法"
+          }
+        }
+      }
+    },
     "Migrating app-owned records…" : {
       "localizations" : {
         "en" : {
@@ -9205,6 +10949,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "现代生活训练我们几乎立即期待可见的结果。一条消息在几秒钟内就可以传递，但这种速度悄然改变了我们对有价值的工作应该花多长时间的感觉。"
+          }
+        }
+      }
+    },
+    "Modify Markdown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Modify Markdown"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改 Markdown"
+          }
+        }
+      }
+    },
+    "Modify bounded Properties" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Modify bounded Properties"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改限定的属性"
+          }
+        }
+      }
+    },
+    "Module identifier" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Module identifier"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模块标识符"
           }
         }
       }
@@ -9627,6 +11419,38 @@
         }
       }
     },
+    "NONEXECUTING ACTION SHEET PREVIEW" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "NONEXECUTING ACTION SHEET PREVIEW"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非执行式操作面板预览"
+          }
+        }
+      }
+    },
+    "Nagel, What Is It Like to Be a Bat?.pdf" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Nagel, What Is It Like to Be a Bat?.pdf"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nagel《成为一只蝙蝠可能是什么样子？》.pdf"
+          }
+        }
+      }
+    },
     "Name" : {
       "localizations" : {
         "en" : {
@@ -9659,6 +11483,22 @@
         }
       }
     },
+    "Narrow" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Narrow"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "窄"
+          }
+        }
+      }
+    },
     "Needs Attention" : {
       "localizations" : {
         "en" : {
@@ -9687,6 +11527,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要重新连接 — 原行 %lld"
+          }
+        }
+      }
+    },
+    "Needs repair" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Needs repair"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要修复"
           }
         }
       }
@@ -9740,6 +11596,22 @@
         }
       }
     },
+    "New Action" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "New Action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建操作"
+          }
+        }
+      }
+    },
     "New Discuss Requests" : {
       "localizations" : {
         "en" : {
@@ -9768,6 +11640,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建文件夹"
+          }
+        }
+      }
+    },
+    "New Local Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "New Local Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建本地技能"
+          }
+        }
+      }
+    },
+    "New Local Skill…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "New Local Skill…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建本地技能…"
           }
         }
       }
@@ -9913,6 +11817,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前没有打开的文稿"
+          }
+        }
+      }
+    },
+    "No Active Triptych" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Active Triptych"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有活跃脉络"
           }
         }
       }
@@ -10176,6 +12096,38 @@
         }
       }
     },
+    "No Researcher Skills" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Researcher Skills"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有研究者技能"
+          }
+        }
+      }
+    },
+    "No Researcher Skills for this Note role." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Researcher Skills for this Note role."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有适用于此笔记角色的研究者技能。"
+          }
+        }
+      }
+    },
     "No Scholium request history is associated with this Critique." : {
       "localizations" : {
         "en" : {
@@ -10204,6 +12156,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有搁置的文档"
+          }
+        }
+      }
+    },
+    "No Skill recovery snapshots are available." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Skill recovery snapshots are available."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可用的技能恢复快照。"
           }
         }
       }
@@ -10353,6 +12321,22 @@
         }
       }
     },
+    "No configured Actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No configured Actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有已配置的操作"
+          }
+        }
+      }
+    },
     "No critique" : {
       "localizations" : {
         "en" : {
@@ -10497,6 +12481,22 @@
         }
       }
     },
+    "No unconfigured Action IDs in SKILL.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No unconfigured Action IDs in SKILL.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SKILL.md 中没有未配置的操作标识符"
+          }
+        }
+      }
+    },
     "No valid purpose is available." : {
       "localizations" : {
         "en" : {
@@ -10541,6 +12541,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无"
+          }
+        }
+      }
+    },
+    "Normative Reasons.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Normative Reasons.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normative Reasons.md"
           }
         }
       }
@@ -10626,6 +12642,22 @@
         }
       }
     },
+    "Note Picker" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note Picker"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记选择器"
+          }
+        }
+      }
+    },
     "Note identity" : {
       "localizations" : {
         "en" : {
@@ -10654,6 +12686,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未找到笔记：%@"
+          }
+        }
+      }
+    },
+    "Note role" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note role"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记角色"
+          }
+        }
+      }
+    },
+    "Note roles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note roles"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记角色"
           }
         }
       }
@@ -10976,6 +13040,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开研究记录"
+          }
+        }
+      }
+    },
+    "Open Research Workflow Interface Proofs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open Research Workflow Interface Proofs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开研究工作流界面证明"
           }
         }
       }
@@ -11476,6 +13556,22 @@
         }
       }
     },
+    "Optional" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Optional"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选"
+          }
+        }
+      }
+    },
     "Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration." : {
       "localizations" : {
         "en" : {
@@ -11504,6 +13600,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可选回应模块"
+          }
+        }
+      }
+    },
+    "Optional bounded instruction" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Optional bounded instruction"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选的限定说明"
           }
         }
       }
@@ -11641,6 +13753,38 @@
         }
       }
     },
+    "Order in Actions: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Order in Actions: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在操作中的顺序：%lld"
+          }
+        }
+      }
+    },
+    "Order: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Order: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺序：%lld"
+          }
+        }
+      }
+    },
     "Orientation" : {
       "localizations" : {
         "en" : {
@@ -11653,6 +13797,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方向"
+          }
+        }
+      }
+    },
+    "Origin" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Origin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源"
           }
         }
       }
@@ -11723,6 +13883,54 @@
         }
       }
     },
+    "PLACEMENT" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "PLACEMENT"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置"
+          }
+        }
+      }
+    },
+    "PLANNED POLICIES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "PLANNED POLICIES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "计划中的政策"
+          }
+        }
+      }
+    },
+    "PROFILE MODULES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "PROFILE MODULES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置模块"
+          }
+        }
+      }
+    },
     "PROPERTIES" : {
       "localizations" : {
         "en" : {
@@ -11751,6 +13959,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "来源"
+          }
+        }
+      }
+    },
+    "Package" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Package"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包"
           }
         }
       }
@@ -11784,6 +14008,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "软件包比较（%lld 项已更改）"
+          }
+        }
+      }
+    },
+    "Package identifier" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Package identifier"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包标识符"
           }
         }
       }
@@ -11869,6 +14109,22 @@
         }
       }
     },
+    "Parent run" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Parent run"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "父运行"
+          }
+        }
+      }
+    },
     "Passage" : {
       "localizations" : {
         "en" : {
@@ -11885,6 +14141,22 @@
         }
       }
     },
+    "Passage Anchor" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Passage Anchor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "段落锚点"
+          }
+        }
+      }
+    },
     "Paste as Markdown" : {
       "localizations" : {
         "en" : {
@@ -11897,6 +14169,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "粘贴为 Markdown"
+          }
+        }
+      }
+    },
+    "Permission" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Permission"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "权限"
+          }
+        }
+      }
+    },
+    "Permissions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Permissions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "权限"
+          }
+        }
+      }
+    },
+    "Pinned" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Pinned"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已固定"
           }
         }
       }
@@ -12109,6 +14429,22 @@
         }
       }
     },
+    "Preserve competing interpretations" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preserve competing interpretations"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留相互竞争的解释"
+          }
+        }
+      }
+    },
     "Preview" : {
       "localizations" : {
         "en" : {
@@ -12121,6 +14457,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "预览"
+          }
+        }
+      }
+    },
+    "Preview width" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preview width"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览宽度"
           }
         }
       }
@@ -12288,6 +14640,22 @@
         }
       }
     },
+    "Proposed Actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Proposed Actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建议的操作"
+          }
+        }
+      }
+    },
     "Proposed package revision" : {
       "localizations" : {
         "en" : {
@@ -12349,6 +14717,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "出版物的形式，而不是哲学的作用。"
+          }
+        }
+      }
+    },
+    "Purpose" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Purpose"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用途"
           }
         }
       }
@@ -12593,6 +14977,38 @@
         }
       }
     },
+    "Readable roles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Readable roles"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可读角色"
+          }
+        }
+      }
+    },
+    "Reason" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reason"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "理由"
+          }
+        }
+      }
+    },
     "Reattach Here" : {
       "localizations" : {
         "en" : {
@@ -12802,6 +15218,22 @@
         }
       }
     },
+    "Record Details" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record Details"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录详情"
+          }
+        }
+      }
+    },
     "Record Response" : {
       "localizations" : {
         "en" : {
@@ -12882,6 +15314,22 @@
         }
       }
     },
+    "Recovery & Technical" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recovery & Technical"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复与技术"
+          }
+        }
+      }
+    },
     "Recovery Issues" : {
       "localizations" : {
         "en" : {
@@ -12927,6 +15375,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "恢复问题（%lld）"
+          }
+        }
+      }
+    },
+    "Recovery Operation Failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recovery Operation Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复操作失败"
           }
         }
       }
@@ -13136,6 +15600,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在刷新派生状态…"
+          }
+        }
+      }
+    },
+    "Regular" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Regular"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常规"
           }
         }
       }
@@ -13382,6 +15862,22 @@
         }
       }
     },
+    "Remove Module" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove Module"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除模块"
+          }
+        }
+      }
+    },
     "Remove Snippet" : {
       "localizations" : {
         "en" : {
@@ -13608,6 +16104,22 @@
         }
       }
     },
+    "Reopen Current Revision" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reopen Current Revision"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新打开当前修订"
+          }
+        }
+      }
+    },
     "Repair in Research Guidance" : {
       "localizations" : {
         "en" : {
@@ -13652,6 +16164,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "修复…"
+          }
+        }
+      }
+    },
+    "Replace %@ Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Replace %@ Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换 %@ 方法"
+          }
+        }
+      }
+    },
+    "Replace…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Replace…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换…"
           }
         }
       }
@@ -13721,6 +16265,22 @@
         }
       }
     },
+    "Requested" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Requested"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求提供"
+          }
+        }
+      }
+    },
     "Requested Destination" : {
       "localizations" : {
         "en" : {
@@ -13733,6 +16293,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请求的目的地"
+          }
+        }
+      }
+    },
+    "Requested writes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Requested writes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求的写入"
+          }
+        }
+      }
+    },
+    "Required" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "必需"
           }
         }
       }
@@ -13978,6 +16570,22 @@
         }
       }
     },
+    "Research Workflow Interface Proofs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Research Workflow Interface Proofs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究工作流界面证明"
+          }
+        }
+      }
+    },
     "Research instructions copied." : {
       "localizations" : {
         "en" : {
@@ -14022,6 +16630,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究者属性"
+          }
+        }
+      }
+    },
+    "Researcher Skill SKILL.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Researcher Skill SKILL.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究者技能 SKILL.md"
+          }
+        }
+      }
+    },
+    "Researcher Skill: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Researcher Skill: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究者技能：%@"
+          }
+        }
+      }
+    },
+    "Researcher Skills" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Researcher Skills"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究者技能"
           }
         }
       }
@@ -14205,6 +16861,22 @@
         }
       }
     },
+    "Restore Bundled Reference" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Restore Bundled Reference"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复内置参考版本"
+          }
+        }
+      }
+    },
     "Restore Complete Package" : {
       "localizations" : {
         "en" : {
@@ -14233,6 +16905,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "恢复完整的研究者技能？"
+          }
+        }
+      }
+    },
+    "Restore Complete Skill Package?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Restore Complete Skill Package?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复完整技能包？"
           }
         }
       }
@@ -14362,6 +17050,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "恢复…"
+          }
+        }
+      }
+    },
+    "Result" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Result"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结果"
           }
         }
       }
@@ -14574,6 +17278,22 @@
         }
       }
     },
+    "Reveal Legacy Data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reveal Legacy Data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示旧数据"
+          }
+        }
+      }
+    },
     "Reveal Recovery Records in Finder" : {
       "localizations" : {
         "en" : {
@@ -14670,6 +17390,70 @@
         }
       }
     },
+    "Revert Unsaved Changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Revert Unsaved Changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还原未保存的更改"
+          }
+        }
+      }
+    },
+    "Review Directory" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review Directory"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查目录"
+          }
+        }
+      }
+    },
+    "Review Permissions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review Permissions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查权限"
+          }
+        }
+      }
+    },
+    "Review Validation Report" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review Validation Report"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看验证报告"
+          }
+        }
+      }
+    },
     "Review derived warnings and recoverable research issues" : {
       "localizations" : {
         "en" : {
@@ -14702,6 +17486,22 @@
         }
       }
     },
+    "Review the exact staged inventory before Scholium creates disabled, independent Triptych copies." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review the exact staged inventory before Scholium creates disabled, independent Triptych copies."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Scholium 创建默认停用且彼此独立的脉络副本前，请检查暂存目录的确切清单。"
+          }
+        }
+      }
+    },
     "Review the reply. Finish records one Commented activity; Follow Up keeps this exchange open." : {
       "localizations" : {
         "en" : {
@@ -14714,6 +17514,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "审阅回应。结束后会记录一次已评论活动；继续沟通会保持本次交流打开。"
+          }
+        }
+      }
+    },
+    "Review this local directory before Scholium creates a disabled, Triptych-local snapshot." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review this local directory before Scholium creates a disabled, Triptych-local snapshot."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Scholium 创建默认停用的脉络本地快照前，请检查此本地目录。"
           }
         }
       }
@@ -14928,6 +17744,54 @@
         }
       }
     },
+    "SKILL PACKAGE" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SKILL PACKAGE"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能包"
+          }
+        }
+      }
+    },
+    "SKILL RECOVERY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SKILL RECOVERY"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能恢复"
+          }
+        }
+      }
+    },
+    "SKILL.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SKILL.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SKILL.md"
+          }
+        }
+      }
+    },
     "SKILL.md source" : {
       "localizations" : {
         "en" : {
@@ -15008,6 +17872,22 @@
         }
       }
     },
+    "Save Copy to Triptychs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Copy to Triptychs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将副本保存到脉络"
+          }
+        }
+      }
+    },
     "Save Current Search…" : {
       "localizations" : {
         "en" : {
@@ -15072,6 +17952,38 @@
         }
       }
     },
+    "Save Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存方法"
+          }
+        }
+      }
+    },
+    "Save Profile" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Profile"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存配置"
+          }
+        }
+      }
+    },
     "Save Properties" : {
       "localizations" : {
         "en" : {
@@ -15100,6 +18012,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存搜索"
+          }
+        }
+      }
+    },
+    "Save Selected Copies" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Selected Copies"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存所选副本"
           }
         }
       }
@@ -15747,6 +18675,22 @@
         }
       }
     },
+    "Scholium rechecks the current package revision and creates an undo snapshot before replacement when possible." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium rechecks the current package revision and creates an undo snapshot before replacement when possible."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会重新检查当前包的修订，并尽可能在替换前创建撤销快照。"
+          }
+        }
+      }
+    },
     "Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself." : {
       "localizations" : {
         "en" : {
@@ -15807,6 +18751,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 验证包结构和路由，而不是哲学质量。"
+          }
+        }
+      }
+    },
+    "Scholium validates structure and bounded routing, not philosophical quality." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium validates structure and bounded routing, not philosophical quality."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 验证结构和受限路由，不判断哲学质量。"
           }
         }
       }
@@ -15984,6 +18944,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索名称"
+          }
+        }
+      }
+    },
+    "Search records" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search records"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索记录"
           }
         }
       }
@@ -16472,6 +19448,22 @@
         }
       }
     },
+    "Show in Actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show in Actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在操作中显示"
+          }
+        }
+      }
+    },
     "Showing results from the last complete index while the replacement is built." : {
       "localizations" : {
         "en" : {
@@ -16616,6 +19608,22 @@
         }
       }
     },
+    "Skill name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Skill name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能名称"
+          }
+        }
+      }
+    },
     "Skill saved" : {
       "localizations" : {
         "en" : {
@@ -16744,6 +19752,22 @@
         }
       }
     },
+    "Source Reference" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Source Reference"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源引用"
+          }
+        }
+      }
+    },
     "Source basis" : {
       "localizations" : {
         "en" : {
@@ -16806,6 +19830,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "面向来源的报告和证据记录"
+          }
+        }
+      }
+    },
+    "Sources & Integrations" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sources & Integrations"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源与集成"
           }
         }
       }
@@ -16890,6 +19930,22 @@
         }
       }
     },
+    "Standing policy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Standing policy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "长期政策"
+          }
+        }
+      }
+    },
     "Start inset" : {
       "localizations" : {
         "en" : {
@@ -16902,6 +19958,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "起始内边距"
+          }
+        }
+      }
+    },
+    "Starting revision" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Starting revision"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起始修订"
+          }
+        }
+      }
+    },
+    "State" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "State"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态"
           }
         }
       }
@@ -17032,6 +20120,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "结构验证"
+          }
+        }
+      }
+    },
+    "Structurally valid" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Structurally valid"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结构有效"
           }
         }
       }
@@ -17227,6 +20331,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支持目标"
+          }
+        }
+      }
+    },
+    "Synthesize" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Synthesize"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "综合"
+          }
+        }
+      }
+    },
+    "Synthetic data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Synthetic data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合成数据"
           }
         }
       }
@@ -17507,6 +20643,22 @@
         }
       }
     },
+    "The Agent Wants to Change Additional Notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Agent Wants to Change Additional Notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 希望修改其他笔记"
+          }
+        }
+      }
+    },
     "The Markdown editor resources could not be reloaded." : {
       "localizations" : {
         "en" : {
@@ -17551,6 +20703,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在“设置”中修复研究者技能绑定。"
+          }
+        }
+      }
+    },
+    "The Skill can declare requirements, but it cannot hide or expand these fields." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Skill can declare requirements, but it cannot hide or expand these fields."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能可以声明要求，但不能隐藏或扩大这些字段。"
           }
         }
       }
@@ -17615,6 +20783,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完整的研究者技能包已更改。在请求提案之前重新加载它。"
+          }
+        }
+      }
+    },
+    "The current Analyze run remains frozen. An allowed selection would begin a separate authorized phase." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The current Analyze run remains frozen. An allowed selection would begin a separate authorized phase."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前分析运行的范围保持冻结。获准的选择将开始一个独立授权阶段。"
           }
         }
       }
@@ -18294,6 +21478,22 @@
         }
       }
     },
+    "This Triptych does not yet have editable Working Methods." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Triptych does not yet have editable Working Methods."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此脉络尚未安装可编辑的工作方法。"
+          }
+        }
+      }
+    },
     "This Vault" : {
       "localizations" : {
         "en" : {
@@ -18326,6 +21526,22 @@
         }
       }
     },
+    "This comparison is disposable. It does not replace or modify either Skill." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This comparison is disposable. It does not replace or modify either Skill."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此比较是一次性的，不会替换或修改任何技能。"
+          }
+        }
+      }
+    },
     "This draft remains read-only and creates no current state." : {
       "localizations" : {
         "en" : {
@@ -18338,6 +21554,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此草稿保持只读，不产生当前状态。"
+          }
+        }
+      }
+    },
+    "This edits the Triptych Working Method directly. Saving creates a new package revision; the bundled reference remains unchanged." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This edits the Triptych Working Method directly. Saving creates a new package revision; the bundled reference remains unchanged."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会直接编辑脉络的工作方法。保存后将创建新的包修订，内置参考版本保持不变。"
           }
         }
       }
@@ -18503,6 +21735,22 @@
         }
       }
     },
+    "This page does not grant reusable authority. Until the standing-permission implementation is complete, every new write scope continues through the existing short-lived authorization boundary." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This page does not grant reusable authority. Until the standing-permission implementation is complete, every new write scope continues through the existing short-lived authorization boundary."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此页面不授予可重复使用的权限。在长期权限实施完成前，每个新的写入范围仍须经过现有的短期授权边界。"
+          }
+        }
+      }
+    },
     "This permanently removes the selected Triptych-local skill package. Bundled guidance is not changed." : {
       "localizations" : {
         "en" : {
@@ -18548,6 +21796,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此配置文件包含不受支持的回应模块：%arg。请先更新 Scholium，再进行保存。"
+          }
+        }
+      }
+    },
+    "This removes the Action Profile from the current Triptych. The Skill package remains, but the Profile has no undo and must be recreated to restore the Action." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This removes the Action Profile from the current Triptych. The Skill package remains, but the Profile has no undo and must be recreated to restore the Action."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会从当前脉络中移除操作配置。技能包会保留，但此配置无法撤销；若要恢复该操作，必须重新创建配置。"
           }
         }
       }
@@ -18765,6 +22029,22 @@
         }
       }
     },
+    "Toggle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Toggle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开关"
+          }
+        }
+      }
+    },
     "Toggle Task" : {
       "localizations" : {
         "en" : {
@@ -18782,7 +22062,6 @@
       }
     },
     "Topic" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -18976,6 +22255,22 @@
         }
       }
     },
+    "Triptych-wide" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Triptych-wide"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整个脉络"
+          }
+        }
+      }
+    },
     "Type" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -19021,6 +22316,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Callout 的字体排版继承自“正文”。这些控件只调整该角色的间距与结构，不会更改其语义身份。"
+          }
+        }
+      }
+    },
+    "Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用"
           }
         }
       }
@@ -19219,6 +22530,22 @@
         }
       }
     },
+    "Use Selected Method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Use Selected Method"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用所选方法"
+          }
+        }
+      }
+    },
     "Use Source mode while the rendered document is unavailable." : {
       "localizations" : {
         "en" : {
@@ -19311,6 +22638,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用作上下文"
+          }
+        }
+      }
+    },
+    "Use current selection, paragraphs 4–7" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Use current selection, paragraphs 4–7"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用当前选区，第 4 至 7 段"
           }
         }
       }
@@ -19528,6 +22871,22 @@
         }
       }
     },
+    "Validating Skill files and declared capabilities…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Validating Skill files and declared capabilities…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在验证技能文件和声明的能力…"
+          }
+        }
+      }
+    },
     "Vault" : {
       "localizations" : {
         "en" : {
@@ -19657,6 +23016,22 @@
         }
       }
     },
+    "WORKING METHOD SKILLS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "WORKING METHOD SKILLS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作方法技能"
+          }
+        }
+      }
+    },
     "What Attention Can Report" : {
       "localizations" : {
         "en" : {
@@ -19686,6 +23061,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "是否可以在稳定的地点检查引文。"
+          }
+        }
+      }
+    },
+    "Whether salience supplies a reason" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Whether salience supplies a reason"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显著性是否提供理由"
           }
         }
       }
@@ -19798,6 +23189,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "与 Agent 协作"
+          }
+        }
+      }
+    },
+    "Working Method SKILL.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Working Method SKILL.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作方法 SKILL.md"
           }
         }
       }
@@ -20173,6 +23580,22 @@
         }
       }
     },
+    "evals/strong-objection.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "evals/strong-objection.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "evals/strong-objection.md"
+          }
+        }
+      }
+    },
     "footnote" : {
       "localizations" : {
         "en" : {
@@ -20266,6 +23689,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "路径"
+          }
+        }
+      }
+    },
+    "references/evaluation-questions.md" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "references/evaluation-questions.md"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "references/evaluation-questions.md"
           }
         }
       }

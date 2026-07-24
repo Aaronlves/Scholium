@@ -813,7 +813,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testResearchGuidanceSkillsAreReachableInSettings() throws {
+    func retiredResearchGuidanceSkillsAreReachableInSettings() throws {
         let collisionPackage = triptychDirectory.appendingPathComponent(
             ".scholium/skills/scholium-analyze",
             isDirectory: true
@@ -956,6 +956,170 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testResearchGuidanceUsesCategorizedResearcherGovernance() throws {
+        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+        appMenu.click()
+        let settings = app.menuItems["Settings…"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 3))
+        settings.click()
+
+        let categoryList = app.descendants(matching: .any)[
+            "scholium.researchGuidance.categoryList"
+        ]
+        XCTAssertTrue(categoryList.waitForExistence(timeout: 10))
+        for category in [
+            "Methods",
+            "Researcher Skills",
+            "Permissions",
+            "Sources & Integrations",
+            "Recovery & Technical",
+        ] {
+            XCTAssertTrue(app.descendants(matching: .any)[
+                "scholium.researchGuidance.category.\(category)"
+            ].exists)
+        }
+
+        let methods = app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Methods"
+        ]
+        methods.click()
+        let installWorkingMethods = app.descendants(matching: .any)[
+            "scholium.researchGuidance.installWorkingMethods"
+        ]
+        if installWorkingMethods.waitForExistence(timeout: 3) {
+            installWorkingMethods.click()
+        }
+        for actionID in [
+            "discuss", "analyze", "synthesize", "write", "critique",
+            "check-fidelity", "manuscript",
+        ] {
+            XCTAssertTrue(app.descendants(matching: .any)[
+                "scholium.researchGuidance.method.\(actionID)"
+            ].waitForExistence(timeout: 8))
+        }
+        let manuscriptStatus = app.descendants(matching: .any)[
+            "scholium.researchGuidance.method.manuscript.status"
+        ]
+        XCTAssertTrue(manuscriptStatus.waitForExistence(timeout: 8))
+        XCTAssertEqual(manuscriptStatus.value as? String, "Disabled and hidden")
+        let manuscriptManage = app.descendants(matching: .any)[
+            "scholium.researchGuidance.method.manuscript.manage"
+        ]
+        XCTAssertTrue(manuscriptManage.waitForExistence(timeout: 5))
+        manuscriptManage.click()
+        let enableManuscript = app.menuItems["Enable as Work Action"]
+        XCTAssertTrue(enableManuscript.waitForExistence(timeout: 5))
+        enableManuscript.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (manuscriptStatus.value as? String) != "Disabled and hidden"
+        })
+        manuscriptManage.click()
+        XCTAssertTrue(app.menuItems["Edit Method"].waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Researcher Skills"
+        ].click()
+        XCTAssertTrue(app.menuButtons["Add Skill"].waitForExistence(timeout: 8))
+        XCTAssertEqual(
+            app.popUpButtons.firstMatch.value as? String,
+            "No Researcher Skills"
+        )
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Permissions"
+        ].click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.permissions"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Ask Me Every Time"].exists)
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Sources & Integrations"
+        ].click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.sources"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.agentCLI.section"
+        ].waitForExistence(timeout: 8))
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Recovery & Technical"
+        ].click()
+        XCTAssertTrue(app.buttons["Reveal Skills Folder"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Reveal Legacy Data"].exists)
+    }
+
+    @MainActor
+    func testResearcherSkillActionProfilePersistsAcrossSettingsReopen() throws {
+        openResearchGuidanceSkills()
+
+        let addSkill = app.menuButtons["Add Skill"]
+        XCTAssertTrue(addSkill.waitForExistence(timeout: 10))
+        addSkill.click()
+        let newLocalSkill = app.menuItems["New Local Skill…"]
+        XCTAssertTrue(newLocalSkill.waitForExistence(timeout: 5))
+        newLocalSkill.click()
+
+        let createSkill = app.buttons["Create Skill"]
+        XCTAssertTrue(createSkill.waitForExistence(timeout: 5))
+        XCTAssertTrue(createSkill.isEnabled)
+        createSkill.click()
+
+        let newAction = app.menuButtons["New Action"]
+        XCTAssertTrue(newAction.waitForExistence(timeout: 10))
+        newAction.click()
+        let declaredAction = app.menuItems["New Research Action"]
+        XCTAssertTrue(declaredAction.waitForExistence(timeout: 5))
+        declaredAction.click()
+
+        let researcherSkills = app.scrollViews[
+            "scholium.researchGuidance.researcherSkills"
+        ]
+        XCTAssertTrue(researcherSkills.waitForExistence(timeout: 5))
+        let showInActions = app.descendants(matching: .any)[
+            "scholium.researchGuidance.profile.showInActions"
+        ]
+        XCTAssertTrue(showInActions.waitForExistence(timeout: 5))
+        showInActions.click()
+
+        let saveProfile = app.descendants(matching: .any)[
+            "scholium.researchGuidance.profile.save"
+        ]
+        XCTAssertTrue(saveProfile.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveProfile.isEnabled)
+        saveProfile.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            saveProfile.exists && saveProfile.label == "Save Profile"
+        })
+
+        let profileURL = triptychDirectory
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("research-action-profiles-v1.json")
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: profileURL.path)
+        })
+        let data = try Data(contentsOf: profileURL)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let bindings = try XCTUnwrap(root["action_bindings"] as? [String: Any])
+        let binding = try XCTUnwrap(bindings["new-research-action"] as? [String: Any])
+        let profile = try XCTUnwrap(binding["profile"] as? [String: Any])
+        XCTAssertEqual(profile["show_in_actions"] as? Bool, true)
+
+        let settingsWindow = app.windows["Research Guidance"]
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+        settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
+        openResearchGuidanceSkills()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.profile.save"
+        ].waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     func testScholiumCLIInstallsFromSettings() throws {
         openResearchGuidanceSkills(openAdvanced: true)
 
@@ -985,7 +1149,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testGuidedEvolutionAppliesAndRestoresACompleteResearcherSkill() throws {
+    func retiredGuidedEvolutionAppliesAndRestoresACompleteResearcherSkill() throws {
         XCTAssertTrue(app.buttons["scholium.vault.output"].waitForExistence(timeout: 15))
         waitForDocumentSurface()
         app.terminate()
@@ -1191,7 +1355,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testResearchGuidanceWaitsForTriptychActivationWithoutIncompleteAlert() throws {
+    func retiredResearchGuidanceWaitsForTriptychActivationWithoutIncompleteAlert() throws {
         openResearchGuidanceSkills()
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchGuidance.skill.bundled.scholium-analyze"
@@ -5054,7 +5218,7 @@ final class ScholiumUITests: XCTestCase {
         }
         application.launchArguments += [
             "-scholium.settings.selectedPane", "research-guidance",
-            "-scholium.settings.researchGuidanceCollection", "skills",
+            "-scholium.settings.researchGuidanceCategory", "Methods",
         ]
         if name.contains("testResearchWorkflowInterfaceProofs") {
             application.launchArguments += ["--scholium-research-workflow-proofs"]
@@ -5484,21 +5648,22 @@ final class ScholiumUITests: XCTestCase {
         let settings = app.menuItems["Settings…"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
-        let collection = app.descendants(matching: .any)[
-            "scholium.researchGuidance.collection"
+        let categoryList = app.descendants(matching: .any)[
+            "scholium.researchGuidance.categoryList"
         ]
-        XCTAssertTrue(collection.waitForExistence(timeout: 10))
-        let skills = app.radioButtons["Skills"]
-        XCTAssertTrue(skills.waitForExistence(timeout: 5))
-        skills.click()
-        XCTAssertTrue(
-            app.descendants(matching: .any)["scholium.researchGuidance.skillList"]
-                .waitForExistence(timeout: 10)
-        )
+        XCTAssertTrue(categoryList.waitForExistence(timeout: 10))
+        let category = app.descendants(matching: .any)[
+            openAdvanced
+                ? "scholium.researchGuidance.category.Sources & Integrations"
+                : "scholium.researchGuidance.category.Researcher Skills"
+        ]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        category.click()
         if openAdvanced {
-            let advanced = app.radioButtons["Advanced"]
-            XCTAssertTrue(advanced.waitForExistence(timeout: 5))
-            advanced.click()
+            XCTAssertTrue(
+                app.descendants(matching: .any)["scholium.agentCLI.section"]
+                    .waitForExistence(timeout: 10)
+            )
         }
     }
 

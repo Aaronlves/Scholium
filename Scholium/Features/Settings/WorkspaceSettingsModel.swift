@@ -37,6 +37,11 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     }
 }
 
+struct ResearchActionProfileCopyOutcome: Equatable, Sendable {
+    let copiedTriptychIDs: [UUID]
+    let failures: [UUID: String]
+}
+
 /// Triptych registration and portable-settings operations used by Settings.
 @MainActor
 struct WorkspaceSettingsWorkspaceCapabilities {
@@ -118,6 +123,50 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
         UUID, UUID, ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome
     let researchSkillsURL: (UUID) async throws -> URL
+    let workingMethodBindings: (
+        UUID
+    ) async throws -> ResearchWorkingMethodBindingSnapshot?
+    let installDefaultWorkingMethods: (
+        UUID
+    ) async throws -> ResearchWorkingMethodBindingSnapshot
+    let saveWorkingMethod: (
+        UUID,
+        ResearchActionID,
+        String,
+        DocumentFingerprint,
+        DocumentFingerprint
+    ) async throws -> ResearchSkillPackage
+    let disableWorkingMethod: (
+        UUID, ResearchActionID, DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot
+    let activateResearcherSkill: (
+        UUID, String, ResearchActionID, DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot
+    let restoreBundledWorkingMethod: (
+        UUID,
+        ResearchActionID,
+        ResearchWorkingMethodExpectedPackageState,
+        DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodRestoreOutcome
+    let actionProfiles: (UUID) async throws -> ResearchActionProfileSnapshot?
+    let saveActionProfile: (
+        UUID,
+        ResearchActionProfileBinding,
+        DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot
+    let removeActionProfile: (
+        UUID, ResearchActionID, DocumentFingerprint
+    ) async throws -> ResearchActionProfileSnapshot
+    let saveActionProfileDocument: (
+        UUID, ResearchActionProfileDocument, DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot
+    let stageResearcherSkillInstallation: (
+        URL
+    ) async throws -> ResearchSkillInstallationPreparation
+    let installResearcherSkill: (
+        ResearchSkillInstallationPreparation, [UUID]
+    ) async throws -> ResearchSkillInstallationOutcome
+    let discardResearcherSkillInstallation: (UUID) async -> Void
 }
 
 /// Delivery-neutral operations assembled by the macOS composition root.
@@ -372,6 +421,217 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await capabilities.researchGuidance.researchSkills(id)
+    }
+
+    func workingMethodBindings() async throws -> ResearchWorkingMethodBindingSnapshot? {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.workingMethodBindings(id)
+    }
+
+    func installDefaultWorkingMethods() async throws -> ResearchWorkingMethodBindingSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.installDefaultWorkingMethods(id)
+    }
+
+    func saveWorkingMethod(
+        for actionID: ResearchActionID,
+        source: String,
+        expectedPackageRevision: DocumentFingerprint,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchSkillPackage {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.saveWorkingMethod(
+            id,
+            actionID,
+            source,
+            expectedPackageRevision,
+            expectedBindingRevision
+        )
+    }
+
+    func disableWorkingMethod(
+        for actionID: ResearchActionID,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.disableWorkingMethod(
+            id,
+            actionID,
+            expectedBindingRevision
+        )
+    }
+
+    func activateResearcherSkill(
+        packageID: String,
+        for actionID: ResearchActionID,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodBindingSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.activateResearcherSkill(
+            id,
+            packageID,
+            actionID,
+            expectedBindingRevision
+        )
+    }
+
+    func restoreBundledWorkingMethod(
+        for actionID: ResearchActionID,
+        expectedPackageState: ResearchWorkingMethodExpectedPackageState,
+        expectedBindingRevision: DocumentFingerprint
+    ) async throws -> ResearchWorkingMethodRestoreOutcome {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.restoreBundledWorkingMethod(
+            id,
+            actionID,
+            expectedPackageState,
+            expectedBindingRevision
+        )
+    }
+
+    func actionProfiles() async throws -> ResearchActionProfileSnapshot? {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.actionProfiles(id)
+    }
+
+    func saveActionProfile(
+        _ binding: ResearchActionProfileBinding,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.saveActionProfile(
+            id,
+            binding,
+            expectedDocumentRevision
+        )
+    }
+
+    func removeActionProfile(
+        actionID: ResearchActionID,
+        expectedDocumentRevision: DocumentFingerprint
+    ) async throws -> ResearchActionProfileSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.removeActionProfile(
+            id,
+            actionID,
+            expectedDocumentRevision
+        )
+    }
+
+    func saveActionProfileDocument(
+        _ document: ResearchActionProfileDocument,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.saveActionProfileDocument(
+            id,
+            document,
+            expectedDocumentRevision
+        )
+    }
+
+    /// Creates explicit independent Profile copies. Package bytes are never
+    /// synchronized here: every destination must already contain its own
+    /// compatible Skill snapshot from staged installation.
+    func copyActionProfile(
+        _ binding: ResearchActionProfileBinding,
+        to triptychIDs: [UUID]
+    ) async -> ResearchActionProfileCopyOutcome {
+        guard let capabilities else {
+            return ResearchActionProfileCopyOutcome(
+                copiedTriptychIDs: [],
+                failures: Dictionary(uniqueKeysWithValues: triptychIDs.map {
+                    ($0, WorkspaceRegistryError.incompleteWorkspace.localizedDescription)
+                })
+            )
+        }
+        var revisions: [UUID: DocumentFingerprint?] = [:]
+        var failures: [UUID: String] = [:]
+        for id in triptychIDs {
+            do {
+                let packages = try await capabilities.researchGuidance.researchSkills(id)
+                guard packages.contains(where: {
+                    $0.origin == .triptych
+                        && $0.id == binding.packageID
+                        && $0.isValid
+                        && $0.supports(binding.profile.actionID)
+                }) else {
+                    throw ResearchActionProfileStorageError.packageDoesNotSupportAction(
+                        packageID: binding.packageID,
+                        actionID: binding.profile.actionID
+                    )
+                }
+                revisions[id] = try await capabilities.researchGuidance
+                    .actionProfiles(id)?.revision
+            } catch {
+                failures[id] = error.localizedDescription
+            }
+        }
+        var copied: [UUID] = []
+        for id in triptychIDs where failures[id] == nil {
+            do {
+                _ = try await capabilities.researchGuidance.saveActionProfile(
+                    id,
+                    binding,
+                    revisions[id] ?? nil
+                )
+                copied.append(id)
+            } catch {
+                failures[id] = error.localizedDescription
+            }
+        }
+        return ResearchActionProfileCopyOutcome(
+            copiedTriptychIDs: copied,
+            failures: failures
+        )
+    }
+
+    func stageResearcherSkillInstallation(
+        from directoryURL: URL
+    ) async throws -> ResearchSkillInstallationPreparation {
+        guard let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance
+            .stageResearcherSkillInstallation(directoryURL)
+    }
+
+    func installResearcherSkill(
+        _ preparation: ResearchSkillInstallationPreparation,
+        to triptychIDs: [UUID]
+    ) async throws -> ResearchSkillInstallationOutcome {
+        guard let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.installResearcherSkill(
+            preparation,
+            triptychIDs
+        )
+    }
+
+    func discardResearcherSkillInstallation(preparationID: UUID) async {
+        await capabilities?.researchGuidance
+            .discardResearcherSkillInstallation(preparationID)
     }
 
     func inspectResearchSkillDraft(

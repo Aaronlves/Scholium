@@ -181,6 +181,19 @@ public protocol ResearchSkillUseCases: Sendable {
         snapshotID: UUID,
         expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome
+    func actionProfiles() async throws -> ResearchActionProfileSnapshot?
+    func saveActionProfile(
+        _ binding: ResearchActionProfileBinding,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot
+    func removeActionProfile(
+        actionID: ResearchActionID,
+        expectedDocumentRevision: DocumentFingerprint
+    ) async throws -> ResearchActionProfileSnapshot
+    func saveActionProfileDocument(
+        _ document: ResearchActionProfileDocument,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot
 }
 
 /// App-wide installation spans one or more Triptychs and therefore belongs to

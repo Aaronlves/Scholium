@@ -320,8 +320,18 @@ Applicable Targets must remain readable, picker roles must remain inside that
 scope, execution kinds impose their direct-write role maximum, and Analyze
 requires one matching required source-reference module. These are structural
 declarations for a future authority intersection, not current permission or
-preparation state. No Profile file store, binding, digest, resolver, UI, or run
-snapshot integration exists yet.
+preparation state. `ResearchActionProfileDocument` stores at most 256
+Action-keyed bindings in `.scholium/research-action-profiles-v1.json`. Core
+reads and atomically replaces that one bounded file through no-follow directory
+descriptors, exact expected-revision checks, readback validation, and a
+package/Profile compatibility check. The document may bind researcher-owned
+Action identities and the optional bundled Manuscript Action only; it cannot
+replace the six default bundled Action identities. This storage and its
+production Settings editor are nonexecuting: no approval digest, general
+resolver, preparation authority, or run snapshot consumes a Profile yet. Once
+a file exchange commits, any failed directory flush, readback, cleanup, or
+canonical-path identity proof returns an unsafe-document error; bytes visible
+through the old descriptor never become a reported Settings success.
 
 `ResearchSourceReference` schema 1 is the only source-access value permitted in
 an Action/Function snapshot or future portable record. It contains a closed
@@ -404,7 +414,9 @@ preserved. A missing or moved package, replaced Skills root, identity mismatch,
 or otherwise unprovable rollback produces a typed recovery-required error.
 Installation creates no binding, Profile, permission approval, or execution
 state, so an unbound package starts disabled and later edits cannot synchronize
-across Triptychs silently. Cleanup and presentation of installation recovery
+across Triptychs silently. Production Research Guidance Settings now presents
+the staged inventory in a native sheet and requires explicit destination
+Triptych selection. Cleanup and presentation of installation recovery
 quarantines remain later Research Guidance work.
 
 Action execution resolves only that Action-keyed v2 document. Its
@@ -699,9 +711,36 @@ revision separately, and a corrupt retained stage cannot hide the valid
 machine-local snapshot. A binding exchange that commits but cannot complete
 verification is reported as recovery-required without rolling the package back
 into a state that could contradict the active binding. Every prepared run
-captures the resulting exact package and loaded-resource revisions. The
-categorized Methods and Researcher Skills interface remains a later
-production-Settings cutover.
+captures the resulting exact package and loaded-resource revisions.
+
+The production Research Guidance pane now owns one persistent category list
+for Methods, Researcher Skills, Permissions, Sources and Integrations, and
+Recovery and Technical. Methods exposes direct edit, disposable bundled
+comparison, disable, compatible replacement, explicit restore, hidden
+Manuscript activation and direct edit, and explicit default installation for
+an established Triptych with no v2 document. Researcher Skills exposes local
+package editing,
+structural validation, staged directory installation, package deletion guarded
+by every current or retained binding, and Action Profile creation, confirmed
+deletion, global ordering, seven bounded modules, declared role/source/write
+requirements, and a nonexecuting native sheet preview. An Action ID already
+owned by any Profile cannot be silently claimed by another Skill. Root-owned
+Skill drafts are keyed by Triptych and package; Action Profile drafts are keyed
+by Triptych, package, and Action. They survive Skill, category, and Settings-tab
+navigation until the researcher saves or discards them without crossing a
+Triptych boundary. Methods, Researcher Skills, and Recovery publish asynchronous
+reload results only after cancellation and active-Triptych identity checks; the
+New Local Skill sheet is dismissed when that identity changes. Deleting an
+unused Skill rechecks binding, Profile, root, package identity, and complete
+package revision before an atomic
+isolation move; production then archives the exact package through the
+machine-local recovery store rather than recursively deleting possibly late
+external writes. Applying one Profile to other Triptychs
+preflights a compatible independently installed package and writes independent
+copies; it never synchronizes Skill bytes. The visible Permissions category
+states that standing policies are not stored yet rather than simulating Session
+14 authority. The retained Function-era Settings implementation is unreachable
+migration code pending the final clean-cutover removal.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych

@@ -81,7 +81,6 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-
         #expect(!source.contains("@EnvironmentObject private var appState"))
         let declarations = source.components(separatedBy: "\n").filter {
             $0.contains("@EnvironmentObject")
@@ -132,58 +131,114 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
     }
 
-    @Test("Research Guidance local editors cannot register a window sidebar")
-    func researchGuidanceUsesPageLocalSplits() throws {
+    @Test("Production Research Guidance is one categorized list-detail surface")
+    func researchGuidanceUsesFrozenCategories() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/WorkspaceSettingsView.swift"
+                "Scholium/Views/ResearchGuidanceSettingsView.swift"
             ),
             encoding: .utf8
         )
 
         #expect(!source.contains("NavigationSplitView {"))
         #expect(source.contains("HSplitView"))
-        #expect(source.contains("scholium.researchGuidance.promptTemplateList"))
-        #expect(source.contains("scholium.researchGuidance.skillList"))
+        for category in [
+            "Methods",
+            "Researcher Skills",
+            "Permissions",
+            "Sources & Integrations",
+            "Recovery & Technical",
+        ] {
+            #expect(source.contains(category))
+        }
+        #expect(source.contains("scholium.researchGuidance.categoryList"))
+        #expect(!source.contains("Prompt Templates"))
+        #expect(!source.contains("card grid"))
     }
 
-    @Test("Skills owns package editing while Advanced owns only global guidance configuration")
-    func researchGuidancePagesHaveSeparateOwnership() throws {
+    @Test("Production Skills Settings reaches bounded editing and installation")
+    func researchGuidanceOwnsCurrentSkillConfiguration() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchGuidanceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let settingsRootSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/WorkspaceSettingsView.swift"
             ),
             encoding: .utf8
         )
-        let skillsStart = try #require(source.range(of: "if collection == .skills {"))
-        let advancedStart = try #require(source.range(
-            of: "} else if collection == .advanced {",
-            range: skillsStart.upperBound..<source.endIndex
+        #expect(source.contains("Edit Method"))
+        #expect(source.contains("Compare with Bundled Reference"))
+        #expect(source.contains("Restore Bundled Reference"))
+        #expect(source.contains("Enable as Work Action"))
+        #expect(source.contains("Install from Local Directory…"))
+        #expect(source.contains("NSOpenPanel()"))
+        #expect(source.contains("allowedContentTypes = [.folder]"))
+        #expect(source.contains("Install Disabled"))
+        #expect(source.contains("Discard Unsaved Changes"))
+        #expect(source.contains("Add Declarative Module"))
+        #expect(source.contains("NONEXECUTING ACTION SHEET PREVIEW"))
+        #expect(source.contains("Save Copy to Triptychs"))
+        #expect(source.contains("Move Earlier"))
+        #expect(source.contains("Move Later"))
+        #expect(source.contains("canMoveProfile"))
+        #expect(source.contains("globallyConfigured"))
+        #expect(source.contains("Delete Action Profile?"))
+        #expect(source.contains("ResearchGuidanceDraftStore"))
+        #expect(source.contains("ResearcherSkillDraftKey"))
+        #expect(source.contains("ResearchActionProfileDraftKey"))
+        #expect(
+            source.components(separatedBy: "try Task.checkCancellation()").count - 1
+                == 3
+        )
+        #expect(
+            source.components(
+                separatedBy: "settingsModel.activeTriptychServicesID == requestedTriptychID"
+            ).count - 1 == 6
+        )
+        #expect(
+            source.components(
+                separatedBy: ".disabled(loadedTriptychID != settingsModel.activeTriptychServicesID)"
+            ).count - 1 == 3
+        )
+        #expect(
+            source.components(separatedBy: "newSkillDraft = nil").count - 1 == 2
+        )
+        #expect(settingsRootSource.contains(
+            "@StateObject private var researchGuidanceDraftStore"
         ))
-        let promptStart = try #require(source.range(
-            of: "} else {",
-            range: advancedStart.upperBound..<source.endIndex
+        #expect(settingsRootSource.contains(
+            "ResearchGuidanceSettingsView(draftStore: researchGuidanceDraftStore)"
         ))
-        let skillsPage = String(source[skillsStart.lowerBound..<advancedStart.lowerBound])
-        let advancedPage = String(source[advancedStart.lowerBound..<promptStart.lowerBound])
-
-        #expect(skillsPage.contains("ResearchSkillsSettingsView("))
-        #expect(!skillsPage.contains("ResearchGuidanceAdvancedSettingsView("))
-        #expect(advancedPage.contains("ResearchGuidanceAdvancedSettingsView("))
-        #expect(!advancedPage.contains("ResearchSkillsSettingsView("))
-        #expect(source.contains("Button(\"Reveal Skills Folder\", action: revealSkillsFolder)"))
+        #expect(source.contains("draftStore.hasUnsavedChanges"))
+        #expect(source.contains(
+            "actionID == .manuscript && binding.state == .researcherSkill"
+        ))
+        #expect(source.contains("Reveal Skills Folder"))
+        #expect(source.contains("Reveal Legacy Data"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
         #expect(source.contains("RecommendedBibliographyMethodSettingsView()"))
-        #expect(source.contains("ResearchFunctionMethodSettingsView("))
+        for forbidden in [
+            ".regularMaterial",
+            ".ultraThinMaterial",
+            "glassEffect(",
+            "GroupBox(",
+            " · ",
+        ] {
+            #expect(!source.contains(forbidden))
+        }
     }
 
     @Test("Settings model retains only delivery-neutral capabilities")

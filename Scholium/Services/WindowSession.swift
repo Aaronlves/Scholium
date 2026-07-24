@@ -617,9 +617,82 @@ final class WorkspaceStore: ObservableObject {
                     expectedCurrentState: expectedState
                 )
             },
-                researchSkillsURL: { [self] id in
-                    try await workspaceHandle(id: id).research.skillsURL
-                }
+            researchSkillsURL: { [self] id in
+                try await workspaceHandle(id: id).research.skillsURL
+            },
+            workingMethodBindings: { [self] id in
+                try await workspaceHandle(id: id).research.workingMethodBindings()
+            },
+            installDefaultWorkingMethods: { [self] id in
+                try await workspaceHandle(id: id).research.installDefaultWorkingMethods()
+            },
+            saveWorkingMethod: {
+                [self] id, actionID, source, packageRevision, bindingRevision in
+                try await workspaceHandle(id: id).research.saveWorkingMethod(
+                    for: actionID,
+                    source: source,
+                    expectedPackageRevision: packageRevision,
+                    expectedBindingRevision: bindingRevision
+                )
+            },
+            disableWorkingMethod: { [self] id, actionID, revision in
+                try await workspaceHandle(id: id).research.disableWorkingMethod(
+                    for: actionID,
+                    expectedBindingRevision: revision
+                )
+            },
+            activateResearcherSkill: { [self] id, packageID, actionID, revision in
+                try await workspaceHandle(id: id).research.activateResearcherSkill(
+                    packageID: packageID,
+                    for: actionID,
+                    expectedBindingRevision: revision
+                )
+            },
+            restoreBundledWorkingMethod: {
+                [self] id, actionID, expectedPackageState, revision in
+                try await workspaceHandle(id: id).research.restoreBundledWorkingMethod(
+                    for: actionID,
+                    expectedPackageState: expectedPackageState,
+                    expectedBindingRevision: revision
+                )
+            },
+            actionProfiles: { [self] id in
+                try await workspaceHandle(id: id).research.actionProfiles()
+            },
+            saveActionProfile: { [self] id, binding, revision in
+                try await workspaceHandle(id: id).research.saveActionProfile(
+                    binding,
+                    expectedDocumentRevision: revision
+                )
+            },
+            removeActionProfile: { [self] id, actionID, revision in
+                try await workspaceHandle(id: id).research.removeActionProfile(
+                    actionID: actionID,
+                    expectedDocumentRevision: revision
+                )
+            },
+            saveActionProfileDocument: { [self] id, document, revision in
+                try await workspaceHandle(id: id).research.saveActionProfileDocument(
+                    document,
+                    expectedDocumentRevision: revision
+                )
+            },
+            stageResearcherSkillInstallation: { [self] directoryURL in
+                try await applicationRuntime.stageResearcherSkillInstallation(
+                    from: directoryURL
+                )
+            },
+            installResearcherSkill: { [self] preparation, triptychIDs in
+                try await applicationRuntime.installResearcherSkill(
+                    preparation,
+                    to: triptychIDs
+                )
+            },
+            discardResearcherSkillInstallation: { [self] preparationID in
+                await applicationRuntime.discardResearcherSkillInstallation(
+                    preparationID: preparationID
+                )
+            }
             )
         )
     }

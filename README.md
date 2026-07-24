@@ -85,8 +85,10 @@ references, and independent Triptych Working Methods are now reachable
 foundations. Profiles can describe only seven native module kinds, bounded
 presentation values, source and feedback requirements, and a candidate
 existing-note capability ceiling; they cannot carry executable code or grant
-authority. No Profile storage, Settings editor, resolver, or run integration is
-reachable yet. Analyze now requires one explicitly bound, fingerprinted regular
+authority. Triptych-local Profile storage and the categorized production
+Methods and Researcher Skills editor are now reachable, but the general Action
+resolver and run integration are not. Analyze now requires one explicitly
+bound, fingerprinted regular
 file: either a local selection or an exact Zotero parent/attachment identity
 confirmed against a selected local file. Persisted bookmarks and paths remain in
 machine-local Application Support; run snapshots retain only the safe route,
@@ -103,18 +105,23 @@ only by binding v2 and never falls back to a bundled reference or legacy
 Function binding. Direct edits and bundled restores send displaced complete
 packages to the existing machine-local Research Guidance snapshot inventory. A
 cross-volume fallback keeps and reports the hidden portable package rather than
-deleting an inode that may receive a late external write. Classified Skills
-settings are not yet production UI, but their installation backend is now
-reachable: one researcher-selected local directory is bounded, inventoried,
-and structurally validated before independently copied, disabled packages are
-atomically published to the explicitly selected Triptychs. A package identifier
+deleting an inode that may receive a late external write. Classified Methods
+and Researcher Skills settings are now production UI. They support direct
+Working Method edit, disable, replacement and explicit bundled restore; hidden
+Manuscript activation; bounded local Skill creation and staged directory
+installation; and revision-checked declarative Action Profile edit, delete,
+ordering and explicit independent Triptych copies. One researcher-selected
+local directory is bounded, inventoried, and structurally validated before
+independently copied, disabled packages are atomically published to the
+explicitly selected Triptychs. A package identifier
 still named by a current or retained active binding is rejected, and partial
 failure moves proved installed copies into hidden nonexecuting recovery
 quarantine rather than deleting possible late external writes. Archives,
 network content, links, executables, scripts, nested resources, and implicit
-Action/permission bindings are rejected. Profile editing, standing permissions,
-unified Discussion, and the portable two-panel Research Record adopted by D-106
-remain later migration work.
+Action/permission bindings are rejected. Profiles remain nonexecuting, and
+standing permissions, general Action resolution, unified Discussion, and the
+portable two-panel Research Record adopted by D-106 remain later migration
+work.
 
 ## Requirements
 
@@ -291,8 +298,8 @@ not accepted.
 
 ## Scholium CLI
 
-From a packaged app, open **Settings → Research Guidance → Skills → Advanced →
-Scholium CLI** and choose **Install**. Scholium installs the version-matched helper
+From a packaged app, open **Settings → Research Guidance → Sources &
+Integrations → Scholium CLI** and choose **Install**. Scholium installs the version-matched helper
 to `~/.local/bin/scholium`, reports whether that directory is discoverable in
 the current PATH, and offers a PATH setup command without editing shell files.
 

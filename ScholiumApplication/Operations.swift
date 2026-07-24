@@ -803,6 +803,44 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.workingMethodBindings()
     }
 
+    public func actionProfiles() async throws -> ResearchActionProfileSnapshot? {
+        let handle = try await reference.requireHandle()
+        return try await handle.actionProfiles()
+    }
+
+    public func saveActionProfile(
+        _ binding: ResearchActionProfileBinding,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveActionProfile(
+            binding,
+            expectedDocumentRevision: expectedDocumentRevision
+        )
+    }
+
+    public func removeActionProfile(
+        actionID: ResearchActionID,
+        expectedDocumentRevision: DocumentFingerprint
+    ) async throws -> ResearchActionProfileSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.removeActionProfile(
+            actionID: actionID,
+            expectedDocumentRevision: expectedDocumentRevision
+        )
+    }
+
+    public func saveActionProfileDocument(
+        _ document: ResearchActionProfileDocument,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) async throws -> ResearchActionProfileSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveActionProfileDocument(
+            document,
+            expectedDocumentRevision: expectedDocumentRevision
+        )
+    }
+
     public func installDefaultWorkingMethods()
         async throws -> ResearchWorkingMethodBindingSnapshot
     {

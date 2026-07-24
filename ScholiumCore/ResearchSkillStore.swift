@@ -8,6 +8,7 @@ enum ResearchWorkingMethodStoreFaultPoint: Sendable {
     case afterPackageReplacement(packageID: String)
     case afterDisplacedPackageArchive(packageID: String)
     case afterBindingCommit
+    case afterActionProfileCommit
     case beforeFunctionPackageResolution(actionID: ResearchActionID)
 }
 
@@ -30,6 +31,7 @@ public actor ResearchSkillStore {
     public nonisolated let skillsURL: URL
     public nonisolated let bindingsURL: URL
     public nonisolated let workingMethodBindingsURL: URL
+    public nonisolated let actionProfileBindingsURL: URL
 
     private let controlURL: URL
     private let fileManager: FileManager
@@ -51,6 +53,11 @@ public actor ResearchSkillStore {
                 "research-working-method-bindings-v2.json",
                 isDirectory: false
             )
+        self.actionProfileBindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent(
+                "research-action-profiles-v1.json",
+                isDirectory: false
+            )
         self.fileManager = fileManager
         workingMethodHooks = .none
         self.workingMethodRecoveryStore = workingMethodRecoveryStore
@@ -70,6 +77,11 @@ public actor ResearchSkillStore {
         self.workingMethodBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent(
                 "research-working-method-bindings-v2.json",
+                isDirectory: false
+            )
+        self.actionProfileBindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent(
+                "research-action-profiles-v1.json",
                 isDirectory: false
             )
         self.fileManager = fileManager
@@ -195,6 +207,7 @@ public actor ResearchSkillStore {
         to newID: String,
         expectedRevision: DocumentFingerprint
     ) throws -> ResearchSkillPackage {
+        _ = try validatePackageIsUnused(id)
         if try catalog().entries.contains(where: { $0.id == newID }) {
             throw ResearchSkillError.protectedPackageShadow(newID)
         }
@@ -209,8 +222,120 @@ public actor ResearchSkillStore {
     }
 
     public func delete(id: String, expectedRevision: DocumentFingerprint) throws {
-        let sourceURL = try existingRegularSkillURL(id: id, expectedRevision: expectedRevision)
-        try fileManager.removeItem(at: sourceURL.deletingLastPathComponent())
+        let usage = try validatePackageIsUnused(id)
+        try ensureSkillsDirectory()
+        let rootDescriptor = try SecureResearchSkillPackageIO.openSkillsRoot(skillsURL)
+        defer { Darwin.close(rootDescriptor) }
+        let rootIdentity = try SecureResearchSkillPackageIO.identity(
+            of: rootDescriptor,
+            path: skillsURL.path
+        )
+        let packageDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+            parentDescriptor: rootDescriptor,
+            name: id,
+            path: id
+        )
+        let packageIdentity: SecureResearchSkillPackageIO.DirectoryIdentity
+        let sources: [String: String]
+        do {
+            packageIdentity = try SecureResearchSkillPackageIO.identity(
+                of: packageDescriptor,
+                path: id
+            )
+            sources = try SecureResearchSkillPackageIO.strictPackageSources(
+                packageDescriptor: packageDescriptor,
+                packageID: id
+            )
+            Darwin.close(packageDescriptor)
+        } catch {
+            Darwin.close(packageDescriptor)
+            throw error
+        }
+        guard Self.packageRevision(sources: sources) == expectedRevision else {
+            throw ResearchSkillError.stalePackage(id)
+        }
+
+        let recheckedUsage = try validatePackageIsUnused(id)
+        let recheckedDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+            parentDescriptor: rootDescriptor,
+            name: id,
+            path: id
+        )
+        defer { Darwin.close(recheckedDescriptor) }
+        guard usage == recheckedUsage,
+              try SecureResearchSkillPackageIO.identity(
+                  of: recheckedDescriptor,
+                  path: id
+              ) == packageIdentity,
+              try SecureResearchSkillPackageIO.strictPackageSources(
+                  packageDescriptor: recheckedDescriptor,
+                  packageID: id
+              ) == sources,
+              try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
+                  skillsURL,
+                  identity: rootIdentity
+              ) else {
+            throw ResearchSkillError.stalePackage(id)
+        }
+
+        let isolatedName = ".deleting-\(id)-\(UUID().uuidString.lowercased())"
+        var isolated = false
+        do {
+            try SecureResearchSkillPackageIO.movePackageExclusively(
+                rootDescriptor: rootDescriptor,
+                source: id,
+                destination: isolatedName
+            )
+            isolated = true
+            guard fsync(rootDescriptor) == 0,
+                  try !SecureResearchSkillPackageIO.directoryExists(
+                      parentDescriptor: rootDescriptor,
+                      name: id,
+                      path: id
+                  ) else {
+                throw ResearchSkillError.packageDeletionRecoveryRequired(id)
+            }
+            let isolatedDescriptor = try SecureResearchSkillPackageIO.openDirectory(
+                parentDescriptor: rootDescriptor,
+                name: isolatedName,
+                path: isolatedName
+            )
+            defer { Darwin.close(isolatedDescriptor) }
+            guard try SecureResearchSkillPackageIO.identity(
+                of: isolatedDescriptor,
+                path: isolatedName
+            ) == packageIdentity,
+                  try SecureResearchSkillPackageIO.strictPackageSources(
+                      packageDescriptor: isolatedDescriptor,
+                      packageID: isolatedName
+                  ) == sources,
+                  try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
+                      skillsURL,
+                      identity: rootIdentity
+                  ) else {
+                throw ResearchSkillError.packageDeletionRecoveryRequired(id)
+            }
+            if let workingMethodRecoveryStore {
+                let reservation = workingMethodRecoveryStore.reserve(
+                    packageID: id,
+                    packageRevision: expectedRevision
+                )
+                try workingMethodRecoveryStore.archive(
+                    sourceParentDescriptor: rootDescriptor,
+                    sourceName: isolatedName,
+                    reservation: reservation
+                )
+            }
+            // Stores without a machine-local recovery owner are used only by
+            // bounded Core fixtures. Keep their isolated hidden package rather
+            // than recursively deleting bytes that an external descriptor may
+            // still be changing.
+        } catch {
+            if isolated {
+                throw ResearchSkillError.packageDeletionRecoveryRequired(id)
+            }
+            throw error
+        }
     }
 
     public func catalog() throws -> ResearchSkillCatalog {
@@ -744,6 +869,209 @@ public actor ResearchSkillStore {
         return DocumentFingerprint(data: data)
     }
 
+    // MARK: - Researcher Action Profiles v1
+
+    public func actionProfileSnapshot() throws -> ResearchActionProfileSnapshot? {
+        guard fileManager.fileExists(atPath: controlURL.path) else {
+            return nil
+        }
+        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
+            controlURL
+        )
+        defer { Darwin.close(rootDescriptor) }
+        let rootIdentity = try SecureResearchSkillPackageIO.identity(
+            of: rootDescriptor,
+            path: controlURL.path
+        )
+        guard let data = try SecureResearchSkillPackageIO.dataFileIfPresent(
+            parentDescriptor: rootDescriptor,
+            leaf: actionProfileBindingsURL.lastPathComponent,
+            path: actionProfileBindingsURL.path,
+            maximumByteCount: Self.maximumActionProfileDocumentByteCount
+        ) else {
+            return nil
+        }
+        guard try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
+            controlURL,
+            identity: rootIdentity
+        ) else {
+            throw ResearchActionProfileStorageError.unsafeDocument
+        }
+        let document: ResearchActionProfileDocument
+        do {
+            document = try JSONDecoder().decode(
+                ResearchActionProfileDocument.self,
+                from: data
+            )
+        } catch {
+            throw ResearchActionProfileStorageError.invalidDocument(
+                error.localizedDescription
+            )
+        }
+        return ResearchActionProfileSnapshot(
+            document: document,
+            revision: DocumentFingerprint(data: data)
+        )
+    }
+
+    /// Saves one structurally validated custom Action or optional Manuscript
+    /// Profile. `nil` is valid only when the document is currently absent;
+    /// every later replacement is revision checked.
+    @discardableResult
+    public func saveActionProfile(
+        _ binding: ResearchActionProfileBinding,
+        expectedDocumentRevision: DocumentFingerprint?
+    ) throws -> ResearchActionProfileSnapshot {
+        try validateActionProfileBinding(binding)
+        let current = try actionProfileSnapshot()
+        guard current?.revision == expectedDocumentRevision else {
+            throw ResearchActionProfileStorageError.staleDocument
+        }
+        let document = try (current?.document ?? ResearchActionProfileDocument())
+            .replacing(binding, for: binding.profile.actionID)
+        return try saveActionProfileDocument(
+            document,
+            expectedRevision: expectedDocumentRevision
+        )
+    }
+
+    @discardableResult
+    public func removeActionProfile(
+        actionID: ResearchActionID,
+        expectedDocumentRevision: DocumentFingerprint
+    ) throws -> ResearchActionProfileSnapshot {
+        guard let current = try actionProfileSnapshot(),
+              current.revision == expectedDocumentRevision,
+              current.document.binding(for: actionID) != nil else {
+            throw ResearchActionProfileStorageError.staleDocument
+        }
+        return try saveActionProfileDocument(
+            current.document.removing(actionID),
+            expectedRevision: expectedDocumentRevision
+        )
+    }
+
+    /// Replaces all custom Profiles as one revision-checked unit. Settings uses
+    /// this for deterministic reordering; it is not an Action resolver.
+    @discardableResult
+    public func saveActionProfileDocument(
+        _ document: ResearchActionProfileDocument,
+        expectedRevision: DocumentFingerprint?
+    ) throws -> ResearchActionProfileSnapshot {
+        for binding in document.actionBindings.values {
+            try validateActionProfileBinding(binding)
+        }
+        try ensureControlDirectoryForGuidance()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(document)
+        guard data.count <= Self.maximumActionProfileDocumentByteCount else {
+            throw ResearchActionProfileStorageError.invalidDocument(
+                "The encoded document exceeds the 8 MiB storage boundary."
+            )
+        }
+
+        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
+            controlURL
+        )
+        defer { Darwin.close(rootDescriptor) }
+        let rootIdentity = try SecureResearchSkillPackageIO.identity(
+            of: rootDescriptor,
+            path: controlURL.path
+        )
+        let leaf = actionProfileBindingsURL.lastPathComponent
+        let current = try SecureResearchSkillPackageIO.dataFileIfPresent(
+            parentDescriptor: rootDescriptor,
+            leaf: leaf,
+            path: actionProfileBindingsURL.path,
+            maximumByteCount: Self.maximumActionProfileDocumentByteCount
+        )
+        if let current {
+            guard let expectedRevision,
+                  DocumentFingerprint(data: current) == expectedRevision else {
+                throw ResearchActionProfileStorageError.staleDocument
+            }
+        } else if expectedRevision != nil {
+            throw ResearchActionProfileStorageError.staleDocument
+        }
+
+        let stageName = ".action-profiles-\(UUID().uuidString.lowercased())"
+        var stageCreated = false
+        var committed = false
+        do {
+            try SecureResearchSkillPackageIO.createDataFile(
+                parentDescriptor: rootDescriptor,
+                leaf: stageName,
+                data: data,
+                path: stageName
+            )
+            stageCreated = true
+            if current != nil {
+                try SecureResearchSkillPackageIO.swapPackages(
+                    rootDescriptor: rootDescriptor,
+                    first: leaf,
+                    second: stageName
+                )
+            } else {
+                try SecureResearchSkillPackageIO.movePackageExclusively(
+                    rootDescriptor: rootDescriptor,
+                    source: stageName,
+                    destination: leaf
+                )
+            }
+            committed = true
+            try workingMethodHooks.handler(.afterActionProfileCommit)
+            guard fsync(rootDescriptor) == 0 else {
+                throw ResearchActionProfileStorageError.unsafeDocument
+            }
+            let readback = try SecureResearchSkillPackageIO.readDataFile(
+                parentDescriptor: rootDescriptor,
+                leaf: leaf,
+                path: actionProfileBindingsURL.path,
+                maximumByteCount: Self.maximumActionProfileDocumentByteCount
+            )
+            guard readback == data,
+                  try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
+                      controlURL,
+                      identity: rootIdentity
+                  ) else {
+                throw ResearchActionProfileStorageError.unsafeDocument
+            }
+            if current != nil {
+                try SecureResearchSkillPackageIO.removeDataFile(
+                    parentDescriptor: rootDescriptor,
+                    leaf: stageName,
+                    path: stageName
+                )
+                guard fsync(rootDescriptor) == 0 else {
+                    throw ResearchActionProfileStorageError.unsafeDocument
+                }
+            }
+            return ResearchActionProfileSnapshot(
+                document: document,
+                revision: DocumentFingerprint(data: readback)
+            )
+        } catch {
+            if !committed, stageCreated {
+                try? SecureResearchSkillPackageIO.removeDataFile(
+                    parentDescriptor: rootDescriptor,
+                    leaf: stageName,
+                    path: stageName
+                )
+            }
+            if committed {
+                // Once the exchange has happened, a failed directory flush,
+                // cleanup, readback, or canonical-path identity check is not
+                // success. The new bytes may be present through this already
+                // open descriptor while the Triptych path refers elsewhere.
+                // Preserve every artifact and force an explicit reload or
+                // recovery instead of claiming that Settings saved safely.
+                throw ResearchActionProfileStorageError.unsafeDocument
+            }
+            throw error
+        }
+    }
+
     /// Replaces one Action binding without interpreting absence as a default.
     @discardableResult
     public func saveWorkingMethodBinding(
@@ -795,9 +1123,10 @@ public actor ResearchSkillStore {
         )
     }
 
-    /// Directly edits the active installed-default package through exact
-    /// package and binding revisions. Invalid research prose is preserved as
-    /// an identifiable revision but makes the Action unavailable at resolve.
+    /// Directly edits the active installed-default package, or the optional
+    /// stable Manuscript Working Method, through exact package and binding
+    /// revisions. Invalid research prose is preserved as an identifiable
+    /// revision but makes the Action unavailable at resolve.
     public func saveWorkingMethod(
         for actionID: ResearchActionID,
         source: String,
@@ -807,10 +1136,10 @@ public actor ResearchSkillStore {
         guard let snapshot = try workingMethodBindingSnapshot(),
               snapshot.revision == expectedBindingRevision,
               let binding = snapshot.document.binding(for: actionID),
-              binding.state == .installedDefault,
               let packageID = binding.packageID,
-              packageID == Self.defaultWorkingMethodDescriptor(for: actionID)?
-                .workingPackageID else {
+              packageID == Self.editableWorkingMethodPackageID(for: actionID),
+              binding.state == .installedDefault
+                || (actionID == .manuscript && binding.state == .researcherSkill) else {
             throw ResearchSkillBindingError.staleBindingFile
         }
         return try atomicallyEditWorkingMethod(
@@ -2153,7 +2482,9 @@ public actor ResearchSkillStore {
               let binding = snapshot.document.binding(for: actionID) else {
             return false
         }
-        return binding.state == .installedDefault && binding.packageID == packageID
+        let editableState = binding.state == .installedDefault
+            || (actionID == .manuscript && binding.state == .researcherSkill)
+        return editableState && binding.packageID == packageID
     }
 
     private func existingRegularSkillURL(
@@ -2218,6 +2549,78 @@ public actor ResearchSkillStore {
         guard values.isDirectory == true, values.isSymbolicLink != true else {
             throw ResearchSkillBindingError.unsafeBindingFile
         }
+    }
+
+    private static let maximumActionProfileDocumentByteCount = 8_388_608
+
+    private func validateActionProfileBinding(
+        _ binding: ResearchActionProfileBinding
+    ) throws {
+        let package: ResearchSkillPackage
+        do {
+            package = try localPackage(id: binding.packageID)
+        } catch let error as ResearchSkillError {
+            throw ResearchActionProfileStorageError.invalidPackage(
+                binding.packageID,
+                [error.localizedDescription]
+            )
+        }
+        guard package.origin == .triptych,
+              package.isValid,
+              package.skillClass != .system else {
+            throw ResearchActionProfileStorageError.invalidPackage(
+                binding.packageID,
+                package.validationIssues.isEmpty
+                    ? ["Only a valid Triptych-local Method or Researcher Skill can own an Action Profile."]
+                    : package.validationIssues
+            )
+        }
+        guard package.supports(binding.profile.actionID) else {
+            throw ResearchActionProfileStorageError.packageDoesNotSupportAction(
+                packageID: binding.packageID,
+                actionID: binding.profile.actionID
+            )
+        }
+    }
+
+    private struct ResearchSkillUsageSnapshot: Equatable {
+        let workingMethodRevision: DocumentFingerprint?
+        let actionProfileRevision: DocumentFingerprint?
+        let retainedBindingRevision: DocumentFingerprint?
+    }
+
+    private func validatePackageIsUnused(
+        _ packageID: String
+    ) throws -> ResearchSkillUsageSnapshot {
+        let working = try workingMethodBindingSnapshot()
+        if working?.document.actionBindings.values.contains(where: {
+               $0.packageID == packageID && $0.state != .disabled
+           }) == true {
+            throw ResearchActionProfileStorageError.packageInUse(packageID)
+        }
+        let profiles = try actionProfileSnapshot()
+        if profiles?.document.actionBindings.values.contains(where: {
+               $0.packageID == packageID
+           }) == true {
+            throw ResearchActionProfileStorageError.packageInUse(packageID)
+        }
+        let retained = try bindingSnapshot()
+        if let legacy = retained?.document {
+            let legacyReferences = Set(legacy.functionBindings.values)
+                .union(legacy.functionSkillBindings.values.flatMap { $0 })
+                .union(legacy.functionPracticeBindings.values.flatMap { values in
+                    values.map(\.packageID)
+                })
+                .union([legacy.citationBinding, legacy.bibliographyMethodBinding].compactMap { $0 })
+            if legacyReferences.contains(packageID) {
+                throw ResearchActionProfileStorageError.packageInUse(packageID)
+            }
+        }
+        return ResearchSkillUsageSnapshot(
+            workingMethodRevision: working?.revision,
+            actionProfileRevision: profiles?.revision,
+            retainedBindingRevision: retained?.revision
+        )
     }
 
     @discardableResult
@@ -3001,6 +3404,15 @@ public actor ResearchSkillStore {
         for actionID: ResearchActionID
     ) -> DefaultWorkingMethodDescriptor? {
         defaultWorkingMethodDescriptors.first { $0.actionID == actionID }
+    }
+
+    private static func editableWorkingMethodPackageID(
+        for actionID: ResearchActionID
+    ) -> String? {
+        if actionID == .manuscript {
+            return "scholium-working-manuscript"
+        }
+        return defaultWorkingMethodDescriptor(for: actionID)?.workingPackageID
     }
 
     private static func expectedFunction(

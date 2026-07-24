@@ -162,6 +162,7 @@ public enum ResearchSkillError: LocalizedError, Sendable {
     case packageAlreadyExists(String)
     case bundledPackageIsNotDuplicable(String)
     case stalePackage(String)
+    case packageDeletionRecoveryRequired(String)
     case invalidPackage(String, [String])
 
     public var errorDescription: String? {
@@ -182,6 +183,8 @@ public enum ResearchSkillError: LocalizedError, Sendable {
             "Protected Scholium System Skill \(id) cannot be duplicated into the Triptych."
         case .stalePackage(let id):
             "The skill changed on disk. Reload it before saving, renaming, or deleting: \(id)"
+        case .packageDeletionRecoveryRequired(let id):
+            "Skill \(id) was isolated from active use, but Scholium could not finish its recoverable deletion. Inspect Research Guidance recovery before reusing this identifier."
         case .invalidPackage(let id, let issues):
             "Skill \(id) cannot be assembled. \(issues.joined(separator: " "))"
         }

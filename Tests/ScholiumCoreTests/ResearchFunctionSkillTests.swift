@@ -134,9 +134,14 @@ struct ResearchFunctionSkillTests {
         )
         #expect(restoredMethod == bundledMethod)
 
-        try await reopened.delete(
-            id: outcome.package.id,
-            expectedRevision: try #require(outcome.package.revision)
+        // The researcher-facing delete path now refuses an active Working
+        // Method. Simulate an external filesystem participant removing it so
+        // this test can still exercise fail-closed missing-package recovery.
+        try FileManager.default.removeItem(
+            at: fixture.control.appendingPathComponent(
+                "skills/\(outcome.package.id)",
+                isDirectory: true
+            )
         )
         let missingPackage = try await reopened.functionBindingResolution(
             for: .develop,

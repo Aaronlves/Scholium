@@ -8,6 +8,7 @@ struct ScholiumSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "vaults"
+    @StateObject private var researchGuidanceDraftStore = ResearchGuidanceDraftStore()
 
     var body: some View {
         TabView(selection: selectedPane) {
@@ -33,7 +34,7 @@ struct ScholiumSettingsView: View {
                 }
                 .tag(WorkspaceSettingsPane.properties)
 
-            ResearchGuidanceSettingsView()
+            ResearchGuidanceSettingsView(draftStore: researchGuidanceDraftStore)
                 .tabItem {
                     Label(ScholiumL10n.Settings.researchGuidance, systemImage: "text.bubble")
                 }
@@ -687,7 +688,7 @@ private enum ResearchGuidanceCollection: String, Hashable {
     case advanced
 }
 
-private struct ResearchGuidanceSettingsView: View {
+private struct LegacyResearchGuidanceSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @AppStorage("scholium.settings.researchGuidanceCollection")
     private var persistedCollection = ResearchGuidanceCollection.promptTemplates.rawValue
@@ -915,7 +916,7 @@ private struct ResearchGuidanceAdvancedSettingsView: View {
     }
 }
 
-private struct AgentCLISettingsView: View {
+struct AgentCLISettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var status: CommandLineToolStatus?
     @State private var isWorking = false
@@ -1018,7 +1019,7 @@ private struct AgentCLISettingsView: View {
 
 /// Recommended Bibliography uses one complete Source Analyzer independently
 /// of Research Function bindings.
-private struct RecommendedBibliographyMethodSettingsView: View {
+struct RecommendedBibliographyMethodSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var status: RecommendedBibliographyMethodStatus?
     @State private var isWorking = false
@@ -1419,7 +1420,7 @@ private struct ResearchFunctionMethodSettingsView: View {
 
 }
 
-private struct ResearchCitationMethodSettingsView: View {
+struct ResearchCitationMethodSettingsView: View {
     private struct CitationMethodChoice: Hashable {
         let packageID: String
         let citationStyle: String
@@ -3079,7 +3080,7 @@ private struct ResearchSkillsSettingsView: View {
     }
 }
 
-private struct ZoteroSettingsView: View {
+struct ZoteroSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var info = ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
     @State private var isTesting = false
