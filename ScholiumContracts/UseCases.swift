@@ -247,6 +247,16 @@ public protocol ResearchFunctionUseCases: Sendable {
 
 }
 
+public protocol ResearchActionUseCases: Sendable {
+    func availableActions(
+        for target: ResearchActionNoteSnapshot
+    ) async throws -> [ResearchActionAvailability]
+
+    func prepareAction(
+        _ request: ResearchActionExecutionRequest
+    ) async throws -> ResearchActionPreparation
+}
+
 public protocol ResearchSourceAccessUseCases: Sendable {
     func sourceAccess(
         for target: ResearchFunctionTarget
@@ -268,6 +278,7 @@ public protocol ResearchUseCases:
     ResearchCheckpointUseCases,
     ResearchSkillUseCases,
     ResearchFunctionUseCases,
+    ResearchActionUseCases,
     ResearchSourceAccessUseCases,
     RecommendedBibliographyUseCases
 {

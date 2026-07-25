@@ -880,6 +880,9 @@ public struct ResearchFunctionOutputSnapshot: Codable, Hashable, Sendable {
 public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let runID: UUID
     public let request: ResearchFunctionRequest
+    /// Public Action identity and frozen authority for new resolver-prepared
+    /// runs. Nil is accepted only for retained Function-era records.
+    public let actionSnapshot: ResearchActionSnapshot?
     public let recordKind: ResearchFunctionRecordKind
     public let recordID: UUID?
     public let checkpointID: UUID?
@@ -913,6 +916,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public init(
         runID: UUID = UUID(),
         request: ResearchFunctionRequest,
+        actionSnapshot: ResearchActionSnapshot? = nil,
         recordKind: ResearchFunctionRecordKind,
         recordID: UUID? = nil,
         checkpointID: UUID? = nil,
@@ -931,6 +935,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     ) {
         self.runID = runID
         self.request = request
+        self.actionSnapshot = actionSnapshot
         self.recordKind = recordKind
         self.recordID = recordID
         self.checkpointID = checkpointID

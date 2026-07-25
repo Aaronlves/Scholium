@@ -1690,6 +1690,79 @@ public actor ResearchSkillStore {
         )
     }
 
+    /// Resolves a researcher-owned Action Profile and its exact package
+    /// without consulting or mutating Working Method bindings. A Profile is
+    /// configuration, not authority; callers must still intersect it with the
+    /// current Target, request, and Application hard limits.
+    public func profileActionBindingResolution(
+        for function: ResearchFunctionID,
+        actionID: ResearchActionID
+    ) throws -> ResearchSkillBindingResolution {
+        let rawProfileRevision = (try? actionProfileSnapshot())?.revision
+        let snapshot: ResearchActionProfileSnapshot?
+        do {
+            snapshot = try actionProfileSnapshot()
+        } catch {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                issue: .malformed(error.localizedDescription),
+                bindingRevision: rawProfileRevision
+            )
+        }
+        guard let snapshot,
+              let binding = snapshot.document.binding(for: actionID) else {
+            return ResearchSkillBindingResolution(
+                source: .none,
+                issue: .missing,
+                bindingRevision: rawProfileRevision
+            )
+        }
+        guard binding.profile.definition.id == actionID else {
+            return ResearchSkillBindingResolution(
+                source: .researcherSkill,
+                issue: .malformed("The Action Profile definition is inconsistent."),
+                bindingRevision: snapshot.revision
+            )
+        }
+        let all = try skills()
+        guard let package = all.first(where: {
+            $0.origin == .triptych && $0.id == binding.packageID
+        }) else {
+            return ResearchSkillBindingResolution(
+                source: .researcherSkill,
+                issue: .invalidPackage(binding.packageID),
+                bindingRevision: snapshot.revision
+            )
+        }
+        guard package.isValid, package.skillClass != .system else {
+            return ResearchSkillBindingResolution(
+                source: .researcherSkill,
+                issue: .invalidPackage(binding.packageID),
+                bindingRevision: snapshot.revision
+            )
+        }
+        guard package.supports(actionID) else {
+            return ResearchSkillBindingResolution(
+                source: .researcherSkill,
+                issue: .unsupportedAction(packageID: package.id, actionID: actionID),
+                bindingRevision: snapshot.revision
+            )
+        }
+        guard package.supports(function) else {
+            return ResearchSkillBindingResolution(
+                source: .researcherSkill,
+                issue: .unsupportedFunction(packageID: package.id, function: function),
+                bindingRevision: snapshot.revision
+            )
+        }
+        return ResearchSkillBindingResolution(
+            source: .researcherSkill,
+            package: package,
+            installedCandidateIDs: [package.id],
+            bindingRevision: snapshot.revision
+        )
+    }
+
     /// Citation capability is active only through an explicit valid
     /// Triptych-local binding. Bundled copy-on-adoption templates are merely
     /// availability hints and can never satisfy the binding.
@@ -1793,39 +1866,99 @@ public actor ResearchSkillStore {
     public func resolvedFunctionPackages(
         for function: ResearchFunctionID,
         actionID: ResearchActionID,
+        mode: ResearchSkillMode? = nil,
         fidelityChecks: Set<FidelityCheck> = [],
         citationStyle: String? = nil,
         additionalSkillIDs: [String] = [],
         primaryResourcePaths: Set<String> = [],
-        additionalResourcePaths: [String: Set<String>] = [:]
+        additionalResourcePaths: [String: Set<String>] = [:],
+        expectedAdditionalPackageRevisions: [String: DocumentFingerprint] = [:]
     ) throws -> [ResolvedResearchSkillSelection] {
         let primaryResolution = try functionBindingResolution(
             for: function,
             actionID: actionID
         )
+        guard let bindingRevision = primaryResolution.bindingRevision else {
+            throw ResearchSkillBindingError.unresolvedBinding(
+                primaryResolution.issue ?? .missing
+            )
+        }
         return try resolvedFunctionPackages(
             for: function,
             actionID: actionID,
+            mode: mode ?? Self.skillMode(for: actionID),
             fidelityChecks: fidelityChecks,
             citationStyle: citationStyle,
             additionalSkillIDs: additionalSkillIDs,
             primaryResourcePaths: primaryResourcePaths,
             additionalResourcePaths: additionalResourcePaths,
-            expectedAdditionalPackageRevisions: [:],
-            primaryResolution: primaryResolution
+            expectedAdditionalPackageRevisions: expectedAdditionalPackageRevisions,
+            primaryResolution: primaryResolution,
+            primaryBindingProof: .workingMethod(
+                actionID: actionID,
+                packageID: primaryResolution.package?.id ?? "",
+                revision: bindingRevision
+            )
         )
     }
 
-    func resolvedFunctionPackages(
+    public func resolvedProfileActionPackages(
         for function: ResearchFunctionID,
         actionID: ResearchActionID,
+        mode: ResearchSkillMode? = nil,
+        expectedBinding: ResearchActionProfileBinding,
+        expectedProfileDocumentRevision: DocumentFingerprint,
+        fidelityChecks: Set<FidelityCheck> = [],
+        citationStyle: String? = nil,
+        additionalSkillIDs: [String] = [],
+        primaryResourcePaths: Set<String> = [],
+        additionalResourcePaths: [String: Set<String>] = [:],
+        expectedAdditionalPackageRevisions: [String: DocumentFingerprint] = [:]
+    ) throws -> [ResolvedResearchSkillSelection] {
+        let resolution = try profileActionBindingResolution(
+            for: function,
+            actionID: actionID
+        )
+        guard resolution.bindingRevision == expectedProfileDocumentRevision,
+              resolution.package?.id == expectedBinding.packageID,
+              try actionProfileBindingMatches(
+                  expectedBinding,
+                  actionID: actionID,
+                  expectedRevision: expectedProfileDocumentRevision
+              ) else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        return try resolvedFunctionPackages(
+            for: function,
+            actionID: actionID,
+            mode: mode ?? Self.skillMode(for: actionID),
+            fidelityChecks: fidelityChecks,
+            citationStyle: citationStyle,
+            additionalSkillIDs: additionalSkillIDs,
+            primaryResourcePaths: primaryResourcePaths,
+            additionalResourcePaths: additionalResourcePaths,
+            expectedAdditionalPackageRevisions: expectedAdditionalPackageRevisions,
+            primaryResolution: resolution,
+            primaryBindingProof: .actionProfile(
+                actionID: actionID,
+                binding: expectedBinding,
+                revision: expectedProfileDocumentRevision
+            )
+        )
+    }
+
+    private func resolvedFunctionPackages(
+        for function: ResearchFunctionID,
+        actionID: ResearchActionID,
+        mode: ResearchSkillMode,
         fidelityChecks: Set<FidelityCheck>,
         citationStyle: String?,
         additionalSkillIDs: [String],
         primaryResourcePaths: Set<String>,
         additionalResourcePaths: [String: Set<String>],
         expectedAdditionalPackageRevisions: [String: DocumentFingerprint],
-        primaryResolution: ResearchSkillBindingResolution
+        primaryResolution: ResearchSkillBindingResolution,
+        primaryBindingProof: PrimaryActionBindingProof
     ) throws -> [ResolvedResearchSkillSelection] {
         guard let primary = primaryResolution.package, primaryResolution.issue == nil else {
             throw ResearchSkillBindingError.unresolvedBinding(
@@ -1833,17 +1966,13 @@ public actor ResearchSkillStore {
             )
         }
         guard let primaryRevision = primary.revision,
-              let expectedBindingRevision = primaryResolution.bindingRevision else {
+              primaryResolution.bindingRevision != nil else {
             throw ResearchSkillBindingError.unresolvedBinding(.invalidPackage(primary.id))
         }
         try workingMethodHooks.handler(
             .beforeFunctionPackageResolution(actionID: actionID)
         )
-        guard try workingMethodBindingMatches(
-            packageID: primary.id,
-            actionID: actionID,
-            expectedRevision: expectedBindingRevision
-        ) else {
+        guard try primaryBindingMatches(primaryBindingProof) else {
             throw ResearchSkillBindingError.staleBindingFile
         }
 
@@ -1852,7 +1981,7 @@ public actor ResearchSkillStore {
         // exact read/write and completion adapter from a mediated run.
         var requestedIDs = [primary.id, "scholium-research-integration"]
             + additionalSkillIDs
-        if actionID == .discuss {
+        if mode == .discuss {
             requestedIDs.append("scholium-discussion-protocol")
         }
         var resolvedCitationID: String?
@@ -1875,16 +2004,20 @@ public actor ResearchSkillStore {
         }
 
         let packages = try resolvedPackages(
-            for: Self.skillMode(for: actionID),
+            for: mode,
             requestedSkillIDs: Self.unique(requestedIDs)
         )
-        let methods = packages.filter { $0.role == "method" }
-        guard methods.count == 1,
-              let resolvedPrimary = methods.first,
-              resolvedPrimary.id == primary.id,
+        let resolvedPrimaries = packages.filter { $0.id == primary.id }
+        let unexpectedMethods = packages.filter {
+            $0.role == "method" && $0.id != primary.id
+        }
+        guard resolvedPrimaries.count == 1,
+              unexpectedMethods.isEmpty,
+              let resolvedPrimary = resolvedPrimaries.first,
               resolvedPrimary.revision == primaryRevision,
               resolvedPrimary.supports(function),
-              resolvedPrimary.supports(actionID) else {
+              resolvedPrimary.supports(actionID),
+              primaryBindingProof.permits(primary: resolvedPrimary) else {
             throw ResearchSkillBindingError.unresolvedBinding(.invalidPackage(primary.id))
         }
         for (packageID, revision) in expectedAdditionalPackageRevisions {
@@ -1907,7 +2040,7 @@ public actor ResearchSkillStore {
             var selected: Set<String> = ["SKILL.md"]
             selected.formUnion(Self.requiredSystemResourcePaths(
                 for: package.id,
-                actionID: actionID
+                mode: mode
             ))
             if package.id == primary.id {
                 let actionDefaults = Self.defaultResourcePaths(
@@ -1983,14 +2116,70 @@ public actor ResearchSkillStore {
                 loadedResources: loaded
             ))
         }
-        guard try workingMethodBindingMatches(
-            packageID: primary.id,
-            actionID: actionID,
-            expectedRevision: expectedBindingRevision
-        ) else {
+        guard try primaryBindingMatches(primaryBindingProof) else {
             throw ResearchSkillBindingError.staleBindingFile
         }
         return selections
+    }
+
+    private enum PrimaryActionBindingProof {
+        case workingMethod(
+            actionID: ResearchActionID,
+            packageID: String,
+            revision: DocumentFingerprint
+        )
+        case actionProfile(
+            actionID: ResearchActionID,
+            binding: ResearchActionProfileBinding,
+            revision: DocumentFingerprint
+        )
+
+        func permits(primary: ResearchSkillPackage) -> Bool {
+            switch self {
+            case .workingMethod:
+                primary.role == "method"
+            case .actionProfile:
+                primary.skillClass != .system && primary.origin == .triptych
+            }
+        }
+
+    }
+
+    private func primaryBindingMatches(
+        _ proof: PrimaryActionBindingProof
+    ) throws -> Bool {
+        switch proof {
+        case .workingMethod(let actionID, let packageID, let revision):
+            try workingMethodBindingMatches(
+                packageID: packageID,
+                actionID: actionID,
+                expectedRevision: revision
+            )
+        case .actionProfile(let actionID, let binding, let revision):
+            try actionProfileBindingMatches(
+                binding,
+                actionID: actionID,
+                expectedRevision: revision
+            )
+        }
+    }
+
+    private func actionProfileBindingMatches(
+        _ binding: ResearchActionProfileBinding,
+        actionID: ResearchActionID,
+        expectedRevision: DocumentFingerprint
+    ) throws -> Bool {
+        guard let snapshot = try actionProfileSnapshot(),
+              snapshot.revision == expectedRevision,
+              snapshot.document.binding(for: actionID) == binding,
+              let package = try? localPackage(id: binding.packageID),
+              package.origin == .triptych,
+              package.isValid,
+              package.skillClass != .system,
+              package.supports(actionID) else {
+            return false
+        }
+        return true
     }
 
     private func workingMethodBindingMatches(
@@ -3317,18 +3506,18 @@ public actor ResearchSkillStore {
 
     private static func requiredSystemResourcePaths(
         for packageID: String,
-        actionID: ResearchActionID
+        mode: ResearchSkillMode
     ) -> Set<String> {
         switch packageID {
-        case "scholium-core-protocol" where actionID == .manuscript:
+        case "scholium-core-protocol" where mode == .manuscript:
             return ["references/mixed-mode.md"]
         case "scholium-research-integration":
             var resources: Set<String> = ["references/cli-contract.md"]
-            if [.analyze, .synthesize, .write, .critique].contains(actionID) {
+            if [.analyze, .synthesize, .write, .review].contains(mode) {
                 resources.insert("references/persistence-method.md")
             }
             return resources
-        case "scholium-discussion-protocol" where actionID == .discuss:
+        case "scholium-discussion-protocol" where mode == .discuss:
             return ["references/record-contract.md"]
         default:
             return []

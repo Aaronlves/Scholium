@@ -278,11 +278,12 @@ delivery-neutral capability:
 ```text
 ResearchFunctionsInspectorView / ResearchFunctionPanelView
         ↓ immutable presentation values and closures
-ResearchFunctionController (one window)
+ResearchFunctionController (one window, retained production UI)
         ↓ ResearchFunctionClient
-ResearchFunctionUseCases (Contracts)
-        ↓
-ResearchFunctionCoordinator (Application)
+ResearchFunctionUseCases (Contracts)       ResearchActionUseCases (headless sibling)
+        └──────────────────────────┬───────────────────────────────┘
+                                   ↓
+ResearchFunctionCoordinator + Action resolver (Application)
         ↓
 Core skill, checkpoint, record, and repository authorities
 ```
@@ -295,10 +296,13 @@ no application-defined labels, symbols, package storage, YAML inspection, or
 layout. Researcher-owned Profile labels are declarative data, not interface
 code.
 
-D-106's staged public layer now begins in `ScholiumContracts` with validated
+D-106's public layer begins in `ScholiumContracts` with validated
 `ResearchActionID`, public execution kinds and Target roles, role-filtered
-default definitions, and a fail-closed versioned `ResearchActionSnapshot`.
-That snapshot contains no `ResearchFunctionID`. A separate versioned
+default definitions, a unified native parameter model, and a fail-closed
+schema-v2 `ResearchActionSnapshot`. Each preparation freezes the exact Target,
+ordinary Method package and loaded-resource revisions, resolved Profile and
+Profile-document revision, validated parameter values, and concrete readable
+and writable note envelope. The snapshot contains no `ResearchFunctionID`. A separate versioned
 `ResearchActionRecordIdentity` fixes the complete Action projection allowed in
 future portable records to the Action ID alone; execution kind, Target role,
 and protected Function identity are not record fields.
@@ -316,19 +320,24 @@ operations are Markdown modification and property-limited modification; it
 contains no grant, policy, destructive lifecycle operation, conflict overwrite,
 or executable payload. Property-limited modification rejects every key owned
 by Scholium's protected machine-property catalog.
-Applicable Targets must remain readable, picker roles must remain inside that
+Applicable Targets remain readable, picker roles stay inside that
 scope, execution kinds impose their direct-write role maximum, and Analyze
-requires one matching required source-reference module. These are structural
-declarations for a future authority intersection, not current permission or
-preparation state. `ResearchActionProfileDocument` stores at most 256
+requires one matching required source-reference module. These declarations do
+not grant authority. The Application resolver intersects them with the exact
+current request and live identities to produce one nonreusable preparation
+envelope; machine-local standing policy and digest approvals remain Session 14.
+Property-only mutation is rejected by the current resolver because the retained
+coordinator cannot yet prove a property-bounded source delta.
+`ResearchActionProfileDocument` stores at most 256
 Action-keyed bindings in `.scholium/research-action-profiles-v1.json`. Core
 reads and atomically replaces that one bounded file through no-follow directory
 descriptors, exact expected-revision checks, readback validation, and a
 package/Profile compatibility check. The document may bind researcher-owned
 Action identities and the optional bundled Manuscript Action only; it cannot
-replace the six default bundled Action identities. This storage and its
-production Settings editor are nonexecuting: no approval digest, general
-resolver, preparation authority, or run snapshot consumes a Profile yet. Once
+replace the six default bundled Action identities. Storage and its production
+Settings editor remain nonexecuting configuration, while the Action resolver
+consumes an exact Profile snapshot only during availability and preparation.
+Once
 a file exchange commits, any failed directory flush, readback, cleanup, or
 canonical-path identity proof returns an unsafe-document error; bytes visible
 through the old descriptor never become a reported Settings success.
@@ -360,15 +369,16 @@ changed or inaccessible source is never replaced with the Analysis note.
 An internal-only `ResearchActionFunctionMapping` in `ScholiumApplication` maps
 Analysis and Synthesis to Develop, Write to Revise, and the remaining public
 execution kinds to their protected Function mechanisms after role validation.
-The same internal adapter now derives the exact bundled Action from Function
-plus Target role for the retained coordinator. Core Skill resolution accepts
-that Action identity explicitly: Analysis Develop resolves `scholium-analyze`,
-Topic Develop resolves `scholium-synthesize`, and a package bound to one fails
-closed for the other. The existing Function use cases, UI, CLI, binding v1,
-and machine-local records remain the current runtime. No Action snapshot
-becomes execution authority, and no current record store writes the new
-identity until the later resolver and portable-record cutovers; those cutovers
-must use the record identity contract rather than serializing a Function ID.
+The same internal adapter derives the exact bundled Action from Function plus
+Target role for retained callers. Core Skill resolution accepts that Action
+identity explicitly: Analysis Develop resolves `scholium-analyze`, Topic
+Develop resolves `scholium-synthesize`, and a package bound to one fails closed
+for the other. `ResearchActionUseCases` now resolves and prepares default and
+researcher Actions, while retained Function preparation passes through the same
+resolver and embeds the resulting Action snapshot. Binding v1 never enters
+either path. The production UI, CLI syntax, and current record store remain
+Function-era; the portable-record cutover must use the record identity contract
+rather than serializing a Function ID.
 
 The product Skill catalog schema 4 separates protected mechanism from ordinary
 method prose. `ResearchSkillClass.method` packages each declare exactly one
@@ -441,15 +451,18 @@ retired finalizer. Public `ResearchOperations` delegates here;
 Dialogue/Critique have no alternate preparation path.
 
 Rendered function input keeps three typed layers distinct: `taskDirective`
-contains the explicit public Action, retained Function transport, read/write
+contains the explicit public Action, its validated native parameter values,
+retained Function transport, read/write
 sets, the safe source reference when Analyze applies, a separately typed
 Critique-output binding when applicable, and exact loaded Skill
 package/resource revisions; a validated
 `methodContract` supplies bounded method guidance; and provenance-labelled
 `researchData` carries Markdown, YAML-derived values, citations, bibliographic
-metadata, and records only as serialized data. The current packet schema has
-no resolved Action Profile or Profile revision, so protected Core prose neither
-invents one nor treats the contract's existence as current authority.
+metadata, and records only as serialized data. The machine-local Function
+snapshot embeds the complete schema-v2 Action snapshot. The agent-facing
+directive receives the resolved Action and parameter values but not the full
+Profile document or its storage revision; neither Skill prose nor transport
+text may reconstruct or enlarge that frozen Application authority.
 Researcher Skills may change
 method, never fingerprints, checkpoints, conflict handling, containment,
 recovery, or typed permissions. Agent completion is revalidated against those

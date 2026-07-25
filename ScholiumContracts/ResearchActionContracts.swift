@@ -220,40 +220,112 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
     }
 }
 
-/// Versioned public identity recorded for one Action run.
+/// Versioned public identity and authority recorded for one Action run.
 ///
-/// Schema v1 freezes only the semantic Action, execution kind, and Target
-/// role. It intentionally contains no internal Function ID. Exact Target,
-/// Skill/Profile revisions, and authority envelopes enter a later schema when
-/// the Action resolver owns those values.
+/// Schema v2 is created only after the resolver has frozen the exact Target,
+/// Method, Profile, parameter values, and concrete authority envelope. It
+/// intentionally contains no internal Function ID.
 public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let definition: ResearchActionDefinition
-    public let targetRole: ResearchActionTargetRole
+    public let target: ResearchActionNoteSnapshot
+    public let method: ResearchActionMethodSnapshot
+    public let resolvedProfile: ResearchActionResolvedProfileSnapshot
+    public let parameters: ResearchActionParameterModel
+    public let authority: ResearchAuthorityEnvelope
 
     public var actionID: ResearchActionID { definition.id }
     public var executionKind: ResearchActionExecutionKind { definition.executionKind }
+    public var targetRole: ResearchActionTargetRole { target.role }
 
     public init(
         definition: ResearchActionDefinition,
-        targetRole: ResearchActionTargetRole
+        target: ResearchActionNoteSnapshot,
+        method: ResearchActionMethodSnapshot,
+        resolvedProfile: ResearchActionResolvedProfileSnapshot,
+        parameters: ResearchActionParameterModel,
+        authority: ResearchAuthorityEnvelope
     ) throws {
-        try definition.validate(targetRole: targetRole)
+        try definition.validate(targetRole: target.role)
+        let validatedParameters = try ResearchActionParameterModel(
+            profile: resolvedProfile.profile,
+            rawValues: parameters.values
+        )
+        let validatedAuthority = try ResearchAuthorityEnvelope(
+            readableNotes: authority.readableNotes,
+            writableNotes: authority.writableNotes,
+            writeOperations: authority.writeOperations,
+            editablePropertyKeys: authority.editablePropertyKeys
+        )
+        let capabilities = resolvedProfile.profile.capabilities
+        let readableRoles = Set(capabilities.readableRoles)
+        let writableRoles = Set(capabilities.candidateWritableRoles)
+        let candidateOperations = Set(capabilities.candidateWriteOperations)
+        let candidatePropertyKeys = Set(capabilities.editablePropertyKeys)
+        let selectedNotes = validatedParameters.values.values.flatMap { value in
+            if case .notes(let notes) = value { return notes }
+            return []
+        }
+        let anchorsMatchTarget = validatedParameters.values.values.allSatisfy { value in
+            if case .passage(let anchor) = value {
+                return anchor.fingerprint == target.fingerprint
+            }
+            return true
+        }
+        let resourcePaths = method.loadedResources.map(\.relativePath)
+        guard resolvedProfile.profile.definition == definition,
+              resolvedProfile.profile.applicableRoles.contains(target.role),
+              method.packageID.isEmpty == false,
+              method.loadedResources.isEmpty == false,
+              Set(resourcePaths).count == resourcePaths.count,
+              resourcePaths.allSatisfy({ path in
+                  !path.isEmpty
+                      && !path.hasPrefix("/")
+                      && !path.split(separator: "/", omittingEmptySubsequences: false)
+                          .contains(where: { $0 == "." || $0 == ".." || $0.isEmpty })
+              }),
+              validatedAuthority.readableNotes.contains(target),
+              validatedAuthority.readableNotes.allSatisfy({
+                  readableRoles.contains($0.role)
+              }),
+              validatedAuthority.writableNotes.allSatisfy({
+                  writableRoles.contains($0.role)
+              }),
+              Set(validatedAuthority.writeOperations).isSubset(of: candidateOperations),
+              Set(validatedAuthority.editablePropertyKeys).isSubset(
+                  of: candidatePropertyKeys
+              ),
+              selectedNotes.allSatisfy(validatedAuthority.readableNotes.contains),
+              anchorsMatchTarget else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
         schemaVersion = Self.currentSchemaVersion
         self.definition = definition
-        self.targetRole = targetRole
+        self.target = target
+        self.method = method
+        self.resolvedProfile = resolvedProfile
+        self.parameters = validatedParameters
+        self.authority = validatedAuthority
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case actionID = "action_id"
         case executionKind = "execution_kind"
-        case targetRole = "target_role"
+        case target
+        case method
+        case resolvedProfile = "resolved_profile"
+        case parameters
+        case authority
     }
 
     public init(from decoder: Decoder) throws {
+        try ResearchActionExecutionValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         guard schemaVersion == Self.currentSchemaVersion else {
@@ -268,7 +340,17 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         )
         try self.init(
             definition: definition,
-            targetRole: container.decode(ResearchActionTargetRole.self, forKey: .targetRole)
+            target: container.decode(ResearchActionNoteSnapshot.self, forKey: .target),
+            method: container.decode(ResearchActionMethodSnapshot.self, forKey: .method),
+            resolvedProfile: container.decode(
+                ResearchActionResolvedProfileSnapshot.self,
+                forKey: .resolvedProfile
+            ),
+            parameters: container.decode(
+                ResearchActionParameterModel.self,
+                forKey: .parameters
+            ),
+            authority: container.decode(ResearchAuthorityEnvelope.self, forKey: .authority)
         )
     }
 
@@ -277,7 +359,11 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(actionID, forKey: .actionID)
         try container.encode(executionKind, forKey: .executionKind)
-        try container.encode(targetRole, forKey: .targetRole)
+        try container.encode(target, forKey: .target)
+        try container.encode(method, forKey: .method)
+        try container.encode(resolvedProfile, forKey: .resolvedProfile)
+        try container.encode(parameters, forKey: .parameters)
+        try container.encode(authority, forKey: .authority)
     }
 }
 

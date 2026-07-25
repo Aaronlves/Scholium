@@ -2493,6 +2493,284 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Action resolver follows the default matrix and explicit disabled Method state")
+    func actionResolverDefaultMatrixAndDisabledMethod() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        let initial = try await handle.research.availableActions(
+            for: actionNote(analysis)
+        )
+        #expect(initial.map(\.id) == [.discuss, .analyze, .checkFidelity])
+        let allInitialActionsAreEnabled = initial.allSatisfy { $0.isEnabled }
+        #expect(allInitialActionsAreEnabled)
+        let discuss = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .discuss,
+                target: actionNote(analysis),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Clarify the current distinction."),
+                ]
+            )
+        )
+        #expect(discuss.instructions.contains("\"feedbackRequirement\" : \"none\""))
+        try await handle.research.cancelFunction(runID: discuss.runID)
+
+        let fidelityRequest = ResearchActionExecutionRequest(
+            actionID: .checkFidelity,
+            target: actionNote(analysis),
+            parameterValues: [
+                ResearchActionModuleID(rawValue: "fidelity-checks")!:
+                    .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
+            ]
+        )
+        let actionExecution = try await handle.resolvedResearchActionExecution(
+            fidelityRequest
+        )
+        #expect(!actionExecution.context.allowsLegacyFidelityExpansion)
+        let retainedContext = try await handle.resolvedDefaultActionContext(
+            for: ResearchFunctionRequest(
+                function: .fidelity,
+                target: analysis,
+                checks: [.content]
+            )
+        )
+        #expect(retainedContext.allowsLegacyFidelityExpansion)
+        let fidelity = try await handle.research.prepareAction(fidelityRequest)
+        #expect(fidelity.snapshot.authority.readableNotes.map(\.noteID) == [analysis.noteID])
+        try await handle.research.cancelFunction(runID: fidelity.runID)
+
+        let analyze = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        #expect(analyze.snapshot.parameters.values["source"] != nil)
+        #expect(analyze.snapshot.authority.writableNotes.map(\.noteID) == [analysis.noteID])
+        try await handle.research.cancelFunction(runID: analyze.runID)
+
+        let bindings = try #require(
+            try await handle.research.workingMethodBindings()
+        )
+        _ = try await handle.research.disableWorkingMethod(
+            for: .analyze,
+            expectedBindingRevision: bindings.revision
+        )
+        let disabled = try #require(
+            try await handle.research.availableActions(for: actionNote(analysis))
+                .first { $0.id == .analyze }
+        )
+        #expect(!disabled.isEnabled)
+        #expect(disabled.repairReasons.contains {
+            $0.code == .methodMissing || $0.code == .methodDisabled
+        })
+        await runtime.shutdown()
+    }
+
+    @Test("A custom Action button resolves one Skill and freezes a reproducible snapshot")
+    func customActionResolutionAndPreparation() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let actionID = ResearchActionID(researcherOwnedRawValue: "socratic-pressure")!
+        let package = try await handle.research.createSkill(
+            id: "socratic-pressure",
+            source: customActionSkillSource(actionID: actionID)
+        )
+        let binding = try customActionProfileBinding(
+            actionID: actionID,
+            packageID: package.id,
+            moduleID: "question",
+            buttonName: "Socratic Pressure",
+            feedbackRequirement: .required
+        )
+        _ = try await handle.research.saveActionProfile(
+            binding,
+            expectedDocumentRevision: nil
+        )
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let work = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+
+        let topicActions = try await handle.research.availableActions(
+            for: actionNote(topic)
+        )
+        let custom = try #require(topicActions.first { $0.id == actionID })
+        #expect(custom.buttonName == "Socratic Pressure")
+        #expect(custom.group == .researcherSkill)
+        #expect(custom.isEnabled)
+        #expect(!(try await handle.research.availableActions(for: actionNote(work)))
+            .contains { $0.id == actionID })
+
+        let questionID = ResearchActionModuleID(rawValue: "question")!
+        let request = ResearchActionExecutionRequest(
+            actionID: actionID,
+            target: actionNote(topic),
+            parameterValues: [
+                questionID: .text("What remains after the strongest reply?"),
+            ]
+        )
+        let first = try await handle.research.prepareAction(request)
+        let second = try await handle.research.prepareAction(request)
+        #expect(first.snapshot == second.snapshot)
+        #expect(first.snapshot.actionID == actionID)
+        #expect(first.snapshot.method.packageID == package.id)
+        let expectedProfileRevision = try binding.profile.contentRevision()
+        #expect(first.snapshot.resolvedProfile.profileRevision
+            == expectedProfileRevision)
+        #expect(first.snapshot.authority.readableNotes.map(\.noteID) == [topic.noteID])
+        #expect(first.snapshot.authority.writableNotes.isEmpty)
+        #expect(first.instructions.contains("\"action\" : \"socratic-pressure\""))
+        #expect(first.instructions.contains("\"feedbackRequirement\" : \"required\""))
+        #expect(first.instructions.contains("What remains after the strongest reply?"))
+        #expect(first.instructions.contains("scholium-discussion-protocol"))
+        try await handle.research.cancelFunction(runID: first.runID)
+        try await handle.research.cancelFunction(runID: second.runID)
+        await runtime.shutdown()
+    }
+
+    @Test("A stale Action Profile presentation cannot authorize preparation")
+    func staleActionProfileCannotReplay() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let actionID = ResearchActionID(researcherOwnedRawValue: "profile-race")!
+        let package = try await handle.research.createSkill(
+            id: "profile-race",
+            source: customActionSkillSource(actionID: actionID)
+        )
+        let firstBinding = try customActionProfileBinding(
+            actionID: actionID,
+            packageID: package.id,
+            moduleID: "question",
+            buttonName: "Profile Race"
+        )
+        let firstDocument = try await handle.research.saveActionProfile(
+            firstBinding,
+            expectedDocumentRevision: nil
+        )
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let staleRequest = ResearchActionExecutionRequest(
+            actionID: actionID,
+            target: actionNote(topic),
+            parameterValues: [
+                ResearchActionModuleID(rawValue: "question")!: .text("Old input"),
+            ]
+        )
+        let replacement = try customActionProfileBinding(
+            actionID: actionID,
+            packageID: package.id,
+            moduleID: "new-question",
+            buttonName: "Profile Race Revised"
+        )
+        _ = try await handle.research.saveActionProfile(
+            replacement,
+            expectedDocumentRevision: firstDocument.revision
+        )
+
+        await #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try await handle.research.prepareAction(staleRequest)
+        }
+        await runtime.shutdown()
+    }
+
+    private func actionNote(
+        _ target: ResearchFunctionTarget
+    ) -> ResearchActionNoteSnapshot {
+        let role: ResearchActionTargetRole = switch target.role {
+        case .analysis: .analysis
+        case .topic: .topic
+        case .work: .work
+        }
+        return ResearchActionNoteSnapshot(
+            noteID: target.noteID,
+            note: target.note,
+            role: role,
+            lifecycle: target.lifecycle,
+            fingerprint: target.fingerprint,
+            title: target.title
+        )
+    }
+
+    private func customActionProfileBinding(
+        actionID: ResearchActionID,
+        packageID: String,
+        moduleID: String,
+        buttonName: String,
+        feedbackRequirement: ResearchActionFeedbackRequirement = .requested
+    ) throws -> ResearchActionProfileBinding {
+        let definition = try ResearchActionDefinition(
+            researcherOwnedID: actionID,
+            executionKind: .discussion
+        )
+        let profile = try ResearchActionProfile(
+            definition: definition,
+            buttonName: buttonName,
+            order: 25,
+            applicableRoles: [.topic],
+            showInActions: true,
+            modules: [
+                try .boundedText(
+                    id: ResearchActionModuleID(rawValue: moduleID)!,
+                    label: "Question",
+                    isRequired: true,
+                    maximumTextUTF8ByteCount: 1_200,
+                    allowsMultipleLines: true
+                ),
+            ],
+            sourceRequirement: .none,
+            capabilities: try ResearchActionCapabilityDeclaration(
+                readableRoles: [.topic]
+            ),
+            feedbackRequirement: feedbackRequirement
+        )
+        return try ResearchActionProfileBinding(
+            packageID: packageID,
+            profile: profile
+        )
+    }
+
+    private func customActionSkillSource(
+        actionID: ResearchActionID
+    ) -> String {
+        """
+        ---
+        name: Socratic Pressure
+        description: Develop one attributed dialectical exchange.
+        scholium:
+          role: specialist
+          supported_actions: [\(actionID.rawValue)]
+          supported_functions: [discuss]
+          capabilities: []
+          supported_modes: [all]
+          required_skills: []
+        ---
+        Ask precise questions and preserve unresolved pressure.
+        """ + "\n"
+    }
+
     private static let zoteroItemJSON = #"""
     {
       "key": "META0001",

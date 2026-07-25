@@ -803,6 +803,20 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.workingMethodBindings()
     }
 
+    public func availableActions(
+        for target: ResearchActionNoteSnapshot
+    ) async throws -> [ResearchActionAvailability] {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchActionAvailability(for: target)
+    }
+
+    public func prepareAction(
+        _ request: ResearchActionExecutionRequest
+    ) async throws -> ResearchActionPreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareResearchAction(request)
+    }
+
     public func actionProfiles() async throws -> ResearchActionProfileSnapshot? {
         let handle = try await reference.requireHandle()
         return try await handle.actionProfiles()

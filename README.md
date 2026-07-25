@@ -86,8 +86,14 @@ foundations. Profiles can describe only seven native module kinds, bounded
 presentation values, source and feedback requirements, and a candidate
 existing-note capability ceiling; they cannot carry executable code or grant
 authority. Triptych-local Profile storage and the categorized production
-Methods and Researcher Skills editor are now reachable, but the general Action
-resolver and run integration are not. Analyze now requires one explicitly
+Methods and Researcher Skills editor are now reachable. A delivery-neutral
+Action use case resolves the role-valid default matrix and visible Researcher
+Skills, rechecks current configuration for every preparation, and freezes the
+exact Target, Method/resource revisions, resolved Profile, and concrete
+read/write envelope in an Action-only snapshot. The retained Function
+coordinator still owns checkpoint, completion, conflict, revision, and write
+validation, while the production Actions interface and CLI remain on their
+Function-era entry points until the later interface cutover. Analyze now requires one explicitly
 bound, fingerprinted regular
 file: either a local selection or an exact Zotero parent/attachment identity
 confirmed against a selected local file. Persisted bookmarks and paths remain in
@@ -118,8 +124,8 @@ still named by a current or retained active binding is rejected, and partial
 failure moves proved installed copies into hidden nonexecuting recovery
 quarantine rather than deleting possible late external writes. Archives,
 network content, links, executables, scripts, nested resources, and implicit
-Action/permission bindings are rejected. Profiles remain nonexecuting, and
-standing permissions, general Action resolution, unified Discussion, and the
+Action/permission bindings are rejected. Profiles remain declarative and
+cannot grant authority. Standing permissions, unified Discussion, and the
 portable two-panel Research Record adopted by D-106 remain later migration
 work.
 

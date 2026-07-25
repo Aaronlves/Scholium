@@ -16,13 +16,23 @@ public enum ResearchWorkflowAssembler {
         citationStyle: String? = nil,
         primaryResourcePaths: Set<String> = [],
         conditionalResourcePaths: [String: Set<String>] = [:],
+        actionProfileBinding: ResearchActionProfileBinding? = nil,
+        expectedActionProfileDocumentRevision: DocumentFingerprint? = nil,
         store: ResearchSkillStore
     ) async throws -> ResolvedResearchWorkflowEnvelope {
         try contract.validate()
-        let primaryResolution = try await store.functionBindingResolution(
-            for: function,
-            actionID: actionID
-        )
+        let primaryResolution: ResearchSkillBindingResolution
+        if actionProfileBinding != nil {
+            primaryResolution = try await store.profileActionBindingResolution(
+                for: function,
+                actionID: actionID
+            )
+        } else {
+            primaryResolution = try await store.functionBindingResolution(
+                for: function,
+                actionID: actionID
+            )
+        }
         let primarySkillIDs = primaryResolution.package.map { [$0.id] } ?? []
         let effectiveContract = applyingPrimaryMethod(
             primarySkillIDs,
@@ -69,17 +79,39 @@ public enum ResearchWorkflowAssembler {
                 selectedPaths[package.id, default: []].insert(reference)
             }
 
-            let packages = try await store.resolvedFunctionPackages(
-                for: function,
-                actionID: actionID,
-                fidelityChecks: fidelityChecks,
-                citationStyle: citationStyle,
-                additionalSkillIDs: additionalIDs,
-                primaryResourcePaths: primaryResourcePaths,
-                additionalResourcePaths: selectedPaths,
-                expectedAdditionalPackageRevisions: practicePackageRevisions,
-                primaryResolution: primaryResolution
-            )
+            let packages: [ResolvedResearchSkillSelection]
+            if let actionProfileBinding,
+               let expectedActionProfileDocumentRevision {
+                packages = try await store.resolvedProfileActionPackages(
+                    for: function,
+                    actionID: actionID,
+                    mode: phase.mode,
+                    expectedBinding: actionProfileBinding,
+                    expectedProfileDocumentRevision: expectedActionProfileDocumentRevision,
+                    fidelityChecks: fidelityChecks,
+                    citationStyle: citationStyle,
+                    additionalSkillIDs: additionalIDs,
+                    primaryResourcePaths: primaryResourcePaths,
+                    additionalResourcePaths: selectedPaths,
+                    expectedAdditionalPackageRevisions: practicePackageRevisions
+                )
+            } else {
+                guard actionProfileBinding == nil,
+                      expectedActionProfileDocumentRevision == nil else {
+                    throw ResearchSkillBindingError.staleBindingFile
+                }
+                packages = try await store.resolvedFunctionPackages(
+                    for: function,
+                    actionID: actionID,
+                    mode: phase.mode,
+                    fidelityChecks: fidelityChecks,
+                    citationStyle: citationStyle,
+                    additionalSkillIDs: additionalIDs,
+                    primaryResourcePaths: primaryResourcePaths,
+                    additionalResourcePaths: selectedPaths,
+                    expectedAdditionalPackageRevisions: practicePackageRevisions
+                )
+            }
             for selection in phase.selectedPractices {
                 guard let expectedRevision = practicePackageRevisions[selection.packageID],
                       let reference = practiceReferences[selection.selectionID],

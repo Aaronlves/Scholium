@@ -94,7 +94,7 @@ public actor ResearchFunctionCoordinator {
 
 }
 
-private struct ValidatedFunctionObject: Sendable {
+struct ValidatedFunctionObject: Sendable {
     let note: WorkspaceNoteSnapshot
     let reference: DialogueNoteReference
 }
@@ -169,6 +169,8 @@ private struct ResearchFunctionAuthorityBinding: Encodable {
 
 private struct ResearchFunctionTaskDirective: Encodable {
     let action: ResearchActionID
+    let actionParameters: ResearchActionParameterModel
+    let feedbackRequirement: ResearchActionFeedbackRequirement
     let function: ResearchFunctionID
     let triptychID: String
     let runID: String
@@ -236,7 +238,8 @@ extension WorkspaceHandle {
     // MARK: Availability and Materials
 
     func researchFunctionAvailability(
-        for target: ResearchFunctionTarget
+        for target: ResearchFunctionTarget,
+        checkingSourceAccess: Bool = true
     ) async throws -> [ResearchFunctionAvailability] {
         try requireActive()
         let targetReason = await researchFunctionTargetRepairReason(target)
@@ -254,7 +257,9 @@ extension WorkspaceHandle {
             }
 
             if reasons.isEmpty {
-                if function == .develop, target.role == .analysis {
+                if checkingSourceAccess,
+                   function == .develop,
+                   target.role == .analysis {
                     let sourceStatus = try await researchSourceAccessStatus(for: target)
                     if let failure = sourceStatus.failure {
                         reasons.append(ResearchFunctionRepairReason(
@@ -517,12 +522,34 @@ extension WorkspaceHandle {
         )
     }
 
-    private func prepareResearchFunction(
+    func prepareResearchFunction(
         _ proposedRequest: ResearchFunctionRequest,
         fidelityInvocation: FidelityInvocationKind? = nil
     ) async throws -> ResearchFunctionPreparation {
+        let actionContext = try await resolvedDefaultActionContext(
+            for: proposedRequest
+        )
+        return try await prepareResearchFunction(
+            proposedRequest,
+            fidelityInvocation: fidelityInvocation,
+            actionContext: actionContext
+        )
+    }
+
+    func prepareResearchFunction(
+        _ proposedRequest: ResearchFunctionRequest,
+        fidelityInvocation: FidelityInvocationKind? = nil,
+        actionContext: ResolvedResearchActionContext
+    ) async throws -> ResearchFunctionPreparation {
         try requireActive()
-        let expandedRequest = try await expandingSharedFidelityTargets(in: proposedRequest)
+        guard actionContext.function == proposedRequest.function,
+              actionContext.availability.definition.id
+                == actionContext.availability.profile.profile.actionID else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let expandedRequest = actionContext.allowsLegacyFidelityExpansion
+            ? try await expandingSharedFidelityTargets(in: proposedRequest)
+            : proposedRequest
         try expandedRequest.validate()
         let target = try await validateResearchFunctionTarget(
             expandedRequest.target,
@@ -538,12 +565,20 @@ extension WorkspaceHandle {
             for: target,
             function: request.function
         )
+        let actionParameters = try resolvedActionParameters(
+            context: actionContext,
+            sourceReference: sourceAccess?.reference
+        )
         let zoteroContext = await zoteroBibliographicContext(
             for: target,
             sourceReference: sourceAccess?.reference
         )
         _ = try await validateResearchFunctionWriteTargets(request)
         _ = try await validateResearchFunctionFidelityTargets(request)
+        let actionAuthority = try resolvedActionAuthority(
+            context: actionContext,
+            request: request
+        )
         let evidence = try await selectedFunctionComments(
             ids: request.commentIDs,
             selected: [target] + materials
@@ -553,14 +588,36 @@ extension WorkspaceHandle {
         )
         let phases = try await resolveResearchFunctionPhases(
             request,
+            actionContext: actionContext,
             automaticFidelityChecks: automaticFidelityChecks,
             includeZoteroIntegration: zoteroContext != nil
                 || sourceAccess?.reference.identity.route == .zoteroAttachment
         )
+        let phaseSnapshots = phases.enumerated().map { index, resolved in
+            ResearchFunctionPhaseSnapshot(
+                phase: index + 1,
+                function: resolved.function,
+                skills: resolved.envelope.phases
+                    .flatMap(\.packages)
+                    .map(ResearchFunctionSkillSnapshot.init),
+                citationStyle: resolved.citationStyle
+            )
+        }
+        let allSkills = mergedFunctionSkillSnapshots(
+            phaseSnapshots.flatMap(\.skills)
+        )
+        let actionSnapshot = try resolvedActionSnapshot(
+            context: actionContext,
+            parameters: actionParameters,
+            authority: actionAuthority,
+            target: request.target.actionNote,
+            skills: allSkills
+        )
 
         // A checkpoint follows all non-mutating validation and skill
-        // resolution so a failed preparation cannot leave a misleading
-        // recovery marker merely because a binding or Material was invalid.
+        // and Action-snapshot resolution so a failed preparation cannot leave
+        // a misleading recovery marker merely because a binding, Profile,
+        // Method, authority envelope, or Material was invalid.
         let checkpoint: TriptychCheckpoint?
         if request.function.requiresCheckpoint, request.function != .critique {
             checkpoint = try await createCheckpoint(
@@ -621,19 +678,6 @@ extension WorkspaceHandle {
             activityAuthorization = nil
         }
         let evidenceRevisions = try functionEvidenceRevisions(evidence)
-        let phaseSnapshots = phases.enumerated().map { index, resolved in
-            ResearchFunctionPhaseSnapshot(
-                phase: index + 1,
-                function: resolved.function,
-                skills: resolved.envelope.phases
-                    .flatMap(\.packages)
-                    .map(ResearchFunctionSkillSnapshot.init),
-                citationStyle: resolved.citationStyle
-            )
-        }
-        let allSkills = mergedFunctionSkillSnapshots(
-            phaseSnapshots.flatMap(\.skills)
-        )
         let handoff = request.function.requiresFinalFidelity && request.function != .manuscript
             ? ResearchFunctionFidelityHandoff(
                 required: true,
@@ -645,6 +689,8 @@ extension WorkspaceHandle {
         if request.function == .critique {
             return try await prepareCritiqueFunction(
                 request,
+                actionSnapshot: actionSnapshot,
+                action: actionContext.availability.definition,
                 phases: phases,
                 phaseSnapshots: phaseSnapshots,
                 allSkills: allSkills,
@@ -657,6 +703,7 @@ extension WorkspaceHandle {
         let snapshot = ResearchFunctionSnapshot(
             runID: runID,
             request: request,
+            actionSnapshot: actionSnapshot,
             recordKind: request.function == .discuss ? .discuss : .functionEnvelope,
             recordID: runID,
             checkpointID: checkpoint?.id,
@@ -700,6 +747,9 @@ extension WorkspaceHandle {
 
         let functionInstructions = try renderFunctionInstructions(
             request: request,
+            action: actionContext.availability.definition,
+            parameters: actionParameters,
+            feedbackRequirement: actionContext.availability.profile.profile.feedbackRequirement,
             phases: phases,
             selectedComments: evidence,
             runID: runID,
@@ -827,6 +877,8 @@ extension WorkspaceHandle {
 
     private func prepareCritiqueFunction(
         _ request: ResearchFunctionRequest,
+        actionSnapshot: ResearchActionSnapshot,
+        action: ResearchActionDefinition,
         phases: [ResolvedFunctionPhase],
         phaseSnapshots: [ResearchFunctionPhaseSnapshot],
         allSkills: [ResearchFunctionSkillSnapshot],
@@ -858,6 +910,7 @@ extension WorkspaceHandle {
                     ResearchFunctionSnapshot(
                         runID: runID,
                         request: request,
+                        actionSnapshot: actionSnapshot,
                         recordKind: .critique,
                         recordID: runID,
                         checkpointID: checkpoint.id,
@@ -873,6 +926,9 @@ extension WorkspaceHandle {
                 skillInstructionsOverride: { output in
                     try self.renderFunctionInstructions(
                         request: request,
+                        action: action,
+                        parameters: actionSnapshot.parameters,
+                        feedbackRequirement: actionSnapshot.resolvedProfile.profile.feedbackRequirement,
                         phases: phases,
                         selectedComments: selectedComments,
                         runID: runID,
@@ -899,6 +955,9 @@ extension WorkspaceHandle {
             }
             let recoveredInstructions = try renderFunctionInstructions(
                 request: request,
+                action: action,
+                parameters: actionSnapshot.parameters,
+                feedbackRequirement: actionSnapshot.resolvedProfile.profile.feedbackRequirement,
                 phases: phases,
                 selectedComments: selectedComments,
                 runID: runID,
@@ -933,6 +992,9 @@ extension WorkspaceHandle {
         }
         let exactInstructions = try renderFunctionInstructions(
             request: request,
+            action: action,
+            parameters: actionSnapshot.parameters,
+            feedbackRequirement: actionSnapshot.resolvedProfile.profile.feedbackRequirement,
             phases: phases,
             selectedComments: selectedComments,
             runID: runID,
@@ -1725,8 +1787,121 @@ extension WorkspaceHandle {
 
     // MARK: Resolution
 
+    private func resolvedActionSnapshot(
+        context: ResolvedResearchActionContext,
+        parameters: ResearchActionParameterModel,
+        authority: ResearchAuthorityEnvelope,
+        target: ResearchActionNoteSnapshot,
+        skills: [ResearchFunctionSkillSnapshot]
+    ) throws -> ResearchActionSnapshot {
+        guard let method = skills.first(where: {
+            $0.packageID == context.primaryPackageID
+        }) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let methodSnapshot = try ResearchActionMethodSnapshot(
+            packageID: method.packageID,
+            origin: method.origin,
+            version: method.version,
+            packageRevision: method.packageRevision,
+            loadedResources: method.loadedResources.map {
+                ResearchActionResourceSnapshot(
+                    relativePath: $0.relativePath,
+                    revision: $0.revision
+                )
+            }
+        )
+        return try ResearchActionSnapshot(
+            definition: context.availability.definition,
+            target: target,
+            method: methodSnapshot,
+            resolvedProfile: context.availability.profile,
+            parameters: parameters,
+            authority: authority
+        )
+    }
+
+    private func resolvedActionAuthority(
+        context: ResolvedResearchActionContext,
+        request: ResearchFunctionRequest
+    ) throws -> ResearchAuthorityEnvelope {
+        var readable: [ResearchActionNoteSnapshot] = []
+        func appendExact(_ note: ResearchActionNoteSnapshot) throws {
+            if let existing = readable.first(where: { $0.noteID == note.noteID }) {
+                guard existing == note else {
+                    throw ResearchActionExecutionContractError.staleResolution
+                }
+                return
+            }
+            readable.append(note)
+        }
+        try appendExact(request.target.actionNote)
+        for material in request.materials {
+            try appendExact(material.actionNote)
+        }
+        for target in request.resolvedFidelityTargets {
+            try appendExact(target.actionNote)
+        }
+        for target in request.authorizedWriteTargets {
+            try appendExact(target.actionNote)
+        }
+
+        var writable: [ResearchActionNoteSnapshot] = []
+        for target in request.authorizedWriteTargets {
+            let note = target.actionNote
+            if let existing = writable.first(where: { $0.noteID == note.noteID }) {
+                guard existing == note else {
+                    throw ResearchActionExecutionContractError.staleResolution
+                }
+            } else {
+                writable.append(note)
+            }
+        }
+        guard Set(writable) == Set(context.authority.writableNotes) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        return try ResearchAuthorityEnvelope(
+            readableNotes: readable,
+            writableNotes: writable,
+            writeOperations: writable.isEmpty
+                ? []
+                : context.authority.writeOperations,
+            editablePropertyKeys: writable.isEmpty
+                ? []
+                : context.authority.editablePropertyKeys
+        )
+    }
+
+    private func resolvedActionParameters(
+        context: ResolvedResearchActionContext,
+        sourceReference: ResearchSourceReference?
+    ) throws -> ResearchActionParameterModel {
+        let profile = context.availability.profile.profile
+        var values = context.parameterValues
+        if let module = profile.modules.first(where: {
+            $0.kind == .sourceReference
+        }) {
+            if let sourceReference {
+                if let supplied = values[module.id.rawValue],
+                   supplied != .source(sourceReference) {
+                    throw ResearchActionExecutionContractError.staleResolution
+                }
+                values[module.id.rawValue] = .source(sourceReference)
+            } else if profile.sourceRequirement == .required {
+                throw ResearchFunctionContractError.sourceAccessUnavailable(
+                    ResearchSourceAccessFailure(code: .missingBinding)
+                )
+            }
+        }
+        return try ResearchActionParameterModel(
+            profile: profile,
+            rawValues: values
+        )
+    }
+
     private func resolveResearchFunctionPhases(
         _ request: ResearchFunctionRequest,
+        actionContext: ResolvedResearchActionContext,
         automaticFidelityChecks: Set<FidelityCheck>,
         includeZoteroIntegration: Bool
     ) async throws -> [ResolvedFunctionPhase] {
@@ -1751,10 +1926,15 @@ extension WorkspaceHandle {
                     ? request.checks
                     : automaticFidelityChecks)
                 : []
-            let action = try ResearchActionFunctionMapping.definition(
-                for: function,
-                targetRole: request.target.role
-            )
+            let action: ResearchActionDefinition
+            if function == request.function {
+                action = actionContext.availability.definition
+            } else {
+                action = try ResearchActionFunctionMapping.definition(
+                    for: function,
+                    targetRole: request.target.role
+                )
+            }
             let contract = researchWorkflowContract(
                 request: request,
                 action: action,
@@ -1789,6 +1969,12 @@ extension WorkspaceHandle {
                 primaryResourcePaths: function == request.function
                     ? researchFunctionResourcePaths(selectedResources)
                     : [],
+                actionProfileBinding: function == request.function
+                    ? actionContext.profileBinding
+                    : nil,
+                expectedActionProfileDocumentRevision: function == request.function
+                    ? actionContext.availability.profile.profileDocumentRevision
+                    : nil,
                 store: services.researchSkillStore
             )
             guard envelope.isExecutable else {
@@ -1838,8 +2024,8 @@ extension WorkspaceHandle {
         )).filter { $0 != target }.sorted { lhs, rhs in
             lhs.identifier < rhs.identifier
         }
-        let mode = skillMode(for: action.id)
-        let purpose = phasePurpose(actionID: action.id)
+        let mode = skillMode(for: action)
+        let purpose = phasePurpose(for: action)
         let phaseContract = ResearchWorkflowPhaseContract(
             phase: 1,
             mode: mode,
@@ -1882,6 +2068,9 @@ extension WorkspaceHandle {
 
     private func renderFunctionInstructions(
         request: ResearchFunctionRequest,
+        action: ResearchActionDefinition,
+        parameters: ResearchActionParameterModel,
+        feedbackRequirement: ResearchActionFeedbackRequirement,
         phases: [ResolvedFunctionPhase],
         selectedComments: [DialogueIncludedComment],
         runID: UUID,
@@ -1893,10 +2082,6 @@ extension WorkspaceHandle {
     ) throws -> String {
         let isKeyedWrite = [.develop, .revise].contains(request.function)
         let includesFingerprint = !isKeyedWrite
-        let action = try ResearchActionFunctionMapping.definition(
-            for: request.function,
-            targetRole: request.target.role
-        )
         var seenSkillIDs: Set<String> = []
         let skillPackages = phases
             .flatMap(\.envelope.phases)
@@ -1906,6 +2091,8 @@ extension WorkspaceHandle {
             .map(ResearchFunctionSkillAuthorityBinding.init)
         let directive = ResearchFunctionTaskDirective(
             action: action.id,
+            actionParameters: parameters,
+            feedbackRequirement: feedbackRequirement,
             function: request.function,
             triptychID: services.manifest.id.uuidString.lowercased(),
             runID: runID.uuidString.lowercased(),
@@ -3627,7 +3814,7 @@ extension WorkspaceHandle {
         }
     }
 
-    private func researchFunctionTargetRepairReason(
+    func researchFunctionTargetRepairReason(
         _ target: ResearchFunctionTarget
     ) async -> ResearchFunctionRepairReason? {
         guard let note = currentSnapshot.document(id: target.note) else {
@@ -3868,8 +4055,8 @@ private func workflowReference(
     )
 }
 
-private func skillMode(for actionID: ResearchActionID) -> ResearchSkillMode {
-    switch actionID {
+private func skillMode(for action: ResearchActionDefinition) -> ResearchSkillMode {
+    switch action.id {
     case .discuss: .discuss
     case .analyze: .analyze
     case .synthesize: .synthesize
@@ -3877,12 +4064,21 @@ private func skillMode(for actionID: ResearchActionID) -> ResearchSkillMode {
     case .critique: .review
     case .checkFidelity: .audit
     case .manuscript: .manuscript
-    default: .all
+    default:
+        switch action.executionKind {
+        case .discussion: .discuss
+        case .analysis: .analyze
+        case .synthesis: .synthesize
+        case .writing: .write
+        case .critique: .review
+        case .checkFidelity: .audit
+        case .manuscript: .manuscript
+        }
     }
 }
 
-private func phasePurpose(actionID: ResearchActionID) -> String {
-    switch actionID {
+private func phasePurpose(for action: ResearchActionDefinition) -> String {
+    switch action.id {
     case .discuss: "Respond to the researcher's question without changing Markdown."
     case .analyze: "Analyze or reanalyze the accessible source in the current Analysis."
     case .synthesize: "Synthesize warranted material into the current Topic only."
@@ -3890,7 +4086,23 @@ private func phasePurpose(actionID: ResearchActionID) -> String {
     case .critique: "Assess the Work independently and return attributed findings without editing it."
     case .checkFidelity: "Check the exact revision for the selected content-fidelity checks."
     case .manuscript: "Coordinate only the independently authorized Work phases actually needed."
-    default: "Perform the bounded Action without enlarging its authority."
+    default:
+        switch action.executionKind {
+        case .discussion:
+            "Discuss the declared question without changing Markdown."
+        case .analysis:
+            "Analyze the accessible source within the declared Analysis boundary."
+        case .synthesis:
+            "Synthesize warranted Materials into the declared Topic boundary."
+        case .writing:
+            "Write only within the frozen current Work boundary."
+        case .critique:
+            "Assess the Work independently without editing it."
+        case .checkFidelity:
+            "Check the exact revision without changing it."
+        case .manuscript:
+            "Coordinate only independently authorized Work phases."
+        }
     }
 }
 
