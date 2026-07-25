@@ -209,6 +209,22 @@ struct ResearchFunctionPanelRoute: Hashable, Sendable {
     }
 }
 
+struct ResearchActionPanelRoute: Hashable, Sendable {
+    let target: VaultNoteReference
+    let actionID: ResearchActionID
+    let presentationID: UUID
+
+    init(
+        target: VaultNoteReference,
+        actionID: ResearchActionID,
+        presentationID: UUID
+    ) {
+        self.target = target
+        self.actionID = actionID
+        self.presentationID = presentationID
+    }
+}
+
 /// Typed Properties presentation. A Research Function may temporarily hand
 /// off to Properties without dismissing its scoped draft; the return route
 /// makes that continuation explicit instead of relying on unrelated booleans.
@@ -241,6 +257,7 @@ enum WindowIntent: Equatable, Sendable {
     case revealSourceLocator(vaultID: UUID, locator: SourceLocator)
     case switchVault(UUID)
     case presentResearchFunction(ResearchFunctionPanelRoute)
+    case presentResearchAction(ResearchActionPanelRoute)
     case presentLifecycle(NoteLifecycleRequest)
 }
 

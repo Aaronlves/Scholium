@@ -925,6 +925,16 @@ public struct ResearchActionProfile: Codable, Hashable, Sendable {
                 )
             }
         }
+        if requirement == .optional {
+            throw ResearchActionProfileContractError.invalidProfile(
+                "Optional source access is not supported by the current execution contract."
+            )
+        }
+        if executionKind != .analysis, requirement != .none {
+            throw ResearchActionProfileContractError.invalidProfile(
+                "Only Analysis Actions support source access in the current execution contract."
+            )
+        }
         if executionKind == .analysis, requirement != .required {
             throw ResearchActionProfileContractError.invalidProfile(
                 "Analysis requires one explicit source reference."

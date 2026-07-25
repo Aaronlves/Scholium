@@ -401,7 +401,7 @@ struct ResearchFunctionControllerTests {
         #expect(editorAnchor.quotation == readAnchor.quotation)
     }
 
-    @Test("Research menu and Functions mode share the focused selection-capturing action")
+    @Test("Research menu and Actions mode share the focused selection-capturing action")
     func directCommandSelectionParity() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -419,6 +419,12 @@ struct ResearchFunctionControllerTests {
             ),
             encoding: .utf8
         )
+        let inspectorSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift"
+            ),
+            encoding: .utf8
+        )
         let webReadSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
@@ -432,13 +438,24 @@ struct ResearchFunctionControllerTests {
         ))
         let researchMenu = String(appSource[menuStart.lowerBound..<menuEnd.lowerBound])
 
-        #expect(researchMenu.contains("researchFunctionActions?.open(.discuss)"))
-        #expect(!researchMenu.contains("researchFunctionActions?.open(.review)"))
-        #expect(researchMenu.contains("researchFunctionActions?.open(.critique)"))
-        #expect(!researchMenu.contains("appState?.openResearchFunction"))
-        #expect(noteSource.contains("select: openResearchFunction"))
-        #expect(noteSource.contains("ScholiumFocusedResearchFunctionActions"))
-        #expect(noteSource.contains("open: openResearchFunction"))
+        #expect(researchMenu.contains("researchActionActions?.open(action.id)"))
+        #expect(!researchMenu.contains("Work with Agent"))
+        #expect(!researchMenu.contains("Button(\"Fidelity\")"))
+        #expect(noteSource.contains("select: openResearchAction"))
+        #expect(noteSource.contains("ScholiumFocusedResearchActionActions"))
+        #expect(noteSource.contains("open: openResearchAction"))
+        #expect(inspectorSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
+        #expect(inspectorSource.contains("focusedResearchActions.open(item.id)"))
+        #expect(inspectorSource.contains("@FocusState private var hasKeyboardFocus"))
+        #expect(inspectorSource.contains("hasKeyboardFocus = true"))
+        #expect(inspectorSource.contains(".focused($hasKeyboardFocus)"))
+        #expect(inspectorSource.contains(".onChange(of: focusRequestToken)"))
+        #expect(inspectorSource.contains("registerFocusOwner(item.id)"))
+        #expect(inspectorSource.contains("Task.sleep(for: .milliseconds(120))"))
+        #expect(noteSource.contains("registerFocusOwner: registerResearchActionFocusOwner"))
+        #expect(appSource.contains("private var researchActionOpenRequestID: UUID?"))
+        #expect(appSource.contains("researchActionOpenTask?.cancel()"))
+        #expect(appSource.components(separatedBy: "self.researchActionOpenRequestID == requestID").count >= 4)
         #expect(noteSource.components(separatedBy: "onSelectionChange: { selection in").count == 2)
         #expect(webReadSource.contains("case \"selectionChanged\":"))
         #expect(webReadSource.contains("payload[\"documentID\"] as? String == documentID"))
@@ -735,6 +752,8 @@ struct ResearchFunctionControllerTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let paths = [
+            "Scholium/Features/ResearchActions/ResearchActionController.swift",
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift",
             "Scholium/Features/ResearchFunctions/ResearchFunctionController.swift",
             "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift",
             "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
@@ -772,18 +791,19 @@ struct ResearchFunctionControllerTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("ScholiumApparatusActionButton(\n            item.actionTitleResource"))
+        #expect(source.contains("ResearchActionRowButton("))
         #expect(source.contains("VStack(alignment: .leading, spacing: 0)"))
-        #expect(source.contains("ScrollView(.horizontal)"))
-        #expect(source.contains("case .discuss: \"Discuss\""))
-        #expect(source.contains("case .develop, .revise: \"Write\""))
-        #expect(source.contains("[.discuss, .develop, .revise]"))
+        #expect(!source.contains("ScrollView(.horizontal)"))
+        #expect(source.contains("RESEARCHER SKILLS"))
+        #expect(source.contains("availability.definition.interfaceSummary"))
         #expect(designSystemSource.contains("static let actionRowVerticalInset"))
         #expect(designSystemSource.contains("static let actionCopySpacing"))
         #expect(!source.contains("Menu {"))
+        #expect(!source.contains("RESEARCH ACTIVITY"))
+        #expect(!source.contains("Open Research Record"))
     }
 
-    @Test("The Functions Inspector and direct actions never treat unresolved availability as enabled")
+    @Test("The Actions Inspector and direct actions never treat unresolved availability as enabled")
     func availabilityProjectionIsFailClosed() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -802,73 +822,135 @@ struct ResearchFunctionControllerTests {
             encoding: .utf8
         )
 
-        #expect(!inspectorSource.contains("availability[function]?.isEnabled ?? true"))
-        #expect(inspectorSource.contains("result?.isEnabled == true"))
+        #expect(!inspectorSource.contains("isEnabled ?? true"))
+        #expect(inspectorSource.contains("availability.isEnabled"))
         #expect(appSource.contains("refreshAvailability(for: target)"))
-        #expect(inspectorSource.contains("Checking availability…"))
+        #expect(inspectorSource.contains(".disabled(!item.canPresent)"))
     }
 
-    @Test("Functions projection preserves role order and fails closed before availability")
-    func functionsProjectionOrderAndAvailability() {
+    @Test("Actions projection preserves resolved groups and explicit availability")
+    func actionsProjectionOrderAndAvailability() throws {
         let topic = target(title: "Agency", path: "Topics/Agency.md")
-        let topicPresentation = ResearchFunctionsPresentation.make(
-            target: topic,
-            availability: [:],
-            activeFunction: nil,
-            runs: []
+        let topicActions = [
+            try actionAvailability(.checkFidelity, role: .topic, order: 300),
+            try actionAvailability(.discuss, role: .topic, order: 0),
+            try actionAvailability(.synthesize, role: .topic, order: 100),
+        ]
+        let topicPresentation = ResearchActionsPresentation.make(
+            target: actionTarget(topic),
+            availability: topicActions
         )
-        #expect(topicPresentation.items.map(\.id) == [.discuss, .develop, .fidelity])
-        #expect(topicPresentation.items.allSatisfy { !$0.isEnabled })
-        #expect(topicPresentation.items.allSatisfy {
-            $0.disabledReason == "Checking availability…"
-        })
-        #expect(topicPresentation.items.first(where: { $0.id == .fidelity })?.statusSummary
-            == "Read-only. Current revision \(topic.fingerprint.sha256.prefix(8)) has no Fidelity result.")
+        #expect(topicPresentation.items.map(\.id) == [.discuss, .synthesize, .checkFidelity])
+        #expect(topicPresentation.items.allSatisfy { $0.isEnabled })
 
         let work = target(
             title: "Chapter",
             path: "Works/Chapter.md",
             role: .work
         )
-        let workPresentation = ResearchFunctionsPresentation.make(
-            target: work,
+        let customID = try #require(ResearchActionID(researcherOwnedRawValue: "counterexample"))
+        let workPresentation = ResearchActionsPresentation.make(
+            target: actionTarget(work),
             availability: [
-                .critique: .init(function: .critique, isEnabled: true),
-            ],
-            activeFunction: nil,
-            runs: []
+                try actionAvailability(.discuss, role: .work, order: 0),
+                try actionAvailability(.write, role: .work, order: 100),
+                try actionAvailability(.critique, role: .work, order: 200),
+                try actionAvailability(.checkFidelity, role: .work, order: 300),
+                try actionAvailability(
+                    customID,
+                    role: .work,
+                    order: 10,
+                    group: .researcherSkill,
+                    enabled: false
+                ),
+            ]
         )
         #expect(workPresentation.items.map(\.id) == [
-            .discuss, .revise, .critique, .fidelity,
+            .discuss, .write, .critique, .checkFidelity, customID,
         ])
-        #expect(workPresentation.items[2].isEnabled == true)
-        #expect(workPresentation.items[2].statusSummary
-            == "Read-only. No Critique has been recorded.")
-        #expect(workPresentation.items.enumerated().allSatisfy { index, item in
-            index == 2 ? item.isEnabled : !item.isEnabled
+        #expect(workPresentation.items.dropLast().allSatisfy { $0.isEnabled })
+        #expect(workPresentation.items.last?.isEnabled == false)
+
+        let recoveryPresentation = ResearchActionsPresentation.make(
+            target: actionTarget(topic),
+            availability: topicActions,
+            cancellationRecoveries: [
+                ResearchActionCancellationRecovery(
+                    runID: UUID(),
+                    errorMessage: "Cancellation needs retry."
+                ),
+            ]
+        )
+        #expect(recoveryPresentation.items.allSatisfy { !$0.canPresent })
+        #expect(recoveryPresentation.items.allSatisfy {
+            $0.detail == "Resolve the pending Action cancellation before starting another Action."
         })
     }
 
-    @Test("Actions projection does not turn pending runs into activity history")
-    func functionsProjectionDoesNotInferActivity() {
-        let target = target(title: "Agency", path: "Topics/Agency.md")
-        let origin = Date(timeIntervalSince1970: 1_000)
-        let runs = [
-            functionRun(target: target, state: .prepared, preparedAt: origin),
-            functionRun(target: target, state: .complete, preparedAt: origin.addingTimeInterval(40)),
-            functionRun(target: target, state: .stale, preparedAt: origin.addingTimeInterval(20)),
-            functionRun(target: target, state: .cancelled, preparedAt: origin.addingTimeInterval(50)),
-            functionRun(target: target, state: .unverified, preparedAt: origin.addingTimeInterval(30)),
-        ]
-
-        let presentation = ResearchFunctionsPresentation.make(
-            target: target,
-            availability: [:],
-            activeFunction: nil,
-            runs: runs
+    @Test("Actions projection exposes no activity chronology")
+    func actionsProjectionHasNoActivityChronology() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift"
+            ),
+            encoding: .utf8
         )
-        #expect(presentation.activityEvents.isEmpty)
-        #expect(presentation.pendingStates.isEmpty)
+        #expect(!source.contains("activityEvents:"))
+        #expect(!source.contains("pendingStates:"))
+        #expect(!source.contains("ResearchActivityHUDItem"))
+    }
+
+    @Test("Actions keeps window cleanup visible without a current Target")
+    func actionsKeepsCleanupVisibleWithoutTarget() {
+        let runID = UUID()
+        let presentation = ResearchActionsPresentation.make(
+            target: nil,
+            availability: [],
+            cancellationRecoveries: [
+                ResearchActionCancellationRecovery(
+                    runID: runID,
+                    errorMessage: "Cancellation needs retry."
+                ),
+            ],
+            retryingCancellationRecoveryIDs: [runID],
+            pendingCancellationBarrierCount: 1
+        )
+
+        #expect(presentation.target == nil)
+        #expect(presentation.items.isEmpty)
+        #expect(presentation.cancellationRecoveries.map(\.runID) == [runID])
+        #expect(presentation.retryingCancellationRecoveryIDs == [runID])
+        #expect(presentation.pendingCancellationBarrierCount == 1)
+        #expect(presentation.activeDiscussions.isEmpty)
+        #expect(presentation.latestSettlement == nil)
+    }
+
+    @Test("No-Target Action cleanup remains reachable in the production apparatus")
+    func noTargetActionCleanupRemainsReachable() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains(
+            "else if appState.researchController.actions.hasCancellationBarrier"
+        ))
+        #expect(source.contains(
+            ".accessibilityIdentifier(\"scholium.researchActions.recoveryOnly\")"
+        ))
+        #expect(source.contains(
+            "presentation: appState.researchActionsPresentation()"
+        ))
     }
 
     @Test("Overview projection keeps visible Attention without reconstructing status")
@@ -1153,6 +1235,68 @@ struct ResearchFunctionControllerTests {
                     utf16Column: lowerBound + 5
                 )
             )
+        )
+    }
+
+    private func actionTarget(
+        _ target: ResearchFunctionTarget
+    ) -> ResearchActionNoteSnapshot {
+        ResearchActionNoteSnapshot(
+            noteID: target.noteID,
+            note: target.note,
+            role: target.role.actionRole,
+            lifecycle: target.lifecycle,
+            fingerprint: target.fingerprint,
+            title: target.title
+        )
+    }
+
+    private func actionAvailability(
+        _ id: ResearchActionID,
+        role: ResearchActionTargetRole,
+        order: Int,
+        group: ResearchActionAvailabilityGroup = .defaultAction,
+        enabled: Bool = true
+    ) throws -> ResearchActionAvailability {
+        let definition: ResearchActionDefinition
+        switch id {
+        case .discuss: definition = .discuss
+        case .analyze: definition = .analyze
+        case .synthesize: definition = .synthesize
+        case .write: definition = .write
+        case .critique: definition = .critique
+        case .checkFidelity: definition = .checkFidelity
+        case .manuscript: definition = .manuscript
+        default:
+            definition = try ResearchActionDefinition(
+                researcherOwnedID: id,
+                executionKind: .critique
+            )
+        }
+        let profile = try ResearchActionProfile(
+            definition: definition,
+            buttonName: id.rawValue,
+            order: order,
+            applicableRoles: [role],
+            showInActions: true,
+            modules: [],
+            sourceRequirement: .none,
+            capabilities: ResearchActionCapabilityDeclaration(readableRoles: [role]),
+            feedbackRequirement: .none
+        )
+        return try ResearchActionAvailability(
+            definition: definition,
+            buttonName: profile.buttonName,
+            order: order,
+            group: group,
+            profile: ResearchActionResolvedProfileSnapshot(
+                origin: .applicationDefault,
+                profile: profile,
+                profileRevision: profile.contentRevision(),
+                profileDocumentRevision: nil
+            ),
+            isEnabled: enabled,
+            repairReasons: enabled ? [] : [ResearchActionRepairReason(code: .methodDisabled)]
         )
     }
 

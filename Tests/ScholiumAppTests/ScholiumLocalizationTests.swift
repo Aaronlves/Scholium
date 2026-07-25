@@ -121,6 +121,51 @@ struct ScholiumLocalizationTests {
         )
     }
 
+    @Test("Application-owned Action modules and handoff controls localize")
+    func researchActionCopy() {
+        #expect(ScholiumL10n.string("Request", locale: simplifiedChinese) == "请求")
+        #expect(ScholiumL10n.string("Materials", locale: simplifiedChinese) == "材料")
+        #expect(ScholiumL10n.string("Read-only", locale: simplifiedChinese) == "只读")
+        #expect(
+            ScholiumL10n.string(
+                "Copy and Choose Agent App…",
+                locale: simplifiedChinese
+            ) == "复制并选择智能体应用…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "A prepared Action still needs cancellation.",
+                locale: simplifiedChinese
+            ) == "仍有一个已准备的操作需要取消。"
+        )
+        #expect(
+            ScholiumL10n.string("Retry Cancellation", locale: simplifiedChinese)
+                == "重试取消"
+        )
+        #expect(
+            ScholiumL10n.string("Retrying Cancellation…", locale: simplifiedChinese)
+                == "正在重试取消…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Resolve the pending Action cancellation before starting another Action.",
+                locale: simplifiedChinese
+            ) == "请先解决待处理的操作取消，再开始另一项操作。"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Waiting for interrupted Action cleanup…",
+                locale: simplifiedChinese
+            ) == "正在等待被中断的操作完成清理…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Action preparation was cancelled.",
+                locale: simplifiedChinese
+            ) == "操作准备已取消。"
+        )
+    }
+
     @Test("Lifecycle destinations use approved Simplified Chinese terminology")
     func lifecycleDestinationTerminology() {
         #expect(ScholiumL10n.string("Set Aside", locale: simplifiedChinese) == "搁置")

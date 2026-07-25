@@ -1644,7 +1644,9 @@ private struct ResearchActionProfileEditorView: View {
                         )
                     }
                     Menu("Add Declarative Module") {
-                        ForEach(ResearchActionModuleKind.allCases, id: \.rawValue) { kind in
+                        ForEach(ResearchActionModuleKind.allCases.filter {
+                            $0 != .sourceReference || draft.executionKind == .analysis
+                        }, id: \.rawValue) { kind in
                             Button(moduleTitle(kind)) {
                                 updateDraft { $0.addModule(kind: kind) }
                             }
@@ -1685,11 +1687,10 @@ private struct ResearchActionProfileEditorView: View {
                         )
                         .lineLimit(2 ... 6)
                     }
-                    Picker("Source", selection: draftBinding.sourceRequirement) {
-                        ForEach(ResearchActionSourceRequirement.allCases, id: \.rawValue) {
-                            Text(sourceRequirementTitle($0)).tag($0)
-                        }
-                    }
+                    LabeledContent(
+                        "Source",
+                        value: sourceRequirementTitle(draft.sourceRequirement)
+                    )
                     Picker("Feedback", selection: draftBinding.feedbackRequirement) {
                         ForEach(ResearchActionFeedbackRequirement.allCases, id: \.rawValue) {
                             Text(feedbackRequirementTitle($0)).tag($0)
@@ -1891,6 +1892,7 @@ private struct ResearchActionModuleDraftEditor: View {
                 TextField("Label", text: $module.label)
                 TextField("Help text", text: $module.helpText)
                 Toggle("Required", isOn: $module.isRequired)
+                    .disabled(module.kind == .sourceReference)
                 switch module.kind {
                 case .notePicker, .materialSelector:
                     Stepper(

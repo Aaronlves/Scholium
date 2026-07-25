@@ -619,12 +619,12 @@ struct ScholiumWorkspaceWindowActionsFocusedKey: FocusedValueKey {
     typealias Value = WorkspaceWindowActions
 }
 
-struct ScholiumFocusedResearchFunctionActions {
-    let open: @MainActor (ResearchFunctionID) -> Void
+struct ScholiumFocusedResearchActionActions {
+    let open: @MainActor (ResearchActionID) -> Void
 }
 
-struct ScholiumFocusedResearchFunctionActionsKey: FocusedValueKey {
-    typealias Value = ScholiumFocusedResearchFunctionActions
+struct ScholiumFocusedResearchActionActionsKey: FocusedValueKey {
+    typealias Value = ScholiumFocusedResearchActionActions
 }
 
 struct ScholiumFocusedEditorActions {
@@ -652,9 +652,9 @@ extension FocusedValues {
         set { self[ScholiumWorkspaceWindowActionsFocusedKey.self] = newValue }
     }
 
-    var scholiumResearchFunctionActions: ScholiumFocusedResearchFunctionActions? {
-        get { self[ScholiumFocusedResearchFunctionActionsKey.self] }
-        set { self[ScholiumFocusedResearchFunctionActionsKey.self] = newValue }
+    var scholiumResearchActionActions: ScholiumFocusedResearchActionActions? {
+        get { self[ScholiumFocusedResearchActionActionsKey.self] }
+        set { self[ScholiumFocusedResearchActionActionsKey.self] = newValue }
     }
 
     var scholiumEditorActions: ScholiumFocusedEditorActions? {
@@ -668,7 +668,7 @@ private struct ScholiumCommands: Commands {
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
-    @FocusedValue(\.scholiumResearchFunctionActions) private var researchFunctionActions
+    @FocusedValue(\.scholiumResearchActionActions) private var researchActionActions
     @FocusedValue(\.scholiumEditorActions) private var editorActions
     @Environment(\.openWindow) private var openWindow
 
@@ -955,40 +955,22 @@ private struct ScholiumCommands: Commands {
             }
         }
         CommandMenu("Research") {
-            if let role = appState?.currentResearchFunctionTarget?.role {
-                if role == .analysis || role == .topic {
-                    Menu("Work with Agent") {
-                        Button("Discuss") { researchFunctionActions?.open(.discuss) }
-                            .keyboardShortcut("r", modifiers: [.command])
-                            .disabled(!researchFunctionIsAvailable(.discuss))
-                        Button("Write") { researchFunctionActions?.open(.develop) }
-                            .keyboardShortcut("r", modifiers: [.command, .shift])
-                            .disabled(!researchFunctionIsAvailable(.develop))
+            if let appState, researchActionActions != nil {
+                ForEach(appState.researchController.actions.availability) { action in
+                    Button {
+                        researchActionActions?.open(action.id)
+                    } label: {
+                        if action.profile.origin == .applicationDefault {
+                            Text(LocalizedStringKey(action.buttonName))
+                        } else {
+                            Text(verbatim: action.buttonName)
+                        }
                     }
+                    .keyboardShortcut(action.definition.interfaceKeyboardShortcut)
                     .disabled(
-                        !researchFunctionIsAvailable(.discuss)
-                            && !researchFunctionIsAvailable(.develop)
+                        !action.canPresentInInterface
+                            || appState.researchController.actions.hasCancellationBarrier
                     )
-                    Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
-                        .disabled(!researchFunctionIsAvailable(.fidelity))
-                } else {
-                    Button("Critique") { researchFunctionActions?.open(.critique) }
-                        .keyboardShortcut("r", modifiers: [.command])
-                        .disabled(!researchFunctionIsAvailable(.critique))
-                    Menu("Work with Agent") {
-                        Button("Discuss") { researchFunctionActions?.open(.discuss) }
-                            .keyboardShortcut("d", modifiers: [.command, .shift])
-                            .disabled(!researchFunctionIsAvailable(.discuss))
-                        Button("Write") { researchFunctionActions?.open(.revise) }
-                            .keyboardShortcut("d", modifiers: [.command, .option, .shift])
-                            .disabled(!researchFunctionIsAvailable(.revise))
-                    }
-                    .disabled(
-                        !researchFunctionIsAvailable(.discuss)
-                            && !researchFunctionIsAvailable(.revise)
-                    )
-                    Button("Fidelity") { researchFunctionActions?.open(.fidelity) }
-                        .disabled(!researchFunctionIsAvailable(.fidelity))
                 }
             }
             Divider()
@@ -1048,13 +1030,6 @@ private struct ScholiumCommands: Commands {
         guard JSONSerialization.isValidJSONObject(payload),
               let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         return String(data: data, encoding: .utf8)
-    }
-
-    private func researchFunctionIsAvailable(_ function: ResearchFunctionID) -> Bool {
-        guard let appState,
-              researchFunctionActions != nil,
-              appState.currentResearchFunctionTarget != nil else { return false }
-        return appState.researchController.functions.availability[function]?.isEnabled == true
     }
 
     private func headingCommand(_ level: Int) -> MarkdownEditorCommand {
@@ -1486,6 +1461,8 @@ final class WindowModel: ObservableObject {
     private let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var workspaceCatalogRefreshTask: Task<Void, Never>?
+    private var researchActionOpenTask: Task<Void, Never>?
+    private var researchActionOpenRequestID: UUID?
     private var workspaceCatalogNeedsAnotherRefresh = false
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
@@ -1623,6 +1600,7 @@ final class WindowModel: ObservableObject {
     }
 
     deinit {
+        researchActionOpenTask?.cancel()
         #if DEBUG
         for token in qaPerformanceModeNotificationTokens {
             notify_cancel(token)
@@ -1830,6 +1808,18 @@ final class WindowModel: ObservableObject {
         )
     }
 
+    var currentResearchActionTarget: ResearchActionNoteSnapshot? {
+        guard let target = currentResearchFunctionTarget else { return nil }
+        return ResearchActionNoteSnapshot(
+            noteID: target.noteID,
+            note: target.note,
+            role: target.role.actionRole,
+            lifecycle: target.lifecycle,
+            fingerprint: target.fingerprint,
+            title: target.title
+        )
+    }
+
     var currentResearchFunctionReference: VaultNoteReference? {
         currentDocumentDescriptor?.reference
     }
@@ -1845,46 +1835,39 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func researchFunctionsPresentation(
-        critique: CritiqueAssociation? = nil
-    ) -> ResearchFunctionsPresentation {
-        let target = currentResearchFunctionTarget
-        let activeFunction = researchController.functions.target == target
-            ? researchController.functions.activeFunction
-            : nil
-        return ResearchFunctionsPresentation.make(
+    func researchActionsPresentation() -> ResearchActionsPresentation {
+        let target = currentResearchActionTarget
+        return ResearchActionsPresentation.make(
             target: target,
-            availability: researchController.functions.availability,
-            activeFunction: activeFunction,
-            runs: researchController.functions.targetRuns,
-            activityEvents: researchController.records?.activityEvents ?? [],
-            pendingStates: researchController.records?.pendingResearchStates ?? [],
+            availability: researchController.actions.availability,
+            isCheckingAvailability: researchController.actions.isRefreshingAvailability,
+            availabilityError: researchController.actions.availabilityError,
+            cancellationRecoveries: researchController.actions.cancellationRecoveries,
+            retryingCancellationRecoveryIDs:
+                researchController.actions.retryingCancellationRecoveryIDs,
+            pendingCancellationBarrierCount:
+                researchController.actions.pendingCancellationBarrierCount,
             activeDiscussions: researchController.records?.activeDiscussions ?? [],
-            settlements: researchController.records?.settlements ?? [],
-            critique: critique
+            settlements: researchController.records?.settlements ?? []
         )
     }
 
-    func refreshResearchFunctionAvailability() async {
-        let target = currentResearchFunctionTarget
+    func refreshResearchActionAvailability() async {
+        let target = currentResearchActionTarget
         researchController.setActiveDocument(currentResearchFunctionReference)
-        researchController.functions.receive(
-            researchController.records?.functionRuns ?? [],
-            targetNoteID: target?.noteID
-        )
-        researchController.functions.invalidateIfTargetChanged(target)
-        reconcileResearchFunctionPresentation()
-        await researchController.functions.refreshAvailability(for: target)
+        researchController.actions.invalidateIfTargetChanged(target)
+        reconcileResearchActionPresentation()
+        await researchController.actions.refreshAvailability(for: target)
         await researchController.bibliography.refresh(
             for: currentRecommendedBibliographyTarget
         )
     }
 
-    private func reconcileResearchFunctionPresentation() {
-        guard case .researchFunction(let route) = presentationRouter.sheet else { return }
-        guard researchController.functions.presentationID == route.presentationID,
-              researchController.functions.activeFunction == route.function,
-              researchController.functions.target?.noteID == currentResearchFunctionTarget?.noteID else {
+    private func reconcileResearchActionPresentation() {
+        guard case .researchAction(let route) = presentationRouter.sheet else { return }
+        guard researchController.actions.presentationID == route.presentationID,
+              researchController.actions.activeActionID == route.actionID,
+              researchController.actions.target?.noteID == currentResearchActionTarget?.noteID else {
             presentationRouter.dismissSheet()
             return
         }
@@ -2283,6 +2266,11 @@ final class WindowModel: ObservableObject {
                   researchController.functions.presentationID == route.presentationID,
                   researchController.functions.activeFunction == route.function else { return }
             presentationRouter.present(.researchFunction(route))
+        case .presentResearchAction(let route):
+            guard currentResearchFunctionReference == route.target,
+                  researchController.actions.presentationID == route.presentationID,
+                  researchController.actions.activeActionID == route.actionID else { return }
+            presentationRouter.present(.researchAction(route))
         case .presentLifecycle(let request):
             noteLifecycleRequest = request
         }
@@ -2545,6 +2533,101 @@ final class WindowModel: ObservableObject {
         session.retainedEditorMode = mode
     }
     #endif
+
+    func openResearchAction(
+        _ actionID: ResearchActionID,
+        selection: CommentAnchor? = nil
+    ) {
+        guard !researchController.actions.hasCancellationBarrier else {
+            showToast(
+                String(
+                    localized: "Resolve the pending Action cancellation before starting another Action.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                kind: .warning
+            )
+            return
+        }
+        guard let assignment = workspaceAssignment,
+              let initialTarget = currentResearchActionTarget,
+              researchController.actions.availability.first(where: {
+                  $0.id == actionID
+              })?.canPresentInInterface == true else { return }
+        let initialNoteID = initialTarget.noteID
+        let requestID = UUID()
+        researchActionOpenRequestID = requestID
+        researchActionOpenTask?.cancel()
+
+        researchActionOpenTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.workspaceStore.flushEditors(in: assignment.id)
+                guard !Task.isCancelled,
+                      self.researchActionOpenRequestID == requestID,
+                      let target = self.currentResearchActionTarget,
+                      target.noteID == initialNoteID,
+                      let reference = self.currentResearchFunctionReference else { return }
+                await self.researchController.actions.refreshAvailability(for: target)
+                guard !Task.isCancelled,
+                      self.researchActionOpenRequestID == requestID else { return }
+                guard let refreshedTarget = self.currentResearchActionTarget,
+                      refreshedTarget == target,
+                      let availability = self.researchController.actions.availability.first(where: {
+                          $0.id == actionID
+                      }), availability.canPresentInInterface else {
+                    let reason = self.researchController.actions.availability.first(where: {
+                        $0.id == actionID
+                    })?.repairReasons.first?.interfaceDescription
+                        ?? "Scholium could not confirm that this Action is available for the current note."
+                    self.showToast(reason, kind: .information)
+                    return
+                }
+                let capturedSelection: CommentAnchor?
+                if let selection, selection.fingerprint == target.fingerprint {
+                    capturedSelection = selection
+                } else {
+                    capturedSelection = nil
+                    if selection != nil {
+                        self.showToast(
+                            "The selected passage changed while Scholium saved the note. The Action will open for the whole note.",
+                            kind: .information
+                        )
+                    }
+                }
+                let presentationID = UUID()
+                guard !self.researchController.actions.hasCancellationBarrier,
+                      self.researchController.actions.begin(
+                    target: target,
+                    actionID: actionID,
+                    selection: capturedSelection,
+                    presentationID: presentationID
+                      ) else {
+                    self.showToast(
+                        String(
+                            localized: "Resolve the pending Action cancellation before starting another Action.",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
+                        kind: .warning
+                    )
+                    return
+                }
+                self.researchController.requestPresentAction(
+                    actionID,
+                    target: reference,
+                    presentationID: presentationID
+                )
+            } catch {
+                guard !Task.isCancelled,
+                      self.researchActionOpenRequestID == requestID else { return }
+                self.showToast(
+                    "Scholium could not save the current editor before opening this Action. \(error.localizedDescription)",
+                    kind: .error
+                )
+            }
+        }
+    }
 
     func openResearchFunction(
         _ function: ResearchFunctionID,
@@ -3258,6 +3341,48 @@ final class WindowModel: ObservableObject {
                 }
             }
         ))
+        researchController.actions.bind(ResearchActionClient(
+            availableActions: { target in
+                try await capabilities.research.availableActions(for: target)
+            },
+            materialCandidates: { target, definition in
+                try await capabilities.research.materialCandidates(
+                    for: target.functionTarget,
+                    function: definition.protectedFunction
+                ).map { $0.material.actionNote }
+            },
+            sourceAccess: { target in
+                try await capabilities.research.sourceAccess(for: target.functionTarget)
+            },
+            bindLocalSource: { target, url in
+                try await capabilities.research.bindSourceAccess(
+                    ResearchSourceBindingRequest(
+                        target: target.functionTarget,
+                        selection: .localFile(url)
+                    )
+                )
+            },
+            prepare: { [weak self] request in
+                guard let self, let assignment = self.workspaceAssignment else {
+                    throw ScholiumApplicationError.researchStoreUnavailable(
+                        "No workspace is active."
+                    )
+                }
+                try await self.workspaceStore.flushEditors(in: assignment.id)
+                return try await capabilities.research.prepareAction(request)
+            },
+            cancel: { runID in
+                try await capabilities.research.cancelFunction(runID: runID)
+            },
+            openActiveDiscussion: { [weak self] discussionID in
+                guard let self else { return }
+                self.presentationRouter.dismissSheet()
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    self?.requestedDiscussionID = discussionID
+                }
+            }
+        ))
         researchController.bibliography.bind(RecommendedBibliographyClient(
             overview: { target in
                 try await capabilities.research.recommendationOverview(for: target)
@@ -3281,7 +3406,7 @@ final class WindowModel: ObservableObject {
                 )
             }
         ))
-        reconcileResearchFunctionPresentation()
+        reconcileResearchActionPresentation()
     }
 
     private func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {

@@ -19,6 +19,8 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
+    @State private var pendingResearchActionFocusID: ResearchActionID?
+    @State private var researchActionFocusRequest: ResearchActionFocusRequest?
 
     var body: some View {
         ScholiumWorkspaceSplitView(
@@ -149,8 +151,13 @@ struct ContentView: View {
             value: appState.showSearchSurface
         )
         .sheet(item: presentedSheet, onDismiss: {
-            if appState.presentationRouter.sheet == nil,
-               appState.researchController.functions.isPresented {
+            if appState.researchController.actions.isPresented {
+                let actionID = appState.researchController.actions.activeActionID
+                appState.presentationRouter.dismissSheet()
+                appState.researchController.actions.dismiss()
+                restoreResearchActionFocus(ifOwnedBy: actionID)
+            } else if appState.presentationRouter.sheet == nil,
+                      appState.researchController.functions.isPresented {
                 appState.researchController.functions.dismiss()
             }
         }) { route in
@@ -166,7 +173,7 @@ struct ContentView: View {
             )
         }
         .task(id: appState.currentResearchFunctionTarget) {
-            await appState.refreshResearchFunctionAvailability()
+            await appState.refreshResearchActionAvailability()
         }
     }
 
@@ -196,6 +203,17 @@ struct ContentView: View {
             get: { appState.presentationRouter.alert },
             set: { appState.presentationRouter.alert = $0 }
         )
+    }
+
+    private func restoreResearchActionFocus(
+        ifOwnedBy actionID: ResearchActionID?
+    ) {
+        let pendingActionID = pendingResearchActionFocusID
+        pendingResearchActionFocusID = nil
+        guard let actionID, pendingActionID == actionID else {
+            return
+        }
+        researchActionFocusRequest = ResearchActionFocusRequest(actionID: actionID)
     }
 
     private var spotlightSearchContext: SpotlightSearchContext {
@@ -246,16 +264,6 @@ struct ContentView: View {
                 Task { await appState.retryDerivedRefresh() }
             }
         )
-    }
-
-    private var currentCritique: CritiqueAssociation? {
-        guard appState.currentDocumentVaultRole == .draftProject,
-              let noteID = appState.currentDocumentDescriptor?.sessionKey.noteID else {
-            return nil
-        }
-        return appState.researchController.records?.critiques.first {
-            $0.workNoteID == noteID
-        }
     }
 
     private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
@@ -426,8 +434,8 @@ struct ContentView: View {
                 appState.editingNotePath = path
                 appState.showFrontmatterEditor = true
             },
-            openResearchFunction: { function, selection in
-                appState.openResearchFunction(function, selection: selection)
+            openResearchAction: { actionID, selection in
+                appState.openResearchAction(actionID, selection: selection)
             },
             setResearchInspectorVisible: {
                 windowCoordinator.actions.setResearchInspectorVisible($0)
@@ -643,6 +651,44 @@ struct ContentView: View {
                     }
                 }
             }
+        case .researchAction(let route):
+            if note(at: route.target.relativePath) != nil {
+                ResearchActionPanelView(
+                    controller: appState.researchController.actions,
+                    context: ResearchActionPanelContext(
+                        chooseLocalSource: {
+                            let panel = NSOpenPanel()
+                            panel.title = "Choose Source"
+                            panel.prompt = "Choose"
+                            panel.canChooseFiles = true
+                            panel.canChooseDirectories = false
+                            panel.allowsMultipleSelection = false
+                            panel.resolvesAliases = false
+                            return panel.runModal() == .OK ? panel.url : nil
+                        },
+                        agentApplicationHandoff: appState.agentApplicationHandoff,
+                        copyInstructions: { instructions in
+                            try appState.copyTextToClipboard(instructions)
+                            appState.showToast("Action instructions copied.")
+                        },
+                        dismiss: { appState.presentationRouter.dismissSheet() }
+                    )
+                )
+                .onDisappear {
+                    if let currentSheet = appState.presentationRouter.sheet {
+                        if case .researchAction(let currentRoute) = currentSheet,
+                           currentRoute.presentationID == route.presentationID {
+                            // Native dismissal is still in flight. The root
+                            // `onDismiss` finalizes the draft and restores
+                            // focus only after AppKit has closed the sheet.
+                            return
+                        }
+                        appState.researchController.actions.dismiss(
+                            presentationID: route.presentationID
+                        )
+                    }
+                }
+            }
         case .createCheckpoint:
             CreateCheckpointView { name in
                 _ = try await appState.createCheckpoint(name: name, kind: .manual)
@@ -764,15 +810,17 @@ struct ContentView: View {
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
                 researchInspectorContentContext: researchInspectorContentContext,
-                researchFunctionsPresentation: appState.researchFunctionsPresentation(
-                    critique: currentCritique
-                ),
-                openResearchFunction: { appState.openResearchFunction($0) },
-                openResearchRecord: {
-                    windowCoordinator.actions.showResearchRecord()
+                researchActionsPresentation: appState.researchActionsPresentation(),
+                researchActionFocusRequest: researchActionFocusRequest,
+                registerResearchActionFocusOwner: {
+                    pendingResearchActionFocusID = $0
                 },
+                openResearchAction: { appState.openResearchAction($0) },
                 openComment: { exchangeID in
                     appState.requestedDiscussionID = exchangeID
+                },
+                retryResearchActionCancellation: { runID in
+                    appState.researchController.actions.retryCancellationRecovery(runID: runID)
                 },
                 settle: { rationale in
                     guard let target = appState.currentResearchFunctionTarget else { return }
@@ -783,6 +831,22 @@ struct ContentView: View {
                     )
                 }
             )
+        } else if appState.researchController.actions.hasCancellationBarrier {
+            ResearchFunctionsInspectorView(
+                presentation: appState.researchActionsPresentation(),
+                freshness: .current,
+                focusRequest: nil,
+                registerFocusOwner: { _ in },
+                select: { _ in },
+                openComment: { _ in },
+                retryRefresh: {},
+                retryCancellationRecovery: { runID in
+                    appState.researchController.actions.retryCancellationRecovery(runID: runID)
+                },
+                settle: { _ in }
+            )
+            .scholiumSurface(.apparatus)
+            .accessibilityIdentifier("scholium.researchActions.recoveryOnly")
         } else {
             Color.clear
                 .scholiumSurface(.apparatus)

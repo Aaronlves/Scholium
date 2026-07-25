@@ -70,8 +70,8 @@ struct DocumentFeatureActions {
     let setPendingSourceLine: @MainActor (Int?) -> Void
     let setSidebarVisible: @MainActor (Bool) -> Void
     let editProperties: @MainActor () -> Void
-    let openResearchFunction: @MainActor (
-        ResearchFunctionID,
+    let openResearchAction: @MainActor (
+        ResearchActionID,
         CommentAnchor?
     ) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
@@ -195,10 +195,12 @@ struct ResearchInspectorView: View {
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
     let researchInspectorContentContext: ResearchInspectorContentContext
-    let researchFunctionsPresentation: ResearchFunctionsPresentation
-    let openResearchFunction: (ResearchFunctionID) -> Void
-    let openResearchRecord: () -> Void
+    let researchActionsPresentation: ResearchActionsPresentation
+    let researchActionFocusRequest: ResearchActionFocusRequest?
+    let registerResearchActionFocusOwner: (ResearchActionID) -> Void
+    let openResearchAction: (ResearchActionID) -> Void
     let openComment: (UUID) -> Void
+    let retryResearchActionCancellation: (UUID) -> Void
     let settle: (String?) async throws -> Void
 
     init(
@@ -208,10 +210,12 @@ struct ResearchInspectorView: View {
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
-        researchFunctionsPresentation: ResearchFunctionsPresentation,
-        openResearchFunction: @escaping (ResearchFunctionID) -> Void,
-        openResearchRecord: @escaping () -> Void,
+        researchActionsPresentation: ResearchActionsPresentation,
+        researchActionFocusRequest: ResearchActionFocusRequest?,
+        registerResearchActionFocusOwner: @escaping (ResearchActionID) -> Void,
+        openResearchAction: @escaping (ResearchActionID) -> Void,
         openComment: @escaping (UUID) -> Void,
+        retryResearchActionCancellation: @escaping (UUID) -> Void,
         settle: @escaping (String?) async throws -> Void
     ) {
         self.note = note
@@ -220,10 +224,12 @@ struct ResearchInspectorView: View {
         self.catalog = catalog
         self.currentVaultID = currentVaultID
         self.researchInspectorContentContext = researchInspectorContentContext
-        self.researchFunctionsPresentation = researchFunctionsPresentation
-        self.openResearchFunction = openResearchFunction
-        self.openResearchRecord = openResearchRecord
+        self.researchActionsPresentation = researchActionsPresentation
+        self.researchActionFocusRequest = researchActionFocusRequest
+        self.registerResearchActionFocusOwner = registerResearchActionFocusOwner
+        self.openResearchAction = openResearchAction
         self.openComment = openComment
+        self.retryResearchActionCancellation = retryResearchActionCancellation
         self.settle = settle
     }
 
@@ -242,12 +248,14 @@ struct ResearchInspectorView: View {
                     ConnectionsInspectorView(context: relationshipContext)
                 case .actions:
                     ResearchFunctionsInspectorView(
-                        presentation: researchFunctionsPresentation,
+                        presentation: researchActionsPresentation,
                         freshness: researchInspectorContentContext.freshness,
-                        select: openResearchFunction,
-                        openResearchRecord: openResearchRecord,
+                        focusRequest: researchActionFocusRequest,
+                        registerFocusOwner: registerResearchActionFocusOwner,
+                        select: openResearchAction,
                         openComment: openComment,
                         retryRefresh: researchInspectorContentContext.retryRefresh,
+                        retryCancellationRecovery: retryResearchActionCancellation,
                         settle: settle
                     )
                 }
@@ -939,8 +947,8 @@ struct NoteContentView: View {
             actions.beginSearch(invocation)
         })
         .focusedSceneValue(
-            \.scholiumResearchFunctionActions,
-            ScholiumFocusedResearchFunctionActions(open: openResearchFunction)
+            \.scholiumResearchActionActions,
+            ScholiumFocusedResearchActionActions(open: openResearchAction)
         )
         .focusedSceneValue(
             \.scholiumEditorActions,
@@ -1591,10 +1599,10 @@ struct NoteContentView: View {
         commentRoute = DiscussionRoute(discussion: discussion)
     }
 
-    private func openResearchFunction(_ function: ResearchFunctionID) {
+    private func openResearchAction(_ actionID: ResearchActionID) {
         guard !editorIsComposing else {
             actions.notify(
-                "Finish text composition to open a research function.",
+                "Finish text composition to open a Research Action.",
                 .information
             )
             return
@@ -1608,11 +1616,11 @@ struct NoteContentView: View {
             )
             if selection != nil, anchor == nil {
                 actions.notify(
-                    "Scholium could not match the selected passage reliably. The function will open for the whole note.",
+                    "Scholium could not match the selected passage reliably. The Action will open for the whole note.",
                     .information
                 )
             }
-            actions.openResearchFunction(function, anchor)
+            actions.openResearchAction(actionID, anchor)
             return
         }
 
@@ -1630,13 +1638,13 @@ struct NoteContentView: View {
                     in: currentSource,
                     relativePath: note.relativePath
                 )
-                actions.openResearchFunction(function, anchor)
+                actions.openResearchAction(actionID, anchor)
             } catch {
                 actions.notify(
-                    "Scholium could not capture the current selection. The function will open for the whole note. \(error.localizedDescription)",
+                    "Scholium could not capture the current selection. The Action will open for the whole note. \(error.localizedDescription)",
                     .information
                 )
-                actions.openResearchFunction(function, nil)
+                actions.openResearchAction(actionID, nil)
             }
         }
     }
@@ -2571,7 +2579,7 @@ private extension ResearchWriteScope {
         setPendingSourceLine: { _ in },
         setSidebarVisible: { _ in },
         editProperties: {},
-        openResearchFunction: { _, _ in },
+        openResearchAction: { _, _ in },
         setResearchInspectorVisible: { _ in },
         notify: { _, _ in }
     )

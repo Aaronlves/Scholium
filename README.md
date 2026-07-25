@@ -92,8 +92,9 @@ Skills, rechecks current configuration for every preparation, and freezes the
 exact Target, Method/resource revisions, resolved Profile, and concrete
 read/write envelope in an Action-only snapshot. The retained Function
 coordinator still owns checkpoint, completion, conflict, revision, and write
-validation, while the production Actions interface and CLI remain on their
-Function-era entry points until the later interface cutover. Analyze now requires one explicitly
+validation. The production Inspector, Research menu, and common modular sheet
+now use the public Action vocabulary; only the CLI and protected compatibility
+implementation retain Function-era entry points. Analyze now requires one explicitly
 bound, fingerprinted regular
 file: either a local selection or an exact Zotero parent/attachment identity
 confirmed against a selected local file. Persisted bookmarks and paths remain in
@@ -103,8 +104,9 @@ or unavailable source blocks Analyze instead of falling back to the Analysis
 note, including when a prepared or legacy run is resumed or completed. Zotero
 attachment resolution remains an exact no-redirect localhost read. Permanent
 Analysis deletion removes its machine-local locator through the deletion
-recovery boundary. The binding capability and repair status are implemented, while the
-production modular source picker remains part of the later interface cutover.
+recovery boundary. The modular Analyze sheet keeps source repair reachable while
+execution is disabled, lets the researcher choose one local file, and
+re-resolves the Action after binding without placing its path in portable state.
 A new Triptych installs six editable working packages plus an
 explicit disabled Manuscript binding. An Action's primary Method is selected
 only by binding v2 and never falls back to a bundled reference or legacy
@@ -140,6 +142,14 @@ agent turns stay in that exchange, Close leaves it active, and explicit Finish
 creates one neutral portable Research Record without an approval or truth
 verdict. The independent two-panel Research Record window, standing
 permissions, Record Trash, and disposable diffs remain later migration work.
+Actions itself now exposes only the role-valid default matrix, active
+Discussions, one Researcher Skills group, and Settle. It contains no Research
+Activity HUD, Work with Agent wrapper, or duplicate Research Record launcher.
+The common sheet keeps Copy Only and Copy and Open in its footer and performs
+the exact preparation boundary internally; there is no separate Prepare button
+or need to scroll for handoff. A prepared run can reuse its frozen instructions
+for either handoff, while cancellation and conflict safeguards remain owned by
+Scholium.
 
 ## Requirements
 

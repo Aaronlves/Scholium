@@ -15,7 +15,10 @@ struct ResearchActionProfileDraftTests {
             applicableRoles: [.work],
             showInActions: true
         )
-        for kind in ResearchActionModuleKind.allCases {
+        let supportedKinds = ResearchActionModuleKind.allCases.filter {
+            $0 != .sourceReference
+        }
+        for kind in supportedKinds {
             draft.addModule(kind: kind)
         }
         draft.readableRoles = [.analysis, .topic, .work]
@@ -24,8 +27,32 @@ struct ResearchActionProfileDraftTests {
 
         #expect(binding.profile.actionID.rawValue == "counterexample-test")
         #expect(binding.profile.executionKind == .critique)
-        #expect(binding.profile.modules.map(\.kind) == ResearchActionModuleKind.allCases)
+        #expect(binding.profile.modules.map(\.kind) == supportedKinds)
         #expect(binding.profile.showInActions)
+    }
+
+    @Test("Source modules remain exact to Analysis execution")
+    func sourceModuleBoundary() {
+        var draft = ResearchActionProfileDraft(
+            actionID: "source-check",
+            executionKind: .discussion,
+            buttonName: "Source Check",
+            order: 0,
+            applicableRoles: [.analysis],
+            showInActions: true
+        )
+
+        draft.addModule(kind: .sourceReference)
+        #expect(!draft.modules.contains { $0.kind == .sourceReference })
+        #expect(draft.sourceRequirement == .none)
+
+        draft.selectExecutionKind(.analysis)
+        #expect(draft.modules.first(where: { $0.kind == .sourceReference })?.isRequired == true)
+        #expect(draft.sourceRequirement == .required)
+
+        draft.selectExecutionKind(.discussion)
+        #expect(!draft.modules.contains { $0.kind == .sourceReference })
+        #expect(draft.sourceRequirement == .none)
     }
 
     @Test("Invalid drafts explain the contract failure before save")

@@ -4,6 +4,7 @@ import SwiftUI
 enum WindowSheetRoute: Identifiable {
     case frontmatter(FrontmatterPanelRoute)
     case researchFunction(ResearchFunctionPanelRoute)
+    case researchAction(ResearchActionPanelRoute)
     case createCheckpoint
     case restoreCheckpoint
     case lifecycle(NoteLifecycleRequest)
@@ -16,6 +17,8 @@ enum WindowSheetRoute: Identifiable {
         case .frontmatter(let route): route.id
         case .researchFunction(let route):
             "research-function:\(route.presentationID.uuidString.lowercased())"
+        case .researchAction(let route):
+            "research-action:\(route.presentationID.uuidString.lowercased())"
         case .createCheckpoint: "create-checkpoint"
         case .restoreCheckpoint: "restore-checkpoint"
         case .lifecycle(let request): "lifecycle:\(request.id)"

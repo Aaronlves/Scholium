@@ -470,6 +470,37 @@ struct ResearchActionProfileContractsTests {
                 feedbackRequirement: .requested
             )
         }
+        expectProfileError(containing: "Optional source access is not supported") {
+            try ResearchActionProfile(
+                definition: .synthesize,
+                buttonName: "Synthesize",
+                order: 0,
+                applicableRoles: [.topic],
+                showInActions: true,
+                modules: [optionalSource],
+                sourceRequirement: .optional,
+                capabilities: ResearchActionCapabilityDeclaration(readableRoles: [.topic]),
+                feedbackRequirement: .requested
+            )
+        }
+        let requiredTopicSource = try ResearchActionModuleDefinition.sourceReference(
+            id: requireModuleID("topic-source"),
+            label: "Source",
+            isRequired: true
+        )
+        expectProfileError(containing: "Only Analysis Actions support source access") {
+            try ResearchActionProfile(
+                definition: .synthesize,
+                buttonName: "Synthesize",
+                order: 0,
+                applicableRoles: [.topic],
+                showInActions: true,
+                modules: [requiredTopicSource],
+                sourceRequirement: .required,
+                capabilities: ResearchActionCapabilityDeclaration(readableRoles: [.topic]),
+                feedbackRequirement: .requested
+            )
+        }
     }
 
     @Test("Profile order, names, roles, and property boundaries reject oversized values")

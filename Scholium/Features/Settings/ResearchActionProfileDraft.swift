@@ -241,14 +241,18 @@ struct ResearchActionProfileDraft: Equatable, Sendable {
             if let index = modules.firstIndex(where: { $0.kind == .sourceReference }) {
                 modules[index].isRequired = true
             }
+        } else {
+            sourceRequirement = .none
+            modules.removeAll { $0.kind == .sourceReference }
         }
     }
 
     mutating func addModule(kind: ResearchActionModuleKind) {
+        guard kind != .sourceReference || executionKind == .analysis else { return }
         guard modules.count < ResearchActionProfile.maximumModuleCount else { return }
         modules.append(Self.defaultModule(kind: kind, index: modules.count))
         if kind == .sourceReference {
-            sourceRequirement = executionKind == .analysis ? .required : .optional
+            sourceRequirement = .required
         }
     }
 

@@ -185,16 +185,32 @@ final class AgentApplicationHandoffController: ObservableObject {
 
     var primaryActionTitle: String {
         if let application = rememberedApplication {
-            return "Copy and Open \(application.displayName)…"
+            return String(
+                localized: "Copy and Open \(application.displayName)…",
+                table: "Localizable",
+                bundle: .module
+            )
         }
-        return "Copy and Choose Agent App…"
+        return String(
+            localized: "Copy and Choose Agent App…",
+            table: "Localizable",
+            bundle: .module
+        )
     }
 
     var primaryActionAccessibilityHint: String {
         if let application = rememberedApplication {
-            return "Copies the prepared instructions, then opens \(application.displayName). You paste and submit them yourself."
+            return String(
+                localized: "Copies the prepared instructions, then opens \(application.displayName). You paste and submit them yourself.",
+                table: "Localizable",
+                bundle: .module
+            )
         }
-        return "Copies the prepared instructions, then asks you to choose an application to remember and open. You paste and submit them yourself."
+        return String(
+            localized: "Copies the prepared instructions, then asks you to choose an application to remember and open. You paste and submit them yourself.",
+            table: "Localizable",
+            bundle: .module
+        )
     }
 
     @discardableResult

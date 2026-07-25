@@ -235,11 +235,15 @@ restoration, and toolbar reconciliation but never reasserts it or stores width.
 The Inspector has exactly three current-note modes: Overview, Connect, and
 Actions. Overview projects compact Attention and role-aware About fields;
 Zotero has no Inspector projection. Connect projects direct and derived
-relations. Actions projects recorded Research Activity and direct role-valid
-full-row operations, with Discuss and Write under a static Work with Agent
-heading. It also projects a quiet row for each portable active Discussion that
-includes the current Note; the same sheet resumes passage-anchored, whole-note,
-and focal-note exchanges. Only finished Discussions appear in the current
+relations. Actions resolves the public role-valid Action matrix and presents
+each default as a direct full-row operation; visible custom Profiles follow in
+one Researcher Skills group. Availability is bound to the exact current Note,
+clears while it is being rechecked, and rejects a late result from a previous
+Target. No Research Activity chronology, Work with Agent wrapper, or Research
+Record launcher is projected there. A quiet row for each portable active
+Discussion that includes the current Note resumes passage-anchored, whole-note,
+and focal-note exchange, while Settle remains a separate researcher-owned
+current-state operation. Only finished Discussions appear in the current
 read-only Research Record window; removed archives have no projection. The
 Inspector may navigate or open another
 note in the Document tabs, but it never owns a document buffer, editing,
@@ -272,23 +276,27 @@ failure or early unregister preserves setup. An existing
 Triptych with lost folder authorization stays in the workspace and replaces
 only that authorization through Restore Access.
 
-## Research Function boundary
+## Research Action and protected Function boundary
 
-Research Functions follow the same in-process compiler boundary as every other
-delivery-neutral capability:
+Research Actions follow the same in-process compiler boundary as every other
+delivery-neutral capability. The protected Function adapter remains below the
+public presentation and use-case boundary:
 
 ```text
-ResearchFunctionsInspectorView / ResearchFunctionPanelView
+ResearchFunctionsInspectorView / ResearchActionPanelView
         ↓ immutable presentation values and closures
-ResearchFunctionController (one window, retained production UI)
-        ↓ ResearchFunctionClient
-ResearchFunctionUseCases (Contracts)       ResearchActionUseCases (headless sibling)
-        └──────────────────────────┬───────────────────────────────┘
-                                   ↓
+ResearchActionController (one window, production UI)
+        ↓ ResearchActionClient
+ResearchActionUseCases (Contracts)
+        ↓ internal Action-to-Function adapter
 ResearchFunctionCoordinator + Action resolver (Application)
         ↓
 Core skill, checkpoint, record, and repository authorities
 ```
+
+`ResearchFunctionController`, its panel route, and retained Function use cases
+remain compiled compatibility code for scheduled clean deletion. No production
+Inspector, Research menu, or focused document action reaches them.
 
 `ScholiumContracts` owns `ResearchFunctionID`, Target/Material/scope, Fidelity
 checks, availability/repair codes, runs, submissions, fingerprints, and
@@ -378,8 +386,10 @@ Develop resolves `scholium-synthesize`, and a package bound to one fails closed
 for the other. `ResearchActionUseCases` now resolves and prepares default and
 researcher Actions, while retained Function preparation passes through the same
 resolver and embeds the resulting Action snapshot. Binding v1 never enters
-either path. The production UI remains Function-era. Every new Action and
-retained Function entry-point run now uses the separated Local Execution v2
+either path. The production Inspector, Research menu, and common modular sheet
+now enter through Action identity; retained Function entry points are
+compatibility implementation only. Every new Action and retained Function
+entry-point run now uses the separated Local Execution v2
 boundary below; legacy run files remain reveal-only and cannot authorize or
 appear in current projection.
 
@@ -543,8 +553,9 @@ findings.
 Discussion agent replies are appended only to the portable active exchange;
 completion validates that attributed evidence, while Finish remains a separate
 researcher action with no legacy activity projection. The production Action
-surface remains Session 13, the independent
-record browser remains Session 19, and Record Trash/diff remains Session 20.
+surface now uses the public role matrix and declarative Profile modules; the
+independent record browser remains Session 19, and Record Trash/diff remains
+Session 20.
 While any active Discussion exists, the current document surface rereads the
 portable projection at a bounded interval. A cooperating CLI reply can
 therefore update the Actions row while the Discussion sheet is closed; reopening
@@ -752,21 +763,38 @@ bottom; its current Analysis-locked Application preparation identity is
 migration debt recorded in Implementation Status.
 
 The Research Inspector receives immutable `ResearchOverviewPresentation` and
-`ResearchFunctionsPresentation` values composed at the window root. It owns no
+`ResearchActionsPresentation` values composed at the window root. It owns no
 workspace refresh, Comment, Critique, availability, or run state. Its Overview,
 Connect, and Actions modes share the one native trailing split
 item and one per-window `ResearchInspectorMode`; legacy stored strings are
 normalized only while restoring that window. Mode changes and note/tab changes
 never reconstruct the retained Document host.
 
-The Research Function panel uses one typed `researchFunction` sheet route
-carrying only a stable Target reference, function ID, and presentation ID. The
-router owns sheet exclusivity; `ResearchFunctionController` owns the session
-and draft. `NoteContentView` retains only the focused
-`openResearchFunction(id:selection:)` action for menu and keyboard invocation;
-it contains no Function presentation or bottom inset. Actions launches
-the same sheet and restores focus only when that mode supplied the initiating
-button. Neither leaf receives `WindowModel`, Core, or Application authority.
+The public Action panel uses one typed `researchAction` sheet route carrying
+only a stable Target reference, Action ID, and presentation ID. The router owns
+sheet exclusivity; `ResearchActionController` owns transient Profile-module
+values and rejects stale availability or preparation results. `NoteContentView`
+retains only the focused `openResearchAction(id:selection:)` action for menu and
+keyboard invocation; it contains no Action presentation or bottom inset. The
+sheet always exposes the app-owned Target, revision, authority, checkpoint,
+conflict, and recovery boundary before rendering the Profile's closed native
+modules. Copy Only and Copy and Open remain fixed footer actions. Either first
+revalidates and freezes the Action internally, then performs the chosen
+handoff; a prepared run keeps both actions available to retry the exact frozen
+instructions. Launcher availability and the sheet's fresh Profile resolution
+are separate: cancelling or failing a sheet cannot erase the Inspector, while
+only the fresh Profile can prepare. The sheet cannot dismiss while preparation
+is crossing its durable boundary. A late noncooperative result is reclaimed
+through typed cancellation. Interrupted preparation and cancellation retain a
+per-run cleanup barrier; no later Action can begin until each late result has
+either cancelled successfully or become its own visible, retryable recovery
+entry in Actions. One recovery can therefore never overwrite another. When a
+window temporarily has no current Note, a recovery-only Apparatus keeps those
+window-owned cleanup entries reachable without inventing a Target or Action.
+Protected Function mapping occurs only in Application composition;
+the retained Function route and controller remain compiled migration debt and
+have no production Inspector or menu entry. Neither leaf receives
+`WindowModel`, Core, or Application authority.
 
 ### Interface localization
 

@@ -1,97 +1,101 @@
 import ScholiumContracts
 import SwiftUI
 
-/// Immutable, per-window projection for the current note's Actions mode.
-/// The view owns only transient focus; Application remains the authority for
-/// availability, durable runs, checkpoints, and function presentation.
-struct ResearchFunctionsPresentation {
-    let items: [ResearchFunctionItemPresentation]
-    let activeFunction: ResearchFunctionID?
-    let target: ResearchFunctionTarget?
-    let activityEvents: [ResearchActivityEvent]
-    let pendingStates: [PendingResearchState]
+struct ResearchActionFocusRequest: Equatable {
+    let actionID: ResearchActionID
+    let token: UUID
+
+    init(actionID: ResearchActionID, token: UUID = UUID()) {
+        self.actionID = actionID
+        self.token = token
+    }
+}
+
+/// Immutable projection for the current note's simplified Actions surface.
+/// It contains current Action availability and deliberate researcher state,
+/// never the removed activity chronology or transport details.
+struct ResearchActionsPresentation {
+    let items: [ResearchActionItemPresentation]
+    let target: ResearchActionNoteSnapshot?
+    let isCheckingAvailability: Bool
+    let availabilityError: String?
+    let cancellationRecoveries: [ResearchActionCancellationRecovery]
+    let retryingCancellationRecoveryIDs: Set<UUID>
+    let pendingCancellationBarrierCount: Int
     let activeDiscussions: [PortableResearchDiscussion]
     let latestSettlement: SettlementRecord?
 
     static let empty = Self(
         items: [],
-        activeFunction: nil,
         target: nil,
-        activityEvents: [],
-        pendingStates: [],
+        isCheckingAvailability: false,
+        availabilityError: nil,
+        cancellationRecoveries: [],
+        retryingCancellationRecoveryIDs: [],
+        pendingCancellationBarrierCount: 0,
         activeDiscussions: [],
         latestSettlement: nil
     )
 
     static func make(
-        target: ResearchFunctionTarget?,
-        availability: [ResearchFunctionID: ResearchFunctionAvailability],
-        activeFunction: ResearchFunctionID?,
-        runs: [ResearchFunctionRecordProjection],
-        activityEvents: [ResearchActivityEvent] = [],
-        pendingStates: [PendingResearchState] = [],
+        target: ResearchActionNoteSnapshot?,
+        availability: [ResearchActionAvailability],
+        isCheckingAvailability: Bool = false,
+        availabilityError: String? = nil,
+        cancellationRecoveries: [ResearchActionCancellationRecovery] = [],
+        retryingCancellationRecoveryIDs: Set<UUID> = [],
+        pendingCancellationBarrierCount: Int = 0,
         activeDiscussions: [PortableResearchDiscussion] = [],
-        settlements: [SettlementRecord] = [],
-        critique: CritiqueAssociation? = nil
+        settlements: [SettlementRecord] = []
     ) -> Self {
-        guard let target else { return .empty }
-
-        let targetPendingStates = pendingStates.filter { $0.noteID == target.noteID }
-
-        let orderedFunctions: [ResearchFunctionID] = switch target.role {
-        case .analysis, .topic:
-            [.discuss, .develop, .fidelity]
-        case .work:
-            [.discuss, .revise, .critique, .fidelity]
-        }
-
-        let items = orderedFunctions.map { function in
-            let result = availability[function]
-            let reason: String?
-            if result == nil {
-                reason = ScholiumL10n.string("Checking availability…")
-            } else if result?.isEnabled == true {
-                reason = nil
-            } else {
-                reason = result?.repairReasons.first?.interfaceDescription
-                    ?? ScholiumL10n.string("Unavailable for this note.")
-            }
-            return ResearchFunctionItemPresentation(
-                id: function,
-                isEnabled: result?.isEnabled == true,
-                disabledReason: reason,
-                statusSummary: statusSummary(
-                    for: function,
-                    target: target,
-                    runs: runs,
-                    pendingStates: targetPendingStates,
-                    critique: critique
-                )
+        guard let target else {
+            return Self(
+                items: [],
+                target: nil,
+                isCheckingAvailability: false,
+                availabilityError: nil,
+                cancellationRecoveries: cancellationRecoveries,
+                retryingCancellationRecoveryIDs: retryingCancellationRecoveryIDs,
+                pendingCancellationBarrierCount: pendingCancellationBarrierCount,
+                activeDiscussions: [],
+                latestSettlement: nil
             )
         }
-
+        let hasCancellationBarrier = pendingCancellationBarrierCount > 0
+            || !cancellationRecoveries.isEmpty
+        let items = availability
+            .sorted {
+                if $0.group != $1.group { return $0.group == .defaultAction }
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.id.rawValue < $1.id.rawValue
+            }
+            .map { availability in
+                ResearchActionItemPresentation(
+                    availability: availability,
+                    isBlockedByCancellationRecovery: hasCancellationBarrier,
+                    disabledReason: availability.isEnabled
+                        ? hasCancellationBarrier
+                            ? String(
+                                localized: "Resolve the pending Action cancellation before starting another Action.",
+                                table: "Localizable",
+                                bundle: .module
+                            )
+                            : nil
+                        : availability.repairReasons.first?.interfaceDescription
+                            ?? "Unavailable for this note."
+                )
+            }
         return Self(
             items: items,
-            activeFunction: activeFunction,
             target: target,
-            activityEvents: activityEvents
-                .filter { $0.note.noteID == target.noteID }
-                .sorted { lhs, rhs in
-                    if lhs.occurredAt != rhs.occurredAt {
-                        return lhs.occurredAt < rhs.occurredAt
-                    }
-                    return lhs.id.uuidString < rhs.id.uuidString
-                },
-            pendingStates: targetPendingStates
-                .sorted { lhs, rhs in
-                    if lhs.createdAt != rhs.createdAt {
-                        return lhs.createdAt < rhs.createdAt
-                    }
-                    return lhs.id.uuidString < rhs.id.uuidString
-                },
+            isCheckingAvailability: isCheckingAvailability,
+            availabilityError: availabilityError,
+            cancellationRecoveries: cancellationRecoveries,
+            retryingCancellationRecoveryIDs: retryingCancellationRecoveryIDs,
+            pendingCancellationBarrierCount: pendingCancellationBarrierCount,
             activeDiscussions: activeDiscussions
-                .filter {
-                    $0.participatingNotes.contains(where: { $0.noteID == target.noteID })
+                .filter { discussion in
+                    discussion.participatingNotes.contains { $0.noteID == target.noteID }
                 }
                 .sorted {
                     if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
@@ -102,233 +106,89 @@ struct ResearchFunctionsPresentation {
                 .max { $0.settledAt < $1.settledAt }
         )
     }
-
-    private static func statusSummary(
-        for function: ResearchFunctionID,
-        target: ResearchFunctionTarget,
-        runs: [ResearchFunctionRecordProjection],
-        pendingStates: [PendingResearchState],
-        critique: CritiqueAssociation?
-    ) -> String? {
-        switch function {
-        case .discuss:
-            return nil
-        case .fidelity:
-            return fidelityStatus(
-                target: target,
-                runs: runs,
-                pendingStates: pendingStates
-            )
-        case .critique:
-            return critiqueStatus(critique)
-        case .manuscript:
-            return "Uses its own declared manuscript boundary."
-        case .develop, .revise:
-            return nil
-        }
-    }
-
-    private static func fidelityStatus(
-        target: ResearchFunctionTarget,
-        runs: [ResearchFunctionRecordProjection],
-        pendingStates: [PendingResearchState]
-    ) -> String {
-        let revision = String(target.fingerprint.sha256.prefix(8))
-        if pendingStates.contains(where: {
-            $0.kind == .awaitingFidelity
-                && ($0.fingerprint == nil || $0.fingerprint == target.fingerprint)
-        }) {
-            return "Read-only. Awaiting a check for revision \(revision)."
-        }
-
-        let latest = runs
-            .filter { run in
-                guard run.snapshot.request.function == .fidelity,
-                      let completion = run.completion,
-                      completion.state == .complete else { return false }
-                if let results = completion.fidelityTargetResults {
-                    return results.contains {
-                        $0.target.noteID == target.noteID
-                            && $0.target.fingerprint == target.fingerprint
-                    }
-                }
-                return run.snapshot.request.target.noteID == target.noteID
-                    && completion.targetFingerprint == target.fingerprint
-            }
-            .max { lhs, rhs in
-                (lhs.completion?.completedAt ?? lhs.snapshot.preparedAt)
-                    < (rhs.completion?.completedAt ?? rhs.snapshot.preparedAt)
-            }
-        guard let completion = latest?.completion else {
-            return "Read-only. Current revision \(revision) has no Fidelity result."
-        }
-        let outcomes = completion.fidelityTargetResults?
-            .first(where: { $0.target.noteID == target.noteID })?.outcomes
-            ?? completion.fidelityOutcomes
-        let issueCount = outcomes.filter { $0.state == .issuesFound }.count
-        let unavailableCount = outcomes.filter { $0.state == .unavailable }.count
-        let result: String
-        if issueCount > 0 {
-            result = issueCount == 1 ? "1 check found issues" : "\(issueCount) checks found issues"
-        } else if unavailableCount > 0 {
-            result = unavailableCount == 1
-                ? "1 check was unavailable"
-                : "\(unavailableCount) checks were unavailable"
-        } else {
-            result = "No unresolved finding"
-        }
-        return "Read-only. \(result) on \(completion.completedAt.formatted(date: .abbreviated, time: .omitted)) for revision \(revision)."
-    }
-
-    private static func critiqueStatus(_ critique: CritiqueAssociation?) -> String {
-        guard let round = critique?.rounds.max(by: {
-            $0.requestedAt < $1.requestedAt
-        }) else {
-            return "Read-only. No Critique has been recorded."
-        }
-        let dispositions = Dictionary(
-            round.findingDispositions.map { ($0.findingID, $0) },
-            uniquingKeysWith: { _, latest in latest }
-        )
-        let unresolved = round.actionableFindings.filter {
-            dispositions[$0.id]?.satisfiesRoundCompletion != true
-        }.count
-        if unresolved > 0 {
-            let findings = unresolved == 1 ? "1 finding awaits" : "\(unresolved) findings await"
-            return "Read-only. \(findings) disposition from the latest Critique."
-        }
-        return "Read-only. The latest Critique has no finding awaiting disposition."
-    }
 }
 
-struct ResearchFunctionItemPresentation: Identifiable {
-    let id: ResearchFunctionID
-    let isEnabled: Bool
+struct ResearchActionItemPresentation: Identifiable {
+    let availability: ResearchActionAvailability
+    let isBlockedByCancellationRecovery: Bool
     let disabledReason: String?
-    let statusSummary: String?
-}
 
-private enum ResearchActivityHUDItem: Identifiable {
-    case event(ResearchActivityEvent)
-    case pending(PendingResearchState)
-
-    var id: UUID {
-        switch self {
-        case .event(let event): event.id
-        case .pending(let state): state.id
-        }
+    var id: ResearchActionID { availability.id }
+    var title: String { availability.buttonName }
+    var isEnabled: Bool {
+        availability.isEnabled && !isBlockedByCancellationRecovery
     }
-
-    var symbolName: String {
-        switch self {
-        case .event(let event): event.kind.activitySymbol
-        case .pending(let state): state.kind.activitySymbol
-        }
+    var canPresent: Bool {
+        availability.canPresentInInterface && !isBlockedByCancellationRecovery
     }
-
+    var group: ResearchActionAvailabilityGroup { availability.group }
     var detail: String {
-        switch self {
-        case .event(let event): event.activityDetail
-        case .pending(let state): state.kind.detail
-        }
+        disabledReason ?? availability.definition.interfaceSummary
     }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .event(let event): event.activityAccessibilityLabel
-        case .pending(let state): state.kind.accessibilityLabel
-        }
-    }
-
-    var actionHint: String {
-        switch self {
-        case .event: "Open Research Record"
-        case .pending(let state): state.kind.actionHint
-        }
-    }
-
-    var accessibilityIdentifier: String {
-        switch self {
-        case .event(let event):
-            "scholium.researchActivity.\(event.kind.rawValue)"
-        case .pending(let state):
-            "scholium.researchActivity.pending.\(state.kind.rawValue)"
-        }
-    }
-
-    var isPending: Bool {
-        if case .pending = self { return true }
-        return false
-    }
-}
-
-extension ResearchFunctionItemPresentation {
-    var actionTitleResource: LocalizedStringResource {
-        switch id {
-        case .discuss: "Discuss"
-        case .develop, .revise: "Write"
-        case .fidelity: "Check Fidelity"
-        case .critique: "Critique"
-        case .manuscript: "Manuscript"
-        }
-    }
-
-    var actionSummary: String {
-        switch id {
-        case .discuss: "Discuss the current note without changing it."
-        case .develop: "Open a bounded Develop activity for this Analysis or Topic."
-        case .revise: "Open a bounded Revise activity for this Work."
-        case .fidelity: "Prepare an agent-run fidelity check for the current saved revision."
-        case .critique: "Assess this Work without editing it."
-        case .manuscript: "Coordinate manuscript work without creating research-activity events."
-        }
-    }
-
 }
 
 struct ResearchFunctionsInspectorView: View {
-    @FocusState private var focusedActivityID: UUID?
+    @FocusedValue(\.scholiumResearchActionActions) private var focusedResearchActions
+
+    let presentation: ResearchActionsPresentation
+    let freshness: ResearchProjectionFreshness
+    let focusRequest: ResearchActionFocusRequest?
+    let registerFocusOwner: (ResearchActionID) -> Void
+    let select: (ResearchActionID) -> Void
+    let openComment: (UUID) -> Void
+    let retryRefresh: () -> Void
+    let retryCancellationRecovery: (UUID) -> Void
+    let settle: (String?) async throws -> Void
+
     @State private var presentsSettlement = false
     @State private var settlementRationale = ""
     @State private var settlementError: String?
     @State private var isSettling = false
-    @State private var activityCursorID: UUID?
-
-    let presentation: ResearchFunctionsPresentation
-    let freshness: ResearchProjectionFreshness
-    let select: (ResearchFunctionID) -> Void
-    let openResearchRecord: () -> Void
-    let openComment: (UUID) -> Void
-    let retryRefresh: () -> Void
-    let settle: (String?) async throws -> Void
 
     var body: some View {
-        ScrollView(.vertical) {
-            LazyVStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionSpacing
-            ) {
-                ResearchProjectionFreshnessBanner(
-                    freshness: freshness,
-                    retry: retryRefresh
-                )
-
-                researchActivitySection
-
-                if !presentation.activeDiscussions.isEmpty {
-                    activeDiscussionSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if presentation.pendingCancellationBarrierCount > 0 {
+                    pendingCancellationNotice
+                    ScholiumStructuralRule()
+                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
+                }
+                ForEach(presentation.cancellationRecoveries) { recovery in
+                    cancellationRecoveryNotice(recovery)
+                    ScholiumStructuralRule()
+                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
+                }
+                if case .failed(let reason) = freshness {
+                    refreshNotice(reason)
+                    ScholiumStructuralRule()
+                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                 }
 
-                if !agentItems.isEmpty {
-                    actionSection("WORK WITH AGENT", items: agentItems)
+                if presentation.isCheckingAvailability {
+                    ProgressView("Checking Actions…")
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("scholium.researchActions.loading")
+                } else if let error = presentation.availabilityError {
+                    availabilityNotice(error)
                 }
 
-                if !otherActionItems.isEmpty || presentation.target != nil {
-                    actionSection(
-                        "ACTIONS",
-                        items: otherActionItems,
-                        includesSettlement: true
-                    )
+                actionRows(defaultItems)
+
+                if !researcherItems.isEmpty {
+                    ScholiumStructuralRule()
+                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
+                    ScholiumApparatusSection("RESEARCHER SKILLS", showsDivider: false) {
+                        actionRows(researcherItems)
+                    } trailing: {
+                        EmptyView()
+                    }
+                }
+
+                if presentation.target != nil {
+                    ScholiumStructuralRule()
+                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
+                    settlementLauncher
                 }
             }
             .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
@@ -338,306 +198,136 @@ struct ResearchFunctionsInspectorView: View {
         }
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityIdentifier("scholium.researchActions")
     }
 
-    private func actionSection(
-        _ title: LocalizedStringResource,
-        items: [ResearchFunctionItemPresentation],
-        includesSettlement: Bool = false
-    ) -> some View {
-        ScholiumApparatusSection(title) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    functionLauncher(item)
-                    if index < items.count - 1 {
+    @ViewBuilder
+    private func actionRows(_ items: [ResearchActionItemPresentation]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                actionRow(item)
+                if item.id == .discuss {
+                    ForEach(presentation.activeDiscussions) { discussion in
                         ScholiumStructuralRule()
+                        activeDiscussionRow(discussion)
                     }
                 }
-                if includesSettlement {
-                    if !items.isEmpty { ScholiumStructuralRule() }
-                    settlementLauncher
-                }
+                if index < items.count - 1 { ScholiumStructuralRule() }
             }
         }
     }
 
-    private var activeDiscussionSection: some View {
-        ScholiumApparatusSection("ACTIVE DISCUSSIONS") {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(presentation.activeDiscussions.enumerated()), id: \.element.id) {
-                    index,
-                    discussion in
-                    ScholiumApparatusActionButton(
-                        discussion.passage == nil
-                            ? "Whole-note Discussion"
-                            : "Passage Discussion",
-                        systemImage: "text.bubble",
-                        detail: discussion.awaitsAgentReply
-                            ? "Awaiting an agent reply. Close keeps this Discussion active."
-                            : "A reply is ready. Reopen to continue or Finish."
-                    ) {
-                        openComment(discussion.id)
-                    }
-                    .accessibilityValue(
-                        "Updated \(discussion.updatedAt.formatted(date: .abbreviated, time: .shortened)). "
-                            + (discussion.awaitsAgentReply
-                                ? "Awaiting an agent reply."
-                                : "Agent reply recorded.")
-                    )
-                    .accessibilityIdentifier(
-                        "scholium.discussion.active.\(discussion.id.uuidString.lowercased())"
-                    )
-                    if index < presentation.activeDiscussions.count - 1 {
-                        ScholiumStructuralRule()
-                    }
-                }
-            }
-        }
-    }
-
-    private func functionLauncher(_ item: ResearchFunctionItemPresentation) -> some View {
-        ScholiumApparatusActionButton(
-            item.actionTitleResource,
-            systemImage: item.id.interfaceSymbol,
-            detail: actionDetail(for: item)
+    private func actionRow(_ item: ResearchActionItemPresentation) -> some View {
+        ResearchActionRowButton(
+            title: item.title,
+            systemImage: item.availability.definition.interfaceSymbol,
+            detail: item.detail,
+            localizesTitle: item.availability.profile.origin == .applicationDefault,
+            focusRequestToken: focusRequest?.actionID == item.id
+                ? focusRequest?.token
+                : nil
         ) {
-            beginWork(item.id)
-        }
-        .disabled(!item.isEnabled)
-        .help(item.disabledReason ?? item.id.interfaceHelp)
-        .accessibilityValue(
-            presentation.activeFunction == item.id
-                ? ScholiumL10n.ResearchFunction.openAccessibilityValue
-                : ScholiumL10n.ResearchFunction.closedAccessibilityValue
-        )
-        .accessibilityIdentifier("scholium.researchFunction.\(item.id.interfaceIdentifier)")
-    }
-
-    private func actionDetail(for item: ResearchFunctionItemPresentation) -> String {
-        if let reason = item.disabledReason { return reason }
-        if let status = item.statusSummary {
-            return item.actionSummary + " " + status
-        }
-        return item.actionSummary
-    }
-
-    private func beginWork(_ function: ResearchFunctionID) {
-        select(function)
-    }
-
-    private var agentItems: [ResearchFunctionItemPresentation] {
-        presentation.items.filter { [.discuss, .develop, .revise].contains($0.id) }
-    }
-
-    private var otherActionItems: [ResearchFunctionItemPresentation] {
-        presentation.items.filter { ![.discuss, .develop, .revise].contains($0.id) }
-    }
-
-    private var researchActivitySection: some View {
-        ScholiumApparatusSection(
-            "RESEARCH ACTIVITY",
-            showsDivider: false,
-            content: {
-                if !activityItems.isEmpty {
-                    ScrollViewReader { proxy in
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
-                        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                            Text(activitySummary)
-                                .font(ScholiumInterfaceTypography.apparatusMetadata)
-                                .foregroundStyle(ScholiumColorRole.mutedText.color)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            if activityItems.count > 1 {
-                                activityNavigationButton(
-                                    systemImage: "chevron.left",
-                                    label: "Previous research activity",
-                                    step: -1,
-                                    proxy: proxy
-                                )
-                                activityNavigationButton(
-                                    systemImage: "chevron.right",
-                                    label: "Next research activity",
-                                    step: 1,
-                                    proxy: proxy
-                                )
-                            }
-                        }
-
-                        ScrollView(.horizontal) {
-                            HStack(spacing: 0) {
-                                ForEach(Array(activityItems.enumerated()), id: \.element.id) { index, item in
-                                    activityNode(item)
-                                        .id(item.id)
-                                    if index < activityItems.count - 1 {
-                                        Rectangle()
-                                            .fill(ScholiumColorRole.mutedText.color.opacity(0.36))
-                                            .frame(width: 16, height: 1)
-                                            .accessibilityHidden(true)
-                                    }
-                                }
-                            }
-                            .padding(.trailing, ScholiumGrid.Spacing.sectionSeparation)
-                        }
-                        .scrollIndicators(.hidden)
-                        .frame(height: ScholiumMetrics.Accessibility.preferredCustomTarget)
-                        .onMoveCommand { direction in
-                            switch direction {
-                            case .left:
-                                moveActivity(step: -1, using: proxy)
-                            case .right:
-                                moveActivity(step: 1, using: proxy)
-                            default:
-                                break
-                            }
-                        }
-                        .onChange(of: focusedActivityID) { _, id in
-                            if let id { activityCursorID = id }
-                        }
-                            ScholiumStructuralRule()
-
-                            ScholiumApparatusActionButton(
-                                "Open Research Record",
-                                systemImage: "clock.arrow.circlepath",
-                                detail: "Review the attributed history for this note.",
-                                action: openResearchRecord
-                            )
-
-                        }
-                        .padding(ScholiumMetrics.Apparatus.activityHUDInset)
-                        .background(ScholiumColorRole.raisedSurfaceBackground.color)
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: ScholiumMetrics.Apparatus.activityHUDCornerRadius,
-                                style: .continuous
-                            )
-                        )
-                        .overlay {
-                            RoundedRectangle(
-                                cornerRadius: ScholiumMetrics.Apparatus.activityHUDCornerRadius,
-                                style: .continuous
-                            )
-                            .stroke(ScholiumColorRole.separator.color.opacity(0.42), lineWidth: 0.75)
-                        }
-                        .onAppear { showLatestActivity(using: proxy) }
-                        .onChange(of: activityItems.map(\.id)) { _, _ in
-                            showLatestActivity(using: proxy)
-                        }
-                    }
-                }
-            },
-            trailing: {
-                Text(activityItems.count.formatted())
-                    .font(ScholiumInterfaceTypography.apparatusMetadata.monospacedDigit())
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            registerFocusOwner(item.id)
+            if let focusedResearchActions {
+                focusedResearchActions.open(item.id)
+            } else {
+                select(item.id)
             }
-        )
-        .accessibilityIdentifier("scholium.researchFunctions.researchActivity")
-    }
-
-    private func activityNode(_ item: ResearchActivityHUDItem) -> some View {
-        Button {
-            activate(item)
-        } label: {
-            Image(systemName: item.symbolName)
-                .font(.system(size: 12, weight: .medium))
-                .frame(
-                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                )
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .focusable(interactions: .activate)
-        .focused($focusedActivityID, equals: item.id)
-        .foregroundStyle(item.isPending
-            ? ScholiumColorRole.accent.color
-            : ScholiumColorRole.secondaryText.color)
-        .help(item.detail)
-        .accessibilityLabel(item.accessibilityLabel)
-        .accessibilityHint(item.actionHint)
-        .accessibilityIdentifier(item.accessibilityIdentifier)
+        .disabled(!item.canPresent)
+        .help(item.disabledReason ?? item.detail)
+        .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
     }
 
-    private var activityItems: [ResearchActivityHUDItem] {
-        presentation.activityEvents.map(ResearchActivityHUDItem.event)
-            + presentation.pendingStates.map(ResearchActivityHUDItem.pending)
-    }
-
-    private var activitySummary: String {
-        guard let last = presentation.activityEvents.last else {
-            return presentation.pendingStates.isEmpty ? "No history" : "Current state"
-        }
-        return "Latest \(last.occurredAt.formatted(date: .abbreviated, time: .omitted))"
-    }
-
-    private func activityNavigationButton(
-        systemImage: String,
-        label: String,
-        step: Int,
-        proxy: ScrollViewProxy
+    private func activeDiscussionRow(
+        _ discussion: PortableResearchDiscussion
     ) -> some View {
-        Button {
-            moveActivity(step: step, using: proxy)
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
+        ResearchActionRowButton(
+            title: discussion.passage == nil ? "Active Discussion" : "Active Passage Discussion",
+            systemImage: "arrow.uturn.forward",
+            detail: discussion.awaitsAgentReply
+                ? "Awaiting an agent reply. Close keeps this Discussion active."
+                : "A reply is ready. Reopen to continue or Finish."
+        ) {
+            openComment(discussion.id)
         }
-        .buttonStyle(.borderless)
-        .disabled(activityItems.count < 2)
-        .accessibilityLabel(label)
+        .accessibilityValue(
+            "Updated \(discussion.updatedAt.formatted(date: .abbreviated, time: .shortened))."
+        )
+        .accessibilityIdentifier(
+            "scholium.discussion.active.\(discussion.id.uuidString.lowercased())"
+        )
     }
 
-    private func showLatestActivity(using proxy: ScrollViewProxy) {
-        guard let lastID = activityItems.last?.id else {
-            activityCursorID = nil
-            return
+    private func refreshNotice(_ reason: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Action availability may be incomplete.", systemImage: "exclamationmark.triangle")
+                .font(.callout.weight(.semibold))
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            Button("Retry", action: retryRefresh)
         }
-        activityCursorID = lastID
-        proxy.scrollTo(lastID, anchor: .trailing)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func moveActivity(step: Int, using proxy: ScrollViewProxy) {
-        let items = activityItems
-        guard !items.isEmpty else { return }
-        let currentIndex = activityCursorID.flatMap { id in
-            items.firstIndex(where: { $0.id == id })
-        } ?? (items.count - 1)
-        let nextIndex = min(items.count - 1, max(0, currentIndex + step))
-        let nextID = items[nextIndex].id
-        activityCursorID = nextID
-        focusedActivityID = nextID
-        proxy.scrollTo(nextID, anchor: step < 0 ? .leading : .trailing)
+    private func availabilityNotice(_ reason: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Actions could not be resolved.", systemImage: "exclamationmark.triangle")
+                .font(.callout.weight(.semibold))
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            Button("Retry", action: retryRefresh)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("scholium.researchActions.error")
     }
 
-    private func activate(_ item: ResearchActivityHUDItem) {
-        switch item {
-        case .event:
-            openResearchRecord()
-        case .pending(let state):
-            switch state.kind {
-            case .responseReady:
-                if state.route == .discuss {
-                    openResearchRecord()
-                } else if let exchangeID = state.activityID {
-                    openComment(exchangeID)
-                } else {
-                    openResearchRecord()
-                }
-            case .awaitingFidelity:
-                select(.fidelity)
-            case .changedSinceSettled:
-                presentsSettlement = true
-            }
+    private func cancellationRecoveryNotice(
+        _ recovery: ResearchActionCancellationRecovery
+    ) -> some View {
+        let isRetrying = presentation.retryingCancellationRecoveryIDs.contains(recovery.runID)
+        return VStack(alignment: .leading, spacing: 8) {
+            Label(
+                "A prepared Action still needs cancellation.",
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath"
+            )
+            .font(.callout.weight(.semibold))
+            Text(recovery.errorMessage)
+                .font(.caption)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            Button(
+                isRetrying
+                    ? "Retrying Cancellation…"
+                    : "Retry Cancellation",
+                action: { retryCancellationRecovery(recovery.runID) }
+            )
+            .disabled(isRetrying)
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier(
+            "scholium.researchActions.cancellationRecovery.\(recovery.runID.uuidString.lowercased())"
+        )
+    }
+
+    private var pendingCancellationNotice: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Waiting for interrupted Action cleanup…")
+                .font(.callout)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("scholium.researchActions.pendingCancellation")
     }
 
     private var settlementLauncher: some View {
         let isCurrent = presentation.latestSettlement?.fingerprint
             == presentation.target?.fingerprint
-        return ScholiumApparatusActionButton(
-            isCurrent ? "Settled" : "Settle",
+        return ResearchActionRowButton(
+            title: isCurrent ? "Settled" : "Settle",
             systemImage: "checkmark.circle",
             detail: isCurrent
                 ? "This saved revision is settled."
@@ -650,37 +340,23 @@ struct ResearchFunctionsInspectorView: View {
         .popover(isPresented: $presentsSettlement) {
             settlementPopover
         }
-    }
-
-    private var settlementActionTitle: String {
-        presentation.latestSettlement == nil ? "Settle" : "Settle Again"
+        .accessibilityIdentifier("scholium.researchAction.settle")
     }
 
     private var settlementPopover: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(settlementActionTitle)
+            Text(presentation.latestSettlement == nil ? "Settle" : "Settle Again")
                 .font(.headline)
             Text("Record this saved revision as sufficiently stable for current research.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if presentation.pendingStates.contains(where: { $0.kind == .responseReady }) {
-                Text("An agent response is ready for your review.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if presentation.pendingStates.contains(where: { $0.kind == .awaitingFidelity }) {
-                Text("Fidelity is still awaiting a check for this revision.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             TextField("Optional rationale", text: $settlementRationale, axis: .vertical)
                 .lineLimit(2...4)
             if let settlementError {
                 Text(settlementError)
                     .font(.caption)
                     .foregroundStyle(ScholiumColorRole.attention.color)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Button("Cancel") {
@@ -711,6 +387,119 @@ struct ResearchFunctionsInspectorView: View {
         .padding(16)
         .frame(width: 300)
     }
+
+    private var defaultItems: [ResearchActionItemPresentation] {
+        presentation.items.filter { $0.group == .defaultAction }
+    }
+
+    private var researcherItems: [ResearchActionItemPresentation] {
+        presentation.items.filter { $0.group == .researcherSkill }
+    }
+}
+
+private struct ResearchActionRowButton: View {
+    let title: String
+    let systemImage: String
+    let detail: String?
+    let showsChevron: Bool
+    let localizesTitle: Bool
+    let focusRequestToken: UUID?
+    let action: () -> Void
+
+    @State private var isHovering = false
+    @State private var focusRestorationTask: Task<Void, Never>?
+    @FocusState private var hasKeyboardFocus: Bool
+
+    init(
+        title: String,
+        systemImage: String,
+        detail: String? = nil,
+        showsChevron: Bool = true,
+        localizesTitle: Bool = true,
+        focusRequestToken: UUID? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.detail = detail
+        self.showsChevron = showsChevron
+        self.localizesTitle = localizesTitle
+        self.focusRequestToken = focusRequestToken
+        self.action = action
+    }
+
+    var body: some View {
+        Button {
+            focusRestorationTask?.cancel()
+            hasKeyboardFocus = true
+            action()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.actionCopySpacing) {
+                    Group {
+                        if localizesTitle {
+                            Text(LocalizedStringKey(title))
+                        } else {
+                            Text(verbatim: title)
+                        }
+                    }
+                    .font(ScholiumInterfaceTypography.apparatusActionTitle)
+                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    if let detail, !detail.isEmpty {
+                        Text(LocalizedStringKey(detail))
+                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if showsChevron {
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+            .padding(.vertical, ScholiumMetrics.Apparatus.actionRowVerticalInset)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
+            .background(
+                isHovering ? ScholiumColorRole.raisedSurfaceBackground.color : Color.clear,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .focusable()
+        .focused($hasKeyboardFocus)
+        .onHover { isHovering = $0 }
+        .onChange(of: focusRequestToken) { _, token in
+            guard token != nil else { return }
+            focusRestorationTask?.cancel()
+            hasKeyboardFocus = false
+            focusRestorationTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                hasKeyboardFocus = true
+            }
+        }
+        .onDisappear {
+            focusRestorationTask?.cancel()
+            focusRestorationTask = nil
+        }
+    }
 }
 
 extension ResearchFunctionID {
@@ -725,16 +514,7 @@ extension ResearchFunctionID {
         }
     }
 
-    var interfaceIdentifier: String {
-        switch self {
-        case .discuss: "discuss"
-        case .develop: "develop"
-        case .fidelity: "fidelity"
-        case .critique: "critique"
-        case .revise: "revise"
-        case .manuscript: "manuscript"
-        }
-    }
+    var interfaceIdentifier: String { rawValue }
 }
 
 extension ResearchActivityEventKind {
@@ -780,37 +560,5 @@ extension ResearchActivityEvent {
             lines.append("\(unmodifiedNoteCount) notes were not modified.")
         }
         return lines.joined(separator: "\n")
-    }
-
-    var activityAccessibilityLabel: String {
-        "\(kind.activityTitle). \(activityDetail)"
-    }
-}
-
-extension PendingResearchStateKind {
-    var activitySymbol: String {
-        switch self {
-        case .responseReady: "bubble.left"
-        case .awaitingFidelity: "checkmark.shield"
-        case .changedSinceSettled: "arrow.triangle.2.circlepath"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .responseReady: "An agent response is ready for your review."
-        case .awaitingFidelity: "Fidelity is awaiting a check for this revision."
-        case .changedSinceSettled: "This revision changed after it was settled."
-        }
-    }
-
-    var accessibilityLabel: String { detail }
-
-    var actionHint: String {
-        switch self {
-        case .responseReady: "Open Work with Agent"
-        case .awaitingFidelity: "Open Fidelity"
-        case .changedSinceSettled: "Open Settle"
-        }
     }
 }

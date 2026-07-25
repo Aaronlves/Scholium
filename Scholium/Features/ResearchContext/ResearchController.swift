@@ -49,6 +49,7 @@ final class ResearchController: ObservableObject {
     @Published var transactionRecoveryError: String?
 
     let functions = ResearchFunctionController()
+    let actions = ResearchActionController()
     let bibliography = RecommendedBibliographyController()
 
     private let intentHandler: IntentHandler
@@ -66,6 +67,9 @@ final class ResearchController: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
         functions.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        actions.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
         bibliography.objectWillChange
@@ -88,6 +92,7 @@ final class ResearchController: ObservableObject {
     func unbind() {
         operations = nil
         functions.unbind()
+        actions.unbind()
         bibliography.unbind()
         records = nil
         errorMessage = nil
@@ -431,6 +436,18 @@ final class ResearchController: ObservableObject {
         )))
     }
 
+    func requestPresentAction(
+        _ actionID: ResearchActionID,
+        target: VaultNoteReference,
+        presentationID: UUID
+    ) {
+        intentHandler(.presentResearchAction(ResearchActionPanelRoute(
+            target: target,
+            actionID: actionID,
+            presentationID: presentationID
+        )))
+    }
+
     func requestOpen(
         _ reference: VaultNoteReference,
         sourceLine: Int? = nil
@@ -450,6 +467,7 @@ final class ResearchController: ObservableObject {
     func reset() {
         activeDocument = nil
         functions.dismiss()
+        actions.dismiss()
         bibliography.unbind()
     }
 
