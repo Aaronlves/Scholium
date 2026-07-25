@@ -1367,6 +1367,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case missingCapability(ResearchSkillCapability)
     case emptyInstruction(ResearchFunctionID)
     case preparationNotFound(UUID)
+    case activeDiscussionExists(UUID)
     case confirmationMismatch
     case completionAlreadyRecorded(UUID)
     case invalidCompletion(String)
@@ -1436,6 +1437,8 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "The \(function.rawValue) function requires a researcher instruction."
         case .preparationNotFound(let id):
             "Research Function preparation not found: \(id.uuidString)"
+        case .activeDiscussionExists(let id):
+            "Discussion \(id.uuidString) is already active for this Note. Reopen it from Active Discussions to add the whole-note turn."
         case .confirmationMismatch:
             "The completion does not match the prepared Research Function run."
         case .completionAlreadyRecorded(let id):

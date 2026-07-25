@@ -10,6 +10,7 @@ struct ResearchFunctionsPresentation {
     let target: ResearchFunctionTarget?
     let activityEvents: [ResearchActivityEvent]
     let pendingStates: [PendingResearchState]
+    let activeDiscussions: [PortableResearchDiscussion]
     let latestSettlement: SettlementRecord?
 
     static let empty = Self(
@@ -18,6 +19,7 @@ struct ResearchFunctionsPresentation {
         target: nil,
         activityEvents: [],
         pendingStates: [],
+        activeDiscussions: [],
         latestSettlement: nil
     )
 
@@ -28,6 +30,7 @@ struct ResearchFunctionsPresentation {
         runs: [ResearchFunctionRecordProjection],
         activityEvents: [ResearchActivityEvent] = [],
         pendingStates: [PendingResearchState] = [],
+        activeDiscussions: [PortableResearchDiscussion] = [],
         settlements: [SettlementRecord] = [],
         critique: CritiqueAssociation? = nil
     ) -> Self {
@@ -85,6 +88,14 @@ struct ResearchFunctionsPresentation {
                         return lhs.createdAt < rhs.createdAt
                     }
                     return lhs.id.uuidString < rhs.id.uuidString
+                },
+            activeDiscussions: activeDiscussions
+                .filter {
+                    $0.participatingNotes.contains(where: { $0.noteID == target.noteID })
+                }
+                .sorted {
+                    if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+                    return $0.id.uuidString < $1.id.uuidString
                 },
             latestSettlement: settlements
                 .filter { $0.noteID == target.noteID }
@@ -304,6 +315,10 @@ struct ResearchFunctionsInspectorView: View {
 
                 researchActivitySection
 
+                if !presentation.activeDiscussions.isEmpty {
+                    activeDiscussionSection
+                }
+
                 if !agentItems.isEmpty {
                     actionSection("WORK WITH AGENT", items: agentItems)
                 }
@@ -341,6 +356,40 @@ struct ResearchFunctionsInspectorView: View {
                 if includesSettlement {
                     if !items.isEmpty { ScholiumStructuralRule() }
                     settlementLauncher
+                }
+            }
+        }
+    }
+
+    private var activeDiscussionSection: some View {
+        ScholiumApparatusSection("ACTIVE DISCUSSIONS") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(presentation.activeDiscussions.enumerated()), id: \.element.id) {
+                    index,
+                    discussion in
+                    ScholiumApparatusActionButton(
+                        discussion.passage == nil
+                            ? "Whole-note Discussion"
+                            : "Passage Discussion",
+                        systemImage: "text.bubble",
+                        detail: discussion.awaitsAgentReply
+                            ? "Awaiting an agent reply. Close keeps this Discussion active."
+                            : "A reply is ready. Reopen to continue or Finish."
+                    ) {
+                        openComment(discussion.id)
+                    }
+                    .accessibilityValue(
+                        "Updated \(discussion.updatedAt.formatted(date: .abbreviated, time: .shortened)). "
+                            + (discussion.awaitsAgentReply
+                                ? "Awaiting an agent reply."
+                                : "Agent reply recorded.")
+                    )
+                    .accessibilityIdentifier(
+                        "scholium.discussion.active.\(discussion.id.uuidString.lowercased())"
+                    )
+                    if index < presentation.activeDiscussions.count - 1 {
+                        ScholiumStructuralRule()
+                    }
                 }
             }
         }

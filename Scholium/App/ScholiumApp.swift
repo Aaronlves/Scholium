@@ -1223,9 +1223,9 @@ final class WindowModel: ObservableObject {
     @Published var refreshStatusText: String?
     @Published private(set) var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
     @Published var workspaceCatalogError: String?
-    /// One-shot routing from the Research Activity HUD to the exact pending
-    /// passage Comment. The document view consumes and clears it.
-    @Published var requestedCommentExchangeID: UUID? = nil
+    /// One-shot routing from Actions to one portable active Discussion. The
+    /// document view consumes and clears it without changing record state.
+    @Published var requestedDiscussionID: UUID? = nil
     @Published private(set) var workspaceVaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
     @Published var registeredVaults: [RegisteredVault] = []
     @Published var windowSessionPersistenceError: String?
@@ -1859,6 +1859,7 @@ final class WindowModel: ObservableObject {
             runs: researchController.functions.targetRuns,
             activityEvents: researchController.records?.activityEvents ?? [],
             pendingStates: researchController.records?.pendingResearchStates ?? [],
+            activeDiscussions: researchController.records?.activeDiscussions ?? [],
             settlements: researchController.records?.settlements ?? [],
             critique: critique
         )
@@ -3247,6 +3248,14 @@ final class WindowModel: ObservableObject {
             },
             cancel: { runID in
                 try await capabilities.research.cancelFunction(runID: runID)
+            },
+            openActiveDiscussion: { [weak self] discussionID in
+                guard let self else { return }
+                self.presentationRouter.dismissSheet()
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    self?.requestedDiscussionID = discussionID
+                }
             }
         ))
         researchController.bibliography.bind(RecommendedBibliographyClient(
@@ -3411,11 +3420,6 @@ final class WindowModel: ObservableObject {
             expectedRevision: context.fingerprint
         )
         await refreshWindowProjection()
-    }
-
-    func discussionHistory(for path: String) async -> [DialogueEntry] {
-        guard let context = activeDocumentContext(for: path) else { return [] }
-        return (try? await researchController.discussionHistory(noteID: context.noteID)) ?? []
     }
 
     func critiqueAssociation(for path: String) async -> CritiqueAssociation? {

@@ -96,6 +96,18 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
             )?.value
         )
     }
+
+    public func replacingPassage(_ passage: CommentAnchor?) throws -> Self {
+        try Self(
+            id: id,
+            author: author,
+            kind: kind,
+            attribution: attribution,
+            text: text,
+            createdAt: createdAt,
+            passage: passage
+        )
+    }
 }
 
 /// One stable note identity and its revisions during the recorded scholarly
@@ -467,6 +479,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let action: ResearchActionRecordIdentity?
     public let method: PortableResearchMethodReference?
     public let sourceReference: ResearchSourceReference?
+    public let primaryNoteID: UUID?
     public let participatingNotes: [PortableResearchNoteRevision]
     public let statements: [PortableResearchStatement]
     public let actuallyUsedMaterials: [PortableResearchMaterialUse]
@@ -483,6 +496,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         action: ResearchActionRecordIdentity?,
         method: PortableResearchMethodReference?,
         sourceReference: ResearchSourceReference? = nil,
+        primaryNoteID: UUID? = nil,
         participatingNotes: [PortableResearchNoteRevision],
         statements: [PortableResearchStatement],
         actuallyUsedMaterials: [PortableResearchMaterialUse] = [],
@@ -509,6 +523,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               discrepancies.count <= 256,
               participatingByID.count == participatingNotes.count,
               Set(statementIDs).count == statementIDs.count,
+              zip(statements, statements.dropFirst()).allSatisfy({ pair in
+                  pair.0.createdAt <= pair.1.createdAt
+              }),
               Set(discrepancyIDs).count == discrepancyIDs.count,
               Set(actuallyUsedMaterials.map(\.noteID)).count == actuallyUsedMaterials.count,
               Set(confirmedChanges.map(\.noteID)).count == confirmedChanges.count,
@@ -520,7 +537,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                       return false
                   }
                   return participant.startingRevision == change.startingRevision
-                      && participant.endingRevision == change.endingRevision
+                      && (participant.isTombstone
+                          || participant.endingRevision == change.endingRevision)
               }),
               discrepancies.allSatisfy({ discrepancy in
                   participatingByID[discrepancy.noteID] != nil
@@ -530,11 +548,13 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         }
         switch kind {
         case .action:
-            guard action != nil, method != nil else {
+            guard action != nil, method != nil, primaryNoteID == nil else {
                 throw PortableResearchRecordError.invalidRecord
             }
         case .discussion:
-            guard !statements.isEmpty else {
+            guard let primaryNoteID,
+                  participatingByID[primaryNoteID] != nil,
+                  !statements.isEmpty else {
                 throw PortableResearchRecordError.invalidRecord
             }
         }
@@ -545,13 +565,11 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.action = action
         self.method = method
         self.sourceReference = sourceReference
+        self.primaryNoteID = primaryNoteID
         self.participatingNotes = participatingNotes.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
         }
-        self.statements = statements.sorted {
-            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
-            return $0.id.uuidString < $1.id.uuidString
-        }
+        self.statements = statements
         self.actuallyUsedMaterials = actuallyUsedMaterials.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
         }
@@ -573,6 +591,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case triptychID = "triptych_id"
         case kind, action, method
         case sourceReference = "source_reference"
+        case primaryNoteID = "primary_note_id"
         case participatingNotes = "participating_notes"
         case statements
         case actuallyUsedMaterials = "actually_used_materials"
@@ -609,6 +628,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                 PortableResearchStrictSourceReference.self,
                 forKey: .sourceReference
             )?.value,
+            primaryNoteID: container.decodeIfPresent(UUID.self, forKey: .primaryNoteID),
             participatingNotes: container.decode(
                 [PortableResearchNoteRevision].self,
                 forKey: .participatingNotes

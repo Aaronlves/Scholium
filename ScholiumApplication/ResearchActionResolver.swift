@@ -105,7 +105,7 @@ extension WorkspaceHandle {
 
     func resolvedDefaultActionContext(
         for request: ResearchFunctionRequest,
-        executionStorage: ResolvedResearchActionContext.ExecutionStorage = .legacyFunction
+        executionStorage: ResolvedResearchActionContext.ExecutionStorage = .localExecutionV2
     ) async throws -> ResolvedResearchActionContext {
         try request.validate()
         let definition = try ResearchActionFunctionMapping.definition(

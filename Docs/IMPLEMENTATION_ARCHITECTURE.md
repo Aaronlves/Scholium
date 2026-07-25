@@ -237,9 +237,11 @@ Actions. Overview projects compact Attention and role-aware About fields;
 Zotero has no Inspector projection. Connect projects direct and derived
 relations. Actions projects recorded Research Activity and direct role-valid
 full-row operations, with Discuss and Write under a static Work with Agent
-heading. Current Comment exchanges and Function-backed Discussion appear in
-the separate read-only Research Record window; removed archives have no
-projection. The Inspector may navigate or open another
+heading. It also projects a quiet row for each portable active Discussion that
+includes the current Note; the same sheet resumes passage-anchored, whole-note,
+and focal-note exchanges. Only finished Discussions appear in the current
+read-only Research Record window; removed archives have no projection. The
+Inspector may navigate or open another
 note in the Document tabs, but it never owns a document buffer, editing,
 autosave, undo, or conflict state. Those remain exclusively in the Document
 surface and its existing controllers.
@@ -376,10 +378,10 @@ Develop resolves `scholium-synthesize`, and a package bound to one fails closed
 for the other. `ResearchActionUseCases` now resolves and prepares default and
 researcher Actions, while retained Function preparation passes through the same
 resolver and embeds the resulting Action snapshot. Binding v1 never enters
-either path. The production UI and CLI syntax remain Function-era. New
-Action-use-case runs now use the separated record boundary below; retained
-Function entry points continue to use their legacy stores until the production
-surface cutover.
+either path. The production UI remains Function-era. Every new Action and
+retained Function entry-point run now uses the separated Local Execution v2
+boundary below; legacy run files remain reveal-only and cannot authorize or
+appear in current projection.
 
 The product Skill catalog schema 4 separates protected mechanism from ordinary
 method prose. `ResearchSkillClass.method` packages each declare exactly one
@@ -454,8 +456,9 @@ Dialogue/Critique have no alternate preparation path.
 ### Portable Research Record v1 and Local Execution v2
 
 `PortableResearchRecordStore` owns one JSON file per intellectual record under
-`.scholium/research-records/v1/records/`; the seeded `active/` and `trash/`
-directories are reserved for the Discussion and Record Trash migrations. A
+`.scholium/research-records/v1/records/`; `active/` owns one file per unfinished
+portable Discussion and `trash/` remains reserved for the Record Trash
+migration. A
 separate `settlements/` directory stores exactly one replaceable current-state
 file per Note. Settle therefore no longer appends an application-authored
 history event, and Changed Since Settled is derived against the current
@@ -483,10 +486,32 @@ Store reopen removes incomplete app-owned staging files while holding the same
 lock and portable coordination boundary. The lock lives below the verified
 Application Support Triptych directory; it is not portable authority.
 
-`LocalResearchExecutionStore` owns one schema-v2 file per new Action run at
+`PortableResearchDiscussion` is the single current exchange model. Its primary
+Note may carry an exact passage anchor and its participant list may also contain
+whole-note or focal Note context. Appending a turn rewrites only that active
+file; closing the sheet performs no storage action. Finish validates current
+participant revisions, creates exactly one `kind: discussion` record, and
+removes the active file under the shared coordination lock. A matching
+active/finished pair left by process interruption is reconciled on reopen;
+conflicting pairs fail closed. Anchor refresh reattaches only at one reliable
+source location and otherwise records `needsReattachment`. Permanent deletion
+purges active Discussions containing the deleted identity and retains finished
+records with a participant tombstone. Passage continuation resolves the
+current path from the stable primary Note identity instead of retaining a
+historical path. A machine-local deletion marker shares the portable advisory
+lock so another Scholium process or helper cannot create or advance an active
+Discussion after deletion has entered its committing transaction.
+If synchronization introduces more than one active Discussion for a primary
+identity, the store reports every conflicting file, all ID-addressed reads and
+mutations fail closed, and the workspace publishes no active Discussion row
+until the conflict is repaired.
+
+`LocalResearchExecutionStore` owns one schema-v2 file per new Action or retained
+Function entry-point run at
 `Application Support/Triptychs/<id>/research-execution-v2/`. It may retain the
-protected Function snapshot, assembled instructions, grant digest, Dialogue
-draft, and completion evidence. Raw grant keys remain non-Codable and are
+protected Function snapshot, assembled instructions, grant digest, static
+Discuss transport contract, and completion evidence. Scholarly Discussion
+turns never enter this private execution file. Raw grant keys remain non-Codable and are
 delivered only in memory. Completion authorization for a new Action consults
 only this store, so a matching legacy grant cannot authorize it. A write
 report, consumed grant, completion, and submission digest advance in one
@@ -496,21 +521,39 @@ Note deletion preflights this store and, after the commit decision, removes
 every execution containing the deleted Note or its associated Critique;
 finished portable records remain under their separate tombstone lifecycle.
 
-The Action-use-case path writes Local Execution v2 and creates one portable
+Every new preparation path writes Local Execution v2 and creates one portable
 record only after a terminal validated nonconversational completion. It never
-writes `research-activity.json` or `dialogue.json`. Retained Function callers
-continue to use those legacy files during the staged cutover; workspace
-projection reads both stores without treating either as authority for the
-other. Legacy activity, Dialogue, binding, and grant files are not migrated,
-rewritten, or imported, and the existing **Reveal Legacy Data** command opens
-their exact machine-local Triptych directory. Critique preparation uses its
-portable association as staging until the exact Local v2 run is durable;
-duplicate staging evidence is reconciled deterministically after interruption,
-and completion retry idempotently repairs missing actionable findings. Until
-Session 12, finishing a Local-v2 Action Discussion fails closed without writing
-legacy activity; retained Function-backed Discussion keeps its existing Finish
-path. The production Action surface remains Session 13, the independent
+writes `research-activity.json` or `dialogue.json`. Legacy activity, Dialogue,
+binding, and grant files are not migrated, rewritten, or imported as current
+authority. Legacy Comment and Dialogue content is no longer projected into the
+current exchange model; the retained activity chronology remains visible only
+as migration debt until Sessions 13 and 22. The existing **Reveal Legacy Data**
+command opens the exact machine-local Triptych directory. Critique preparation
+writes a machine-local handoff intent under
+`research-execution-v2/critique-handoffs/<run>.json` before its portable
+association becomes staging. The intent contains only Triptych, run, checkpoint,
+and the canonical digest of the frozen snapshot plus prepared instructions.
+Portable prose can create the exact Local v2 run after interruption only when
+the complete Critique invariants, the local automatic checkpoint, and that
+machine-local digest all match. Missing, remote, changed, malformed, or
+conflicting evidence remains portable testimony with a health issue and cannot
+grant execution authority. Exact duplicate staging is reconciled
+deterministically, and completion retry idempotently repairs missing actionable
+findings.
+Discussion agent replies are appended only to the portable active exchange;
+completion validates that attributed evidence, while Finish remains a separate
+researcher action with no legacy activity projection. The production Action
+surface remains Session 13, the independent
 record browser remains Session 19, and Record Trash/diff remains Session 20.
+While any active Discussion exists, the current document surface rereads the
+portable projection at a bounded interval. A cooperating CLI reply can
+therefore update the Actions row while the Discussion sheet is closed; reopening
+reads the active file directly and a finished or removed record dismisses the
+stale route.
+If a passage-first Discussion already exists when the researcher submits the
+default Discuss sheet, the typed preparation repair carries that Discussion's
+stable ID; the window closes the redundant Function sheet and opens the active
+portable exchange without leaving a local run or checkpoint.
 
 Rendered function input keeps three typed layers distinct: `taskDirective`
 contains the explicit public Action, its validated native parameter values,
@@ -565,8 +608,8 @@ Exact evidence keys prevent duplicate storage or scheduling.
 Core separates Skill discovery/bindings (`ResearchSkillStore`), machine-local
 source access (`ResearchSourceAccessStore`), dependency and
 instruction assembly (`ResearchWorkflowAssembler`), checkpoints
-(`TriptychCheckpointStore`), current Function-backed Discussion, Comment,
-Critique, and Research Activity. The clean cutover retains no Human Review,
+(`TriptychCheckpointStore`), portable Discussion, Critique, and retained
+legacy Research Activity decoding. The clean cutover retains no Human Review,
 Qualification, pre-Function Dialogue, ResearcherComment, or app-owned
 Annotation store; repositories alone mutate revision-checked source.
 `RecommendedBibliographyStore` alone owns its atomic portable JSON and never
@@ -694,8 +737,8 @@ receives the current native focused object observed at the app scene boundary;
 each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
 registry, notification, generation counter, presentation coordinator, custom
 focused key, or manually retained window model participates. The window
-projects Research Activity, Comment exchanges, Write attribution, Critique
-association, provenance, and current Function-backed Discussion through a
+projects Research Activity, finished portable Discussions, Write attribution,
+Critique association, and provenance through a
 narrow `ResearchRecordContext`. Ordinary Markdown annotations remain in the
 document and never become separate chronology. It never enters the trailing
 split item and never owns checkpoints, a document buffer, autosave, undo, or

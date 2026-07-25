@@ -97,6 +97,28 @@ final class ResearchController: ObservableObject {
         try await requireOperations().snapshot()
     }
 
+    func refreshResearchProjection() async throws {
+        let operations = try requireOperations()
+        let current = try await operations.snapshot()
+        let active = try await operations.activeDiscussions(noteID: nil)
+        let finished = try await operations.finishedResearchRecords(noteID: nil)
+        records = WorkspaceResearchSnapshot(
+            activityEvents: current.activityEvents,
+            settlements: current.settlements,
+            activeDiscussions: active,
+            finishedResearchRecords: finished,
+            pendingResearchStates: current.pendingResearchStates,
+            activityGrants: current.activityGrants,
+            critiques: current.critiques,
+            functionRuns: current.functionRuns,
+            checkpointListing: current.checkpointListing,
+            recoveryRecords: current.recoveryRecords,
+            healthIssues: current.healthIssues
+        )
+        projectFunctionRuns()
+        errorMessage = nil
+    }
+
     @discardableResult
     func settle(
         _ note: VaultQualifiedNoteID,
@@ -110,43 +132,61 @@ final class ResearchController: ObservableObject {
         )
     }
 
-    func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
-        try await requireOperations().discussionHistory(noteID: noteID)
-    }
-
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
         try await requireOperations().critique(workNoteID: workNoteID)
     }
 
-    func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
-        try await requireOperations().commentExchanges(noteID: noteID)
+    func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
+        try await requireOperations().activeDiscussions(noteID: noteID)
+    }
+
+    func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
+        try await requireOperations().activeDiscussion(id: id)
+    }
+
+    func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
+        try await requireOperations().activeDiscussionIfPresent(id: id)
     }
 
     @discardableResult
-    func createCommentExchange(
-        _ exchange: CommentExchange
-    ) async throws -> CommentExchange {
-        try await requireOperations().createCommentExchange(exchange)
-    }
-
-    @discardableResult
-    func appendCommentExchangeTurn(
-        exchangeID: UUID,
-        turn: CommentExchangeTurn
-    ) async throws -> CommentExchange {
-        try await requireOperations().appendCommentExchangeTurn(
-            exchangeID: exchangeID,
-            turn: turn
+    func createDiscussion(
+        target: ResearchFunctionTarget,
+        focalNotes: [ResearchFunctionMaterial] = [],
+        passage: CommentAnchor?,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
+        try await requireOperations().createDiscussion(
+            target: target,
+            focalNotes: focalNotes,
+            passage: passage,
+            researcherMessage: researcherMessage
         )
     }
 
     @discardableResult
-    func finishCommentExchange(exchangeID: UUID) async throws -> CommentExchange {
-        try await requireOperations().finishCommentExchange(exchangeID: exchangeID)
+    func appendDiscussionStatement(
+        discussionID: UUID,
+        author: PortableResearchStatementAuthor,
+        attribution: String,
+        text: String,
+        passage: CommentAnchor? = nil
+    ) async throws -> PortableResearchDiscussion {
+        try await requireOperations().appendDiscussionStatement(
+            discussionID: discussionID,
+            author: author,
+            attribution: attribution,
+            text: text,
+            passage: passage
+        )
     }
 
     @discardableResult
-    func finishDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
+    func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
+        try await requireOperations().finishDiscussion(discussionID: discussionID)
+    }
+
+    @discardableResult
+    func finishDiscussion(runID: UUID) async throws -> PortableResearchRecord {
         try await requireOperations().finishDiscussion(runID: runID)
     }
 
@@ -254,30 +294,6 @@ final class ResearchController: ObservableObject {
 
     func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
         try await requireOperations().saveDiscussResponseProfile(profile)
-    }
-
-    func discussionRecords() async throws -> [DialogueEntry] {
-        try await requireOperations().discussionRecords()
-    }
-
-    func discussion(id: UUID) async throws -> DialogueEntry {
-        try await requireOperations().discussion(id: id)
-    }
-
-    @discardableResult
-    func appendDiscussionReply(
-        _ reply: DialogueReply,
-        to entryID: UUID
-    ) async throws -> DialogueEntry {
-        try await requireOperations().appendDiscussionReply(reply, to: entryID)
-    }
-
-    @discardableResult
-    func appendDiscussionFollowUp(
-        _ comment: DialogueFollowUpComment,
-        to entryID: UUID
-    ) async throws -> DialogueEntry {
-        try await requireOperations().appendDiscussionFollowUp(comment, to: entryID)
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

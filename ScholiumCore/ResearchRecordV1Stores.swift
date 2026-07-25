@@ -3,7 +3,6 @@ import Foundation
 import ScholiumContracts
 
 public enum PortableResearchRecordLocation: String, CaseIterable, Sendable {
-    case active
     case records
     case trash
 }
@@ -48,6 +47,19 @@ public struct PortableSettlementListing: Sendable {
     }
 }
 
+public struct PortableResearchDiscussionListing: Sendable {
+    public let discussions: [PortableResearchDiscussion]
+    public let issues: [PortableResearchRecordStoreIssue]
+
+    public init(
+        discussions: [PortableResearchDiscussion],
+        issues: [PortableResearchRecordStoreIssue]
+    ) {
+        self.discussions = discussions
+        self.issues = issues
+    }
+}
+
 public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case unsafeStore(String)
     case recordAlreadyExists(UUID)
@@ -55,6 +67,11 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case recordIdentityMismatch(UUID)
     case recordTooLarge(Int)
     case coordinationFailed(String)
+    case discussionAlreadyExists(UUID)
+    case activeDiscussionAlreadyExists(primaryNoteID: UUID, discussionID: UUID)
+    case noteDeletionInProgress(UUID)
+    case discussionNotFound(UUID)
+    case discussionFinishConflict(UUID)
     case executionAlreadyExists(UUID)
     case executionNotFound(UUID)
     case executionAlreadyCompleted(UUID)
@@ -74,6 +91,16 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
             "The Research Record exceeds the \(count)-byte storage boundary."
         case .coordinationFailed(let reason):
             "Portable Research Record coordination failed: \(reason)"
+        case .discussionAlreadyExists(let id):
+            "Discussion \(id.uuidString) already exists."
+        case .activeDiscussionAlreadyExists(let primaryNoteID, let discussionID):
+            "Note \(primaryNoteID.uuidString) already has active Discussion \(discussionID.uuidString)."
+        case .noteDeletionInProgress(let noteID):
+            "Note \(noteID.uuidString) is being permanently deleted and cannot enter a Discussion."
+        case .discussionNotFound(let id):
+            "Discussion \(id.uuidString) was not found."
+        case .discussionFinishConflict(let id):
+            "Discussion \(id.uuidString) conflicts with a finished Research Record."
         case .executionAlreadyExists(let id):
             "Research execution \(id.uuidString) already exists."
         case .executionNotFound(let id):
@@ -98,6 +125,7 @@ public actor PortableResearchRecordStore {
     public nonisolated let storageURL: URL
     private let triptychID: UUID
     private let storage: SecureRecordDirectory
+    private let deletionMarkers: SecureRecordDirectory
     private let lock: AdvisoryFileLock
 
     public init(
@@ -124,16 +152,34 @@ public actor PortableResearchRecordStore {
             maximumByteCount: 1
         )
         try coordinationDirectory.ensureDirectories([])
+        deletionMarkers = SecureRecordDirectory(
+            trustedRootURL: applicationSupportURL,
+            components: [
+                "Triptychs",
+                triptychID.uuidString,
+                "portable-record-deletions-v1",
+            ],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: 256
+        )
+        try deletionMarkers.ensureDirectories([])
+        try deletionMarkers.removeAbandonedStagingFiles(in: [nil])
         lock = try AdvisoryFileLock(
             directory: coordinationDirectory,
             fileName: "portable-records-v1.lock"
         )
         try lock.withExclusiveLock {
             try Self.coordinateWrite(at: controlURL) {
-                let directories = PortableResearchRecordLocation.allCases.map(\.rawValue)
+                let directories = ["active"]
+                    + PortableResearchRecordLocation.allCases.map(\.rawValue)
                     + ["settlements"]
                 try storage.ensureDirectories(directories)
                 try storage.removeAbandonedStagingFiles(in: directories.map(Optional.some))
+                try Self.recoverFinishedDiscussionCutovers(
+                    storage: storage,
+                    triptychID: triptychID
+                )
             }
         }
     }
@@ -239,6 +285,351 @@ public actor PortableResearchRecordStore {
                     },
                     issues: issues.sorted { $0.id < $1.id }
                 )
+            }
+        }
+    }
+
+    /// Establishes a durable machine-local gate before permanent deletion
+    /// mutates Markdown or identity state. The marker and active-record writes
+    /// share the same cross-process lock, so a creator either wins before the
+    /// gate and is later purged, or observes the gate and fails closed.
+    public func markNoteDeletionStarted(noteIDs: Set<UUID>) throws {
+        guard !noteIDs.isEmpty else { return }
+        try lock.withExclusiveLock {
+            for noteID in noteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+                let data = Self.deletionMarkerData(noteID)
+                do {
+                    _ = try deletionMarkers.createExclusive(
+                        data,
+                        directory: nil,
+                        fileName: Self.fileName(noteID)
+                    )
+                } catch let error as SecureRecordDirectoryError {
+                    if case .alreadyExists = error {
+                        let existing = try deletionMarkers.read(
+                            directory: nil,
+                            fileName: Self.fileName(noteID)
+                        )
+                        guard existing == data else {
+                            throw ResearchRecordStoreV1Error.unsafeStore(
+                                "A deletion marker does not match its Note identity."
+                            )
+                        }
+                    } else {
+                        throw Self.map(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Removes only rollback-phase gates after the exact deleted Note state has
+    /// been restored. Committed deletions retain their identity marker.
+    public func clearNoteDeletionMarkers(noteIDs: Set<UUID>) throws {
+        guard !noteIDs.isEmpty else { return }
+        try lock.withExclusiveLock {
+            for noteID in noteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+                try deletionMarkers.removeIfPresent(
+                    directory: nil,
+                    fileName: Self.fileName(noteID)
+                )
+            }
+        }
+    }
+
+    @discardableResult
+    public func createActiveDiscussion(
+        _ discussion: PortableResearchDiscussion
+    ) throws -> PortableResearchDiscussion {
+        guard discussion.triptychID == triptychID else {
+            throw ResearchRecordStoreV1Error.recordIdentityMismatch(discussion.id)
+        }
+        let (canonical, data) = try Self.canonicalized(discussion)
+        guard data.count <= Self.maximumRecordByteCount else {
+            throw ResearchRecordStoreV1Error.recordTooLarge(Self.maximumRecordByteCount)
+        }
+        return try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                try requireNoDeletionMarkers(
+                    noteIDs: Set(discussion.participatingNotes.map(\.noteID))
+                )
+                let active = try activeListingWithoutCoordination()
+                guard active.issues.isEmpty else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        active.issues.map(\.id).joined(separator: ", ")
+                    )
+                }
+                if let existing = active.discussions.first(where: { $0.id == discussion.id }) {
+                    if existing == canonical { return existing }
+                    throw ResearchRecordStoreV1Error.discussionAlreadyExists(discussion.id)
+                }
+                if let existing = active.discussions.first(where: {
+                    $0.primaryNoteID == discussion.primaryNoteID
+                }) {
+                    throw ResearchRecordStoreV1Error.activeDiscussionAlreadyExists(
+                        primaryNoteID: discussion.primaryNoteID,
+                        discussionID: existing.id
+                    )
+                }
+                do {
+                    let readback = try storage.createExclusive(
+                        data,
+                        directory: "active",
+                        fileName: Self.fileName(discussion.id)
+                    )
+                    let stored = try Self.decode(PortableResearchDiscussion.self, from: readback)
+                    guard stored == canonical else {
+                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(discussion.id)
+                    }
+                    return stored
+                } catch let error as SecureRecordDirectoryError {
+                    if case .alreadyExists = error {
+                        let existing = try readDiscussion(id: discussion.id)
+                        if existing == canonical { return existing }
+                        throw ResearchRecordStoreV1Error.discussionAlreadyExists(discussion.id)
+                    }
+                    throw Self.map(error)
+                }
+            }
+        }
+    }
+
+    public func activeDiscussion(id: UUID) throws -> PortableResearchDiscussion {
+        try lock.withSharedLock {
+            try Self.coordinateRead(at: storageURL) {
+                _ = try requireHealthyActiveListing()
+                return try readDiscussion(id: id)
+            }
+        }
+    }
+
+    public func activeDiscussionIfPresent(id: UUID) throws -> PortableResearchDiscussion? {
+        do {
+            return try activeDiscussion(id: id)
+        } catch ResearchRecordStoreV1Error.discussionNotFound(_) {
+            return nil
+        }
+    }
+
+    public func activeDiscussions(noteID: UUID? = nil) throws -> PortableResearchDiscussionListing {
+        try lock.withSharedLock {
+            try Self.coordinateRead(at: storageURL) {
+                let listing = try activeListingWithoutCoordination()
+                let discussions = listing.discussions.filter { discussion in
+                    noteID == nil || discussion.participatingNotes.contains(where: {
+                        $0.noteID == noteID
+                    })
+                }
+                return PortableResearchDiscussionListing(
+                    discussions: discussions,
+                    issues: listing.issues
+                )
+            }
+        }
+    }
+
+    @discardableResult
+    public func appendDiscussionStatement(
+        _ statement: PortableResearchStatement,
+        to discussionID: UUID,
+        at updatedAt: Date = Date()
+    ) throws -> PortableResearchDiscussion {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                _ = try requireHealthyActiveListing()
+                let current = try readDiscussion(id: discussionID)
+                try requireNoDeletionMarkers(
+                    noteIDs: Set(current.participatingNotes.map(\.noteID))
+                )
+                let updated = try current.appending(statement, at: updatedAt)
+                if updated == current { return current }
+                let (canonical, data) = try Self.canonicalized(updated)
+                let readback = try storage.replace(
+                    data,
+                    directory: "active",
+                    fileName: Self.fileName(discussionID)
+                )
+                let stored = try Self.decode(PortableResearchDiscussion.self, from: readback)
+                guard stored == canonical else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(discussionID)
+                }
+                return stored
+            }
+        }
+    }
+
+    /// Refreshes passage attachment only when the authoritative Markdown
+    /// yields one reliable location. Ambiguity is retained explicitly and no
+    /// scholarly statement text or note bytes are changed.
+    @discardableResult
+    public func reconcileDiscussionPassages(
+        id: UUID,
+        primaryDocument: NoteDocument
+    ) throws -> PortableResearchDiscussion {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                _ = try requireHealthyActiveListing()
+                let current = try readDiscussion(id: id)
+                var changed = false
+                let statements = try current.statements.map { statement in
+                    guard let passage = statement.passage else { return statement }
+                    if passage.fingerprint == primaryDocument.fingerprint,
+                       passage.state == .attached {
+                        return statement
+                    }
+                    let resolved = CommentAnchorBuilder.anchor(
+                        forRenderedQuotation: passage.quotation,
+                        contextBefore: passage.contextBefore,
+                        contextAfter: passage.contextAfter,
+                        in: primaryDocument
+                    ) ?? passage.selectedText.flatMap {
+                        CommentAnchorBuilder.anchor(
+                            forRenderedQuotation: $0,
+                            contextBefore: passage.contextBefore,
+                            contextAfter: passage.contextAfter,
+                            in: primaryDocument
+                        )
+                    }
+                    var replacement = resolved ?? passage
+                    if resolved == nil { replacement.state = .needsReattachment }
+                    guard replacement != passage else { return statement }
+                    changed = true
+                    return try statement.replacingPassage(replacement)
+                }
+                guard changed else { return current }
+                let updated = try current.replacingStatements(statements)
+                let (canonical, data) = try Self.canonicalized(updated)
+                let readback = try storage.replace(
+                    data,
+                    directory: "active",
+                    fileName: Self.fileName(id)
+                )
+                let stored = try Self.decode(PortableResearchDiscussion.self, from: readback)
+                guard stored == canonical else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+                }
+                return stored
+            }
+        }
+    }
+
+    /// Completes one active Discussion as one finished record. The advisory
+    /// lock hides the create-and-remove pair from every cooperating Scholium
+    /// process. If the process stops between those writes, initialization
+    /// reconciles the exact matching pair before exposing the store.
+    @discardableResult
+    public func finishDiscussion(
+        id: UUID,
+        participatingNotes: [PortableResearchNoteRevision],
+        finishedAt: Date = Date()
+    ) throws -> PortableResearchRecord {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                _ = try requireHealthyActiveListing()
+                let discussion: PortableResearchDiscussion
+                do {
+                    discussion = try readDiscussion(id: id)
+                } catch ResearchRecordStoreV1Error.discussionNotFound(_) {
+                    let existing = try readRecord(id: id, location: .records)
+                    guard existing.kind == .discussion else {
+                        throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
+                    }
+                    return existing
+                }
+                try requireNoDeletionMarkers(
+                    noteIDs: Set(discussion.participatingNotes.map(\.noteID))
+                )
+                let record = try discussion.finishedRecord(
+                    participatingNotes: participatingNotes,
+                    finishedAt: finishedAt
+                )
+                let (canonical, data) = try Self.canonicalized(record)
+                do {
+                    let readback = try storage.createExclusive(
+                        data,
+                        directory: PortableResearchRecordLocation.records.rawValue,
+                        fileName: Self.fileName(id)
+                    )
+                    let stored = try Self.decode(PortableResearchRecord.self, from: readback)
+                    guard stored == canonical else {
+                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+                    }
+                } catch let error as SecureRecordDirectoryError {
+                    if case .alreadyExists = error {
+                        let existing = try readRecord(id: id, location: .records)
+                        guard Self.isFinished(existing, from: discussion) else {
+                            throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
+                        }
+                    } else {
+                        throw Self.map(error)
+                    }
+                }
+                try storage.removeIfPresent(
+                    directory: "active",
+                    fileName: Self.fileName(id)
+                )
+                return try readRecord(id: id, location: .records)
+            }
+        }
+    }
+
+    /// Active drafts are not retained after one of their participants is
+    /// permanently deleted. Finished records survive and are rewritten only
+    /// to replace the deleted participant's ending revision with a tombstone.
+    public func handlePermanentDeletion(noteIDs: Set<UUID>) throws {
+        guard !noteIDs.isEmpty else { return }
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                let active = try activeListingWithoutCoordination()
+                guard active.issues.isEmpty else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        active.issues.map(\.id).joined(separator: ", ")
+                    )
+                }
+                for discussion in active.discussions
+                    where !Set(discussion.participatingNotes.map(\.noteID))
+                        .isDisjoint(with: noteIDs) {
+                    try storage.removeIfPresent(
+                        directory: "active",
+                        fileName: Self.fileName(discussion.id)
+                    )
+                }
+                for location in PortableResearchRecordLocation.allCases {
+                    for fileName in try storage.fileNames(in: location.rawValue)
+                        where fileName.hasSuffix(".json") {
+                        let data = try storage.read(directory: location.rawValue, fileName: fileName)
+                        let record = try Self.decode(PortableResearchRecord.self, from: data)
+                        guard record.triptychID == triptychID,
+                              fileName == Self.fileName(record.id) else {
+                            throw ResearchRecordStoreV1Error.recordIdentityMismatch(record.id)
+                        }
+                        guard record.participatingNotes.contains(where: {
+                            noteIDs.contains($0.noteID) && !$0.isTombstone
+                        }) else { continue }
+                        let updatedNotes = try record.participatingNotes.map { note in
+                            guard noteIDs.contains(note.noteID) else { return note }
+                            return try PortableResearchNoteRevision(
+                                noteID: note.noteID,
+                                note: note.note,
+                                role: note.role,
+                                title: note.title,
+                                startingRevision: note.startingRevision,
+                                endingRevision: nil,
+                                isTombstone: true
+                            )
+                        }
+                        let updated = try Self.replacingParticipants(
+                            in: record,
+                            with: updatedNotes
+                        )
+                        let (_, encoded) = try Self.canonicalized(updated)
+                        _ = try storage.replace(
+                            encoded,
+                            directory: location.rawValue,
+                            fileName: fileName
+                        )
+                    }
+                }
             }
         }
     }
@@ -478,6 +869,198 @@ public actor PortableResearchRecordStore {
                 }
             }
         }
+    }
+
+    private func readDiscussion(id: UUID) throws -> PortableResearchDiscussion {
+        do {
+            let data = try storage.read(
+                directory: "active",
+                fileName: Self.fileName(id)
+            )
+            let discussion = try Self.decode(PortableResearchDiscussion.self, from: data)
+            guard discussion.id == id, discussion.triptychID == triptychID else {
+                throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+            }
+            return discussion
+        } catch let error as SecureRecordDirectoryError {
+            if case .notFound = error {
+                throw ResearchRecordStoreV1Error.discussionNotFound(id)
+            }
+            throw Self.map(error)
+        }
+    }
+
+    private func activeListingWithoutCoordination() throws -> PortableResearchDiscussionListing {
+        var discussions: [PortableResearchDiscussion] = []
+        var issues: [PortableResearchRecordStoreIssue] = []
+        for fileName in try storage.fileNames(in: "active") where fileName.hasSuffix(".json") {
+            do {
+                let discussion = try Self.decode(
+                    PortableResearchDiscussion.self,
+                    from: storage.read(directory: "active", fileName: fileName)
+                )
+                guard discussion.triptychID == triptychID,
+                      fileName == Self.fileName(discussion.id) else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(discussion.id)
+                }
+                discussions.append(discussion)
+            } catch {
+                issues.append(PortableResearchRecordStoreIssue(
+                    location: "active",
+                    fileName: fileName,
+                    reason: error.localizedDescription
+                ))
+            }
+        }
+        let byPrimary = Dictionary(grouping: discussions, by: \.primaryNoteID)
+        for (primaryNoteID, duplicates) in byPrimary where duplicates.count > 1 {
+            let ids = duplicates.map(\.id).sorted { $0.uuidString < $1.uuidString }
+            for discussionID in ids {
+                issues.append(PortableResearchRecordStoreIssue(
+                    location: "active",
+                    fileName: Self.fileName(discussionID),
+                    reason: "Primary Note \(primaryNoteID.uuidString) has multiple active Discussions: "
+                        + ids.map(\.uuidString).joined(separator: ", ")
+                ))
+            }
+        }
+        return PortableResearchDiscussionListing(
+            discussions: discussions.sorted {
+                if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+                return $0.id.uuidString < $1.id.uuidString
+            },
+            issues: issues.sorted { $0.id < $1.id }
+        )
+    }
+
+    private func requireHealthyActiveListing() throws -> PortableResearchDiscussionListing {
+        let listing = try activeListingWithoutCoordination()
+        guard listing.issues.isEmpty else {
+            throw ResearchRecordStoreV1Error.unsafeStore(
+                listing.issues.map(\.id).joined(separator: ", ")
+            )
+        }
+        return listing
+    }
+
+    private func requireNoDeletionMarkers(noteIDs: Set<UUID>) throws {
+        for noteID in noteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+            do {
+                let data = try deletionMarkers.read(
+                    directory: nil,
+                    fileName: Self.fileName(noteID)
+                )
+                guard data == Self.deletionMarkerData(noteID) else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        "A deletion marker does not match its Note identity."
+                    )
+                }
+                throw ResearchRecordStoreV1Error.noteDeletionInProgress(noteID)
+            } catch let error as SecureRecordDirectoryError {
+                if case .notFound = error { continue }
+                throw Self.map(error)
+            }
+        }
+    }
+
+    private static func deletionMarkerData(_ noteID: UUID) -> Data {
+        Data(
+            "{\"note_id\":\"\(noteID.uuidString.lowercased())\",\"schema_version\":1}\n".utf8
+        )
+    }
+
+    private static func recoverFinishedDiscussionCutovers(
+        storage: SecureRecordDirectory,
+        triptychID: UUID
+    ) throws {
+        for fileName in try storage.fileNames(in: "active") where fileName.hasSuffix(".json") {
+            let discussion: PortableResearchDiscussion
+            do {
+                discussion = try decode(
+                    PortableResearchDiscussion.self,
+                    from: storage.read(directory: "active", fileName: fileName)
+                )
+                guard discussion.triptychID == triptychID,
+                      fileName == Self.fileName(discussion.id) else {
+                    continue
+                }
+            } catch {
+                // An unrelated malformed active draft remains visible as a
+                // listing issue; recovery never guesses at its identity.
+                continue
+            }
+            let finished: PortableResearchRecord
+            do {
+                finished = try decode(
+                    PortableResearchRecord.self,
+                    from: storage.read(directory: "records", fileName: fileName)
+                )
+            } catch let error as SecureRecordDirectoryError {
+                if case .notFound = error { continue }
+                throw Self.map(error)
+            }
+            guard isFinished(finished, from: discussion) else {
+                throw ResearchRecordStoreV1Error.discussionFinishConflict(discussion.id)
+            }
+            try storage.removeIfPresent(directory: "active", fileName: fileName)
+        }
+    }
+
+    private static func isFinished(
+        _ record: PortableResearchRecord,
+        from discussion: PortableResearchDiscussion
+    ) -> Bool {
+        guard record.id == discussion.id,
+              record.triptychID == discussion.triptychID,
+              record.kind == .discussion,
+              record.action == discussion.action,
+              record.method == discussion.method,
+              record.sourceReference == nil,
+              record.primaryNoteID == discussion.primaryNoteID,
+              record.statements == discussion.statements,
+              record.actuallyUsedMaterials.isEmpty,
+              record.confirmedChanges.isEmpty,
+              record.discrepancies.isEmpty,
+              record.startedAt == discussion.createdAt,
+              record.finishedAt >= discussion.updatedAt else { return false }
+        let activeByID = Dictionary(
+            uniqueKeysWithValues: discussion.participatingNotes.map { ($0.noteID, $0) }
+        )
+        guard Set(activeByID.keys) == Set(record.participatingNotes.map(\.noteID)) else {
+            return false
+        }
+        return record.participatingNotes.allSatisfy { note in
+            guard let active = activeByID[note.noteID] else { return false }
+            return note.note == active.note
+                && note.role == active.role
+                && note.title == active.title
+                && note.startingRevision == active.startingRevision
+                && !note.isTombstone
+                && note.endingRevision != nil
+        }
+    }
+
+    private static func replacingParticipants(
+        in record: PortableResearchRecord,
+        with participatingNotes: [PortableResearchNoteRevision]
+    ) throws -> PortableResearchRecord {
+        try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: participatingNotes,
+            statements: record.statements,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            isPinned: record.isPinned
+        )
     }
 
     private func readRecord(
@@ -800,6 +1383,62 @@ public struct LocalResearchExecutionListing: Sendable {
     public let issues: [PortableResearchRecordStoreIssue]
 }
 
+private struct LocalCritiqueHandoffIntent: Codable, Equatable {
+    static let currentSchemaVersion = 1
+
+    let schemaVersion: Int
+    let triptychID: UUID
+    let runID: UUID
+    let checkpointID: UUID
+    let evidenceDigest: DocumentFingerprint
+
+    init(
+        triptychID: UUID,
+        runID: UUID,
+        checkpointID: UUID,
+        evidenceDigest: DocumentFingerprint
+    ) {
+        schemaVersion = Self.currentSchemaVersion
+        self.triptychID = triptychID
+        self.runID = runID
+        self.checkpointID = checkpointID
+        self.evidenceDigest = evidenceDigest
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case triptychID = "triptych_id"
+        case runID = "run_id"
+        case checkpointID = "checkpoint_id"
+        case evidenceDigest = "evidence_digest"
+    }
+
+    init(from decoder: Decoder) throws {
+        try ResearchRecordStoreCodingValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw PortableResearchRecordError.unsupportedSchemaVersion(schemaVersion)
+        }
+        self.schemaVersion = schemaVersion
+        triptychID = try container.decode(UUID.self, forKey: .triptychID)
+        runID = try container.decode(UUID.self, forKey: .runID)
+        checkpointID = try container.decode(UUID.self, forKey: .checkpointID)
+        evidenceDigest = try container.decode(
+            StrictResearchRecordFingerprint.self,
+            forKey: .evidenceDigest
+        ).value
+    }
+}
+
+private struct LocalCritiqueHandoffEvidence: Encodable {
+    let snapshot: ResearchFunctionSnapshot
+    let preparedInstructions: String
+}
+
 /// Private per-run execution storage. Each run is isolated so one malformed or
 /// partially synchronized file cannot make unrelated completion grants usable.
 public actor LocalResearchExecutionStore {
@@ -827,13 +1466,13 @@ public actor LocalResearchExecutionStore {
             fileMode: 0o600,
             maximumByteCount: Self.maximumExecutionByteCount
         )
-        try storage.ensureDirectories([])
+        try storage.ensureDirectories(["critique-handoffs"])
         lock = try AdvisoryFileLock(
             directory: storage,
             fileName: "execution-v2.lock"
         )
         try lock.withExclusiveLock {
-            try storage.removeAbandonedStagingFiles(in: [nil])
+            try storage.removeAbandonedStagingFiles(in: [nil, "critique-handoffs"])
         }
     }
 
@@ -927,6 +1566,83 @@ public actor LocalResearchExecutionStore {
         }
     }
 
+    /// Persists only a machine-local digest before portable Critique staging
+    /// commits. Portable prose can therefore be resumed after process loss
+    /// only when it still matches intent established on this machine.
+    public func stageCritiqueHandoff(
+        snapshot: ResearchFunctionSnapshot,
+        preparedInstructions: String
+    ) throws {
+        let intent = try makeCritiqueHandoffIntent(
+            snapshot: snapshot,
+            preparedInstructions: preparedInstructions
+        )
+        try lock.withExclusiveLock {
+            let data = try Self.makeEncoder().encode(intent)
+            do {
+                _ = try storage.createExclusive(
+                    data,
+                    directory: "critique-handoffs",
+                    fileName: Self.critiqueHandoffFileName(snapshot.runID)
+                )
+            } catch let error as SecureRecordDirectoryError {
+                if case .alreadyExists = error {
+                    let current = try readCritiqueHandoffIntent(runID: snapshot.runID)
+                    guard current == intent else {
+                        throw ResearchRecordStoreV1Error.executionAlreadyExists(
+                            snapshot.runID
+                        )
+                    }
+                    return
+                }
+                throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
+            }
+        }
+    }
+
+    public func hasMatchingCritiqueHandoff(
+        snapshot: ResearchFunctionSnapshot,
+        preparedInstructions: String
+    ) throws -> Bool {
+        let expected = try makeCritiqueHandoffIntent(
+            snapshot: snapshot,
+            preparedInstructions: preparedInstructions
+        )
+        return try lock.withSharedLock {
+            do {
+                return try readCritiqueHandoffIntent(runID: snapshot.runID) == expected
+            } catch let error as SecureRecordDirectoryError {
+                if case .notFound = error { return false }
+                throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
+            }
+        }
+    }
+
+    public func discardCritiqueHandoff(
+        snapshot: ResearchFunctionSnapshot,
+        preparedInstructions: String
+    ) throws {
+        let expected = try makeCritiqueHandoffIntent(
+            snapshot: snapshot,
+            preparedInstructions: preparedInstructions
+        )
+        try lock.withExclusiveLock {
+            do {
+                let current = try readCritiqueHandoffIntent(runID: snapshot.runID)
+                guard current == expected else {
+                    throw ResearchRecordStoreV1Error.executionAlreadyExists(snapshot.runID)
+                }
+                try storage.removeIfPresent(
+                    directory: "critique-handoffs",
+                    fileName: Self.critiqueHandoffFileName(snapshot.runID)
+                )
+            } catch let error as SecureRecordDirectoryError {
+                if case .notFound = error { return }
+                throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
+            }
+        }
+    }
+
     /// Fails closed before a destructive note transaction begins. A malformed
     /// execution file may contain note-specific private state, so Scholium may
     /// not claim permanent deletion while leaving it uninterpreted.
@@ -964,54 +1680,6 @@ public actor LocalResearchExecutionStore {
             }
             return removed
         }
-    }
-
-    @discardableResult
-    public func appendReply(
-        _ reply: DialogueReply,
-        to runID: UUID
-    ) throws -> DialogueEntry {
-        try update(runID) { record in
-            guard var dialogue = record.dialogue else {
-                throw DialogueError.entryNotFound(runID)
-            }
-            guard !reply.text.isEmpty, !reply.agentName.isEmpty else {
-                throw DialogueError.emptyReply
-            }
-            guard !dialogue.replies.contains(where: { $0.id == reply.id }) else {
-                throw DialogueError.duplicateReply(reply.id)
-            }
-            try Self.validateDialogueTarget(
-                noteID: reply.noteID,
-                commentID: reply.commentID,
-                dialogue: dialogue
-            )
-            dialogue.replies.append(reply)
-            record.dialogue = dialogue
-        }.dialogue!
-    }
-
-    @discardableResult
-    public func appendFollowUp(
-        _ comment: DialogueFollowUpComment,
-        to runID: UUID
-    ) throws -> DialogueEntry {
-        try update(runID) { record in
-            guard var dialogue = record.dialogue else {
-                throw DialogueError.entryNotFound(runID)
-            }
-            guard !comment.text.isEmpty else { throw DialogueError.emptyFollowUpComment }
-            guard !dialogue.followUpComments.contains(where: { $0.id == comment.id }) else {
-                throw DialogueError.duplicateFollowUpComment(comment.id)
-            }
-            try Self.validateDialogueTarget(
-                noteID: comment.noteID,
-                commentID: comment.commentID,
-                dialogue: dialogue
-            )
-            dialogue.followUpComments.append(comment)
-            record.dialogue = dialogue
-        }.dialogue!
     }
 
     public func authorizeCompletion(
@@ -1080,10 +1748,22 @@ public actor LocalResearchExecutionStore {
                 guard grant.state == .completed,
                       grant.completionPayloadDigest == completionPayloadDigest,
                       grant.completionReport == report,
-                      record.completion == completion,
-                      record.completionSubmissionDigest == submissionDigest else {
+                      let existing = record.completion else {
                     throw ResearchActivityGrantError.completionAlreadyRecorded(activityID)
                 }
+                if existing == completion,
+                   record.completionSubmissionDigest == submissionDigest {
+                    return
+                }
+                guard Self.canAdvance(
+                    existing,
+                    to: completion,
+                    snapshot: record.snapshot
+                ) else {
+                    throw ResearchActivityGrantError.completionAlreadyRecorded(activityID)
+                }
+                record.completion = completion
+                record.completionSubmissionDigest = submissionDigest
                 return
             }
             guard grant.state == .active else {
@@ -1274,35 +1954,27 @@ public actor LocalResearchExecutionStore {
               existing.function == replacement.function,
               existing.targetFingerprint == replacement.targetFingerprint,
               existing.materialFingerprints == replacement.materialFingerprints,
-              existing.didModifyTarget == replacement.didModifyTarget,
               existing.summary == replacement.summary,
+              existing.didModifyTarget == replacement.didModifyTarget,
               existing.outputFingerprint == replacement.outputFingerprint,
-              existing.completedAt == replacement.completedAt else {
+              existing.completedAt == replacement.completedAt,
+              existing.fidelityEvidenceKey == nil
+                  || existing.fidelityEvidenceKey == replacement.fidelityEvidenceKey,
+              existing.reusedFidelityRunID == nil
+                  || existing.reusedFidelityRunID == replacement.reusedFidelityRunID,
+              existing.derivedRefreshWarning == nil
+                  || existing.derivedRefreshWarning == replacement.derivedRefreshWarning,
+              Set(existing.fidelityOutcomes).isSubset(of: Set(replacement.fidelityOutcomes)),
+              Set(existing.fidelityTargetResults ?? []).isSubset(
+                  of: Set(replacement.fidelityTargetResults ?? [])
+              ),
+              Set(existing.childRunIDs ?? []).isSubset(
+                  of: Set(replacement.childRunIDs ?? [])
+              ) else {
             return false
         }
         let allowed = snapshot.fidelityHandoff?.checks ?? snapshot.request.checks
         return Set(replacement.fidelityOutcomes.map(\.check)).isSubset(of: allowed)
-    }
-
-    private nonisolated static func validateDialogueTarget(
-        noteID: UUID?,
-        commentID: UUID?,
-        dialogue: DialogueEntry
-    ) throws {
-        if let noteID,
-           !dialogue.selectedNotes.contains(where: { $0.noteID == noteID }) {
-            throw DialogueError.invalidReplyTarget
-        }
-        if let commentID,
-           !dialogue.includedComments.contains(where: { $0.exchange.id == commentID }) {
-            throw DialogueError.invalidReplyTarget
-        }
-        if let noteID, let commentID,
-           !dialogue.includedComments.contains(where: {
-               $0.exchange.id == commentID && $0.note.noteID == noteID
-           }) {
-            throw DialogueError.invalidReplyTarget
-        }
     }
 
     private nonisolated static func noteIDs(
@@ -1346,6 +2018,53 @@ public actor LocalResearchExecutionStore {
 
     private static func fileName(_ id: UUID) -> String {
         id.uuidString.lowercased() + ".json"
+    }
+
+    private static func critiqueHandoffFileName(_ id: UUID) -> String {
+        id.uuidString.lowercased() + ".json"
+    }
+
+    private func makeCritiqueHandoffIntent(
+        snapshot: ResearchFunctionSnapshot,
+        preparedInstructions: String
+    ) throws -> LocalCritiqueHandoffIntent {
+        guard snapshot.actionSnapshot?.actionID == .critique,
+              snapshot.request.function == .critique,
+              snapshot.runID == snapshot.recordID,
+              let checkpointID = snapshot.checkpointID,
+              snapshot.preparedOutput != nil,
+              !preparedInstructions.isEmpty,
+              preparedInstructions.utf8.count <= 2 * 1024 * 1024 else {
+            throw ResearchRecordStoreV1Error.unsafeStore(
+                "The Critique handoff does not match a frozen Action run."
+            )
+        }
+        let evidence = LocalCritiqueHandoffEvidence(
+            snapshot: snapshot,
+            preparedInstructions: preparedInstructions
+        )
+        let digest = DocumentFingerprint(data: try Self.makeEncoder().encode(evidence))
+        return LocalCritiqueHandoffIntent(
+            triptychID: triptychID,
+            runID: snapshot.runID,
+            checkpointID: checkpointID,
+            evidenceDigest: digest
+        )
+    }
+
+    private func readCritiqueHandoffIntent(
+        runID: UUID
+    ) throws -> LocalCritiqueHandoffIntent {
+        let data = try storage.read(
+            directory: "critique-handoffs",
+            fileName: Self.critiqueHandoffFileName(runID)
+        )
+        let intent = try Self.decode(LocalCritiqueHandoffIntent.self, from: data)
+        guard intent.triptychID == triptychID,
+              intent.runID == runID else {
+            throw ResearchRecordStoreV1Error.recordIdentityMismatch(runID)
+        }
+        return intent
     }
 
     private static func makeEncoder() -> JSONEncoder {

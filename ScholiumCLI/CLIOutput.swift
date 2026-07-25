@@ -94,13 +94,11 @@ extension ScholiumCLI {
           scholium note set-aside <vault>:<path> --expected <sha256>
           scholium note trash <vault>:<path> --expected <sha256>
           scholium note delete <vault>:<Trash/path> --permanent --expected <sha256>
-          scholium comment reply <exchange-id> --agent <name> (--text <reply> | --from <file|->)
-              [--triptych <uuid-or-unique-name>]
           scholium discuss list [--triptych <uuid-or-unique-name>]
-              [--note <vault>:<relative-path>] [--format json]
+              [--format json]
           scholium discuss show <discussion-id> [--triptych <uuid-or-unique-name>] [--format json]
-          scholium discuss reply <discussion-id> --triptych <uuid-or-unique-name> --agent <name>
-              (--text <reply> | --from <file>) [--note <vault>:<path>] [--comment <uuid>]
+          scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->)
+              [--triptych <uuid-or-unique-name>]
           scholium zotero mcp config [--format text|json]
           scholium zotero mcp status [--probe] [--format text|json]
           scholium zotero mcp serve
@@ -188,10 +186,9 @@ private extension ScholiumCLI {
             "note set-aside": "Usage: scholium note set-aside <vault>:<path> --expected <sha256>",
             "note trash": "Usage: scholium note trash <vault>:<path> --expected <sha256>",
             "note delete": "Usage: scholium note delete <vault>:<Trash/path> --permanent --expected <sha256>",
-            "comment reply": "Usage: scholium comment reply <exchange-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]",
-            "discuss list": "Usage: scholium discuss list [--triptych <selector>] [--note <vault>:<path>] [--format text|json]",
+            "discuss list": "Usage: scholium discuss list [--triptych <selector>] [--format text|json]",
             "discuss show": "Usage: scholium discuss show <discussion-id> [--triptych <selector>] [--format text|json]",
-            "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file>) [--triptych <selector>] [--note <vault>:<path>] [--comment <uuid>]",
+            "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]",
             "zotero mcp config": "Usage: scholium zotero mcp config [--format text|json]",
             "zotero mcp status": "Usage: scholium zotero mcp status [--probe] [--format text|json]",
             "zotero mcp serve": "Usage: scholium zotero mcp serve",

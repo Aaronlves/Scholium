@@ -80,12 +80,24 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord
-    func commentExchanges(noteID: UUID) async throws -> [CommentExchange]
-    func commentExchange(id: UUID) async throws -> CommentExchange
-    func createCommentExchange(_ exchange: CommentExchange) async throws -> CommentExchange
-    func appendCommentExchangeTurn(exchangeID: UUID, turn: CommentExchangeTurn) async throws -> CommentExchange
-    func finishCommentExchange(exchangeID: UUID) async throws -> CommentExchange
-    func discussionHistory(noteID: UUID) async throws -> [DialogueEntry]
+    func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion]
+    func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion
+    func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion?
+    func createDiscussion(
+        target: ResearchFunctionTarget,
+        focalNotes: [ResearchFunctionMaterial],
+        passage: CommentAnchor?,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion
+    func appendDiscussionStatement(
+        discussionID: UUID,
+        author: PortableResearchStatementAuthor,
+        attribution: String,
+        text: String,
+        passage: CommentAnchor?
+    ) async throws -> PortableResearchDiscussion
+    func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
+    func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord]
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
     func setCritiqueFindingDisposition(
@@ -106,10 +118,6 @@ public protocol ResearchRecordUseCases: Sendable {
     func settings() async throws -> TriptychSettings
     func saveSettings(_ settings: TriptychSettings) async throws
     func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws
-    func discussionRecords() async throws -> [DialogueEntry]
-    func discussion(id: UUID) async throws -> DialogueEntry
-    func appendDiscussionReply(_ reply: DialogueReply, to entryID: UUID) async throws -> DialogueEntry
-    func appendDiscussionFollowUp(_ comment: DialogueFollowUpComment, to entryID: UUID) async throws -> DialogueEntry
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
 }
@@ -239,7 +247,7 @@ public protocol ResearchFunctionUseCases: Sendable {
 
     func finishDiscussion(
         runID: UUID
-    ) async throws -> ResearchActivityEvent
+    ) async throws -> PortableResearchRecord
 
     func cancelFunction(
         runID: UUID

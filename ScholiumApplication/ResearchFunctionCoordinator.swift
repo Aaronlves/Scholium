@@ -66,7 +66,7 @@ public actor ResearchFunctionCoordinator {
         try await handle.cancelResearchFunction(runID: runID)
     }
 
-    public func finishDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
+    public func finishDiscussion(runID: UUID) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
         return try await handle.finishResearchDiscussion(runID: runID)
     }
@@ -449,6 +449,12 @@ extension WorkspaceHandle {
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation {
         try requireActive()
+        guard try await services.localResearchExecutionStore
+            .recordIfPresent(id: parentRunID) != nil else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Legacy Research Function data is reveal-only and cannot authorize Fidelity."
+            )
+        }
         let records = try await authoritativeFunctionRecords()
         guard let parent = records.first(where: { $0.id == parentRunID }),
               [.develop, .revise].contains(parent.snapshot.request.function),
@@ -520,13 +526,9 @@ extension WorkspaceHandle {
             checks: handoff.checks,
             commentIDs: parentRequest.commentIDs
         )
-        let parentUsesLocalExecutionV2 = try await services
-            .localResearchExecutionStore.recordIfPresent(id: parentRunID) != nil
         let actionContext = try await resolvedDefaultActionContext(
             for: request,
-            executionStorage: parentUsesLocalExecutionV2
-                ? .localExecutionV2
-                : .legacyFunction
+            executionStorage: .localExecutionV2
         )
         let preparation = try await prepareResearchFunction(
             request,
@@ -542,6 +544,14 @@ extension WorkspaceHandle {
     func researchFunctionRun(id: UUID) async throws -> ResearchFunctionPreparation {
         try requireActive()
         let record = try await storedFunctionRecord(runID: id)
+        guard record.isLocalExecutionV2 else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Legacy Research Function data is reveal-only and cannot authorize delivery."
+            )
+        }
+        if record.snapshot.request.function == .discuss {
+            _ = try await validatedDiscussionStatements(snapshot: record.snapshot)
+        }
         return ResearchFunctionPreparation(
             snapshot: record.snapshot,
             instructions: try await deliveryInstructions(for: record),
@@ -584,10 +594,7 @@ extension WorkspaceHandle {
             expected: expandedRequest.target.fingerprint
         )
         let materials = try await validateResearchFunctionMaterials(expandedRequest.materials)
-        let request = try await bindingApplicableCritiqueComments(
-            in: expandedRequest,
-            target: target
-        )
+        let request = discardingLegacyCommentEvidence(in: expandedRequest)
         try request.validate()
         let sourceAccess = try await requiredResearchSourceAccess(
             for: target,
@@ -641,6 +648,22 @@ extension WorkspaceHandle {
             target: request.target.actionNote,
             skills: allSkills
         )
+
+        if request.function == .discuss {
+            let active = try await services.portableResearchRecordStore.activeDiscussions(
+                noteID: request.target.noteID
+            )
+            guard active.issues.isEmpty else {
+                throw ScholiumApplicationError.researchStoreUnavailable(
+                    active.issues.map(\.reason).joined(separator: "\n")
+                )
+            }
+            if let existing = active.discussions.first(where: {
+                $0.primaryNoteID == request.target.noteID
+            }) {
+                throw ResearchFunctionContractError.activeDiscussionExists(existing.id)
+            }
+        }
 
         // A checkpoint follows all non-mutating validation and skill
         // and Action-snapshot resolution so a failed preparation cannot leave
@@ -801,52 +824,8 @@ extension WorkspaceHandle {
         )
         if request.function == .discuss,
            actionContext.executionStorage == .legacyFunction {
-            let responseProfile: DialogueResponseProfile?
-            if let modules = request.dialogueResponseModules {
-                let storedProfile = try await services.controlStore
-                    .discussResponseProfile()
-                responseProfile = storedProfile.updated(
-                    modules: modules.map(\.rawValue)
-                )
-            } else {
-                responseProfile = nil
-            }
-            let preparation: DialoguePreparation
-            var refreshWarning: String?
-            do {
-                preparation = try await createDiscussion(
-                    instruction: request.instruction!,
-                    selectedNotes: ([target] + materials).map(\.reference),
-                    includedComments: evidence,
-                    requestedDestination: nil,
-                    responseProfile: responseProfile,
-                    discussionID: runID,
-                    functionSnapshot: snapshot,
-                    skillInstructions: functionInstructions
-                )
-            } catch let error as ScholiumApplicationError
-                where error.durableMutationWasCommitted {
-                refreshWarning = error.localizedDescription
-                scheduleResearchFunctionRefreshRecovery()
-                let entry = try await services.dialogueStore.entry(id: runID)
-                preparation = DialoguePreparation(
-                    entry: entry,
-                    instructions: functionInstructions,
-                    checkpoint: nil
-                )
-            }
-            let responseContract = preparation.entry.responseContract
-            let locator = DiscussResponseTransport.locator(
-                discussionID: runID,
-                triptychID: services.manifest.id,
-                contract: responseContract
-            )
-            return ResearchFunctionPreparation(
-                snapshot: snapshot,
-                // The Function packet is the complete permission authority;
-                // only its immutable response locator is appended.
-                instructions: functionInstructions + "\n\n" + locator,
-                derivedRefreshWarning: refreshWarning
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Legacy Discuss preparation is unavailable. Resolve and invoke the current Discuss Action."
             )
         }
         let entry = DialogueEntry(
@@ -900,6 +879,13 @@ extension WorkspaceHandle {
                         grant: activityAuthorization?.grant
                     )
                 )
+                if request.function == .discuss {
+                    _ = try await services.portableResearchRecordStore
+                        .createActiveDiscussion(try ResearchDiscussionFactory.make(
+                            snapshot: snapshot,
+                            triptychID: services.manifest.id
+                        ))
+                }
             }
         } catch {
             if let activityID = activityAuthorization?.grant.activityID {
@@ -917,6 +903,11 @@ extension WorkspaceHandle {
             if let checkpoint {
                 _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
                     id: checkpoint.id
+                )
+            }
+            if actionContext.executionStorage == .localExecutionV2 {
+                try? await services.localResearchExecutionStore.discardUncompleted(
+                    runID: runID
                 )
             }
             throw error
@@ -1130,12 +1121,22 @@ extension WorkspaceHandle {
                     try? await services.critiqueRegistry.discardUninstalledActionRound(
                         runID: runID
                     )
+                    try? await services.localResearchExecutionStore
+                        .discardCritiqueHandoff(
+                            snapshot: snapshot,
+                            preparedInstructions: localRecord.preparedInstructions
+                        )
                     _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
                         id: checkpoint.id
                     )
                     throw error
                 }
             }
+            try? await services.localResearchExecutionStore
+                .discardCritiqueHandoff(
+                    snapshot: snapshot,
+                    preparedInstructions: localRecord.preparedInstructions
+                )
             do {
                 _ = try await services.critiqueRegistry.detachFunctionEvidence(
                     runID: runID,
@@ -1146,6 +1147,12 @@ extension WorkspaceHandle {
                 // authority and let the idempotent reconciliation path finish
                 // detaching the staging evidence now or after process restart.
                 _ = try await storedFunctionRecord(runID: runID)
+            }
+            refreshWarning = try await recoverableResearchRefreshWarning {
+                try await refreshAfterCommittedOperation(
+                    "The Critique Research Function preparation",
+                    publication: .researchRecords
+                )
             }
         }
         return ResearchFunctionPreparation(
@@ -1165,6 +1172,11 @@ extension WorkspaceHandle {
     ) async throws -> ResearchFunctionCompletion {
         try requireActive()
         let stored = try await storedFunctionRecord(runID: submission.runID)
+        guard stored.isLocalExecutionV2 else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Legacy Research Function data is reveal-only and cannot authorize completion."
+            )
+        }
         let snapshot = stored.snapshot
         let submissionDigest = try acceptedSubmissionDigest
             ?? completionSubmissionDigest(submission)
@@ -1209,13 +1221,15 @@ extension WorkspaceHandle {
         var completedCritiqueFindings: [CritiqueFinding] = []
         switch snapshot.request.function {
         case .discuss:
+            let durableStatements = try await validatedDiscussionStatements(snapshot: snapshot)
             guard let entry = stored.dialogueEntry,
                   entry.responseContract.validationIssues.isEmpty,
-                  entry.replies.contains(where: { reply in
-                      reply.createdAt >= snapshot.preparedAt
-                          && !reply.agentName.isEmpty
-                          && !reply.text.isEmpty
-                }) else {
+                  durableStatements.contains(where: { statement in
+                      statement.author == .agent
+                          && statement.createdAt >= snapshot.preparedAt
+                          && !statement.attribution.isEmpty
+                          && !statement.text.isEmpty
+                  }) else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "Keep a valid stored Discuss response contract and record a durable attributed reply before completing Discuss."
                 )
@@ -1644,7 +1658,7 @@ extension WorkspaceHandle {
             state: state,
             targetFingerprint: finalTargetFingerprint,
             materialFingerprints: finalMaterialFingerprints,
-            summary: submission.summary,
+            summary: stored.completion?.summary ?? submission.summary,
             didModifyTarget: targetChanged,
             outputFingerprint: submission.outputFingerprint,
             fidelityOutcomes: outcomes,
@@ -1654,7 +1668,8 @@ extension WorkspaceHandle {
                 ?? linkedFinalFidelity?.runID
                 ?? reused?.runID,
             childRunIDs: submittedChildRunIDs,
-            completedAt: submission.submittedAt
+            completedAt: stored.completion?.completedAt ?? submission.submittedAt,
+            derivedRefreshWarning: stored.completion?.derivedRefreshWarning
         )
         if snapshot.request.function == .develop,
            snapshot.request.target.role == .analysis {
@@ -1870,17 +1885,8 @@ extension WorkspaceHandle {
         }
 
         switch completion.function {
-        case .discuss where completion.state == .complete:
-            _ = try await services.researchActivityStore.setPendingState(
-                PendingResearchState(
-                    id: completion.runID,
-                    noteID: target.noteID,
-                    kind: .responseReady,
-                    createdAt: completion.completedAt,
-                    activityID: completion.runID,
-                    route: .discuss
-                )
-            )
+        case .discuss:
+            break
         case .develop where completion.didModifyTarget:
             _ = try await services.researchActivityStore.appendEvent(
                 ResearchActivityEvent(
@@ -1972,47 +1978,35 @@ extension WorkspaceHandle {
                     researchRecordID: completion.runID
                 )
             )
-        case .discuss, .develop, .revise, .critique, .manuscript:
+        case .develop, .revise, .critique, .manuscript:
             break
         }
     }
 
-    /// Researcher acceptance is deliberately separate from external-agent
-    /// completion. Only this explicit action turns a reviewed no-write
-    /// Discuss response into one durable Discussed event.
-    func finishResearchDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
+    /// Finish is a record transition, not acceptance of the agent's response
+    /// and not a claim that the Discussion reached a true result.
+    func finishResearchDiscussion(runID: UUID) async throws -> PortableResearchRecord {
         try requireActive()
         let stored = try await storedFunctionRecord(runID: runID)
-        guard !stored.isLocalExecutionV2 else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Finishing an Action Discussion is unavailable until the portable Discussion cutover. The completed response remains in Local Execution v2."
-            )
-        }
         let snapshot = stored.snapshot
-        guard snapshot.request.function == .discuss,
-              let completion = stored.completion,
-              completion.state == .complete,
-              !completion.didModifyTarget else {
+        guard stored.isLocalExecutionV2,
+              snapshot.request.function == .discuss else {
             throw ResearchFunctionContractError.invalidCompletion(
-                "Only a completed, read-only Discuss response can be finished by the researcher."
+                "Only a current portable Discussion can be finished."
             )
         }
-        let target = snapshot.request.target
-        let reference = researchActivityReference(target)
-        let event = try await services.researchActivityStore.finishDiscussion(
-            note: reference,
-            runID: runID
-        )
-        try await refreshAfterCommittedOperation(
-            "The Discuss completion",
-            publication: .researchRecords
-        )
-        return event
+        _ = try await validatedDiscussionStatements(snapshot: snapshot)
+        return try await finishDiscussion(discussionID: runID)
     }
 
     func cancelResearchFunction(runID: UUID) async throws {
         try requireActive()
         let stored = try await storedFunctionRecord(runID: runID)
+        guard stored.isLocalExecutionV2 else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Legacy Research Function data is reveal-only and cannot authorize cancellation."
+            )
+        }
         if let existing = stored.completion {
             if existing.state == .cancelled { return }
             // Awaiting-Fidelity and Unverified are already durable completion
@@ -3152,16 +3146,9 @@ extension WorkspaceHandle {
                     preparedInstructions: $0.preparedInstructions
                 )
             }
-        let dialogue = try await services.dialogueStore.functionRecords()
-        let stored = local + dialogue + critique
-        let grouped = Dictionary(grouping: stored, by: \.id)
-        if let duplicated = grouped.first(where: { $0.value.count > 1 })?.key {
-            throw ResearchFunctionRecordStoreError.duplicateRun(duplicated)
-        }
-
         var projected: [ResearchFunctionRecordProjection] = []
-        projected.reserveCapacity(stored.count)
-        for record in stored {
+        projected.reserveCapacity(local.count)
+        for record in local {
             projected.append(try await projectCurrentFunctionRecord(record))
         }
         return projected.sorted {
@@ -4338,34 +4325,13 @@ extension WorkspaceHandle {
         return included
     }
 
-    /// Critique owns Comment selection: every finished Comment attached to the
-    /// target's exact current revision is included automatically. Passage
-    /// Critique narrows that set to overlapping source ranges. Callers cannot
-    /// silently omit applicable Comment evidence or inject stale exchanges.
-    private func bindingApplicableCritiqueComments(
-        in request: ResearchFunctionRequest,
-        target: ValidatedFunctionObject
-    ) async throws -> ResearchFunctionRequest {
-        guard request.function == .critique else { return request }
-        let selection = request.scope?.selection
-        let applicableIDs = await services.researchActivityStore
-            .exchanges(for: target.reference.noteID)
-            .filter { exchange in
-                guard exchange.note.note == target.note.id,
-                      exchange.status == .finished,
-                      exchange.finishedAt != nil,
-                      exchange.anchor.state == .attached,
-                      exchange.anchor.fingerprint == target.note.fingerprint else {
-                    return false
-                }
-                guard request.scope?.kind == .passage else { return true }
-                guard let selection else { return false }
-                return exchange.anchor.utf16Range.lowerBound < selection.utf16Range.upperBound
-                    && selection.utf16Range.lowerBound < exchange.anchor.utf16Range.upperBound
-            }
-            .map(\.id)
-            .sorted { $0.uuidString < $1.uuidString }
-
+    /// Finished Discussions are Research Records, not a second Comment
+    /// evidence channel. Decode-compatible Comment IDs are discarded at the
+    /// new Action boundary and legacy stores are never consulted.
+    private func discardingLegacyCommentEvidence(
+        in request: ResearchFunctionRequest
+    ) -> ResearchFunctionRequest {
+        guard !request.commentIDs.isEmpty else { return request }
         return ResearchFunctionRequest(
             function: request.function,
             target: request.target,
@@ -4373,7 +4339,7 @@ extension WorkspaceHandle {
             instruction: request.instruction,
             scope: request.scope,
             checks: request.checks,
-            commentIDs: applicableIDs,
+            commentIDs: [],
             conditionalResources: request.conditionalResources,
             dialogueResponseModules: request.dialogueResponseModules,
             writeScope: request.writeScope,

@@ -348,8 +348,8 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("A legacy Analyze snapshot remains readable but cannot authorize delivery")
-    func legacyAnalyzeSnapshotCannotResume() async throws {
+    @Test("A local Analyze snapshot without source evidence cannot authorize delivery")
+    func localAnalyzeSnapshotCannotResumeWithoutSourceEvidence() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         var runtime = fixture.runtime()
@@ -364,12 +364,12 @@ struct ResearchFunctionOperationsTests {
         )
         await runtime.shutdown()
 
-        let dialogueURL = fixture.applicationSupportURL
+        let executionURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("dialogue", isDirectory: true)
-            .appendingPathComponent("dialogue.json")
-        let data = try Data(contentsOf: dialogueURL)
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        let data = try Data(contentsOf: executionURL)
         let payload = try JSONSerialization.jsonObject(with: data)
         let legacy = removingSourceReference(
             from: payload,
@@ -377,7 +377,7 @@ struct ResearchFunctionOperationsTests {
         )
         #expect(legacy.didRemove)
         try JSONSerialization.data(withJSONObject: legacy.value, options: [.sortedKeys])
-            .write(to: dialogueURL, options: .atomic)
+            .write(to: executionURL, options: .atomic)
 
         runtime = fixture.runtime()
         handle = try await runtime.openWorkspace(id: fixture.assignment.id)
@@ -876,6 +876,7 @@ struct ResearchFunctionOperationsTests {
         let resumed = try await handle.research.functionRun(id: first.runID)
         #expect(resumed.snapshot.zoteroBibliographicContext == context)
         #expect(await script.requestCount() == 1)
+        _ = try await handle.research.finishDiscussion(discussionID: first.runID)
 
         let second = try await handle.research.prepareFunction(
             ResearchFunctionRequest(
@@ -886,6 +887,7 @@ struct ResearchFunctionOperationsTests {
         )
         #expect(second.snapshot.zoteroBibliographicContext?.state == .resolved)
         #expect(await script.requestCount() == 2)
+        _ = try await handle.research.finishDiscussion(discussionID: second.runID)
         let unchanged = try await handle.documents.load(fixture.analysisID)
         #expect(unchanged.fingerprint == original.fingerprint)
         #expect(unchanged.rawContent == original.rawContent)
@@ -976,6 +978,9 @@ struct ResearchFunctionOperationsTests {
             #expect(preparation.instructions.contains(
                 "fill only information genuinely needed for this function"
             ))
+            _ = try await handle.research.finishDiscussion(
+                discussionID: preparation.runID
+            )
         }
         #expect(await script.requestCount() == 3)
         await runtime.shutdown()
@@ -993,54 +998,41 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
 
-        let originalProfile = try await handle.research.discussResponseProfile()
-
-        let preparation = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
-                target: target,
-                instruction: "Change this Analysis into a stronger argument.",
-                dialogueResponseModules: [
-                    .criticalReflection,
-                    .philosophicalSignificance,
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .discuss,
+                target: actionNote(target),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Change this Analysis into a stronger argument."),
                 ]
             )
         )
-        #expect(preparation.snapshot.checkpointID == nil)
+        let protectedRun = try await handle.research.functionRun(id: preparation.runID)
+        #expect(protectedRun.snapshot.checkpointID == nil)
         #expect(preparation.instructions.contains("Target and Materials are read-only"))
         #expect(preparation.instructions.contains(
             "begin a separately authorized Analyze Action"
         ))
-        #expect(try await handle.snapshot().research.functionRuns.first {
+        let storedInstructions = try #require(try await handle.snapshot().research.functionRuns.first {
             $0.id == preparation.runID
-        }?.preparedInstructions == preparation.instructions)
+        }?.preparedInstructions)
+        #expect(preparation.instructions.hasPrefix(storedInstructions))
         #expect(try await handle.documents.load(fixture.analysisID).fingerprint == target.fingerprint)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
-        let discussion = try await handle.research.discussion(id: preparation.runID)
-        #expect(discussion.responseContract.knownModules == [
-            .criticalReflection,
-            .philosophicalSignificance,
+        let discussion = try await handle.research.activeDiscussion(id: preparation.runID)
+        #expect(discussion.action?.actionID == .discuss)
+        #expect(discussion.statements.map(\.text) == [
+            "Change this Analysis into a stronger argument.",
         ])
-        #expect(preparation.snapshot.request.dialogueResponseModules == [
-            .criticalReflection,
-            .philosophicalSignificance,
-        ])
-        #expect(preparation.instructions.contains("critical-reflection"))
-        #expect(preparation.instructions.contains("philosophical-significance"))
-
-        try await handle.research.saveDiscussResponseProfile(DialogueResponseProfile(
-            modules: [.researchDirections]
-        ))
-        let unchangedDiscussion = try await handle.research.discussion(id: preparation.runID)
-        #expect(unchangedDiscussion.responseContract == discussion.responseContract)
-        #expect(unchangedDiscussion.preparedInstructions == discussion.preparedInstructions)
-        #expect(unchangedDiscussion.functionSnapshot.request == preparation.snapshot.request)
-        #expect(unchangedDiscussion.responseContract.profileRevision
-            != originalProfile.profileRevision)
+        let unchangedDiscussion = try await handle.research.activeDiscussion(
+            id: preparation.runID
+        )
+        #expect(unchangedDiscussion == discussion)
 
         let incomplete = ResearchFunctionCompletionSubmission(
             runID: preparation.runID,
-            confirmationToken: preparation.snapshot.confirmationToken,
+            confirmationToken: protectedRun.snapshot.confirmationToken,
             finalTargetFingerprint: target.fingerprint,
             summary: "A reply was allegedly produced.",
             didModifyTarget: false
@@ -1048,42 +1040,413 @@ struct ResearchFunctionOperationsTests {
         await #expect(throws: ResearchFunctionContractError.self) {
             _ = try await handle.research.completeFunction(incomplete)
         }
-        _ = try await handle.research.appendDiscussionReply(
-            DialogueReply(
-                agentName: "Research Agent",
-                text: "The requested change requires a separately authorized Analyze Action.",
-                createdAt: preparation.snapshot.preparedAt.addingTimeInterval(1)
-            ),
-            to: preparation.runID
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: preparation.runID,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "The requested change requires a separately authorized Analyze Action."
         )
         let completed = try await handle.research.completeFunction(incomplete)
         #expect(completed.state == .complete)
         #expect(!completed.didModifyTarget)
-        let responseReady = try await handle.snapshot().research.pendingResearchStates
-            .filter { $0.noteID == target.noteID && $0.kind == .responseReady }
-        #expect(responseReady.count == 1)
-        #expect(responseReady.first?.route == .discuss)
+        let activeAfterCompletion = try await handle.research.activeDiscussions(noteID: nil)
+        let recordsAfterCompletion = try await handle.research.finishedResearchRecords(noteID: nil)
+        #expect(recordsAfterCompletion.allSatisfy { $0.id != preparation.runID })
+        #expect(try await handle.snapshot().research.activeDiscussions.contains {
+            $0.id == preparation.runID && !$0.awaitsAgentReply
+        })
+        #expect(activeAfterCompletion.contains {
+            $0.id == preparation.runID && !$0.awaitsAgentReply
+        })
         #expect(try await handle.snapshot().research.activityEvents.allSatisfy {
             $0.kind != .discussed
         })
-        _ = try await handle.research.finishDiscussion(runID: preparation.runID)
-        _ = try await handle.research.finishDiscussion(runID: preparation.runID)
-        let discussed = try await handle.snapshot().research.activityEvents.filter {
-            $0.activityID == preparation.runID && $0.kind == .discussed
-        }
-        #expect(discussed.count == 1)
+        let record = try await handle.research.finishDiscussion(runID: preparation.runID)
+        let repeated = try await handle.research.finishDiscussion(runID: preparation.runID)
+        #expect(record == repeated)
+        #expect(record.kind == .discussion)
+        #expect(record.statements.count == 2)
+        #expect(try await handle.snapshot().research.activeDiscussions.allSatisfy {
+            $0.id != preparation.runID
+        })
+        #expect(try await handle.snapshot().research.finishedResearchRecords.filter {
+            $0.id == preparation.runID
+        }.count == 1)
 
-        let fidelity = try await handle.research.prepareFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: target,
-                checks: [.content]
+        let fidelity = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .checkFidelity,
+                target: actionNote(target),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "fidelity-checks")!:
+                        .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
+                ]
             )
         )
         try await handle.research.cancelFunction(runID: fidelity.runID)
         let cancelled = try #require(try await handle.snapshot().research.functionRuns
             .first { $0.id == fidelity.runID }?.completion)
         #expect(cancelled.state == .cancelled)
+        await runtime.shutdown()
+    }
+
+    @Test("Discussion supports whole-note focal context without writing Markdown")
+    func portableDiscussionIsReadOnlyAcrossFocalNotes() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let focal = ResearchFunctionMaterial(
+            noteID: topic.noteID,
+            note: topic.note,
+            role: topic.role,
+            lifecycle: topic.lifecycle,
+            fingerprint: topic.fingerprint,
+            title: topic.title
+        )
+        let analysisBefore = try await handle.documents.load(fixture.analysisID)
+        let topicBefore = try await handle.documents.load(fixture.topicID)
+
+        let discussion = try await handle.research.createDiscussion(
+            target: analysis,
+            focalNotes: [focal],
+            passage: nil,
+            researcherMessage: "Compare the current Analysis with this Topic."
+        )
+        #expect(Set(discussion.participatingNotes.map(\.noteID)) == [
+            analysis.noteID,
+            topic.noteID,
+        ])
+        #expect(discussion.passage == nil)
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: discussion.id,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "The Topic qualifies rather than settles the Analysis."
+        )
+        let record = try await handle.research.finishDiscussion(
+            discussionID: discussion.id
+        )
+
+        #expect(record.kind == .discussion)
+        #expect(record.participatingNotes.count == 2)
+        #expect(try await handle.documents.load(fixture.analysisID).rawContent
+            == analysisBefore.rawContent)
+        #expect(try await handle.documents.load(fixture.topicID).rawContent
+            == topicBefore.rawContent)
+        #expect(try await handle.snapshot().research.activeDiscussions.isEmpty)
+        #expect(try await handle.snapshot().research.finishedResearchRecords.contains {
+            $0.id == record.id
+        })
+        await runtime.shutdown()
+    }
+
+    @Test("Passage Comments append to one active Discussion and one finished record")
+    func passageCommentsShareOneDiscussion() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let document = try await handle.documents.load(fixture.analysisID)
+
+        let first = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: try commentAnchor(in: document),
+            researcherMessage: "What is the role of this claim?"
+        )
+        let second = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: try commentAnchor(in: document, quotation: "narrow reconstruction"),
+            researcherMessage: "How narrow should this reconstruction remain?"
+        )
+
+        #expect(second.id == first.id)
+        #expect(second.statements.count == 2)
+        #expect(second.statements.allSatisfy { $0.author == .researcher })
+        #expect(second.statements.compactMap(\.passage).count == 2)
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: first.id,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "Keep the reconstruction bounded by the stated claim."
+        )
+        let record = try await handle.research.finishDiscussion(discussionID: first.id)
+        #expect(record.primaryNoteID == target.noteID)
+        #expect(record.statements.count == 3)
+        #expect(try await handle.research.finishedResearchRecords(noteID: target.noteID)
+            .filter { $0.id == first.id }.count == 1)
+        await runtime.shutdown()
+    }
+
+    @Test("Synced duplicate primary Discussions are withheld from current projection")
+    func duplicatePrimaryDiscussionsFailCurrentProjectionClosed() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let first = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: nil,
+            researcherMessage: "Keep this primary identity singular."
+        )
+        let duplicate = try PortableResearchDiscussion(
+            id: UUID(),
+            triptychID: first.triptychID,
+            primaryNoteID: first.primaryNoteID,
+            action: first.action,
+            method: first.method,
+            participatingNotes: first.participatingNotes,
+            statements: first.statements,
+            createdAt: first.createdAt,
+            updatedAt: first.updatedAt
+        )
+        let duplicateURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
+            .appendingPathComponent(duplicate.id.uuidString.lowercased() + ".json")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        try encoder.encode(duplicate).write(to: duplicateURL, options: .atomic)
+
+        let refreshed = try await handle.refresh()
+        #expect(refreshed.research.activeDiscussions.isEmpty)
+        #expect(refreshed.research.healthIssues.contains {
+            $0.contains("multiple active Discussions")
+        })
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.activeDiscussion(id: first.id)
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("A passage Discussion follows stable identity across rename")
+    func passageDiscussionContinuesAfterRename() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let originalTarget = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let original = try await handle.documents.load(fixture.analysisID)
+        let discussion = try await handle.research.createDiscussion(
+            target: originalTarget,
+            focalNotes: [],
+            passage: try commentAnchor(in: original),
+            researcherMessage: "Keep this passage attached across rename."
+        )
+
+        let move = try await handle.documents.move(
+            fixture.analysisID,
+            to: "Renamed Analysis.md",
+            expectedRevision: original.fingerprint
+        )
+        let movedTarget = try await researchFunctionTarget(
+            move.destination,
+            role: .analysis,
+            handle: handle
+        )
+        let moved = try await handle.documents.load(move.destination)
+        let appended = try await handle.research.createDiscussion(
+            target: movedTarget,
+            focalNotes: [],
+            passage: try commentAnchor(in: moved, quotation: "narrow reconstruction"),
+            researcherMessage: "Continue from the renamed Note."
+        )
+
+        #expect(appended.id == discussion.id)
+        #expect(appended.statements.compactMap(\.passage).count == 2)
+        let finished = try await handle.research.finishDiscussion(
+            discussionID: discussion.id
+        )
+        #expect(finished.primaryNoteID == originalTarget.noteID)
+        await runtime.shutdown()
+    }
+
+    @Test("Passage-first Discuss Action returns the active Discussion ID without residue")
+    func passageFirstDiscussActionReturnsRepairIdentity() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let document = try await handle.documents.load(fixture.analysisID)
+        let discussion = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: try commentAnchor(in: document),
+            researcherMessage: "Begin with a passage Comment."
+        )
+        let beforeRuns = try await handle.snapshot().research.functionRuns.map(\.id)
+
+        do {
+            _ = try await handle.research.prepareAction(
+                ResearchActionExecutionRequest(
+                    actionID: .discuss,
+                    target: actionNote(target),
+                    parameterValues: [
+                        ResearchActionModuleID(rawValue: "researcher-request")!:
+                            .text("Continue at whole-note scope."),
+                    ]
+                )
+            )
+            Issue.record("Expected the active Discussion repair route.")
+        } catch ResearchFunctionContractError.activeDiscussionExists(let id) {
+            #expect(id == discussion.id)
+        }
+
+        #expect(try await handle.snapshot().research.functionRuns.map(\.id) == beforeRuns)
+        #expect(try await handle.research.activeDiscussion(id: discussion.id) == discussion)
+        await runtime.shutdown()
+    }
+
+    @Test("An interrupted Discuss preparation restores its exact portable pair")
+    func localDiscussOrphanReconcilesOnReopen() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        var runtime = fixture.runtime()
+        var handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .discuss,
+                target: actionNote(target),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Restore this interrupted preparation."),
+                ]
+            )
+        )
+        await runtime.shutdown()
+
+        let activeURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        try FileManager.default.removeItem(at: activeURL)
+
+        runtime = fixture.runtime()
+        handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let restored = try await handle.research.activeDiscussion(id: preparation.runID)
+        #expect(restored.id == preparation.runID)
+        #expect(restored.statements.first?.text == "Restore this interrupted preparation.")
+        _ = try await handle.research.functionRun(id: preparation.runID)
+        await runtime.shutdown()
+    }
+
+    @Test("A cooperating runtime reply is visible through portable Discussion reload")
+    func externalRuntimeReplyIsReloadable() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let firstRuntime = fixture.runtime()
+        let secondRuntime = fixture.runtime()
+        let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
+        let secondHandle = try await secondRuntime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: firstHandle
+        )
+        let document = try await firstHandle.documents.load(fixture.analysisID)
+        let discussion = try await firstHandle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: try commentAnchor(in: document),
+            researcherMessage: "Reply from the cooperating runtime."
+        )
+
+        _ = try await secondHandle.research.appendDiscussionStatement(
+            discussionID: discussion.id,
+            author: .agent,
+            attribution: "External Research Agent",
+            text: "This reply was persisted by a separate runtime."
+        )
+        let reloaded = try await firstHandle.research.activeDiscussion(id: discussion.id)
+        #expect(reloaded.statements.last?.attribution == "External Research Agent")
+        #expect(reloaded.awaitsAgentReply == false)
+
+        await secondRuntime.shutdown()
+        await firstRuntime.shutdown()
+    }
+
+    @Test("Finishing a Discussion before run completion preserves completion evidence")
+    func finishBeforeDiscussCompletionRemainsCompletable() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .discuss,
+                target: actionNote(target),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Clarify the argument without editing the Analysis."),
+                ]
+            )
+        )
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: preparation.runID,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "The claim is narrower than the surrounding argument."
+        )
+        let finished = try await handle.research.finishDiscussion(
+            discussionID: preparation.runID
+        )
+        #expect(finished.primaryNoteID == target.noteID)
+
+        let run = try await handle.research.functionRun(id: preparation.runID)
+        let completion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: run.snapshot.confirmationToken,
+                finalTargetFingerprint: target.fingerprint,
+                summary: "A bounded reply was recorded before Finish.",
+                didModifyTarget: false
+            )
+        )
+        #expect(completion.state == .complete)
+        #expect(try await handle.research.activeDiscussions(noteID: nil).isEmpty)
+        #expect(try await handle.research.finishedResearchRecords(noteID: target.noteID)
+            .contains { $0.id == preparation.runID })
         await runtime.shutdown()
     }
 
@@ -1153,8 +1516,8 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Whole-note Critique automatically includes every finished current Comment")
-    func wholeCritiqueIncludesFinishedCurrentComments() async throws {
+    @Test("Whole-note Critique does not infer Discussion records as Comment evidence")
+    func wholeCritiqueDoesNotInferDiscussionEvidence() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1201,17 +1564,19 @@ struct ResearchFunctionOperationsTests {
             )
         )
 
-        #expect(Set(preparation.snapshot.request.commentIDs) == Set([first.id, second.id]))
-        #expect(!preparation.snapshot.request.commentIDs.contains(unfinished.id))
+        #expect(preparation.snapshot.request.commentIDs.isEmpty)
+        #expect(!preparation.snapshot.request.commentIDs.contains(first))
+        #expect(!preparation.snapshot.request.commentIDs.contains(second))
+        #expect(!preparation.snapshot.request.commentIDs.contains(unfinished))
         #expect(!preparation.snapshot.request.commentIDs.contains(callerSuppliedID))
-        #expect(preparation.instructions.contains("Test the missing premise."))
-        #expect(preparation.instructions.contains("The linked Analysis supplies context but not support."))
+        #expect(!preparation.instructions.contains("Test the missing premise."))
+        #expect(!preparation.instructions.contains("The linked Analysis supplies context but not support."))
         #expect(!preparation.instructions.contains("This exchange is not finished."))
         await runtime.shutdown()
     }
 
-    @Test("Passage Critique includes only finished current Comments that overlap the passage")
-    func passageCritiqueIncludesOnlyOverlappingFinishedComments() async throws {
+    @Test("Passage Critique does not infer overlapping Discussion records as evidence")
+    func passageCritiqueDoesNotInferDiscussionEvidence() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1252,9 +1617,10 @@ struct ResearchFunctionOperationsTests {
             )
         )
 
-        #expect(preparation.snapshot.request.commentIDs == [overlapping.id])
-        #expect(!preparation.snapshot.request.commentIDs.contains(outsidePassage.id))
-        #expect(preparation.instructions.contains("Inspect this inference."))
+        #expect(preparation.snapshot.request.commentIDs.isEmpty)
+        #expect(!preparation.snapshot.request.commentIDs.contains(overlapping))
+        #expect(!preparation.snapshot.request.commentIDs.contains(outsidePassage))
+        #expect(!preparation.instructions.contains("Inspect this inference."))
         #expect(!preparation.instructions.contains("Inspect the link separately."))
         await runtime.shutdown()
     }
@@ -1613,6 +1979,7 @@ struct ResearchFunctionOperationsTests {
         let automatic = try await handle.research.prepareAutomaticFidelity(
             parentRunID: parent.runID
         )
+        let fidelitySubmittedAt = Date()
         _ = try await handle.research.completeFunction(
             ResearchFunctionCompletionSubmission(
                 runID: automatic.preparation.runID,
@@ -1621,7 +1988,7 @@ struct ResearchFunctionOperationsTests {
                 summary: "Checked the exact final Analysis revision.",
                 didModifyTarget: false,
                 fidelityOutcomes: [.passedContent],
-                submittedAt: submittedAt.addingTimeInterval(1)
+                submittedAt: fidelitySubmittedAt
             )
         )
 
@@ -2732,6 +3099,7 @@ struct ResearchFunctionOperationsTests {
             ]
         )
         let first = try await handle.research.prepareAction(request)
+        _ = try await handle.research.finishDiscussion(discussionID: first.runID)
         let second = try await handle.research.prepareAction(request)
         #expect(first.snapshot == second.snapshot)
         #expect(first.snapshot.actionID == actionID)
@@ -2746,6 +3114,7 @@ struct ResearchFunctionOperationsTests {
         #expect(first.instructions.contains("What remains after the strongest reply?"))
         #expect(first.instructions.contains("scholium-discussion-protocol"))
         try await handle.research.cancelFunction(runID: first.runID)
+        _ = try await handle.research.finishDiscussion(discussionID: second.runID)
         try await handle.research.cancelFunction(runID: second.runID)
         await runtime.shutdown()
     }
@@ -2800,7 +3169,7 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Action Discussion Finish fails closed without touching legacy activity")
+    @Test("Action Discussion finishes portably without touching legacy activity")
     func actionDiscussionFinishDoesNotProjectLegacyActivity() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -2836,13 +3205,11 @@ struct ResearchFunctionOperationsTests {
             )
         )
         let protectedRun = try await handle.research.functionRun(id: preparation.runID)
-        _ = try await handle.research.appendDiscussionReply(
-            DialogueReply(
-                agentName: "Research Agent",
-                text: "The distinction remains bounded to the current Analysis.",
-                createdAt: protectedRun.snapshot.preparedAt.addingTimeInterval(1)
-            ),
-            to: preparation.runID
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: preparation.runID,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "The distinction remains bounded to the current Analysis."
         )
         _ = try await handle.research.completeFunction(
             ResearchFunctionCompletionSubmission(
@@ -2855,10 +3222,261 @@ struct ResearchFunctionOperationsTests {
             )
         )
 
+        let record = try await handle.research.finishDiscussion(runID: preparation.runID)
+        #expect(record.kind == .discussion)
+        #expect(record.action?.actionID == .discuss)
+        #expect(try LegacyResearchFileCanary(url: legacyActivity) == before)
+        await runtime.shutdown()
+    }
+
+    @Test("A portable Discussion cannot substitute for its frozen Action run")
+    func portableDiscussionMustMatchFrozenActionRun() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .discuss,
+                target: actionNote(analysis),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Clarify the frozen Action boundary."),
+                ]
+            )
+        )
+        let protectedRun = try await handle.research.functionRun(id: preparation.runID)
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: preparation.runID,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "The reply remains attached to this exact run."
+        )
+
+        let activeURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        var payload = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: activeURL))
+                as? [String: Any]
+        )
+        var action = try #require(payload["action"] as? [String: Any])
+        action["action_id"] = ResearchActionID.analyze.rawValue
+        payload["action"] = action
+        try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            .write(to: activeURL, options: .atomic)
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: preparation.runID,
+                    confirmationToken: protectedRun.snapshot.confirmationToken,
+                    finalTargetFingerprint: analysis.fingerprint,
+                    summary: "A mismatched record must not complete the run.",
+                    didModifyTarget: false
+                )
+            )
+        }
         await #expect(throws: ResearchFunctionContractError.self) {
             _ = try await handle.research.finishDiscussion(runID: preparation.runID)
         }
-        #expect(try LegacyResearchFileCanary(url: legacyActivity) == before)
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.finishDiscussion(
+                discussionID: preparation.runID
+            )
+        }
+        #expect(FileManager.default.fileExists(atPath: activeURL.path))
+        await runtime.shutdown()
+    }
+
+    @Test("Legacy Function data remains reveal-only under delivery completion and cancellation")
+    func legacyFunctionOperationsPreserveExactCanary() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let runID = UUID()
+        let reference = DialogueNoteReference(
+            noteID: target.noteID,
+            vaultID: target.note.vaultID,
+            vaultName: "Analyses",
+            title: target.title,
+            relativePath: target.note.relativePath,
+            fingerprint: target.fingerprint
+        )
+        let snapshot = ResearchFunctionSnapshot(
+            runID: runID,
+            request: ResearchFunctionRequest(
+                function: .discuss,
+                target: target,
+                instruction: "Legacy reveal-only Discussion"
+            ),
+            recordKind: .discuss,
+            recordID: runID
+        )
+        let legacyStoreURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("dialogue", isDirectory: true)
+        let legacyEntry = DialogueEntry(
+            id: runID,
+            triptychID: fixture.assignment.id,
+            instruction: "Legacy reveal-only Discussion",
+            selectedNotes: [reference],
+            includedComments: [],
+            preparedInstructions: "Legacy instructions must not be delivered.",
+            checkpointID: nil,
+            functionSnapshot: snapshot
+        )
+        try FileManager.default.createDirectory(
+            at: legacyStoreURL,
+            withIntermediateDirectories: true
+        )
+        let legacyFile = legacyStoreURL.appendingPathComponent("dialogue.json")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(LegacyDialogueFixturePayload(
+            schemaVersion: 3,
+            entries: [runID: legacyEntry]
+        )).write(to: legacyFile)
+        try FileManager.default.setAttributes(
+            [
+                .posixPermissions: NSNumber(value: 0o640),
+                .modificationDate: Date(timeIntervalSince1970: 1_234),
+            ],
+            ofItemAtPath: legacyFile.path
+        )
+        let before = try LegacyResearchFileCanary(url: legacyFile)
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.functionRun(id: runID)
+        }
+        await #expect(throws: ResearchFunctionContractError.self) {
+            try await handle.research.cancelFunction(runID: runID)
+        }
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: runID,
+                    confirmationToken: snapshot.confirmationToken,
+                    finalTargetFingerprint: target.fingerprint,
+                    summary: "Legacy completion must be rejected.",
+                    didModifyTarget: false
+                )
+            )
+        }
+
+        #expect(try LegacyResearchFileCanary(url: legacyFile) == before)
+        await runtime.shutdown()
+    }
+
+    @Test("Legacy Fidelity evidence cannot be reused by a Local-v2 Action")
+    func legacyFidelityCannotAuthorizeCurrentReuse() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        var runtime = fixture.runtime()
+        var handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        var target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let fidelityChecks: [ResearchActionModuleID: ResearchActionParameterValue] = [
+            ResearchActionModuleID(rawValue: "fidelity-checks")!:
+                .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
+        ]
+        let request = ResearchActionExecutionRequest(
+            actionID: .checkFidelity,
+            target: actionNote(target),
+            parameterValues: fidelityChecks
+        )
+        let preparation = try await handle.research.prepareAction(request)
+        let functionPreparation = try await handle.research.functionRun(
+            id: preparation.runID
+        )
+        let completion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: functionPreparation.snapshot.confirmationToken,
+                finalTargetFingerprint: target.fingerprint,
+                summary: "Legacy-only content Fidelity evidence.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passed(.content)]
+            )
+        )
+        #expect(completion.fidelityEvidenceKey != nil)
+        await runtime.shutdown()
+
+        let localURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        try FileManager.default.removeItem(at: localURL)
+        let reference = DialogueNoteReference(
+            noteID: target.noteID,
+            vaultID: target.note.vaultID,
+            vaultName: "Analyses",
+            title: target.title,
+            relativePath: target.note.relativePath,
+            fingerprint: target.fingerprint
+        )
+        let legacyEntry = DialogueEntry(
+            id: preparation.runID,
+            triptychID: fixture.assignment.id,
+            instruction: "Legacy Fidelity evidence",
+            selectedNotes: [reference],
+            includedComments: [],
+            preparedInstructions: preparation.instructions,
+            checkpointID: nil,
+            functionSnapshot: functionPreparation.snapshot,
+            functionCompletion: completion
+        )
+        let legacyFile = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("dialogue/dialogue.json")
+        try FileManager.default.createDirectory(
+            at: legacyFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(LegacyDialogueFixturePayload(
+            schemaVersion: 3,
+            entries: [legacyEntry.id: legacyEntry]
+        )).write(to: legacyFile, options: .atomic)
+
+        runtime = fixture.runtime()
+        handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let current = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .checkFidelity,
+                target: actionNote(target),
+                parameterValues: fidelityChecks
+            )
+        )
+        #expect(current.state == .prepared)
+        let currentFunction = try await handle.research.functionRun(id: current.runID)
+        #expect(currentFunction.reusedCompletion == nil)
+        #expect(try await handle.snapshot().research.functionRuns.allSatisfy {
+            $0.id != preparation.runID
+        })
         await runtime.shutdown()
     }
 
@@ -3215,9 +3833,17 @@ struct ResearchFunctionOperationsTests {
 
         let reopenedRuntime = fixture.runtime()
         let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
-        #expect(try await reopened.snapshot().research.functionRuns.count {
+        let firstReopenedSnapshot = try await reopened.snapshot()
+        #expect(firstReopenedSnapshot.research.functionRuns.count {
             $0.id == preparation.runID
         } == 1)
+        let projectedRound = try #require(
+            firstReopenedSnapshot.research.critiques
+                .flatMap(\.rounds)
+                .first { $0.id == preparation.runID }
+        )
+        #expect(projectedRound.functionSnapshot == nil)
+        #expect(projectedRound.functionInstructions == nil)
         let recovered = try await reopened.research.functionRun(id: preparation.runID)
         #expect(recovered.snapshot == local.snapshot)
         let repairedSource = String(
@@ -3226,6 +3852,165 @@ struct ResearchFunctionOperationsTests {
         )
         #expect(!repairedSource.contains("\"functionSnapshot\""))
         #expect(!repairedSource.contains("\"functionInstructions\""))
+        try await reopened.research.cancelFunction(runID: preparation.runID)
+        await reopenedRuntime.shutdown()
+    }
+
+    @Test("A pre-Local Critique handoff installs the exact staged run after restart")
+    func actionCritiquePreLocalHandoffIsInstalledAfterRestart() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let work = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .critique,
+                target: actionNote(work)
+            )
+        )
+        let localURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        let localDecoder = JSONDecoder()
+        localDecoder.dateDecodingStrategy = .deferredToDate
+        let local = try localDecoder.decode(
+            LocalExecutionTestProjection.self,
+            from: Data(contentsOf: localURL)
+        )
+        let checkpointID = try #require(local.snapshot.checkpointID)
+        let checkpointURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("checkpoints", isDirectory: true)
+            .appendingPathComponent(checkpointID.uuidString, isDirectory: true)
+        #expect(FileManager.default.fileExists(atPath: checkpointURL.path))
+
+        let registryURL = fixture.rootURL
+            .appendingPathComponent(".scholium/critiques.json")
+        var registry = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL))
+                as? [String: Any]
+        )
+        var associations = try #require(registry["associations"] as? [Any])
+        let associationIndex = try #require(associations.firstIndex {
+            guard let value = $0 as? [String: Any],
+                  let rounds = value["rounds"] as? [[String: Any]] else {
+                return false
+            }
+            return rounds.contains {
+                ($0["id"] as? String)?.lowercased()
+                    == preparation.runID.uuidString.lowercased()
+            }
+        })
+        var association = try #require(
+            associations[associationIndex] as? [String: Any]
+        )
+        var rounds = try #require(association["rounds"] as? [[String: Any]])
+        let roundIndex = try #require(rounds.firstIndex {
+            ($0["id"] as? String)?.lowercased()
+                == preparation.runID.uuidString.lowercased()
+        })
+        let registryEncoder = JSONEncoder()
+        registryEncoder.dateEncodingStrategy = .iso8601
+        rounds[roundIndex]["functionSnapshot"] = try JSONSerialization.jsonObject(
+            with: registryEncoder.encode(local.snapshot)
+        )
+        rounds[roundIndex]["functionInstructions"] = local.preparedInstructions
+        association["rounds"] = rounds
+        associations[associationIndex] = association
+        registry["associations"] = associations
+        let stagedRegistryData = try JSONSerialization.data(
+            withJSONObject: registry,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try stagedRegistryData.write(to: registryURL, options: .atomic)
+        try FileManager.default.removeItem(at: localURL)
+        let sourceMachineExecutionStore = await handle.services
+            .localResearchExecutionStore
+        try await sourceMachineExecutionStore.stageCritiqueHandoff(
+            snapshot: local.snapshot,
+            preparedInstructions: local.preparedInstructions
+        )
+        await runtime.shutdown()
+
+        // A different Mac sees the portable staging through sync but does not
+        // possess the machine-local checkpoint. It must preserve the staging
+        // and refuse to manufacture an executable run on that machine.
+        let remoteApplicationSupport = fixture.rootURL.appendingPathComponent(
+            "Remote Application Support",
+            isDirectory: true
+        )
+        let remoteRuntime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: remoteApplicationSupport,
+            assignments: [fixture.assignment]
+        )))
+        let remote = try await remoteRuntime.openWorkspace(id: fixture.assignment.id)
+        let remoteSnapshot = try await remote.snapshot()
+        let remoteRound = try #require(
+            remoteSnapshot.research.critiques
+                .flatMap(\.rounds)
+                .first { $0.id == preparation.runID }
+        )
+        #expect(remoteRound.functionSnapshot == local.snapshot)
+        #expect(remoteSnapshot.research.functionRuns.allSatisfy {
+            $0.id != preparation.runID
+        })
+        #expect(remoteSnapshot.research.healthIssues.contains {
+            $0.contains("no matching machine-local intent")
+        })
+        await remoteRuntime.shutdown()
+
+        // Even on the source machine, externally changed portable prose is
+        // testimony to preserve, not authority from which Scholium may
+        // manufacture Local execution state.
+        rounds[roundIndex]["functionInstructions"] = local.preparedInstructions
+            + "\nExternally changed instructions."
+        association["rounds"] = rounds
+        associations[associationIndex] = association
+        registry["associations"] = associations
+        try JSONSerialization.data(
+            withJSONObject: registry,
+            options: [.prettyPrinted, .sortedKeys]
+        ).write(to: registryURL, options: .atomic)
+        let inconsistentRuntime = fixture.runtime()
+        let inconsistent = try await inconsistentRuntime.openWorkspace(
+            id: fixture.assignment.id
+        )
+        let inconsistentSnapshot = try await inconsistent.snapshot()
+        #expect(inconsistentSnapshot.research.functionRuns.allSatisfy {
+            $0.id != preparation.runID
+        })
+        #expect(inconsistentSnapshot.research.healthIssues.contains {
+            $0.contains("no matching machine-local intent")
+        })
+        #expect(!FileManager.default.fileExists(atPath: localURL.path))
+        await inconsistentRuntime.shutdown()
+        try stagedRegistryData.write(to: registryURL, options: .atomic)
+
+        let reopenedRuntime = fixture.runtime()
+        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
+        let reopenedSnapshot = try await reopened.snapshot()
+        let projectedRound = try #require(
+            reopenedSnapshot.research.critiques
+                .flatMap(\.rounds)
+                .first { $0.id == preparation.runID }
+        )
+        #expect(projectedRound.functionSnapshot == nil)
+        #expect(projectedRound.functionInstructions == nil)
+        #expect(reopenedSnapshot.research.functionRuns.count {
+            $0.id == preparation.runID
+        } == 1)
+        #expect(FileManager.default.fileExists(atPath: checkpointURL.path))
+        let recovered = try await reopened.research.functionRun(id: preparation.runID)
+        #expect(recovered.snapshot == local.snapshot)
+        #expect(recovered.instructions == local.preparedInstructions)
         try await reopened.research.cancelFunction(runID: preparation.runID)
         await reopenedRuntime.shutdown()
     }
@@ -3666,23 +4451,23 @@ private func createCommentExchange(
     agentText: String,
     finish: Bool,
     handle: WorkspaceHandle
-) async throws -> CommentExchange {
-    let exchange = try await handle.research.createCommentExchange(CommentExchange(
-        note: ResearchActivityNoteReference(
-            noteID: target.noteID,
-            note: target.note,
-            role: target.role,
-            title: target.title
-        ),
-        anchor: anchor,
-        turns: [CommentExchangeTurn(author: .researcher, text: researcherText)]
-    ))
-    let replied = try await handle.research.appendCommentExchangeTurn(
-        exchangeID: exchange.id,
-        turn: CommentExchangeTurn(author: .agent, text: agentText)
+) async throws -> UUID {
+    let discussion = try await handle.research.createDiscussion(
+        target: target,
+        focalNotes: [],
+        passage: anchor,
+        researcherMessage: researcherText
     )
-    guard finish else { return replied }
-    return try await handle.research.finishCommentExchange(exchangeID: exchange.id)
+    _ = try await handle.research.appendDiscussionStatement(
+        discussionID: discussion.id,
+        author: .agent,
+        attribution: "Research Agent",
+        text: agentText
+    )
+    if finish {
+        _ = try await handle.research.finishDiscussion(discussionID: discussion.id)
+    }
+    return discussion.id
 }
 
 private func researchActivityCompletion(
@@ -3722,6 +4507,11 @@ private extension FidelityCheckOutcome {
 
 private struct RecoveryFixturePayload: Codable {
     let records: [TriptychMutationRecoveryRecord]
+}
+
+private struct LegacyDialogueFixturePayload: Encodable {
+    let schemaVersion: Int
+    let entries: [UUID: DialogueEntry]
 }
 
 private struct LegacyResearchFileCanary: Equatable {

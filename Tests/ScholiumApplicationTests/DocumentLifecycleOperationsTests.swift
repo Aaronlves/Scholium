@@ -321,7 +321,7 @@ struct DocumentLifecycleOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
-        let dialogue = try await handle.research.prepareFunction(
+        let discussionPreparation = try await handle.research.prepareFunction(
             ResearchFunctionRequest(
                 function: .discuss,
                 target: ResearchFunctionTarget(
@@ -357,10 +357,10 @@ struct DocumentLifecycleOperationsTests {
 
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
-        #expect(commit.removedDialogueIDs == [dialogue.runID])
+        #expect(commit.removedDialogueIDs.isEmpty)
         #expect(commit.invalidatedCheckpointIDs.contains(checkpoint.id))
-        #expect(dialogue.snapshot.checkpointID == nil)
-        #expect(try await handle.research.discussionHistory(noteID: stableID).isEmpty)
+        #expect(discussionPreparation.snapshot.checkpointID == nil)
+        #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
         #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         #expect(try await handle.snapshot().document(id: trash.destination) == nil)
         #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL

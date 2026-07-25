@@ -250,10 +250,10 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
 public struct WorkspaceResearchSnapshot: Sendable {
     public let activityEvents: [ResearchActivityEvent]
     public let settlements: [SettlementRecord]
-    public let commentExchanges: [CommentExchange]
+    public let activeDiscussions: [PortableResearchDiscussion]
+    public let finishedResearchRecords: [PortableResearchRecord]
     public let pendingResearchStates: [PendingResearchState]
     public let activityGrants: [ResearchActivityGrant]
-    public let dialogues: [DialogueEntry]
     public let critiques: [CritiqueAssociation]
     public let functionRuns: [ResearchFunctionRecordProjection]
     public let checkpointListing: TriptychCheckpointListing
@@ -263,10 +263,10 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public init(
         activityEvents: [ResearchActivityEvent] = [],
         settlements: [SettlementRecord] = [],
-        commentExchanges: [CommentExchange] = [],
+        activeDiscussions: [PortableResearchDiscussion] = [],
+        finishedResearchRecords: [PortableResearchRecord] = [],
         pendingResearchStates: [PendingResearchState] = [],
         activityGrants: [ResearchActivityGrant] = [],
-        dialogues: [DialogueEntry],
         critiques: [CritiqueAssociation],
         functionRuns: [ResearchFunctionRecordProjection] = [],
         checkpointListing: TriptychCheckpointListing,
@@ -275,10 +275,10 @@ public struct WorkspaceResearchSnapshot: Sendable {
     ) {
         self.activityEvents = activityEvents
         self.settlements = settlements
-        self.commentExchanges = commentExchanges
+        self.activeDiscussions = activeDiscussions
+        self.finishedResearchRecords = finishedResearchRecords
         self.pendingResearchStates = pendingResearchStates
         self.activityGrants = activityGrants
-        self.dialogues = dialogues
         self.critiques = critiques
         self.functionRuns = functionRuns
         self.checkpointListing = checkpointListing
@@ -287,23 +287,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
     }
 }
 
-/// A saved Dialogue request together with the exact instructions prepared for
-/// external transport and the automatic recovery checkpoint that precedes it.
-public struct DialoguePreparation: Sendable {
-    public let entry: DialogueEntry
-    public let instructions: String
-    public let checkpoint: TriptychCheckpoint?
-
-    public init(
-        entry: DialogueEntry,
-        instructions: String,
-        checkpoint: TriptychCheckpoint?
-    ) {
-        self.entry = entry
-        self.instructions = instructions
-        self.checkpoint = checkpoint
-    }
-}
 
 /// A persisted Critique association together with the version-bound external
 /// instructions and the automatic checkpoint created before source mutation.
@@ -678,6 +661,7 @@ public enum ResearchOperationError: LocalizedError, Sendable {
     case critiqueUnavailable(VaultRole)
     case critiqueTargetMustBeOrdinaryWork(String)
     case staleCommentRevision
+    case discussionContextChanged
     case dialogueContextChanged(String)
     case invalidDialogueResponseContract([String])
     case critiqueRegistryUnavailable(String)
@@ -696,6 +680,8 @@ public enum ResearchOperationError: LocalizedError, Sendable {
             "Request Critique requires an ordinary Work, not the managed Critique at \(path)."
         case .staleCommentRevision:
             "The note changed before the Comment could be attached. Reload the current source and select the passage again."
+        case .discussionContextChanged:
+            "The active Discussion has a different focal-note boundary. Finish it before starting a Discussion with new focal notes."
         case .dialogueContextChanged(let title):
             "\(title) changed, moved, or lost its stable identity while Discuss was being prepared. Reload the current note list and review the source again."
         case .invalidDialogueResponseContract(let issues):

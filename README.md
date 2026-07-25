@@ -69,8 +69,8 @@ use-case protocols live in `ScholiumContracts`, internal I/O lives in
 `ScholiumCore`, and one headless `ScholiumApplication` layer is shared by the
 macOS app and CLI. Core is not a public product and neither delivery target can
 import it. Reachable behavior includes multi-Triptych registration
-and window routing, Triptych control, safe note lifecycle, Comment, current
-Function-backed Discussion, Critique, machine-local prewrite recovery,
+and window routing, Triptych control, safe note lifecycle, passage-anchored and
+whole-note Discussion, Critique, machine-local prewrite recovery,
 whole-Triptych checkpoints, direct revision-checked CLI writes, vault-wide Properties, Unclassified import,
 unified search, protected CSS snippets, localhost-only Zotero reading, and a
 first-party optional Zotero MCP service for external agents. The Canvas feature
@@ -125,7 +125,7 @@ failure moves proved installed copies into hidden nonexecuting recovery
 quarantine rather than deleting possible late external writes. Archives,
 network content, links, executables, scripts, nested resources, and implicit
 Action/permission bindings are rejected. Profiles remain declarative and
-cannot grant authority. New Action-use-case runs now keep protected execution
+cannot grant authority. New Action and retained Function entry-point runs now keep protected execution
 state in per-run Application Support files and write terminal
 nonconversational outcomes as one portable, Action-identified Research Record;
 raw keys, assembled prompts, bookmarks, absolute paths, transport details, and
@@ -133,11 +133,13 @@ diffs cannot enter that recursively strict portable contract. Write reports,
 consumed grants, and completion evidence advance atomically in the same local
 run file. Settle likewise stores one portable
 current state per Note rather than an application-authored history. Retained
-Function entry points continue to use unchanged legacy stores until the
-production Actions cutover. Action Discussion Finish currently fails closed
-instead of projecting into legacy activity. Unified Discussion, the independent two-panel
-Research Record window, standing permissions, Record Trash, and disposable
-diffs remain later migration work.
+Function IDs remain protected execution vocabulary, but no new run writes the
+legacy activity or Dialogue files. Passage Comment and whole-note or focal-note
+Discuss now create one portable active Discussion; attributed researcher and
+agent turns stay in that exchange, Close leaves it active, and explicit Finish
+creates one neutral portable Research Record without an approval or truth
+verdict. The independent two-panel Research Record window, standing
+permissions, Record Trash, and disposable diffs remain later migration work.
 
 ## Requirements
 

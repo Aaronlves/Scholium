@@ -95,8 +95,8 @@ struct DeliverySurfaceParityTests {
         #expect(cliMetadataIssues == appMetadataIssues)
         #expect(cliResearch.activityEvents == appResearch.activityEvents)
         #expect(cliResearch.settlements == appResearch.settlements)
-        #expect(cliResearch.commentExchanges == appResearch.commentExchanges)
-        #expect(cliResearch.dialogues == appResearch.dialogues)
+        #expect(cliResearch.activeDiscussions == appResearch.activeDiscussions)
+        #expect(cliResearch.finishedResearchRecords == appResearch.finishedResearchRecords)
         #expect(cliResearch.critiques == appResearch.critiques)
 
         await cliRuntime.shutdown()

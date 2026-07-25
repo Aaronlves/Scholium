@@ -18,8 +18,8 @@ struct DocumentFeatureState {
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let propertiesConfiguration: VaultPropertiesConfiguration?
-    let commentExchanges: [CommentExchange]
-    let requestedCommentExchangeID: UUID?
+    let activeDiscussions: [PortableResearchDiscussion]
+    let requestedDiscussionID: UUID?
     let canComment: Bool
     let canEdit: Bool
     let isManagedCritique: Bool
@@ -44,21 +44,24 @@ struct DocumentFeatureActions {
     let clearRequestedPresentationMode: @MainActor () -> Void
     let clearPendingSourceLine: @MainActor () -> Void
     let clearPendingSourceRange: @MainActor () -> Void
-    /// A deliberate passage-scoped communication exchange with an agent.
-    let createCommentExchange: @MainActor (
+    /// A passage Comment starts the same Discussion used by whole-note work.
+    let createDiscussion: @MainActor (
         CommentAnchor,
         String
-    ) async throws -> CommentExchange
-    let appendCommentExchangeTurn: @MainActor (
+    ) async throws -> PortableResearchDiscussion
+    let reloadDiscussion: @MainActor (UUID) async throws -> PortableResearchDiscussion?
+    let refreshDiscussionProjection: @MainActor () async throws -> Void
+    let appendDiscussionStatement: @MainActor (
         UUID,
-        CommentExchangeTurnAuthor,
+        PortableResearchStatementAuthor,
+        String,
         String
-    ) async throws -> CommentExchange
-    let finishCommentExchange: @MainActor (UUID) async throws -> CommentExchange
-    let clearRequestedCommentExchange: @MainActor () -> Void
-    let handoffCommentRequest: @MainActor (String) -> Bool
-    let copyCommentRequest: @MainActor (String) -> Bool
-    let commentReplyCommand: @MainActor (UUID) -> String
+    ) async throws -> PortableResearchDiscussion
+    let finishDiscussion: @MainActor (UUID) async throws -> PortableResearchRecord
+    let clearRequestedDiscussion: @MainActor () -> Void
+    let handoffDiscussionRequest: @MainActor (String) -> Bool
+    let copyDiscussionRequest: @MainActor (String) -> Bool
+    let discussionReplyCommand: @MainActor (UUID) -> String
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
@@ -369,85 +372,105 @@ private struct InspectorModeButton: View {
 }
 // MARK: - Note Content View
 
-/// A Comment is a bounded communication exchange, not page marginalia. The
-/// sheet keeps the selected passage and complete turn sequence visible while
-/// only researcher Finish is allowed to create durable HUD activity.
-private struct CommentExchangeRoute: Identifiable {
+/// A passage Comment is one anchored researcher turn in a Discussion. Close
+/// only dismisses the sheet; Finish creates one portable Research Record.
+private struct DiscussionRoute: Identifiable {
     let id: UUID
-    let anchor: CommentAnchor
-    let excerpt: String
-    let exchange: CommentExchange?
+    let anchor: CommentAnchor?
+    let excerpt: String?
+    let discussion: PortableResearchDiscussion?
 
     init(anchor: CommentAnchor, excerpt: String) {
         id = UUID()
         self.anchor = anchor
         self.excerpt = excerpt
-        exchange = nil
+        discussion = nil
     }
 
-    init(exchange: CommentExchange) {
-        id = exchange.id
-        anchor = exchange.anchor
-        excerpt = exchange.anchor.selectedText ?? exchange.anchor.quotation
-        self.exchange = exchange
+    init(discussion: PortableResearchDiscussion) {
+        id = discussion.id
+        anchor = discussion.passage
+        excerpt = discussion.passage.map { $0.selectedText ?? $0.quotation }
+        self.discussion = discussion
     }
 }
 
-private struct CommentExchangePanel: View {
+private struct DiscussionPanel: View {
     @Environment(\.dismiss) private var dismiss
 
     let noteTitle: String
-    let route: CommentExchangeRoute
-    let create: (CommentAnchor, String) async throws -> CommentExchange
-    let append: (UUID, CommentExchangeTurnAuthor, String) async throws -> CommentExchange
-    let finish: (UUID) async throws -> CommentExchange
+    let route: DiscussionRoute
+    let create: (CommentAnchor, String) async throws -> PortableResearchDiscussion
+    let reload: (UUID) async throws -> PortableResearchDiscussion?
+    let append: (
+        UUID,
+        PortableResearchStatementAuthor,
+        String,
+        String
+    ) async throws -> PortableResearchDiscussion
+    let finish: (UUID) async throws -> PortableResearchRecord
     let handoff: (String) -> Bool
     let copyOnly: (String) -> Bool
     let replyCommand: (UUID) -> String
+    let onClosed: () -> Void
     let onFinished: () -> Void
 
-    @State private var exchange: CommentExchange?
+    @State private var discussion: PortableResearchDiscussion?
     @State private var researcherMessage = ""
+    @State private var agentName = ""
     @State private var agentReply = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
 
     init(
         noteTitle: String,
-        route: CommentExchangeRoute,
-        create: @escaping (CommentAnchor, String) async throws -> CommentExchange,
-        append: @escaping (UUID, CommentExchangeTurnAuthor, String) async throws -> CommentExchange,
-        finish: @escaping (UUID) async throws -> CommentExchange,
+        route: DiscussionRoute,
+        create: @escaping (CommentAnchor, String) async throws -> PortableResearchDiscussion,
+        reload: @escaping (UUID) async throws -> PortableResearchDiscussion?,
+        append: @escaping (
+            UUID,
+            PortableResearchStatementAuthor,
+            String,
+            String
+        ) async throws -> PortableResearchDiscussion,
+        finish: @escaping (UUID) async throws -> PortableResearchRecord,
         handoff: @escaping (String) -> Bool,
         copyOnly: @escaping (String) -> Bool,
         replyCommand: @escaping (UUID) -> String,
+        onClosed: @escaping () -> Void,
         onFinished: @escaping () -> Void
     ) {
         self.noteTitle = noteTitle
         self.route = route
         self.create = create
+        self.reload = reload
         self.append = append
         self.finish = finish
         self.handoff = handoff
         self.copyOnly = copyOnly
         self.replyCommand = replyCommand
+        self.onClosed = onClosed
         self.onFinished = onFinished
-        _exchange = State(initialValue: route.exchange)
+        _discussion = State(initialValue: route.discussion)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Comment")
+                    Text("Discussion")
                         .font(.title3.weight(.semibold))
                     Text(noteTitle)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Close") { dismiss() }
+                Button("Close") {
+                    onClosed()
+                    dismiss()
+                }
                     .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("scholium.discussion.close")
             }
             .padding(18)
 
@@ -455,19 +478,31 @@ private struct CommentExchangePanel: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("SELECTED PASSAGE")
-                            .font(ScholiumInterfaceTypography.apparatusLabel)
-                            .tracking(0.7)
-                            .foregroundStyle(.secondary)
-                        Text(route.excerpt)
-                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-                            .textSelection(.enabled)
+                    if let excerpt = route.excerpt {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("SELECTED PASSAGE")
+                                .font(ScholiumInterfaceTypography.apparatusLabel)
+                                .tracking(0.7)
+                                .foregroundStyle(.secondary)
+                            Text(excerpt)
+                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    if route.anchor?.state == .needsReattachment {
+                        Label(
+                            "The original passage no longer has one reliable location. The Discussion remains intact, but this anchor needs reattachment.",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("scholium.discussion.needsReattachment")
                     }
 
-                    if let exchange {
-                        transcript(exchange)
+                    if let discussion {
+                        transcript(discussion)
                     }
 
                     exchangeControls
@@ -477,7 +512,7 @@ private struct CommentExchangePanel: View {
                             .font(.caption)
                             .foregroundStyle(ScholiumColorRole.attention.color)
                             .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("scholium.commentExchange.error")
+                            .accessibilityIdentifier("scholium.discussion.error")
                     }
                 }
                 .padding(20)
@@ -485,30 +520,35 @@ private struct CommentExchangePanel: View {
             }
         }
         .frame(minWidth: 520, idealWidth: 600, minHeight: 520, idealHeight: 640)
-        .accessibilityIdentifier("scholium.commentExchange")
+        .accessibilityIdentifier("scholium.discussion")
+        .task(id: discussion?.updatedAt) {
+            await refreshExternalDiscussionState()
+        }
     }
 
     @ViewBuilder
     private var exchangeControls: some View {
-        switch exchange?.status {
-        case nil:
+        if discussion == nil {
             researcherComposer(
                 title: "MESSAGE TO AGENT",
-                buttonTitle: "Prepare for Agent…",
+                buttonTitle: "Save and Copy for Agent",
                 action: beginOrFollowUp
             )
-            Text("Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself.")
+            Text("Scholium records and copies the request. Use the explicit handoff controls to open an agent app, then paste and submit it yourself.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-        case .awaitingReply:
+        } else if discussion?.awaitsAgentReply == true {
             agentHandoffControls
             VStack(alignment: .leading, spacing: 8) {
                 Text("AGENT REPLY")
                     .font(ScholiumInterfaceTypography.apparatusLabel)
                     .tracking(0.7)
                     .foregroundStyle(.secondary)
+                TextField("Agent name", text: $agentName)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Agent name")
+                    .accessibilityIdentifier("scholium.discussion.agentName")
                 TextEditor(text: $agentReply)
                     .font(.body)
                     .frame(minHeight: 110)
@@ -517,57 +557,86 @@ private struct CommentExchangePanel: View {
                             .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
                     }
                     .accessibilityLabel("Agent reply")
+                    .accessibilityIdentifier("scholium.discussion.agentReply")
                 HStack {
                     Spacer()
                     Button("Record Agent Reply", action: recordAgentReply)
                         .buttonStyle(.borderedProminent)
-                        .disabled(isWorking || normalized(agentReply).isEmpty)
+                        .disabled(
+                            isWorking
+                                || normalized(agentName).isEmpty
+                                || normalized(agentReply).isEmpty
+                        )
+                        .accessibilityIdentifier("scholium.discussion.recordAgentReply")
                 }
             }
 
-        case .responseReady:
+        } else {
             researcherComposer(
                 title: "FOLLOW UP",
-                buttonTitle: "Follow Up and Open Agent…",
+                buttonTitle: "Save and Copy Follow-up",
                 action: beginOrFollowUp
             )
             HStack {
-                Text("Review the reply. Finish records one Commented activity; Follow Up keeps this exchange open.")
+                Text("Review the reply. Finish creates one Research Record; Follow Up keeps this Discussion active.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 16)
                 Button("Finish", action: finishExchange)
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(isWorking)
-                    .accessibilityIdentifier("scholium.commentExchange.finish")
+                    .accessibilityIdentifier("scholium.discussion.finish")
             }
-
-        case .finished:
-            Text("This Comment is finished.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
     }
 
-    private func transcript(_ exchange: CommentExchange) -> some View {
+    private func transcript(_ discussion: PortableResearchDiscussion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("EXCHANGE")
                 .font(ScholiumInterfaceTypography.apparatusLabel)
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
-            ForEach(exchange.turns) { turn in
+            ForEach(discussion.statements) { statement in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(turn.author == .researcher ? "Researcher" : "Agent")
+                    Text(statement.attribution)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(turn.text)
+                    if let passage = statement.passage {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(
+                                passage.line == passage.endLine
+                                    ? "PASSAGE AT LINE \(passage.line)"
+                                    : "PASSAGE AT LINES \(passage.line)–\(passage.endLine)"
+                            )
+                            .font(ScholiumInterfaceTypography.apparatusLabel)
+                            .tracking(0.6)
+                            .foregroundStyle(.secondary)
+                            Text(passage.selectedText ?? passage.quotation)
+                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                .textSelection(.enabled)
+                            if passage.state == .needsReattachment {
+                                Label(
+                                    "This passage no longer has one reliable location.",
+                                    systemImage: "exclamationmark.triangle"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(ScholiumColorRole.attention.color)
+                                .accessibilityIdentifier(
+                                    "scholium.discussion.statementPassage.needsReattachment"
+                                )
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    Text(statement.text)
                         .font(.body)
                         .lineSpacing(2)
                         .textSelection(.enabled)
                 }
                 .padding(.vertical, 3)
-                if turn.id != exchange.turns.last?.id {
+                if statement.id != discussion.statements.last?.id {
                     Divider()
                 }
             }
@@ -592,12 +661,13 @@ private struct CommentExchangePanel: View {
                         .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
                 }
                 .accessibilityLabel(title.capitalized)
+                .accessibilityIdentifier("scholium.discussion.researcherMessage")
             HStack {
                 Spacer()
                 Button(buttonTitle, action: action)
                     .buttonStyle(.bordered)
                     .disabled(isWorking || normalized(researcherMessage).isEmpty)
-                    .accessibilityIdentifier("scholium.commentExchange.submitResearcherTurn")
+                    .accessibilityIdentifier("scholium.discussion.submitResearcherTurn")
             }
         }
     }
@@ -606,21 +676,21 @@ private struct CommentExchangePanel: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Button("Copy and Open Agent App…") {
-                    guard let exchange else { return }
-                    if !handoff(agentRequest(for: exchange)) {
+                    guard let discussion else { return }
+                    if !handoff(agentRequest(for: discussion)) {
                         errorMessage = "Scholium could not prepare the agent handoff."
                     }
                 }
                 .buttonStyle(.bordered)
                 Button("Copy Only") {
-                    guard let exchange else { return }
-                    if !copyOnly(agentRequest(for: exchange)) {
+                    guard let discussion else { return }
+                    if !copyOnly(agentRequest(for: discussion)) {
                         errorMessage = "Scholium could not copy the agent request."
                     }
                 }
                 .buttonStyle(.link)
             }
-            Text("The exchange is waiting for an agent reply. No activity is added until you review a reply and choose Finish.")
+            Text("The Discussion is waiting for an agent reply. Closing this sheet leaves it active.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -634,17 +704,24 @@ private struct CommentExchangePanel: View {
         errorMessage = nil
         Task { @MainActor in
             do {
-                let updated: CommentExchange
-                if let exchange {
-                    updated = try await append(exchange.id, .researcher, message)
+                let updated: PortableResearchDiscussion
+                if let discussion {
+                    updated = try await append(
+                        discussion.id,
+                        .researcher,
+                        "Researcher",
+                        message
+                    )
+                } else if let anchor = route.anchor {
+                    updated = try await create(anchor, message)
                 } else {
-                    updated = try await create(route.anchor, message)
+                    throw DiscussionPresentationError.unavailable
                 }
-                self.exchange = updated
+                self.discussion = updated
                 researcherMessage = ""
                 isWorking = false
-                if !handoff(agentRequest(for: updated)) {
-                    errorMessage = "The Comment was saved, but Scholium could not prepare the agent handoff."
+                if !copyOnly(agentRequest(for: updated)) {
+                    errorMessage = "The Discussion was saved, but Scholium could not copy the agent handoff."
                 }
             } catch {
                 errorMessage = error.localizedDescription
@@ -654,14 +731,21 @@ private struct CommentExchangePanel: View {
     }
 
     private func recordAgentReply() {
-        guard let exchange else { return }
+        guard let discussion else { return }
+        let attribution = normalized(agentName)
         let reply = normalized(agentReply)
-        guard !reply.isEmpty else { return }
+        guard !attribution.isEmpty, !reply.isEmpty else { return }
         isWorking = true
         errorMessage = nil
         Task { @MainActor in
             do {
-                self.exchange = try await append(exchange.id, .agent, reply)
+                self.discussion = try await append(
+                    discussion.id,
+                    .agent,
+                    attribution,
+                    reply
+                )
+                agentName = ""
                 agentReply = ""
                 isWorking = false
             } catch {
@@ -672,12 +756,12 @@ private struct CommentExchangePanel: View {
     }
 
     private func finishExchange() {
-        guard let exchange else { return }
+        guard let discussion else { return }
         isWorking = true
         errorMessage = nil
         Task { @MainActor in
             do {
-                self.exchange = try await finish(exchange.id)
+                _ = try await finish(discussion.id)
                 isWorking = false
                 onFinished()
                 dismiss()
@@ -688,26 +772,56 @@ private struct CommentExchangePanel: View {
         }
     }
 
-    private func agentRequest(for exchange: CommentExchange) -> String {
-        let conversation = exchange.turns.map { turn in
-            let speaker = turn.author == .researcher ? "Researcher" : "Agent"
-            return "\(speaker):\n\(turn.text)"
+    @MainActor
+    private func refreshExternalDiscussionState() async {
+        guard var current = discussion else { return }
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(1))
+                guard let refreshed = try await reload(current.id) else {
+                    onFinished()
+                    dismiss()
+                    return
+                }
+                guard refreshed != current else { continue }
+                discussion = refreshed
+                current = refreshed
+            } catch is CancellationError {
+                return
+            } catch {
+                // A cooperating external process may be between its atomic
+                // replace and coordinated readback. Keep the visible durable
+                // state and retry quietly while this sheet remains active.
+            }
+        }
+    }
+
+    private func agentRequest(for discussion: PortableResearchDiscussion) -> String {
+        let conversation = discussion.statements.map { statement in
+            let passage = statement.passage.map { anchor in
+                let location = anchor.line == anchor.endLine
+                    ? "line \(anchor.line)"
+                    : "lines \(anchor.line)–\(anchor.endLine)"
+                let attachment = anchor.state == .needsReattachment
+                    ? " (location needs reattachment)"
+                    : ""
+                return "\nPassage at \(location)\(attachment):\n"
+                    + (anchor.selectedText ?? anchor.quotation)
+            } ?? ""
+            return "\(statement.attribution):\(passage)\n\(statement.text)"
         }.joined(separator: "\n\n")
         return """
-        Respond to a passage-specific research Comment from \(noteTitle).
+        Continue the research Discussion for \(noteTitle).
 
-        Selected passage:
-        \(route.excerpt)
-
-        Exchange:
+        Discussion:
         \(conversation)
 
         Reply to the researcher's latest message. Do not edit the note.
 
         After composing the response, submit only that response to Scholium through standard input:
-        (replyCommand(exchange.id))
+        \(replyCommand(discussion.id))
 
-        Replace AGENT_NAME with your agent identity. Do not finish the Comment. The researcher reviews the reply and chooses Finish.
+        Replace AGENT_NAME with your agent identity. Do not finish the Discussion. The researcher reviews the reply and chooses Finish.
         """
     }
 
@@ -724,7 +838,7 @@ struct NoteContentView: View {
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
-    @State private var commentRoute: CommentExchangeRoute?
+    @State private var commentRoute: DiscussionRoute?
 
     init(
         controller: DocumentController,
@@ -882,18 +996,23 @@ struct NoteContentView: View {
             }
         }
         .sheet(item: $commentRoute, onDismiss: {
-            actions.clearRequestedCommentExchange()
+            Task { @MainActor in
+                await Task.yield()
+                if isEditing { editorSession.focus() }
+            }
         }) { route in
-            CommentExchangePanel(
+            DiscussionPanel(
                 noteTitle: note.title ?? note.displayName,
                 route: route,
-                create: actions.createCommentExchange,
-                append: actions.appendCommentExchangeTurn,
-                finish: actions.finishCommentExchange,
-                handoff: actions.handoffCommentRequest,
-                copyOnly: actions.copyCommentRequest,
-                replyCommand: actions.commentReplyCommand,
-                onFinished: actions.clearRequestedCommentExchange
+                create: actions.createDiscussion,
+                reload: actions.reloadDiscussion,
+                append: actions.appendDiscussionStatement,
+                finish: actions.finishDiscussion,
+                handoff: actions.handoffDiscussionRequest,
+                copyOnly: actions.copyDiscussionRequest,
+                replyCommand: actions.discussionReplyCommand,
+                onClosed: actions.clearRequestedDiscussion,
+                onFinished: actions.clearRequestedDiscussion
             )
         }
         .alert(conflict == nil ? "Save Failed" : "This Note Changed on Disk", isPresented: Binding(
@@ -925,8 +1044,8 @@ struct NoteContentView: View {
         .onChange(of: state.pendingSourceRange) { _, range in
             if range != nil { consumePendingSourceLocation() }
         }
-        .onChange(of: state.requestedCommentExchangeID) { _, exchangeID in
-            openRequestedCommentExchange(exchangeID)
+        .onChange(of: state.requestedDiscussionID) { _, discussionID in
+            openRequestedDiscussion(discussionID)
         }
         .onChange(of: editError) { _, error in
             guard error != nil, !editorIsComposing else { return }
@@ -939,7 +1058,7 @@ struct NoteContentView: View {
             controller.observe(documentSession)
             restorePresentationModeIfAvailable()
             consumePendingPresentationRequest()
-            openRequestedCommentExchange(state.requestedCommentExchangeID)
+            openRequestedDiscussion(state.requestedDiscussionID)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -979,6 +1098,9 @@ struct NoteContentView: View {
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
         }
+        .task(id: discussionProjectionPollIdentity) {
+            await pollPortableDiscussionProjection()
+        }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
@@ -986,6 +1108,29 @@ struct NoteContentView: View {
 
     private var readProjectionTaskIdentity: String {
         "\(noteFingerprint.sha256):\(presentationMode.rawValue)"
+    }
+
+    private var discussionProjectionPollIdentity: String {
+        state.activeDiscussions.map {
+            "\($0.id.uuidString.lowercased()):\($0.updatedAt.timeIntervalSinceReferenceDate)"
+        }.sorted().joined(separator: "|")
+    }
+
+    @MainActor
+    private func pollPortableDiscussionProjection() async {
+        guard !state.activeDiscussions.isEmpty else { return }
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(1))
+                try await actions.refreshDiscussionProjection()
+            } catch is CancellationError {
+                return
+            } catch {
+                // Keep the last verified projection. A later workspace event
+                // or explicit reopen retries without inventing Discussion state.
+                return
+            }
+        }
     }
 
     private var previewTaskIdentity: String {
@@ -1399,7 +1544,7 @@ struct NoteContentView: View {
                     session: documentSession,
                     target: target
                 )
-                commentRoute = CommentExchangeRoute(
+                commentRoute = DiscussionRoute(
                     anchor: anchor,
                     excerpt: selection.excerpt
                 )
@@ -1427,23 +1572,23 @@ struct NoteContentView: View {
             )
             return
         }
-        commentRoute = CommentExchangeRoute(
+        commentRoute = DiscussionRoute(
             anchor: anchor,
             excerpt: selection.excerpt
         )
     }
 
-    private func openRequestedCommentExchange(_ exchangeID: UUID?) {
-        guard let exchangeID else { return }
-        guard let exchange = state.commentExchanges.first(where: { $0.id == exchangeID }) else {
+    private func openRequestedDiscussion(_ discussionID: UUID?) {
+        guard let discussionID else { return }
+        guard let discussion = state.activeDiscussions.first(where: { $0.id == discussionID }) else {
             actions.notify(
-                "The requested Comment is no longer available.",
+                "The requested Discussion is no longer active.",
                 .information
             )
-            actions.clearRequestedCommentExchange()
+            actions.clearRequestedDiscussion()
             return
         }
-        commentRoute = CommentExchangeRoute(exchange: exchange)
+        commentRoute = DiscussionRoute(discussion: discussion)
     }
 
     private func openResearchFunction(_ function: ResearchFunctionID) {
@@ -1691,7 +1836,7 @@ struct ResearchRecordView: View {
                         if !currentActivityGrants.isEmpty {
                             writeActivitySection
                         }
-                        commentExchangeSection
+                        discussionRecordSection
                         functionRunSection
                         critiqueSection
                     }
@@ -1749,19 +1894,27 @@ struct ResearchRecordView: View {
         }
     }
 
-    private var commentExchangeSection: some View {
-        historySection("Comments", systemImage: "bubble.left.and.bubble.right") {
-            if currentCommentExchanges.isEmpty {
-                emptyText("No completed communication exchange is recorded for this note.")
+    private var discussionRecordSection: some View {
+        historySection("Discussions", systemImage: "bubble.left.and.bubble.right") {
+            if currentDiscussionRecords.isEmpty {
+                emptyText("No finished Discussion is recorded for this note.")
             } else {
-                ForEach(currentCommentExchanges) { exchange in
+                ForEach(currentDiscussionRecords) { record in
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(exchange.status == .finished ? "Finished" : "In progress")
+                        Text(record.finishedAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        ForEach(exchange.turns) { turn in
-                            Text(turn.text)
-                                .textSelection(.enabled)
+                        ForEach(record.statements) { statement in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(statement.attribution)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(statement.text)
+                                    .textSelection(.enabled)
+                            }
+                            if statement.id != record.statements.last?.id {
+                                Divider()
+                            }
                         }
                     }
                     .padding(.vertical, 3)
@@ -1909,11 +2062,14 @@ struct ResearchRecordView: View {
             .sorted { $0.occurredAt < $1.occurredAt }
     }
 
-    private var currentCommentExchanges: [CommentExchange] {
+    private var currentDiscussionRecords: [PortableResearchRecord] {
         guard let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else { return [] }
-        return (researchController.records?.commentExchanges ?? [])
-            .filter { $0.note.noteID == noteID }
-            .sorted { $0.updatedAt > $1.updatedAt }
+        return (researchController.records?.finishedResearchRecords ?? [])
+            .filter {
+                $0.kind == .discussion
+                    && $0.participatingNotes.contains(where: { $0.noteID == noteID })
+            }
+            .sorted { $0.finishedAt > $1.finishedAt }
     }
 
     private var currentPendingStates: [PendingResearchState] {
@@ -2371,8 +2527,8 @@ private extension ResearchWriteScope {
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
         propertiesConfiguration: nil,
-        commentExchanges: [],
-        requestedCommentExchangeID: nil,
+        activeDiscussions: [],
+        requestedDiscussionID: nil,
         canComment: false,
         canEdit: false,
         isManagedCritique: false,
@@ -2396,25 +2552,16 @@ private extension ResearchWriteScope {
         clearRequestedPresentationMode: {},
         clearPendingSourceLine: {},
         clearPendingSourceRange: {},
-        createCommentExchange: { anchor, text in
-            CommentExchange(
-                note: ResearchActivityNoteReference(
-                    noteID: UUID(),
-                    note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: note.relativePath),
-                    role: .topic,
-                    title: note.displayName
-                ),
-                anchor: anchor,
-                turns: [CommentExchangeTurn(author: .researcher, text: text)]
-            )
-        },
-        appendCommentExchangeTurn: { _, _, _ in throw CancellationError() },
-        finishCommentExchange: { _ in throw CancellationError() },
-        clearRequestedCommentExchange: {},
-        handoffCommentRequest: { _ in true },
-        copyCommentRequest: { _ in true },
-        commentReplyCommand: { id in
-            "scholium comment reply \(id.uuidString) --agent \"AGENT_NAME\" --from -"
+        createDiscussion: { _, _ in throw CancellationError() },
+        reloadDiscussion: { _ in nil },
+        refreshDiscussionProjection: {},
+        appendDiscussionStatement: { _, _, _, _ in throw CancellationError() },
+        finishDiscussion: { _ in throw CancellationError() },
+        clearRequestedDiscussion: {},
+        handoffDiscussionRequest: { _ in true },
+        copyDiscussionRequest: { _ in true },
+        discussionReplyCommand: { id in
+            "scholium discuss reply \(id.uuidString) --agent \"AGENT_NAME\" --from -"
         },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },

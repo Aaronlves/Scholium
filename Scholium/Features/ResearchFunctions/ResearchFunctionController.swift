@@ -21,6 +21,7 @@ struct ResearchFunctionClient {
         ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion
     let cancel: @MainActor (UUID) async throws -> Void
+    let openActiveDiscussion: @MainActor (UUID) -> Void
 }
 
 enum ResearchFunctionPanelPhase: Equatable {
@@ -751,6 +752,18 @@ final class ResearchFunctionController: ObservableObject {
                 self.phase = Self.panelPhase(for: result.state)
             } catch is CancellationError {
                 return
+            } catch let error as ResearchFunctionContractError {
+                guard self.accepts(token), self.presentationID == presentationID else { return }
+                if case .activeDiscussionExists(let discussionID) = error {
+                    self.materialsState.unfreeze()
+                    self.phase = .editing
+                    self.errorMessage = nil
+                    client.openActiveDiscussion(discussionID)
+                    return
+                }
+                self.materialsState.unfreeze()
+                self.phase = .failed
+                self.errorMessage = error.localizedDescription
             } catch {
                 guard self.accepts(token), self.presentationID == presentationID else { return }
                 self.materialsState.unfreeze()

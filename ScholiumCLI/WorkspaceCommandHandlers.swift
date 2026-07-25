@@ -795,67 +795,6 @@ extension ScholiumCLI {
         return data
     }
 
-    static func runComment(
-        _ arguments: [String],
-        context: CLIContext
-    ) async throws {
-        guard arguments.first == "reply",
-              arguments.count >= 2,
-              let id = UUID(uuidString: arguments[1]) else {
-            throw CLIError.usage(
-                "Usage: scholium comment reply <exchange-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]"
-            )
-        }
-        let agentName = option("--agent", in: arguments)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let agentName, !agentName.isEmpty else {
-            throw CLIError.usage("Comment replies require --agent <name>.")
-        }
-        let replyText: String
-        if let text = option("--text", in: arguments) {
-            replyText = text
-        } else if let source = option("--from", in: arguments) {
-            let data: Data
-            if source == "-" {
-                data = FileHandle.standardInput.readDataToEndOfFile()
-            } else {
-                let url = URL(
-                    fileURLWithPath: (source as NSString).expandingTildeInPath,
-                    isDirectory: false
-                )
-                data = try Data(contentsOf: url)
-            }
-            guard let decoded = String(data: data, encoding: .utf8) else {
-                throw CLIError.invalidUTF8(source)
-            }
-            replyText = decoded
-        } else {
-            throw CLIError.usage("Comment replies require --text <reply> or --from <file|->.")
-        }
-        guard !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw CLIError.usage("Comment reply text cannot be empty.")
-        }
-
-        let assignment = try await context.selectedTriptych(
-            selector: option("--triptych", in: arguments)
-        )
-        let handle = try await context.handle(for: assignment)
-        let existing = try await handle.research.commentExchange(id: id)
-        guard existing.status == .awaitingReply else {
-            throw CLIError.unavailable(
-                "This Comment is not awaiting an agent reply. The researcher must review or continue it in Scholium."
-            )
-        }
-        let updated = try await handle.research.appendCommentExchangeTurn(
-            exchangeID: id,
-            turn: CommentExchangeTurn(author: .agent, text: replyText)
-        )
-        guard let reply = updated.turns.last, reply.author == .agent else {
-            throw CLIError.unavailable("The Comment reply was not available after persistence.")
-        }
-        write("Recorded agent reply \(reply.id.uuidString) for Comment \(id.uuidString).\n")
-    }
-
     static func runDiscuss(
         _ arguments: [String],
         context: CLIContext
@@ -877,46 +816,24 @@ extension ScholiumCLI {
             guard format == "text" || format == "json" else {
                 throw CLIError.usage("Discuss list supports --format text or json.")
             }
-            let entries: [DialogueEntry]
-            if let target = option("--note", in: arguments) {
-                let (vault, relativePath) = try await context.resolveTarget(
-                    target,
-                    within: assignment
-                )
-                let matching = try await research.discussionRecords().filter { entry in
-                    entry.functionSnapshot.request.function == .discuss
-                        && entry.selectedNotes.contains {
-                        $0.vaultID == vault.id && $0.relativePath == relativePath
-                    }
-                }
-                entries = matching
-            } else {
-                entries = try await research.discussionRecords().filter {
-                    $0.functionSnapshot.request.function == .discuss
-                }
-            }
+            let entries = try await research.activeDiscussions(noteID: nil)
             if format == "json" {
                 write(String(decoding: try encoder.encode(entries), as: UTF8.self) + "\n")
             } else if entries.isEmpty {
-                write("No Discuss records.\n")
+                write("No active Discussions.\n")
             } else {
                 for entry in entries {
-                    let noteNames = entry.selectedNotes.map(\.title).joined(separator: ", ")
+                    let noteNames = entry.participatingNotes.map(\.title).joined(separator: ", ")
                     write("\(entry.id.uuidString)  \(entry.createdAt.formatted(.iso8601))\n")
                     write("  Notes: \(noteNames)\n")
-                    write("  Instruction: \(entry.instruction)\n")
+                    write("  Latest: \(entry.statements.last?.text ?? "")\n")
                 }
             }
         case "show":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
                 throw CLIError.usage("Usage: scholium discuss show <discussion-id> [--format json]")
             }
-            let entry = try await research.discussion(id: id)
-            guard entry.functionSnapshot.request.function == .discuss else {
-                throw CLIError.unavailable(
-                    "This identifier does not belong to a Discuss run."
-                )
-            }
+            let entry = try await research.activeDiscussion(id: id)
             let format = option("--format", in: arguments) ?? "text"
             guard format == "text" || format == "json" else {
                 throw CLIError.usage("Discuss show supports --format text or json.")
@@ -925,35 +842,14 @@ extension ScholiumCLI {
                 write(String(decoding: try encoder.encode(entry), as: UTF8.self) + "\n")
             } else {
                 write("Discussion: \(entry.id.uuidString)\n")
-                write("Instruction: \(entry.instruction)\n")
-                write("Checkpoint: \(entry.checkpointID?.uuidString ?? "None")\n\n")
-                let contract = entry.responseContract
-                write("Response contract: request-snapshot\n")
-                write("  Base: \(contract.base)\n")
-                write("  Modules: \(contract.modules.isEmpty ? "None selected" : contract.modules.joined(separator: ", "))\n")
-                write("  Comment preservation: \(contract.commentPreservation)\n")
-                if !contract.validationIssues.isEmpty {
-                    write("  Contract issues: \(contract.validationIssues.joined(separator: " "))\n")
-                }
-                if !entry.preparedInstructions.isEmpty {
-                    write("Prepared instructions:\n")
-                    write(entry.preparedInstructions + "\n")
-                }
-                if !entry.chronologicalTurns.isEmpty {
-                    write("\nFollow-up exchange:\n")
-                    for turn in entry.chronologicalTurns {
-                        switch turn {
-                        case .researcher(let comment):
-                            write("- Researcher: \(comment.text)\n")
-                        case .agent(let reply):
-                            write("- \(reply.agentName): \(reply.text)\n")
-                        }
-                    }
+                write("Notes: \(entry.participatingNotes.map(\.title).joined(separator: ", "))\n\n")
+                for statement in entry.statements {
+                    write("- \(statement.attribution): \(statement.text)\n")
                 }
             }
         case "reply":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
-                throw CLIError.usage("Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file>) [--note <vault>:<path>] [--comment <uuid>]")
+                throw CLIError.usage("Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->)")
             }
             let agentName = option("--agent", in: arguments)?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let agentName, !agentName.isEmpty else {
@@ -963,47 +859,28 @@ extension ScholiumCLI {
             if let text = option("--text", in: arguments) {
                 replyText = text
             } else if let file = option("--from", in: arguments) {
-                let url = URL(fileURLWithPath: (file as NSString).expandingTildeInPath)
-                guard let decoded = String(data: try Data(contentsOf: url), encoding: .utf8) else {
+                let data = file == "-"
+                    ? FileHandle.standardInput.readDataToEndOfFile()
+                    : try Data(contentsOf: URL(
+                        fileURLWithPath: (file as NSString).expandingTildeInPath
+                    ))
+                guard let decoded = String(data: data, encoding: .utf8) else {
                     throw CLIError.invalidUTF8(file)
                 }
                 replyText = decoded
             } else {
-                throw CLIError.usage("Discuss replies require --text <reply> or --from <file>.")
+                throw CLIError.usage("Discuss replies require --text <reply> or --from <file|->.")
             }
-            let entry = try await research.discussion(id: id)
-            guard entry.functionSnapshot.request.function == .discuss else {
-                throw CLIError.unavailable(
-                    "This identifier does not belong to a Discuss run."
-                )
+            guard !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw CLIError.usage("Discuss reply text cannot be empty.")
             }
-            let noteID: UUID?
-            if let target = option("--note", in: arguments) {
-                let (vault, relativePath) = try await context.resolveTarget(
-                    target,
-                    within: assignment
-                )
-                noteID = entry.selectedNotes.first {
-                    $0.vaultID == vault.id && $0.relativePath == relativePath
-                }?.noteID
-                guard noteID != nil else { throw DialogueError.invalidReplyTarget }
-            } else {
-                noteID = nil
-            }
-            let commentID = option("--comment", in: arguments).flatMap(UUID.init(uuidString:))
-            if option("--comment", in: arguments) != nil, commentID == nil {
-                throw CLIError.usage("--comment requires a valid UUID.")
-            }
-            let updated = try await research.appendDiscussionReply(
-                DialogueReply(
-                    agentName: agentName,
-                    text: replyText,
-                    noteID: noteID,
-                    commentID: commentID
-                ),
-                to: id
+            let updated = try await research.appendDiscussionStatement(
+                discussionID: id,
+                author: .agent,
+                attribution: agentName,
+                text: replyText
             )
-            guard let reply = updated.replies.last else {
+            guard let reply = updated.statements.last, reply.author == .agent else {
                 throw CLIError.unavailable("The Discuss reply was not available after persistence.")
             }
             write("Recorded reply \(reply.id.uuidString) for Discussion \(id.uuidString).\n")

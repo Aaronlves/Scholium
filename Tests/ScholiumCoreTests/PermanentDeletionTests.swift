@@ -119,10 +119,10 @@ struct PermanentDeletionTests {
             checkpointArea: .analyses
         )
 
-        #expect(commit.removedDialogueIDs == [dialogue.id])
+        #expect(commit.removedDialogueIDs.isEmpty)
         #expect(commit.invalidatedCheckpointIDs == [checkpoint.id])
         #expect(!FileManager.default.fileExists(atPath: sourceURL.path))
-        #expect(await dialogueStore.entries(noteID: identity.id).isEmpty)
+        #expect(await dialogueStore.entries(noteID: identity.id).map(\.id) == [dialogue.id])
         #expect(await repository.recoveryEntries(relativePath: path).isEmpty)
         #expect(await checkpointStore.checkpoints().isEmpty)
         #expect(try await control.identity(
@@ -148,14 +148,15 @@ struct PermanentDeletionTests {
 
         #expect(commit.removedCritiqueDocumentPath == fixture.critiquePath)
         #expect(commit.removedCritiqueAssociationIDs == [fixture.association.id])
-        #expect(commit.removedDialogueIDs == [fixture.dialogue.id, fixture.critiqueDialogue.id]
-            .sorted { $0.uuidString < $1.uuidString })
+        #expect(commit.removedDialogueIDs.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
         #expect(await fixture.repository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
         #expect(await fixture.repository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id) == nil)
-        #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).isEmpty)
+        #expect(await fixture.dialogueStore.entries(
+            noteID: fixture.critiqueIdentity.id
+        ).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(try await fixture.control.identityRecord(
             vaultID: fixture.vaultID,
             relativePath: fixture.critiquePath
@@ -370,6 +371,34 @@ struct PermanentDeletionTests {
         #expect(try await fixture.portableRecordStore.latestSettlement(
             noteID: fixture.critiqueIdentity.id
         ) == nil)
+        #expect(try await fixture.recoveryStore.pending().isEmpty)
+    }
+
+    @Test("Malformed unrelated portable data blocks deletion before Markdown changes")
+    func malformedPortableDataFailsClosedBeforeDeletion() async throws {
+        let fixture = try await WorkFixture()
+        defer { fixture.remove() }
+        let malformedURL = fixture.portableRecordStore.storageURL
+            .appendingPathComponent("active", isDirectory: true)
+            .appendingPathComponent("\(UUID().uuidString.lowercased()).json")
+        try FileManager.default.createDirectory(
+            at: malformedURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("{not valid portable data".utf8).write(to: malformedURL, options: .atomic)
+
+        await #expect(throws: ResearchRecordStoreError.self) {
+            _ = try await fixture.coordinator().delete(
+                noteID: fixture.workIdentity.id,
+                vaultID: fixture.vaultID,
+                relativePath: fixture.workPath,
+                expectedRevision: fixture.workFingerprint,
+                checkpointArea: .works
+            )
+        }
+
+        #expect(try Data(contentsOf: fixture.workURL) == Data(fixture.workSource.utf8))
+        #expect(try Data(contentsOf: fixture.critiqueURL) == Data(fixture.critiqueSource.utf8))
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 

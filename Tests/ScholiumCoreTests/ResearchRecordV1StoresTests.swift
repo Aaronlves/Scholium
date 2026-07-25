@@ -67,6 +67,220 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.issues.isEmpty)
     }
 
+    @Test("Finish moves one active Discussion into one idempotent record")
+    func discussionFinishIsOneRecoverableTransition() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let discussion = try makePortableDiscussion()
+        _ = try await store.createActiveDiscussion(discussion)
+        let agent = try PortableResearchStatement(
+            author: .agent,
+            kind: .discussionTurn,
+            attribution: "Research Agent",
+            text: "The residual pressure remains open.",
+            createdAt: Date(timeIntervalSince1970: 12)
+        )
+        let active = try await store.appendDiscussionStatement(
+            agent,
+            to: discussion.id,
+            at: Date(timeIntervalSince1970: 12)
+        )
+
+        let record = try await store.finishDiscussion(
+            id: discussion.id,
+            participatingNotes: active.participatingNotes,
+            finishedAt: Date(timeIntervalSince1970: 20)
+        )
+        let repeated = try await store.finishDiscussion(
+            id: discussion.id,
+            participatingNotes: active.participatingNotes,
+            finishedAt: Date(timeIntervalSince1970: 30)
+        )
+
+        #expect(record == repeated)
+        #expect(record.kind == .discussion)
+        #expect(record.statements.count == 2)
+        #expect(try await store.activeDiscussions().discussions.isEmpty)
+        #expect(try await store.listing(location: .records).records == [record])
+    }
+
+    @Test("Interrupted Discussion finish reconciles the exact active-record pair")
+    func discussionFinishRecoveryRemovesOnlyExactDuplicate() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let discussion = try makePortableDiscussion()
+        _ = try await store.createActiveDiscussion(discussion)
+        let record = try discussion.finishedRecord(
+            participatingNotes: discussion.participatingNotes,
+            finishedAt: Date(timeIntervalSince1970: 20)
+        )
+        _ = try await store.createFinishedRecord(record)
+
+        let reopened = try fixture.portableStore()
+        #expect(try await reopened.activeDiscussions().discussions.isEmpty)
+        #expect(try await reopened.record(id: discussion.id) == record)
+    }
+
+    @Test("Passage anchors reattach only at one reliable source location")
+    func discussionPassageDriftIsBounded() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let unique = try makePortableDiscussion(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            source: "claim"
+        )
+        _ = try await store.createActiveDiscussion(unique)
+        let reattached = try await store.reconcileDiscussionPassages(
+            id: unique.id,
+            primaryDocument: NoteDocument(
+                relativePath: "Topic.md",
+                rawContent: "prefix claim suffix"
+            )
+        )
+        #expect(reattached.passage?.state == .attached)
+        #expect(reattached.passage?.fingerprint == DocumentFingerprint(
+            content: "prefix claim suffix"
+        ))
+        _ = try await store.finishDiscussion(
+            id: unique.id,
+            participatingNotes: reattached.participatingNotes,
+            finishedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        let ambiguous = try makePortableDiscussion(
+            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+            source: "claim"
+        )
+        _ = try await store.createActiveDiscussion(ambiguous)
+        let detached = try await store.reconcileDiscussionPassages(
+            id: ambiguous.id,
+            primaryDocument: NoteDocument(
+                relativePath: "Topic.md",
+                rawContent: "claim and claim"
+            )
+        )
+        #expect(detached.passage?.state == .needsReattachment)
+        #expect(detached.passage?.fingerprint == ambiguous.passage?.fingerprint)
+    }
+
+    @Test("Permanent deletion purges active drafts and tombstones finished participants")
+    func discussionDeletionPreservesFinishedRecord() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let finishedDraft = try makePortableDiscussion(
+            id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        )
+        _ = try await store.createActiveDiscussion(finishedDraft)
+        let finished = try await store.finishDiscussion(
+            id: finishedDraft.id,
+            participatingNotes: finishedDraft.participatingNotes,
+            finishedAt: Date(timeIntervalSince1970: 20)
+        )
+        let active = try makePortableDiscussion()
+        _ = try await store.createActiveDiscussion(active)
+
+        let deletedNoteID = active.primaryNoteID
+        try await store.handlePermanentDeletion(noteIDs: [deletedNoteID])
+
+        #expect(try await store.activeDiscussions().discussions.isEmpty)
+        let retained = try await store.record(id: finished.id)
+        #expect(retained.statements == finished.statements)
+        #expect(retained.participatingNotes.first {
+            $0.noteID == deletedNoteID
+        }?.isTombstone == true)
+        #expect(retained.participatingNotes.first {
+            $0.noteID != deletedNoteID
+        }?.isTombstone == false)
+    }
+
+    @Test("Only one active Discussion may own a primary Note")
+    func activeDiscussionPrimaryNoteIsUniqueAcrossStoreInstances() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let firstStore = try fixture.portableStore()
+        let secondStore = try fixture.portableStore()
+        let first = try makePortableDiscussion()
+        let second = try makePortableDiscussion(
+            id: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!
+        )
+
+        _ = try await firstStore.createActiveDiscussion(first)
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await secondStore.createActiveDiscussion(second)
+        }
+        let listing = try await firstStore.activeDiscussions()
+        #expect(listing.issues.isEmpty)
+        #expect(listing.discussions.map(\.id) == [first.id])
+    }
+
+    @Test("Synced duplicate primary Discussions fail listing health")
+    func syncedDuplicatePrimaryDiscussionIsAnIssue() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let first = try makePortableDiscussion()
+        let second = try makePortableDiscussion(
+            id: UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+        )
+        _ = try await store.createActiveDiscussion(first)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let syncedURL = store.storageURL
+            .appendingPathComponent("active", isDirectory: true)
+            .appendingPathComponent(second.id.uuidString.lowercased() + ".json")
+        try encoder.encode(second).write(to: syncedURL, options: .atomic)
+
+        let listing = try await store.activeDiscussions()
+        #expect(listing.discussions.count == 2)
+        #expect(listing.issues.count == 2)
+        #expect(listing.issues.allSatisfy {
+            $0.reason.contains("multiple active Discussions")
+        })
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.activeDiscussion(id: first.id)
+        }
+        let reply = try PortableResearchStatement(
+            author: .agent,
+            kind: .discussionTurn,
+            attribution: "Synthetic Agent",
+            text: "This must not be appended while the primary identity is ambiguous."
+        )
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.appendDiscussionStatement(reply, to: first.id)
+        }
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.finishDiscussion(
+                id: first.id,
+                participatingNotes: first.participatingNotes
+            )
+        }
+    }
+
+    @Test("Deletion marker and active creation share one cross-process gate")
+    func deletionMarkerBlocksAnotherStoreInstance() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let deletingStore = try fixture.portableStore()
+        let creatingStore = try fixture.portableStore()
+        let discussion = try makePortableDiscussion()
+
+        try await deletingStore.markNoteDeletionStarted(
+            noteIDs: [discussion.primaryNoteID]
+        )
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await creatingStore.createActiveDiscussion(discussion)
+        }
+        try await deletingStore.clearNoteDeletionMarkers(
+            noteIDs: [discussion.primaryNoteID]
+        )
+        _ = try await creatingStore.createActiveDiscussion(discussion)
+    }
+
     @Test("Settle keeps one portable current state per Note")
     func settlementIsCurrentStateNotHistory() async throws {
         let fixture = try Fixture()
@@ -499,6 +713,58 @@ struct ResearchRecordV1StoresTests {
             )],
             startedAt: Date(timeIntervalSince1970: 10),
             finishedAt: Date(timeIntervalSince1970: 20)
+        )
+    }
+
+    private func makePortableDiscussion(
+        id: UUID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+        source: String = "claim"
+    ) throws -> PortableResearchDiscussion {
+        let vaultID = UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!
+        let primaryID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
+        let focalID = UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!
+        let primaryFingerprint = DocumentFingerprint(content: source)
+        let primary = try PortableResearchNoteRevision(
+            noteID: primaryID,
+            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Topic.md"),
+            role: .topic,
+            title: "Topic",
+            startingRevision: primaryFingerprint,
+            endingRevision: primaryFingerprint
+        )
+        let focalFingerprint = DocumentFingerprint(content: "analysis")
+        let focal = try PortableResearchNoteRevision(
+            noteID: focalID,
+            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Analysis.md"),
+            role: .analysis,
+            title: "Analysis",
+            startingRevision: focalFingerprint,
+            endingRevision: focalFingerprint
+        )
+        let range = try #require(source.range(of: "claim"))
+        let lower = range.lowerBound.utf16Offset(in: source)
+        let upper = range.upperBound.utf16Offset(in: source)
+        let anchor = try #require(CommentAnchorBuilder.anchor(
+            in: source,
+            fingerprint: primaryFingerprint,
+            utf16Range: lower..<upper
+        ))
+        let statement = try PortableResearchStatement(
+            author: .researcher,
+            kind: .discussionTurn,
+            attribution: "Researcher",
+            text: "Test this claim.",
+            createdAt: Date(timeIntervalSince1970: 10),
+            passage: anchor
+        )
+        return try PortableResearchDiscussion(
+            id: id,
+            triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
+            primaryNoteID: primaryID,
+            participatingNotes: [primary, focal],
+            statements: [statement],
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 10)
         )
     }
 

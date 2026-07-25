@@ -658,6 +658,35 @@ struct ResearchFunctionControllerTests {
         #expect(controller.materialsViewState.query.isEmpty)
     }
 
+    @Test("An existing passage Discussion redirects the default Discuss action")
+    func activeDiscussionRepairRedirects() async throws {
+        let controller = ResearchFunctionController()
+        let discussionID = UUID()
+        var redirectedID: UUID?
+        controller.bind(client(
+            prepare: { _ in
+                throw ResearchFunctionContractError.activeDiscussionExists(discussionID)
+            },
+            openActiveDiscussion: { redirectedID = $0 }
+        ))
+        controller.begin(
+            target: target(title: "Agency", path: "Topics/Agency.md"),
+            function: .discuss,
+            selection: nil,
+            presentationID: UUID()
+        )
+        controller.instruction = "Continue the active Discussion."
+        await waitUntil { controller.canPrepare }
+        controller.prepare()
+        await waitUntil { redirectedID != nil }
+
+        #expect(redirectedID == discussionID)
+        #expect(controller.phase == .editing)
+        #expect(controller.errorMessage == nil)
+        #expect(!controller.materialsState.isFrozen)
+        #expect(controller.preparation == nil)
+    }
+
     @Test("Write preparation fixes authority to the current Target")
     func writePreparationUsesCurrentTargetOnly() async throws {
         let controller = ResearchFunctionController()
@@ -973,7 +1002,8 @@ struct ResearchFunctionControllerTests {
             ResearchFunctionTarget,
             ResearchFunctionID
         ) async throws -> [ResearchFunctionMaterialCandidate])? = nil,
-        prepare: (@MainActor (ResearchFunctionRequest) async throws -> ResearchFunctionPreparation)? = nil
+        prepare: (@MainActor (ResearchFunctionRequest) async throws -> ResearchFunctionPreparation)? = nil,
+        openActiveDiscussion: @escaping @MainActor (UUID) -> Void = { _ in }
     ) -> ResearchFunctionClient {
         ResearchFunctionClient(
             availableFunctions: availableFunctions ?? { target in
@@ -1026,7 +1056,8 @@ struct ResearchFunctionControllerTests {
                     fidelityOutcomes: submission.fidelityOutcomes
                 )
             },
-            cancel: { _ in }
+            cancel: { _ in },
+            openActiveDiscussion: openActiveDiscussion
         )
     }
 

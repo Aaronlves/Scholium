@@ -262,6 +262,89 @@ enum WorkspaceSnapshotBuilder {
         let portableSettlementListing = try await services
             .portableResearchRecordStore.settlementListing()
         let settlements = portableSettlementListing.settlements
+        let localExecutionListing = try await services.localResearchExecutionStore
+            .listing()
+        let finishedResearchRecordListing = try await services
+            .portableResearchRecordStore.listing(location: .records)
+        var activeDiscussionListing = try await services
+            .portableResearchRecordStore.activeDiscussions()
+        var activeDiscussionReconciliationIssues: [String] = []
+        let finishedByID = Dictionary(
+            uniqueKeysWithValues: finishedResearchRecordListing.records.map { ($0.id, $0) }
+        )
+        if activeDiscussionListing.issues.isEmpty,
+           finishedResearchRecordListing.issues.isEmpty {
+            for local in localExecutionListing.records
+                where local.snapshot.request.function == .discuss {
+                do {
+                    let expected = try ResearchDiscussionFactory.make(
+                        snapshot: local.snapshot,
+                        triptychID: assignment.id
+                    )
+                    if let active = activeDiscussionListing.discussions.first(where: {
+                        $0.id == local.id
+                    }) {
+                        guard ResearchDiscussionFactory.activeMatches(
+                            active,
+                            expected: expected
+                        ) else {
+                            throw ResearchFunctionContractError.invalidCompletion(
+                                "The active Discussion does not match its Local-v2 run."
+                            )
+                        }
+                    } else if let finished = finishedByID[local.id] {
+                        guard ResearchDiscussionFactory.finishedMatches(
+                            finished,
+                            expected: expected
+                        ) else {
+                            throw ResearchFunctionContractError.invalidCompletion(
+                                "The finished Discussion does not match its Local-v2 run."
+                            )
+                        }
+                    } else if local.completion == nil,
+                              !activeDiscussionListing.discussions.contains(where: {
+                                  $0.primaryNoteID == expected.primaryNoteID
+                              }) {
+                        _ = try await services.portableResearchRecordStore
+                            .createActiveDiscussion(expected)
+                    } else {
+                        throw ResearchFunctionContractError.invalidCompletion(
+                            "The Local-v2 Discuss run has no exact portable Discussion pair."
+                        )
+                    }
+                } catch {
+                    activeDiscussionReconciliationIssues.append(
+                        "Discussion \(local.id.uuidString): \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+        activeDiscussionListing = try await services.portableResearchRecordStore
+            .activeDiscussions()
+        for discussion in activeDiscussionListing.issues.isEmpty
+            ? activeDiscussionListing.discussions
+            : [] {
+            guard let loaded = loadedVaults.first(where: { vault in
+                vault.identityStates.values.contains(.resolved(discussion.primaryNoteID))
+            }), let relativePath = loaded.identityStates.first(where: {
+                $0.value == .resolved(discussion.primaryNoteID)
+            })?.key, let document = loaded.activeDocuments.first(where: {
+                $0.relativePath == relativePath
+            }) else { continue }
+            do {
+                _ = try await services.portableResearchRecordStore
+                    .reconcileDiscussionPassages(
+                        id: discussion.id,
+                        primaryDocument: document
+                    )
+            } catch {
+                activeDiscussionReconciliationIssues.append(
+                    "Discussion \(discussion.id.uuidString): \(error.localizedDescription)"
+                )
+            }
+        }
+        activeDiscussionListing = try await services.portableResearchRecordStore
+            .activeDiscussions()
         let activityGrants = await services.researchActivityStore.grants()
         let latestSettlementByNoteID = Dictionary(
             settlements.map { ($0.noteID, $0) },
@@ -388,9 +471,13 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: portableSettlementListing.issues.map {
             "Portable Settlement \($0.fileName): \($0.reason)"
         })
-        if let issue = await services.dialogueStore.healthError() {
-            healthIssues.append(issue)
-        }
+        healthIssues.append(contentsOf: activeDiscussionListing.issues.map {
+            "Active Discussion \($0.fileName): \($0.reason)"
+        })
+        healthIssues.append(contentsOf: activeDiscussionReconciliationIssues)
+        healthIssues.append(contentsOf: finishedResearchRecordListing.issues.map {
+            "Portable Research Record \($0.fileName): \($0.reason)"
+        })
         if let issue = await services.critiqueRegistry.healthError() {
             healthIssues.append(issue)
         }
@@ -477,26 +564,14 @@ enum WorkspaceSnapshotBuilder {
                 identityRecovery: loaded.identityRecovery
             )
         }
-        let localExecutionListing = try await services.localResearchExecutionStore
-            .listing()
         healthIssues.append(contentsOf: localExecutionListing.issues.map {
             "Local Research Execution \($0.fileName): \($0.reason)"
         })
-        let legacyDialogueEntries = await services.dialogueStore.allEntries()
-        let localDialogueEntries = localExecutionListing.records.compactMap(\.dialogue)
-        let allDialogueEntries = legacyDialogueEntries + localDialogueEntries
-        let critiqueAssociations = critiquesByID.values.sorted {
+        var critiqueAssociations = critiquesByID.values.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
-        var nonLocalFunctionRuns = legacyDialogueEntries.map { entry in
-                ResearchFunctionRecordProjection(
-                    snapshot: entry.functionSnapshot,
-                    completion: entry.functionCompletion,
-                    preparedInstructions: entry.preparedInstructions
-                )
-            }
-            + critiqueAssociations.flatMap { association in
+        let retainedCritiqueFunctionRuns = critiqueAssociations.flatMap { association in
                 association.rounds.compactMap { round in
                     round.functionSnapshot.map {
                         ResearchFunctionRecordProjection(
@@ -507,15 +582,109 @@ enum WorkspaceSnapshotBuilder {
                     }
                 }
             }
-        let localFunctionRuns = localExecutionListing.records.map { record in
+        var localFunctionRuns = localExecutionListing.records.map { record in
             ResearchFunctionRecordProjection(
                 snapshot: record.snapshot,
                 completion: record.completion,
                 preparedInstructions: record.preparedInstructions
             )
         }
+        var localRunIDs = Set(localFunctionRuns.map(\.id))
+        let unhealthyLocalFileNames = Set(localExecutionListing.issues.map(\.fileName))
+        let stagedCritiqueRounds = critiqueAssociations.flatMap { association in
+            association.rounds.compactMap { round in
+                round.functionSnapshot.map { (association, round, $0) }
+            }
+        }
+        for (association, round, snapshot) in stagedCritiqueRounds {
+            guard !localRunIDs.contains(round.id) else { continue }
+            let localFileName = round.id.uuidString.lowercased() + ".json"
+            guard !unhealthyLocalFileNames.contains(localFileName) else {
+                healthIssues.append(
+                    "Critique handoff \(round.id.uuidString) has unreadable Local Execution v2 evidence; its portable staging evidence was preserved."
+                )
+                continue
+            }
+            guard snapshot.actionSnapshot?.actionID == .critique,
+                  snapshot.request.function == .critique,
+                  snapshot.runID == round.id,
+                  snapshot.recordKind == .critique,
+                  snapshot.recordID == round.id,
+                  let checkpointID = snapshot.checkpointID,
+                  checkpointID == round.checkpointID,
+                  snapshot.request.target.noteID == association.workNoteID,
+                  snapshot.request.target.fingerprint == round.targetFingerprint,
+                  snapshot.actionSnapshot?.target.noteID == association.workNoteID,
+                  snapshot.actionSnapshot?.target.note == snapshot.request.target.note,
+                  snapshot.actionSnapshot?.target.fingerprint
+                    == round.targetFingerprint,
+                  snapshot.preparedOutput?.note.vaultID
+                    == snapshot.request.target.note.vaultID,
+                  snapshot.preparedOutput?.note.relativePath
+                    == association.critiqueRelativePath,
+                  snapshot.preparedOutput?.fingerprint != nil,
+                  round.functionCompletion == nil,
+                  round.actionableFindings.isEmpty,
+                  !round.localExecutionFindingsCaptured,
+                  round.findingDispositions.isEmpty,
+                  round.completedAt == nil,
+                  let preparedInstructions = round.functionInstructions else {
+                healthIssues.append(
+                    "Critique handoff \(round.id.uuidString) has inconsistent portable staging evidence; it was preserved without creating Local Execution v2."
+                )
+                continue
+            }
+            do {
+                guard try await services.localResearchExecutionStore
+                    .hasMatchingCritiqueHandoff(
+                        snapshot: snapshot,
+                        preparedInstructions: preparedInstructions
+                    ) else {
+                    healthIssues.append(
+                        "Critique handoff \(round.id.uuidString) has no matching machine-local intent; its portable staging evidence was preserved."
+                    )
+                    continue
+                }
+                let checkpoint = try await services.checkpointStore.checkpoint(
+                    id: checkpointID
+                )
+                guard checkpoint.kind == .automatic else {
+                    throw ResearchFunctionContractError.invalidCompletion(
+                        "The Critique staging checkpoint is not automatic."
+                    )
+                }
+                let recovered = try LocalResearchExecutionRecord(
+                    triptychID: services.manifest.id,
+                    snapshot: snapshot,
+                    preparedInstructions: preparedInstructions
+                )
+                let stored = try await services.localResearchExecutionStore
+                    .create(recovered)
+                localFunctionRuns.append(ResearchFunctionRecordProjection(
+                    snapshot: stored.snapshot,
+                    completion: stored.completion,
+                    preparedInstructions: stored.preparedInstructions
+                ))
+                localRunIDs.insert(stored.id)
+                do {
+                    try await services.localResearchExecutionStore
+                        .discardCritiqueHandoff(
+                            snapshot: snapshot,
+                            preparedInstructions: preparedInstructions
+                        )
+                } catch {
+                    healthIssues.append(
+                        "Critique handoff \(round.id.uuidString) was installed, but its machine-local intent could not be discarded: \(error.localizedDescription)"
+                    )
+                }
+            } catch {
+                healthIssues.append(
+                    "Critique handoff \(round.id.uuidString) could not be installed in Local Execution v2; its portable staging evidence was preserved: \(error.localizedDescription)"
+                )
+            }
+        }
         for local in localFunctionRuns {
-            let duplicates = nonLocalFunctionRuns.filter { $0.id == local.id }
+            let duplicates = retainedCritiqueFunctionRuns.filter { $0.id == local.id }
             guard !duplicates.isEmpty else { continue }
             let isExactCritiqueHandoff = duplicates.count == 1
                 && duplicates[0].snapshot == local.snapshot
@@ -528,10 +697,15 @@ enum WorkspaceSnapshotBuilder {
                 }
             if isExactCritiqueHandoff {
                 do {
-                    _ = try await services.critiqueRegistry.detachFunctionEvidence(
+                    let updated = try await services.critiqueRegistry.detachFunctionEvidence(
                         runID: local.id,
                         matching: local.snapshot
                     )
+                    if let index = critiqueAssociations.firstIndex(where: {
+                        $0.id == updated.id
+                    }) {
+                        critiqueAssociations[index] = updated
+                    }
                 } catch {
                     healthIssues.append(
                         "Critique handoff \(local.id.uuidString): \(error.localizedDescription)"
@@ -542,12 +716,14 @@ enum WorkspaceSnapshotBuilder {
                     "Research execution \(local.id.uuidString) has conflicting retained evidence; Local Execution v2 was projected read-only."
                 )
             }
-            // Local v2 is the sole completion authority for a new Action.
-            // Never publish two rows with the same SwiftUI identity while
-            // cleanup or diagnosis remains pending.
-            nonLocalFunctionRuns.removeAll { $0.id == local.id }
         }
-        let storedFunctionRuns = (nonLocalFunctionRuns + localFunctionRuns).sorted {
+        critiqueAssociations.sort {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        // Retained Critique Function evidence remains reveal-only. Current
+        // planning and projection publish only Local Execution v2 records.
+        let storedFunctionRuns = localFunctionRuns.sorted {
             if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
                 return $0.snapshot.preparedAt > $1.snapshot.preparedAt
             }
@@ -564,11 +740,6 @@ enum WorkspaceSnapshotBuilder {
             uniqueKeysWithValues: vaultSnapshots.flatMap(\.documents).map {
                 ($0.id, $0.fingerprint)
             }
-        )
-        let allCommentExchanges = await services.researchActivityStore.allExchanges()
-        let commentExchangesByID: [UUID: CommentExchange] = Dictionary(
-            allCommentExchanges.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
         )
         let functionRuns = storedFunctionRuns.map { run in
             guard let completion = run.completion,
@@ -587,17 +758,9 @@ enum WorkspaceSnapshotBuilder {
             } else {
                 outputIsCurrent = completion.outputFingerprint == nil
             }
-            let currentEvidence = try? run.snapshot.request.commentIDs.map { id -> DocumentFingerprint in
-                guard let exchange = commentExchangesByID[id] else {
-                    throw ResearchFunctionContractError.invalidCompletion(
-                        "Included Comment evidence is no longer available."
-                    )
-                }
-                return try commentEvidenceRevision(exchange)
-            }.sorted { lhs, rhs in
-                if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
-                return lhs.byteCount < rhs.byteCount
-            }
+            let currentEvidence: [DocumentFingerprint]? = run.snapshot.request.commentIDs.isEmpty
+                ? []
+                : nil
             let preparedEvidence = run.snapshot.evidenceRevisions.sorted { lhs, rhs in
                 if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
                 return lhs.byteCount < rhs.byteCount
@@ -630,23 +793,20 @@ enum WorkspaceSnapshotBuilder {
             }
             return run
         }
-        let legacyPendingStates = await services.researchActivityStore
-            .allPendingStates().filter { $0.kind != .changedSinceSettled }
         let research = WorkspaceResearchSnapshot(
             activityEvents: await services.researchActivityStore.allEvents(),
             settlements: settlements,
-            commentExchanges: allCommentExchanges,
-            pendingResearchStates: (legacyPendingStates + changedSinceSettledStates)
-                .sorted {
+            activeDiscussions: activeDiscussionListing.issues.isEmpty
+                ? activeDiscussionListing.discussions
+                : [],
+            finishedResearchRecords: finishedResearchRecordListing.records,
+            pendingResearchStates: changedSinceSettledStates.sorted {
                     if $0.createdAt != $1.createdAt {
                         return $0.createdAt > $1.createdAt
                     }
                     return $0.id.uuidString < $1.id.uuidString
                 },
             activityGrants: activityGrants,
-            dialogues: allDialogueEntries.filter {
-                $0.functionSnapshot.request.function == .discuss
-            },
             critiques: critiqueAssociations,
             functionRuns: functionRuns,
             checkpointListing: await services.checkpointStore.listing(),
@@ -706,13 +866,4 @@ enum WorkspaceSnapshotBuilder {
         )
     }
 
-}
-
-private func commentEvidenceRevision(
-    _ exchange: CommentExchange
-) throws -> DocumentFingerprint {
-    let encoder = JSONEncoder()
-    encoder.dateEncodingStrategy = .iso8601
-    encoder.outputFormatting = [.sortedKeys]
-    return DocumentFingerprint(data: try encoder.encode(exchange))
 }

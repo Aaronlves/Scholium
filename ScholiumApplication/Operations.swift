@@ -387,7 +387,7 @@ public actor ResearchOperations: ResearchUseCases {
         try await functionCoordinator.completeFunction(submission)
     }
 
-    public func finishDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
+    public func finishDiscussion(runID: UUID) async throws -> PortableResearchRecord {
         try await functionCoordinator.finishDiscussion(runID: runID)
     }
 
@@ -487,47 +487,72 @@ public actor ResearchOperations: ResearchUseCases {
         )
     }
 
-    public func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
+    public func activeDiscussions(
+        noteID: UUID?
+    ) async throws -> [PortableResearchDiscussion] {
         let handle = try await reference.requireHandle()
-        return try await handle.commentExchanges(noteID: noteID)
+        return try await handle.activeDiscussions(noteID: noteID)
     }
 
-    public func commentExchange(id: UUID) async throws -> CommentExchange {
+    public func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
         let handle = try await reference.requireHandle()
-        return try await handle.commentExchange(id: id)
+        return try await handle.activeDiscussion(id: id)
+    }
+
+    public func activeDiscussionIfPresent(
+        id: UUID
+    ) async throws -> PortableResearchDiscussion? {
+        let handle = try await reference.requireHandle()
+        return try await handle.activeDiscussionIfPresent(id: id)
     }
 
     @discardableResult
-    public func createCommentExchange(
-        _ exchange: CommentExchange
-    ) async throws -> CommentExchange {
+    public func createDiscussion(
+        target: ResearchFunctionTarget,
+        focalNotes: [ResearchFunctionMaterial],
+        passage: CommentAnchor?,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
         let handle = try await reference.requireHandle()
-        return try await handle.createCommentExchange(exchange)
-    }
-
-    @discardableResult
-    public func appendCommentExchangeTurn(
-        exchangeID: UUID,
-        turn: CommentExchangeTurn
-    ) async throws -> CommentExchange {
-        let handle = try await reference.requireHandle()
-        return try await handle.appendCommentExchangeTurn(
-            exchangeID: exchangeID,
-            turn: turn
+        return try await handle.createDiscussion(
+            target: target,
+            focalNotes: focalNotes,
+            passage: passage,
+            researcherMessage: researcherMessage
         )
     }
 
     @discardableResult
-    public func finishCommentExchange(
-        exchangeID: UUID
-    ) async throws -> CommentExchange {
+    public func appendDiscussionStatement(
+        discussionID: UUID,
+        author: PortableResearchStatementAuthor,
+        attribution: String,
+        text: String,
+        passage: CommentAnchor? = nil
+    ) async throws -> PortableResearchDiscussion {
         let handle = try await reference.requireHandle()
-        return try await handle.finishCommentExchange(exchangeID: exchangeID)
+        return try await handle.appendDiscussionStatement(
+            discussionID: discussionID,
+            author: author,
+            attribution: attribution,
+            text: text,
+            passage: passage
+        )
     }
 
-    public func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
+    @discardableResult
+    public func finishDiscussion(
+        discussionID: UUID
+    ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.discussionHistory(noteID: noteID)
+        return try await handle.finishDiscussion(discussionID: discussionID)
+    }
+
+    public func finishedResearchRecords(
+        noteID: UUID?
+    ) async throws -> [PortableResearchRecord] {
+        let handle = try await reference.requireHandle()
+        return try await handle.finishedResearchRecords(noteID: noteID)
     }
 
     public func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
@@ -660,34 +685,6 @@ public actor ResearchOperations: ResearchUseCases {
     ) async throws {
         let handle = try await reference.requireHandle()
         try await handle.saveDiscussResponseProfile(profile)
-    }
-
-    public func discussionRecords() async throws -> [DialogueEntry] {
-        let handle = try await reference.requireHandle()
-        return try await handle.discussionRecords()
-    }
-
-    public func discussion(id: UUID) async throws -> DialogueEntry {
-        let handle = try await reference.requireHandle()
-        return try await handle.discussion(id: id)
-    }
-
-    @discardableResult
-    public func appendDiscussionReply(
-        _ reply: DialogueReply,
-        to entryID: UUID
-    ) async throws -> DialogueEntry {
-        let handle = try await reference.requireHandle()
-        return try await handle.appendDiscussionReply(reply, to: entryID)
-    }
-
-    @discardableResult
-    public func appendDiscussionFollowUp(
-        _ comment: DialogueFollowUpComment,
-        to entryID: UUID
-    ) async throws -> DialogueEntry {
-        let handle = try await reference.requireHandle()
-        return try await handle.appendDiscussionFollowUp(comment, to: entryID)
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

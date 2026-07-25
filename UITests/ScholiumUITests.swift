@@ -2192,7 +2192,7 @@ final class ScholiumUITests: XCTestCase {
         insert.click()
         XCTAssertTrue(app.menuItems["Footnote"].firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.menuItems["Table"].firstMatch.exists)
-        let addComment = app.menuItems["Add Comment…"].firstMatch
+        let addComment = app.menuItems["Comment on Selection…"].firstMatch
         XCTAssertTrue(addComment.exists)
         XCTAssertFalse(addComment.isEnabled)
         app.typeKey(.escape, modifierFlags: [])
@@ -2205,13 +2205,128 @@ final class ScholiumUITests: XCTestCase {
         let editorContextMenu = app.menus["scholium.editor.contextMenu"]
         XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
         XCTAssertTrue(editorContextMenu.menuItems["Bold"].waitForExistence(timeout: 3))
-        XCTAssertFalse(editorContextMenu.menuItems["Add Comment…"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["scholium.editor.agentComment"].exists)
         app.typeKey(.escape, modifierFlags: [])
 
+        editor.typeKey(.upArrow, modifierFlags: [.command])
         editor.typeKey(.rightArrow, modifierFlags: [.shift])
-        insert.click()
-        XCTAssertTrue(app.menuItems["Add Comment…"].firstMatch.isEnabled)
+        editor.rightClick()
+        XCTAssertTrue(editorContextMenu.menuItems[
+            "scholium.editor.agentComment"
+        ].waitForExistence(timeout: 3))
         app.typeKey(.escape, modifierFlags: [])
+    }
+
+    @MainActor
+    func testPassageDiscussionCloseReopenAndFinish() throws {
+        let noteURL = triptychDirectory
+            .appendingPathComponent("01-analyses", isDirectory: true)
+            .appendingPathComponent("QA Autosave A.md")
+        let sourceBefore = try Data(contentsOf: noteURL)
+
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        mode.click()
+        let livePreview = app.menuItems
+            .matching(identifier: "text.page.badge.magnifyingglass")
+            .firstMatch
+        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
+        livePreview.click()
+
+        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: [.command])
+        editor.typeKey(.rightArrow, modifierFlags: [.shift])
+
+        editor.rightClick()
+        let editorContextMenu = app.menus["scholium.editor.contextMenu"]
+        XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
+        let addComment = editorContextMenu.menuItems[
+            "scholium.editor.agentComment"
+        ]
+        XCTAssertTrue(addComment.waitForExistence(timeout: 3))
+        addComment.click()
+
+        var discussion = app.descendants(matching: .any)["scholium.discussion"]
+        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
+        XCTAssertTrue(discussion.staticTexts["SELECTED PASSAGE"].exists)
+
+        let researcherMessage = discussion.descendants(matching: .any)[
+            "scholium.discussion.researcherMessage"
+        ]
+        XCTAssertTrue(researcherMessage.waitForExistence(timeout: 3))
+        try paste("What follows from this passage?", into: researcherMessage)
+        discussion.descendants(matching: .any)[
+            "scholium.discussion.submitResearcherTurn"
+        ].click()
+
+        XCTAssertTrue(app.staticTexts[
+            "The Discussion is waiting for an agent reply. Closing this sheet leaves it active."
+        ].waitForExistence(timeout: 8))
+
+        discussion = app.descendants(matching: .any)["scholium.discussion"]
+        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
+        XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
+
+        selectResearchInspectorMode("actions")
+        let activeDiscussion = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.discussion.active."
+            )
+        ).firstMatch
+        XCTAssertTrue(activeDiscussion.waitForExistence(timeout: 8))
+        let activeFile = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: triptychDirectory
+                    .appendingPathComponent(".scholium", isDirectory: true)
+                    .appendingPathComponent("research-records/v1/active", isDirectory: true),
+                includingPropertiesForKeys: nil
+            ).first { $0.pathExtension == "json" }
+        )
+        let discussionID = activeFile.deletingPathExtension().lastPathComponent
+        let cliOutput = try runScholiumCLI([
+            "discuss", "reply", discussionID,
+            "--agent", "Synthetic Agent",
+            "--text", "A bounded synthetic reply.",
+        ])
+        XCTAssertTrue(cliOutput.contains("Recorded reply"))
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            (activeDiscussion.value as? String)?.contains("Agent reply recorded.") == true
+        })
+
+        activeDiscussion.click()
+        discussion = app.descendants(matching: .any)["scholium.discussion"]
+        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
+
+        let finish = discussion.descendants(matching: .any)[
+            "scholium.discussion.finish"
+        ]
+        XCTAssertTrue(finish.waitForExistence(timeout: 8))
+        XCTAssertTrue(discussion.staticTexts["Synthetic Agent"].exists)
+        XCTAssertTrue(discussion.staticTexts["A bounded synthetic reply."].exists)
+        finish.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !discussion.exists })
+        XCTAssertTrue(waitUntil(timeout: 8) { !activeDiscussion.exists })
+        XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
+
+        let recordRoot = triptychDirectory
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("research-records", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
+        let activeFiles = try FileManager.default.contentsOfDirectory(
+            at: recordRoot.appendingPathComponent("active", isDirectory: true),
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+        let finishedFiles = try FileManager.default.contentsOfDirectory(
+            at: recordRoot.appendingPathComponent("records", isDirectory: true),
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+        XCTAssertTrue(activeFiles.isEmpty)
+        XCTAssertEqual(finishedFiles.count, 1)
     }
 
     @MainActor
@@ -5630,6 +5745,68 @@ final class ScholiumUITests: XCTestCase {
         guard process.terminationStatus == 0 else {
             throw CocoaError(.fileWriteUnknown)
         }
+    }
+
+    private func runScholiumCLI(_ arguments: [String]) throws -> String {
+        // The QA app keeps its live registry beneath its isolated Application
+        // Support root, while an explicitly isolated CLI resolves a frozen
+        // invocation registry at <SCHOLIUM_HOME>/registry. Copy that small
+        // registry only after the app has configured this disposable
+        // Triptych. The CLI then exercises the real packaged boundary without
+        // receiving a synthetic assignment or touching researcher state.
+        let appRegistry = homeDirectory
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Workspace", isDirectory: true)
+        let cliRegistry = homeDirectory
+            .appendingPathComponent("registry", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: appRegistry.path),
+              !FileManager.default.fileExists(atPath: cliRegistry.path) else {
+            throw NSError(
+                domain: "ScholiumUITests.CLI",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The isolated QA registry could not be snapshotted exactly once.",
+                ]
+            )
+        }
+        try FileManager.default.copyItem(at: appRegistry, to: cliRegistry)
+
+        let registeredApp = try XCTUnwrap(
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.scholium.qa")
+        )
+        let executable = registeredApp
+            .appendingPathComponent("Contents/Helpers/scholium")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: executable.path))
+        let process = Process()
+        let output = Pipe()
+        let error = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["SCHOLIUM_HOME"] = homeDirectory.path
+        environment["CFFIXED_USER_HOME"] = homeDirectory.path
+        process.environment = environment
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+        process.waitUntilExit()
+        let stdout = String(
+            decoding: output.fileHandleForReading.readDataToEndOfFile(),
+            as: UTF8.self
+        )
+        let stderr = String(
+            decoding: error.fileHandleForReading.readDataToEndOfFile(),
+            as: UTF8.self
+        )
+        guard process.terminationStatus == 0 else {
+            throw NSError(
+                domain: "ScholiumUITests.CLI",
+                code: Int(process.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: stderr]
+            )
+        }
+        return stdout
     }
 
     @MainActor

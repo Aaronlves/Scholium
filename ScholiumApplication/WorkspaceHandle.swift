@@ -1891,19 +1891,6 @@ public actor WorkspaceHandle {
         return currentSnapshot.research
     }
 
-    func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
-        try requireActive()
-        let legacy = await services.dialogueStore.entries(noteID: noteID).filter {
-            $0.functionSnapshot.request.function == .discuss
-        }
-        let local = try await services.localResearchExecutionStore.listing()
-            .records.compactMap(\.dialogue).filter {
-                $0.functionSnapshot.request.function == .discuss
-                    && $0.selectedNotes.contains(where: { $0.noteID == noteID })
-            }
-        return (legacy + local).sorted { $0.createdAt > $1.createdAt }
-    }
-
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
         try requireActive()
         return await services.critiqueRegistry.association(workNoteID: workNoteID)
@@ -1935,67 +1922,6 @@ public actor WorkspaceHandle {
             "The Discuss response profile",
             publication: .researchRecords
         )
-    }
-
-    func discussionRecords() async throws -> [DialogueEntry] {
-        try requireActive()
-        if let error = await services.dialogueStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(error)
-        }
-        let legacy = await services.dialogueStore.allEntries().filter {
-            $0.functionSnapshot.request.function == .discuss
-        }
-        let local = try await services.localResearchExecutionStore.listing()
-            .records.compactMap(\.dialogue).filter {
-                $0.functionSnapshot.request.function == .discuss
-            }
-        return (legacy + local).sorted { $0.createdAt > $1.createdAt }
-    }
-
-    func discussion(id: UUID) async throws -> DialogueEntry {
-        try requireActive()
-        if let local = try await services.localResearchExecutionStore
-            .recordIfPresent(id: id)?.dialogue {
-            guard local.functionSnapshot.request.function == .discuss else {
-                throw DialogueError.entryNotFound(id)
-            }
-            return local
-        }
-        if let error = await services.dialogueStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(error)
-        }
-        let entry = try await services.dialogueStore.entry(id: id)
-        guard entry.functionSnapshot.request.function == .discuss else {
-            throw DialogueError.entryNotFound(id)
-        }
-        return entry
-    }
-
-    func appendDiscussionReply(
-        _ reply: DialogueReply,
-        to entryID: UUID
-    ) async throws -> DialogueEntry {
-        try requireActive()
-        if try await services.localResearchExecutionStore.recordIfPresent(id: entryID) != nil {
-            let entry = try await services.localResearchExecutionStore.appendReply(
-                reply,
-                to: entryID
-            )
-            try await refreshAfterCommittedOperation(
-                "The Discuss reply",
-                publication: .researchRecords
-            )
-            return entry
-        }
-        if let error = await services.dialogueStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(error)
-        }
-        let entry = try await services.dialogueStore.appendReply(reply, to: entryID)
-        try await refreshAfterCommittedOperation(
-            "The Discuss reply",
-            publication: .researchRecords
-        )
-        return entry
     }
 
     func skills() async throws -> [ResearchSkillPackage] {

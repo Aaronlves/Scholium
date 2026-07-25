@@ -98,7 +98,7 @@ extension ScholiumCLI {
                 )
             }
         }
-        if (key == "discuss reply" || key == "comment reply"),
+        if key == "discuss reply",
            counts["--text", default: 0] > 0,
            counts["--from", default: 0] > 0 {
             throw CLIError.usage("Choose either --text or --from for a reply, not both.")
@@ -208,17 +208,7 @@ extension ScholiumCLI {
             "note set-aside": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),
             "note trash": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),
             "note delete": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--permanent": .flag, "--expected": .value]),
-            "comment reply": .init(
-                pathLength: 2,
-                positionalCount: 1 ... 1,
-                options: [
-                    "--triptych": .value,
-                    "--agent": .value,
-                    "--text": .value,
-                    "--from": .value,
-                ]
-            ),
-            "discuss list": .init(pathLength: 2, options: ["--triptych": .value, "--note": .value, "--format": .value]),
+            "discuss list": .init(pathLength: 2, options: ["--triptych": .value, "--format": .value]),
             "discuss show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "discuss reply": .init(
                 pathLength: 2,
@@ -228,8 +218,6 @@ extension ScholiumCLI {
                     "--agent": .value,
                     "--text": .value,
                     "--from": .value,
-                    "--note": .value,
-                    "--comment": .value,
                 ]
             ),
             "zotero mcp config": .init(pathLength: 3, options: format),

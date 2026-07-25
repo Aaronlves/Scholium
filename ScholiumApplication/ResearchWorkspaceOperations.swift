@@ -2,8 +2,104 @@ import ScholiumContracts
 import Foundation
 import ScholiumCore
 
+enum ResearchDiscussionFactory {
+    static func make(
+        snapshot: ResearchFunctionSnapshot,
+        triptychID: UUID
+    ) throws -> PortableResearchDiscussion {
+        guard let action = snapshot.actionSnapshot,
+              action.executionKind == .discussion else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "A portable Discussion requires one resolved Discuss Action."
+            )
+        }
+        let request = snapshot.request
+        let readableByID = Dictionary(
+            uniqueKeysWithValues: action.authority.readableNotes.map { ($0.noteID, $0) }
+        )
+        let selectedIDs = [request.target.noteID] + request.materials.map(\.noteID)
+        var seen: Set<UUID> = []
+        let selected = try selectedIDs.compactMap { noteID -> ResearchActionNoteSnapshot? in
+            guard seen.insert(noteID).inserted else { return nil }
+            guard let note = readableByID[noteID] else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A selected Discussion participant is outside the frozen read authority."
+                )
+            }
+            return note
+        }
+        let participants = try selected.map { note in
+            try PortableResearchNoteRevision(
+                noteID: note.noteID,
+                note: note.note,
+                role: note.role,
+                title: note.title,
+                startingRevision: note.fingerprint,
+                endingRevision: note.fingerprint
+            )
+        }
+        let statement = try PortableResearchStatement(
+            id: snapshot.runID,
+            author: .researcher,
+            kind: .discussionTurn,
+            attribution: "Researcher",
+            text: request.instruction ?? "Discuss the current Target.",
+            createdAt: snapshot.preparedAt,
+            passage: request.scope?.selection
+        )
+        return try PortableResearchDiscussion(
+            id: snapshot.runID,
+            triptychID: triptychID,
+            primaryNoteID: request.target.noteID,
+            action: ResearchActionRecordIdentity(snapshot: action),
+            method: try PortableResearchMethodReference(snapshot: action),
+            participatingNotes: participants,
+            statements: [statement],
+            createdAt: snapshot.preparedAt,
+            updatedAt: snapshot.preparedAt
+        )
+    }
+
+    static func activeMatches(
+        _ discussion: PortableResearchDiscussion,
+        expected: PortableResearchDiscussion
+    ) -> Bool {
+        discussion.id == expected.id
+            && discussion.triptychID == expected.triptychID
+            && discussion.primaryNoteID == expected.primaryNoteID
+            && discussion.action == expected.action
+            && discussion.method == expected.method
+            && discussion.participatingNotes == expected.participatingNotes
+            && discussion.createdAt == expected.createdAt
+            && discussion.statements.first == expected.statements.first
+    }
+
+    static func finishedMatches(
+        _ record: PortableResearchRecord,
+        expected: PortableResearchDiscussion
+    ) -> Bool {
+        let finishedByID = Dictionary(
+            uniqueKeysWithValues: record.participatingNotes.map { ($0.noteID, $0) }
+        )
+        return record.kind == .discussion
+            && record.primaryNoteID == expected.primaryNoteID
+            && record.action == expected.action
+            && record.method == expected.method
+            && record.startedAt == expected.createdAt
+            && record.statements.first == expected.statements.first
+            && finishedByID.count == expected.participatingNotes.count
+            && expected.participatingNotes.allSatisfy { expectedNote in
+                guard let finishedNote = finishedByID[expectedNote.noteID] else { return false }
+                return finishedNote.note == expectedNote.note
+                    && finishedNote.role == expectedNote.role
+                    && finishedNote.title == expectedNote.title
+                    && finishedNote.startingRevision == expectedNote.startingRevision
+            }
+    }
+}
+
 extension WorkspaceHandle {
-    // MARK: Settlement and Comment exchange
+    // MARK: Settlement and Discussion
 
     @discardableResult
     func settle(
@@ -26,54 +122,265 @@ extension WorkspaceHandle {
         return settlement
     }
 
-    func commentExchanges(noteID: UUID) async throws -> [CommentExchange] {
+    func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
         try requireActive()
-        try await requireHealthyResearchActivityStore()
-        return await services.researchActivityStore.exchanges(for: noteID)
-    }
-
-    func commentExchange(id: UUID) async throws -> CommentExchange {
-        try requireActive()
-        try await requireHealthyResearchActivityStore()
-        guard let exchange = await services.researchActivityStore.exchange(id: id) else {
-            throw CommentExchangeError.exchangeNotFound(id)
+        let listing = try await services.portableResearchRecordStore.activeDiscussions(
+            noteID: noteID
+        )
+        guard listing.issues.isEmpty else {
+            throw ScholiumApplicationError.researchStoreUnavailable(
+                listing.issues.map(\.reason).joined(separator: "\n")
+            )
         }
-        return exchange
+        return listing.discussions
     }
 
-    func createCommentExchange(
-        _ exchange: CommentExchange
-    ) async throws -> CommentExchange {
+    func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
         try requireActive()
-        try await requireHealthyResearchActivityStore()
-        try await validateCommentExchange(exchange)
-        let stored = try await services.researchActivityStore.createExchange(exchange)
-        try await refreshAfterResearchCommit("The Comment exchange")
-        return stored
+        return try await services.portableResearchRecordStore.activeDiscussion(id: id)
     }
 
-    func appendCommentExchangeTurn(
-        exchangeID: UUID,
-        turn: CommentExchangeTurn
-    ) async throws -> CommentExchange {
+    func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
         try requireActive()
-        try await requireHealthyResearchActivityStore()
-        let stored = try await services.researchActivityStore.appendExchangeTurn(
-            exchangeID: exchangeID,
-            turn: turn
+        return try await services.portableResearchRecordStore.activeDiscussionIfPresent(id: id)
+    }
+
+    func createDiscussion(
+        target: ResearchFunctionTarget,
+        focalNotes: [ResearchFunctionMaterial],
+        passage: CommentAnchor?,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
+        let targetContext = try await researchContext(
+            for: target.note,
+            expectedRevision: target.fingerprint,
+            permits: { ResearchFunctionTargetRole(vaultRole: $0) == target.role },
+            unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        try await refreshAfterResearchCommit("The Comment exchange")
+        guard targetContext.identity.id == target.noteID,
+              passage?.fingerprint == target.fingerprint || passage == nil else {
+            throw ResearchOperationError.noteUnavailable(target.note)
+        }
+        var participants = [try portableDiscussionParticipant(
+            noteID: target.noteID,
+            note: target.note,
+            role: target.role,
+            title: target.title,
+            fingerprint: target.fingerprint
+        )]
+        var seen: Set<UUID> = [target.noteID]
+        for focal in focalNotes where seen.insert(focal.noteID).inserted {
+            let context = try await researchContext(
+                for: focal.note,
+                expectedRevision: focal.fingerprint,
+                permits: { ResearchFunctionTargetRole(vaultRole: $0) == focal.role },
+                unavailable: { ResearchOperationError.commentUnavailable($0) }
+            )
+            guard context.identity.id == focal.noteID else {
+                throw ResearchOperationError.noteUnavailable(focal.note)
+            }
+            participants.append(try portableDiscussionParticipant(
+                noteID: focal.noteID,
+                note: focal.note,
+                role: focal.role,
+                title: focal.title,
+                fingerprint: focal.fingerprint
+            ))
+        }
+        let createdAt = Date()
+        let statement = try PortableResearchStatement(
+            author: .researcher,
+            kind: .discussionTurn,
+            attribution: "Researcher",
+            text: researcherMessage,
+            createdAt: createdAt,
+            passage: passage
+        )
+        let requestedParticipantIDs = Set(participants.map(\.noteID))
+        let active = try await activeDiscussions(noteID: target.noteID)
+            .filter { $0.primaryNoteID == target.noteID }
+        if let existing = active.first {
+            guard active.count == 1,
+                  requestedParticipantIDs.isSubset(
+                    of: Set(existing.participatingNotes.map(\.noteID))
+                  ) else {
+                throw ResearchOperationError.discussionContextChanged
+            }
+            let stored = try await appendDiscussionStatement(
+                statement,
+                to: existing
+            )
+            try await refreshAfterResearchCommit("The Discussion")
+            return stored
+        }
+        let discussion = try PortableResearchDiscussion(
+            triptychID: services.manifest.id,
+            primaryNoteID: target.noteID,
+            participatingNotes: participants,
+            statements: [statement],
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+        let stored: PortableResearchDiscussion
+        do {
+            stored = try await services.portableResearchRecordStore
+                .createActiveDiscussion(discussion)
+        } catch ResearchRecordStoreV1Error.activeDiscussionAlreadyExists(
+            primaryNoteID: _,
+            discussionID: let discussionID
+        ) {
+            let existing = try await services.portableResearchRecordStore.activeDiscussion(
+                id: discussionID
+            )
+            guard existing.primaryNoteID == target.noteID,
+                  requestedParticipantIDs.isSubset(
+                    of: Set(existing.participatingNotes.map(\.noteID))
+                  ) else {
+                throw ResearchOperationError.discussionContextChanged
+            }
+            stored = try await appendDiscussionStatement(statement, to: existing)
+        }
+        try await refreshAfterResearchCommit("The Discussion")
         return stored
     }
 
-    func finishCommentExchange(exchangeID: UUID) async throws -> CommentExchange {
+    func appendDiscussionStatement(
+        discussionID: UUID,
+        author: PortableResearchStatementAuthor,
+        attribution: String,
+        text: String,
+        passage: CommentAnchor? = nil
+    ) async throws -> PortableResearchDiscussion {
         try requireActive()
-        try await requireHealthyResearchActivityStore()
-        let stored = try await services.researchActivityStore.finishExchange(
-            exchangeID: exchangeID
+        let discussion = try await services.portableResearchRecordStore.activeDiscussion(
+            id: discussionID
         )
-        try await refreshAfterResearchCommit("The Comment exchange")
+        let kind: PortableResearchStatementKind = switch author {
+        case .agent:
+            .discussionTurn
+        case .researcher:
+            discussion.statements.contains(where: { $0.author == .agent })
+                ? .researcherResponse
+                : .discussionTurn
+        }
+        let createdAt = Date()
+        let statement = try PortableResearchStatement(
+            author: author,
+            kind: kind,
+            attribution: attribution,
+            text: text,
+            createdAt: createdAt,
+            passage: passage
+        )
+        let stored = try await appendDiscussionStatement(statement, to: discussion)
+        try await refreshAfterResearchCommit("The Discussion")
         return stored
+    }
+
+    private func appendDiscussionStatement(
+        _ statement: PortableResearchStatement,
+        to discussion: PortableResearchDiscussion
+    ) async throws -> PortableResearchDiscussion {
+        if let passage = statement.passage {
+            guard let current = currentSnapshot.vaults.lazy
+                .flatMap(\.documents)
+                .first(where: { snapshot in
+                    snapshot.lifecycle == .active
+                        && snapshot.stableIdentity.resolvedID == discussion.primaryNoteID
+                }) else {
+                throw ResearchOperationError.noteUnavailable(discussion.primaryNote.note)
+            }
+            let document = try await repository(vaultID: current.id.vaultID).load(
+                relativePath: current.id.relativePath
+            )
+            guard passage.fingerprint == document.fingerprint else {
+                throw ResearchOperationError.staleCommentRevision
+            }
+        }
+        return try await services.portableResearchRecordStore.appendDiscussionStatement(
+            statement,
+            to: discussion.id,
+            at: statement.createdAt
+        )
+    }
+
+    func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
+        try requireActive()
+        if let local = try await services.localResearchExecutionStore.recordIfPresent(
+            id: discussionID
+        ) {
+            guard local.snapshot.request.function == .discuss else {
+                throw ResearchRecordStoreV1Error.discussionFinishConflict(discussionID)
+            }
+            _ = try await validatedDiscussionStatements(snapshot: local.snapshot)
+        }
+        let discussion: PortableResearchDiscussion
+        do {
+            discussion = try await services.portableResearchRecordStore.activeDiscussion(
+                id: discussionID
+            )
+        } catch ResearchRecordStoreV1Error.discussionNotFound(_) {
+            let existing = try await services.portableResearchRecordStore.record(
+                id: discussionID
+            )
+            guard existing.kind == .discussion else {
+                throw ResearchRecordStoreV1Error.discussionFinishConflict(discussionID)
+            }
+            return existing
+        }
+        let participants = try await currentDiscussionParticipants(discussion)
+        let stored = try await services.portableResearchRecordStore.finishDiscussion(
+            id: discussionID,
+            participatingNotes: participants
+        )
+        try await refreshAfterResearchCommit("The Discussion finish")
+        return stored
+    }
+
+    func validatedDiscussionStatements(
+        snapshot: ResearchFunctionSnapshot
+    ) async throws -> [PortableResearchStatement] {
+        let expected = try ResearchDiscussionFactory.make(
+            snapshot: snapshot,
+            triptychID: services.manifest.id
+        )
+        if let active = try await services.portableResearchRecordStore
+            .activeDiscussionIfPresent(id: snapshot.runID) {
+            guard ResearchDiscussionFactory.activeMatches(active, expected: expected) else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The portable Discussion no longer matches its frozen Action run."
+                )
+            }
+            return active.statements
+        }
+        do {
+            let finished = try await services.portableResearchRecordStore.record(
+                id: snapshot.runID
+            )
+            guard ResearchDiscussionFactory.finishedMatches(finished, expected: expected) else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The finished Discussion no longer matches its frozen Action run."
+                )
+            }
+            return finished.statements
+        } catch ResearchRecordStoreV1Error.recordNotFound(_) {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Record a durable attributed reply before completing Discuss."
+            )
+        }
+    }
+
+    func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord] {
+        try requireActive()
+        let listing = try await services.portableResearchRecordStore.listing(location: .records)
+        guard listing.issues.isEmpty else {
+            throw ScholiumApplicationError.researchStoreUnavailable(
+                listing.issues.map(\.reason).joined(separator: "\n")
+            )
+        }
+        return listing.records.filter { record in
+            noteID == nil || record.participatingNotes.contains(where: { $0.noteID == noteID })
+        }
     }
 
     // MARK: Checkpoints and Recovery
@@ -228,116 +535,6 @@ extension WorkspaceHandle {
         try requireActive()
         try await services.transactionRecoveryStore.resolve(id)
         try await refreshAfterResearchCommit("The recovery-record resolution")
-    }
-
-    // MARK: Discuss
-
-    func createDiscussion(
-        instruction: String,
-        selectedNotes: [DialogueNoteReference],
-        includedComments: [DialogueIncludedComment],
-        requestedDestination: String?,
-        responseProfile: DialogueResponseProfile?,
-        discussionID: UUID,
-        functionSnapshot: ResearchFunctionSnapshot,
-        skillInstructions: String
-    ) async throws -> DialoguePreparation {
-        try requireActive()
-        if let issue = await services.dialogueStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(issue)
-        }
-        let settings = try await services.controlStore.settings()
-        let template = settings.activePromptTemplate(for: .dialogue)
-        guard template.validationIssues.isEmpty else {
-            throw ResearchGuidanceError.invalidActiveTemplate(
-                .dialogue,
-                template.validationIssues
-            )
-        }
-        let storedProfile = try await services.controlStore.discussResponseProfile()
-        let effectiveProfile = responseProfile ?? storedProfile
-        guard effectiveProfile.validationIssues.isEmpty else {
-            throw ResearchOperationError.invalidDialogueResponseContract(
-                effectiveProfile.validationIssues
-            )
-        }
-        let responseContract = DialogueResponseContract(profile: effectiveProfile)
-        guard functionSnapshot.runID == discussionID,
-              functionSnapshot.recordID == discussionID,
-              functionSnapshot.request.function == .discuss,
-              Set(functionSnapshot.request.commentIDs) == Set(includedComments.map(\.id)) else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Discuss function evidence does not match its record identity."
-            )
-        }
-        try await verifyDialogueSelectionIsCurrent(selectedNotes)
-
-        let linkedSummary = dialogueLinkedNoteSummary(for: selectedNotes)
-        var instructions = DialoguePromptBuilder.build(
-            DialoguePromptContext(
-                instruction: instruction,
-                selectedNotes: selectedNotes,
-                comments: includedComments,
-                triptychSummary: dialogueTriptychSummary(),
-                linkedNoteSummary: linkedSummary,
-                requestedDestination: requestedDestination
-            ),
-            template: template.source
-        )
-        let responseLocator = DiscussResponseTransport.locator(
-            discussionID: discussionID,
-            triptychID: services.manifest.id,
-            contract: responseContract
-        )
-        instructions += "\n\n" + responseLocator
-        if !skillInstructions.isEmpty {
-            instructions += "\n\n" + skillInstructions
-        }
-
-        let entry = DialogueEntry(
-            id: discussionID,
-            triptychID: services.manifest.id,
-            instruction: instruction,
-            selectedNotes: selectedNotes,
-            includedComments: includedComments,
-            preparedInstructions: skillInstructions + "\n\n" + responseLocator,
-            checkpointID: nil,
-            functionSnapshot: functionSnapshot,
-            responseContract: responseContract,
-            requestedDestination: requestedDestination,
-            linkedNoteSummary: linkedSummary
-        )
-        let saved = try await services.dialogueStore.save(entry)
-        try await refreshAfterResearchCommit("The Discuss request")
-        return DialoguePreparation(
-            entry: saved,
-            instructions: instructions,
-            checkpoint: nil
-        )
-    }
-
-    func appendDiscussionFollowUp(
-        _ comment: DialogueFollowUpComment,
-        to entryID: UUID
-    ) async throws -> DialogueEntry {
-        try requireActive()
-        if try await services.localResearchExecutionStore.recordIfPresent(id: entryID) != nil {
-            let entry = try await services.localResearchExecutionStore.appendFollowUp(
-                comment,
-                to: entryID
-            )
-            try await refreshAfterResearchCommit("The Discuss follow-up")
-            return entry
-        }
-        if let issue = await services.dialogueStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(issue)
-        }
-        let entry = try await services.dialogueStore.appendFollowUpComment(
-            comment,
-            to: entryID
-        )
-        try await refreshAfterResearchCommit("The Discuss follow-up")
-        return entry
     }
 
     // MARK: Critique
@@ -680,8 +877,20 @@ extension WorkspaceHandle {
             }
         }
 
+        let preparedFunctionInstructions = functionSnapshot.map { _ in
+            skillInstructions + "\n\n"
+                + researchFunctionCritiqueOutputBinding(outputSnapshot)
+        }
         let association: CritiqueAssociation
         do {
+            if let functionSnapshot,
+               functionSnapshot.actionSnapshot != nil,
+               let preparedFunctionInstructions {
+                try await services.localResearchExecutionStore.stageCritiqueHandoff(
+                    snapshot: functionSnapshot,
+                    preparedInstructions: preparedFunctionInstructions
+                )
+            }
             association = try await services.critiqueRegistry.recordRequest(
                 workNoteID: workContext.identity.id,
                 workRelativePath: workID.relativePath,
@@ -691,14 +900,20 @@ extension WorkspaceHandle {
                 scope: scope,
                 roundID: roundID,
                 functionSnapshot: functionSnapshot,
-                functionInstructions: functionSnapshot == nil
-                    ? nil
-                    : skillInstructions + "\n\n"
-                        + researchFunctionCritiqueOutputBinding(outputSnapshot),
+                functionInstructions: preparedFunctionInstructions,
                 requestedAt: requestedAt
             )
         } catch {
             let requestError = error
+            if let functionSnapshot,
+               functionSnapshot.actionSnapshot != nil,
+               let preparedFunctionInstructions {
+                try? await services.localResearchExecutionStore
+                    .discardCritiqueHandoff(
+                        snapshot: functionSnapshot,
+                        preparedInstructions: preparedFunctionInstructions
+                    )
+            }
             do {
                 try await rollbackPreparedCritique()
             } catch let rollbackError {
@@ -779,28 +994,58 @@ extension WorkspaceHandle {
         )
     }
 
-    private func requireHealthyResearchActivityStore() async throws {
-        if let issue = await services.researchActivityStore.healthError() {
-            throw ScholiumApplicationError.researchStoreUnavailable(issue)
-        }
+    private func portableDiscussionParticipant(
+        noteID: UUID,
+        note: VaultQualifiedNoteID,
+        role: ResearchFunctionTargetRole,
+        title: String,
+        fingerprint: DocumentFingerprint
+    ) throws -> PortableResearchNoteRevision {
+        try PortableResearchNoteRevision(
+            noteID: noteID,
+            note: note,
+            role: actionRole(role),
+            title: title,
+            startingRevision: fingerprint,
+            endingRevision: fingerprint
+        )
     }
 
-    private func validateCommentExchange(_ exchange: CommentExchange) async throws {
-        let reference = exchange.note
-        guard let snapshot = currentSnapshot.document(id: reference.note),
-              snapshot.lifecycle == .active,
-              case .resolved(let stableID) = snapshot.stableIdentity,
-              stableID == reference.noteID,
-              ResearchFunctionTargetRole(vaultRole: snapshot.vaultRole) == reference.role else {
-            throw ResearchOperationError.noteUnavailable(reference.note)
-        }
-        let document = try await repository(vaultID: reference.note.vaultID)
-            .load(relativePath: reference.note.relativePath)
-        guard document.fingerprint == exchange.anchor.fingerprint else {
-            throw VaultRepositoryError.conflict(
-                expected: exchange.anchor.fingerprint,
-                current: document.fingerprint
+    private func currentDiscussionParticipants(
+        _ discussion: PortableResearchDiscussion
+    ) async throws -> [PortableResearchNoteRevision] {
+        var result: [PortableResearchNoteRevision] = []
+        for participant in discussion.participatingNotes {
+            guard let current = currentSnapshot.vaults.lazy
+                .flatMap(\.documents)
+                .first(where: { snapshot in
+                    snapshot.lifecycle == .active
+                        && snapshot.stableIdentity.resolvedID == participant.noteID
+                }) else {
+                throw ResearchOperationError.noteUnavailable(participant.note)
+            }
+            let document = try await repository(vaultID: current.id.vaultID).load(
+                relativePath: current.id.relativePath
             )
+            result.append(try PortableResearchNoteRevision(
+                noteID: participant.noteID,
+                note: participant.note,
+                role: participant.role,
+                title: participant.title,
+                startingRevision: participant.startingRevision,
+                endingRevision: document.fingerprint
+            ))
+        }
+        return result
+    }
+
+    private func actionRole(
+        _ role: ResearchFunctionTargetRole
+    ) -> ResearchActionTargetRole {
+        switch role {
+        case .analysis: .analysis
+        case .topic: .topic
+        case .work: .work
         }
     }
 
@@ -853,86 +1098,6 @@ extension WorkspaceHandle {
             noteID: stableID,
             area: area
         )
-    }
-
-    private func verifyDialogueSelectionIsCurrent(
-        _ selectedNotes: [DialogueNoteReference]
-    ) async throws {
-        for reference in selectedNotes {
-            let id = VaultQualifiedNoteID(
-                vaultID: reference.vaultID,
-                relativePath: reference.relativePath
-            )
-            guard let snapshot = currentSnapshot.document(id: id),
-                  snapshot.lifecycle == .active,
-                  case .resolved(let stableID) = snapshot.stableIdentity,
-                  stableID == reference.noteID else {
-                throw ResearchOperationError.dialogueContextChanged(reference.title)
-            }
-            do {
-                let document = try await repository(vaultID: reference.vaultID).load(
-                    relativePath: reference.relativePath
-                )
-                guard document.fingerprint == reference.fingerprint else {
-                    throw ResearchOperationError.dialogueContextChanged(reference.title)
-                }
-            } catch is ResearchOperationError {
-                throw ResearchOperationError.dialogueContextChanged(reference.title)
-            } catch {
-                throw ResearchOperationError.dialogueContextChanged(reference.title)
-            }
-        }
-    }
-
-    private func dialogueTriptychSummary() -> String {
-        var lines = ["Triptych: \(assignment.triptych.name)"]
-        for slot in WorkspaceVaultSlot.allCases {
-            guard let vault = assignment.vault(for: slot) else { continue }
-            lines.append("- \(slot.displayName) root: \(vault.canonicalPath)")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private func dialogueLinkedNoteSummary(
-        for selectedNotes: [DialogueNoteReference]
-    ) -> String? {
-        let catalog = currentSnapshot.discovery.catalog
-        guard let graph = catalog.graph else { return nil }
-        let notesByID = Dictionary(uniqueKeysWithValues: catalog.notes.map { note in
-            (
-                VaultQualifiedNoteID(
-                    vaultID: note.reference.vaultID,
-                    relativePath: note.reference.relativePath
-                ),
-                note
-            )
-        })
-        var lines: [String] = []
-        for note in selectedNotes {
-            let source = VaultQualifiedNoteID(
-                vaultID: note.vaultID,
-                relativePath: note.relativePath
-            )
-            for edge in graph.outgoing[source, default: []] {
-                let targetName: String
-                if let destination = edge.destination?.note {
-                    targetName = notesByID[destination]?.title ?? destination.relativePath
-                } else {
-                    targetName = edge.occurrence.target
-                }
-                let relation = switch edge.occurrence.vectorKind {
-                case .supportsTarget: "supports"
-                case .supportedByTarget: "is supported by"
-                case .incompatible: "is incompatible with"
-                case .neutral, .none: "connects neutrally to"
-                }
-                lines.append(
-                    "- \(note.title) \(relation) \(targetName) "
-                        + "(declared on line \(edge.occurrence.span.start.line))"
-                )
-            }
-        }
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     private func availableCritiquePath(

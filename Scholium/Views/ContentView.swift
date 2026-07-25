@@ -2,11 +2,11 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-private enum CommentExchangePresentationError: LocalizedError {
+enum DiscussionPresentationError: LocalizedError {
     case unavailable
 
     var errorDescription: String? {
-        "Comment is unavailable until Scholium can identify the selected Analysis, Topic, or Work reliably."
+        "Discussion is unavailable until Scholium can identify the selected Analysis, Topic, or Work reliably."
     }
 }
 
@@ -319,8 +319,8 @@ struct ContentView: View {
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
             propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
-            commentExchanges: appState.researchController.records?.commentExchanges ?? [],
-            requestedCommentExchangeID: appState.requestedCommentExchangeID,
+            activeDiscussions: appState.researchController.records?.activeDiscussions ?? [],
+            requestedDiscussionID: appState.requestedDiscussionID,
             canComment: appState.canCommentCurrentNote,
             canEdit: appState.canEditCurrentNote,
             isManagedCritique: appState.currentDocumentCapabilities.isManagedCritique,
@@ -352,52 +352,58 @@ struct ContentView: View {
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             clearPendingSourceRange: { appState.pendingSourceRange = nil },
-            createCommentExchange: { anchor, message in
+            createDiscussion: { anchor, message in
                 guard let target = appState.currentResearchFunctionTarget else {
-                    throw CommentExchangePresentationError.unavailable
+                    throw DiscussionPresentationError.unavailable
                 }
-                return try await appState.researchController.createCommentExchange(
-                    CommentExchange(
-                        note: ResearchActivityNoteReference(
-                            noteID: target.noteID,
-                            note: target.note,
-                            role: target.role,
-                            title: target.title
-                        ),
-                        anchor: anchor,
-                        turns: [CommentExchangeTurn(author: .researcher, text: message)]
-                    )
+                let discussion = try await appState.researchController.createDiscussion(
+                    target: target,
+                    passage: anchor,
+                    researcherMessage: message
+                )
+                try await appState.researchController.refreshResearchProjection()
+                appState.requestedDiscussionID = discussion.id
+                return discussion
+            },
+            reloadDiscussion: { discussionID in
+                try await appState.researchController.activeDiscussionIfPresent(
+                    id: discussionID
                 )
             },
-            appendCommentExchangeTurn: { exchangeID, author, text in
-                try await appState.researchController.appendCommentExchangeTurn(
-                    exchangeID: exchangeID,
-                    turn: CommentExchangeTurn(author: author, text: text)
+            refreshDiscussionProjection: {
+                try await appState.researchController.refreshResearchProjection()
+            },
+            appendDiscussionStatement: { discussionID, author, attribution, text in
+                try await appState.researchController.appendDiscussionStatement(
+                    discussionID: discussionID,
+                    author: author,
+                    attribution: attribution,
+                    text: text
                 )
             },
-            finishCommentExchange: { exchangeID in
-                try await appState.researchController.finishCommentExchange(
-                    exchangeID: exchangeID
+            finishDiscussion: { discussionID in
+                try await appState.researchController.finishDiscussion(
+                    discussionID: discussionID
                 )
             },
-            clearRequestedCommentExchange: {
-                appState.requestedCommentExchangeID = nil
+            clearRequestedDiscussion: {
+                appState.requestedDiscussionID = nil
             },
-            handoffCommentRequest: { instructions in
+            handoffDiscussionRequest: { instructions in
                 appState.agentApplicationHandoff.copyAndOpen(
                     instructions: instructions,
                     copy: { try appState.copyTextToClipboard($0) }
                 )
             },
-            copyCommentRequest: { instructions in
+            copyDiscussionRequest: { instructions in
                 appState.agentApplicationHandoff.copyOnly(
                     instructions: instructions,
                     copy: { try appState.copyTextToClipboard($0) }
                 )
             },
-            commentReplyCommand: { exchangeID in
+            discussionReplyCommand: { discussionID in
                 let selector = triptychID.map { " --triptych \($0.uuidString)" } ?? ""
-                return "scholium comment reply \(exchangeID.uuidString) --agent \"AGENT_NAME\" --from -\(selector)"
+                return "scholium discuss reply \(discussionID.uuidString) --agent \"AGENT_NAME\" --from -\(selector)"
             },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
@@ -766,7 +772,7 @@ struct ContentView: View {
                     windowCoordinator.actions.showResearchRecord()
                 },
                 openComment: { exchangeID in
-                    appState.requestedCommentExchangeID = exchangeID
+                    appState.requestedDiscussionID = exchangeID
                 },
                 settle: { rationale in
                     guard let target = appState.currentResearchFunctionTarget else { return }

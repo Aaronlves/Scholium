@@ -162,7 +162,7 @@ public actor NotePermanentDeletionCoordinator {
         let critiqueDialogues: [DialogueEntry]
         let critiqueIdentityBackup: PermanentDeletionIdentityBackup?
         if let critiqueIdentityRecord {
-            critiqueDialogues = await dialogueStore.entries(noteID: critiqueIdentityRecord.id)
+            critiqueDialogues = []
             critiqueIdentityBackup = try await controlStore.prepareIdentityPurge(
                 id: critiqueIdentityRecord.id,
                 vaultID: critiqueIdentityRecord.vaultID,
@@ -189,7 +189,7 @@ public actor NotePermanentDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision,
             checkpointArea: checkpointArea,
-            dialogues: await dialogueStore.entries(noteID: noteID),
+            dialogues: [],
             critiqueNoteID: critiqueNoteID,
             critiqueDialogues: critiqueDialogues,
             critiqueAssociations: associations,
@@ -218,6 +218,9 @@ public actor NotePermanentDeletionCoordinator {
         try await recoveryStore.record(record)
 
         do {
+            try await portableRecordStore?.markNoteDeletionStarted(
+                noteIDs: Set(settlementIDs)
+            )
             let sourceDeletion = try await repository.preparePermanentDeletion(
                 relativePath: relativePath,
                 expectedRevision: expectedRevision
@@ -253,10 +256,6 @@ public actor NotePermanentDeletionCoordinator {
             try await repository.applyPreparedPermanentDeletion(sourceDeletion)
             try faultPlan.trigger(.afterSourceDeletion)
 
-            _ = try await dialogueStore.purgeEntries(containing: noteID)
-            if let critiqueNoteID {
-                _ = try await dialogueStore.purgeEntries(containing: critiqueNoteID)
-            }
             try faultPlan.trigger(.afterDialoguePurge)
             let settlementsByNoteID = Dictionary(
                 uniqueKeysWithValues: backup.settlements.map { ($0.noteID, $0) }
@@ -305,8 +304,7 @@ public actor NotePermanentDeletionCoordinator {
                 relativePath: relativePath,
                 fingerprint: expectedRevision,
                 removedCritiqueDocumentPath: backup.critiqueDeletion?.relativePath,
-                removedDialogueIDs: Set((backup.dialogues + backup.critiqueDialogues).map(\.id))
-                    .sorted { $0.uuidString < $1.uuidString },
+                removedDialogueIDs: [],
                 removedCritiqueAssociationIDs: backup.critiqueAssociations.map(\.id).sorted {
                     $0.uuidString < $1.uuidString
                 },
@@ -389,6 +387,9 @@ public actor NotePermanentDeletionCoordinator {
         try await localExecutionStore?.purgeExecutions(
             containing: deletedNoteIDs
         )
+        try await portableRecordStore?.handlePermanentDeletion(
+            noteIDs: deletedNoteIDs
+        )
         try await recoveryStore.resolve(record.id)
     }
 
@@ -413,8 +414,6 @@ public actor NotePermanentDeletionCoordinator {
             do { try await checkpointStore.rollbackPreparedCheckpointPurge(checkpoints) }
             catch { rollbackErrors.append("Checkpoints: \(error.localizedDescription)") }
         }
-        do { try await dialogueStore.restorePurgedEntries(backup.dialogues + backup.critiqueDialogues) }
-        catch { rollbackErrors.append("Discussion: \(error.localizedDescription)") }
         for settlement in backup.settlements {
             do { try await portableRecordStore?.restoreSettlement(settlement) }
             catch ResearchRecordStoreV1Error.settlementChanged(_) {
@@ -431,7 +430,23 @@ public actor NotePermanentDeletionCoordinator {
         catch { rollbackErrors.append("Critique identity: \(error.localizedDescription)") }
 
         let files = await observedFileEvidence(backup)
-        let restored = files.allSatisfy { $0.state == .restored }
+        let filesRestored = files.allSatisfy { $0.state == .restored }
+        if filesRestored, rollbackErrors.isEmpty {
+            var restoredNoteIDs: Set<UUID> = [backup.noteID]
+            if let critiqueNoteID = backup.critiqueNoteID {
+                restoredNoteIDs.insert(critiqueNoteID)
+            }
+            do {
+                try await portableRecordStore?.clearNoteDeletionMarkers(
+                    noteIDs: restoredNoteIDs
+                )
+            } catch {
+                rollbackErrors.append(
+                    "Discussion deletion gate: \(error.localizedDescription)"
+                )
+            }
+        }
+        let restored = filesRestored && rollbackErrors.isEmpty
         if restored, rollbackErrors.isEmpty {
             do {
                 try await recoveryStore.resolve(record.id)
@@ -586,11 +601,21 @@ public actor NotePermanentDeletionCoordinator {
     }
 
     private func requireHealthyStores() async throws {
-        if let error = await dialogueStore.healthError() {
-            throw ResearchRecordStoreError.unreadableStore(kind: "Discussion", reason: error)
-        }
         if let error = await critiqueRegistry.healthError() {
             throw ResearchRecordStoreError.unreadableStore(kind: "Critique", reason: error)
+        }
+        guard let portableRecordStore else { return }
+        var issues = try await portableRecordStore.activeDiscussions().issues
+        for location in PortableResearchRecordLocation.allCases {
+            issues += try await portableRecordStore.listing(location: location).issues
+        }
+        issues += try await portableRecordStore.settlementListing().issues
+        guard issues.isEmpty else {
+            let reason = issues.map { "\($0.id): \($0.reason)" }.joined(separator: "; ")
+            throw ResearchRecordStoreError.unreadableStore(
+                kind: "Portable Research Record",
+                reason: reason
+            )
         }
     }
 }

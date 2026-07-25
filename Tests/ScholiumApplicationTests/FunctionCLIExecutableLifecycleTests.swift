@@ -145,11 +145,17 @@ struct FunctionCLIExecutableLifecycleTests {
             "--triptych", fixture.assignment.id.uuidString,
             "--format", "json",
         ])
-        let shown = try decoder.decode(DialogueEntry.self, from: shownResult.stdout)
-        #expect(shown.responseContract.knownModules == [
-            .criticalReflection,
-            .philosophicalSignificance,
-        ])
+        let shown = try decoder.decode(
+            PortableResearchDiscussion.self,
+            from: shownResult.stdout
+        )
+        #expect(shown.id == dialogue.runID)
+        #expect(shown.statements.last?.author == .researcher)
+        #expect(shown.statements.last?.attribution == "Researcher")
+        #expect(
+            shown.statements.last?.text
+                == "State the synthetic fixture's bounded academic outcome."
+        )
 
         let replyURL = fixture.rootURL.appendingPathComponent("reply.md")
         try Data("Synthetic attributed transport evidence only.\n".utf8)
@@ -161,14 +167,19 @@ struct FunctionCLIExecutableLifecycleTests {
             "--from", replyURL.path,
         ])
         let replied = try decoder.decode(
-            DialogueEntry.self,
+            PortableResearchDiscussion.self,
             from: try cli.run([
                 "discuss", "show", dialogue.runID.uuidString,
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ]).stdout
         )
-        #expect(replied.replies.first?.agentName == "CLI Acceptance Fixture")
+        #expect(replied.statements.last?.author == .agent)
+        #expect(replied.statements.last?.attribution == "CLI Acceptance Fixture")
+        #expect(
+            replied.statements.last?.text
+                == "Synthetic attributed transport evidence only."
+        )
 
         let dialogueCompletion = ResearchFunctionCompletionSubmission(
             runID: dialogue.runID,
@@ -336,18 +347,41 @@ struct FunctionCLIExecutableLifecycleTests {
             )
             #expect(cancellation.runID == cancellable.runID)
         }
+        let cancelledDiscussion = try decoder.decode(
+            PortableResearchDiscussion.self,
+            from: try cli.run([
+                "discuss", "show", cancellable.runID.uuidString,
+                "--triptych", fixture.assignment.id.uuidString,
+                "--format", "json",
+            ]).stdout
+        )
+        #expect(cancelledDiscussion.id == cancellable.runID)
+        #expect(cancelledDiscussion.awaitsAgentReply)
+        #expect(
+            cancelledDiscussion.statements.last?.text
+                == "Prepare a cancellable synthetic Dialogue."
+        )
+        try cli.expectFailure(
+            ["function", "prepare", "--from", "-", "--format", "json"],
+            stdin: try encoder.encode(ResearchFunctionRequest(
+                function: .discuss,
+                target: ResearchFunctionTarget(
+                    noteID: fixture.workTarget.noteID,
+                    note: fixture.workTarget.note,
+                    role: .work,
+                    fingerprint: finalWorkFingerprint,
+                    title: fixture.workTarget.title
+                ),
+                instruction: "This second Discussion must remain blocked."
+            )),
+            contains: "already active"
+        )
 
         let markdown = try cli.run([
             "function", "prepare", "--from", "-", "--format", "markdown",
         ], stdin: try encoder.encode(ResearchFunctionRequest(
             function: .discuss,
-            target: ResearchFunctionTarget(
-                noteID: fixture.workTarget.noteID,
-                note: fixture.workTarget.note,
-                role: .work,
-                fingerprint: finalWorkFingerprint,
-                title: fixture.workTarget.title
-            ),
+            target: fixture.topicTarget,
             instruction: "Render a Markdown handoff fixture.",
             dialogueResponseModules: [.remainingQuestions]
         )))
@@ -714,6 +748,7 @@ private struct FunctionCLIFixture {
     let homeURL: URL
     let assignment: TriptychAssignment
     let analysisTarget: ResearchFunctionTarget
+    let topicTarget: ResearchFunctionTarget
     let workTarget: ResearchFunctionTarget
     let analysisURL: URL
 
@@ -752,6 +787,7 @@ private struct FunctionCLIFixture {
         )
         let assignment = handle.assignment
         let analysisVault = try #require(assignment.vault(for: .paperAnalysis))
+        let topicVault = try #require(assignment.vault(for: .topicKnowledge))
         let workVault = try #require(assignment.vault(for: .output))
         let analysisID = VaultQualifiedNoteID(
             vaultID: analysisVault.id,
@@ -762,6 +798,11 @@ private struct FunctionCLIFixture {
             relativePath: "Draft Argument.md"
         )
         let analysisTarget = try await target(analysisID, role: .analysis, handle: handle)
+        let topicTarget = try await target(
+            VaultQualifiedNoteID(vaultID: topicVault.id, relativePath: "Topic.md"),
+            role: .topic,
+            handle: handle
+        )
         let workTarget = try await target(workID, role: .work, handle: handle)
         await runtime.shutdown()
         return Self(
@@ -769,6 +810,7 @@ private struct FunctionCLIFixture {
             homeURL: home,
             assignment: assignment,
             analysisTarget: analysisTarget,
+            topicTarget: topicTarget,
             workTarget: workTarget,
             analysisURL: analysisURL
         )
