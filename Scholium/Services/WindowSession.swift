@@ -620,6 +620,9 @@ final class WorkspaceStore: ObservableObject {
             researchSkillsURL: { [self] id in
                 try await workspaceHandle(id: id).research.skillsURL
             },
+            legacyResearchDataURL: { [self] id in
+                try await workspaceHandle(id: id).research.legacyResearchDataURL
+            },
             workingMethodBindings: { [self] id in
                 try await workspaceHandle(id: id).research.workingMethodBindings()
             },

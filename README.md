@@ -125,9 +125,19 @@ failure moves proved installed copies into hidden nonexecuting recovery
 quarantine rather than deleting possible late external writes. Archives,
 network content, links, executables, scripts, nested resources, and implicit
 Action/permission bindings are rejected. Profiles remain declarative and
-cannot grant authority. Standing permissions, unified Discussion, and the
-portable two-panel Research Record adopted by D-106 remain later migration
-work.
+cannot grant authority. New Action-use-case runs now keep protected execution
+state in per-run Application Support files and write terminal
+nonconversational outcomes as one portable, Action-identified Research Record;
+raw keys, assembled prompts, bookmarks, absolute paths, transport details, and
+diffs cannot enter that recursively strict portable contract. Write reports,
+consumed grants, and completion evidence advance atomically in the same local
+run file. Settle likewise stores one portable
+current state per Note rather than an application-authored history. Retained
+Function entry points continue to use unchanged legacy stores until the
+production Actions cutover. Action Discussion Finish currently fails closed
+instead of projecting into legacy activity. Unified Discussion, the independent two-panel
+Research Record window, standing permissions, Record Trash, and disposable
+diffs remain later migration work.
 
 ## Requirements
 
@@ -347,13 +357,31 @@ SCHOLIUM_HOME=/tmp/scholium-cli-check swift run \
 
 ## Storage and safety
 
-Authoritative research remains in the selected Markdown vaults. Machine-local reviews, Dialogue, checkpoints, indexes, saved searches, and other device state remain under:
+Authoritative research remains in the selected Markdown vaults. Protected
+per-run execution evidence, legacy reviews and Dialogue, checkpoints, indexes,
+saved searches, and other device state remain under:
 
 ```text
 ~/Library/Application Support/Scholium/
 ```
 
-A small portable `.scholium/` directory beside Works stores only the Triptych manifest, Triptych-local settings, Properties configuration, Critique configuration and associations, identity mappings, Unclassified Markdown, the Action-keyed Working Method binding document, and Triptych-owned Skill packages under `.scholium/skills/<skill-id>/`. The latter include independently editable Working Methods and researcher-managed packages. Each package has `SKILL.md` and may have bounded one-level `references/`, `templates/`, or `evals/` resources. Verified cross-volume recoveries may also retain hidden displaced packages under `.scholium/skills`; their observed revisions are reported through the machine-local snapshot listing and they are never treated as active. The control directory contains no project registry, bookmarks, absolute paths, passwords, indexes, window sessions, or private review history. The retained `research-skill-bindings.json` file is legacy for Function-keyed primary, supplemental, and Practice selection; those fields neither select nor compose the primary Method of a current Action. Citation and bibliography capability bindings remain there temporarily and are reported as migration debt.
+A small portable `.scholium/` directory beside Works stores only the Triptych
+manifest, Triptych-local settings, Properties configuration, Critique
+configuration and associations, identity mappings, Unclassified Markdown, the
+Action-keyed Working Method binding document, Triptych-owned Skill packages
+under `.scholium/skills/<skill-id>/`, and whitelisted intellectual records plus
+current Settle state under `.scholium/research-records/v1/`. Each Skill package
+has `SKILL.md` and may have bounded one-level `references/`, `templates/`, or
+`evals/` resources. Verified cross-volume recoveries may also retain hidden
+displaced packages under `.scholium/skills`; their observed revisions are
+reported through the machine-local snapshot listing and they are never treated
+as active. The control directory contains no project registry, bookmarks,
+absolute paths, passwords, indexes, window sessions, assembled prompts, raw
+keys, stored diff hunks, or private transport state. The retained
+`research-skill-bindings.json` file is legacy for Function-keyed primary,
+supplemental, and Practice selection; those fields neither select nor compose
+the primary Method of a current Action. Citation and bibliography capability
+bindings remain there temporarily and are reported as migration debt.
 
 Every authoritative app write must validate containment and the expected revision, preserve the previous bytes, validate frontmatter, write atomically, and report conflicts without discarding the editor buffer. Derived search, graph, render, and diagnostic state is disposable and must never reconstruct writable source.
 

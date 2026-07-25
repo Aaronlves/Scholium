@@ -65,10 +65,16 @@ Scholium 不注册或管理项目。代码所有权请参阅
 [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)，精确证据与剩余缺口请参阅
 [实现状态](Docs/IMPLEMENTATION_STATUS.md)。
 
-D-106 已经把研究者治理的 Actions、可直接编辑的 Working Method Skills、分类的
-Skills 设置、standing permissions、统一 Discussion 和可移植的双栏 Research
-Record 纳入目标规范；它们仍属于迁移工作，不能因为规范已经采用就被描述为当前
-可达功能。
+D-106 的公共 Action 合约、可直接编辑的 Working Method Skills、分类的 Skills
+设置、通用解析器与执行入口现已可达。新 Action 运行把受保护的执行状态按运行保存
+在 Application Support，并把已验证的非对话结果写成一个只记录 Action 身份的
+便携式 Research Record；该合约递归拒绝未声明字段，原始 key、组装后的 prompt、
+bookmark、绝对路径、传输细节与 diff 不能进入。写入报告、已使用的 grant 与完成
+证据在同一个本地运行文件中原子推进。Settle 也只保存每个 Note 的一个便携式当前
+状态，而不创建应用解释的历史。保留的 Function 入口在生产 Actions 界面切换前仍
+使用未改写的旧存储；Action Discussion 的 Finish 在统一迁移前失败关闭，不写入旧
+activity。standing permissions、统一 Discussion、独立双栏 Research
+Record 窗口、Record Trash 与一次性 diff 仍属于后续迁移。
 
 ## 环境要求
 
@@ -269,18 +275,20 @@ SCHOLIUM_HOME=/tmp/scholium-cli-check swift run \
 
 ## 存储与安全
 
-权威研究内容始终保留在所选 Markdown 研究库中。机器本地的评审、对话、恢复点、
-索引、已存搜索及其他设备状态位于：
+权威研究内容始终保留在所选 Markdown 研究库中。按运行保存的受保护执行证据、旧
+评审与 Dialogue、恢复点、索引、已存搜索及其他设备状态位于：
 
 ```text
 ~/Library/Application Support/Scholium/
 ```
 
-“写作”旁的小型便携式 `.scholium/` 目录只保存：脉络 manifest、脉络本地设置、
-属性配置、评析配置与关联、身份映射、未分类 Markdown，以及研究者在
-`.scholium/skills/<skill-id>/` 下直接管理的技能包。每个包都包含 `SKILL.md`，
-并可包含受限的单层 `references/` 或 `templates/` 资源。这里不保存项目注册表、
-bookmark、绝对路径、密码、索引、窗口会话或私人评审历史。
+“写作”旁的小型便携式 `.scholium/` 目录只保存脉络 manifest、脉络本地设置、
+属性与评析配置、身份映射、未分类 Markdown、Action-keyed Working Method 绑定、
+`.scholium/skills/<skill-id>/` 下的脉络技能包，以及
+`.scholium/research-records/v1/` 下经过字段白名单约束的学术记录与 Settle 当前
+状态。技能包包含 `SKILL.md`，并可包含受限的单层 `references/`、`templates/`
+或 `evals/` 资源。这里不保存项目注册表、bookmark、绝对路径、密码、索引、窗口
+会话、组装后的 prompt、原始 key、已存 diff hunks 或私人传输状态。
 
 每次应用对权威内容的写入都必须验证路径包含关系与预期修订，保留先前字节，验证
 frontmatter，执行原子写入，并在不丢弃编辑器缓冲区的前提下报告冲突。派生的搜索、

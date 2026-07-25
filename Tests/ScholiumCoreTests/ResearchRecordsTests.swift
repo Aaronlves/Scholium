@@ -721,6 +721,81 @@ struct ResearchRecordsTests {
         #expect(moved.targetFingerprint == association.targetFingerprint)
     }
 
+    @Test("Critique Local-v2 handoff and findings reconciliation are idempotent")
+    func critiqueLocalExecutionReconciliation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let registry = CritiqueRegistry(
+            controlURL: fixture.root.appendingPathComponent(".scholium")
+        )
+        let workID = UUID()
+        let targetFingerprint = DocumentFingerprint(content: "# Work\n")
+        let target = ResearchFunctionTarget(
+            noteID: workID,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: "Drafts/Paper.md"
+            ),
+            role: .work,
+            fingerprint: targetFingerprint,
+            title: "Paper"
+        )
+        let snapshot = ResearchFunctionSnapshot(
+            request: ResearchFunctionRequest(function: .critique, target: target),
+            recordKind: .critique,
+            preparedAt: Date(timeIntervalSince1970: 10)
+        )
+        _ = try await registry.recordRequest(
+            workNoteID: workID,
+            workRelativePath: target.note.relativePath,
+            targetFingerprint: targetFingerprint,
+            critiqueRelativePath: "Critiques/Paper Critique.md",
+            checkpointID: UUID(),
+            scope: .overall,
+            roundID: snapshot.runID,
+            functionSnapshot: snapshot,
+            functionInstructions: "Prepared Critique instructions."
+        )
+
+        let detached = try await registry.detachFunctionEvidence(
+            runID: snapshot.runID,
+            matching: snapshot
+        )
+        let repeatedDetach = try await registry.detachFunctionEvidence(
+            runID: snapshot.runID,
+            matching: snapshot
+        )
+        #expect(detached == repeatedDetach)
+        #expect(try await registry.functionRecord(runID: snapshot.runID) == nil)
+
+        let finding = CritiqueFinding(
+            judgment: .untraced,
+            title: "State the suppressed premise",
+            critiqueSourceLine: 5,
+            targetLine: 3
+        )
+        let captured = try await registry.captureLocalExecutionFindings(
+            runID: snapshot.runID,
+            findings: [finding]
+        )
+        let repeatedCapture = try await registry.captureLocalExecutionFindings(
+            runID: snapshot.runID,
+            findings: [finding]
+        )
+        #expect(captured == repeatedCapture)
+        await #expect(throws: CritiqueRegistryError.self) {
+            _ = try await registry.captureLocalExecutionFindings(
+                runID: snapshot.runID,
+                findings: [CritiqueFinding(
+                    judgment: .disputed,
+                    title: "Different finding",
+                    critiqueSourceLine: 6,
+                    targetLine: 4
+                )]
+            )
+        }
+    }
+
     @Test("Critique round completes only after every actionable finding is disposed")
     func critiqueRoundDispositionAndCompletion() async throws {
         let fixture = try Fixture()

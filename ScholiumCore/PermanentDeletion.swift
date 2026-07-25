@@ -5,6 +5,7 @@ enum PermanentDeletionFaultPoint: Hashable, Sendable {
     case afterCritiqueDeletion
     case afterSourceDeletion
     case afterDialoguePurge
+    case afterSettlementPurge
     case afterCritiqueAssociationPurge
     case afterCheckpointPurge
     case afterIdentityPurge
@@ -49,6 +50,8 @@ public actor NotePermanentDeletionCoordinator {
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
     private let sourceAccessStore: ResearchSourceAccessStore?
+    private let portableRecordStore: PortableResearchRecordStore?
+    private let localExecutionStore: LocalResearchExecutionStore?
     private let faultPlan: PermanentDeletionFaultPlan
 
     public init(
@@ -59,7 +62,9 @@ public actor NotePermanentDeletionCoordinator {
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
-        sourceAccessStore: ResearchSourceAccessStore? = nil
+        sourceAccessStore: ResearchSourceAccessStore? = nil,
+        portableRecordStore: PortableResearchRecordStore? = nil,
+        localExecutionStore: LocalResearchExecutionStore? = nil
     ) {
         self.triptychID = triptychID
         self.repository = repository
@@ -69,6 +74,8 @@ public actor NotePermanentDeletionCoordinator {
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         self.sourceAccessStore = sourceAccessStore
+        self.portableRecordStore = portableRecordStore
+        self.localExecutionStore = localExecutionStore
         self.faultPlan = .none
     }
 
@@ -81,6 +88,8 @@ public actor NotePermanentDeletionCoordinator {
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
         sourceAccessStore: ResearchSourceAccessStore? = nil,
+        portableRecordStore: PortableResearchRecordStore? = nil,
+        localExecutionStore: LocalResearchExecutionStore? = nil,
         faultPlan: PermanentDeletionFaultPlan
     ) {
         self.triptychID = triptychID
@@ -91,6 +100,8 @@ public actor NotePermanentDeletionCoordinator {
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         self.sourceAccessStore = sourceAccessStore
+        self.portableRecordStore = portableRecordStore
+        self.localExecutionStore = localExecutionStore
         self.faultPlan = faultPlan
     }
 
@@ -106,6 +117,7 @@ public actor NotePermanentDeletionCoordinator {
         // source bindings cannot be decoded safely. Otherwise a deletion
         // could reach its commit decision and then strand privacy cleanup.
         try await sourceAccessStore?.validateStoreHealth()
+        try await localExecutionStore?.validateStoreHealth()
         guard repository.identity.id == vaultID else {
             throw TriptychTransactionError.invalidPlan(
                 "The permanent-deletion repository does not match the selected vault identity."
@@ -161,6 +173,15 @@ public actor NotePermanentDeletionCoordinator {
             critiqueIdentityBackup = nil
         }
 
+        let settlementIDs = [noteID, critiqueNoteID].compactMap { $0 }
+        var settlements: [SettlementRecord] = []
+        for settlementID in settlementIDs {
+            if let settlement = try await portableRecordStore?.latestSettlement(
+                noteID: settlementID
+            ) {
+                settlements.append(settlement)
+            }
+        }
         var backup = PermanentDeletionRecoveryBackup(
             phase: .rollbackRequired,
             noteID: noteID,
@@ -180,7 +201,8 @@ public actor NotePermanentDeletionCoordinator {
             critiqueIdentity: critiqueIdentityBackup,
             sourceDeletion: nil,
             critiqueDeletion: nil,
-            checkpointPurge: nil
+            checkpointPurge: nil,
+            settlements: settlements
         )
         var record = makeRecord(
             id: UUID(),
@@ -236,6 +258,16 @@ public actor NotePermanentDeletionCoordinator {
                 _ = try await dialogueStore.purgeEntries(containing: critiqueNoteID)
             }
             try faultPlan.trigger(.afterDialoguePurge)
+            let settlementsByNoteID = Dictionary(
+                uniqueKeysWithValues: backup.settlements.map { ($0.noteID, $0) }
+            )
+            for settlementID in settlementIDs {
+                try await portableRecordStore?.purgeSettlement(
+                    noteID: settlementID,
+                    matching: settlementsByNoteID[settlementID]
+                )
+            }
+            try faultPlan.trigger(.afterSettlementPurge)
             _ = try await critiqueRegistry.purgeAssociations(
                 noteID: noteID,
                 relativePath: relativePath
@@ -345,6 +377,18 @@ public actor NotePermanentDeletionCoordinator {
                 try await sourceAccessStore.remove(analysisNoteID: critiqueNoteID)
             }
         }
+        var deletedNoteIDs: Set<UUID> = [backup.noteID]
+        if let critiqueNoteID = backup.critiqueNoteID {
+            deletedNoteIDs.insert(critiqueNoteID)
+        }
+        for noteID in deletedNoteIDs {
+            try await portableRecordStore?.purgeSettlement(
+                noteID: noteID
+            )
+        }
+        try await localExecutionStore?.purgeExecutions(
+            containing: deletedNoteIDs
+        )
         try await recoveryStore.resolve(record.id)
     }
 
@@ -371,6 +415,14 @@ public actor NotePermanentDeletionCoordinator {
         }
         do { try await dialogueStore.restorePurgedEntries(backup.dialogues + backup.critiqueDialogues) }
         catch { rollbackErrors.append("Discussion: \(error.localizedDescription)") }
+        for settlement in backup.settlements {
+            do { try await portableRecordStore?.restoreSettlement(settlement) }
+            catch ResearchRecordStoreV1Error.settlementChanged(_) {
+                // A newer researcher-authored Settle state wins. Rollback
+                // restores only missing preimages and never overwrites it.
+            }
+            catch { rollbackErrors.append("Settlement: \(error.localizedDescription)") }
+        }
         do { try await critiqueRegistry.restorePurgedAssociations(backup.critiqueAssociations) }
         catch { rollbackErrors.append("Critique: \(error.localizedDescription)") }
         do { try await controlStore.restorePurgedIdentity(backup.identity) }

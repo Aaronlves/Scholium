@@ -284,6 +284,7 @@ public protocol ResearchUseCases:
 {
     var skillsURL: URL { get }
     var recoveryRecordsURL: URL { get }
+    var legacyResearchDataURL: URL { get }
 }
 
 public protocol SettingsUseCases: Sendable {

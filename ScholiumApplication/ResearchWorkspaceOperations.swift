@@ -17,21 +17,8 @@ extension WorkspaceHandle {
             permits: { $0 != .other },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        guard let role = ResearchFunctionTargetRole(vaultRole: context.vault.role) else {
-            throw ResearchOperationError.commentUnavailable(context.vault.role)
-        }
-        let title = ResearchNoteTitleResolver.resolve(
-            document: context.document,
-            vaultRole: context.vault.role
-        ).title
-        let reference = ResearchActivityNoteReference(
+        let settlement = try await services.portableResearchRecordStore.settle(
             noteID: context.identity.id,
-            note: noteID,
-            role: role,
-            title: title
-        )
-        let settlement = try await services.researchActivityStore.settle(
-            note: reference,
             fingerprint: expectedRevision,
             rationale: rationale
         )
@@ -334,6 +321,14 @@ extension WorkspaceHandle {
         to entryID: UUID
     ) async throws -> DialogueEntry {
         try requireActive()
+        if try await services.localResearchExecutionStore.recordIfPresent(id: entryID) != nil {
+            let entry = try await services.localResearchExecutionStore.appendFollowUp(
+                comment,
+                to: entryID
+            )
+            try await refreshAfterResearchCommit("The Discuss follow-up")
+            return entry
+        }
         if let issue = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(issue)
         }

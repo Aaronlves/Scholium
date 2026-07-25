@@ -1568,6 +1568,110 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Local Action automatic Fidelity preserves the accepted external retry digest")
+    func localActionAutomaticFidelityRetryIsIdempotent() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .analyze,
+                target: actionNote(target)
+            )
+        )
+        let parent = try await handle.research.functionRun(id: action.runID)
+        let original = try await handle.documents.load(fixture.analysisID)
+        let saved = try await handle.documents.save(
+            fixture.analysisID,
+            changeSet: .exactContent(original.rawContent + "\nA source-bound claim.\n"),
+            expectedRevision: original.fingerprint
+        )
+        let submittedAt = Date()
+        let activity = try researchActivityCompletion(
+            for: parent,
+            candidateModifiedNotes: [fixture.analysisID],
+            summary: "Added one source-bound claim.",
+            submittedAt: submittedAt
+        )
+        let awaiting = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: parent.runID,
+                confirmationToken: parent.snapshot.confirmationToken,
+                summary: "Added one source-bound claim.",
+                didModifyTarget: true,
+                activityCompletion: activity,
+                submittedAt: submittedAt
+            )
+        )
+        #expect(awaiting.state == .awaitingFidelity)
+        let automatic = try await handle.research.prepareAutomaticFidelity(
+            parentRunID: parent.runID
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: automatic.preparation.runID,
+                confirmationToken: automatic.preparation.snapshot.confirmationToken,
+                finalTargetFingerprint: saved.document.fingerprint,
+                summary: "Checked the exact final Analysis revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passedContent],
+                submittedAt: submittedAt.addingTimeInterval(1)
+            )
+        )
+
+        let retry = ResearchFunctionCompletionSubmission(
+            runID: parent.runID,
+            confirmationToken: parent.snapshot.confirmationToken,
+            summary: "Added one source-bound claim.",
+            didModifyTarget: true,
+            submittedAt: submittedAt
+        )
+        let localURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
+        let recordsURL = fixture.rootURL.appendingPathComponent(
+            ".scholium/research-records/v1/records",
+            isDirectory: true
+        )
+        let originalMode = try #require(
+            (FileManager.default.attributesOfItem(atPath: recordsURL.path)[
+                .posixPermissions
+            ] as? NSNumber)?.intValue
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o500)],
+            ofItemAtPath: recordsURL.path
+        )
+        await #expect(throws: Error.self) {
+            _ = try await handle.research.completeFunction(retry)
+        }
+        let interruptedDecoder = JSONDecoder()
+        interruptedDecoder.dateDecodingStrategy = .deferredToDate
+        let interrupted = try interruptedDecoder.decode(
+            LocalExecutionTestProjection.self,
+            from: Data(contentsOf: localURL)
+        )
+        #expect(interrupted.completion?.state == .complete)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: originalMode)],
+            ofItemAtPath: recordsURL.path
+        )
+
+        let completed = try await handle.research.completeFunction(retry)
+        #expect(completed.state == .complete)
+        #expect(completed.childRunIDs == [automatic.effectiveFidelityRunID])
+        #expect(try await handle.research.completeFunction(retry) == completed)
+        await runtime.shutdown()
+    }
+
     @Test("Unchanged Develop and Revise runs complete without Automatic Fidelity")
     func unchangedWritesSkipAutomaticFidelity() async throws {
         let fixture = try await ResearchFixture.make()
@@ -2696,6 +2800,491 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Action Discussion Finish fails closed without touching legacy activity")
+    func actionDiscussionFinishDoesNotProjectLegacyActivity() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let legacyActivity = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-activity/research-activity.json")
+        if !FileManager.default.fileExists(atPath: legacyActivity.path) {
+            try FileManager.default.createDirectory(
+                at: legacyActivity.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data(
+                "{\"schemaVersion\":2,\"events\":[],\"settlements\":[],\"exchanges\":[],\"pendingStates\":[],\"grants\":[]}".utf8
+            ).write(to: legacyActivity)
+        }
+        let before = try LegacyResearchFileCanary(url: legacyActivity)
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .discuss,
+                target: actionNote(analysis),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Clarify the distinction."),
+                ]
+            )
+        )
+        let protectedRun = try await handle.research.functionRun(id: preparation.runID)
+        _ = try await handle.research.appendDiscussionReply(
+            DialogueReply(
+                agentName: "Research Agent",
+                text: "The distinction remains bounded to the current Analysis.",
+                createdAt: protectedRun.snapshot.preparedAt.addingTimeInterval(1)
+            ),
+            to: preparation.runID
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: protectedRun.snapshot.confirmationToken,
+                finalTargetFingerprint: analysis.fingerprint,
+                summary: "Returned one bounded clarification.",
+                didModifyTarget: false,
+                submittedAt: protectedRun.snapshot.preparedAt.addingTimeInterval(2)
+            )
+        )
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.finishDiscussion(runID: preparation.runID)
+        }
+        #expect(try LegacyResearchFileCanary(url: legacyActivity) == before)
+        await runtime.shutdown()
+    }
+
+    @Test("Action runs use Local Execution v2 and emit one whitelisted portable record")
+    func actionExecutionUsesSeparatedStoresWithoutTouchingLegacyData() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let triptychSupport = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+        let legacyActivity = triptychSupport
+            .appendingPathComponent("research-activity/research-activity.json")
+        let legacyDialogue = triptychSupport
+            .appendingPathComponent("dialogue/dialogue.json")
+        let legacyBindings = fixture.rootURL
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("research-skill-bindings.json")
+        let legacySeeds: [(URL, String)] = [
+            (
+                legacyActivity,
+                "{\"schemaVersion\":2,\"events\":[],\"settlements\":[],\"exchanges\":[],\"pendingStates\":[],\"grants\":[]}"
+            ),
+            (legacyDialogue, "{\"schemaVersion\":3,\"entries\":{}}"),
+            (
+                legacyBindings,
+                "{\"schema_version\":1,\"function_bindings\":{},\"function_skill_bindings\":{},\"function_practice_bindings\":{}}"
+            ),
+        ]
+        for (url, source) in legacySeeds
+            where !FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data(source.utf8).write(to: url)
+        }
+        let legacyURLs = [legacyActivity, legacyDialogue, legacyBindings]
+        for url in legacyURLs {
+            #expect(FileManager.default.fileExists(atPath: url.path))
+            try FileManager.default.setAttributes(
+                [
+                    .posixPermissions: NSNumber(value: 0o640),
+                    .modificationDate: Date(timeIntervalSince1970: 1_234),
+                ],
+                ofItemAtPath: url.path
+            )
+        }
+        let before = try Dictionary(uniqueKeysWithValues: legacyURLs.map {
+            ($0, try LegacyResearchFileCanary(url: $0))
+        })
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .synthesize,
+                target: actionNote(topic)
+            )
+        )
+        let protectedRun = try await handle.research.functionRun(id: action.runID)
+        let submittedAt = Date()
+        let activity = try researchActivityCompletion(
+            for: protectedRun,
+            candidateModifiedNotes: [topic.note],
+            summary: "No Topic change was warranted by the selected information.",
+            submittedAt: submittedAt
+        )
+        await #expect(throws: PortableResearchRecordError.self) {
+            _ = try await handle.research.completeFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: protectedRun.runID,
+                    confirmationToken: protectedRun.snapshot.confirmationToken,
+                    summary: "I read /Users/researcher/private/source.pdf.",
+                    didModifyTarget: false,
+                    activityCompletion: activity,
+                    submittedAt: submittedAt
+                )
+            )
+        }
+        let submission = ResearchFunctionCompletionSubmission(
+            runID: protectedRun.runID,
+            confirmationToken: protectedRun.snapshot.confirmationToken,
+            summary: "No Topic change was warranted by the selected information.",
+            didModifyTarget: false,
+            activityCompletion: activity,
+            submittedAt: submittedAt
+        )
+        let completed = try await handle.research.completeFunction(submission)
+        #expect(completed.state == .complete)
+        let repeated: ResearchFunctionCompletion
+        do {
+            repeated = try await handle.research.completeFunction(submission)
+        } catch {
+            Issue.record("Idempotent Action completion failed: \(error)")
+            throw error
+        }
+        #expect(repeated == completed)
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: protectedRun.runID,
+                    confirmationToken: protectedRun.snapshot.confirmationToken,
+                    summary: "No Topic change was warranted by the selected information.",
+                    didModifyTarget: false,
+                    activityCompletion: activity,
+                    submittedAt: submittedAt.addingTimeInterval(0.000_1)
+                )
+            )
+        }
+
+        let localURL = triptychSupport
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
+        let localData = try Data(contentsOf: localURL)
+        let portableData = try Data(contentsOf: portableURL)
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: portableData
+        )
+        #expect(portable.id == action.runID)
+        #expect(portable.action?.actionID == .synthesize)
+        #expect(portable.actuallyUsedMaterials.isEmpty)
+        #expect(portable.confirmedChanges.isEmpty)
+        #expect(portable.discrepancies == [PortableResearchDiscrepancy(
+            id: PortableResearchDiscrepancy.stableID(
+                runID: action.runID,
+                noteID: topic.noteID,
+                kind: .reportedButUnmodified
+            ),
+            noteID: topic.noteID,
+            kind: .reportedButUnmodified
+        )])
+        let localSource = String(decoding: localData, as: UTF8.self)
+        let portableSource = String(decoding: portableData, as: UTF8.self)
+        #expect(localSource.contains("prepared_instructions"))
+        #expect(!localSource.contains(activity.activityKey))
+        for forbidden in [
+            "prepared_instructions", "activity_key", "confirmationToken",
+            "function", "prompt", "bookmark", "absolute_path", "token_count",
+            "transport_log", "window_state", "diff_hunks",
+        ] {
+            #expect(!portableSource.contains("\"\(forbidden)\""))
+        }
+        for (url, canary) in before {
+            #expect(try LegacyResearchFileCanary(url: url) == canary)
+        }
+        #expect(handle.research.legacyResearchDataURL == triptychSupport)
+        await runtime.shutdown()
+    }
+
+    @Test("Action Critique records its separate modified output Note")
+    func actionCritiquePortableRecordIncludesOutput() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let work = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .critique,
+                target: actionNote(work)
+            )
+        )
+        let protectedRun = try await handle.research.functionRun(id: action.runID)
+        let output = try #require(protectedRun.snapshot.preparedOutput)
+        let original = try await handle.documents.load(output.note)
+        let saved = try await handle.documents.save(
+            output.note,
+            changeSet: .exactContent(
+                original.rawContent
+                    + "\n## Specific Findings\n\n"
+                    + "### Untraced: The central inference needs one explicit premise\n"
+                    + "Target Line: 1\n"
+            ),
+            expectedRevision: original.fingerprint
+        )
+
+        let submission = ResearchFunctionCompletionSubmission(
+            runID: protectedRun.runID,
+            confirmationToken: protectedRun.snapshot.confirmationToken,
+            finalTargetFingerprint: work.fingerprint,
+            summary: "Recorded one bounded Critique finding.",
+            didModifyTarget: false,
+            outputFingerprint: saved.document.fingerprint
+        )
+        let completion = try await handle.research.completeFunction(submission)
+        #expect(completion.state == .complete)
+        await runtime.shutdown()
+
+        // Simulate a process failure after Local completion persistence but
+        // before the Critique association captured its findings.
+        let registryURL = fixture.rootURL
+            .appendingPathComponent(".scholium/critiques.json")
+        var registry = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL))
+                as? [String: Any]
+        )
+        var associations = try #require(registry["associations"] as? [Any])
+        let associationIndex = try #require(associations.firstIndex {
+            guard let value = $0 as? [String: Any],
+                  let rounds = value["rounds"] as? [[String: Any]] else {
+                return false
+            }
+            return rounds.contains {
+                ($0["id"] as? String)?.lowercased()
+                    == action.runID.uuidString.lowercased()
+            }
+        })
+        var association = try #require(
+            associations[associationIndex] as? [String: Any]
+        )
+        var rounds = try #require(association["rounds"] as? [[String: Any]])
+        let roundIndex = try #require(rounds.firstIndex {
+            ($0["id"] as? String)?.lowercased()
+                == action.runID.uuidString.lowercased()
+        })
+        rounds[roundIndex]["actionableFindings"] = []
+        rounds[roundIndex].removeValue(forKey: "localExecutionFindingsCaptured")
+        association["rounds"] = rounds
+        associations[associationIndex] = association
+        registry["associations"] = associations
+        try JSONSerialization.data(
+            withJSONObject: registry,
+            options: [.prettyPrinted, .sortedKeys]
+        ).write(to: registryURL, options: .atomic)
+
+        let reopenedRuntime = fixture.runtime()
+        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
+        #expect(try await reopened.research.completeFunction(submission) == completion)
+        let repairedRegistry = String(
+            decoding: try Data(contentsOf: registryURL),
+            as: UTF8.self
+        )
+        #expect(repairedRegistry.contains(
+            "The central inference needs one explicit premise"
+        ))
+        let laterOutput = try await reopened.documents.load(output.note)
+        _ = try await reopened.documents.save(
+            output.note,
+            changeSet: .exactContent(
+                laterOutput.rawContent + "\nA later researcher edit.\n"
+            ),
+            expectedRevision: laterOutput.fingerprint
+        )
+        try FileManager.default.removeItem(
+            at: fixture.rootURL
+                .appendingPathComponent("Works", isDirectory: true)
+                .appendingPathComponent(output.note.relativePath)
+        )
+        #expect(try await reopened.research.completeFunction(submission) == completion)
+
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: portableURL)
+        )
+        let outputParticipant = try #require(portable.participatingNotes.first {
+            $0.note == output.note
+        })
+        #expect(outputParticipant.startingRevision == output.fingerprint)
+        #expect(outputParticipant.endingRevision == saved.document.fingerprint)
+        #expect(portable.confirmedChanges == [try PortableResearchConfirmedChange(
+            noteID: outputParticipant.noteID,
+            startingRevision: output.fingerprint,
+            endingRevision: saved.document.fingerprint
+        )])
+        await reopenedRuntime.shutdown()
+    }
+
+    @Test("A crashed Critique handoff reconciles Local v2 as the sole execution authority")
+    func actionCritiqueHandoffRecoversAfterRestart() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let work = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .critique,
+                target: actionNote(work)
+            )
+        )
+        let localURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        let localDecoder = JSONDecoder()
+        localDecoder.dateDecodingStrategy = .deferredToDate
+        let local = try localDecoder.decode(
+            LocalExecutionTestProjection.self,
+            from: Data(contentsOf: localURL)
+        )
+        let registryURL = fixture.rootURL
+            .appendingPathComponent(".scholium/critiques.json")
+        var registry = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL))
+                as? [String: Any]
+        )
+        var associations = try #require(registry["associations"] as? [Any])
+        let associationIndex = try #require(associations.firstIndex {
+            guard let value = $0 as? [String: Any],
+                  let rounds = value["rounds"] as? [[String: Any]] else {
+                return false
+            }
+            return rounds.contains {
+                ($0["id"] as? String)?.lowercased()
+                    == preparation.runID.uuidString.lowercased()
+            }
+        })
+        var association = try #require(
+            associations[associationIndex] as? [String: Any]
+        )
+        var rounds = try #require(association["rounds"] as? [[String: Any]])
+        let roundIndex = try #require(rounds.firstIndex {
+            ($0["id"] as? String)?.lowercased()
+                == preparation.runID.uuidString.lowercased()
+        })
+        let registryEncoder = JSONEncoder()
+        registryEncoder.dateEncodingStrategy = .iso8601
+        rounds[roundIndex]["functionSnapshot"] = try JSONSerialization.jsonObject(
+            with: registryEncoder.encode(local.snapshot)
+        )
+        rounds[roundIndex]["functionInstructions"] = local.preparedInstructions
+        association["rounds"] = rounds
+        associations[associationIndex] = association
+        registry["associations"] = associations
+        try JSONSerialization.data(
+            withJSONObject: registry,
+            options: [.prettyPrinted, .sortedKeys]
+        ).write(to: registryURL, options: .atomic)
+        await runtime.shutdown()
+
+        let reopenedRuntime = fixture.runtime()
+        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
+        #expect(try await reopened.snapshot().research.functionRuns.count {
+            $0.id == preparation.runID
+        } == 1)
+        let recovered = try await reopened.research.functionRun(id: preparation.runID)
+        #expect(recovered.snapshot == local.snapshot)
+        let repairedSource = String(
+            decoding: try Data(contentsOf: registryURL),
+            as: UTF8.self
+        )
+        #expect(!repairedSource.contains("\"functionSnapshot\""))
+        #expect(!repairedSource.contains("\"functionInstructions\""))
+        try await reopened.research.cancelFunction(runID: preparation.runID)
+        await reopenedRuntime.shutdown()
+    }
+
+    @Test("Action Analyze retains only its safe Source Reference")
+    func actionAnalyzePortableRecordIncludesSafeSource() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            ResearchActionExecutionRequest(
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let protectedRun = try await handle.research.functionRun(id: action.runID)
+        let source = try #require(protectedRun.snapshot.sourceReference)
+        let submittedAt = Date()
+        let activity = try researchActivityCompletion(
+            for: protectedRun,
+            candidateModifiedNotes: [],
+            summary: "The source supports no warranted Analysis change.",
+            submittedAt: submittedAt
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: protectedRun.runID,
+                confirmationToken: protectedRun.snapshot.confirmationToken,
+                summary: "The source supports no warranted Analysis change.",
+                didModifyTarget: false,
+                activityCompletion: activity,
+                submittedAt: submittedAt
+            )
+        )
+
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
+        let data = try Data(contentsOf: portableURL)
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: data
+        )
+        #expect(portable.sourceReference == source)
+        let encoded = String(decoding: data, as: UTF8.self)
+        #expect(!encoded.contains(fixture.analysisSourceURL.path))
+        #expect(!encoded.contains("bookmark"))
+        await runtime.shutdown()
+    }
+
     private func actionNote(
         _ target: ResearchFunctionTarget
     ) -> ResearchActionNoteSnapshot {
@@ -2798,6 +3387,18 @@ struct ResearchFunctionOperationsTests {
       }
     }
     """#
+}
+
+private struct LocalExecutionTestProjection: Decodable {
+    let snapshot: ResearchFunctionSnapshot
+    let preparedInstructions: String
+    let completion: ResearchFunctionCompletion?
+
+    private enum CodingKeys: String, CodingKey {
+        case snapshot
+        case preparedInstructions = "prepared_instructions"
+        case completion
+    }
 }
 
 private actor ZoteroRequestScript {
@@ -3121,4 +3722,27 @@ private extension FidelityCheckOutcome {
 
 private struct RecoveryFixturePayload: Codable {
     let records: [TriptychMutationRecoveryRecord]
+}
+
+private struct LegacyResearchFileCanary: Equatable {
+    let bytes: Data
+    let digest: DocumentFingerprint
+    let mode: Int
+    let modificationDate: Date
+
+    init(url: URL) throws {
+        bytes = try Data(contentsOf: url)
+        digest = DocumentFingerprint(data: bytes)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        mode = try #require((attributes[.posixPermissions] as? NSNumber)?.intValue)
+        modificationDate = try #require(attributes[.modificationDate] as? Date)
+    }
+}
+
+private extension JSONDecoder {
+    static var scholium: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
 }

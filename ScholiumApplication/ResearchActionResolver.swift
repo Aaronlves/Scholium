@@ -3,6 +3,11 @@ import ScholiumContracts
 import ScholiumCore
 
 struct ResolvedResearchActionContext: Sendable {
+    enum ExecutionStorage: Sendable {
+        case legacyFunction
+        case localExecutionV2
+    }
+
     let availability: ResearchActionAvailability
     let function: ResearchFunctionID
     let primaryPackageID: String
@@ -10,6 +15,7 @@ struct ResolvedResearchActionContext: Sendable {
     let parameterValues: [String: ResearchActionParameterValue]
     let authority: ResearchAuthorityEnvelope
     let allowsLegacyFidelityExpansion: Bool
+    let executionStorage: ExecutionStorage
 }
 
 private struct ResolvedResearchActionCandidate: Sendable {
@@ -91,13 +97,15 @@ extension WorkspaceHandle {
             profileBinding: candidate.profileBinding,
             parameterValues: parameters.values,
             authority: prepared.authority,
-            allowsLegacyFidelityExpansion: false
+            allowsLegacyFidelityExpansion: false,
+            executionStorage: .localExecutionV2
         )
         return (prepared.request, context)
     }
 
     func resolvedDefaultActionContext(
-        for request: ResearchFunctionRequest
+        for request: ResearchFunctionRequest,
+        executionStorage: ResolvedResearchActionContext.ExecutionStorage = .legacyFunction
     ) async throws -> ResolvedResearchActionContext {
         try request.validate()
         let definition = try ResearchActionFunctionMapping.definition(
@@ -149,7 +157,8 @@ extension WorkspaceHandle {
             profileBinding: nil,
             parameterValues: values,
             authority: authority,
-            allowsLegacyFidelityExpansion: true
+            allowsLegacyFidelityExpansion: true,
+            executionStorage: executionStorage
         )
     }
 

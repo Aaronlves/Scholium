@@ -2522,8 +2522,9 @@ private struct ResearchRecoverySettingsView: View {
     private func revealLegacyData() {
         Task { @MainActor in
             do {
-                let skillsURL = try await settingsModel.researchSkillsURL()
-                settingsModel.openExternal(skillsURL.deletingLastPathComponent())
+                settingsModel.openExternal(
+                    try await settingsModel.legacyResearchDataURL()
+                )
             } catch {
                 errorMessage = error.localizedDescription
             }

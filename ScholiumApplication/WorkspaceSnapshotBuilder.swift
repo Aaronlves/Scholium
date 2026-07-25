@@ -259,7 +259,9 @@ enum WorkspaceSnapshotBuilder {
         })
 
         let researchStateStart = clock.now
-        let settlements = await services.researchActivityStore.allSettlements()
+        let portableSettlementListing = try await services
+            .portableResearchRecordStore.settlementListing()
+        let settlements = portableSettlementListing.settlements
         let activityGrants = await services.researchActivityStore.grants()
         let latestSettlementByNoteID = Dictionary(
             settlements.map { ($0.noteID, $0) },
@@ -267,16 +269,6 @@ enum WorkspaceSnapshotBuilder {
                 lhs.settledAt >= rhs.settledAt ? lhs : rhs
             }
         )
-        for loaded in loadedVaults {
-            for document in loaded.activeDocuments {
-                guard case .resolved(let noteID) = loaded.identityStates[document.relativePath],
-                      latestSettlementByNoteID[noteID] != nil else { continue }
-                try await services.researchActivityStore.synchronizeSettlementCurrency(
-                    noteID: noteID,
-                    currentFingerprint: document.fingerprint
-                )
-            }
-        }
         let researchStateDuration = researchStateStart.duration(to: clock.now)
         let searchDocumentProjectionStart = clock.now
         var searchDocuments: [SearchIndexDocument] = []
@@ -329,15 +321,26 @@ enum WorkspaceSnapshotBuilder {
             }
         )
         var settlementStates: [String: WorkspaceSettlementState] = [:]
+        var changedSinceSettledStates: [PendingResearchState] = []
         for loaded in loadedVaults {
             for document in loaded.activeDocuments {
                 guard case .resolved(let noteID) = loaded.identityStates[document.relativePath],
                       let settlement = latestSettlementByNoteID[noteID] else { continue }
                 let referenceID = "\(loaded.vault.id.uuidString):\(document.relativePath)"
+                let changedSinceSettled = settlement.fingerprint != document.fingerprint
                 settlementStates[referenceID] = WorkspaceSettlementState(
                     settledFingerprint: settlement.fingerprint,
-                    changedSinceSettled: settlement.fingerprint != document.fingerprint
+                    changedSinceSettled: changedSinceSettled
                 )
+                if changedSinceSettled {
+                    changedSinceSettledStates.append(PendingResearchState(
+                        id: settlement.id,
+                        noteID: noteID,
+                        kind: .changedSinceSettled,
+                        createdAt: settlement.settledAt,
+                        fingerprint: document.fingerprint
+                    ))
+                }
             }
         }
         let loadedVaultsByID = Dictionary(
@@ -382,6 +385,9 @@ enum WorkspaceSnapshotBuilder {
         if let issue = await services.researchActivityStore.healthError() {
             healthIssues.append(issue)
         }
+        healthIssues.append(contentsOf: portableSettlementListing.issues.map {
+            "Portable Settlement \($0.fileName): \($0.reason)"
+        })
         if let issue = await services.dialogueStore.healthError() {
             healthIssues.append(issue)
         }
@@ -471,13 +477,19 @@ enum WorkspaceSnapshotBuilder {
                 identityRecovery: loaded.identityRecovery
             )
         }
-        let allDialogueEntries = await services.dialogueStore.allEntries()
+        let localExecutionListing = try await services.localResearchExecutionStore
+            .listing()
+        healthIssues.append(contentsOf: localExecutionListing.issues.map {
+            "Local Research Execution \($0.fileName): \($0.reason)"
+        })
+        let legacyDialogueEntries = await services.dialogueStore.allEntries()
+        let localDialogueEntries = localExecutionListing.records.compactMap(\.dialogue)
+        let allDialogueEntries = legacyDialogueEntries + localDialogueEntries
         let critiqueAssociations = critiquesByID.values.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
-        let storedFunctionRuns = (
-            allDialogueEntries.map { entry in
+        var nonLocalFunctionRuns = legacyDialogueEntries.map { entry in
                 ResearchFunctionRecordProjection(
                     snapshot: entry.functionSnapshot,
                     completion: entry.functionCompletion,
@@ -495,7 +507,47 @@ enum WorkspaceSnapshotBuilder {
                     }
                 }
             }
-        ).sorted {
+        let localFunctionRuns = localExecutionListing.records.map { record in
+            ResearchFunctionRecordProjection(
+                snapshot: record.snapshot,
+                completion: record.completion,
+                preparedInstructions: record.preparedInstructions
+            )
+        }
+        for local in localFunctionRuns {
+            let duplicates = nonLocalFunctionRuns.filter { $0.id == local.id }
+            guard !duplicates.isEmpty else { continue }
+            let isExactCritiqueHandoff = duplicates.count == 1
+                && duplicates[0].snapshot == local.snapshot
+                && duplicates[0].completion == local.completion
+                && duplicates[0].preparedInstructions == local.preparedInstructions
+                && critiqueAssociations.contains { association in
+                    association.rounds.contains {
+                        $0.functionSnapshot?.runID == local.id
+                    }
+                }
+            if isExactCritiqueHandoff {
+                do {
+                    _ = try await services.critiqueRegistry.detachFunctionEvidence(
+                        runID: local.id,
+                        matching: local.snapshot
+                    )
+                } catch {
+                    healthIssues.append(
+                        "Critique handoff \(local.id.uuidString): \(error.localizedDescription)"
+                    )
+                }
+            } else {
+                healthIssues.append(
+                    "Research execution \(local.id.uuidString) has conflicting retained evidence; Local Execution v2 was projected read-only."
+                )
+            }
+            // Local v2 is the sole completion authority for a new Action.
+            // Never publish two rows with the same SwiftUI identity while
+            // cleanup or diagnosis remains pending.
+            nonLocalFunctionRuns.removeAll { $0.id == local.id }
+        }
+        let storedFunctionRuns = (nonLocalFunctionRuns + localFunctionRuns).sorted {
             if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
                 return $0.snapshot.preparedAt > $1.snapshot.preparedAt
             }
@@ -578,11 +630,19 @@ enum WorkspaceSnapshotBuilder {
             }
             return run
         }
+        let legacyPendingStates = await services.researchActivityStore
+            .allPendingStates().filter { $0.kind != .changedSinceSettled }
         let research = WorkspaceResearchSnapshot(
             activityEvents: await services.researchActivityStore.allEvents(),
             settlements: settlements,
             commentExchanges: allCommentExchanges,
-            pendingResearchStates: await services.researchActivityStore.allPendingStates(),
+            pendingResearchStates: (legacyPendingStates + changedSinceSettledStates)
+                .sorted {
+                    if $0.createdAt != $1.createdAt {
+                        return $0.createdAt > $1.createdAt
+                    }
+                    return $0.id.uuidString < $1.id.uuidString
+                },
             activityGrants: activityGrants,
             dialogues: allDialogueEntries.filter {
                 $0.functionSnapshot.request.function == .discuss

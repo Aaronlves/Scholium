@@ -304,6 +304,7 @@ public actor DiscoveryOperations: DiscoveryUseCases {
 public actor ResearchOperations: ResearchUseCases {
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
+    public nonisolated let legacyResearchDataURL: URL
     private let reference: WorkspaceHandleReference
     private let functionCoordinator: ResearchFunctionCoordinator
     private let bibliographyCoordinator: RecommendedBibliographyCoordinator
@@ -311,13 +312,15 @@ public actor ResearchOperations: ResearchUseCases {
     init(
         reference: WorkspaceHandleReference,
         skillsURL: URL,
-        recoveryRecordsURL: URL
+        recoveryRecordsURL: URL,
+        legacyResearchDataURL: URL
     ) {
         self.reference = reference
         functionCoordinator = ResearchFunctionCoordinator(reference: reference)
         bibliographyCoordinator = RecommendedBibliographyCoordinator(reference: reference)
         self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
+        self.legacyResearchDataURL = legacyResearchDataURL
     }
 
     public nonisolated static func inspectSkillDraft(

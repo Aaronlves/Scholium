@@ -161,6 +161,7 @@ struct PermanentDeletionTests {
             relativePath: fixture.critiquePath
         ) == nil)
         #expect(await fixture.checkpointStore.checkpoints().isEmpty)
+        #expect(try await fixture.portableRecordStore.settlementListing().settlements.isEmpty)
         let pending = try await fixture.recoveryStore.pending()
         #expect(pending.isEmpty)
     }
@@ -171,6 +172,7 @@ struct PermanentDeletionTests {
             PermanentDeletionFaultPoint.afterCritiqueDeletion,
             .afterSourceDeletion,
             .afterDialoguePurge,
+            .afterSettlementPurge,
             .afterCritiqueAssociationPurge,
             .afterCheckpointPurge,
             .afterIdentityPurge,
@@ -202,6 +204,12 @@ struct PermanentDeletionTests {
         #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
         #expect(await fixture.checkpointStore.checkpoints().map(\.id) == [fixture.checkpoint.id])
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.workIdentity.id
+        ) == fixture.workSettlement)
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.critiqueIdentity.id
+        ) == fixture.critiqueSettlement)
         let pending = try await fixture.recoveryStore.pending()
         #expect(pending.isEmpty)
     }
@@ -238,6 +246,46 @@ struct PermanentDeletionTests {
         #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
         #expect(await fixture.checkpointStore.checkpoints().map(\.id) == [fixture.checkpoint.id])
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.workIdentity.id
+        ) == fixture.workSettlement)
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.critiqueIdentity.id
+        ) == fixture.critiqueSettlement)
+        #expect(try await fixture.recoveryStore.pending().isEmpty)
+    }
+
+    @Test("Rollback preserves a newer Settle created after deletion capture")
+    func interruptedDeletionPreservesConcurrentSettlement() async throws {
+        let fixture = try await WorkFixture()
+        defer { fixture.remove() }
+        let interrupted = fixture.coordinator(
+            faultPlan: PermanentDeletionFaultPlan(
+                failures: [],
+                interruptions: [.afterDialoguePurge]
+            )
+        )
+
+        await #expect(throws: TriptychTransactionError.self) {
+            _ = try await interrupted.delete(
+                noteID: fixture.workIdentity.id,
+                vaultID: fixture.vaultID,
+                relativePath: fixture.workPath,
+                expectedRevision: fixture.workFingerprint,
+                checkpointArea: .works
+            )
+        }
+        let concurrent = try await fixture.portableRecordStore.settle(
+            noteID: fixture.workIdentity.id,
+            fingerprint: DocumentFingerprint(content: "newer-settlement"),
+            rationale: "Recorded from another window while deletion was interrupted."
+        )
+
+        try await fixture.reopenedCoordinator().recoverInterruptedTransactions()
+
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.workIdentity.id
+        ) == concurrent)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
@@ -273,6 +321,55 @@ struct PermanentDeletionTests {
         #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
         #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.checkpointStore.checkpoints().isEmpty)
+        #expect(try await fixture.portableRecordStore.settlementListing().settlements.isEmpty)
+        #expect(try await fixture.recoveryStore.pending().isEmpty)
+    }
+
+    @Test("Committed deletion removes a first Settle created after capture")
+    func committedDeletionPurgesLateFirstSettlement() async throws {
+        let fixture = try await WorkFixture()
+        defer { fixture.remove() }
+        try await fixture.portableRecordStore.purgeSettlement(
+            noteID: fixture.workIdentity.id
+        )
+        try await fixture.portableRecordStore.purgeSettlement(
+            noteID: fixture.critiqueIdentity.id
+        )
+        let interrupted = fixture.coordinator(
+            faultPlan: PermanentDeletionFaultPlan(
+                failures: [],
+                interruptions: [.afterCommitDecision]
+            )
+        )
+
+        await #expect(throws: TriptychTransactionError.self) {
+            _ = try await interrupted.delete(
+                noteID: fixture.workIdentity.id,
+                vaultID: fixture.vaultID,
+                relativePath: fixture.workPath,
+                expectedRevision: fixture.workFingerprint,
+                checkpointArea: .works
+            )
+        }
+        _ = try await fixture.portableRecordStore.settle(
+            noteID: fixture.workIdentity.id,
+            fingerprint: DocumentFingerprint(content: "late-work"),
+            rationale: nil
+        )
+        _ = try await fixture.portableRecordStore.settle(
+            noteID: fixture.critiqueIdentity.id,
+            fingerprint: DocumentFingerprint(content: "late-critique"),
+            rationale: nil
+        )
+
+        try await fixture.reopenedCoordinator().recoverInterruptedTransactions()
+
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.workIdentity.id
+        ) == nil)
+        #expect(try await fixture.portableRecordStore.latestSettlement(
+            noteID: fixture.critiqueIdentity.id
+        ) == nil)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
@@ -303,10 +400,20 @@ struct PermanentDeletionTests {
         let control: TriptychControlStore
         let repository: VaultRepository
         let recoveryStore: TriptychMutationRecoveryStore
+        let portableRecordStore: PortableResearchRecordStore
+        let localExecutionStore: LocalResearchExecutionStore
+        let workSettlement: SettlementRecord
+        let critiqueSettlement: SettlementRecord
 
         init() async throws {
-            root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Scholium-WorkDeletion-\(UUID().uuidString)", isDirectory: true)
+            root = URL(
+                fileURLWithPath: FileManager.default.currentDirectoryPath,
+                isDirectory: true
+            )
+                .appendingPathComponent(
+                    ".build/session11-permanent-deletion-tests/\(UUID().uuidString)",
+                    isDirectory: true
+                )
             analyses = root.appendingPathComponent("Analyses", isDirectory: true)
             topics = root.appendingPathComponent("Topics", isDirectory: true)
             works = root.appendingPathComponent("Works", isDirectory: true)
@@ -339,6 +446,15 @@ struct PermanentDeletionTests {
                 ],
                 preferredTriptychID: triptychID
             )
+            portableRecordStore = try PortableResearchRecordStore(
+                controlURL: await control.controlURL,
+                applicationSupportURL: support,
+                triptychID: triptychID
+            )
+            localExecutionStore = try LocalResearchExecutionStore(
+                applicationSupportURL: support,
+                triptychID: triptychID
+            )
             workIdentity = try #require(try await control.identity(
                 forVaultID: vaultID,
                 relativePath: workPath,
@@ -349,6 +465,18 @@ struct PermanentDeletionTests {
                 relativePath: critiquePath,
                 fingerprint: DocumentFingerprint(content: critiqueSource)
             ))
+            workSettlement = try await portableRecordStore.settle(
+                noteID: workIdentity.id,
+                fingerprint: workFingerprint,
+                rationale: "Current Work basis.",
+                settledAt: Date(timeIntervalSince1970: 10)
+            )
+            critiqueSettlement = try await portableRecordStore.settle(
+                noteID: critiqueIdentity.id,
+                fingerprint: DocumentFingerprint(content: critiqueSource),
+                rationale: nil,
+                settledAt: Date(timeIntervalSince1970: 11)
+            )
             dialogueStore = DialogueStore(
                 storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
             )
@@ -441,6 +569,8 @@ struct PermanentDeletionTests {
                 checkpointStore: checkpointStore,
                 controlStore: control,
                 recoveryStore: recoveryStore,
+                portableRecordStore: portableRecordStore,
+                localExecutionStore: localExecutionStore,
                 faultPlan: faultPlan
             )
         }
@@ -461,6 +591,15 @@ struct PermanentDeletionTests {
                 controlStore: reopenedControl,
                 recoveryStore: try TriptychMutationRecoveryStore(
                     storageURL: support.appendingPathComponent("Transaction Recovery", isDirectory: true)
+                ),
+                portableRecordStore: try PortableResearchRecordStore(
+                    controlURL: await reopenedControl.controlURL,
+                    applicationSupportURL: support,
+                    triptychID: triptychID
+                ),
+                localExecutionStore: try LocalResearchExecutionStore(
+                    applicationSupportURL: support,
+                    triptychID: triptychID
                 )
             )
         }

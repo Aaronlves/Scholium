@@ -376,9 +376,10 @@ Develop resolves `scholium-synthesize`, and a package bound to one fails closed
 for the other. `ResearchActionUseCases` now resolves and prepares default and
 researcher Actions, while retained Function preparation passes through the same
 resolver and embeds the resulting Action snapshot. Binding v1 never enters
-either path. The production UI, CLI syntax, and current record store remain
-Function-era; the portable-record cutover must use the record identity contract
-rather than serializing a Function ID.
+either path. The production UI and CLI syntax remain Function-era. New
+Action-use-case runs now use the separated record boundary below; retained
+Function entry points continue to use their legacy stores until the production
+surface cutover.
 
 The product Skill catalog schema 4 separates protected mechanism from ordinary
 method prose. `ResearchSkillClass.method` packages each declare exactly one
@@ -449,6 +450,67 @@ legacy selection payload remains Codable for machine-local state, but no
 public Use Case, CLI command, next action, or rendered packet exposes its
 retired finalizer. Public `ResearchOperations` delegates here;
 Dialogue/Critique have no alternate preparation path.
+
+### Portable Research Record v1 and Local Execution v2
+
+`PortableResearchRecordStore` owns one JSON file per intellectual record under
+`.scholium/research-records/v1/records/`; the seeded `active/` and `trash/`
+directories are reserved for the Discussion and Record Trash migrations. A
+separate `settlements/` directory stores exactly one replaceable current-state
+file per Note. Settle therefore no longer appends an application-authored
+history event, and Changed Since Settled is derived against the current
+Markdown revision during snapshot assembly without writing a pending-state
+event. Precommit deletion removes only the exact journaled Settle state and
+aborts on a concurrent replacement; rollback never overwrites a newer state,
+while postcommit privacy cleanup always removes late state for every deleted
+Note identity. Portable record contracts whitelist Action identity, exact
+Method/Profile revisions, the path-free Source Reference when present,
+participating Note revisions, attributed statements, agent-reported
+actually-used Materials, Application-confirmed changes, and discrepancies.
+They have no generic metadata escape hatch and cannot encode a
+protected Function ID, assembled instructions, raw key, bookmark, absolute
+path, diff, token count, transport log, or window state. Strict decoding is
+recursive through Note identities, fingerprints, passage anchors, Method
+resources, and Source references; unknown nested fields and path-shaped
+resource names fail closed rather than surviving as ignored JSON.
+
+Portable reads and writes combine per-process actor isolation, one
+machine-local advisory lock, `NSFileCoordinator`, and descriptor-relative
+no-follow access. Writes additionally use a same-directory temporary file,
+file and directory synchronization, atomic rename, and exact readback.
+Enumeration isolates malformed record files instead of hiding valid peers.
+Store reopen removes incomplete app-owned staging files while holding the same
+lock and portable coordination boundary. The lock lives below the verified
+Application Support Triptych directory; it is not portable authority.
+
+`LocalResearchExecutionStore` owns one schema-v2 file per new Action run at
+`Application Support/Triptychs/<id>/research-execution-v2/`. It may retain the
+protected Function snapshot, assembled instructions, grant digest, Dialogue
+draft, and completion evidence. Raw grant keys remain non-Codable and are
+delivered only in memory. Completion authorization for a new Action consults
+only this store, so a matching legacy grant cannot authorize it. A write
+report, consumed grant, completion, and submission digest advance in one
+atomic replacement of their single run file; there is no durable
+completed-grant/missing-completion intermediate state. Permanent
+Note deletion preflights this store and, after the commit decision, removes
+every execution containing the deleted Note or its associated Critique;
+finished portable records remain under their separate tombstone lifecycle.
+
+The Action-use-case path writes Local Execution v2 and creates one portable
+record only after a terminal validated nonconversational completion. It never
+writes `research-activity.json` or `dialogue.json`. Retained Function callers
+continue to use those legacy files during the staged cutover; workspace
+projection reads both stores without treating either as authority for the
+other. Legacy activity, Dialogue, binding, and grant files are not migrated,
+rewritten, or imported, and the existing **Reveal Legacy Data** command opens
+their exact machine-local Triptych directory. Critique preparation uses its
+portable association as staging until the exact Local v2 run is durable;
+duplicate staging evidence is reconciled deterministically after interruption,
+and completion retry idempotently repairs missing actionable findings. Until
+Session 12, finishing a Local-v2 Action Discussion fails closed without writing
+legacy activity; retained Function-backed Discussion keeps its existing Finish
+path. The production Action surface remains Session 13, the independent
+record browser remains Session 19, and Record Trash/diff remains Session 20.
 
 Rendered function input keeps three typed layers distinct: `taskDirective`
 contains the explicit public Action, its validated native parameter values,

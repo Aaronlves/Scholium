@@ -915,6 +915,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     public let functionCompletion: ResearchFunctionCompletion?
     public let functionInstructions: String?
     public let actionableFindings: [CritiqueFinding]
+    public let localExecutionFindingsCaptured: Bool
     public let findingDispositions: [CritiqueFindingDisposition]
     public let completedAt: Date?
 
@@ -928,6 +929,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         functionCompletion: ResearchFunctionCompletion? = nil,
         functionInstructions: String? = nil,
         actionableFindings: [CritiqueFinding] = [],
+        localExecutionFindingsCaptured: Bool = false,
         findingDispositions: [CritiqueFindingDisposition] = [],
         completedAt: Date? = nil
     ) {
@@ -943,6 +945,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         )
         self.functionInstructions = normalized?.isEmpty == false ? normalized : nil
         self.actionableFindings = Self.uniqueFindings(actionableFindings)
+        self.localExecutionFindingsCaptured = localExecutionFindingsCaptured
         let actionableIDs = Set(self.actionableFindings.map(\.id))
         self.findingDispositions = Dictionary(
             findingDispositions
@@ -956,7 +959,8 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, requestedAt, targetFingerprint, checkpointID, scope
         case functionSnapshot, functionCompletion, functionInstructions
-        case actionableFindings, findingDispositions, completedAt
+        case actionableFindings, localExecutionFindingsCaptured
+        case findingDispositions, completedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -986,6 +990,10 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
                 [CritiqueFinding].self,
                 forKey: .actionableFindings
             ) ?? [],
+            localExecutionFindingsCaptured: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .localExecutionFindingsCaptured
+            ) ?? false,
             findingDispositions: try container.decodeIfPresent(
                 [CritiqueFindingDisposition].self,
                 forKey: .findingDispositions
@@ -1006,6 +1014,9 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(functionInstructions, forKey: .functionInstructions)
         if !actionableFindings.isEmpty {
             try container.encode(actionableFindings, forKey: .actionableFindings)
+        }
+        if localExecutionFindingsCaptured {
+            try container.encode(true, forKey: .localExecutionFindingsCaptured)
         }
         if !findingDispositions.isEmpty {
             try container.encode(findingDispositions, forKey: .findingDispositions)

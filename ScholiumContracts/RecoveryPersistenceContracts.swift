@@ -116,6 +116,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public let sourceDeletion: PreparedPermanentDeletion?
     public let critiqueDeletion: PreparedPermanentDeletion?
     public let checkpointPurge: PreparedCheckpointPurge?
+    public let settlements: [SettlementRecord]
 
     public init(
         phase: PermanentDeletionRecoveryPhase,
@@ -132,7 +133,8 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         critiqueIdentity: PermanentDeletionIdentityBackup?,
         sourceDeletion: PreparedPermanentDeletion?,
         critiqueDeletion: PreparedPermanentDeletion?,
-        checkpointPurge: PreparedCheckpointPurge?
+        checkpointPurge: PreparedCheckpointPurge?,
+        settlements: [SettlementRecord] = []
     ) {
         self.phase = phase
         self.noteID = noteID
@@ -149,6 +151,10 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         self.sourceDeletion = sourceDeletion
         self.critiqueDeletion = critiqueDeletion
         self.checkpointPurge = checkpointPurge
+        self.settlements = Dictionary(
+            settlements.map { ($0.noteID, $0) },
+            uniquingKeysWith: { _, newest in newest }
+        ).values.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
     }
 
     public func updating(
@@ -172,7 +178,67 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             critiqueIdentity: critiqueIdentity,
             sourceDeletion: sourceDeletion ?? self.sourceDeletion,
             critiqueDeletion: critiqueDeletion ?? self.critiqueDeletion,
-            checkpointPurge: checkpointPurge ?? self.checkpointPurge
+            checkpointPurge: checkpointPurge ?? self.checkpointPurge,
+            settlements: settlements
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case phase, noteID, vaultID, relativePath, expectedRevision
+        case checkpointArea, dialogues, critiqueNoteID, critiqueDialogues
+        case critiqueAssociations, identity, critiqueIdentity, sourceDeletion
+        case critiqueDeletion, checkpointPurge, settlements
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            phase: try container.decode(PermanentDeletionRecoveryPhase.self, forKey: .phase),
+            noteID: try container.decode(UUID.self, forKey: .noteID),
+            vaultID: try container.decode(UUID.self, forKey: .vaultID),
+            relativePath: try container.decode(String.self, forKey: .relativePath),
+            expectedRevision: try container.decode(
+                DocumentFingerprint.self,
+                forKey: .expectedRevision
+            ),
+            checkpointArea: try container.decode(
+                TriptychCheckpointArea.self,
+                forKey: .checkpointArea
+            ),
+            dialogues: try container.decode([DialogueEntry].self, forKey: .dialogues),
+            critiqueNoteID: try container.decodeIfPresent(UUID.self, forKey: .critiqueNoteID),
+            critiqueDialogues: try container.decode(
+                [DialogueEntry].self,
+                forKey: .critiqueDialogues
+            ),
+            critiqueAssociations: try container.decode(
+                [CritiqueAssociation].self,
+                forKey: .critiqueAssociations
+            ),
+            identity: try container.decodeIfPresent(
+                PermanentDeletionIdentityBackup.self,
+                forKey: .identity
+            ),
+            critiqueIdentity: try container.decodeIfPresent(
+                PermanentDeletionIdentityBackup.self,
+                forKey: .critiqueIdentity
+            ),
+            sourceDeletion: try container.decodeIfPresent(
+                PreparedPermanentDeletion.self,
+                forKey: .sourceDeletion
+            ),
+            critiqueDeletion: try container.decodeIfPresent(
+                PreparedPermanentDeletion.self,
+                forKey: .critiqueDeletion
+            ),
+            checkpointPurge: try container.decodeIfPresent(
+                PreparedCheckpointPurge.self,
+                forKey: .checkpointPurge
+            ),
+            settlements: try container.decodeIfPresent(
+                [SettlementRecord].self,
+                forKey: .settlements
+            ) ?? []
         )
     }
 }

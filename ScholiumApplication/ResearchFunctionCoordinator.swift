@@ -106,11 +106,14 @@ private struct ResolvedFunctionPhase: Sendable {
 }
 
 private enum StoredFunctionRecord: Sendable {
+    case local(LocalResearchExecutionRecord)
     case dialogue(DialogueEntry, ResearchFunctionRecordProjection)
     case critique(ResearchFunctionRecordProjection)
 
     var snapshot: ResearchFunctionSnapshot {
         switch self {
+        case .local(let record):
+            record.snapshot
         case .dialogue(_, let projection), .critique(let projection):
             projection.snapshot
         }
@@ -118,6 +121,8 @@ private enum StoredFunctionRecord: Sendable {
 
     var completion: ResearchFunctionCompletion? {
         switch self {
+        case .local(let record):
+            record.completion
         case .dialogue(_, let projection), .critique(let projection):
             projection.completion
         }
@@ -125,8 +130,22 @@ private enum StoredFunctionRecord: Sendable {
 
     var preparedInstructions: String? {
         switch self {
+        case .local(let record):
+            record.preparedInstructions
         case .dialogue(_, let projection), .critique(let projection):
             projection.preparedInstructions
+        }
+    }
+
+    var isLocalExecutionV2: Bool {
+        if case .local = self { true } else { false }
+    }
+
+    var dialogueEntry: DialogueEntry? {
+        switch self {
+        case .local(let record): record.dialogue
+        case .dialogue(let entry, _): entry
+        case .critique: nil
         }
     }
 }
@@ -501,9 +520,18 @@ extension WorkspaceHandle {
             checks: handoff.checks,
             commentIDs: parentRequest.commentIDs
         )
+        let parentUsesLocalExecutionV2 = try await services
+            .localResearchExecutionStore.recordIfPresent(id: parentRunID) != nil
+        let actionContext = try await resolvedDefaultActionContext(
+            for: request,
+            executionStorage: parentUsesLocalExecutionV2
+                ? .localExecutionV2
+                : .legacyFunction
+        )
         let preparation = try await prepareResearchFunction(
             request,
-            fidelityInvocation: .automatic(parentRunID: parentRunID)
+            fidelityInvocation: .automatic(parentRunID: parentRunID),
+            actionContext: actionContext
         )
         return AutomaticFidelityPreparation(
             parentRunID: parentRunID,
@@ -663,7 +691,8 @@ extension WorkspaceHandle {
                 activityAuthorization = try await issueResearchActivityGrant(
                     request: request,
                     activityID: runID,
-                    issuedAt: preparedAt
+                    issuedAt: preparedAt,
+                    storage: actionContext.executionStorage
                 )
                 activeResearchActivityKeys[runID] = activityAuthorization?.activityKey
             } catch {
@@ -696,7 +725,8 @@ extension WorkspaceHandle {
                 allSkills: allSkills,
                 selectedComments: evidence,
                 evidenceRevisions: evidenceRevisions,
-                zoteroContext: zoteroContext
+                zoteroContext: zoteroContext,
+                executionStorage: actionContext.executionStorage
             )
         }
 
@@ -769,7 +799,8 @@ extension WorkspaceHandle {
             confirmationToken: confirmationToken,
             authorization: activityAuthorization
         )
-        if request.function == .discuss {
+        if request.function == .discuss,
+           actionContext.executionStorage == .legacyFunction {
             let responseProfile: DialogueResponseProfile?
             if let modules = request.dialogueResponseModules {
                 let storedProfile = try await services.controlStore
@@ -847,12 +878,40 @@ extension WorkspaceHandle {
                     ResearchSourceAccessFailure(code: .sourceChanged)
                 )
             }
-            _ = try await services.dialogueStore.save(entry)
+            switch actionContext.executionStorage {
+            case .legacyFunction:
+                _ = try await services.dialogueStore.save(entry)
+            case .localExecutionV2:
+                let localDialogue = request.function == .discuss
+                    ? try await localDiscussionEntry(
+                        snapshot: snapshot,
+                        request: request,
+                        selectedNotes: ([target] + materials).map(\.reference),
+                        includedComments: evidence,
+                        skillInstructions: functionInstructions
+                    )
+                    : nil
+                _ = try await services.localResearchExecutionStore.create(
+                    LocalResearchExecutionRecord(
+                        triptychID: services.manifest.id,
+                        snapshot: snapshot,
+                        preparedInstructions: functionInstructions,
+                        dialogue: localDialogue,
+                        grant: activityAuthorization?.grant
+                    )
+                )
+            }
         } catch {
             if let activityID = activityAuthorization?.grant.activityID {
-                _ = try? await services.researchActivityStore.revokeGrant(
-                    activityID: activityID
-                )
+                switch actionContext.executionStorage {
+                case .legacyFunction:
+                    _ = try? await services.researchActivityStore.revokeGrant(
+                        activityID: activityID
+                    )
+                case .localExecutionV2:
+                    _ = try? await services.localResearchExecutionStore
+                        .transitionGrant(activityID: activityID, to: .revoked)
+                }
                 activeResearchActivityKeys[runID] = nil
             }
             if let checkpoint {
@@ -868,10 +927,61 @@ extension WorkspaceHandle {
                 publication: .researchRecords
             )
         }
+        var returnedInstructions = deliveryInstructions
+        if request.function == .discuss,
+           actionContext.executionStorage == .localExecutionV2 {
+            guard let responseContract = try await services.localResearchExecutionStore
+                .record(id: runID).dialogue?.responseContract else {
+                throw ResearchFunctionContractError.preparationNotFound(runID)
+            }
+            returnedInstructions = functionInstructions + "\n\n" + DiscussResponseTransport.locator(
+                discussionID: runID,
+                triptychID: services.manifest.id,
+                contract: responseContract
+            )
+        }
         return ResearchFunctionPreparation(
             snapshot: snapshot,
-            instructions: deliveryInstructions,
+            instructions: returnedInstructions,
             derivedRefreshWarning: refreshWarning
+        )
+    }
+
+    private func localDiscussionEntry(
+        snapshot: ResearchFunctionSnapshot,
+        request: ResearchFunctionRequest,
+        selectedNotes: [DialogueNoteReference],
+        includedComments: [DialogueIncludedComment],
+        skillInstructions: String
+    ) async throws -> DialogueEntry {
+        let storedProfile = try await services.controlStore.discussResponseProfile()
+        let effectiveProfile: DialogueResponseProfile
+        if let modules = request.dialogueResponseModules {
+            effectiveProfile = storedProfile.updated(modules: modules.map(\.rawValue))
+        } else {
+            effectiveProfile = storedProfile
+        }
+        guard effectiveProfile.validationIssues.isEmpty else {
+            throw ResearchOperationError.invalidDialogueResponseContract(
+                effectiveProfile.validationIssues
+            )
+        }
+        let responseContract = DialogueResponseContract(profile: effectiveProfile)
+        let locator = DiscussResponseTransport.locator(
+            discussionID: snapshot.runID,
+            triptychID: services.manifest.id,
+            contract: responseContract
+        )
+        return DialogueEntry(
+            id: snapshot.runID,
+            triptychID: services.manifest.id,
+            instruction: request.instruction ?? "Discuss the current Target.",
+            selectedNotes: selectedNotes,
+            includedComments: includedComments,
+            preparedInstructions: skillInstructions + "\n\n" + locator,
+            checkpointID: nil,
+            functionSnapshot: snapshot,
+            responseContract: responseContract
         )
     }
 
@@ -884,7 +994,8 @@ extension WorkspaceHandle {
         allSkills: [ResearchFunctionSkillSnapshot],
         selectedComments: [DialogueIncludedComment],
         evidenceRevisions: [DocumentFingerprint],
-        zoteroContext: ZoteroBibliographicContext?
+        zoteroContext: ZoteroBibliographicContext?,
+        executionStorage: ResolvedResearchActionContext.ExecutionStorage
     ) async throws -> ResearchFunctionPreparation {
         let checkpoint = try await createCheckpoint(
             name: "Before Agent Work",
@@ -1004,6 +1115,39 @@ extension WorkspaceHandle {
             preparedOutput: output
         )
         let outputBinding = researchFunctionCritiqueOutputBinding(output)
+        if executionStorage == .localExecutionV2 {
+            let localRecord = try LocalResearchExecutionRecord(
+                triptychID: services.manifest.id,
+                snapshot: snapshot,
+                preparedInstructions: exactInstructions + "\n\n" + outputBinding
+            )
+            do {
+                _ = try await services.localResearchExecutionStore.create(localRecord)
+            } catch {
+                let committed = try? await services.localResearchExecutionStore
+                    .recordIfPresent(id: runID)
+                guard committed == localRecord else {
+                    try? await services.critiqueRegistry.discardUninstalledActionRound(
+                        runID: runID
+                    )
+                    _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
+                        id: checkpoint.id
+                    )
+                    throw error
+                }
+            }
+            do {
+                _ = try await services.critiqueRegistry.detachFunctionEvidence(
+                    runID: runID,
+                    matching: snapshot
+                )
+            } catch {
+                // The Local v2 copy is already durable. Retain it as the
+                // authority and let the idempotent reconciliation path finish
+                // detaching the staging evidence now or after process restart.
+                _ = try await storedFunctionRecord(runID: runID)
+            }
+        }
         return ResearchFunctionPreparation(
             snapshot: snapshot,
             // The function packet and exact prepared output are the complete
@@ -1016,16 +1160,36 @@ extension WorkspaceHandle {
     // MARK: Completion and cancellation
 
     func completeResearchFunction(
-        _ submission: ResearchFunctionCompletionSubmission
+        _ submission: ResearchFunctionCompletionSubmission,
+        acceptedSubmissionDigest: String? = nil
     ) async throws -> ResearchFunctionCompletion {
         try requireActive()
         let stored = try await storedFunctionRecord(runID: submission.runID)
         let snapshot = stored.snapshot
+        let submissionDigest = try acceptedSubmissionDigest
+            ?? completionSubmissionDigest(submission)
         guard snapshot.confirmationToken == submission.confirmationToken else {
             throw ResearchFunctionContractError.confirmationMismatch
         }
         if let existing = stored.completion {
             switch existing.state {
+            case .complete where stored.isLocalExecutionV2:
+                guard case .local(let local) = stored,
+                      local.completionSubmissionDigest == submissionDigest else {
+                    throw ResearchFunctionContractError.completionAlreadyRecorded(
+                        submission.runID
+                    )
+                }
+                try await reconcileLocalCritiqueFindings(
+                    completion: existing,
+                    stored: stored
+                )
+                try await ensurePortableResearchRecord(
+                    completion: existing,
+                    stored: stored,
+                    confirmedWrite: local.grant?.completionReport
+                )
+                return existing
             case .complete, .cancelled:
                 throw ResearchFunctionContractError.completionAlreadyRecorded(submission.runID)
             case .prepared, .awaitingFidelity, .unverified, .stale:
@@ -1045,7 +1209,7 @@ extension WorkspaceHandle {
         var completedCritiqueFindings: [CritiqueFinding] = []
         switch snapshot.request.function {
         case .discuss:
-            guard case .dialogue(let entry, _) = stored,
+            guard let entry = stored.dialogueEntry,
                   entry.responseContract.validationIssues.isEmpty,
                   entry.replies.contains(where: { reply in
                       reply.createdAt >= snapshot.preparedAt
@@ -1062,8 +1226,23 @@ extension WorkspaceHandle {
                 )
             }
         case .critique:
-            guard case .critique = stored,
-                  let preparedOutput = snapshot.preparedOutput,
+            if stored.isLocalExecutionV2 {
+                guard let association = await services.critiqueRegistry.association(
+                    workNoteID: snapshot.request.target.noteID
+                ), association.rounds.contains(where: { $0.id == submission.runID }) else {
+                    throw ResearchFunctionContractError.preparationNotFound(
+                        submission.runID
+                    )
+                }
+            } else if case .critique = stored {
+                // The retained Function route still stores execution evidence
+                // in the Critique registry until its UI cutover.
+            } else {
+                throw ResearchFunctionContractError.preparationNotFound(
+                    submission.runID
+                )
+            }
+            guard let preparedOutput = snapshot.preparedOutput,
                   let outputFingerprint = submission.outputFingerprint else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "Critique completion requires its separate Critique document fingerprint."
@@ -1110,12 +1289,14 @@ extension WorkspaceHandle {
             if let activitySubmission = submission.activityCompletion {
                 confirmed = try await confirmWriteActivity(
                     activitySubmission,
-                    snapshot: snapshot
+                    snapshot: snapshot,
+                    localExecutionV2: stored.isLocalExecutionV2
                 )
             } else if let existing = stored.completion,
                       [.awaitingFidelity, .unverified, .stale].contains(existing.state),
-                      let grant = await services.researchActivityStore.grant(
-                        activityID: activityID
+                      let grant = try await researchActivityGrant(
+                        activityID: activityID,
+                        localExecutionV2: stored.isLocalExecutionV2
                       ),
                       grant.state == .completed,
                       let report = grant.completionReport,
@@ -1486,30 +1667,66 @@ extension WorkspaceHandle {
                 currentTarget: finalCurrentTarget
             )
         }
+        if stored.isLocalExecutionV2,
+           completion.function != .discuss {
+            _ = try await portableResearchRecord(
+                completion: completion,
+                stored: stored,
+                confirmedWrite: confirmedWriteActivity?.report
+            )
+        }
+        var didPersistLocalCompletionWithGrant = false
         if let confirmedWriteActivity,
            let activitySubmission = submission.activityCompletion {
-            _ = try await services.researchActivityStore.completeGrant(
-                activityID: activitySubmission.activityID,
-                activityKey: activitySubmission.activityKey,
-                completionPayloadDigest: confirmedWriteActivity.completionPayloadDigest,
-                report: confirmedWriteActivity.report,
-                projectedEvents: confirmedWriteActivity.projectedEvents
-            )
+            if stored.isLocalExecutionV2 {
+                _ = try await services.localResearchExecutionStore.completeExecution(
+                    activityID: activitySubmission.activityID,
+                    activityKey: activitySubmission.activityKey,
+                    completionPayloadDigest: confirmedWriteActivity.completionPayloadDigest,
+                    report: confirmedWriteActivity.report,
+                    completion: completion,
+                    submissionDigest: submissionDigest
+                )
+                didPersistLocalCompletionWithGrant = true
+            } else {
+                _ = try await services.researchActivityStore.completeGrant(
+                    activityID: activitySubmission.activityID,
+                    activityKey: activitySubmission.activityKey,
+                    completionPayloadDigest: confirmedWriteActivity.completionPayloadDigest,
+                    report: confirmedWriteActivity.report,
+                    projectedEvents: confirmedWriteActivity.projectedEvents
+                )
+            }
             activeResearchActivityKeys[submission.runID] = nil
         }
-        try await persistFunctionCompletion(completion, in: stored)
-        if completion.function == .critique,
-           completion.state == .complete {
-            _ = try await services.critiqueRegistry.captureActionableFindings(
-                runID: completion.runID,
-                findings: completedCritiqueFindings
+        if !didPersistLocalCompletionWithGrant {
+            try await persistFunctionCompletion(
+                completion,
+                in: stored,
+                submissionDigest: stored.isLocalExecutionV2 ? submissionDigest : nil
             )
         }
-        try await projectCompletedResearchActivity(
-            completion: completion,
-            request: snapshot.request,
-            keyedActivityID: snapshot.activityID
-        )
+        if completion.function == .critique,
+           completion.state == .complete {
+            if stored.isLocalExecutionV2 {
+                _ = try await services.critiqueRegistry.captureLocalExecutionFindings(
+                    runID: completion.runID,
+                    findings: completedCritiqueFindings
+                )
+            } else {
+                _ = try await services.critiqueRegistry.captureActionableFindings(
+                    runID: completion.runID,
+                    findings: completedCritiqueFindings
+                )
+            }
+        }
+        if !stored.isLocalExecutionV2 {
+            try await projectCompletedResearchActivity(
+                completion: completion,
+                request: snapshot.request,
+                keyedActivityID: snapshot.activityID
+            )
+        }
 
         // The substantive completion is authoritative before orchestration
         // begins. Automatic Fidelity preparation is therefore recoverable:
@@ -1518,11 +1735,34 @@ extension WorkspaceHandle {
         // A newly prepared child remains pending; exact completed evidence can
         // be linked immediately because it has already passed normal child
         // validation and does not claim a new audit occurred.
-        if let advanced = await advanceWithAutomaticFidelityIfAvailable(
+        if let advanced = try await advanceWithAutomaticFidelityIfAvailable(
             completion: completion,
-            submission: submission
+            submission: submission,
+            acceptedSubmissionDigest: submissionDigest
         ) {
+            if stored.isLocalExecutionV2 {
+                let refreshed = try await storedFunctionRecord(runID: advanced.runID)
+                let grant = try await researchActivityGrant(
+                    activityID: advanced.runID,
+                    localExecutionV2: true
+                )
+                try await ensurePortableResearchRecord(
+                    completion: advanced,
+                    stored: refreshed,
+                    confirmedWrite: grant?.completionReport
+                )
+            }
             return advanced
+        }
+
+        if stored.isLocalExecutionV2,
+           [.complete, .unverified].contains(completion.state),
+           completion.function != .discuss {
+            try await ensurePortableResearchRecord(
+                completion: completion,
+                stored: try await storedFunctionRecord(runID: completion.runID),
+                confirmedWrite: confirmedWriteActivity?.report
+            )
         }
 
         let refreshWarning = try await recoverableResearchRefreshWarning {
@@ -1553,8 +1793,9 @@ extension WorkspaceHandle {
 
     private func advanceWithAutomaticFidelityIfAvailable(
         completion: ResearchFunctionCompletion,
-        submission: ResearchFunctionCompletionSubmission
-    ) async -> ResearchFunctionCompletion? {
+        submission: ResearchFunctionCompletionSubmission,
+        acceptedSubmissionDigest: String
+    ) async throws -> ResearchFunctionCompletion? {
         guard completion.state == .awaitingFidelity,
               completion.didModifyTarget,
               [.develop, .revise].contains(completion.function),
@@ -1579,9 +1820,28 @@ extension WorkspaceHandle {
                     fidelityOutcomes: submission.fidelityOutcomes,
                     childRunIDs: [automatic.effectiveFidelityRunID],
                     submittedAt: submission.submittedAt
-                )
+                ),
+                acceptedSubmissionDigest: acceptedSubmissionDigest
             )
         } catch {
+            if let durable = try? await storedFunctionRecord(runID: completion.runID),
+               let advanced = durable.completion,
+               [.complete, .unverified].contains(advanced.state) {
+                if durable.isLocalExecutionV2 {
+                    let confirmedWrite: MultiTargetCompletionReport?
+                    if case .local(let local) = durable {
+                        confirmedWrite = local.grant?.completionReport
+                    } else {
+                        confirmedWrite = nil
+                    }
+                    try await ensurePortableResearchRecord(
+                        completion: advanced,
+                        stored: durable,
+                        confirmedWrite: confirmedWrite
+                    )
+                }
+                return advanced
+            }
             return nil
         }
     }
@@ -1723,6 +1983,11 @@ extension WorkspaceHandle {
     func finishResearchDiscussion(runID: UUID) async throws -> ResearchActivityEvent {
         try requireActive()
         let stored = try await storedFunctionRecord(runID: runID)
+        guard !stored.isLocalExecutionV2 else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Finishing an Action Discussion is unavailable until the portable Discussion cutover. The completed response remains in Local Execution v2."
+            )
+        }
         let snapshot = stored.snapshot
         guard snapshot.request.function == .discuss,
               let completion = stored.completion,
@@ -1757,9 +2022,14 @@ extension WorkspaceHandle {
         }
         let snapshot = stored.snapshot
         if let activityID = snapshot.activityID {
-            _ = try? await services.researchActivityStore.cancelGrant(
-                activityID: activityID
-            )
+            if stored.isLocalExecutionV2 {
+                _ = try? await services.localResearchExecutionStore
+                    .transitionGrant(activityID: activityID, to: .cancelled)
+            } else {
+                _ = try? await services.researchActivityStore.cancelGrant(
+                    activityID: activityID
+                )
+            }
             activeResearchActivityKeys[runID] = nil
         }
         let completion = ResearchFunctionCompletion(
@@ -2554,14 +2824,267 @@ extension WorkspaceHandle {
 
     // MARK: Record persistence
 
+    private func reconcileLocalCritiqueFindings(
+        completion: ResearchFunctionCompletion,
+        stored: StoredFunctionRecord
+    ) async throws {
+        guard stored.isLocalExecutionV2,
+              completion.function == .critique,
+              completion.state == .complete,
+              let preparedOutput = stored.snapshot.preparedOutput,
+              let outputFingerprint = completion.outputFingerprint else {
+            return
+        }
+        if await services.critiqueRegistry.localExecutionFindingsWereCaptured(
+            runID: completion.runID
+        ) {
+            return
+        }
+        let document = try await repository(vaultID: preparedOutput.note.vaultID)
+            .load(relativePath: preparedOutput.note.relativePath)
+        guard document.fingerprint == outputFingerprint else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The completed Critique output no longer matches its recorded revision."
+            )
+        }
+        let metadata = CritiqueDocumentContract.metadata(in: document)
+        guard metadata.targetFingerprintSHA256
+                == stored.snapshot.request.target.fingerprint.sha256 else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The Critique document is no longer bound to the prepared Work revision."
+            )
+        }
+        _ = try await services.critiqueRegistry.captureLocalExecutionFindings(
+            runID: completion.runID,
+            findings: CritiqueDocumentContract.findings(in: document)
+        )
+    }
+
+    private func completionSubmissionDigest(
+        _ submission: ResearchFunctionCompletionSubmission
+    ) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .deferredToDate
+        encoder.outputFormatting = [.sortedKeys]
+        return DocumentFingerprint(data: try encoder.encode(submission)).sha256
+    }
+
+    private func researchActivityGrant(
+        activityID: UUID,
+        localExecutionV2: Bool
+    ) async throws -> ResearchActivityGrant? {
+        if localExecutionV2 {
+            return try await services.localResearchExecutionStore.grant(
+                activityID: activityID
+            )
+        }
+        return await services.researchActivityStore.grant(activityID: activityID)
+    }
+
+    private func ensurePortableResearchRecord(
+        completion: ResearchFunctionCompletion,
+        stored: StoredFunctionRecord,
+        confirmedWrite: MultiTargetCompletionReport?
+    ) async throws {
+        guard [.complete, .unverified].contains(completion.state) else { return }
+        do {
+            _ = try await services.portableResearchRecordStore.record(
+                id: completion.runID
+            )
+            return
+        } catch ResearchRecordStoreV1Error.recordNotFound(_) {
+            // Construct the missing record from the validated completion.
+        }
+        guard let record = try await portableResearchRecord(
+                completion: completion,
+                stored: stored,
+                confirmedWrite: confirmedWrite
+        ) else { return }
+        _ = try await services.portableResearchRecordStore.createFinishedRecord(
+            record
+        )
+    }
+
+    private func portableResearchRecord(
+        completion: ResearchFunctionCompletion,
+        stored: StoredFunctionRecord,
+        confirmedWrite: MultiTargetCompletionReport?
+    ) async throws -> PortableResearchRecord? {
+        guard stored.isLocalExecutionV2,
+              completion.function != .discuss,
+              let actionSnapshot = stored.snapshot.actionSnapshot else {
+            return nil
+        }
+        let snapshot = stored.snapshot
+        var noteSnapshots: [UUID: ResearchActionNoteSnapshot] = [
+            actionSnapshot.target.noteID: actionSnapshot.target,
+        ]
+        for note in actionSnapshot.authority.readableNotes {
+            noteSnapshots[note.noteID] = note
+        }
+        for note in actionSnapshot.authority.writableNotes {
+            noteSnapshots[note.noteID] = note
+        }
+
+        var endingRevisions: [UUID: DocumentFingerprint] = [:]
+        endingRevisions[snapshot.request.target.noteID] = completion.targetFingerprint
+        for (noteID, fingerprint) in completion.materialFingerprints {
+            endingRevisions[noteID] = fingerprint
+        }
+        for (noteID, fingerprint) in confirmedWrite?.observedFingerprints ?? [:] {
+            endingRevisions[noteID] = fingerprint
+        }
+        var preparedOutputNoteID: UUID?
+        if let output = snapshot.preparedOutput,
+           let endingRevision = completion.outputFingerprint {
+            guard let identity = try await services.controlStore.identityRecord(
+                vaultID: output.note.vaultID,
+                relativePath: output.note.relativePath
+            ) else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The completed output has no stable Note identity."
+                )
+            }
+            let document = try await repository(vaultID: output.note.vaultID)
+                .load(relativePath: output.note.relativePath)
+            let outputNote = ResearchActionNoteSnapshot(
+                noteID: identity.id,
+                note: output.note,
+                role: .work,
+                lifecycle: WorkspaceDocumentLifecycle(
+                    relativePath: output.note.relativePath
+                ),
+                fingerprint: output.fingerprint,
+                title: ResearchNoteTitleResolver.resolve(
+                    document: document,
+                    vaultRole: try vault(id: output.note.vaultID).role
+                ).title
+            )
+            noteSnapshots[identity.id] = outputNote
+            endingRevisions[identity.id] = endingRevision
+            preparedOutputNoteID = identity.id
+        }
+        let participatingNotes = try noteSnapshots.values.map { note in
+            try PortableResearchNoteRevision(
+                noteID: note.noteID,
+                note: note.note,
+                role: note.role,
+                title: note.title,
+                startingRevision: note.fingerprint,
+                endingRevision: endingRevisions[note.noteID] ?? note.fingerprint
+            )
+        }
+
+        var changes: [PortableResearchConfirmedChange] = []
+        if let confirmedWrite {
+            let start = Dictionary(
+                uniqueKeysWithValues: actionSnapshot.authority.writableNotes.map {
+                    ($0.noteID, $0.fingerprint)
+                }
+            )
+            for note in confirmedWrite.confirmedModifiedNotes {
+                guard let starting = start[note.noteID],
+                      let ending = confirmedWrite.observedFingerprints[note.noteID],
+                      starting != ending else { continue }
+                changes.append(try PortableResearchConfirmedChange(
+                    noteID: note.noteID,
+                    startingRevision: starting,
+                    endingRevision: ending
+                ))
+            }
+        } else if completion.targetFingerprint != actionSnapshot.target.fingerprint {
+            changes.append(try PortableResearchConfirmedChange(
+                noteID: actionSnapshot.target.noteID,
+                startingRevision: actionSnapshot.target.fingerprint,
+                endingRevision: completion.targetFingerprint
+            ))
+        }
+        if let preparedOutputNoteID,
+           let output = snapshot.preparedOutput,
+           let endingRevision = completion.outputFingerprint,
+           output.fingerprint != endingRevision {
+            changes.append(try PortableResearchConfirmedChange(
+                noteID: preparedOutputNoteID,
+                startingRevision: output.fingerprint,
+                endingRevision: endingRevision
+            ))
+        }
+
+        var discrepancies: [PortableResearchDiscrepancy] = []
+        if let confirmedWrite {
+            discrepancies.append(contentsOf: confirmedWrite.unreportedChangedNotes.map {
+                PortableResearchDiscrepancy(
+                    id: PortableResearchDiscrepancy.stableID(
+                        runID: completion.runID,
+                        noteID: $0.noteID,
+                        kind: .changedButNotReported
+                    ),
+                    noteID: $0.noteID,
+                    kind: .changedButNotReported
+                )
+            })
+            let reportedLocations = Set(confirmedWrite.candidateModifiedNotes)
+            discrepancies.append(contentsOf: confirmedWrite.unmodifiedNotes.compactMap {
+                guard reportedLocations.contains($0.note) else { return nil }
+                return PortableResearchDiscrepancy(
+                    id: PortableResearchDiscrepancy.stableID(
+                        runID: completion.runID,
+                        noteID: $0.noteID,
+                        kind: .reportedButUnmodified
+                    ),
+                    noteID: $0.noteID,
+                    kind: .reportedButUnmodified
+                )
+            })
+        }
+
+        let feedback = try PortableResearchStatement(
+            id: completion.runID,
+            author: .agent,
+            kind: .agentFeedback,
+            attribution: "Agent",
+            text: completion.summary,
+            createdAt: completion.completedAt
+        )
+        return try PortableResearchRecord(
+            id: completion.runID,
+            triptychID: services.manifest.id,
+            kind: .action,
+            action: ResearchActionRecordIdentity(snapshot: actionSnapshot),
+            method: try PortableResearchMethodReference(snapshot: actionSnapshot),
+            sourceReference: snapshot.sourceReference,
+            participatingNotes: participatingNotes,
+            statements: [feedback],
+            actuallyUsedMaterials: [],
+            confirmedChanges: changes,
+            discrepancies: discrepancies,
+            startedAt: snapshot.preparedAt,
+            finishedAt: completion.completedAt
+        )
+    }
+
     private func storedFunctionRecord(runID: UUID) async throws -> StoredFunctionRecord {
+        let local = try await services.localResearchExecutionStore
+            .recordIfPresent(id: runID)
         let dialogue = try await services.dialogueStore.functionRecord(runID: runID)
         let critique = try await services.critiqueRegistry.functionRecord(runID: runID)
-        guard dialogue == nil || critique == nil else {
+        if let local, let critique, dialogue == nil,
+           local.snapshot == critique.snapshot,
+           local.completion == critique.completion,
+           local.preparedInstructions == critique.preparedInstructions {
+            _ = try await services.critiqueRegistry.detachFunctionEvidence(
+                runID: runID,
+                matching: local.snapshot
+            )
+            return .local(local)
+        }
+        let matchCount = [local != nil, dialogue != nil, critique != nil].count { $0 }
+        guard matchCount <= 1 else {
             throw ResearchFunctionContractError.invalidCompletion(
                 "The same Research Function run is present in more than one evidential store."
             )
         }
+        if let local { return .local(local) }
         if let dialogue {
             guard let recordID = dialogue.snapshot.recordID else {
                 throw ResearchFunctionContractError.preparationNotFound(runID)
@@ -2577,9 +3100,16 @@ extension WorkspaceHandle {
 
     private func persistFunctionCompletion(
         _ completion: ResearchFunctionCompletion,
-        in stored: StoredFunctionRecord
+        in stored: StoredFunctionRecord,
+        submissionDigest: String? = nil
     ) async throws {
         switch stored {
+        case .local:
+            _ = try await services.localResearchExecutionStore.setCompletion(
+                completion,
+                submissionDigest: submissionDigest,
+                runID: completion.runID
+            )
         case .dialogue:
             _ = try await services.dialogueStore.setFunctionCompletion(
                 completion,
@@ -2598,9 +3128,32 @@ extension WorkspaceHandle {
     /// last-known-good generation after a committed refresh failure.
     private func authoritativeFunctionRecords() async throws
         -> [ResearchFunctionRecordProjection] {
+        let localRecords = try await services.localResearchExecutionStore.listing().records
+        var critique = try await services.critiqueRegistry.functionRecords()
+        for localRecord in localRecords {
+            guard let duplicate = critique.first(where: { $0.id == localRecord.id }) else {
+                continue
+            }
+            guard duplicate.snapshot == localRecord.snapshot,
+                  duplicate.completion == localRecord.completion,
+                  duplicate.preparedInstructions == localRecord.preparedInstructions else {
+                throw ResearchFunctionRecordStoreError.duplicateRun(localRecord.id)
+            }
+            _ = try await services.critiqueRegistry.detachFunctionEvidence(
+                runID: localRecord.id,
+                matching: localRecord.snapshot
+            )
+            critique.removeAll { $0.id == localRecord.id }
+        }
+        let local = localRecords.map {
+                ResearchFunctionRecordProjection(
+                    snapshot: $0.snapshot,
+                    completion: $0.completion,
+                    preparedInstructions: $0.preparedInstructions
+                )
+            }
         let dialogue = try await services.dialogueStore.functionRecords()
-        let critique = try await services.critiqueRegistry.functionRecords()
-        let stored = dialogue + critique
+        let stored = local + dialogue + critique
         let grouped = Dictionary(grouping: stored, by: \.id)
         if let duplicated = grouped.first(where: { $0.value.count > 1 })?.key {
             throw ResearchFunctionRecordStoreError.duplicateRun(duplicated)
@@ -3010,7 +3563,8 @@ extension WorkspaceHandle {
     private func issueResearchActivityGrant(
         request: ResearchFunctionRequest,
         activityID: UUID,
-        issuedAt: Date
+        issuedAt: Date,
+        storage: ResolvedResearchActionContext.ExecutionStorage
     ) async throws -> ResearchActivityGrantAuthorization {
         guard [.develop, .revise].contains(request.function),
               let writeScope = request.writeScope else {
@@ -3025,14 +3579,26 @@ extension WorkspaceHandle {
                 ($0.noteID, $0.fingerprint)
             }
         )
-        return try await services.researchActivityStore.issueGrant(
-            activityID: activityID,
-            origin: origin,
-            writeScope: writeScope,
-            allowedTargets: allowedTargets,
-            startingFingerprints: startingFingerprints,
-            issuedAt: issuedAt
-        )
+        switch storage {
+        case .legacyFunction:
+            return try await services.researchActivityStore.issueGrant(
+                activityID: activityID,
+                origin: origin,
+                writeScope: writeScope,
+                allowedTargets: allowedTargets,
+                startingFingerprints: startingFingerprints,
+                issuedAt: issuedAt
+            )
+        case .localExecutionV2:
+            return try LocalResearchExecutionStore.prepareGrant(
+                activityID: activityID,
+                origin: origin,
+                writeScope: writeScope,
+                allowedTargets: allowedTargets,
+                startingFingerprints: startingFingerprints,
+                issuedAt: issuedAt
+            )
+        }
     }
 
     private func deliveryInstructions(
@@ -3056,8 +3622,9 @@ extension WorkspaceHandle {
             )
         }
         guard let activityID = snapshot.activityID,
-              let grant = await services.researchActivityStore.grant(
-                activityID: activityID
+              let grant = try await researchActivityGrant(
+                activityID: activityID,
+                localExecutionV2: stored.isLocalExecutionV2
               ),
               grant.state == .active else {
             return base
@@ -3174,7 +3741,8 @@ extension WorkspaceHandle {
 
     private func confirmWriteActivity(
         _ submission: ResearchActivityCompletionSubmission,
-        snapshot: ResearchFunctionSnapshot
+        snapshot: ResearchFunctionSnapshot,
+        localExecutionV2: Bool
     ) async throws -> ConfirmedWriteActivity {
         guard let activityID = snapshot.activityID,
               submission.activityID == activityID,
@@ -3183,11 +3751,20 @@ extension WorkspaceHandle {
                 "The keyed completion must match this activity and include a summary."
             )
         }
-        let grant = try await services.researchActivityStore.authorizeCompletion(
-            activityID: activityID,
-            activityKey: submission.activityKey,
-            at: submission.submittedAt
-        )
+        let grant: ResearchActivityGrant
+        if localExecutionV2 {
+            grant = try await services.localResearchExecutionStore.authorizeCompletion(
+                activityID: activityID,
+                activityKey: submission.activityKey,
+                at: submission.submittedAt
+            )
+        } else {
+            grant = try await services.researchActivityStore.authorizeCompletion(
+                activityID: activityID,
+                activityKey: submission.activityKey,
+                at: submission.submittedAt
+            )
+        }
         let requestTargetsByID = Dictionary(
             uniqueKeysWithValues: snapshot.request.authorizedWriteTargets.map {
                 ($0.noteID, $0)
@@ -3200,9 +3777,14 @@ extension WorkspaceHandle {
               grant.allowedTargets.allSatisfy({ reference in
                   requestTargetsByID[reference.noteID]?.note == reference.note
               }) else {
-            _ = try? await services.researchActivityStore.revokeGrant(
-                activityID: activityID
-            )
+            if localExecutionV2 {
+                _ = try? await services.localResearchExecutionStore
+                    .transitionGrant(activityID: activityID, to: .revoked)
+            } else {
+                _ = try? await services.researchActivityStore.revokeGrant(
+                    activityID: activityID
+                )
+            }
             activeResearchActivityKeys[snapshot.runID] = nil
             throw ResearchFunctionContractError.invalidCompletion(
                 "The stored activity authorization no longer matches this frozen Write request."
@@ -3212,9 +3794,14 @@ extension WorkspaceHandle {
         let allowedLocations = Set(grant.allowedTargets.map(\.note))
         let candidateLocations = Set(submission.candidateModifiedNotes)
         guard candidateLocations.isSubset(of: allowedLocations) else {
-            _ = try? await services.researchActivityStore.revokeGrant(
-                activityID: activityID
-            )
+            if localExecutionV2 {
+                _ = try? await services.localResearchExecutionStore
+                    .transitionGrant(activityID: activityID, to: .revoked)
+            } else {
+                _ = try? await services.researchActivityStore.revokeGrant(
+                    activityID: activityID
+                )
+            }
             activeResearchActivityKeys[snapshot.runID] = nil
             throw ResearchFunctionContractError.invalidCompletion(
                 "The candidate report contains a path outside the frozen Write authorization. The activity key was revoked and the checkpoint was retained."

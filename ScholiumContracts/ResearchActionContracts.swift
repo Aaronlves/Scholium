@@ -388,12 +388,16 @@ public struct ResearchActionRecordIdentity: Codable, Hashable, Sendable {
         self.init(actionID: snapshot.actionID)
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case actionID = "action_id"
     }
 
     public init(from decoder: Decoder) throws {
+        try ResearchActionExecutionValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         guard schemaVersion == Self.currentSchemaVersion else {

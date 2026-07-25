@@ -123,6 +123,7 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
         UUID, UUID, ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome
     let researchSkillsURL: (UUID) async throws -> URL
+    let legacyResearchDataURL: (UUID) async throws -> URL
     let workingMethodBindings: (
         UUID
     ) async throws -> ResearchWorkingMethodBindingSnapshot?
@@ -891,6 +892,13 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await capabilities.researchGuidance.researchSkillsURL(workspaceID)
+    }
+
+    func legacyResearchDataURL() async throws -> URL {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.legacyResearchDataURL(workspaceID)
     }
 
     func openExternal(_ url: URL) {

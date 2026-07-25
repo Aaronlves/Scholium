@@ -21,6 +21,8 @@ struct WorkspaceServices: Sendable {
     let researchSourceAccessStore: ResearchSourceAccessStore
     let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let localResearchExecutionStore: LocalResearchExecutionStore
     let researchActivityStore: ResearchActivityStore
     let dialogueStore: DialogueStore
     let critiqueRegistry: CritiqueRegistry
@@ -418,6 +420,15 @@ public actor WorkspaceHandle {
                     isDirectory: true
                 )
             )
+            let portableResearchRecordStore = try PortableResearchRecordStore(
+                controlURL: controlURL,
+                applicationSupportURL: applicationSupportURL,
+                triptychID: manifest.id
+            )
+            let localResearchExecutionStore = try LocalResearchExecutionStore(
+                applicationSupportURL: applicationSupportURL,
+                triptychID: manifest.id
+            )
             let critiqueRegistry = CritiqueRegistry(controlURL: controlURL)
             let transactionRecoveryStore = try TriptychMutationRecoveryStore(
                 storageURL: triptychStorage.appendingPathComponent(
@@ -449,6 +460,8 @@ public actor WorkspaceHandle {
                     controlURL: controlURL
                 ),
                 zotero: zotero,
+                portableResearchRecordStore: portableResearchRecordStore,
+                localResearchExecutionStore: localResearchExecutionStore,
                 researchActivityStore: researchActivityStore,
                 dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
@@ -501,7 +514,8 @@ public actor WorkspaceHandle {
             let researchOperations = ResearchOperations(
                 reference: reference,
                 skillsURL: services.researchSkillStore.skillsURL,
-                recoveryRecordsURL: services.transactionRecoveryStore.storageURL
+                recoveryRecordsURL: services.transactionRecoveryStore.storageURL,
+                legacyResearchDataURL: triptychStorage
             )
             let handle = WorkspaceHandle(
                 assignment: assignment,
@@ -1069,7 +1083,9 @@ public actor WorkspaceHandle {
             checkpointStore: services.checkpointStore,
             controlStore: services.controlStore,
             recoveryStore: services.transactionRecoveryStore,
-            sourceAccessStore: services.researchSourceAccessStore
+            sourceAccessStore: services.researchSourceAccessStore,
+            portableRecordStore: services.portableResearchRecordStore,
+            localExecutionStore: services.localResearchExecutionStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
@@ -1123,7 +1139,9 @@ public actor WorkspaceHandle {
                 checkpointStore: services.checkpointStore,
                 controlStore: services.controlStore,
                 recoveryStore: services.transactionRecoveryStore,
-                sourceAccessStore: services.researchSourceAccessStore
+                sourceAccessStore: services.researchSourceAccessStore,
+                portableRecordStore: services.portableResearchRecordStore,
+                localExecutionStore: services.localResearchExecutionStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -1875,9 +1893,15 @@ public actor WorkspaceHandle {
 
     func discussionHistory(noteID: UUID) async throws -> [DialogueEntry] {
         try requireActive()
-        return await services.dialogueStore.entries(noteID: noteID).filter {
+        let legacy = await services.dialogueStore.entries(noteID: noteID).filter {
             $0.functionSnapshot.request.function == .discuss
         }
+        let local = try await services.localResearchExecutionStore.listing()
+            .records.compactMap(\.dialogue).filter {
+                $0.functionSnapshot.request.function == .discuss
+                    && $0.selectedNotes.contains(where: { $0.noteID == noteID })
+            }
+        return (legacy + local).sorted { $0.createdAt > $1.createdAt }
     }
 
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
@@ -1918,13 +1942,25 @@ public actor WorkspaceHandle {
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
-        return await services.dialogueStore.allEntries().filter {
+        let legacy = await services.dialogueStore.allEntries().filter {
             $0.functionSnapshot.request.function == .discuss
         }
+        let local = try await services.localResearchExecutionStore.listing()
+            .records.compactMap(\.dialogue).filter {
+                $0.functionSnapshot.request.function == .discuss
+            }
+        return (legacy + local).sorted { $0.createdAt > $1.createdAt }
     }
 
     func discussion(id: UUID) async throws -> DialogueEntry {
         try requireActive()
+        if let local = try await services.localResearchExecutionStore
+            .recordIfPresent(id: id)?.dialogue {
+            guard local.functionSnapshot.request.function == .discuss else {
+                throw DialogueError.entryNotFound(id)
+            }
+            return local
+        }
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }
@@ -1940,6 +1976,17 @@ public actor WorkspaceHandle {
         to entryID: UUID
     ) async throws -> DialogueEntry {
         try requireActive()
+        if try await services.localResearchExecutionStore.recordIfPresent(id: entryID) != nil {
+            let entry = try await services.localResearchExecutionStore.appendReply(
+                reply,
+                to: entryID
+            )
+            try await refreshAfterCommittedOperation(
+                "The Discuss reply",
+                publication: .researchRecords
+            )
+            return entry
+        }
         if let error = await services.dialogueStore.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(error)
         }

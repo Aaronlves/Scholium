@@ -648,6 +648,13 @@ public actor CritiqueRegistry {
         associations.values.first { $0.critiqueRelativePath == critiqueRelativePath }
     }
 
+    public func localExecutionFindingsWereCaptured(runID: UUID) -> Bool {
+        associations.values
+            .flatMap(\.rounds)
+            .first(where: { $0.id == runID })?
+            .localExecutionFindingsCaptured == true
+    }
+
     public func functionRecord(
         runID: UUID
     ) throws -> ResearchFunctionRecordProjection? {
@@ -759,6 +766,116 @@ public actor CritiqueRegistry {
         return try save(association)
     }
 
+    /// Removes protected execution evidence after the same run has been
+    /// durably installed in Local Execution v2. The Critique round remains a
+    /// portable scholarly association identified by its own round ID.
+    @discardableResult
+    public func detachFunctionEvidence(
+        runID: UUID,
+        matching expectedSnapshot: ResearchFunctionSnapshot? = nil
+    ) throws -> CritiqueAssociation {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.id == runID
+                    ? (association.id, index, round)
+                    : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID] else {
+            throw ResearchFunctionRecordStoreError.runNotFound(runID)
+        }
+        if round.functionSnapshot == nil {
+            return association
+        }
+        if let expectedSnapshot,
+           round.functionSnapshot != expectedSnapshot {
+            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
+        }
+        association.rounds[index] = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            actionableFindings: round.actionableFindings,
+            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
+            findingDispositions: round.findingDispositions,
+            completedAt: round.completedAt
+        )
+        return try save(association)
+    }
+
+    /// Removes an Action-backed Critique staging round when Local Execution
+    /// v2 was never durably installed. This never discards a completed round
+    /// or researcher dispositions, and retained Function-era rounds have no
+    /// Action snapshot so they are outside this recovery path.
+    public func discardUninstalledActionRound(runID: UUID) throws {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.id == runID ? (association.id, index, round) : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID] else {
+            return
+        }
+        guard round.functionSnapshot?.actionSnapshot != nil,
+              round.functionCompletion == nil,
+              round.actionableFindings.isEmpty,
+              round.findingDispositions.isEmpty,
+              round.completedAt == nil else {
+            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
+        }
+        association.rounds.remove(at: index)
+        _ = try save(association)
+    }
+
+    /// Captures findings for a Critique whose execution evidence is owned by
+    /// Local Execution v2 rather than this portable association file.
+    @discardableResult
+    public func captureLocalExecutionFindings(
+        runID: UUID,
+        findings: [CritiqueFinding]
+    ) throws -> CritiqueAssociation {
+        let locations = associations.values.flatMap { association in
+            association.rounds.enumerated().compactMap { index, round in
+                round.id == runID ? (association.id, index, round) : nil
+            }
+        }
+        guard locations.count <= 1 else {
+            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
+        }
+        guard let (associationID, index, round) = locations.first,
+              var association = associations[associationID] else {
+            throw CritiqueRegistryError.roundNotReady(runID)
+        }
+        let normalized = CritiqueRound(
+            id: round.id,
+            requestedAt: round.requestedAt,
+            targetFingerprint: round.targetFingerprint,
+            checkpointID: round.checkpointID,
+            scope: round.scope,
+            actionableFindings: findings,
+            localExecutionFindingsCaptured: true,
+            findingDispositions: round.findingDispositions,
+            completedAt: round.completedAt
+        )
+        if !round.actionableFindings.isEmpty,
+           round.actionableFindings != normalized.actionableFindings {
+            throw CritiqueRegistryError.findingSetAlreadyCaptured(round.id)
+        }
+        if round == normalized { return association }
+        association.rounds[index] = normalized
+        return try save(association)
+    }
+
     @discardableResult
     public func setFunctionCompletion(
         _ completion: ResearchFunctionCompletion,
@@ -805,6 +922,7 @@ public actor CritiqueRegistry {
             functionCompletion: completion,
             functionInstructions: round.functionInstructions,
             actionableFindings: round.actionableFindings,
+            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: round.findingDispositions,
             completedAt: round.completedAt
         )
@@ -845,6 +963,7 @@ public actor CritiqueRegistry {
             functionCompletion: round.functionCompletion,
             functionInstructions: round.functionInstructions,
             actionableFindings: findings,
+            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: round.findingDispositions,
             completedAt: round.completedAt
         )
@@ -916,6 +1035,7 @@ public actor CritiqueRegistry {
             functionCompletion: round.functionCompletion,
             functionInstructions: round.functionInstructions,
             actionableFindings: round.actionableFindings,
+            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: dispositions,
             completedAt: nil
         )
@@ -947,6 +1067,7 @@ public actor CritiqueRegistry {
             functionCompletion: round.functionCompletion,
             functionInstructions: round.functionInstructions,
             actionableFindings: round.actionableFindings,
+            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: round.findingDispositions,
             completedAt: completedAt
         )
@@ -995,6 +1116,7 @@ public actor CritiqueRegistry {
             functionCompletion: nil,
             functionInstructions: instructions,
             actionableFindings: round.actionableFindings,
+            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: round.findingDispositions,
             completedAt: round.completedAt
         )
