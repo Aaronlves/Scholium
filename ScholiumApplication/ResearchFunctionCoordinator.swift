@@ -665,12 +665,13 @@ extension WorkspaceHandle {
             }
         }
 
-        // A checkpoint follows all non-mutating validation and skill
-        // and Action-snapshot resolution so a failed preparation cannot leave
-        // a misleading recovery marker merely because a binding, Profile,
-        // Method, authority envelope, or Material was invalid.
+        // A retained legacy checkpoint follows all non-mutating validation and
+        // snapshot resolution. Current Actions rely on exact-note recovery only
+        // when a mediated write actually replaces bytes.
         let checkpoint: TriptychCheckpoint?
-        if request.function.requiresCheckpoint, request.function != .critique {
+        if request.function.requiresCheckpoint,
+           request.function != .critique,
+           actionContext.executionStorage == .legacyFunction {
             checkpoint = try await createCheckpoint(
                 name: "Before Agent Work",
                 kind: .automatic
@@ -988,10 +989,12 @@ extension WorkspaceHandle {
         zoteroContext: ZoteroBibliographicContext?,
         executionStorage: ResolvedResearchActionContext.ExecutionStorage
     ) async throws -> ResearchFunctionPreparation {
-        let checkpoint = try await createCheckpoint(
-            name: "Before Agent Work",
-            kind: .automatic
-        )
+        let checkpoint = executionStorage == .legacyFunction
+            ? try await createCheckpoint(
+                name: "Before Agent Work",
+                kind: .automatic
+            )
+            : nil
         let runID = UUID()
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
@@ -1015,7 +1018,7 @@ extension WorkspaceHandle {
                         actionSnapshot: actionSnapshot,
                         recordKind: .critique,
                         recordID: runID,
-                        checkpointID: checkpoint.id,
+                        checkpointID: checkpoint?.id,
                         skills: allSkills,
                         phases: phaseSnapshots,
                         preparedOutput: output,
@@ -1078,9 +1081,11 @@ extension WorkspaceHandle {
                 runID: runID
             )) != nil
             if !didCommit {
-                _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
-                    id: checkpoint.id
-                )
+                if let checkpoint {
+                    _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
+                        id: checkpoint.id
+                    )
+                }
             }
             throw error
         }
@@ -1126,9 +1131,11 @@ extension WorkspaceHandle {
                             snapshot: snapshot,
                             preparedInstructions: localRecord.preparedInstructions
                         )
-                    _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
-                        id: checkpoint.id
-                    )
+                    if let checkpoint {
+                        _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
+                            id: checkpoint.id
+                        )
+                    }
                     throw error
                 }
             }

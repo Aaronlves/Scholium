@@ -19,7 +19,7 @@ Always read `references/cli-contract.md` before accessing a live Triptych. Read 
 2. Retrieve the prepared run and follow its typed continuation actions.
 3. Read every write Target at its exact current revision.
 4. Receive the bounded change from the active Method; do not add philosophical content inside this adapter.
-5. Recheck write scope, permitted operations and properties, checkpoint state, and expected fingerprints.
+5. Recheck write scope, permitted operations and properties, exact-note recovery, and expected fingerprints.
 6. Write through the protected route. Stop on identity, revision, permission, containment, or conflict failure.
 7. Reread the saved Note and return its validated completion values.
 

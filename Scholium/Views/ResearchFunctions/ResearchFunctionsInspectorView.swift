@@ -106,6 +106,26 @@ struct ResearchActionsPresentation {
                 .max { $0.settledAt < $1.settledAt }
         )
     }
+
+    func defaultSurfaceRows() -> [ResearchActionSurfaceRow] {
+        var rows = items.filter { $0.group == .defaultAction }.map {
+            ResearchActionSurfaceRow(id: .action($0.id), content: .action($0))
+        }
+        let discussions = activeDiscussions.map {
+            ResearchActionSurfaceRow(
+                id: .activeDiscussion($0.id),
+                content: .activeDiscussion($0)
+            )
+        }
+        if let discussIndex = rows.firstIndex(where: {
+            $0.id == .action(.discuss)
+        }) {
+            rows.insert(contentsOf: discussions, at: discussIndex + 1)
+        } else {
+            rows.insert(contentsOf: discussions, at: 0)
+        }
+        return rows
+    }
 }
 
 struct ResearchActionItemPresentation: Identifiable {
@@ -125,6 +145,21 @@ struct ResearchActionItemPresentation: Identifiable {
     var detail: String {
         disabledReason ?? availability.definition.interfaceSummary
     }
+}
+
+enum ResearchActionSurfaceRowID: Hashable {
+    case action(ResearchActionID)
+    case activeDiscussion(UUID)
+}
+
+struct ResearchActionSurfaceRow: Identifiable {
+    enum Content {
+        case action(ResearchActionItemPresentation)
+        case activeDiscussion(PortableResearchDiscussion)
+    }
+
+    let id: ResearchActionSurfaceRowID
+    let content: Content
 }
 
 struct ResearchFunctionsInspectorView: View {
@@ -173,13 +208,18 @@ struct ResearchFunctionsInspectorView: View {
                     availabilityNotice(error)
                 }
 
-                actionRows(defaultItems)
+                actionRows(presentation.defaultSurfaceRows())
 
                 if !researcherItems.isEmpty {
                     ScholiumStructuralRule()
                         .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                     ScholiumApparatusSection("RESEARCHER SKILLS", showsDivider: false) {
-                        actionRows(researcherItems)
+                        actionRows(researcherItems.map {
+                            ResearchActionSurfaceRow(
+                                id: .action($0.id),
+                                content: .action($0)
+                            )
+                        })
                     } trailing: {
                         EmptyView()
                     }
@@ -202,17 +242,16 @@ struct ResearchFunctionsInspectorView: View {
     }
 
     @ViewBuilder
-    private func actionRows(_ items: [ResearchActionItemPresentation]) -> some View {
+    private func actionRows(_ rows: [ResearchActionSurfaceRow]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                actionRow(item)
-                if item.id == .discuss {
-                    ForEach(presentation.activeDiscussions) { discussion in
-                        ScholiumStructuralRule()
-                        activeDiscussionRow(discussion)
-                    }
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                switch row.content {
+                case .action(let item):
+                    actionRow(item)
+                case .activeDiscussion(let discussion):
+                    activeDiscussionRow(discussion)
                 }
-                if index < items.count - 1 { ScholiumStructuralRule() }
+                if index < rows.count - 1 { ScholiumStructuralRule() }
             }
         }
     }
@@ -242,17 +281,20 @@ struct ResearchFunctionsInspectorView: View {
     private func activeDiscussionRow(
         _ discussion: PortableResearchDiscussion
     ) -> some View {
-        ResearchActionRowButton(
-            title: discussion.passage == nil ? "Active Discussion" : "Active Passage Discussion",
+        let detail = discussion.awaitsAgentReply
+            ? String(localized: "Awaiting an agent reply. Close keeps this Discussion active.", table: "Localizable", bundle: .module)
+            : String(localized: "A reply is ready. Reopen to continue or Finish.", table: "Localizable", bundle: .module)
+        return ResearchActionRowButton(
+            title: discussion.passage == nil
+                ? String(localized: "Active Discussion", table: "Localizable", bundle: .module)
+                : String(localized: "Active Passage Discussion", table: "Localizable", bundle: .module),
             systemImage: "arrow.uturn.forward",
-            detail: discussion.awaitsAgentReply
-                ? "Awaiting an agent reply. Close keeps this Discussion active."
-                : "A reply is ready. Reopen to continue or Finish."
+            detail: detail
         ) {
             openComment(discussion.id)
         }
         .accessibilityValue(
-            "Updated \(discussion.updatedAt.formatted(date: .abbreviated, time: .shortened))."
+            "\(detail) Updated \(discussion.updatedAt.formatted(date: .abbreviated, time: .shortened))."
         )
         .accessibilityIdentifier(
             "scholium.discussion.active.\(discussion.id.uuidString.lowercased())"
@@ -332,11 +374,11 @@ struct ResearchFunctionsInspectorView: View {
             detail: isCurrent
                 ? "This saved revision is settled."
                 : "Record that this saved revision is sufficiently stable for current research.",
-            showsChevron: !isCurrent
+            showsChevron: true
         ) {
             presentsSettlement = true
         }
-        .disabled(isCurrent || presentation.target == nil)
+        .disabled(presentation.target == nil)
         .popover(isPresented: $presentsSettlement) {
             settlementPopover
         }
@@ -386,10 +428,6 @@ struct ResearchFunctionsInspectorView: View {
         }
         .padding(16)
         .frame(width: 300)
-    }
-
-    private var defaultItems: [ResearchActionItemPresentation] {
-        presentation.items.filter { $0.group == .defaultAction }
     }
 
     private var researcherItems: [ResearchActionItemPresentation] {

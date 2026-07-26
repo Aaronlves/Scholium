@@ -44,4 +44,4 @@ When two Practices differ materially, preserve the disagreement, identify its me
 
 ## Preserve the boundary
 
-Practice selection cannot change the Target, Materials, task scope, permissions, checkpoint requirements, write set, or durability. A Practice is not evidence and cannot weaken source-fidelity or non-fabrication requirements. Report a Practice only when it materially influenced the procedure or result; otherwise a concise `no warranted finding` is sufficient.
+Practice selection cannot change the Target, Materials, task scope, permissions, recovery requirements, write set, or durability. A Practice is not evidence and cannot weaken source-fidelity or non-fabrication requirements. Report a Practice only when it materially influenced the procedure or result; otherwise a concise `no warranted finding` is sufficient.

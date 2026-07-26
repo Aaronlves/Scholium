@@ -610,8 +610,7 @@ enum WorkspaceSnapshotBuilder {
                   snapshot.runID == round.id,
                   snapshot.recordKind == .critique,
                   snapshot.recordID == round.id,
-                  let checkpointID = snapshot.checkpointID,
-                  checkpointID == round.checkpointID,
+                  snapshot.checkpointID == round.checkpointID,
                   snapshot.request.target.noteID == association.workNoteID,
                   snapshot.request.target.fingerprint == round.targetFingerprint,
                   snapshot.actionSnapshot?.target.noteID == association.workNoteID,
@@ -645,13 +644,15 @@ enum WorkspaceSnapshotBuilder {
                     )
                     continue
                 }
-                let checkpoint = try await services.checkpointStore.checkpoint(
-                    id: checkpointID
-                )
-                guard checkpoint.kind == .automatic else {
-                    throw ResearchFunctionContractError.invalidCompletion(
-                        "The Critique staging checkpoint is not automatic."
+                if let checkpointID = snapshot.checkpointID {
+                    let checkpoint = try await services.checkpointStore.checkpoint(
+                        id: checkpointID
                     )
+                    guard checkpoint.kind == .automatic else {
+                        throw ResearchFunctionContractError.invalidCompletion(
+                            "The legacy Critique staging checkpoint is not automatic."
+                        )
+                    }
                 }
                 let recovered = try LocalResearchExecutionRecord(
                     triptychID: services.manifest.id,

@@ -293,12 +293,12 @@ public struct WorkspaceResearchSnapshot: Sendable {
 public struct CritiquePreparation: Sendable {
     public let association: CritiqueAssociation
     public let instructions: String
-    public let checkpoint: TriptychCheckpoint
+    public let checkpoint: TriptychCheckpoint?
 
     public init(
         association: CritiqueAssociation,
         instructions: String,
-        checkpoint: TriptychCheckpoint
+        checkpoint: TriptychCheckpoint?
     ) {
         self.association = association
         self.instructions = instructions
@@ -667,6 +667,7 @@ public enum ResearchOperationError: LocalizedError, Sendable {
     case critiqueRegistryUnavailable(String)
     case critiqueTargetChanged
     case critiqueRollbackFailed(requestError: String, rollbackError: String)
+    case settleRollbackFailed(settleError: String, recoveryError: String)
 
     public var errorDescription: String? {
         switch self {
@@ -689,9 +690,11 @@ public enum ResearchOperationError: LocalizedError, Sendable {
         case .critiqueRegistryUnavailable(let reason):
             reason
         case .critiqueTargetChanged:
-            "The Work changed while Scholium was creating Before Agent Work. Review the current Work and request its Critique again."
+            "The Work changed while Scholium was preparing the Critique. Review the current Work and request its Critique again."
         case .critiqueRollbackFailed(let requestError, let rollbackError):
-            "Scholium could not complete the Critique request and could not restore the prepared Critique source automatically. \(requestError) Recovery also failed: \(rollbackError) Use Before Agent Work before continuing."
+            "Scholium could not complete the Critique request and could not restore the prepared Critique source automatically. \(requestError) Recovery also failed: \(rollbackError) Inspect the current Critique and machine-local recovery before continuing."
+        case .settleRollbackFailed(let settleError, let recoveryError):
+            "Scholium could not record Settle and could not remove its newly pinned recovery version. \(settleError) Recovery cleanup also failed: \(recoveryError) Inspect Recovery & Technical before settling again."
         }
     }
 }

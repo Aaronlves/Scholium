@@ -44,7 +44,7 @@ struct ResearchActionCancellationRecovery: Equatable, Identifiable {
 
 /// Per-window owner for the common, Profile-generated Action sheet. It keeps
 /// researcher-entered parameter values transient and delegates every durable
-/// identity, revision, authority, checkpoint, and completion decision to the
+/// identity, revision, authority, recovery, and completion decision to the
 /// Application boundary.
 @MainActor
 final class ResearchActionController: ObservableObject {
@@ -335,10 +335,15 @@ final class ResearchActionController: ObservableObject {
               let target,
               let activeActionID,
               let profile,
+              let presentationAvailability,
               let presentationID,
               canPrepare else { return }
         let request = ResearchActionExecutionRequest(
             actionID: activeActionID,
+            expectedExecutionKind: profile.executionKind,
+            expectedProfileRevision: presentationAvailability.profile.profileRevision,
+            expectedProfileDocumentRevision:
+                presentationAvailability.profile.profileDocumentRevision,
             target: target,
             parameterValues: parameterValues(for: profile)
         )
@@ -349,7 +354,7 @@ final class ResearchActionController: ObservableObject {
             do {
                 let result = try await client.prepare(request)
                 guard self.accepts(token), self.presentationID == presentationID else {
-                    // Preparation can cross a durable checkpoint/grant
+                    // Preparation can cross a durable recovery/grant
                     // boundary even when its caller was cancelled. Reclaim a
                     // late result through the typed cancellation path instead
                     // of dropping an invisible prepared run.

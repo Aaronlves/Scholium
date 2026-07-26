@@ -722,6 +722,20 @@ final class WorkspaceStore: ObservableObject {
                         packageID: packageID,
                         expectedRevision: revision
                     )
+            },
+            recoveryPolicy: { [self] id in
+                try await workspaceHandle(id: id).research.recoveryPolicy()
+            },
+            prepareRecoveryPolicyChange: { [self] id, retention, revision in
+                try await workspaceHandle(id: id).research
+                    .prepareRecoveryPolicyChange(
+                        retention,
+                        expectedRevision: revision
+                    )
+            },
+            applyRecoveryPolicyChange: { [self] id, preview in
+                try await workspaceHandle(id: id).research
+                    .applyRecoveryPolicyChange(preview)
             }
             )
         )
@@ -754,13 +768,21 @@ final class WorkspaceStore: ObservableObject {
     func flushEditors(in triptychID: UUID) async throws {
         let registrations = editorFlushRegistrations.values
             .filter { $0.triptychID == triptychID }
-            .sorted {
-                if $0.windowID != $1.windowID {
-                    return $0.windowID.uuidString < $1.windowID.uuidString
-                }
-                return $0.relativePath < $1.relativePath
+        let registrationsByWindow = Dictionary(grouping: registrations, by: \.windowID)
+        for windowID in registrationsByWindow.keys.sorted(by: {
+            $0.uuidString < $1.uuidString
+        }) {
+            guard let windowRegistrations = registrationsByWindow[windowID] else { continue }
+            if let aggregate = windowRegistrations.first(where: { $0.relativePath.isEmpty }) {
+                try await aggregate.flush()
+                continue
             }
-        for registration in registrations { try await registration.flush() }
+            for registration in windowRegistrations.sorted(by: {
+                $0.relativePath < $1.relativePath
+            }) {
+                try await registration.flush()
+            }
+        }
     }
 
     private func install(

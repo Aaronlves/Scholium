@@ -2110,6 +2110,26 @@ final class WindowModel: ObservableObject {
         try await documentController.flushLeasedOrPinnedSessions()
     }
 
+    /// Opening an Action needs the exact current Target, not every open Note
+    /// in the Triptych. The sheet is modal for this window, and a later
+    /// preparation revalidates the frozen Target rather than saving unrelated
+    /// open Notes.
+    func flushCurrentEditorBeforeOpeningResearchAction() async throws {
+        if let registration = editorFlushRegistration {
+            if let selectedDocumentPath,
+               selectedDocumentPath != registration.relativePath {
+                throw DocumentTransitionError.staleEditorRegistration(
+                    expected: selectedDocumentPath,
+                    registered: registration.relativePath
+                )
+            }
+            try await registration.flush()
+            return
+        }
+        guard let selectedDocument = documentController.selectedDocument else { return }
+        try await documentController.flushBeforeClosing(selectedDocument)
+    }
+
     private func captureRegisteredEditorForReconstructionIfNeeded() async throws {
         if let registration = editorFlushRegistration {
             try await registration.captureForReconstruction()
@@ -2549,8 +2569,7 @@ final class WindowModel: ObservableObject {
             )
             return
         }
-        guard let assignment = workspaceAssignment,
-              let initialTarget = currentResearchActionTarget,
+        guard let initialTarget = currentResearchActionTarget,
               researchController.actions.availability.first(where: {
                   $0.id == actionID
               })?.canPresentInInterface == true else { return }
@@ -2562,7 +2581,7 @@ final class WindowModel: ObservableObject {
         researchActionOpenTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.workspaceStore.flushEditors(in: assignment.id)
+                try await self.flushCurrentEditorBeforeOpeningResearchAction()
                 guard !Task.isCancelled,
                       self.researchActionOpenRequestID == requestID,
                       let target = self.currentResearchActionTarget,
@@ -2579,7 +2598,11 @@ final class WindowModel: ObservableObject {
                     let reason = self.researchController.actions.availability.first(where: {
                         $0.id == actionID
                     })?.repairReasons.first?.interfaceDescription
-                        ?? "Scholium could not confirm that this Action is available for the current note."
+                        ?? String(
+                            localized: "Scholium could not confirm that this Action is available for the current note.",
+                            table: "Localizable",
+                            bundle: .module
+                        )
                     self.showToast(reason, kind: .information)
                     return
                 }
@@ -2590,7 +2613,11 @@ final class WindowModel: ObservableObject {
                     capturedSelection = nil
                     if selection != nil {
                         self.showToast(
-                            "The selected passage changed while Scholium saved the note. The Action will open for the whole note.",
+                            String(
+                                localized: "The selected passage changed while Scholium saved the note. The Action will open for the whole note.",
+                                table: "Localizable",
+                                bundle: .module
+                            ),
                             kind: .information
                         )
                     }
@@ -2622,7 +2649,11 @@ final class WindowModel: ObservableObject {
                 guard !Task.isCancelled,
                       self.researchActionOpenRequestID == requestID else { return }
                 self.showToast(
-                    "Scholium could not save the current editor before opening this Action. \(error.localizedDescription)",
+                    String(
+                        localized: "Scholium could not save the current editor before opening this Action. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     kind: .error
                 )
             }
@@ -3363,12 +3394,11 @@ final class WindowModel: ObservableObject {
                 )
             },
             prepare: { [weak self] request in
-                guard let self, let assignment = self.workspaceAssignment else {
+                guard self != nil else {
                     throw ScholiumApplicationError.researchStoreUnavailable(
                         "No workspace is active."
                     )
                 }
-                try await self.workspaceStore.flushEditors(in: assignment.id)
                 return try await capabilities.research.prepareAction(request)
             },
             cancel: { runID in

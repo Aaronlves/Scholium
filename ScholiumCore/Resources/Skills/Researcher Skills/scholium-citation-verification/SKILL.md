@@ -37,7 +37,7 @@ Read [references/verification-method.md](references/verification-method.md) comp
 4. For claim support, state what the source supports, at what scope, and what it does not support.
 5. Apply the requested style only after source identity and locator facts are verified.
 6. Preserve unresolved uncertainty and identify the smallest next check.
-7. During Check Fidelity, remain read-only and return atomic corrections. Apply them only through a later Analyze, Synthesize, or Write run with fresh authority and any required checkpoint.
+7. During Check Fidelity, remain read-only and return atomic corrections. Apply them only through a later Analyze, Synthesize, or Write run with fresh authority and exact-note recovery.
 
 ## Return
 

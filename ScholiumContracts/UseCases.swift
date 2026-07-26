@@ -80,6 +80,15 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord
+    func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot
+    func prepareRecoveryPolicyChange(
+        _ retention: SettledSnapshotRetention,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchRecoveryPolicyChangePreview
+    func applyRecoveryPolicyChange(
+        _ preview: ResearchRecoveryPolicyChangePreview
+    ) async throws -> ResearchRecoveryPolicyApplyOutcome
+    func settledSnapshots(noteID: UUID?) async throws -> [SettledRevisionSnapshot]
     func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion]
     func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion?

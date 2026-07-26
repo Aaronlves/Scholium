@@ -474,7 +474,28 @@ separate `settlements/` directory stores exactly one replaceable current-state
 file per Note. Settle therefore no longer appends an application-authored
 history event, and Changed Since Settled is derived against the current
 Markdown revision during snapshot assembly without writing a pending-state
-event. Precommit deletion removes only the exact journaled Settle state and
+event. Before the portable state commits, `VaultRepository` pins the exact
+current bytes in the existing immutable-object prewrite ledger under the stable
+Note identity. Identical fingerprints reuse one pin. The Triptych-scoped
+machine-local `ResearchRecoveryPolicyStore` revision-checks the 10/30/50/no-
+automatic-deletion policy; lowering a limit applies only the exact pin IDs in a
+fresh preview. After confirmation it durably retains that approved ID set until
+idempotent cross-vault removal completes, so interruption can resume without
+silently including a later pin. Ordinary prewrite retention cannot collect
+pinned entries, and removing a pin later permits unreferenced temporary evidence
+to be collected. Each pin has a descriptor-relative, file-and-parent-synced
+manifest with exact-byte fingerprint and a persistent per-Note monotonic order;
+wall-clock time is display metadata only. SQLite is a derived projection:
+startup validates each manifest against immutable bytes and replaces any row
+whose note, entry, time, or order differs through one immediate transaction and
+UPSERT. One advisory lock plus a partial unique SQLite index coordinate order
+allocation across ledger instances. Every exact-valid manifest protects its
+entry independently of projection; ambiguous order or projection failure sets
+a write blocker and suspends automatic cleanup. Portable replacement errors
+distinguish proved pre-rename refusal from post-rename uncertainty, and only
+the former permits task-owned pin rollback. The retention journal accepts the
+same bounded 100,000-ID set that its 8 MiB secure-file ceiling can encode.
+Precommit deletion removes only the exact journaled Settle state and
 aborts on a concurrent replacement; rollback never overwrites a newer state,
 while postcommit privacy cleanup always removes late state for every deleted
 Note identity. Portable record contracts whitelist Action identity, exact
@@ -487,6 +508,12 @@ path, diff, token count, transport log, or window state. Strict decoding is
 recursive through Note identities, fingerprints, passage anchors, Method
 resources, and Source references; unknown nested fields and path-shaped
 resource names fail closed rather than surviving as ignored JSON.
+
+The common Action sheet submits the execution kind, semantic Profile revision,
+and researcher Profile-document revision it presented. Application resolution
+compares all three before parameters or authority are constructed, so an old
+same-kind sheet cannot acquire broader readable roles, write operations, or
+property authority after Settings changes.
 
 Portable reads and writes combine per-process actor isolation, one
 machine-local advisory lock, `NSFileCoordinator`, and descriptor-relative
@@ -542,11 +569,12 @@ as migration debt until Sessions 13 and 22. The existing **Reveal Legacy Data**
 command opens the exact machine-local Triptych directory. Critique preparation
 writes a machine-local handoff intent under
 `research-execution-v2/critique-handoffs/<run>.json` before its portable
-association becomes staging. The intent contains only Triptych, run, checkpoint,
-and the canonical digest of the frozen snapshot plus prepared instructions.
+association becomes staging. The intent contains only Triptych, run, an
+optional legacy checkpoint identity, and the canonical digest of the frozen
+snapshot plus prepared instructions.
 Portable prose can create the exact Local v2 run after interruption only when
-the complete Critique invariants, the local automatic checkpoint, and that
-machine-local digest all match. Missing, remote, changed, malformed, or
+the complete Critique invariants and that machine-local digest match. Missing,
+remote, changed, malformed, or
 conflicting evidence remains portable testimony with a health issue and cannot
 grant execution authority. Exact duplicate staging is reconciled
 deterministically, and completion retry idempotently repairs missing actionable
@@ -566,6 +594,14 @@ If a passage-first Discussion already exists when the researcher submits the
 default Discuss sheet, the typed preparation repair carries that Discussion's
 stable ID; the window closes the redundant Function sheet and opens the active
 portable exchange without leaving a local run or checkpoint.
+
+Current Action opening flushes only the current editor registration. The Action
+request carries the execution kind shown in the sheet, and Application
+resolution rejects a changed kind before preparation. No current Action creates
+an automatic whole-Triptych checkpoint; each mediated repository write instead
+prepares, verifies, and retains only the exact bytes it actually displaces.
+`WorkspaceStore.flushEditors(in:)` remains for explicit Triptych-wide lifecycle
+operations and invokes at most one aggregate registration per window.
 
 Rendered function input keeps three typed layers distinct: `taskDirective`
 contains the explicit public Action, its validated native parameter values,

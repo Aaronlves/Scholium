@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-24 (D-106)
+**Last target change:** 2026-07-26 (D-107)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -56,9 +56,11 @@ unrecognized Triptych files.
   notes. An **Action Profile** is researcher-owned declarative configuration
   for placement, inputs, applicability, and requested capability; neither
   Skill prose nor a Profile grants authority by itself.
-- **Settle** is the researcher's idempotent, fingerprint-bound judgment that
-  one saved revision is sufficiently stable for current research. It is neither
-  a verdict nor a qualification.
+- **Settle** is the researcher's fingerprint-bound, replaceable current
+  judgment that one saved revision is sufficiently stable for current
+  research. It is neither a verdict nor a qualification. Each distinct
+  settled revision pins one deduplicated machine-local exact-byte recovery
+  version of that Note.
 - **Critique** is an attributed agent assessment of one Work. It does not
   replace or silently edit the Work.
 - **Fidelity** audits the exact revision's philosophical content and, when an
@@ -499,12 +501,30 @@ deleted note.
 
 Settle is available for every active Analysis, Topic, and Work as a quiet
 current-note action. It binds to the exact saved fingerprint, accepts an
-optional rationale, records date and researcher identity, is idempotent for
-that fingerprint, and never blocks on an agent response or Fidelity warning.
+optional rationale, records date and researcher identity, and never blocks on
+an agent response or Fidelity warning. Repeating Settle for the current
+fingerprint may update the rationale, date, or researcher judgment and may
+backfill a missing machine-local pin; it does not create a second pin for
+identical bytes.
+If portable-state replacement fails, Scholium may remove a newly created pin
+only when the storage boundary proves failure occurred before rename. Any
+post-rename or unclassified outcome retains the pin even if a later concurrent
+Settle has already replaced the portable current state.
 Save failure, dirty conflict, unknown stable identity, or a revision mismatch
 blocks Settle. A later saved fingerprint keeps the prior statement, offers
 **Settle Again**, and may produce **Changed Since Settled** in Attention. Settle
-is neither a Research Record list row nor an activity-history node.
+is neither a Research Record list row nor an activity-history node. Repeating
+Settle for the same fingerprint updates the portable judgment without creating
+another recovery version. Settled versions are separate from temporary Action
+recovery and are retained per stable Note identity according to the
+machine-local Triptych policy: latest 10, 30, 50, or no automatic deletion.
+Latest is determined by a durable per-Note monotonic Settle order rather than
+the adjustable wall clock; the default is 30. Lowering a limit requires a
+preview and explicit confirmation
+before the enumerated older versions are removed. Once confirmed, those exact
+snapshot identities remain in a machine-local pending journal until idempotent
+removal finishes; a later Settle version never joins that approved removal set.
+Restore does not Settle the restored revision.
 
 ### 7.2 Discussion, Comment, and written annotation
 
@@ -578,9 +598,15 @@ label, role applicability, Triptych placement, order, and **Show in Actions**.
 It cannot provide arbitrary Swift, HTML, JavaScript, shell code, native window
 layouts, or application statuses.
 
+Opening that sheet captures the exact execution kind, complete Profile
+semantic revision, and Profile-document revision that the researcher saw.
+Preparation must reject the sheet if any of those values changed, including a
+same-kind change to readable roles, candidate write authority, editable
+properties, or other capabilities.
+
 Scholium always owns and displays stable identity, revision, source access,
 authority, consequential scope, preparation, cancellation, conflict,
-checkpoint, comparison, and recovery. A Skill or Profile cannot hide or
+comparison, and recovery. A Skill or Profile cannot hide or
 replace these modules. Custom Actions appear under **Researcher Skills** and
 create no new application-defined event taxonomy.
 
@@ -601,14 +627,18 @@ evidence, never preselected, and never expand readable or writable scope.
 Transitive paths, lexical similarity, Comment text, and inferred philosophical
 roles cannot select Materials automatically.
 
-Analyze, Synthesize, Write, and any write-capable custom Action flush all open
-authorized documents and create one whole-Triptych **Before Agent Work**
-checkpoint before instructions return. Any save failure, dirty conflict,
-unknown identity, stale revision, unsupported Target, invalid Method Skill, or
-unapproved capability blocks preparation. Critique uses its named checkpoint.
-Discuss and Check Fidelity are read-only and create none. The researcher may
-still instruct an external agent outside Scholium; those edits remain ordinary
-concurrent filesystem inputs.
+Opening an Action flushes only its current Target editor. Preparation rechecks
+the frozen Target, every explicitly selected Material, source access, Method,
+Profile, and authority without saving unrelated Notes. Current Actions create
+no automatic whole-Triptych checkpoint. Every Scholium-mediated existing-Note
+write preserves the exact displaced bytes in per-Note pre-write recovery before
+commit; Critique uses the same exact-note recovery and explicit rollback for a
+new output. Any relevant save failure, dirty conflict, unknown identity, stale
+revision, unsupported Target, invalid Method Skill, or unapproved capability
+blocks preparation or commit. Discuss and Check Fidelity are read-only. The
+researcher may still create a manual whole-Triptych checkpoint or instruct an
+external agent outside Scholium; external edits remain ordinary concurrent
+filesystem inputs.
 
 ### 8.2 Authorship, feedback, and truthful records
 
@@ -694,15 +724,16 @@ than one flat package list:
    applicability, **Show in Actions**, and ordering. Before first activation,
    its detail view presents a nonexecuting preview of the modular Action sheet
    at regular and narrow widths, including every app-owned Target, revision,
-   permission, checkpoint, conflict, and recovery region that the Profile
+   permission, conflict, and recovery region that the Profile
    cannot hide.
 3. **Permissions** owns the Triptych default and deliberate per-Skill
    overrides. Requested capabilities remain visible here but do not become
    authority.
 4. **Sources & Integrations** owns source bindings, Zotero, citation methods,
    agent handoff, and the Scholium CLI.
-5. **Recovery & Technical** owns Skill snapshots, restore, validation detail,
-   and **Reveal Skills Folder** or **Reveal Legacy Data**.
+5. **Recovery & Technical** owns settled-version retention, Skill snapshots,
+   restore, validation detail, and **Reveal Skills Folder** or **Reveal Legacy
+   Data**.
 
 These categories use a restrained native list/detail hierarchy with persistent
 selection, succinct rows, semantic grouping, and one detail destination. They
@@ -834,7 +865,7 @@ and Profile, creates recovery evidence, freezes the write set, rechecks every
 revision, and rolls back partial preparation. Discuss and Settle use separate
 typed authorities and no write packet.
 
-After the checkpoint succeeds, each write-capable phase receives a
+After preparation succeeds, each write-capable phase receives a
 cryptographically random short-lived completion key bound to the Triptych, run,
 Action, Skill/Profile revisions, frozen note identities, roles, operations,
 and expiry. Only its digest persists. Completion, cancellation, revocation, or
@@ -866,8 +897,8 @@ permission. If Scholium is closed or live state cannot be validated, the tool
 returns unavailable rather than inventing authority.
 
 A frozen parent snapshot or grant is never widened. Allowance creates an
-independent child phase with its own snapshot, checkpoint, grant, completion,
-Fidelity, and lineage. Analyze may therefore request a separately bounded
+independent child phase with its own snapshot, exact-note recovery, grant,
+completion, Fidelity, and lineage. Analyze may therefore request a separately bounded
 Synthesize phase; Critique may lead to Write; optional Manuscript coordinates
 only explicitly permitted children. The external conversation may continue,
 but Scholium preserves each scholarly and authority boundary.
@@ -958,7 +989,8 @@ unit; **Entire source** requires source-wide analysis.
 Topic development remains within Discussion rather than a separate Develop
 Action. When the researcher asks to incorporate a result, or the agent requests
 and receives authority, a child Synthesize phase retains the Discussion context
-while keeping its own snapshot, grant, checkpoint, completion, and Fidelity.
+while keeping its own snapshot, grant, exact-note recovery, completion, and
+Fidelity.
 
 Scholium never auto-merges an Analysis into Topics. It may report relevant
 material, but selected context, neutral links, and transitive Connect paths
@@ -1138,17 +1170,16 @@ judgment.
 
 ## 14. Checkpoints, versions, and recovery
 
-Autosaves create no visible versions. Before every Analyze, Synthesize, Write,
-write-capable custom Action, Manuscript mutation, or Critique, Scholium creates
-a named, fingerprint-bound whole-Triptych checkpoint. Discussion, Settle, and
-Check Fidelity create none. The researcher may choose **Create Checkpoint…** at
-any time.
+Autosaves create no visible versions. Current Actions create no automatic
+whole-Triptych checkpoint. The researcher may choose **Create Checkpoint…** at
+any time when a self-contained Triptych milestone is genuinely useful.
 
 Every checkpoint is self-contained; includes all vaults and portable control
 state needed to interpret them; lives outside the vaults; and never depends on
-another checkpoint, even if filesystem cloning is used internally. The latest
-ten automatic checkpoints are retained; manual checkpoints remain until the
-researcher deletes them.
+another checkpoint, even if filesystem cloning is used internally. Manual
+checkpoints remain until the researcher deletes them. Retained legacy automatic
+checkpoints may remain recoverable but do not authorize or describe a current
+Action.
 
 File offers **Create Checkpoint…**, **Restore from Checkpoint…**, and **Reveal
 Checkpoints in Finder**. Restore compares created, changed, moved, and deleted
@@ -1161,10 +1192,18 @@ There is no checkpoint-management screen or proprietary backup format. Finder
 manages folders. Document, HTML, PDF, and DOCX export is deferred, not
 permanently prohibited.
 
-Invisible pre-write recovery state may support exact save/conflict recovery,
-but it is not Document history, a user-visible version browser, or an
-alternative to checkpoints. Corrupt legacy recovery metadata must not cause
-unrelated recoverable bytes to be deleted or silently attributed to a note.
+Invisible pre-write recovery state supports exact save/conflict recovery for
+the Notes actually written; it is not an application-authored account of the
+research. Settle may pin an exact entry as a researcher-selected settled
+version without turning it into a truth claim. Temporary write recovery and
+settled-version retention remain separate references over verified immutable
+bytes. Corrupt legacy recovery metadata must not cause unrelated recoverable
+bytes to be deleted or silently attributed to a note. Durable settled-pin
+manifests, not the derived SQLite row, own pin identity and ordering; a missing
+or field-mismatched row is rebuilt only from a fully validated manifest. Pin
+order allocation is coordinated across local processes. If a validated
+manifest cannot be projected unambiguously, its exact bytes remain protected
+and automatic cleanup stops until the recovery authority is repaired.
 
 ## 15. Zotero integration
 
@@ -2159,6 +2198,19 @@ Clean-cutover inventory:
   Actions, immutable bundled Workflow methods, or machine-local intellectual
   Research Records; their remaining source-integrity and clean-cutover rules
   stay in force.
+- **D-107:** replace automatic whole-Triptych Action checkpoints with bounded
+  exact-Note recovery. Opening an Action saves only its current Target;
+  preparation never flushes unrelated Notes. Scholium-mediated writes retain
+  displaced exact bytes through the per-Note recovery ledger, while manual
+  whole-Triptych checkpoints remain researcher-initiated. Each distinct Settle
+  revision pins one machine-local exact-byte version, deduplicated by stable
+  Note and fingerprint. Recovery & Technical offers per-Note limits of 10, 30,
+  50, or no automatic deletion, defaults to 30, and explicitly previews older
+  pins before a lower limit removes them. The confirmed exact pin set is
+  journaled until idempotent cleanup finishes, without absorbing later pins.
+  Portable Settle state remains one current judgment per Note and remains
+  semantically independent of recovery. Retention order is a durable per-Note
+  monotonic sequence and does not change when the machine clock moves backward.
 
 Unresolved work must not be described as complete:
 

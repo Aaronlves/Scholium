@@ -487,6 +487,36 @@ public actor ResearchOperations: ResearchUseCases {
         )
     }
 
+    public func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.recoveryPolicy()
+    }
+
+    public func prepareRecoveryPolicyChange(
+        _ retention: SettledSnapshotRetention,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchRecoveryPolicyChangePreview {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareRecoveryPolicyChange(
+            retention,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    public func applyRecoveryPolicyChange(
+        _ preview: ResearchRecoveryPolicyChangePreview
+    ) async throws -> ResearchRecoveryPolicyApplyOutcome {
+        let handle = try await reference.requireHandle()
+        return try await handle.applyRecoveryPolicyChange(preview)
+    }
+
+    public func settledSnapshots(
+        noteID: UUID?
+    ) async throws -> [SettledRevisionSnapshot] {
+        let handle = try await reference.requireHandle()
+        return try await handle.settledSnapshots(noteID: noteID)
+    }
+
     public func activeDiscussions(
         noteID: UUID?
     ) async throws -> [PortableResearchDiscussion] {

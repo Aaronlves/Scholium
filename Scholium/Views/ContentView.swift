@@ -658,8 +658,16 @@ struct ContentView: View {
                     context: ResearchActionPanelContext(
                         chooseLocalSource: {
                             let panel = NSOpenPanel()
-                            panel.title = "Choose Source"
-                            panel.prompt = "Choose"
+                            panel.title = String(
+                                localized: "Choose Source",
+                                table: "Localizable",
+                                bundle: .module
+                            )
+                            panel.prompt = String(
+                                localized: "Choose",
+                                table: "Localizable",
+                                bundle: .module
+                            )
                             panel.canChooseFiles = true
                             panel.canChooseDirectories = false
                             panel.allowsMultipleSelection = false
@@ -669,7 +677,13 @@ struct ContentView: View {
                         agentApplicationHandoff: appState.agentApplicationHandoff,
                         copyInstructions: { instructions in
                             try appState.copyTextToClipboard(instructions)
-                            appState.showToast("Action instructions copied.")
+                            appState.showToast(
+                                String(
+                                    localized: "Action instructions copied.",
+                                    table: "Localizable",
+                                    bundle: .module
+                                )
+                            )
                         },
                         dismiss: { appState.presentationRouter.dismissSheet() }
                     )

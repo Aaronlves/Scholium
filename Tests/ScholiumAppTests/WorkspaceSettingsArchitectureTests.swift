@@ -205,7 +205,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(
             source.components(
                 separatedBy: "settingsModel.activeTriptychServicesID == requestedTriptychID"
-            ).count - 1 == 13
+            ).count - 1 == 18
         )
         #expect(
             source.components(

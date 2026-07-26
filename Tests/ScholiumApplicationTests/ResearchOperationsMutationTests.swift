@@ -999,7 +999,8 @@ struct ResearchFunctionOperationsTests {
         )
 
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
                 parameterValues: [
@@ -1074,7 +1075,8 @@ struct ResearchFunctionOperationsTests {
         }.count == 1)
 
         let fidelity = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .checkFidelity,
                 target: actionNote(target),
                 parameterValues: [
@@ -1310,7 +1312,8 @@ struct ResearchFunctionOperationsTests {
 
         do {
             _ = try await handle.research.prepareAction(
-                ResearchActionExecutionRequest(
+                try await actionRequest(
+                    handle: handle,
                     actionID: .discuss,
                     target: actionNote(target),
                     parameterValues: [
@@ -1341,7 +1344,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
                 parameterValues: [
@@ -1413,7 +1417,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
                 parameterValues: [
@@ -1946,7 +1951,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let action = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .analyze,
                 target: actionNote(target)
             )
@@ -2248,7 +2254,7 @@ struct ResearchFunctionOperationsTests {
         let develop = try await handle.research.prepareFunction(
             ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
-        #expect(develop.snapshot.checkpointID != nil)
+        #expect(develop.snapshot.checkpointID == nil)
         #expect(develop.snapshot.phases.map(\.function) == [.develop])
         #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
         #expect(develop.snapshot.fidelityHandoff?.checks == [.content])
@@ -2983,7 +2989,8 @@ struct ResearchFunctionOperationsTests {
         let allInitialActionsAreEnabled = initial.allSatisfy { $0.isEnabled }
         #expect(allInitialActionsAreEnabled)
         let discuss = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .discuss,
                 target: actionNote(analysis),
                 parameterValues: [
@@ -2995,7 +3002,8 @@ struct ResearchFunctionOperationsTests {
         #expect(discuss.instructions.contains("\"feedbackRequirement\" : \"none\""))
         try await handle.research.cancelFunction(runID: discuss.runID)
 
-        let fidelityRequest = ResearchActionExecutionRequest(
+        let fidelityRequest = try await actionRequest(
+            handle: handle,
             actionID: .checkFidelity,
             target: actionNote(analysis),
             parameterValues: [
@@ -3020,7 +3028,8 @@ struct ResearchFunctionOperationsTests {
         try await handle.research.cancelFunction(runID: fidelity.runID)
 
         let analyze = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .analyze,
                 target: actionNote(analysis)
             )
@@ -3091,7 +3100,8 @@ struct ResearchFunctionOperationsTests {
             .contains { $0.id == actionID })
 
         let questionID = ResearchActionModuleID(rawValue: "question")!
-        let request = ResearchActionExecutionRequest(
+        let request = try await actionRequest(
+            handle: handle,
             actionID: actionID,
             target: actionNote(topic),
             parameterValues: [
@@ -3145,7 +3155,8 @@ struct ResearchFunctionOperationsTests {
             role: .topic,
             handle: handle
         )
-        let staleRequest = ResearchActionExecutionRequest(
+        let staleRequest = try await actionRequest(
+            handle: handle,
             actionID: actionID,
             target: actionNote(topic),
             parameterValues: [
@@ -3155,8 +3166,9 @@ struct ResearchFunctionOperationsTests {
         let replacement = try customActionProfileBinding(
             actionID: actionID,
             packageID: package.id,
-            moduleID: "new-question",
-            buttonName: "Profile Race Revised"
+            moduleID: "question",
+            buttonName: "Profile Race",
+            readableRoles: [.topic, .analysis]
         )
         _ = try await handle.research.saveActionProfile(
             replacement,
@@ -3166,6 +3178,32 @@ struct ResearchFunctionOperationsTests {
         await #expect(throws: ResearchActionExecutionContractError.self) {
             _ = try await handle.research.prepareAction(staleRequest)
         }
+        await runtime.shutdown()
+    }
+
+    @Test("An Action sheet cannot replay after its execution kind changes")
+    func staleActionExecutionKindCannotReplay() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+
+        await #expect(throws: ResearchActionExecutionContractError.staleResolution) {
+            _ = try await handle.research.prepareAction(
+                try await actionRequest(
+                    handle: handle,
+                    actionID: .synthesize,
+                    expectedExecutionKind: .discussion,
+                    target: actionNote(topic)
+                )
+            )
+        }
+        #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         await runtime.shutdown()
     }
 
@@ -3195,7 +3233,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .discuss,
                 target: actionNote(analysis),
                 parameterValues: [
@@ -3241,7 +3280,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .discuss,
                 target: actionNote(analysis),
                 parameterValues: [
@@ -3395,7 +3435,8 @@ struct ResearchFunctionOperationsTests {
             ResearchActionModuleID(rawValue: "fidelity-checks")!:
                 .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
         ]
-        let request = ResearchActionExecutionRequest(
+        let request = try await actionRequest(
+            handle: handle,
             actionID: .checkFidelity,
             target: actionNote(target),
             parameterValues: fidelityChecks
@@ -3465,7 +3506,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let current = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .checkFidelity,
                 target: actionNote(target),
                 parameterValues: fidelityChecks
@@ -3536,7 +3578,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let action = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .synthesize,
                 target: actionNote(topic)
             )
@@ -3647,7 +3690,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let action = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .critique,
                 target: actionNote(work)
             )
@@ -3775,7 +3819,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .critique,
                 target: actionNote(work)
             )
@@ -3868,7 +3913,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let preparation = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .critique,
                 target: actionNote(work)
             )
@@ -3884,13 +3930,7 @@ struct ResearchFunctionOperationsTests {
             LocalExecutionTestProjection.self,
             from: Data(contentsOf: localURL)
         )
-        let checkpointID = try #require(local.snapshot.checkpointID)
-        let checkpointURL = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("checkpoints", isDirectory: true)
-            .appendingPathComponent(checkpointID.uuidString, isDirectory: true)
-        #expect(FileManager.default.fileExists(atPath: checkpointURL.path))
+        #expect(local.snapshot.checkpointID == nil)
 
         let registryURL = fixture.rootURL
             .appendingPathComponent(".scholium/critiques.json")
@@ -3941,7 +3981,7 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
 
         // A different Mac sees the portable staging through sync but does not
-        // possess the machine-local checkpoint. It must preserve the staging
+        // possess the machine-local intent. It must preserve the staging
         // and refuse to manufacture an executable run on that machine.
         let remoteApplicationSupport = fixture.rootURL.appendingPathComponent(
             "Remote Application Support",
@@ -4007,7 +4047,6 @@ struct ResearchFunctionOperationsTests {
         #expect(reopenedSnapshot.research.functionRuns.count {
             $0.id == preparation.runID
         } == 1)
-        #expect(FileManager.default.fileExists(atPath: checkpointURL.path))
         let recovered = try await reopened.research.functionRun(id: preparation.runID)
         #expect(recovered.snapshot == local.snapshot)
         #expect(recovered.instructions == local.preparedInstructions)
@@ -4027,7 +4066,8 @@ struct ResearchFunctionOperationsTests {
             handle: handle
         )
         let action = try await handle.research.prepareAction(
-            ResearchActionExecutionRequest(
+            try await actionRequest(
+                handle: handle,
                 actionID: .analyze,
                 target: actionNote(analysis)
             )
@@ -4356,11 +4396,33 @@ struct ResearchFunctionOperationsTests {
         )
     }
 
+    private func actionRequest(
+        handle: WorkspaceHandle,
+        actionID: ResearchActionID,
+        expectedExecutionKind: ResearchActionExecutionKind? = nil,
+        target: ResearchActionNoteSnapshot,
+        parameterValues: [ResearchActionModuleID: ResearchActionParameterValue] = [:]
+    ) async throws -> ResearchActionExecutionRequest {
+        let availability = try await handle.research.availableActions(for: target)
+        let presented = try #require(availability.first { $0.id == actionID })
+        return ResearchActionExecutionRequest(
+            actionID: actionID,
+            expectedExecutionKind:
+                expectedExecutionKind ?? presented.definition.executionKind,
+            expectedProfileRevision: presented.profile.profileRevision,
+            expectedProfileDocumentRevision:
+                presented.profile.profileDocumentRevision,
+            target: target,
+            parameterValues: parameterValues
+        )
+    }
+
     private func customActionProfileBinding(
         actionID: ResearchActionID,
         packageID: String,
         moduleID: String,
         buttonName: String,
+        readableRoles: [ResearchActionTargetRole] = [.topic],
         feedbackRequirement: ResearchActionFeedbackRequirement = .requested
     ) throws -> ResearchActionProfileBinding {
         let definition = try ResearchActionDefinition(
@@ -4384,7 +4446,7 @@ struct ResearchFunctionOperationsTests {
             ],
             sourceRequirement: .none,
             capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [.topic]
+                readableRoles: readableRoles
             ),
             feedbackRequirement: feedbackRequirement
         )

@@ -887,6 +887,104 @@ struct ResearchFunctionControllerTests {
         })
     }
 
+    @Test("Active Discussion keeps one stable row through Action readiness changes")
+    func activeDiscussionRowSurvivesAvailabilityChanges() throws {
+        let target = target(title: "Agency", path: "Topics/Agency.md")
+        let actionTarget = actionTarget(target)
+        let revision = actionTarget.fingerprint
+        let timestamp = Date(timeIntervalSinceReferenceDate: 1_000)
+        let discussion = try PortableResearchDiscussion(
+            triptychID: UUID(),
+            primaryNoteID: actionTarget.noteID,
+            participatingNotes: [try PortableResearchNoteRevision(
+                noteID: actionTarget.noteID,
+                note: actionTarget.note,
+                role: .topic,
+                title: actionTarget.title,
+                startingRevision: revision,
+                endingRevision: revision
+            )],
+            statements: [try PortableResearchStatement(
+                author: .researcher,
+                kind: .discussionTurn,
+                attribution: "Researcher",
+                text: "Keep this Discussion reachable.",
+                createdAt: timestamp
+            )],
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+        let discussionRowID = ResearchActionSurfaceRowID.activeDiscussion(discussion.id)
+        let ready = ResearchActionsPresentation.make(
+            target: actionTarget,
+            availability: [
+                try actionAvailability(.discuss, role: .topic, order: 0),
+                try actionAvailability(.synthesize, role: .topic, order: 100),
+            ],
+            activeDiscussions: [discussion]
+        )
+        let checking = ResearchActionsPresentation.make(
+            target: actionTarget,
+            availability: [],
+            isCheckingAvailability: true,
+            activeDiscussions: [discussion]
+        )
+        let failed = ResearchActionsPresentation.make(
+            target: actionTarget,
+            availability: [],
+            availabilityError: "Profile unavailable.",
+            activeDiscussions: [discussion]
+        )
+
+        #expect(ready.defaultSurfaceRows().map(\.id) == [
+            .action(.discuss), discussionRowID, .action(.synthesize),
+        ])
+        #expect(checking.defaultSurfaceRows().map(\.id) == [discussionRowID])
+        #expect(failed.defaultSurfaceRows().map(\.id) == [discussionRowID])
+    }
+
+    @Test("Current Action entry never flushes the complete Triptych")
+    func currentActionEntryUsesOnlyCurrentTargetFlush() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let openingStart = try #require(source.range(of: "func openResearchAction("))
+        let openingEnd = try #require(source.range(
+            of: "func openResearchFunction(",
+            range: openingStart.upperBound..<source.endIndex
+        ))
+        let opening = source[openingStart.lowerBound..<openingEnd.lowerBound]
+        #expect(opening.contains("flushCurrentEditorBeforeOpeningResearchAction()"))
+        #expect(!opening.contains("flushEditors(in:"))
+
+        let clientStart = try #require(source.range(
+            of: "researchController.actions.bind(ResearchActionClient("
+        ))
+        let clientEnd = try #require(source.range(
+            of: "researchController.bibliography.bind",
+            range: clientStart.upperBound..<source.endIndex
+        ))
+        let client = source[clientStart.lowerBound..<clientEnd.lowerBound]
+        #expect(!client.contains("flushEditors(in:"))
+
+        let resolver = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumApplication/ResearchActionResolver.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(resolver.contains("request.expectedExecutionKind"))
+        #expect(resolver.contains("request.expectedProfileRevision"))
+        #expect(resolver.contains("request.expectedProfileDocumentRevision"))
+    }
+
     @Test("Actions projection exposes no activity chronology")
     func actionsProjectionHasNoActivityChronology() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

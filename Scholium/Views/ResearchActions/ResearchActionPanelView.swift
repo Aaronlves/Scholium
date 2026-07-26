@@ -11,7 +11,7 @@ struct ResearchActionPanelContext {
 
 /// The one native sheet shared by bundled and researcher-owned Actions.
 /// Profile modules may request fields, but cannot hide the app-owned Target,
-/// revision, authority, checkpoint, conflict, or recovery boundary.
+/// revision, authority, conflict, or recovery boundary.
 struct ResearchActionPanelView: View {
     @ObservedObject private var controller: ResearchActionController
     @ObservedObject private var agentApplicationHandoff: AgentApplicationHandoffController
@@ -133,7 +133,7 @@ struct ResearchActionPanelView: View {
                     boundaryBlock("Authority", value: authorityLabel)
                 }
             }
-            Text("Scholium revalidates the note identity and revision before preparation. Write-capable Actions receive a checkpoint and remain subject to conflict and recovery checks.")
+            Text("Scholium revalidates the note identity and revision before preparation. Write-capable Actions preserve the exact bytes they replace and remain subject to conflict and recovery checks.")
                 .font(.caption)
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 .fixedSize(horizontal: false, vertical: true)

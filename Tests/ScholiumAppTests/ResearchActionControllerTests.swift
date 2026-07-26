@@ -87,6 +87,10 @@ struct ResearchActionControllerTests {
         await waitUntil { controller.phase == .failed }
 
         #expect(captured?.actionID == .discuss)
+        #expect(captured?.expectedExecutionKind == action.definition.executionKind)
+        #expect(captured?.expectedProfileRevision == action.profile.profileRevision)
+        #expect(captured?.expectedProfileDocumentRevision
+            == action.profile.profileDocumentRevision)
         #expect(captured?.target == target)
         #expect(captured?.parameterValues[requestID.rawValue] == .text("Compare the arguments"))
         #expect(captured?.parameterValues[materialsID.rawValue] == .notes([candidate]))

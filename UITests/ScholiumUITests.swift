@@ -1087,8 +1087,29 @@ final class ScholiumUITests: XCTestCase {
         app.descendants(matching: .any)[
             "scholium.researchGuidance.category.Recovery & Technical"
         ].click()
+        let settledRetention = app.descendants(matching: .any)[
+            "scholium.recovery.settledRetention"
+        ]
+        XCTAssertTrue(settledRetention.waitForExistence(timeout: 8))
+        XCTAssertEqual(settledRetention.value as? String, "30 versions")
+        settledRetention.click()
+        let keepFifty = app.menuItems["50 versions"]
+        XCTAssertTrue(keepFifty.waitForExistence(timeout: 5))
+        keepFifty.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            settledRetention.value as? String == "50 versions"
+        })
         XCTAssertTrue(app.buttons["Reveal Skills Folder"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["Reveal Legacy Data"].exists)
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Methods"
+        ].click()
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Recovery & Technical"
+        ].click()
+        XCTAssertTrue(settledRetention.waitForExistence(timeout: 8))
+        XCTAssertEqual(settledRetention.value as? String, "50 versions")
     }
 
     @MainActor
@@ -2504,11 +2525,13 @@ final class ScholiumUITests: XCTestCase {
 
         let editor = app.descendants(matching: .any)["Markdown live preview editor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        editor.click()
-        editor.typeKey(.upArrow, modifierFlags: [.command])
-        editor.typeKey(.rightArrow, modifierFlags: [.shift])
+        let plainPassage = editor.staticTexts[
+            "This is deterministic, disposable, nonprivate test material. It contains no real"
+        ]
+        XCTAssertTrue(plainPassage.waitForExistence(timeout: 8))
+        plainPassage.doubleClick()
 
-        editor.rightClick()
+        plainPassage.rightClick()
         let editorContextMenu = app.menus["scholium.editor.contextMenu"]
         XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
         let addComment = editorContextMenu.menuItems[
@@ -2564,7 +2587,7 @@ final class ScholiumUITests: XCTestCase {
         ])
         XCTAssertTrue(cliOutput.contains("Recorded reply"))
         XCTAssertTrue(waitUntil(timeout: 8) {
-            (activeDiscussion.value as? String)?.contains("Agent reply recorded.") == true
+            (activeDiscussion.value as? String)?.contains("A reply is ready.") == true
         })
 
         activeDiscussion.click()

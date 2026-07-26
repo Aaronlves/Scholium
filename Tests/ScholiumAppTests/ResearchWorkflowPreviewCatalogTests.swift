@@ -124,14 +124,15 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Starting revision",
             "Permission",
             "Candidate write scope",
-            "Checkpoint",
             "Conflicts",
             "Recovery",
+            "Conflict recovery",
         ] {
             #expect(source.contains(field), "Missing app-owned field: \(field)")
         }
         #expect(source.contains("Ask Me Every Time"))
-        #expect(source.contains("Before Agent Work"))
+        #expect(source.contains("Exact written Notes"))
+        #expect(source.contains("Retained displaced bytes"))
         #expect(source.contains("Installed Skills Start Disabled"))
         #expect(source.contains("Allow These Notes Once"))
         #expect(source.contains("Continue Without Changes"))

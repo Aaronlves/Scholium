@@ -706,15 +706,34 @@ public struct ResearchActionAvailability: Codable, Hashable, Identifiable, Senda
 /// Method, current source, and authority again before creating a run.
 public struct ResearchActionExecutionRequest: Hashable, Sendable {
     public let actionID: ResearchActionID
+    /// The execution semantics presented to the researcher when the sheet was
+    /// opened. Application resolution must still match this value before a
+    /// run can be created; a changed Profile cannot silently turn a read-only
+    /// sheet into a write-capable preparation.
+    public let expectedExecutionKind: ResearchActionExecutionKind
+    /// Exact semantic Profile revision shown by the sheet. This is a
+    /// capability digest: changing read/write scope, property authority, or
+    /// any other Profile field invalidates the presentation even when the
+    /// execution kind is unchanged.
+    public let expectedProfileRevision: DocumentFingerprint
+    /// Exact Profile-document revision shown by a researcher-owned Action.
+    /// Application defaults have no backing document and therefore use nil.
+    public let expectedProfileDocumentRevision: DocumentFingerprint?
     public let target: ResearchActionNoteSnapshot
     public let parameterValues: [String: ResearchActionParameterValue]
 
     public init(
         actionID: ResearchActionID,
+        expectedExecutionKind: ResearchActionExecutionKind,
+        expectedProfileRevision: DocumentFingerprint,
+        expectedProfileDocumentRevision: DocumentFingerprint?,
         target: ResearchActionNoteSnapshot,
         parameterValues: [ResearchActionModuleID: ResearchActionParameterValue] = [:]
     ) {
         self.actionID = actionID
+        self.expectedExecutionKind = expectedExecutionKind
+        self.expectedProfileRevision = expectedProfileRevision
+        self.expectedProfileDocumentRevision = expectedProfileDocumentRevision
         self.target = target
         self.parameterValues = Dictionary(uniqueKeysWithValues: parameterValues.map {
             ($0.key.rawValue, $0.value)

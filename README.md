@@ -133,8 +133,14 @@ nonconversational outcomes as one portable, Action-identified Research Record;
 raw keys, assembled prompts, bookmarks, absolute paths, transport details, and
 diffs cannot enter that recursively strict portable contract. Write reports,
 consumed grants, and completion evidence advance atomically in the same local
-run file. Settle likewise stores one portable
-current state per Note rather than an application-authored history. Retained
+run file. Settle likewise stores one replaceable portable current judgment per
+Note rather than an application-authored history, and pins each distinct
+settled revision as one deduplicated machine-local exact-byte Note version.
+Repeating Settle can update that judgment or backfill its pin. Recovery &
+Technical retains the latest 10, 30, or 50 per Note by durable Settle order, or
+does not delete them automatically; 30 is the default. Lowering the limit
+journals only the exact versions the researcher previewed until their
+idempotent removal completes. Retained
 Function IDs remain protected execution vocabulary, but no new run writes the
 legacy activity or Dialogue files. Passage Comment and whole-note or focal-note
 Discuss now create one portable active Discussion; attributed researcher and
@@ -152,7 +158,9 @@ The common sheet keeps Copy Only and Copy and Open in its footer and performs
 the exact preparation boundary internally; there is no separate Prepare button
 or need to scroll for handoff. A prepared run can reuse its frozen instructions
 for either handoff, while cancellation and conflict safeguards remain owned by
-Scholium.
+Scholium. Current Actions flush only the current Target and create no automatic
+whole-Triptych checkpoint. Exact displaced bytes are preserved per written Note;
+manual Triptych checkpoints remain available as researcher-chosen milestones.
 
 ## Requirements
 

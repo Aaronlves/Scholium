@@ -258,6 +258,34 @@ struct AppCompositionRootTests {
         #expect(flushCount == 1)
     }
 
+    @Test("Triptych flush uses one aggregate registration per window")
+    func triptychFlushDoesNotDoubleFlushOneWindow() async throws {
+        let store = makeTestWorkspaceStore()
+        let triptychID = UUID()
+        let windowID = UUID()
+        var aggregateFlushes = 0
+        var selectedFlushes = 0
+        store.registerEditorFlush(
+            token: UUID(),
+            triptychID: triptychID,
+            windowID: windowID,
+            relativePath: "",
+            flush: { aggregateFlushes += 1 }
+        )
+        store.registerEditorFlush(
+            token: UUID(),
+            triptychID: triptychID,
+            windowID: windowID,
+            relativePath: "Current.md",
+            flush: { selectedFlushes += 1 }
+        )
+
+        try await store.flushEditors(in: triptychID)
+
+        #expect(aggregateFlushes == 1)
+        #expect(selectedFlushes == 0)
+    }
+
     @Test("A hanging content flush keeps the window retryable")
     func hangingContentFlushKeepsWindowRetryable() async throws {
         var policy = ScholiumLifecyclePolicy()

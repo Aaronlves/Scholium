@@ -1,6 +1,39 @@
 import ScholiumContracts
 import Foundation
 import ScholiumCore
+import OSLog
+
+private let researchRecoveryLogger = Logger(
+    subsystem: "com.scholium.app",
+    category: "ResearchRecovery"
+)
+
+enum ResearchSettlementRecovery {
+    static func shouldRollbackNewPin(after error: Error) -> Bool {
+        guard let storeError = error as? ResearchRecordStoreV1Error else {
+            return false
+        }
+        if case .replacementNotCommitted = storeError { return true }
+        return false
+    }
+}
+
+#if DEBUG
+enum ResearchSettlementReplacementFaultPhaseForTesting: Sendable {
+    case beforeRename
+    case afterRename
+}
+
+struct PortableSettlementProjectionForTesting: Sendable {
+    let settlements: [SettlementRecord]
+    let issueCount: Int
+}
+
+private enum InjectedResearchSettlementReplacementFault: Error {
+    case beforeRename
+    case afterRename
+}
+#endif
 
 enum ResearchDiscussionFactory {
     static func make(
@@ -101,25 +134,242 @@ enum ResearchDiscussionFactory {
 extension WorkspaceHandle {
     // MARK: Settlement and Discussion
 
+    #if DEBUG
+    func setResearchSettlementReplacementFaultForTesting(
+        _ phase: ResearchSettlementReplacementFaultPhaseForTesting?
+    ) async {
+        switch phase {
+        case .beforeRename:
+            await services.portableResearchRecordStore
+                .setPostCommitFaultForTesting(nil)
+            await services.portableResearchRecordStore
+                .setPreCommitFaultForTesting { _ in
+                    throw InjectedResearchSettlementReplacementFault.beforeRename
+                }
+        case .afterRename:
+            await services.portableResearchRecordStore
+                .setPreCommitFaultForTesting(nil)
+            await services.portableResearchRecordStore
+                .setPostCommitFaultForTesting { _ in
+                    throw InjectedResearchSettlementReplacementFault.afterRename
+                }
+        case nil:
+            await services.portableResearchRecordStore
+                .setPreCommitFaultForTesting(nil)
+            await services.portableResearchRecordStore
+                .setPostCommitFaultForTesting(nil)
+        }
+    }
+
+    @discardableResult
+    func writePortableSettlementWithoutPinForTesting(
+        noteID: UUID,
+        fingerprint: DocumentFingerprint,
+        rationale: String?
+    ) async throws -> SettlementRecord {
+        try await services.portableResearchRecordStore.settle(
+            noteID: noteID,
+            fingerprint: fingerprint,
+            rationale: rationale
+        )
+    }
+
+    func portableSettlementProjectionForTesting() async throws
+        -> PortableSettlementProjectionForTesting {
+        let listing = try await services.portableResearchRecordStore
+            .settlementListing()
+        return PortableSettlementProjectionForTesting(
+            settlements: listing.settlements,
+            issueCount: listing.issues.count
+        )
+    }
+    #endif
+
     @discardableResult
     func settle(
         _ noteID: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord {
+        try beginResearchRecoveryMutation()
+        defer { endResearchRecoveryMutation() }
         let context = try await researchContext(
             for: noteID,
             expectedRevision: expectedRevision,
             permits: { $0 != .other },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        let settlement = try await services.portableResearchRecordStore.settle(
+        let repository = try repository(vaultID: noteID.vaultID)
+        let pin = try await repository.pinSettledSnapshot(
             noteID: context.identity.id,
-            fingerprint: expectedRevision,
-            rationale: rationale
+            note: noteID,
+            expectedRevision: expectedRevision
         )
+        let settlement: SettlementRecord
+        do {
+            settlement = try await services.portableResearchRecordStore.settle(
+                noteID: context.identity.id,
+                fingerprint: expectedRevision,
+                rationale: rationale
+            )
+        } catch {
+            // Only a typed failure before rename proves that portable state
+            // did not commit. Commit uncertainty, including a later concurrent
+            // replacement, always retains the exact-byte pin.
+            let replacementDidNotCommit = ResearchSettlementRecovery
+                .shouldRollbackNewPin(after: error)
+            if pin.wasCreated, replacementDidNotCommit {
+                do {
+                    _ = try await repository.removeSettledSnapshots([pin.snapshot.id])
+                } catch let recoveryError {
+                    throw ResearchOperationError.settleRollbackFailed(
+                        settleError: error.localizedDescription,
+                        recoveryError: recoveryError.localizedDescription
+                    )
+                }
+            }
+            throw error
+        }
+        do {
+            let policy = try await completePendingRecoveryPolicyChange()
+            let removals = try await repository.settledSnapshotIDsToRemove(
+                maximumCount: policy.retention.maximumCount
+            )
+            _ = try await repository.removeSettledSnapshots(removals)
+        } catch {
+            researchRecoveryLogger.error(
+                "Settle committed, but settled-version retention could not be enforced: \(error.localizedDescription, privacy: .public)"
+            )
+        }
         try await refreshAfterResearchCommit("The settlement")
         return settlement
+    }
+
+    func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot {
+        try requireActive()
+        let stored = try await completePendingRecoveryPolicyChange()
+        let snapshots = try await settledSnapshots(noteID: nil)
+        let maximum = Dictionary(grouping: snapshots, by: \.noteID)
+            .values.map(\.count).max() ?? 0
+        return ResearchRecoveryPolicySnapshot(
+            retention: stored.retention,
+            revision: stored.revision,
+            settledSnapshotCount: snapshots.count,
+            maximumSnapshotsForOneNote: maximum
+        )
+    }
+
+    func prepareRecoveryPolicyChange(
+        _ retention: SettledSnapshotRetention,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchRecoveryPolicyChangePreview {
+        let current = try await recoveryPolicy()
+        guard current.revision == expectedRevision else {
+            throw ResearchRecoveryPolicyError.staleRevision
+        }
+        var removalIDs: Set<UUID> = []
+        var affectedNoteIDs: Set<UUID> = []
+        for repository in services.repositories.values {
+            let repositoryRemovalIDs = try await repository
+                .settledSnapshotIDsToRemove(maximumCount: retention.maximumCount)
+            removalIDs.formUnion(repositoryRemovalIDs)
+            let snapshots = try await repository.settledSnapshots(noteID: nil)
+            affectedNoteIDs.formUnion(
+                snapshots.lazy.filter { repositoryRemovalIDs.contains($0.id) }.map(\.noteID)
+            )
+        }
+        return ResearchRecoveryPolicyChangePreview(
+            triptychID: services.manifest.id,
+            retention: retention,
+            expectedPolicyRevision: expectedRevision,
+            snapshotIDsToRemove: removalIDs,
+            affectedNoteCount: affectedNoteIDs.count
+        )
+    }
+
+    func applyRecoveryPolicyChange(
+        _ preview: ResearchRecoveryPolicyChangePreview
+    ) async throws -> ResearchRecoveryPolicyApplyOutcome {
+        try beginResearchRecoveryMutation()
+        defer { endResearchRecoveryMutation() }
+        guard preview.triptychID == services.manifest.id else {
+            throw ResearchRecoveryPolicyError.stalePreview
+        }
+        let current = try await recoveryPolicy()
+        guard current.revision == preview.expectedPolicyRevision else {
+            throw ResearchRecoveryPolicyError.staleRevision
+        }
+        let freshPreview = try await prepareRecoveryPolicyChange(
+            preview.retention,
+            expectedRevision: preview.expectedPolicyRevision
+        )
+        guard freshPreview.snapshotIDsToRemove == preview.snapshotIDsToRemove,
+              freshPreview.affectedNoteCount == preview.affectedNoteCount else {
+            throw ResearchRecoveryPolicyError.stalePreview
+        }
+        if preview.snapshotIDsToRemove.isEmpty {
+            _ = try await services.researchRecoveryPolicyStore.save(
+                preview.retention,
+                expectedRevision: preview.expectedPolicyRevision
+            )
+        } else {
+            let pending = try await services.researchRecoveryPolicyStore.beginChange(
+                preview.retention,
+                approvedSnapshotIDsToRemove: preview.snapshotIDsToRemove,
+                expectedRevision: preview.expectedPolicyRevision
+            )
+            do {
+                for repository in services.repositories.values {
+                    _ = try await repository.removeSettledSnapshots(
+                        preview.snapshotIDsToRemove
+                    )
+                }
+                _ = try await services.researchRecoveryPolicyStore.finishPendingChange(
+                    retention: preview.retention,
+                    approvedSnapshotIDsToRemove: preview.snapshotIDsToRemove,
+                    expectedRevision: pending.snapshot.revision
+                )
+            } catch {
+                // The machine-local policy retains the exact researcher-
+                // approved removal IDs. A later policy read retries only that
+                // bounded set before clearing the durable pending state.
+                throw error
+            }
+        }
+        return ResearchRecoveryPolicyApplyOutcome(
+            snapshot: try await recoveryPolicy(),
+            removedSnapshotCount: preview.snapshotIDsToRemove.count
+        )
+    }
+
+    private func completePendingRecoveryPolicyChange() async throws
+        -> ResearchRecoveryPolicySnapshot {
+        let stored = try await services.researchRecoveryPolicyStore.state()
+        guard !stored.pendingSnapshotIDsToRemove.isEmpty else {
+            return stored.snapshot
+        }
+        for repository in services.repositories.values {
+            _ = try await repository.removeSettledSnapshots(
+                stored.pendingSnapshotIDsToRemove
+            )
+        }
+        return try await services.researchRecoveryPolicyStore.finishPendingChange(
+            retention: stored.snapshot.retention,
+            approvedSnapshotIDsToRemove: stored.pendingSnapshotIDsToRemove,
+            expectedRevision: stored.snapshot.revision
+        )
+    }
+
+    func settledSnapshots(noteID: UUID?) async throws -> [SettledRevisionSnapshot] {
+        try requireActive()
+        var snapshots: [SettledRevisionSnapshot] = []
+        for repository in services.repositories.values {
+            snapshots.append(contentsOf: try await repository.settledSnapshots(noteID: noteID))
+        }
+        return snapshots.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
@@ -689,10 +939,12 @@ extension WorkspaceHandle {
             vaultRole: workContext.vault.role
         ).title
         let requestedAt = Date()
-        let checkpoint = if let preparedCheckpoint {
+        let checkpoint: TriptychCheckpoint? = if let preparedCheckpoint {
             preparedCheckpoint
-        } else {
+        } else if functionSnapshotBuilder == nil {
             try await createCheckpoint(name: "Before Agent Work", kind: .automatic)
+        } else {
+            nil
         }
         let recheckedTarget = try await repository.load(
             relativePath: workID.relativePath
@@ -867,7 +1119,7 @@ extension WorkspaceHandle {
         if let functionSnapshot {
             guard functionSnapshot.runID == roundID,
                   functionSnapshot.recordID == roundID,
-                  functionSnapshot.checkpointID == checkpoint.id,
+                  functionSnapshot.checkpointID == checkpoint?.id,
                   functionSnapshot.request.function == .critique,
                   functionSnapshot.preparedOutput == outputSnapshot else {
                 try await rollbackPreparedCritique()
@@ -896,7 +1148,7 @@ extension WorkspaceHandle {
                 workRelativePath: workID.relativePath,
                 targetFingerprint: expectedRevision,
                 critiqueRelativePath: critiquePath,
-                checkpointID: checkpoint.id,
+                checkpointID: checkpoint?.id,
                 scope: scope,
                 roundID: roundID,
                 functionSnapshot: functionSnapshot,

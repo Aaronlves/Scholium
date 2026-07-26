@@ -19,6 +19,7 @@ struct WorkspaceServices: Sendable {
     let researchSkillStore: ResearchSkillStore
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
     let researchPermissionPolicyStore: ResearchPermissionPolicyStore
+    let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
     let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
@@ -246,9 +247,21 @@ public actor WorkspaceHandle {
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     private var activeSourceMutationID: UUID?
+    private var researchRecoveryMutationIsActive = false
     private var refreshCycleIsActive = false
     private var sourceGateWaiters: [CheckedContinuation<Void, Never>] = []
     private var didCompleteActivationReconciliation = false
+
+    func beginResearchRecoveryMutation() throws {
+        guard !researchRecoveryMutationIsActive else {
+            throw ResearchRecoveryPolicyError.operationInProgress
+        }
+        researchRecoveryMutationIsActive = true
+    }
+
+    func endResearchRecoveryMutation() {
+        researchRecoveryMutationIsActive = false
+    }
     /// Plaintext activity keys live only for this open WorkspaceHandle. The
     /// durable grant store keeps a digest, so reopening never reconstructs a
     /// credential from persisted state.
@@ -454,6 +467,10 @@ public actor WorkspaceHandle {
                 researchSkillStore: researchSkillStore,
                 researchSkillMaintenanceStore: researchSkillMaintenanceStore,
                 researchPermissionPolicyStore: ResearchPermissionPolicyStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
+                researchRecoveryPolicyStore: try ResearchRecoveryPolicyStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
                 ),

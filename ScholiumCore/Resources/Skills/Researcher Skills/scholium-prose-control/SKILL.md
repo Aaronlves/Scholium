@@ -27,7 +27,7 @@ Stop condition:
 Durability:
 ```
 
-Selection of Prose Control does not grant file-edit permission. Follow the current Write packet, checkpoint, exact Target, and write range.
+Selection of Prose Control does not grant file-edit permission. Follow the current Write packet, exact-note recovery, exact Target, and write range.
 
 ## Record the preservation ledger
 

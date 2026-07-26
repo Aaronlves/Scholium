@@ -5,6 +5,84 @@ import Testing
 
 @Suite("Portable Research Record v1 and Local Execution v2")
 struct ResearchRecordV1StoresTests {
+    @Test("A post-rename failure leaves exact committed bytes observable")
+    func secureReplacementReportsPostRenameUncertainty() throws {
+        enum InjectedFailure: Error { case afterRename }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let directory = SecureRecordDirectory(
+            trustedRootURL: fixture.root,
+            components: ["post-rename-fault"],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: 1_024,
+            postCommitFault: { _ in throw InjectedFailure.afterRename }
+        )
+        try directory.ensureDirectories([])
+        let expected = Data("exact committed state".utf8)
+
+        do {
+            _ = try directory.replace(
+                expected,
+                directory: nil,
+                fileName: "state.json"
+            )
+            Issue.record("Expected typed post-rename commit uncertainty.")
+        } catch let error as SecureRecordDirectoryError {
+            guard case .replacementCommitUncertain = error else {
+                Issue.record("Unexpected replacement error: \(error)")
+                return
+            }
+        }
+        #expect(try directory.read(directory: nil, fileName: "state.json") == expected)
+
+        do {
+            _ = try directory.replace(
+                Data(repeating: 0, count: 2_048),
+                directory: nil,
+                fileName: "oversize.json"
+            )
+            Issue.record("Expected typed pre-rename refusal.")
+        } catch let error as SecureRecordDirectoryError {
+            guard case .replacementNotCommitted = error else {
+                Issue.record("Unexpected replacement error: \(error)")
+                return
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: fixture.root
+            .appendingPathComponent("post-rename-fault/oversize.json").path))
+    }
+
+    @Test("Portable Settle exposes typed commit uncertainty after rename")
+    func portableSettlementMapsPostRenameUncertainty() async throws {
+        enum InjectedFailure: Error { case afterRename }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let noteID = UUID()
+        let fingerprint = DocumentFingerprint(content: "settled")
+        await store.setPostCommitFaultForTesting { _ in
+            throw InjectedFailure.afterRename
+        }
+
+        do {
+            _ = try await store.settle(
+                noteID: noteID,
+                fingerprint: fingerprint,
+                rationale: "This replacement crossed rename."
+            )
+            Issue.record("Expected portable Settle commit uncertainty.")
+        } catch let error as ResearchRecordStoreV1Error {
+            guard case .replacementCommitUncertain = error else {
+                Issue.record("Unexpected portable Settle error: \(error)")
+                return
+            }
+        }
+        let listing = try await store.settlementListing()
+        #expect(listing.issues.isEmpty)
+        #expect(listing.settlements.map(\.fingerprint) == [fingerprint])
+    }
+
     @Test("Portable records commit one file and recover around abandoned staging files")
     func portableAtomicWriteAndCrashRecovery() async throws {
         let fixture = try Fixture()
@@ -281,7 +359,7 @@ struct ResearchRecordV1StoresTests {
         _ = try await creatingStore.createActiveDiscussion(discussion)
     }
 
-    @Test("Settle keeps one portable current state per Note")
+    @Test("Settle updates one portable current judgment per Note")
     func settlementIsCurrentStateNotHistory() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -309,7 +387,10 @@ struct ResearchRecordV1StoresTests {
             settledAt: Date(timeIntervalSince1970: 30)
         )
 
-        #expect(first == repeated)
+        #expect(repeated.id != first.id)
+        #expect(repeated.fingerprint == firstRevision)
+        #expect(repeated.settledAt == Date(timeIntervalSince1970: 20))
+        #expect(repeated.rationale == nil)
         #expect(replacement.id != first.id)
         #expect(replacement.fingerprint == secondRevision)
         let listing = try await store.settlementListing()

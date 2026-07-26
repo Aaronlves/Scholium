@@ -184,6 +184,15 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     let removeSkillPermissionOverride: (
         UUID, String, DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot
+    let recoveryPolicy: (
+        UUID
+    ) async throws -> ResearchRecoveryPolicySnapshot
+    let prepareRecoveryPolicyChange: (
+        UUID, SettledSnapshotRetention, DocumentFingerprint?
+    ) async throws -> ResearchRecoveryPolicyChangePreview
+    let applyRecoveryPolicyChange: (
+        UUID, ResearchRecoveryPolicyChangePreview
+    ) async throws -> ResearchRecoveryPolicyApplyOutcome
 }
 
 /// Delivery-neutral operations assembled by the macOS composition root.
@@ -955,6 +964,39 @@ final class WorkspaceSettingsModel: ObservableObject {
         return try await capabilities.researchGuidance.researchSkillMaintenanceSnapshots(
             workspaceID,
             packageID
+        )
+    }
+
+    func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.recoveryPolicy(workspaceID)
+    }
+
+    func prepareRecoveryPolicyChange(
+        _ retention: SettledSnapshotRetention,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchRecoveryPolicyChangePreview {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.prepareRecoveryPolicyChange(
+            workspaceID,
+            retention,
+            expectedRevision
+        )
+    }
+
+    func applyRecoveryPolicyChange(
+        _ preview: ResearchRecoveryPolicyChangePreview
+    ) async throws -> ResearchRecoveryPolicyApplyOutcome {
+        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.applyRecoveryPolicyChange(
+            workspaceID,
+            preview
         )
     }
 

@@ -62,6 +62,8 @@ public struct PortableResearchDiscussionListing: Sendable {
 
 public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case unsafeStore(String)
+    case replacementNotCommitted(String)
+    case replacementCommitUncertain(String)
     case recordAlreadyExists(UUID)
     case recordNotFound(UUID)
     case recordIdentityMismatch(UUID)
@@ -81,6 +83,10 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
         switch self {
         case .unsafeStore(let reason):
             "The Research Record store is unsafe or unavailable: \(reason)"
+        case .replacementNotCommitted(let reason):
+            "The Research Record replacement did not commit: \(reason)"
+        case .replacementCommitUncertain(let reason):
+            "The Research Record replacement may have committed: \(reason)"
         case .recordAlreadyExists(let id):
             "Research Record \(id.uuidString) already exists."
         case .recordNotFound(let id):
@@ -124,7 +130,7 @@ public actor PortableResearchRecordStore {
 
     public nonisolated let storageURL: URL
     private let triptychID: UUID
-    private let storage: SecureRecordDirectory
+    private var storage: SecureRecordDirectory
     private let deletionMarkers: SecureRecordDirectory
     private let lock: AdvisoryFileLock
 
@@ -137,13 +143,14 @@ public actor PortableResearchRecordStore {
         storageURL = controlURL
             .appendingPathComponent("research-records", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
-        storage = SecureRecordDirectory(
+        let initialStorage = SecureRecordDirectory(
             trustedRootURL: controlURL,
             components: ["research-records", "v1"],
             directoryMode: 0o755,
             fileMode: 0o600,
             maximumByteCount: Self.maximumRecordByteCount
         )
+        storage = initialStorage
         let coordinationDirectory = SecureRecordDirectory(
             trustedRootURL: applicationSupportURL,
             components: ["Triptychs", triptychID.uuidString],
@@ -174,15 +181,50 @@ public actor PortableResearchRecordStore {
                 let directories = ["active"]
                     + PortableResearchRecordLocation.allCases.map(\.rawValue)
                     + ["settlements"]
-                try storage.ensureDirectories(directories)
-                try storage.removeAbandonedStagingFiles(in: directories.map(Optional.some))
+                try initialStorage.ensureDirectories(directories)
+                try initialStorage.removeAbandonedStagingFiles(
+                    in: directories.map(Optional.some)
+                )
                 try Self.recoverFinishedDiscussionCutovers(
-                    storage: storage,
+                    storage: initialStorage,
                     triptychID: triptychID
                 )
             }
         }
     }
+
+    #if DEBUG
+    /// Package-scoped deterministic seams for replacement-phase recovery
+    /// tests. They change no path, mode, or byte boundary and are absent from
+    /// release builds.
+    package func setPreCommitFaultForTesting(
+        _ fault: (@Sendable (String) throws -> Void)?
+    ) {
+        storage = SecureRecordDirectory(
+            trustedRootURL: storage.trustedRootURL,
+            components: storage.components,
+            directoryMode: storage.directoryMode,
+            fileMode: storage.fileMode,
+            maximumByteCount: storage.maximumByteCount,
+            preCommitFault: fault,
+            postCommitFault: storage.postCommitFault
+        )
+    }
+
+    package func setPostCommitFaultForTesting(
+        _ fault: (@Sendable (String) throws -> Void)?
+    ) {
+        storage = SecureRecordDirectory(
+            trustedRootURL: storage.trustedRootURL,
+            components: storage.components,
+            directoryMode: storage.directoryMode,
+            fileMode: storage.fileMode,
+            maximumByteCount: storage.maximumByteCount,
+            preCommitFault: storage.preCommitFault,
+            postCommitFault: fault
+        )
+    }
+    #endif
 
     @discardableResult
     public func createFinishedRecord(
@@ -667,9 +709,6 @@ public actor PortableResearchRecordStore {
                           current.settlement.noteID == noteID else {
                         throw ResearchRecordStoreV1Error.recordIdentityMismatch(noteID)
                     }
-                    if current.settlement.fingerprint == fingerprint {
-                        return current.settlement
-                    }
                 }
                 let settlement = SettlementRecord(
                     noteID: noteID,
@@ -683,11 +722,22 @@ public actor PortableResearchRecordStore {
                     settlement: settlement
                 )
                 let (canonicalState, data) = try Self.canonicalized(state)
-                let readback = try storage.replace(
-                    data,
-                    directory: "settlements",
-                    fileName: fileName
-                )
+                let readback: Data
+                do {
+                    readback = try storage.replace(
+                        data,
+                        directory: "settlements",
+                        fileName: fileName
+                    )
+                } catch SecureRecordDirectoryError.replacementNotCommitted(
+                    let reason
+                ) {
+                    throw ResearchRecordStoreV1Error.replacementNotCommitted(reason)
+                } catch SecureRecordDirectoryError.replacementCommitUncertain(
+                    let reason
+                ) {
+                    throw ResearchRecordStoreV1Error.replacementCommitUncertain(reason)
+                }
                 let stored = try Self.decode(
                     PortableSettlementState.self,
                     from: readback
@@ -1389,13 +1439,13 @@ private struct LocalCritiqueHandoffIntent: Codable, Equatable {
     let schemaVersion: Int
     let triptychID: UUID
     let runID: UUID
-    let checkpointID: UUID
+    let checkpointID: UUID?
     let evidenceDigest: DocumentFingerprint
 
     init(
         triptychID: UUID,
         runID: UUID,
-        checkpointID: UUID,
+        checkpointID: UUID?,
         evidenceDigest: DocumentFingerprint
     ) {
         schemaVersion = Self.currentSchemaVersion
@@ -1426,7 +1476,7 @@ private struct LocalCritiqueHandoffIntent: Codable, Equatable {
         self.schemaVersion = schemaVersion
         triptychID = try container.decode(UUID.self, forKey: .triptychID)
         runID = try container.decode(UUID.self, forKey: .runID)
-        checkpointID = try container.decode(UUID.self, forKey: .checkpointID)
+        checkpointID = try container.decodeIfPresent(UUID.self, forKey: .checkpointID)
         evidenceDigest = try container.decode(
             StrictResearchRecordFingerprint.self,
             forKey: .evidenceDigest
@@ -2031,7 +2081,6 @@ public actor LocalResearchExecutionStore {
         guard snapshot.actionSnapshot?.actionID == .critique,
               snapshot.request.function == .critique,
               snapshot.runID == snapshot.recordID,
-              let checkpointID = snapshot.checkpointID,
               snapshot.preparedOutput != nil,
               !preparedInstructions.isEmpty,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024 else {
@@ -2047,7 +2096,7 @@ public actor LocalResearchExecutionStore {
         return LocalCritiqueHandoffIntent(
             triptychID: triptychID,
             runID: snapshot.runID,
-            checkpointID: checkpointID,
+            checkpointID: snapshot.checkpointID,
             evidenceDigest: digest
         )
     }
@@ -2091,7 +2140,7 @@ public actor LocalResearchExecutionStore {
     }
 }
 
-private final class AdvisoryFileLock: @unchecked Sendable {
+final class AdvisoryFileLock: @unchecked Sendable {
     private let descriptor: Int32
 
     init(directory: SecureRecordDirectory, fileName: String) throws {
@@ -2144,16 +2193,20 @@ private final class AdvisoryFileLock: @unchecked Sendable {
     }
 }
 
-private enum SecureRecordDirectoryError: LocalizedError {
+enum SecureRecordDirectoryError: LocalizedError {
     case unsafe(String)
     case notFound(String)
     case alreadyExists(String)
+    case replacementNotCommitted(String)
+    case replacementCommitUncertain(String)
 
     var errorDescription: String? {
         switch self {
         case .unsafe(let reason): reason
         case .notFound(let file): "\(file) was not found."
         case .alreadyExists(let file): "\(file) already exists."
+        case .replacementNotCommitted(let reason): reason
+        case .replacementCommitUncertain(let reason): reason
         }
     }
 }
@@ -2218,19 +2271,29 @@ private enum ResearchRecordStoreCodingValidation {
 
 /// Minimal descriptor-relative file primitive shared by the portable and
 /// private stores. It does not interpret record semantics.
-private struct SecureRecordDirectory: Sendable {
+struct SecureRecordDirectory: Sendable {
     let trustedRootURL: URL
     let components: [String]
     let directoryMode: mode_t
     let fileMode: mode_t
     let maximumByteCount: Int
+    /// Internal deterministic fault seam used to prove behavior after staging
+    /// durability but before rename. Production construction always leaves it
+    /// nil.
+    let preCommitFault: (@Sendable (String) throws -> Void)?
+    /// Internal deterministic fault seam used to prove behavior after rename
+    /// but before directory durability/readback. Production construction
+    /// always leaves it nil.
+    let postCommitFault: (@Sendable (String) throws -> Void)?
 
     init(
         trustedRootURL: URL,
         components: [String],
         directoryMode: mode_t,
         fileMode: mode_t,
-        maximumByteCount: Int
+        maximumByteCount: Int,
+        preCommitFault: (@Sendable (String) throws -> Void)? = nil,
+        postCommitFault: (@Sendable (String) throws -> Void)? = nil
     ) {
         precondition(!components.isEmpty)
         precondition(components.allSatisfy(Self.isSafeComponent))
@@ -2239,6 +2302,8 @@ private struct SecureRecordDirectory: Sendable {
         self.directoryMode = directoryMode
         self.fileMode = fileMode
         self.maximumByteCount = maximumByteCount
+        self.preCommitFault = preCommitFault
+        self.postCommitFault = postCommitFault
     }
 
     func ensureDirectories(_ children: [String]) throws {
@@ -2270,7 +2335,23 @@ private struct SecureRecordDirectory: Sendable {
         directory: String?,
         fileName: String
     ) throws -> Data {
-        try write(data, directory: directory, fileName: fileName, exclusive: false)
+        do {
+            return try write(
+                data,
+                directory: directory,
+                fileName: fileName,
+                exclusive: false
+            )
+        } catch let error as SecureRecordDirectoryError {
+            if case .replacementCommitUncertain = error { throw error }
+            throw SecureRecordDirectoryError.replacementNotCommitted(
+                error.localizedDescription
+            )
+        } catch {
+            throw SecureRecordDirectoryError.replacementNotCommitted(
+                error.localizedDescription
+            )
+        }
     }
 
     func read(directory: String?, fileName: String) throws -> Data {
@@ -2425,6 +2506,7 @@ private struct SecureRecordDirectory: Sendable {
               fsync(temporary) == 0 else {
             throw unsafe("flush staging file")
         }
+        try preCommitFault?(fileName)
 
         let result: Int32
         if exclusive {
@@ -2451,10 +2533,28 @@ private struct SecureRecordDirectory: Sendable {
         }
         guard result == 0 else { throw unsafe("commit \(fileName)") }
         temporaryExists = false
-        guard fsync(parent) == 0 else { throw unsafe("flush record directory") }
-        let readback = try read(parent: parent, fileName: fileName)
+        do {
+            try postCommitFault?(fileName)
+        } catch {
+            throw SecureRecordDirectoryError.replacementCommitUncertain(
+                error.localizedDescription
+            )
+        }
+        guard fsync(parent) == 0 else {
+            throw SecureRecordDirectoryError.replacementCommitUncertain(
+                unsafe("flush record directory").localizedDescription
+            )
+        }
+        let readback: Data
+        do {
+            readback = try read(parent: parent, fileName: fileName)
+        } catch {
+            throw SecureRecordDirectoryError.replacementCommitUncertain(
+                error.localizedDescription
+            )
+        }
         guard readback == data else {
-            throw SecureRecordDirectoryError.unsafe(
+            throw SecureRecordDirectoryError.replacementCommitUncertain(
                 "Committed record \(fileName) did not match readback."
             )
         }

@@ -428,9 +428,9 @@ private struct ResearchAuthorityFacts: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 LabeledContent("Permission", value: "Ask Me Every Time")
                 LabeledContent("Candidate write scope", value: "Current Analysis only")
-                LabeledContent("Checkpoint", value: "Before Agent Work")
+                LabeledContent("Recovery", value: "Exact written Notes")
                 LabeledContent("Conflicts", value: "Revalidated before write")
-                LabeledContent("Recovery", value: "Checkpoint and retained prewrite evidence")
+                LabeledContent("Conflict recovery", value: "Retained displaced bytes")
                 Text("The Skill can declare requirements, but it cannot hide or expand these fields.")
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -607,7 +607,7 @@ private struct ResearchSkillSettingsDetail: View {
             }
             ResearchSkillGroup(title: "SYSTEM SKILLS", detail: "Read-only application mechanisms", rows: [
                 "Identity and revision",
-                "Permission and checkpoint",
+                "Permission and recovery",
                 "Conflict and completion validation",
             ], actionTitle: nil)
             ResearchSkillGroup(title: "BUNDLED REFERENCES", detail: "Compare, restore, or reinstall explicitly", rows: [

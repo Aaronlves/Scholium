@@ -79,6 +79,14 @@ extension WorkspaceHandle {
                 request.actionID
             )
         }
+        guard candidate.availability.definition.executionKind
+                == request.expectedExecutionKind,
+              candidate.availability.profile.profileRevision
+                == request.expectedProfileRevision,
+              candidate.availability.profile.profileDocumentRevision
+                == request.expectedProfileDocumentRevision else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
 
         let parameters = try ResearchActionParameterModel(
             deferringRequiredSourceFor: candidate.availability.profile.profile,
