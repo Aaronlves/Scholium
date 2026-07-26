@@ -23,6 +23,51 @@ public enum PortableResearchStatementKind: String, Codable, Hashable, Sendable {
     case researcherResponse = "researcher_response"
 }
 
+/// A lightweight researcher Comment location. It deliberately records no
+/// selected prose or exact source offsets; the fingerprint keeps the original
+/// one-based inclusive line range truthful after later edits.
+public struct ResearchLineReference: Codable, Hashable, Sendable {
+    public let fingerprint: DocumentFingerprint
+    public let line: Int
+    public let endLine: Int
+
+    public init(
+        fingerprint: DocumentFingerprint,
+        line: Int,
+        endLine: Int
+    ) throws {
+        guard PortableResearchRecordValidation.isValidFingerprint(fingerprint),
+              line > 0,
+              endLine >= line else {
+            throw PortableResearchRecordError.invalidStatement
+        }
+        self.fingerprint = fingerprint
+        self.line = line
+        self.endLine = endLine
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case fingerprint, line
+        case endLine = "end_line"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try PortableResearchRecordValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            fingerprint: container.decode(
+                PortableResearchStrictFingerprint.self,
+                forKey: .fingerprint
+            ).value,
+            line: container.decode(Int.self, forKey: .line),
+            endLine: container.decode(Int.self, forKey: .endLine)
+        )
+    }
+}
+
 public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let author: PortableResearchStatementAuthor
@@ -31,6 +76,7 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
     public let text: String
     public let createdAt: Date
     public let passage: CommentAnchor?
+    public let lineReference: ResearchLineReference?
 
     public init(
         id: UUID = UUID(),
@@ -39,7 +85,8 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
         attribution: String,
         text: String,
         createdAt: Date = Date(),
-        passage: CommentAnchor? = nil
+        passage: CommentAnchor? = nil,
+        lineReference: ResearchLineReference? = nil
     ) throws {
         let attribution = attribution.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,6 +96,7 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
               text.utf8.count <= 256 * 1024,
               !PortableResearchRecordValidation.containsAbsolutePath(attribution),
               !PortableResearchRecordValidation.containsAbsolutePath(text),
+              passage == nil || lineReference == nil,
               passage.map(PortableResearchRecordValidation.isValidPassage) ?? true else {
             throw PortableResearchRecordError.invalidStatement
         }
@@ -69,12 +117,14 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
         self.text = text
         self.createdAt = createdAt
         self.passage = passage
+        self.lineReference = lineReference
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case id, author, kind, attribution, text
         case createdAt = "created_at"
         case passage
+        case lineReference = "line_reference"
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,7 +143,11 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
             passage: container.decodeIfPresent(
                 PortableResearchStrictPassage.self,
                 forKey: .passage
-            )?.value
+            )?.value,
+            lineReference: container.decodeIfPresent(
+                ResearchLineReference.self,
+                forKey: .lineReference
+            )
         )
     }
 
@@ -105,7 +159,21 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
             attribution: attribution,
             text: text,
             createdAt: createdAt,
-            passage: passage
+            passage: passage,
+            lineReference: lineReference
+        )
+    }
+
+    public func replacingLineReference(_ lineReference: ResearchLineReference?) throws -> Self {
+        try Self(
+            id: id,
+            author: author,
+            kind: kind,
+            attribution: attribution,
+            text: text,
+            createdAt: createdAt,
+            passage: passage,
+            lineReference: lineReference
         )
     }
 }

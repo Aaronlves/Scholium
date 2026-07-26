@@ -60,7 +60,9 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var presentationAvailability: ResearchActionAvailability?
     @Published private(set) var phase: ResearchActionPanelPhase = .idle
     @Published private(set) var materialCandidates: [ResearchActionNoteSnapshot] = []
+    @Published private(set) var isLoadingMaterialCandidates = false
     @Published private(set) var sourceStatus: ResearchSourceAccessStatus?
+    @Published private(set) var isLoadingSourceStatus = false
     @Published private(set) var preparation: ResearchActionPreparation?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isBindingSource = false
@@ -111,6 +113,8 @@ final class ResearchActionController: ObservableObject {
         guard phase == .editing || phase == .failed,
               activeAvailability?.isEnabled == true,
               let profile,
+              !isLoadingMaterialCandidates,
+              !isLoadingSourceStatus,
               !isBusy else { return false }
         return profile.modules.allSatisfy(moduleIsSatisfied)
     }
@@ -133,9 +137,10 @@ final class ResearchActionController: ObservableObject {
             availabilityError = nil
             return
         }
+        let retainsCurrentRows = availabilityTarget == target
         availabilityGeneration &+= 1
         let token = availabilityGeneration
-        availability = []
+        if !retainsCurrentRows { availability = [] }
         availabilityTarget = target
         isRefreshingAvailability = true
         availabilityError = nil
@@ -154,7 +159,7 @@ final class ResearchActionController: ObservableObject {
         } catch {
             guard token == self.availabilityGeneration,
                   self.availabilityTarget == target else { return }
-            availability = []
+            if !retainsCurrentRows { availability = [] }
             isRefreshingAvailability = false
             availabilityError = error.localizedDescription
         }
@@ -163,79 +168,81 @@ final class ResearchActionController: ObservableObject {
     @discardableResult
     func begin(
         target: ResearchActionNoteSnapshot,
-        actionID: ResearchActionID,
+        availability selected: ResearchActionAvailability,
         selection: CommentAnchor?,
+        initialInstruction: String? = nil,
         presentationID: UUID
     ) -> Bool {
         guard !hasCancellationBarrier else { return false }
-        // The Inspector's availability is only a launcher preflight. Preserve
-        // it for menu continuity while the sheet resolves an independent,
-        // exact Profile that alone may authorize preparation.
         invalidate(clearAvailability: false)
         self.target = target
         availabilityTarget = target
-        activeActionID = actionID
+        activeActionID = selected.id
         self.presentationID = presentationID
         passage = selection
         usesPassage = selection != nil
-        phase = .loading
+        presentationAvailability = selected
+        guard selected.canPresentInInterface else {
+            phase = .failed
+            errorMessage = selected.repairReasons.first?.interfaceDescription
+                ?? "Unavailable for this note."
+            return true
+        }
+        initializeValues(for: selected.profile.profile)
+        if let initialInstruction,
+           let module = selected.profile.profile.modules.first(where: {
+               $0.kind == .boundedText
+           }) {
+            setText(initialInstruction, module: module)
+        }
+        phase = .editing
+        errorMessage = Self.presentationError(for: selected)
+        let needsMaterialCandidates = selected.profile.profile.modules.contains(where: {
+            $0.kind == .notePicker || $0.kind == .materialSelector
+        })
+        let needsSourceStatus = selected.profile.profile.modules.contains(where: {
+            $0.kind == .sourceReference
+        })
+        isLoadingMaterialCandidates = needsMaterialCandidates
+        isLoadingSourceStatus = needsSourceStatus
 
         let token = generation
         loadingTask = Task { [weak self] in
             guard let self, let client = self.client else { return }
-            do {
-                let actions = try await client.availableActions(target)
-                guard self.accepts(token), self.presentationID == presentationID else { return }
-                let resolved = Self.sorted(actions)
-                self.availability = resolved
-                self.availabilityTarget = target
-                self.availabilityError = nil
-                guard let selected = resolved.first(where: { $0.id == actionID }) else {
-                    throw ResearchActionExecutionContractError.actionUnavailable(actionID)
-                }
-                self.presentationAvailability = selected
-                guard selected.canPresentInInterface else {
-                    self.phase = .failed
-                    self.errorMessage = selected.repairReasons.first?.interfaceDescription
-                        ?? "Unavailable for this note."
-                    return
-                }
-                self.initializeValues(for: selected.profile.profile)
-
-                if selected.profile.profile.modules.contains(where: {
-                    $0.kind == .notePicker || $0.kind == .materialSelector
-                }) {
-                    let candidates = try await client.materialCandidates(
+            async let materialResult = Self.captureResult {
+                if needsMaterialCandidates {
+                    return try await client.materialCandidates(
                         target,
                         selected.definition
                     )
-                    guard self.accepts(token), self.presentationID == presentationID else {
-                        return
-                    }
-                    self.materialCandidates = candidates
                 }
-                if selected.profile.profile.modules.contains(where: {
-                    $0.kind == .sourceReference
-                }) {
-                    let status = try await client.sourceAccess(target)
-                    guard self.accepts(token), self.presentationID == presentationID else {
-                        return
-                    }
-                    self.sourceStatus = status
+                return []
+            }
+            async let sourceResult: Result<ResearchSourceAccessStatus?, Error> = Self.captureResult {
+                if needsSourceStatus {
+                    return Optional(try await client.sourceAccess(target))
                 }
-                guard self.accepts(token), self.presentationID == presentationID else { return }
-                self.phase = .editing
-                self.errorMessage = Self.presentationError(for: selected)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard self.accepts(token), self.presentationID == presentationID else { return }
-                self.presentationAvailability = nil
-                self.materialCandidates = []
-                self.sourceStatus = nil
-                self.availabilityError = error.localizedDescription
-                self.phase = .failed
-                self.errorMessage = error.localizedDescription
+                return nil
+            }
+            let (materials, source) = await (materialResult, sourceResult)
+            guard self.accepts(token), self.presentationID == presentationID else { return }
+            self.isLoadingMaterialCandidates = false
+            self.isLoadingSourceStatus = false
+            var failures: [String] = []
+            switch materials {
+            case .success(let candidates):
+                self.materialCandidates = candidates
+            case .failure(let error):
+                if !(error is CancellationError) { failures.append(error.localizedDescription) }
+            }
+            switch source {
+            case .success(let status):
+                self.sourceStatus = status
+            case .failure(let error):
+                if !(error is CancellationError) { failures.append(error.localizedDescription) }
+            }
+            if !failures.isEmpty {
+                self.errorMessage = failures.joined(separator: "\n")
             }
         }
         return true
@@ -592,7 +599,9 @@ final class ResearchActionController: ObservableObject {
         presentationID = nil
         presentationAvailability = nil
         materialCandidates = []
+        isLoadingMaterialCandidates = false
         sourceStatus = nil
+        isLoadingSourceStatus = false
         preparation = nil
         errorMessage = nil
         isBindingSource = false
@@ -608,6 +617,16 @@ final class ResearchActionController: ObservableObject {
             availabilityTarget = nil
             isRefreshingAvailability = false
             availabilityError = nil
+        }
+    }
+
+    private static func captureResult<Value: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> Value
+    ) async -> Result<Value, Error> {
+        do {
+            return .success(try await operation())
+        } catch {
+            return .failure(error)
         }
     }
 

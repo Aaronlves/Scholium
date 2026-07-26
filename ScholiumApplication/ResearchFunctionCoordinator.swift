@@ -649,6 +649,7 @@ extension WorkspaceHandle {
             skills: allSkills
         )
 
+        let commentOnlyDiscussion: PortableResearchDiscussion?
         if request.function == .discuss {
             let active = try await services.portableResearchRecordStore.activeDiscussions(
                 noteID: request.target.noteID
@@ -661,8 +662,15 @@ extension WorkspaceHandle {
             if let existing = active.discussions.first(where: {
                 $0.primaryNoteID == request.target.noteID
             }) {
-                throw ResearchFunctionContractError.activeDiscussionExists(existing.id)
+                guard existing.action == nil, existing.method == nil else {
+                    throw ResearchFunctionContractError.activeDiscussionExists(existing.id)
+                }
+                commentOnlyDiscussion = existing
+            } else {
+                commentOnlyDiscussion = nil
             }
+        } else {
+            commentOnlyDiscussion = nil
         }
 
         // A retained legacy checkpoint follows all non-mutating validation and
@@ -706,7 +714,7 @@ extension WorkspaceHandle {
             throw error
         }
 
-        let runID = UUID()
+        let runID = commentOnlyDiscussion?.id ?? UUID()
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
         let activityAuthorization: ResearchActivityGrantAuthorization?
@@ -881,11 +889,30 @@ extension WorkspaceHandle {
                     )
                 )
                 if request.function == .discuss {
-                    _ = try await services.portableResearchRecordStore
-                        .createActiveDiscussion(try ResearchDiscussionFactory.make(
-                            snapshot: snapshot,
-                            triptychID: services.manifest.id
-                        ))
+                    let resolved = try ResearchDiscussionFactory.make(
+                        snapshot: snapshot,
+                        triptychID: services.manifest.id
+                    )
+                    if commentOnlyDiscussion != nil {
+                        guard let action = resolved.action,
+                              let method = resolved.method,
+                              let statement = resolved.statements.first else {
+                            throw ResearchFunctionContractError.invalidCompletion(
+                                "A Comment-only Discussion requires an exact resolved activation."
+                            )
+                        }
+                        _ = try await services.portableResearchRecordStore.activateDiscussion(
+                            id: runID,
+                            action: action,
+                            method: method,
+                            participatingNotes: resolved.participatingNotes,
+                            statement: statement,
+                            at: snapshot.preparedAt
+                        )
+                    } else {
+                        _ = try await services.portableResearchRecordStore
+                            .createActiveDiscussion(resolved)
+                    }
                 }
             }
         } catch {

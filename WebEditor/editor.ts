@@ -126,13 +126,7 @@ import {
 } from "./projection-index";
 import type {MathProjection} from "./math";
 import {appendMarkdownBlocks, createTableDOM} from "./markdown-fragment";
-import {
-  footnotePreviewContent,
-  footnoteReferenceAt,
-  validatedLinkPreviews,
-  type LinkPreview,
-  type VectorLinkKind,
-} from "./previews";
+import {validatedLinkPreviews, type LinkPreview, type VectorLinkKind} from "./previews";
 
 const editorStartupStartedAt = performance.now();
 
@@ -199,11 +193,6 @@ let hiddenFrontmatterSourceSelection: {
   selection: EditorSelection;
 } | null = null;
 const liveWidgetReuseCounts = {table: 0, callout: 0, footnote: 0};
-let selectedFootnotePreviewTarget: {
-  identifier: string;
-  from: number;
-  rect: {left: number; right: number; top: number; bottom: number};
-} | null = null;
 let lastUndoLabel: string | undefined;
 let lastRedoLabel: string | undefined;
 const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
@@ -741,10 +730,6 @@ const liveProjectionIndexField = StateField.define<LiveProjectionIndex>({
 
 function liveProjectionIndexForState(state: EditorState) {
   return state.field(liveProjectionIndexField, false) ?? buildLiveProjectionIndex(state);
-}
-
-function semanticLiteralRanges(state: EditorState): SemanticLiteralRanges {
-  return liveProjectionIndexForState(state).literals;
 }
 
 function visibleMathExpressions(
@@ -1290,34 +1275,25 @@ class FootnoteReferenceWidget extends WidgetType {
     const wrapper = document.createElement("sup");
     wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
     wrapper.dataset.scholiumProtected = "footnote";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "footnote-reference";
-    button.dataset.footnote = String(this.reference.ordinal);
-    button.dataset.footnotePreviewId = this.reference.identifier.slice(0, 240);
-    button.dataset.scholiumProtected = "footnote-preview-anchor";
-    button.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
-    button.tabIndex = -1;
-    button.textContent = String(this.reference.ordinal);
+    const marker = document.createElement("span");
+    marker.className = "footnote-reference";
+    marker.dataset.footnote = String(this.reference.ordinal);
+    marker.dataset.scholiumProtected = "footnote-marker";
+    marker.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
+    marker.textContent = String(this.reference.ordinal);
     if (this.reference.definitionFrom === null) {
-      button.setAttribute("aria-disabled", "true");
-      button.classList.add("footnote-reference-missing");
+      marker.setAttribute("aria-disabled", "true");
+      marker.classList.add("footnote-reference-missing");
     }
     footnoteReferencePresentations.set(wrapper, this.reference);
     wrapper.addEventListener("mousedown", (event) => {
       event.preventDefault();
       const reference = footnoteReferencePresentations.get(wrapper);
       if (!reference) return;
-      const rect = button.getBoundingClientRect();
-      selectedFootnotePreviewTarget = {
-        identifier: reference.identifier,
-        from: reference.from,
-        rect: {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom},
-      };
       view.dispatch({selection: {anchor: reference.from}, scrollIntoView: true});
       view.focus();
     });
-    wrapper.append(button);
+    wrapper.append(marker);
     return wrapper;
   }
 
@@ -1380,12 +1356,6 @@ class FootnoteSectionWidget extends WidgetType {
         mathematics: editingDialect?.mathematics,
         resolveCallout: calloutDefinition,
       });
-      const back = document.createElement("button");
-      back.type = "button";
-      back.className = "footnote-return";
-      back.tabIndex = -1;
-      back.textContent = "↩";
-      back.setAttribute("aria-label", `Edit footnote ${definition.ordinal}`);
       const revealSource = (event: MouseEvent) => {
         event.preventDefault();
         const current = footnoteDefinitionPresentations.get(item);
@@ -1394,7 +1364,7 @@ class FootnoteSectionWidget extends WidgetType {
         view.focus();
       };
       item.addEventListener("mousedown", revealSource);
-      item.append(content, back);
+      item.append(content);
       list.append(item);
     }
     section.append(list);
@@ -2040,11 +2010,11 @@ class UnclosedFrontmatterWidget extends WidgetType {
     notice.setAttribute("role", "note");
     notice.setAttribute(
       "aria-label",
-      "Live Preview is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
+      "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
     );
 
     const title = document.createElement("strong");
-    title.textContent = "Live Preview unavailable";
+    title.textContent = "Edit mode unavailable";
     const detail = document.createElement("span");
     detail.textContent = "Close the YAML frontmatter in Source mode to restore the visual projection.";
     notice.append(title, detail);
@@ -2126,10 +2096,6 @@ const interactionReporter = new AnimationFrameCoalescer(
 let idleTimer: number | null = null;
 
 const stateReporter = EditorView.updateListener.of((update) => {
-  if (update.selectionSet
-      && selectedFootnotePreviewTarget?.from !== update.state.selection.main.head) {
-    selectedFootnotePreviewTarget = null;
-  }
   const isProgrammatic = update.transactions.some(
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
@@ -2443,6 +2409,107 @@ function calloutCompletionSource(context: CompletionContext) {
   return { from: context.pos - match[2].length, options, filter: false };
 }
 
+type SelectionToolbarCommand = "bold" | "emphasis" | "inlineCode" | "standardLink";
+
+const selectionToolbar = document.createElement("div");
+selectionToolbar.id = "scholium-selection-actions";
+selectionToolbar.className = "scholium-selection-actions";
+selectionToolbar.hidden = true;
+selectionToolbar.dataset.scholiumProtected = "selection-actions";
+const selectionCommandBar = document.createElement("div");
+selectionCommandBar.className = "scholium-selection-toolbar";
+selectionCommandBar.setAttribute("role", "toolbar");
+selectionCommandBar.setAttribute("aria-label", "Formatting actions");
+selectionToolbar.append(selectionCommandBar);
+document.body.append(selectionToolbar);
+
+let selectionToolbarView: EditorView | null = null;
+
+function selectionToolbarButton(
+  title: string,
+  label: string,
+  action: () => void,
+) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = title;
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  button.addEventListener("mousedown", (event) => event.preventDefault());
+  button.addEventListener("click", action);
+  selectionCommandBar.append(button);
+  return button;
+}
+
+function applySelectionToolbarCommand(view: EditorView, command: SelectionToolbarCommand) {
+  const transformed = transformMarkdown(
+    view.state.doc.toString(),
+    view.state.selection.ranges.map((range) => ({anchor: range.anchor, head: range.head})),
+    command,
+    {protectedRanges: protectedCommandRanges()},
+  );
+  if (!transformed) return;
+  const transformedSource = applySourceChanges(view.state.doc.toString(), transformed.changes);
+  if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
+  view.dispatch({
+    changes: transformed.changes,
+    selection: EditorSelection.create(
+      transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head)),
+    ),
+    annotations: Transaction.userEvent.of(`input.scholium.${command}`),
+  });
+  lastUndoLabel = transformed.undoLabel;
+  lastRedoLabel = transformed.undoLabel;
+  view.focus();
+}
+
+for (const [title, label, command] of [
+  ["B", "Bold", "bold"],
+  ["I", "Italic", "emphasis"],
+  ["</>", "Inline Code", "inlineCode"],
+  ["↗", "Link", "standardLink"],
+] as const) {
+  selectionToolbarButton(title, label, () => {
+    if (selectionToolbarView) applySelectionToolbarCommand(selectionToolbarView, command);
+  });
+}
+
+function hideSelectionToolbar() {
+  selectionToolbar.hidden = true;
+  selectionToolbarView = null;
+}
+
+function updateSelectionToolbar(view: EditorView) {
+  const selection = view.state.selection;
+  const main = selection.main;
+  if (currentMode !== "livePreview" || view.composing || !view.hasFocus
+      || selection.ranges.length !== 1 || main.empty) {
+    hideSelectionToolbar();
+    return;
+  }
+  const from = Math.min(main.anchor, main.head);
+  const to = Math.max(main.anchor, main.head);
+  const start = view.coordsAtPos(from);
+  const end = view.coordsAtPos(to);
+  if (!start || !end) {
+    hideSelectionToolbar();
+    return;
+  }
+  selectionToolbarView = view;
+  selectionToolbar.hidden = false;
+  const measured = selectionToolbar.getBoundingClientRect();
+  selectionToolbar.style.left = `${Math.max(12, Math.min(
+    Math.min(start.left, end.left), window.innerWidth - measured.width - 12,
+  ))}px`;
+  selectionToolbar.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
+}
+
+const selectionToolbarReporter = EditorView.updateListener.of((update) => {
+  if (update.docChanged || update.selectionSet || update.focusChanged) {
+    updateSelectionToolbar(update.view);
+  }
+});
+
 const editorExtensions = [
       highlightSpecialChars(),
       history(),
@@ -2467,6 +2534,7 @@ const editorExtensions = [
       structuralInteractionKeymap,
       saveKeymap,
       stateReporter,
+      selectionToolbarReporter,
       linkActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
       liveProjectionIndexField,
@@ -2578,44 +2646,10 @@ function showLinkPreview(preview: LinkPreview, anchor: PreviewAnchorRect, starte
   positionPreview(anchor, startedAt);
 }
 
-function showFootnotePreview(identifier: string, anchor: PreviewAnchorRect, startedAt: number) {
-  const source = editor.state.doc.toString();
-  const content = footnotePreviewContent(
-    source,
-    identifier,
-    semanticLiteralRanges(editor.state).excluded,
-    editingDialect?.footnotes,
-  );
-  if (!content) {
-    announceEditorMessage(editor.contentDOM, "The referenced footnote is unavailable.");
-    hidePreview();
-    return false;
-  }
-  previewTitle.textContent = `Footnote ${identifier}`;
-  previewMetadata.textContent = "Referenced footnote";
-  previewBody.replaceChildren();
-  appendMarkdownBlocks(content, previewBody, {
-    mathematics: editingDialect?.mathematics,
-    resolveCallout: calloutDefinition,
-  });
-  recordEditorMetric("cached-preview-work", startedAt, {
-    documentLength: editor.state.doc.length,
-  });
-  positionPreview(anchor, startedAt);
-  return true;
-}
-
 function showPreviewAtSelection() {
   const startedAt = performance.now();
   if (currentMode !== "livePreview") return false;
   const head = editor.state.selection.main.head;
-  if (selectedFootnotePreviewTarget?.from === head) {
-    return showFootnotePreview(
-      selectedFootnotePreviewTarget.identifier,
-      selectedFootnotePreviewTarget.rect,
-      startedAt,
-    );
-  }
   const coords = editor.coordsAtPos(head);
   if (!coords) return false;
   const preview = linkPreviews.find((candidate) => head >= candidate.from && head < candidate.to);
@@ -2623,13 +2657,6 @@ function showPreviewAtSelection() {
     showLinkPreview(preview, coords, startedAt);
     return true;
   }
-  const identifier = footnoteReferenceAt(
-    editor.state.doc.toString(),
-    head,
-    semanticLiteralRanges(editor.state).excluded,
-    editingDialect?.footnotes,
-  );
-  if (identifier) return showFootnotePreview(identifier, coords, startedAt);
   announceEditorMessage(editor.contentDOM, "No preview is available at the insertion point.");
   return false;
 }
@@ -2638,7 +2665,7 @@ function showPreviewAtPoint(x: number, y: number) {
   const startedAt = performance.now();
   if (currentMode !== "livePreview") return false;
   const anchor = document.elementFromPoint(x, y)?.closest<HTMLElement>(
-    "[data-link-preview-index], [data-footnote-preview-id]",
+    "[data-link-preview-index]",
   );
   if (!anchor) return showPreviewAtSelection();
   const previewIndex = Number(anchor.dataset.linkPreviewIndex);
@@ -2646,16 +2673,12 @@ function showPreviewAtPoint(x: number, y: number) {
     showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
     return true;
   }
-  const identifier = anchor.dataset.footnotePreviewId;
-  if (identifier) {
-    return showFootnotePreview(identifier, anchor.getBoundingClientRect(), startedAt);
-  }
   return showPreviewAtSelection();
 }
 
 function previewAnchorAtEvent(event: PointerEvent): HTMLElement | null {
   if (!event.metaKey || currentMode !== "livePreview" || !(event.target instanceof Element)) return null;
-  return event.target.closest<HTMLElement>("[data-link-preview-index], [data-footnote-preview-id]");
+  return event.target.closest<HTMLElement>("[data-link-preview-index]");
 }
 
 document.addEventListener("pointermove", (event) => {
@@ -2675,8 +2698,6 @@ document.addEventListener("pointermove", (event) => {
       showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
       return;
     }
-    const identifier = anchor.dataset.footnotePreviewId;
-    if (identifier) showFootnotePreview(identifier, anchor.getBoundingClientRect(), startedAt);
   }, 300);
 }, {passive: true});
 document.addEventListener("keyup", (event) => {
@@ -2718,6 +2739,7 @@ let scrollSessionFrameCount = 0;
 let scrollSessionLongestFrame = 0;
 let scrollSessionDroppedFrameCount = 0;
 editor.scrollDOM.addEventListener("scroll", () => {
+  updateSelectionToolbar(editor);
   if (scrollSessionStartedAt === null) scrollSessionStartedAt = performance.now();
   if (scrollMeasurementFrame === null) {
     scrollMeasurementFrame = window.requestAnimationFrame(() => {
@@ -3201,6 +3223,7 @@ const editorOperations = {
     editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
     editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
     currentMode = nextMode;
+    updateSelectionToolbar(editor);
     updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
     scheduleEditorInteractionReport(true);
     recordEditorMetric("mode-toggle-work", startedAt, {

@@ -145,7 +145,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         harness.session.setMode(.livePreview)
         _ = try await harness.waitUntilPresentation(stage: "100k Live Preview") {
-            $0.label == "Markdown live preview editor" && $0.gutterCount == 0
+            $0.label == "Markdown editor, Edit mode" && $0.gutterCount == 0
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source + token)
         await harness.closeAndDrain()
@@ -230,7 +230,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(accessibility.contentEditableCount == 1)
         #expect(accessibility.textboxCount == 1)
-        #expect(accessibility.label == "Markdown live preview editor")
+        #expect(accessibility.label == "Markdown editor, Edit mode")
         #expect(accessibility.multiline == "true")
         #expect(!accessibility.hasValueText)
         #expect(accessibility.spellcheck == "true")
@@ -263,21 +263,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.liveCalloutSourceLineCount == 0)
         #expect(accessibility.exactWikilinkSourceCount == 1)
         #expect(accessibility.incompleteWikilinkSourceCount == 0)
-        do {
-            try await harness.session.testingPreviewFirstFootnote()
-        } catch {
-            Issue.record("The footnote preview request failed after the presentation matrix: \(error).")
-            throw error
-        }
-        let footnotePreview = try await harness.waitUntilPresentation(stage: "footnote preview") {
-            $0.previewTitle == "Footnote note" && !$0.previewPopoverHidden
-        }
-        #expect(footnotePreview.previewNestedListCount == 1)
-        #expect(footnotePreview.previewBlockquoteCount == 1)
-        #expect(footnotePreview.previewCodeBlockCount == 1)
-        #expect(footnotePreview.previewCalloutCount == 1)
-        #expect(footnotePreview.previewTableCount == 1)
-        #expect(footnotePreview.previewRenderedMathCount == 3)
         let normalizedOriginal = original.replacingOccurrences(of: "\r\n", with: "\n")
         let normalizedLines = normalizedOriginal.split(
             separator: "\n",
@@ -378,7 +363,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         ).css)
 
         let live = try await harness.waitUntilPresentation(stage: "configured Live Preview") {
-            $0.label == "Markdown live preview editor"
+            $0.label == "Markdown editor, Edit mode"
                 && $0.contentPaddingTop == expectedPadding
                 && $0.contentPaddingInlineStart == "20px"
         }
@@ -409,7 +394,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: 4)
         harness.session.setMode(.livePreview)
         _ = try await harness.waitUntilPresentation(stage: "frontmatter-clamped Live Preview") {
-            $0.label == "Markdown live preview editor" && $0.frontmatterLineCount == 0
+            $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount == 0
         }
         try await harness.waitUntilSelection(head: bodyStartEditorOffset)
         harness.session.setMode(.source)
@@ -424,7 +409,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.setMode(.livePreview)
         let restoredLive = try await harness.waitUntilPresentation(stage: "restored Live Preview") {
-            $0.label == "Markdown live preview editor"
+            $0.label == "Markdown editor, Edit mode"
                 && $0.gutterCount == 0
                 && $0.renderedMathCount == 2
                 && $0.semanticTableCount == 1
@@ -465,7 +450,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
             harness.session.setMode(.livePreview)
             _ = try await harness.waitUntilPresentation(stage: "stress Live Preview") {
-                $0.label == "Markdown live preview editor"
+                $0.label == "Markdown editor, Edit mode"
                     && $0.gutterCount == 0
                     && $0.lineNumberCount == 0
             }
@@ -947,13 +932,13 @@ struct MarkdownEditorWebViewIntegrationTests {
                 sourceBox.userCSS = scenario.liveUserCSS
                 sourceBox.presentationCSS = scenario.presentationCSS
                 _ = try await waitUntilPresentation(stage: scenario.name) {
-                    $0.label == "Markdown live preview editor"
+                    $0.label == "Markdown editor, Edit mode"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
                         && $0.presentation.documentWidth > 0
                 }
                 try await Task.sleep(for: .milliseconds(100))
                 let snapshot = try await waitUntilPresentation(stage: "stable \(scenario.name)") {
-                    $0.label == "Markdown live preview editor"
+                    $0.label == "Markdown editor, Edit mode"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
                         && $0.presentation.documentWidth > 0
                 }
@@ -1127,7 +1112,6 @@ struct MarkdownEditorWebViewIntegrationTests {
                     onDocumentChange: { sourceBox.source = $0 },
                     onRequestSave: {},
                     onRequestSearch: {},
-                    onRequestComment: {},
                     onLinkActivation: { _ in },
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }

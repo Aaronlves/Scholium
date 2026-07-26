@@ -655,11 +655,50 @@ enum ScholiumWebDesignTokens {
       border-radius: 5px;
       text-decoration: none;
     }
+    .scholium-selection-actions {
+      position: fixed;
+      z-index: 110;
+      box-sizing: border-box;
+      padding: 4px;
+      border: 1px solid var(--scholium-color-accent);
+      border-radius: 8px;
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
+      font: 13px/1.3 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .scholium-selection-actions[hidden] {
+      display: none;
+    }
+    .scholium-selection-toolbar {
+      display: flex;
+      gap: 4px;
+    }
+    .scholium-selection-toolbar button {
+      min-width: 28px;
+      min-height: 28px;
+      padding: 4px 7px;
+      border: 0;
+      border-radius: 5px;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+    }
+    .scholium-selection-toolbar button:hover {
+      color: var(--scholium-color-accent-hover);
+      background: var(--scholium-color-document-background);
+    }
+    .scholium-selection-toolbar button:focus-visible {
+      color: var(--scholium-color-accent-hover);
+      background: var(--scholium-color-document-background);
+      outline: 2px solid var(--scholium-color-accent);
+      outline-offset: 1px;
+    }
     @media (prefers-color-scheme: dark) {
       :root { \(darkAppearanceCSSDeclarations) }
     }
     @media (prefers-contrast: more) {
       :root { \(increasedContrastCSSDeclarations) }
+      .scholium-selection-actions { border-width: 2px; }
     }
     @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
       :root { \(darkIncreasedContrastCSSDeclarations) }

@@ -344,7 +344,7 @@ final class ScholiumUITests: XCTestCase {
             XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
             livePreview.click()
 
-            let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+            let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
             XCTAssertTrue(editor.waitForExistence(timeout: 8))
             // WebKit exposes CodeMirror's lossless source buffer through
             // AXValue even when the live-preview decorations hide frontmatter
@@ -2443,7 +2443,7 @@ final class ScholiumUITests: XCTestCase {
         let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         mode.click()
-        XCTAssertTrue(app.menuItems["Live Preview"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.menuItems["Edit"].waitForExistence(timeout: 3))
         app.typeKey(.escape, modifierFlags: [])
 
         let inspector = app.descendants(matching: .any)["scholium.toggleInspector"]
@@ -2465,7 +2465,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
         livePreview.click()
 
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
         editor.click()
 
@@ -2488,94 +2488,129 @@ final class ScholiumUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
 
         // Collapse any selection retained by the persistent editor session so
-        // this first context-menu assertion is deterministic. The second half
-        // of the test creates an explicit selection and verifies Comment then.
+        // this context-menu assertion is deterministic. Comment belongs to
+        // the transient selection toolbar, never the secondary-click menu.
         editor.typeKey(.rightArrow, modifierFlags: [])
         editor.rightClick()
         let editorContextMenu = app.menus["scholium.editor.contextMenu"]
         XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
-        XCTAssertTrue(editorContextMenu.menuItems["Bold"].waitForExistence(timeout: 3))
+        XCTAssertFalse(editorContextMenu.menuItems["Bold"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Emphasis"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Underline"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Link"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Font"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Typeface"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Preview"].exists)
+        XCTAssertFalse(editorContextMenu.menuItems["Show Preview"].exists)
         XCTAssertFalse(editorContextMenu.menuItems["scholium.editor.agentComment"].exists)
         app.typeKey(.escape, modifierFlags: [])
 
         editor.typeKey(.upArrow, modifierFlags: [.command])
         editor.typeKey(.rightArrow, modifierFlags: [.shift])
+        XCTAssertFalse(app.buttons["Comment"].exists)
+        insert.click()
+        XCTAssertTrue(addComment.exists)
+        XCTAssertFalse(addComment.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
         editor.rightClick()
-        XCTAssertTrue(editorContextMenu.menuItems[
+        XCTAssertFalse(editorContextMenu.menuItems[
             "scholium.editor.agentComment"
-        ].waitForExistence(timeout: 3))
+        ].exists)
         app.typeKey(.escape, modifierFlags: [])
     }
 
     @MainActor
-    func testPassageDiscussionCloseReopenAndFinish() throws {
+    func testLineCommentDiscussReopenAndFinish() throws {
         let noteURL = triptychDirectory
             .appendingPathComponent("01-analyses", isDirectory: true)
             .appendingPathComponent("QA Autosave A.md")
         let sourceBefore = try Data(contentsOf: noteURL)
 
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
-        XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        mode.click()
-        let livePreview = app.menuItems
-            .matching(identifier: "text.page.badge.magnifyingglass")
-            .firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
-
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        let plainPassage = editor.staticTexts[
-            "This is deterministic, disposable, nonprivate test material. It contains no real"
-        ]
+        let review = app.descendants(matching: .any)["Rendered Markdown"]
+        XCTAssertTrue(review.waitForExistence(timeout: 10))
+        let plainPassage = review.staticTexts.matching(NSPredicate(
+            format: "value BEGINSWITH %@",
+            "This is deterministic, disposable, nonprivate test material."
+        )).firstMatch
         XCTAssertTrue(plainPassage.waitForExistence(timeout: 8))
         plainPassage.doubleClick()
 
-        plainPassage.rightClick()
-        let editorContextMenu = app.menus["scholium.editor.contextMenu"]
-        XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
-        let addComment = editorContextMenu.menuItems[
-            "scholium.editor.agentComment"
-        ]
+        let addComment = app.buttons["Comment"].firstMatch
         XCTAssertTrue(addComment.waitForExistence(timeout: 3))
         addComment.click()
 
-        var discussion = app.descendants(matching: .any)["scholium.discussion"]
-        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
-        XCTAssertTrue(discussion.staticTexts["SELECTED PASSAGE"].exists)
+        let comment = app.textViews.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Comment for ")
+        ).firstMatch
+        XCTAssertTrue(comment.waitForExistence(timeout: 3))
+        try paste("What follows from this passage?", into: comment)
+        // XCU's WebKit text-view API mutates the accessibility value but does
+        // not dispatch a DOM Return event. This visually hidden QA-only control
+        // invokes the same submitComment closure; WKWebView integration tests
+        // own the physical key semantics.
+        let qaSubmitComment = app.buttons["Submit Comment for QA"]
+        XCTAssertTrue(qaSubmitComment.waitForExistence(timeout: 3))
+        qaSubmitComment.click()
 
-        let researcherMessage = discussion.descendants(matching: .any)[
-            "scholium.discussion.researcherMessage"
-        ]
-        XCTAssertTrue(researcherMessage.waitForExistence(timeout: 3))
-        try paste("What follows from this passage?", into: researcherMessage)
-        discussion.descendants(matching: .any)[
-            "scholium.discussion.submitResearcherTurn"
-        ].click()
-
-        XCTAssertTrue(app.staticTexts[
-            "The Discussion is waiting for an agent reply. Closing this sheet leaves it active."
-        ].waitForExistence(timeout: 8))
-
-        discussion = app.descendants(matching: .any)["scholium.discussion"]
-        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
+        XCTAssertTrue(waitUntil(timeout: 5) { !comment.exists })
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.discussion"].exists)
         XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
 
+        let activeDirectory = triptychDirectory
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("research-records/v1/active", isDirectory: true)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: activeDirectory,
+                includingPropertiesForKeys: nil
+            ) else { return false }
+            return files.contains { file in
+                guard file.pathExtension == "json",
+                      let data = try? Data(contentsOf: file),
+                      let text = String(data: data, encoding: .utf8) else { return false }
+                return text.contains("What follows from this passage?")
+            }
+        })
+
         selectResearchInspectorMode("actions")
-        let activeDiscussion = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@",
-                "scholium.discussion.active."
-            )
-        ).firstMatch
-        XCTAssertTrue(activeDiscussion.waitForExistence(timeout: 8))
+        let discuss = app.descendants(matching: .any)["scholium.researchAction.discuss"]
+        XCTAssertTrue(discuss.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 8) { discuss.isEnabled })
+        discuss.click()
+        let actionSheet = app.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ]
+        XCTAssertTrue(actionSheet.waitForExistence(timeout: 8))
+        let request = app.descendants(matching: .any)[
+            "scholium.researchAction.text.researcher-request"
+        ]
+        XCTAssertTrue(request.waitForExistence(timeout: 5))
+        XCTAssertTrue((request.value as? String)?.contains("existing Comments") == true)
+        let copyOnly = app.descendants(matching: .any)[
+            "scholium.researchAction.copyOnly"
+        ]
+        XCTAssertTrue(copyOnly.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 8) { copyOnly.isEnabled })
+        copyOnly.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchAction.prepared"
+        ].waitForExistence(timeout: 8))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !actionSheet.exists })
+
+        discuss.click()
+        var discussion = app.descendants(matching: .any)["scholium.discussion"]
+        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
+        XCTAssertTrue(discussion.staticTexts["What follows from this passage?"].exists)
+        XCTAssertTrue(app.staticTexts[
+            "The Discussion is waiting for an agent reply. Closing this sheet leaves it active."
+        ].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
+
         let activeFile = try XCTUnwrap(
             FileManager.default.contentsOfDirectory(
-                at: triptychDirectory
-                    .appendingPathComponent(".scholium", isDirectory: true)
-                    .appendingPathComponent("research-records/v1/active", isDirectory: true),
+                at: activeDirectory,
                 includingPropertiesForKeys: nil
             ).first { $0.pathExtension == "json" }
         )
@@ -2586,11 +2621,8 @@ final class ScholiumUITests: XCTestCase {
             "--text", "A bounded synthetic reply.",
         ])
         XCTAssertTrue(cliOutput.contains("Recorded reply"))
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            (activeDiscussion.value as? String)?.contains("A reply is ready.") == true
-        })
 
-        activeDiscussion.click()
+        discuss.click()
         discussion = app.descendants(matching: .any)["scholium.discussion"]
         XCTAssertTrue(discussion.waitForExistence(timeout: 8))
 
@@ -2602,7 +2634,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(discussion.staticTexts["A bounded synthetic reply."].exists)
         finish.click()
         XCTAssertTrue(waitUntil(timeout: 8) { !discussion.exists })
-        XCTAssertTrue(waitUntil(timeout: 8) { !activeDiscussion.exists })
+        XCTAssertTrue(discuss.exists)
         XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
 
         let recordRoot = triptychDirectory
@@ -3258,7 +3290,7 @@ final class ScholiumUITests: XCTestCase {
             let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
             XCTAssertTrue(mode.waitForExistence(timeout: 10))
             mode.click()
-            let read = app.menuItems["Read"].firstMatch
+            let read = app.menuItems["Review"].firstMatch
             XCTAssertTrue(read.waitForExistence(timeout: 3))
             read.click()
             waitForDocumentSurface()
@@ -3349,7 +3381,7 @@ final class ScholiumUITests: XCTestCase {
         app.descendants(matching: .any)["scholium.toggleInspector"].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
 
-        selectMode("Live Preview", surfaceIdentifier: "Markdown live preview editor")
+        selectMode("Edit", surfaceIdentifier: "Markdown editor, Edit mode")
         attachWindowScreenshot("Default 72ch — 1180×760 — Live Preview")
         selectMode("Source", surfaceIdentifier: "Markdown source editor")
         attachWindowScreenshot("Default 72ch — 1180×760 — Source")
@@ -3433,10 +3465,10 @@ final class ScholiumUITests: XCTestCase {
 
         let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
         mode.click()
-        let livePreview = app.menuItems["Live Preview"].firstMatch
+        let livePreview = app.menuItems["Edit"].firstMatch
         XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
         livePreview.click()
-        XCTAssertTrue(app.descendants(matching: .any)["Markdown live preview editor"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["Markdown editor, Edit mode"].waitForExistence(timeout: 8))
 
         mode.click()
         let source = app.menuItems["Source"].firstMatch
@@ -3445,7 +3477,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
 
         mode.click()
-        let read = app.menuItems["Read"].firstMatch
+        let read = app.menuItems["Review"].firstMatch
         XCTAssertTrue(read.waitForExistence(timeout: 3))
         read.click()
         waitForDocumentSurface()
@@ -3541,12 +3573,12 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
         livePreview.click()
 
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
         XCTAssertFalse((editor.value as? String ?? "").isEmpty)
 
         app.typeKey("e", modifierFlags: [.command, .shift])
-        XCTAssertEqual(mode.value as? String, "Live Preview", "Source must be entered through the document-mode menu")
+        XCTAssertEqual(mode.value as? String, "Edit", "Source must be entered through the document-mode menu")
 
         mode.click()
         let source = app.menuItems
@@ -3735,7 +3767,7 @@ final class ScholiumUITests: XCTestCase {
             compare.waitForExistence(timeout: 12),
             "A peer commit must become a persistent conflict in a dirty independent window."
         )
-        let dirtyEditor = dirtyWindow.descendants(matching: .any)["Markdown live preview editor"]
+        let dirtyEditor = dirtyWindow.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(dirtyEditor.waitForExistence(timeout: 5))
         XCTAssertTrue((dirtyEditor.value as? String ?? "").contains(localToken))
         XCTAssertFalse((dirtyEditor.value as? String ?? "").contains(peerToken))
@@ -3776,15 +3808,15 @@ final class ScholiumUITests: XCTestCase {
         let secondMode = secondWindow.descendants(matching: .any)["scholium.documentModeMenu"]
         XCTAssertTrue(firstMode.waitForExistence(timeout: 8))
         XCTAssertTrue(secondMode.waitForExistence(timeout: 8))
-        XCTAssertEqual(firstMode.value as? String, "Read")
-        XCTAssertEqual(secondMode.value as? String, "Read")
+        XCTAssertEqual(firstMode.value as? String, "Review")
+        XCTAssertEqual(secondMode.value as? String, "Review")
 
         focusWorkspaceWindow(firstWindow)
         app.typeKey("e", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 8) { firstMode.value as? String == "Live Preview" })
+        XCTAssertTrue(waitUntil(timeout: 8) { firstMode.value as? String == "Edit" })
         XCTAssertEqual(
             secondMode.value as? String,
-            "Read",
+            "Review",
             "The document-mode command must be routed only to the focused scene."
         )
 
@@ -3796,8 +3828,8 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertFalse(firstSearch.exists)
         secondWindow.buttons["Close"].click()
         XCTAssertTrue(waitUntil(timeout: 3) { !secondSearch.exists })
-        XCTAssertEqual(firstMode.value as? String, "Live Preview")
-        XCTAssertEqual(secondMode.value as? String, "Read")
+        XCTAssertEqual(firstMode.value as? String, "Edit")
+        XCTAssertEqual(secondMode.value as? String, "Review")
     }
 
     @MainActor
@@ -3843,7 +3875,7 @@ final class ScholiumUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
         livePreview.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { secondMode.value as? String == "Live Preview" })
+        XCTAssertTrue(waitUntil(timeout: 8) { secondMode.value as? String == "Edit" })
 
         let sessionsDirectory = homeDirectory
             .appendingPathComponent("ApplicationSupport/Window Sessions", isDirectory: true)
@@ -3881,10 +3913,10 @@ final class ScholiumUITests: XCTestCase {
         })
         XCTAssertEqual(
             restoredA.descendants(matching: .any)["scholium.documentModeMenu"].value as? String,
-            "Read"
+            "Review"
         )
         let restoredBMode = restoredB.descendants(matching: .any)["scholium.documentModeMenu"]
-        XCTAssertTrue(waitUntil(timeout: 10) { restoredBMode.value as? String == "Live Preview" })
+        XCTAssertTrue(waitUntil(timeout: 10) { restoredBMode.value as? String == "Edit" })
 
         restoredB.click()
         app.menuBars.menuBarItems["Window"].click()
@@ -4507,7 +4539,7 @@ final class ScholiumUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
         livePreview.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { mode.value as? String == "Live Preview" })
+        XCTAssertTrue(waitUntil(timeout: 5) { mode.value as? String == "Edit" })
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
             .appendingPathComponent(sessionID.uuidString + ".json")
@@ -4526,7 +4558,7 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(restoredMode.waitForExistence(timeout: 10))
         XCTAssertTrue(
             waitUntil(timeout: 8) {
-                restoredMode.value as? String == "Live Preview"
+                restoredMode.value as? String == "Edit"
             },
             "The restored window session must reapply Live Preview after asynchronous workspace restoration."
         )
@@ -4902,7 +4934,7 @@ final class ScholiumUITests: XCTestCase {
 
         let renamedRow = app.descendants(matching: .any)["scholium.noteRow.\(renamedPath)"]
         XCTAssertTrue(renamedRow.waitForExistence(timeout: 12))
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
 
         // A unique same-byte rename preserves the stable note identity. The
@@ -4977,80 +5009,9 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(conflictWindow.buttons["Reload from Disk"].exists)
         returnToEditing.click()
 
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertTrue((editor.value as? String ?? "").contains(localToken))
-    }
-
-    @MainActor
-    func testVisibleFootnotePreviewClosesBeforeExternalConflictRecovery() throws {
-        app.terminate()
-        app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)
-        app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-
-        let localToken = " PREVIEW-LOCAL-\(UUID().uuidString)"
-        let searchableToken = localToken.trimmingCharacters(in: .whitespaces)
-        let diskToken = "\n\n## External Revision While Previewing\n"
-        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        let editor = enterLivePreview()
-        app.typeKey(.end, modifierFlags: [.command])
-        app.typeKey(.delete, modifierFlags: [])
-        try setPasteboardText(localToken)
-        app.typeKey("v", modifierFlags: [.command])
-
-        // The fixture's third reference remains in the visible final viewport.
-        // Select it first so the native context menu consumes the same exact
-        // insertion point that keyboard and menu-command routes use.
-        let footnoteReference = app.buttons["Footnote 3"].firstMatch
-        XCTAssertTrue(footnoteReference.waitForExistence(timeout: 8))
-        XCTAssertTrue(footnoteReference.isHittable)
-        footnoteReference.rightClick()
-
-        let editorContextMenu = app.menus["scholium.editor.contextMenu"]
-        XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
-        let preview = editorContextMenu.menuItems["Preview"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 3))
-        preview.click()
-
-        let previewTitle = app.staticTexts["Footnote fixture-three"]
-        XCTAssertTrue(
-            previewTitle.waitForExistence(timeout: 5),
-            "The non-hover route must make the selected single-footnote preview visible."
-        )
-        let previewContent = app.groups["Preview content"]
-        XCTAssertTrue(previewContent.waitForExistence(timeout: 3))
-        let dirtyPreviewContent = previewContent.descendants(matching: .any).matching(
-            NSPredicate(format: "value CONTAINS %@", searchableToken)
-        ).firstMatch
-        XCTAssertTrue(
-            dirtyPreviewContent.waitForExistence(timeout: 3),
-            "The preview must reflect the exact dirty Editor buffer before any disk conflict."
-        )
-
-        let originalDisk = try source(at: noteURL)
-        XCTAssertFalse(originalDisk.contains(localToken))
-        try write(originalDisk + diskToken, to: noteURL)
-
-        let conflictWindow = app.windows.firstMatch
-        let keepEditing = conflictWindow.buttons["Keep Editing"]
-        XCTAssertTrue(
-            keepEditing.waitForExistence(timeout: 12),
-            "An external edit must retain conflict ownership while a preview is visible."
-        )
-        XCTAssertTrue(
-            waitUntil(timeout: 3) { !previewTitle.exists },
-            "The disposable preview must close when conflict recovery takes focus."
-        )
-        XCTAssertTrue(try source(at: noteURL).contains(diskToken))
-        XCTAssertFalse(try source(at: noteURL).contains(localToken))
-
-        keepEditing.click()
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(
-            (editor.value as? String ?? "").contains(localToken),
-            "Keeping the dirty buffer after previewing must not accept the disk revision."
-        )
     }
 
     @MainActor
@@ -5083,7 +5044,7 @@ final class ScholiumUITests: XCTestCase {
             "The QA-only distributed fault route must reach the focused bridge document."
         )
 
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 12))
         XCTAssertTrue(
             waitUntil(timeout: 12) { (editor.value as? String ?? "").contains(token) },
@@ -5147,11 +5108,11 @@ final class ScholiumUITests: XCTestCase {
         let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
         XCTAssertTrue(mode.waitForExistence(timeout: 20))
         mode.click()
-        let livePreview = app.menuItems["Live Preview"].firstMatch
+        let livePreview = app.menuItems["Edit"].firstMatch
         XCTAssertTrue(livePreview.waitForExistence(timeout: 5))
         livePreview.click()
 
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 30))
         let window = app.windows.firstMatch
         let visibleEditorFrame = editor.frame.intersection(window.frame)
@@ -5189,7 +5150,7 @@ final class ScholiumUITests: XCTestCase {
 
         let saveTransitionStarted = DispatchTime.now().uptimeNanoseconds
         mode.click()
-        let readMode = app.menuItems["Read"].firstMatch
+        let readMode = app.menuItems["Review"].firstMatch
         XCTAssertTrue(readMode.waitForExistence(timeout: 5))
         readMode.click()
         XCTAssertTrue(app.descendants(matching: .any)["Rendered Markdown"].waitForExistence(timeout: 180))
@@ -5373,7 +5334,7 @@ final class ScholiumUITests: XCTestCase {
             "Reload must not accept bytes that weren't shown in the comparison."
         )
         conflictWindow.buttons["Keep Editing"].click()
-        let editor = app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertTrue((editor.value as? String ?? "").contains(localToken))
         XCTAssertTrue(try source(at: noteURL).contains(secondDiskToken))
@@ -5958,8 +5919,8 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
         livePreview.click()
 
-        let editor = root?.descendants(matching: .any)["Markdown live preview editor"]
-            ?? app.descendants(matching: .any)["Markdown live preview editor"]
+        let editor = root?.descendants(matching: .any)["Markdown editor, Edit mode"]
+            ?? app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
         XCTAssertTrue(waitUntil(timeout: 8) { editor.isHittable })
         // The mode transition requests focus, but XCUITest must still prove
@@ -6232,6 +6193,7 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
             || name.contains("testResearchActionsVoiceOverSpeechOrder")
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
+            || name.contains("testLineCommentDiscussReopenAndFinish")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
             || name.contains("testResearchActionPanelFits") {
             // These journeys exercise the new-Triptych Action surface. Remove
@@ -6522,8 +6484,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let modeMenu = application.descendants(matching: .any)["scholium.documentModeMenu"]
         XCTAssertTrue(modeMenu.waitForExistence(timeout: 30))
         selectEditorMode(
-            "Live Preview",
-            accessibilityLabel: "Markdown live preview editor",
+            "Edit",
+            accessibilityLabel: "Markdown editor, Edit mode",
             modeMenu: modeMenu,
             application: application,
             documentID: "Long/Canonical-5000-Word-Work.md"
@@ -6537,10 +6499,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
         for transition in 1...transitions {
             let sourceMode = transition.isMultiple(of: 2) == false
             selectEditorMode(
-                sourceMode ? "Source" : "Live Preview",
+                sourceMode ? "Source" : "Edit",
                 accessibilityLabel: sourceMode
                     ? "Markdown source editor"
-                    : "Markdown live preview editor",
+                    : "Markdown editor, Edit mode",
                 modeMenu: modeMenu,
                 application: application,
                 documentID: "Long/Canonical-5000-Word-Work.md"
@@ -6753,7 +6715,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application: XCUIApplication,
         documentID: String
     ) {
-        let notificationName = title == "Live Preview"
+        let notificationName = title == "Edit"
             ? "com.scholium.qa.performance-editor-mode.live-preview"
             : "com.scholium.qa.performance-editor-mode.source"
         let deadline = Date().addingTimeInterval(20)

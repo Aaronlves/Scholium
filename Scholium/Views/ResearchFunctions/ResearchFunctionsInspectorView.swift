@@ -22,7 +22,6 @@ struct ResearchActionsPresentation {
     let cancellationRecoveries: [ResearchActionCancellationRecovery]
     let retryingCancellationRecoveryIDs: Set<UUID>
     let pendingCancellationBarrierCount: Int
-    let activeDiscussions: [PortableResearchDiscussion]
     let latestSettlement: SettlementRecord?
 
     static let empty = Self(
@@ -33,7 +32,6 @@ struct ResearchActionsPresentation {
         cancellationRecoveries: [],
         retryingCancellationRecoveryIDs: [],
         pendingCancellationBarrierCount: 0,
-        activeDiscussions: [],
         latestSettlement: nil
     )
 
@@ -57,12 +55,17 @@ struct ResearchActionsPresentation {
                 cancellationRecoveries: cancellationRecoveries,
                 retryingCancellationRecoveryIDs: retryingCancellationRecoveryIDs,
                 pendingCancellationBarrierCount: pendingCancellationBarrierCount,
-                activeDiscussions: [],
                 latestSettlement: nil
             )
         }
         let hasCancellationBarrier = pendingCancellationBarrierCount > 0
             || !cancellationRecoveries.isEmpty
+        let availabilityIsUnconfirmed = isCheckingAvailability || availabilityError != nil
+        let hasActiveDiscussion = activeDiscussions.contains {
+            $0.primaryNoteID == target.noteID
+                && $0.action != nil
+                && $0.method != nil
+        }
         let items = availability
             .sorted {
                 if $0.group != $1.group { return $0.group == .defaultAction }
@@ -72,7 +75,10 @@ struct ResearchActionsPresentation {
             .map { availability in
                 ResearchActionItemPresentation(
                     availability: availability,
-                    isBlockedByCancellationRecovery: hasCancellationBarrier,
+                    isBlockedByCancellationRecovery:
+                        hasCancellationBarrier || availabilityIsUnconfirmed,
+                    reopensActiveDiscussion:
+                        availability.id == .discuss && hasActiveDiscussion,
                     disabledReason: availability.isEnabled
                         ? hasCancellationBarrier
                             ? String(
@@ -80,7 +86,14 @@ struct ResearchActionsPresentation {
                                 table: "Localizable",
                                 bundle: .module
                             )
-                            : nil
+                            : availabilityIsUnconfirmed
+                                ? availabilityError
+                                    ?? String(
+                                        localized: "Checking this Action…",
+                                        table: "Localizable",
+                                        bundle: .module
+                                    )
+                                : nil
                         : availability.repairReasons.first?.interfaceDescription
                             ?? "Unavailable for this note."
                 )
@@ -93,73 +106,43 @@ struct ResearchActionsPresentation {
             cancellationRecoveries: cancellationRecoveries,
             retryingCancellationRecoveryIDs: retryingCancellationRecoveryIDs,
             pendingCancellationBarrierCount: pendingCancellationBarrierCount,
-            activeDiscussions: activeDiscussions
-                .filter { discussion in
-                    discussion.participatingNotes.contains { $0.noteID == target.noteID }
-                }
-                .sorted {
-                    if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
-                    return $0.id.uuidString < $1.id.uuidString
-                },
             latestSettlement: settlements
                 .filter { $0.noteID == target.noteID }
                 .max { $0.settledAt < $1.settledAt }
         )
     }
 
-    func defaultSurfaceRows() -> [ResearchActionSurfaceRow] {
-        var rows = items.filter { $0.group == .defaultAction }.map {
-            ResearchActionSurfaceRow(id: .action($0.id), content: .action($0))
-        }
-        let discussions = activeDiscussions.map {
-            ResearchActionSurfaceRow(
-                id: .activeDiscussion($0.id),
-                content: .activeDiscussion($0)
-            )
-        }
-        if let discussIndex = rows.firstIndex(where: {
-            $0.id == .action(.discuss)
-        }) {
-            rows.insert(contentsOf: discussions, at: discussIndex + 1)
-        } else {
-            rows.insert(contentsOf: discussions, at: 0)
-        }
-        return rows
+    func defaultItems() -> [ResearchActionItemPresentation] {
+        items.filter { $0.group == .defaultAction }
     }
 }
 
 struct ResearchActionItemPresentation: Identifiable {
     let availability: ResearchActionAvailability
     let isBlockedByCancellationRecovery: Bool
+    let reopensActiveDiscussion: Bool
     let disabledReason: String?
 
     var id: ResearchActionID { availability.id }
     var title: String { availability.buttonName }
     var isEnabled: Bool {
-        availability.isEnabled && !isBlockedByCancellationRecovery
+        reopensActiveDiscussion
+            || availability.isEnabled && !isBlockedByCancellationRecovery
     }
     var canPresent: Bool {
-        availability.canPresentInInterface && !isBlockedByCancellationRecovery
+        reopensActiveDiscussion
+            || availability.canPresentInInterface && !isBlockedByCancellationRecovery
     }
     var group: ResearchActionAvailabilityGroup { availability.group }
     var detail: String {
-        disabledReason ?? availability.definition.interfaceSummary
+        reopensActiveDiscussion
+            ? String(
+                localized: "Continue the current Discussion.",
+                table: "Localizable",
+                bundle: .module
+            )
+            : disabledReason ?? availability.definition.interfaceSummary
     }
-}
-
-enum ResearchActionSurfaceRowID: Hashable {
-    case action(ResearchActionID)
-    case activeDiscussion(UUID)
-}
-
-struct ResearchActionSurfaceRow: Identifiable {
-    enum Content {
-        case action(ResearchActionItemPresentation)
-        case activeDiscussion(PortableResearchDiscussion)
-    }
-
-    let id: ResearchActionSurfaceRowID
-    let content: Content
 }
 
 struct ResearchFunctionsInspectorView: View {
@@ -170,7 +153,6 @@ struct ResearchFunctionsInspectorView: View {
     let focusRequest: ResearchActionFocusRequest?
     let registerFocusOwner: (ResearchActionID) -> Void
     let select: (ResearchActionID) -> Void
-    let openComment: (UUID) -> Void
     let retryRefresh: () -> Void
     let retryCancellationRecovery: (UUID) -> Void
     let settle: (String?) async throws -> Void
@@ -199,7 +181,7 @@ struct ResearchFunctionsInspectorView: View {
                         .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                 }
 
-                if presentation.isCheckingAvailability {
+                if presentation.isCheckingAvailability && presentation.items.isEmpty {
                     ProgressView("Checking Actions…")
                         .controlSize(.small)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -208,18 +190,13 @@ struct ResearchFunctionsInspectorView: View {
                     availabilityNotice(error)
                 }
 
-                actionRows(presentation.defaultSurfaceRows())
+                actionRows(presentation.defaultItems())
 
                 if !researcherItems.isEmpty {
                     ScholiumStructuralRule()
                         .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                     ScholiumApparatusSection("RESEARCHER SKILLS", showsDivider: false) {
-                        actionRows(researcherItems.map {
-                            ResearchActionSurfaceRow(
-                                id: .action($0.id),
-                                content: .action($0)
-                            )
-                        })
+                        actionRows(researcherItems)
                     } trailing: {
                         EmptyView()
                     }
@@ -242,15 +219,10 @@ struct ResearchFunctionsInspectorView: View {
     }
 
     @ViewBuilder
-    private func actionRows(_ rows: [ResearchActionSurfaceRow]) -> some View {
+    private func actionRows(_ rows: [ResearchActionItemPresentation]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                switch row.content {
-                case .action(let item):
-                    actionRow(item)
-                case .activeDiscussion(let discussion):
-                    activeDiscussionRow(discussion)
-                }
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+                actionRow(item)
                 if index < rows.count - 1 { ScholiumStructuralRule() }
             }
         }
@@ -274,31 +246,8 @@ struct ResearchFunctionsInspectorView: View {
             }
         }
         .disabled(!item.canPresent)
-        .help(item.disabledReason ?? item.detail)
+        .help(item.canPresent ? item.detail : item.disabledReason ?? item.detail)
         .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
-    }
-
-    private func activeDiscussionRow(
-        _ discussion: PortableResearchDiscussion
-    ) -> some View {
-        let detail = discussion.awaitsAgentReply
-            ? String(localized: "Awaiting an agent reply. Close keeps this Discussion active.", table: "Localizable", bundle: .module)
-            : String(localized: "A reply is ready. Reopen to continue or Finish.", table: "Localizable", bundle: .module)
-        return ResearchActionRowButton(
-            title: discussion.passage == nil
-                ? String(localized: "Active Discussion", table: "Localizable", bundle: .module)
-                : String(localized: "Active Passage Discussion", table: "Localizable", bundle: .module),
-            systemImage: "arrow.uturn.forward",
-            detail: detail
-        ) {
-            openComment(discussion.id)
-        }
-        .accessibilityValue(
-            "\(detail) Updated \(discussion.updatedAt.formatted(date: .abbreviated, time: .shortened))."
-        )
-        .accessibilityIdentifier(
-            "scholium.discussion.active.\(discussion.id.uuidString.lowercased())"
-        )
     }
 
     private func refreshNotice(_ reason: String) -> some View {

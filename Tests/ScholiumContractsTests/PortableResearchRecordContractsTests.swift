@@ -4,6 +4,76 @@ import Testing
 
 @Suite("Portable Research Record contracts")
 struct PortableResearchRecordContractsTests {
+    @Test("A Comment stores only a revision-bound inclusive line range")
+    func lineReferenceRoundTrip() throws {
+        let fingerprint = DocumentFingerprint(content: "first\nsecond\nthird")
+        let reference = try ResearchLineReference(
+            fingerprint: fingerprint,
+            line: 2,
+            endLine: 3
+        )
+        let statement = try PortableResearchStatement(
+            author: .researcher,
+            kind: .discussionTurn,
+            attribution: "Researcher",
+            text: "The distinction needs another premise.",
+            createdAt: Date(timeIntervalSince1970: 10),
+            lineReference: reference
+        )
+        let data = try JSONEncoder.scholium.encode(statement)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let encodedReference = try #require(
+            object["line_reference"] as? [String: Any]
+        )
+
+        #expect(object["passage"] == nil)
+        #expect(encodedReference["line"] as? Int == 2)
+        #expect(encodedReference["end_line"] as? Int == 3)
+        #expect(encodedReference["quotation"] == nil)
+        #expect(encodedReference["utf8_range"] == nil)
+        #expect(try JSONDecoder.scholium.decode(
+            PortableResearchStatement.self,
+            from: data
+        ) == statement)
+
+        var unknown = encodedReference
+        unknown["quotation"] = "must not decode"
+        var invalidStatement = object
+        invalidStatement["line_reference"] = unknown
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchStatement.self,
+                from: JSONSerialization.data(withJSONObject: invalidStatement)
+            )
+        }
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try ResearchLineReference(
+                fingerprint: fingerprint,
+                line: 3,
+                endLine: 2
+            )
+        }
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try PortableResearchStatement(
+                author: .researcher,
+                kind: .discussionTurn,
+                attribution: "Researcher",
+                text: "Ambiguous location",
+                passage: CommentAnchor(
+                    fingerprint: fingerprint,
+                    utf8Range: 0..<5,
+                    utf16Range: 0..<5,
+                    line: 1,
+                    endLine: 1,
+                    quotation: "first"
+                ),
+                lineReference: reference
+            )
+        }
+    }
+
     @Test("Record encoding exposes only the portable scholarly whitelist")
     func recordFieldWhitelist() throws {
         let record = try makeRecord()

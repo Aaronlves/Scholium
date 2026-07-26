@@ -1282,7 +1282,7 @@ final class DocumentController: ObservableObject {
         }
         guard let revision = session.editingRevision else {
             throw DocumentControllerError.saveFailed(
-                "The editing revision is unavailable. Return to Read mode and reopen the editor."
+                "The editing revision is unavailable. Return to Review mode and reopen the editor."
             )
         }
 

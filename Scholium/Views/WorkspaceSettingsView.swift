@@ -3265,7 +3265,7 @@ private struct AppearanceSettingsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Appearance")
                     .font(.title2.weight(.semibold))
-                Text("Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Read, Live Preview, and Source.")
+                Text("Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

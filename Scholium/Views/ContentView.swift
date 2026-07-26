@@ -349,7 +349,6 @@ struct ContentView: View {
 
     private var documentFeatureActions: DocumentFeatureActions {
         let documentPath = appState.currentNote?.relativePath
-        let triptychID = appState.workspaceAssignment?.id
         return DocumentFeatureActions(
             requestIdentityResolution: {
                 guard let path = documentPath else { return }
@@ -370,11 +369,38 @@ struct ContentView: View {
                     researcherMessage: message
                 )
                 try await appState.researchController.refreshResearchProjection()
-                appState.requestedDiscussionID = discussion.id
+                appState.requestDiscussionPresentation(discussion.id)
+                return discussion
+            },
+            createComment: { expectedNoteID, expectedPath, lineReference, message in
+                guard let target = appState.currentResearchFunctionTarget,
+                      target.noteID == expectedNoteID,
+                      target.note.relativePath == expectedPath,
+                      target.fingerprint == lineReference.fingerprint else {
+                    throw DiscussionPresentationError.unavailable
+                }
+                let discussion = try await appState.researchController.createComment(
+                    target: target,
+                    lineReference: lineReference,
+                    researcherMessage: message
+                )
+                do {
+                    try await appState.researchController.refreshResearchProjection()
+                } catch {
+                    throw ScholiumApplicationError.operationCommittedButRefreshFailed(
+                        operation: "The Comment",
+                        reason: error.localizedDescription
+                    )
+                }
                 return discussion
             },
             reloadDiscussion: { discussionID in
                 try await appState.researchController.activeDiscussionIfPresent(
+                    id: discussionID
+                )
+            },
+            loadDiscussionAgentInstructions: { discussionID in
+                try await appState.researchController.discussionAgentInstructions(
                     id: discussionID
                 )
             },
@@ -395,7 +421,7 @@ struct ContentView: View {
                 )
             },
             clearRequestedDiscussion: {
-                appState.requestedDiscussionID = nil
+                appState.clearRequestedDiscussionPresentation()
             },
             handoffDiscussionRequest: { instructions in
                 appState.agentApplicationHandoff.copyAndOpen(
@@ -408,10 +434,6 @@ struct ContentView: View {
                     instructions: instructions,
                     copy: { try appState.copyTextToClipboard($0) }
                 )
-            },
-            discussionReplyCommand: { discussionID in
-                let selector = triptychID.map { " --triptych \($0.uuidString)" } ?? ""
-                return "scholium discuss reply \(discussionID.uuidString) --agent \"AGENT_NAME\" --from -\(selector)"
             },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
@@ -830,9 +852,6 @@ struct ContentView: View {
                     pendingResearchActionFocusID = $0
                 },
                 openResearchAction: { appState.openResearchAction($0) },
-                openComment: { exchangeID in
-                    appState.requestedDiscussionID = exchangeID
-                },
                 retryResearchActionCancellation: { runID in
                     appState.researchController.actions.retryCancellationRecovery(runID: runID)
                 },
@@ -852,7 +871,6 @@ struct ContentView: View {
                 focusRequest: nil,
                 registerFocusOwner: { _ in },
                 select: { _ in },
-                openComment: { _ in },
                 retryRefresh: {},
                 retryCancellationRecovery: { runID in
                     appState.researchController.actions.retryCancellationRecovery(runID: runID)

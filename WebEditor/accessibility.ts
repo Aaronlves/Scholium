@@ -4,7 +4,7 @@ export const unsupportedFilePasteMessage = "File and image paste is not supporte
 
 export function editorAccessibilityAttributes(mode: EditorMode) {
   return {
-    "aria-label": mode === "livePreview" ? "Markdown live preview editor" : "Markdown source editor",
+    "aria-label": mode === "livePreview" ? "Markdown editor, Edit mode" : "Markdown source editor",
     role: "textbox",
     "aria-multiline": "true",
     spellcheck: "true",

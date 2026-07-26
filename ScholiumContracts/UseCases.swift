@@ -98,6 +98,11 @@ public protocol ResearchRecordUseCases: Sendable {
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion
+    func createComment(
+        target: ResearchFunctionTarget,
+        lineReference: ResearchLineReference,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion
     func appendDiscussionStatement(
         discussionID: UUID,
         author: PortableResearchStatementAuthor,

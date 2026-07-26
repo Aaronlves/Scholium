@@ -2133,6 +2133,86 @@ struct FrontendArchitectureTests {
         #expect(readHTML.contains("showFootnotePopover"))
     }
 
+    @Test("Review alone offers a direct line-only Comment composer")
+    func directLineCommentComposer() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let editorMenuSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<p data-source-line="2">A bounded claim.</p>"#,
+            source: "# Topic\nA bounded claim.\n",
+            documentID: "Topic.md",
+            fingerprint: DocumentFingerprint(content: "# Topic\nA bounded claim.\n").sha256,
+            commentEnabled: true,
+            selectionEnabled: true,
+            linkPreviews: [],
+            presentationCSS: "",
+            userCSS: ""
+        )
+
+        #expect(readHTML.contains("Return saves. Shift-Return inserts a line. Escape cancels."))
+        #expect(readHTML.contains("commentSubmitted"))
+        #expect(readHTML.contains("Comment for"))
+        #expect(readHTML.contains(#"class="scholium-selection-actions""#))
+        #expect(readHTML.contains(#"class="scholium-selection-toolbar""#))
+        #expect(readHTML.contains("ResolveCommentSubmission"))
+        #expect(readHTML.contains("Your Comment is still here"))
+        #expect(readHTML.contains("TextEncoder"))
+        #expect(readHTML.contains("makeRequestID"))
+        #expect(readHTML.contains("globalThis.crypto.getRandomValues"))
+        #expect(readHTML.contains("commentSelectionRange = range.cloneRange()"))
+        #expect(readHTML.contains("selection.addRange(commentSelectionRange)"))
+        #expect(!readHTML.contains("Copy and Open Agent App"))
+        #expect(!readHTML.contains("Copy Only"))
+        #expect(readHTML.contains("startLine"))
+        #expect(readHTML.contains("endLine"))
+        #expect(!readHTML.contains("quotation:"))
+        #expect(!readHTML.contains("utf16Range"))
+        #expect(editorSource.contains(#"currentMode !== "livePreview""#))
+        #expect(editorSource.contains("view.composing || !view.hasFocus"))
+        #expect(editorSource.contains(#"["B", "Bold", "bold"]"#))
+        #expect(editorSource.contains(
+            #"selectionToolbar.className = "scholium-selection-actions""#
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-selection-actions"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "background: var(--scholium-color-surface-background)"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "border: 1px solid var(--scholium-color-accent)"
+        ))
+        #expect(!ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-selection-actions {\n      backdrop-filter"
+        ))
+        #expect(!editorSource.contains("commentSubmitted"))
+        #expect(!editorSource.contains("showCommentComposer"))
+        #expect(!editorSource.contains(#"selectionToolbarButton("Comment", "Comment""#))
+        #expect(!editorMenuSource.contains("Comment on Selection"))
+        #expect(!editorMenuSource.contains("commentSubmitted"))
+        #expect(!editorMenuSource.contains("onRequestComment"))
+        #expect(!editorMenuSource.contains(#"ScholiumL10n.string("Bold"), MarkdownEditorCommand.bold"#))
+        #expect(editorMenuSource.contains("genericPreviewTitles"))
+        #expect(editorMenuSource.contains(#""Show Preview""#))
+        #expect(editorMenuSource.contains(
+            #"ScholiumL10n.string("Show Preview")"#
+        ))
+        #expect(!editorMenuSource.contains("String(describing: item.action)"))
+        #expect(!editorMenuSource.contains("scholium.editor.preview"))
+    }
+
     @Test("Relationship colors provide increased-contrast variants")
     func increasedContrastRelationshipColors() throws {
         let sourceFile = URL(fileURLWithPath: #filePath)

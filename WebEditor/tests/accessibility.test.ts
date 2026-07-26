@@ -21,7 +21,7 @@ describe("editor accessibility contract", () => {
     const attributes = editorAccessibilityAttributes("livePreview");
     expect(attributes).toMatchObject({
       role: "textbox",
-      "aria-label": "Markdown live preview editor",
+      "aria-label": "Markdown editor, Edit mode",
       "aria-multiline": "true",
       spellcheck: "true",
     });

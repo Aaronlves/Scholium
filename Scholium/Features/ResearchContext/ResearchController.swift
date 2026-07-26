@@ -169,6 +169,23 @@ final class ResearchController: ObservableObject {
     }
 
     @discardableResult
+    func createComment(
+        target: ResearchFunctionTarget,
+        lineReference: ResearchLineReference,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
+        try await requireOperations().createComment(
+            target: target,
+            lineReference: lineReference,
+            researcherMessage: researcherMessage
+        )
+    }
+
+    func discussionAgentInstructions(id: UUID) async throws -> String {
+        try await requireOperations().functionRun(id: id).instructions
+    }
+
+    @discardableResult
     func appendDiscussionStatement(
         discussionID: UUID,
         author: PortableResearchStatementAuthor,

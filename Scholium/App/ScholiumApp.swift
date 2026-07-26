@@ -631,7 +631,7 @@ struct ScholiumFocusedEditorActions {
     let documentID: String
     let isComposing: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
-    let canUseSelectedPassage: () -> Bool
+    let canCommentOnSelectedPassage: () -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
     let startComment: () -> Void
@@ -865,7 +865,7 @@ private struct ScholiumCommands: Commands {
             Button("Comment on Selection…") { editorActions?.startComment() }
                 .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(
-                    editorActions?.canUseSelectedPassage() != true
+                    editorActions?.canCommentOnSelectedPassage() != true
                         || editorActions?.isComposing == true
                 )
         }
@@ -905,8 +905,8 @@ private struct ScholiumCommands: Commands {
                         && appState?.currentNote == nil)
             )
             Menu("Document Mode") {
-                Button("Read") { appState?.requestDocumentMode(.read) }
-                Button("Live Preview") { appState?.requestDocumentMode(.livePreview) }
+                Button("Review") { appState?.requestDocumentMode(.read) }
+                Button("Edit") { appState?.requestDocumentMode(.livePreview) }
                     .disabled(appState?.canEditCurrentNote != true)
                 Button("Source") { appState?.requestDocumentMode(.source) }
                     .disabled(appState?.canEditCurrentNote != true)
@@ -969,6 +969,7 @@ private struct ScholiumCommands: Commands {
                     .keyboardShortcut(action.definition.interfaceKeyboardShortcut)
                     .disabled(
                         !action.canPresentInInterface
+                            || !appState.hasConfirmedCurrentResearchActionAvailability
                             || appState.researchController.actions.hasCancellationBarrier
                     )
                 }
@@ -1463,6 +1464,7 @@ final class WindowModel: ObservableObject {
     private var workspaceCatalogRefreshTask: Task<Void, Never>?
     private var researchActionOpenTask: Task<Void, Never>?
     private var researchActionOpenRequestID: UUID?
+    private var discussionPresentationRequestID: UUID?
     private var workspaceCatalogNeedsAnotherRefresh = false
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
@@ -1820,6 +1822,14 @@ final class WindowModel: ObservableObject {
         )
     }
 
+    var hasConfirmedCurrentResearchActionAvailability: Bool {
+        guard let target = currentResearchActionTarget else { return false }
+        let actions = researchController.actions
+        return actions.availabilityTarget == target
+            && !actions.isRefreshingAvailability
+            && actions.availabilityError == nil
+    }
+
     var currentResearchFunctionReference: VaultNoteReference? {
         currentDocumentDescriptor?.reference
     }
@@ -1837,11 +1847,13 @@ final class WindowModel: ObservableObject {
 
     func researchActionsPresentation() -> ResearchActionsPresentation {
         let target = currentResearchActionTarget
+        let actions = researchController.actions
+        let matchesTarget = actions.availabilityTarget == target
         return ResearchActionsPresentation.make(
             target: target,
-            availability: researchController.actions.availability,
-            isCheckingAvailability: researchController.actions.isRefreshingAvailability,
-            availabilityError: researchController.actions.availabilityError,
+            availability: matchesTarget ? actions.availability : [],
+            isCheckingAvailability: actions.isRefreshingAvailability,
+            availabilityError: matchesTarget ? actions.availabilityError : nil,
             cancellationRecoveries: researchController.actions.cancellationRecoveries,
             retryingCancellationRecoveryIDs:
                 researchController.actions.retryingCancellationRecoveryIDs,
@@ -2558,6 +2570,16 @@ final class WindowModel: ObservableObject {
         _ actionID: ResearchActionID,
         selection: CommentAnchor? = nil
     ) {
+        guard let initialTarget = currentResearchActionTarget else { return }
+        if actionID == .discuss,
+           let discussion = researchController.records?.activeDiscussions.first(where: {
+               $0.primaryNoteID == initialTarget.noteID
+                   && $0.action != nil
+                   && $0.method != nil
+           }) {
+            requestDiscussionPresentation(discussion.id)
+            return
+        }
         guard !researchController.actions.hasCancellationBarrier else {
             showToast(
                 String(
@@ -2569,10 +2591,10 @@ final class WindowModel: ObservableObject {
             )
             return
         }
-        guard let initialTarget = currentResearchActionTarget,
-              researchController.actions.availability.first(where: {
+        guard hasConfirmedCurrentResearchActionAvailability else { return }
+        guard let initialAvailability = researchController.actions.availability.first(where: {
                   $0.id == actionID
-              })?.canPresentInInterface == true else { return }
+              }), initialAvailability.canPresentInInterface else { return }
         let initialNoteID = initialTarget.noteID
         let requestID = UUID()
         researchActionOpenRequestID = requestID
@@ -2587,14 +2609,38 @@ final class WindowModel: ObservableObject {
                       let target = self.currentResearchActionTarget,
                       target.noteID == initialNoteID,
                       let reference = self.currentResearchFunctionReference else { return }
-                await self.researchController.actions.refreshAvailability(for: target)
-                guard !Task.isCancelled,
-                      self.researchActionOpenRequestID == requestID else { return }
+                if actionID == .discuss,
+                   let discussion = self.researchController.records?.activeDiscussions.first(where: {
+                        $0.primaryNoteID == target.noteID
+                            && $0.action != nil
+                            && $0.method != nil
+                   }) {
+                    self.requestDiscussionPresentation(discussion.id)
+                    return
+                }
+                let availability: ResearchActionAvailability
+                if target == initialTarget {
+                    guard self.hasConfirmedCurrentResearchActionAvailability,
+                          self.researchController.actions.availability.first(where: {
+                              $0.id == actionID
+                          }) == initialAvailability else { return }
+                    availability = initialAvailability
+                } else {
+                    await self.researchController.actions.refreshAvailability(for: target)
+                    guard !Task.isCancelled,
+                          self.researchActionOpenRequestID == requestID,
+                          self.hasConfirmedCurrentResearchActionAvailability,
+                          let refreshed = self.researchController.actions.availability.first(where: {
+                              $0.id == actionID
+                          }) else { return }
+                    availability = refreshed
+                }
                 guard let refreshedTarget = self.currentResearchActionTarget,
                       refreshedTarget == target,
-                      let availability = self.researchController.actions.availability.first(where: {
-                          $0.id == actionID
-                      }), availability.canPresentInInterface else {
+                      self.researchController.actions.availabilityTarget == target,
+                      !self.researchController.actions.isRefreshingAvailability,
+                      self.researchController.actions.availabilityError == nil,
+                      availability.canPresentInInterface else {
                     let reason = self.researchController.actions.availability.first(where: {
                         $0.id == actionID
                     })?.repairReasons.first?.interfaceDescription
@@ -2626,8 +2672,11 @@ final class WindowModel: ObservableObject {
                 guard !self.researchController.actions.hasCancellationBarrier,
                       self.researchController.actions.begin(
                     target: target,
-                    actionID: actionID,
+                    availability: availability,
                     selection: capturedSelection,
+                    initialInstruction: actionID == .discuss
+                        ? "Discuss this note, including any existing Comments."
+                        : nil,
                     presentationID: presentationID
                       ) else {
                     self.showToast(
@@ -2658,6 +2707,23 @@ final class WindowModel: ObservableObject {
                 )
             }
         }
+    }
+
+    func requestDiscussionPresentation(_ discussionID: UUID) {
+        let requestID = UUID()
+        discussionPresentationRequestID = requestID
+        requestedDiscussionID = nil
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self,
+                  self.discussionPresentationRequestID == requestID else { return }
+            self.requestedDiscussionID = discussionID
+        }
+    }
+
+    func clearRequestedDiscussionPresentation() {
+        discussionPresentationRequestID = nil
+        requestedDiscussionID = nil
     }
 
     func openResearchFunction(
@@ -3368,7 +3434,7 @@ final class WindowModel: ObservableObject {
                 self.presentationRouter.dismissSheet()
                 Task { @MainActor [weak self] in
                     await Task.yield()
-                    self?.requestedDiscussionID = discussionID
+                    self?.requestDiscussionPresentation(discussionID)
                 }
             }
         ))
@@ -3409,7 +3475,7 @@ final class WindowModel: ObservableObject {
                 self.presentationRouter.dismissSheet()
                 Task { @MainActor [weak self] in
                     await Task.yield()
-                    self?.requestedDiscussionID = discussionID
+                    self?.requestDiscussionPresentation(discussionID)
                 }
             }
         ))

@@ -7,6 +7,20 @@ enum DocumentNotificationKind {
     case error
 }
 
+struct PassageCommentSubmission: Equatable, Sendable {
+    let requestID: String
+    let documentID: String
+    let fingerprint: DocumentFingerprint
+    let startLine: Int
+    let endLine: Int
+    let text: String
+}
+
+struct PassageCommentResolution: Equatable, Sendable {
+    let requestID: String
+    let succeeded: Bool
+}
+
 struct DocumentFeatureState {
     let notes: [WindowDocumentLocation]
     let selectedDocumentPath: String?
@@ -49,7 +63,14 @@ struct DocumentFeatureActions {
         CommentAnchor,
         String
     ) async throws -> PortableResearchDiscussion
+    let createComment: @MainActor (
+        UUID,
+        String,
+        ResearchLineReference,
+        String
+    ) async throws -> PortableResearchDiscussion
     let reloadDiscussion: @MainActor (UUID) async throws -> PortableResearchDiscussion?
+    let loadDiscussionAgentInstructions: @MainActor (UUID) async throws -> String
     let refreshDiscussionProjection: @MainActor () async throws -> Void
     let appendDiscussionStatement: @MainActor (
         UUID,
@@ -61,7 +82,6 @@ struct DocumentFeatureActions {
     let clearRequestedDiscussion: @MainActor () -> Void
     let handoffDiscussionRequest: @MainActor (String) -> Bool
     let copyDiscussionRequest: @MainActor (String) -> Bool
-    let discussionReplyCommand: @MainActor (UUID) -> String
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
@@ -199,7 +219,6 @@ struct ResearchInspectorView: View {
     let researchActionFocusRequest: ResearchActionFocusRequest?
     let registerResearchActionFocusOwner: (ResearchActionID) -> Void
     let openResearchAction: (ResearchActionID) -> Void
-    let openComment: (UUID) -> Void
     let retryResearchActionCancellation: (UUID) -> Void
     let settle: (String?) async throws -> Void
 
@@ -214,7 +233,6 @@ struct ResearchInspectorView: View {
         researchActionFocusRequest: ResearchActionFocusRequest?,
         registerResearchActionFocusOwner: @escaping (ResearchActionID) -> Void,
         openResearchAction: @escaping (ResearchActionID) -> Void,
-        openComment: @escaping (UUID) -> Void,
         retryResearchActionCancellation: @escaping (UUID) -> Void,
         settle: @escaping (String?) async throws -> Void
     ) {
@@ -228,7 +246,6 @@ struct ResearchInspectorView: View {
         self.researchActionFocusRequest = researchActionFocusRequest
         self.registerResearchActionFocusOwner = registerResearchActionFocusOwner
         self.openResearchAction = openResearchAction
-        self.openComment = openComment
         self.retryResearchActionCancellation = retryResearchActionCancellation
         self.settle = settle
     }
@@ -253,7 +270,6 @@ struct ResearchInspectorView: View {
                         focusRequest: researchActionFocusRequest,
                         registerFocusOwner: registerResearchActionFocusOwner,
                         select: openResearchAction,
-                        openComment: openComment,
                         retryRefresh: researchInspectorContentContext.retryRefresh,
                         retryCancellationRecovery: retryResearchActionCancellation,
                         settle: settle
@@ -380,25 +396,14 @@ private struct InspectorModeButton: View {
 }
 // MARK: - Note Content View
 
-/// A passage Comment is one anchored researcher turn in a Discussion. Close
-/// only dismisses the sheet; Finish creates one portable Research Record.
+/// Opens one already-active Discussion. Lightweight Comments are created in
+/// place and never use this route; Discuss collects them here when requested.
 private struct DiscussionRoute: Identifiable {
     let id: UUID
-    let anchor: CommentAnchor?
-    let excerpt: String?
-    let discussion: PortableResearchDiscussion?
-
-    init(anchor: CommentAnchor, excerpt: String) {
-        id = UUID()
-        self.anchor = anchor
-        self.excerpt = excerpt
-        discussion = nil
-    }
+    let discussion: PortableResearchDiscussion
 
     init(discussion: PortableResearchDiscussion) {
         id = discussion.id
-        anchor = discussion.passage
-        excerpt = discussion.passage.map { $0.selectedText ?? $0.quotation }
         self.discussion = discussion
     }
 }
@@ -407,9 +412,8 @@ private struct DiscussionPanel: View {
     @Environment(\.dismiss) private var dismiss
 
     let noteTitle: String
-    let route: DiscussionRoute
-    let create: (CommentAnchor, String) async throws -> PortableResearchDiscussion
     let reload: (UUID) async throws -> PortableResearchDiscussion?
+    let loadAgentInstructions: (UUID) async throws -> String
     let append: (
         UUID,
         PortableResearchStatementAuthor,
@@ -419,7 +423,6 @@ private struct DiscussionPanel: View {
     let finish: (UUID) async throws -> PortableResearchRecord
     let handoff: (String) -> Bool
     let copyOnly: (String) -> Bool
-    let replyCommand: (UUID) -> String
     let onClosed: () -> Void
     let onFinished: () -> Void
 
@@ -429,12 +432,13 @@ private struct DiscussionPanel: View {
     @State private var agentReply = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var agentInstructions: String?
 
     init(
         noteTitle: String,
         route: DiscussionRoute,
-        create: @escaping (CommentAnchor, String) async throws -> PortableResearchDiscussion,
         reload: @escaping (UUID) async throws -> PortableResearchDiscussion?,
+        loadAgentInstructions: @escaping (UUID) async throws -> String,
         append: @escaping (
             UUID,
             PortableResearchStatementAuthor,
@@ -444,19 +448,16 @@ private struct DiscussionPanel: View {
         finish: @escaping (UUID) async throws -> PortableResearchRecord,
         handoff: @escaping (String) -> Bool,
         copyOnly: @escaping (String) -> Bool,
-        replyCommand: @escaping (UUID) -> String,
         onClosed: @escaping () -> Void,
         onFinished: @escaping () -> Void
     ) {
         self.noteTitle = noteTitle
-        self.route = route
-        self.create = create
         self.reload = reload
+        self.loadAgentInstructions = loadAgentInstructions
         self.append = append
         self.finish = finish
         self.handoff = handoff
         self.copyOnly = copyOnly
-        self.replyCommand = replyCommand
         self.onClosed = onClosed
         self.onFinished = onFinished
         _discussion = State(initialValue: route.discussion)
@@ -486,29 +487,6 @@ private struct DiscussionPanel: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if let excerpt = route.excerpt {
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text("SELECTED PASSAGE")
-                                .font(ScholiumInterfaceTypography.apparatusLabel)
-                                .tracking(0.7)
-                                .foregroundStyle(.secondary)
-                            Text(excerpt)
-                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                                .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    if route.anchor?.state == .needsReattachment {
-                        Label(
-                            "The original passage no longer has one reliable location. The Discussion remains intact, but this anchor needs reattachment.",
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(ScholiumColorRole.attention.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("scholium.discussion.needsReattachment")
-                    }
-
                     if let discussion {
                         transcript(discussion)
                     }
@@ -532,21 +510,14 @@ private struct DiscussionPanel: View {
         .task(id: discussion?.updatedAt) {
             await refreshExternalDiscussionState()
         }
+        .task(id: discussion?.id) {
+            await loadResolvedAgentInstructions()
+        }
     }
 
     @ViewBuilder
     private var exchangeControls: some View {
-        if discussion == nil {
-            researcherComposer(
-                title: "MESSAGE TO AGENT",
-                buttonTitle: "Save and Copy for Agent",
-                action: beginOrFollowUp
-            )
-            Text("Scholium records and copies the request. Use the explicit handoff controls to open an agent app, then paste and submit it yourself.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        } else if discussion?.awaitsAgentReply == true {
+        if discussion?.awaitsAgentReply == true {
             agentHandoffControls
             VStack(alignment: .leading, spacing: 8) {
                 Text("AGENT REPLY")
@@ -611,7 +582,17 @@ private struct DiscussionPanel: View {
                     Text(statement.attribution)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    if let passage = statement.passage {
+                    if let reference = statement.lineReference {
+                        Text(
+                            reference.line == reference.endLine
+                                ? "COMMENT AT LINE \(reference.line)"
+                                : "COMMENT AT LINES \(reference.line)–\(reference.endLine)"
+                        )
+                        .font(ScholiumInterfaceTypography.apparatusLabel)
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                    } else if let passage = statement.passage {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(
                                 passage.line == passage.endLine
@@ -621,9 +602,6 @@ private struct DiscussionPanel: View {
                             .font(ScholiumInterfaceTypography.apparatusLabel)
                             .tracking(0.6)
                             .foregroundStyle(.secondary)
-                            Text(passage.selectedText ?? passage.quotation)
-                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                                .textSelection(.enabled)
                             if passage.state == .needsReattachment {
                                 Label(
                                     "This passage no longer has one reliable location.",
@@ -684,19 +662,21 @@ private struct DiscussionPanel: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Button("Copy and Open Agent App…") {
-                    guard let discussion else { return }
-                    if !handoff(agentRequest(for: discussion)) {
+                    guard let agentInstructions else { return }
+                    if !handoff(agentInstructions) {
                         errorMessage = "Scholium could not prepare the agent handoff."
                     }
                 }
                 .buttonStyle(.bordered)
+                .disabled(agentInstructions == nil)
                 Button("Copy Only") {
-                    guard let discussion else { return }
-                    if !copyOnly(agentRequest(for: discussion)) {
+                    guard let agentInstructions else { return }
+                    if !copyOnly(agentInstructions) {
                         errorMessage = "Scholium could not copy the agent request."
                     }
                 }
                 .buttonStyle(.link)
+                .disabled(agentInstructions == nil)
             }
             Text("The Discussion is waiting for an agent reply. Closing this sheet leaves it active.")
                 .font(.caption)
@@ -707,28 +687,25 @@ private struct DiscussionPanel: View {
 
     private func beginOrFollowUp() {
         let message = normalized(researcherMessage)
-        guard !message.isEmpty else { return }
+        guard !message.isEmpty, let discussion else { return }
         isWorking = true
         errorMessage = nil
         Task { @MainActor in
             do {
-                let updated: PortableResearchDiscussion
-                if let discussion {
-                    updated = try await append(
-                        discussion.id,
-                        .researcher,
-                        "Researcher",
-                        message
-                    )
-                } else if let anchor = route.anchor {
-                    updated = try await create(anchor, message)
-                } else {
-                    throw DiscussionPresentationError.unavailable
-                }
+                let updated = try await append(
+                    discussion.id,
+                    .researcher,
+                    "Researcher",
+                    message
+                )
                 self.discussion = updated
                 researcherMessage = ""
                 isWorking = false
-                if !copyOnly(agentRequest(for: updated)) {
+                guard let agentInstructions else {
+                    errorMessage = "The Discussion was saved, but its resolved Discuss Method is unavailable."
+                    return
+                }
+                if !copyOnly(agentInstructions) {
                     errorMessage = "The Discussion was saved, but Scholium could not copy the agent handoff."
                 }
             } catch {
@@ -804,33 +781,19 @@ private struct DiscussionPanel: View {
         }
     }
 
-    private func agentRequest(for discussion: PortableResearchDiscussion) -> String {
-        let conversation = discussion.statements.map { statement in
-            let passage = statement.passage.map { anchor in
-                let location = anchor.line == anchor.endLine
-                    ? "line \(anchor.line)"
-                    : "lines \(anchor.line)–\(anchor.endLine)"
-                let attachment = anchor.state == .needsReattachment
-                    ? " (location needs reattachment)"
-                    : ""
-                return "\nPassage at \(location)\(attachment):\n"
-                    + (anchor.selectedText ?? anchor.quotation)
-            } ?? ""
-            return "\(statement.attribution):\(passage)\n\(statement.text)"
-        }.joined(separator: "\n\n")
-        return """
-        Continue the research Discussion for \(noteTitle).
-
-        Discussion:
-        \(conversation)
-
-        Reply to the researcher's latest message. Do not edit the note.
-
-        After composing the response, submit only that response to Scholium through standard input:
-        \(replyCommand(discussion.id))
-
-        Replace AGENT_NAME with your agent identity. Do not finish the Discussion. The researcher reviews the reply and chooses Finish.
-        """
+    private func loadResolvedAgentInstructions() async {
+        guard let discussion,
+              discussion.action != nil,
+              discussion.method != nil else {
+            agentInstructions = nil
+            return
+        }
+        do {
+            agentInstructions = try await loadAgentInstructions(discussion.id)
+        } catch {
+            agentInstructions = nil
+            errorMessage = "The resolved Discuss Method is unavailable. \(error.localizedDescription)"
+        }
     }
 
     private func normalized(_ value: String) -> String {
@@ -846,7 +809,9 @@ struct NoteContentView: View {
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
-    @State private var commentRoute: DiscussionRoute?
+    @State private var discussionRoute: DiscussionRoute?
+    @State private var commentComposerRequestID: UUID?
+    @State private var commentResolution: PassageCommentResolution?
 
     init(
         controller: DocumentController,
@@ -958,11 +923,8 @@ struct NoteContentView: View {
                 isAvailable: { command in
                     isEditing && editorSession.context?.availableCommands.contains(command) == true
                 },
-                canUseSelectedPassage: {
-                    if isEditing {
-                        return editorSession.context?.selections.contains(where: \.isNonempty) == true
-                    }
-                    return documentSession.readSelection != nil
+                canCommentOnSelectedPassage: {
+                    presentationMode == .read && documentSession.readSelection != nil
                 },
                 perform: { command in
                     Task { @MainActor in
@@ -1003,7 +965,8 @@ struct NoteContentView: View {
                 )
             }
         }
-        .sheet(item: $commentRoute, onDismiss: {
+        .sheet(item: $discussionRoute, onDismiss: {
+            actions.clearRequestedDiscussion()
             Task { @MainActor in
                 await Task.yield()
                 if isEditing { editorSession.focus() }
@@ -1012,13 +975,12 @@ struct NoteContentView: View {
             DiscussionPanel(
                 noteTitle: note.title ?? note.displayName,
                 route: route,
-                create: actions.createDiscussion,
                 reload: actions.reloadDiscussion,
+                loadAgentInstructions: actions.loadDiscussionAgentInstructions,
                 append: actions.appendDiscussionStatement,
                 finish: actions.finishDiscussion,
                 handoff: actions.handoffDiscussionRequest,
                 copyOnly: actions.copyDiscussionRequest,
-                replyCommand: actions.discussionReplyCommand,
                 onClosed: actions.clearRequestedDiscussion,
                 onFinished: actions.clearRequestedDiscussion
             )
@@ -1218,7 +1180,6 @@ struct NoteContentView: View {
             onRequestSearch: {
                 actions.beginSearch(.findInNote(previousScope: state.ordinarySearchScope))
             },
-            onRequestComment: requestCommentFromDocument,
             onLinkActivation: { target in
                 if let url = URL(string: target),
                    let scheme = url.scheme?.lowercased(),
@@ -1283,7 +1244,7 @@ struct NoteContentView: View {
             VStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle")
                     .accessibilityHidden(true)
-                Text("Read mode is unavailable")
+                Text("Review mode is unavailable")
                     .font(.headline)
                 Text("Use Source mode while the rendered document is unavailable.")
                     .font(.subheadline)
@@ -1314,8 +1275,10 @@ struct NoteContentView: View {
             },
             onOpenExternalURL: actions.openExternalURL,
             onCommentSelection: commentingIsAvailable ? { selection in
-                openCommentComposer(for: selection, source: note.rawContent)
+                saveComment(selection)
             } : nil,
+            commentComposerRequestID: commentComposerRequestID,
+            commentResolution: commentResolution,
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
@@ -1519,84 +1482,91 @@ struct NoteContentView: View {
     }
 
     private func requestCommentFromDocument() {
-        guard commentingIsAvailable else { return }
-        guard isEditing else {
-            guard let selection = documentSession.readSelection else {
-                actions.notify(
-                    "Select a passage in Read, Live Preview, or Source before commenting.",
-                    .information
-                )
-                return
-            }
-            openCommentComposer(for: selection, source: note.rawContent)
+        guard commentingIsAvailable, presentationMode == .read else { return }
+        guard documentSession.readSelection != nil else {
+            actions.notify("Select a passage before commenting.", .information)
+            return
+        }
+        commentComposerRequestID = UUID()
+    }
+
+    private func saveComment(_ submission: PassageCommentSubmission) {
+        let text = submission.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              presentationMode == .read,
+              submission.documentID == note.relativePath,
+              let noteID = state.noteIdentityByPath[note.relativePath] else {
+            commentResolution = PassageCommentResolution(
+                requestID: submission.requestID,
+                succeeded: false
+            )
             return
         }
         Task { @MainActor in
             do {
-                let currentSource = try await editorSession.currentText(
-                    for: editorSession.bridgeDocumentID
-                )
-                guard let selection = try await editorSession.currentSelection(
-                    for: editorSession.bridgeDocumentID,
-                    in: currentSource
-                ), let anchor = ResearchFunctionSelectionCapture.anchor(
-                    for: selection,
-                    in: currentSource,
-                    relativePath: note.relativePath
-                ) else {
-                    actions.notify("Select a passage before commenting.", .information)
-                    editorSession.focus()
-                    return
+                guard noteFingerprint == submission.fingerprint else {
+                    throw ResearchOperationError.staleCommentRevision
                 }
-                try await controller.flushForExternalOperation(
-                    session: documentSession,
-                    target: target
+                let reference = try ResearchLineReference(
+                    fingerprint: submission.fingerprint,
+                    line: submission.startLine,
+                    endLine: submission.endLine
                 )
-                commentRoute = DiscussionRoute(
-                    anchor: anchor,
-                    excerpt: selection.excerpt
+                _ = try await actions.createComment(
+                    noteID,
+                    submission.documentID,
+                    reference,
+                    text
+                )
+                commentResolution = PassageCommentResolution(
+                    requestID: submission.requestID,
+                    succeeded: true
+                )
+            } catch ScholiumApplicationError.operationCommittedButRefreshFailed {
+                commentResolution = PassageCommentResolution(
+                    requestID: submission.requestID,
+                    succeeded: true
+                )
+                actions.notify(
+                    "The Comment was saved. Research views will refresh when the workspace is available.",
+                    .information
                 )
             } catch {
+                commentResolution = PassageCommentResolution(
+                    requestID: submission.requestID,
+                    succeeded: false
+                )
                 actions.notify(
-                    "Scholium could not capture the current editor selection. Keep editing and try again. \(error.localizedDescription)",
+                    "Scholium could not save this Comment. \(error.localizedDescription)",
                     .error
                 )
             }
         }
     }
 
-    private func openCommentComposer(
-        for selection: MarkdownReviewSelection,
-        source: String
-    ) {
-        guard let anchor = ResearchFunctionSelectionCapture.anchor(
-            for: selection,
-            in: source,
-            relativePath: note.relativePath
-        ) else {
-            actions.notify(
-                "Scholium could not attach this Comment to one exact passage.",
-                .information
-            )
-            return
-        }
-        commentRoute = DiscussionRoute(
-            anchor: anchor,
-            excerpt: selection.excerpt
-        )
-    }
-
     private func openRequestedDiscussion(_ discussionID: UUID?) {
         guard let discussionID else { return }
-        guard let discussion = state.activeDiscussions.first(where: { $0.id == discussionID }) else {
-            actions.notify(
-                "The requested Discussion is no longer active.",
-                .information
-            )
-            actions.clearRequestedDiscussion()
-            return
+        Task { @MainActor in
+            do {
+                guard let discussion = try await actions.reloadDiscussion(discussionID) else {
+                    actions.notify(
+                        "The requested Discussion is no longer active.",
+                        .information
+                    )
+                    actions.clearRequestedDiscussion()
+                    return
+                }
+                guard state.requestedDiscussionID == discussionID else { return }
+                discussionRoute = DiscussionRoute(discussion: discussion)
+            } catch {
+                guard state.requestedDiscussionID == discussionID else { return }
+                actions.notify(
+                    "Scholium could not open this Discussion. \(error.localizedDescription)",
+                    .error
+                )
+                actions.clearRequestedDiscussion()
+            }
         }
-        commentRoute = DiscussionRoute(discussion: discussion)
     }
 
     private func openResearchAction(_ actionID: ResearchActionID) {
@@ -1840,12 +1810,7 @@ struct ResearchRecordView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        activitySection
-                        if !currentActivityGrants.isEmpty {
-                            writeActivitySection
-                        }
                         discussionRecordSection
-                        functionRunSection
                         critiqueSection
                     }
                     .padding(20)
@@ -2561,16 +2526,15 @@ private extension ResearchWriteScope {
         clearPendingSourceLine: {},
         clearPendingSourceRange: {},
         createDiscussion: { _, _ in throw CancellationError() },
+        createComment: { _, _, _, _ in throw CancellationError() },
         reloadDiscussion: { _ in nil },
+        loadDiscussionAgentInstructions: { _ in throw CancellationError() },
         refreshDiscussionProjection: {},
         appendDiscussionStatement: { _, _, _, _ in throw CancellationError() },
         finishDiscussion: { _ in throw CancellationError() },
         clearRequestedDiscussion: {},
         handoffDiscussionRequest: { _ in true },
         copyDiscussionRequest: { _ in true },
-        discussionReplyCommand: { id in
-            "scholium discuss reply \(id.uuidString) --agent \"AGENT_NAME\" --from -"
-        },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },

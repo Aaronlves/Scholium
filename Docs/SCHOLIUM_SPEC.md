@@ -273,7 +273,7 @@ warning, or internal template. `Critiques/` alone has special behavior.
 
 Analysis, Topic, and ordinary Work notes support:
 
-- Read, Live Preview, and Source over one exact Markdown buffer;
+- Review, Edit, and Source over one exact Markdown buffer;
 - autosaved editing without an ordinary Save button;
 - create, duplicate, import, rename, move, Reveal in Finder, Set Aside, Trash,
   Put Back, and permanent deletion;
@@ -291,13 +291,14 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
 
 ### 5.1 Document modes and YAML
 
-- **Read** renders committed content for reading, selection, navigation, and
-  commenting.
-- **Live Preview** edits the exact body through a visual projection, shares
-  Read's semantic render components, typography, callout presentation,
+- **Review** renders committed content for reading, selection, navigation, and
+  commenting. Its internal and persisted mode identifier remains `read`.
+- **Edit** edits the exact body through a visual projection, shares
+  Review's semantic render components, typography, callout presentation,
   document measure, and theme variables, reveals syntax only around the active
-  construct, and shows neither YAML nor line numbers. Inactive content should
-  match Read; caret, selection, marked-text composition, and the active
+  construct, and shows neither YAML nor line numbers. Its internal and
+  persisted mode identifier remains `livePreview`. Inactive content should
+  match Review; caret, selection, marked-text composition, and the active
   construct are the permitted editing differences.
 - **Source** edits complete Markdown and YAML, shows line numbers, and retains
   the same document session, viewport, measure, and semantic colors while using
@@ -314,20 +315,20 @@ accessibility. A supplied title inherits the role heading style; an untitled
 callout adds no heading. Prose uses natural start alignment, never full
 justification.
 
-An inactive Live Preview callout atomically projects one half-open source
+An inactive Edit callout atomically projects one half-open source
 range. Selection reveals source only on actual overlap, not boundary contact.
 Down Arrow from above enters at the range start; Up Arrow from below or a
 pointer press on its rendered title/body enters at its logical end. CodeMirror then
 resumes native editing. Only the disclosure mark changes fold state by pointer;
 the focused summary retains keyboard disclosure.
 
-Read and Live Preview support Obsidian-compatible inline `$…$` and display
+Review and Edit support Obsidian-compatible inline `$…$` and display
 `$$…$$` mathematics outside YAML, code, raw HTML, comments, and escaped
 delimiters. The immutable editing dialect owns exact delimiter behavior.
 Malformed or unsupported mathematics stays visible as exact source with a
 diagnostic; rendering never rewrites it.
 
-Read and Live Preview treat Obsidian-compatible `![[Target]]` embeds, including
+Review and Edit treat Obsidian-compatible `![[Target]]` embeds, including
 aliases and heading or block fragments, as source-located neutral links.
 Inactive embeds share protected presentation, navigation, and diagnostics; the
 active construct reveals its exact syntax. This stage neither reads nor
@@ -335,14 +336,15 @@ transcludes target content or creates philosophical relationship edges. Any
 later transclusion requires a separate recursion, cycle, authorization,
 external-change, and large-file contract.
 
-Internal links, Vector Links, and footnote references provide bounded previews
-without becoming evidence or another source authority. A footnote preview
-contains only the referenced definition. Read may preview on ordinary hover;
-Live Preview requires Command-hover so pointer editing remains primary. Both
-provide keyboard, menu, and accessibility-equivalent routes, and activation
-still performs the ordinary link or footnote navigation action.
+Internal links and Vector Links provide bounded previews without becoming
+evidence or another source authority. Review additionally previews footnote
+references on ordinary hover; a footnote preview contains only the referenced
+definition. Footnote focus, activation, navigation, and return controls belong
+to Review only, with keyboard and accessibility-equivalent routes. Edit keeps
+the rendered marker passive: selecting it performs only CodeMirror's ordinary
+cursor placement at the underlying Markdown. Source exposes the exact text.
 
-Read and Live Preview have a direct keyboard toggle. Source is entered through
+Review and Edit have a direct keyboard toggle. Source is entered through
 the mode menu. It may alter protected or machine-facing YAML; the researcher
 accepts responsibility, while Scholium still performs targeted, byte-preserving
 validation and never reserializes the whole frontmatter.
@@ -528,12 +530,48 @@ Restore does not Settle the restored revision.
 
 ### 7.2 Discussion, Comment, and written annotation
 
-Read, Live Preview, and Source expose **Comment** for an exact passage
-selection. Comment begins or adds a source-anchored researcher turn inside the
-current note's active Discussion. Actions also permits an unanchored whole-note
-turn and optional focal notes. These are one Discussion model, not parallel
-Comment and Discuss archives. Reattachment remains available only when
-quotation and context identify one reliable location.
+Review exposes **Comment** for a nonempty passage selection; Edit and Source do
+not. Review selection reveals one compact contextual Comment bar near the
+text. Edit selection instead reveals only the common formatting commands valid
+for that exact selection. The Format menu and keyboard retain equivalent
+formatting routes; the secondary-click menu does not duplicate these common
+commands and contains only operations whose meaning depends on the clicked
+construct. It contains no Preview command or Preview submenu. Footnote hover,
+focus, and navigation belong to Review only; Edit retains only the ordinary
+cursor-placement needed to reach the underlying Markdown, and Source exposes
+the exact text. Markdown has no bundled underline command.
+
+Comment expands the contextual bar in place into a bounded multiline field.
+Return saves and closes it, Shift-Return inserts a line break, and Escape
+cancels. Return enters a brief saving state; the field closes only after
+Scholium confirms the portable write. A failed write keeps the exact Comment
+text in place for retry, while a committed write with stale derived views is
+reported as saved rather than invited to duplicate. Saving creates or appends a researcher-authored line Comment inside
+the current note's active Discussion without copying instructions, opening an
+agent application, or presenting a sheet. A line Comment records only the
+stable Note, the exact Note fingerprint, and its one-based inclusive starting
+and ending lines; selection text, quotation, surrounding context, and exact
+byte or UTF-16 offsets are neither stored in that Comment nor sent to an agent.
+Review may use the current rendered selection transiently to resolve its actual
+Markdown source lines before discarding the selection payload. The submission
+remains bound to the original stable Note and exact fingerprint; changing the
+Note, revision, mode, or editor generation cannot redirect it.
+If the Note later changes, the original revision-bound line location remains
+truthful and is not guessed or reattached.
+
+**Discuss** is the deliberate agent-interaction boundary. It automatically
+includes the current Note's existing line Comments, permits an optional
+unanchored whole-note turn and focal notes, and opens the one active Discussion
+when it already has a resolved Discuss Action. A Comment-only draft first opens
+the ordinary Discuss Action. Every new Discuss Action begins with a concise,
+editable request to discuss the Note including any existing Comments, so the
+researcher need not restate this routine collection rule; preparation binds
+the researcher-selected Method/Profile revision to that same Discussion and
+preserves every Comment before any agent handoff. Later handoffs reload the
+machine-local instructions for that frozen run rather than constructing an
+application-owned substitute prompt. Comments and Discuss remain one Discussion model, not
+parallel archives, but adding a Comment never initiates Discuss or an agent
+handoff.
 
 Discussion begins without source mutation. It remains resumable through
 researcher turns, attributed agent replies, and any separately authorized
@@ -589,7 +627,8 @@ remain protected implementation identities. The public Action snapshot records
 the scholarly Action, exact Method Skill and Profile revisions, not an internal
 name presented as researcher vocabulary.
 
-Every official and custom Action uses one Scholium-rendered modular sheet. An
+Every official and custom Action uses one Scholium-rendered modular sheet;
+the document's lightweight line-Comment composer is not an Action sheet. An
 Action Profile may request only bounded native modules: current Target or
 passage; a natural-language instruction; bounded text, single-choice,
 multi-choice, or toggle parameters; optional focal note or Material selection;
@@ -696,8 +735,10 @@ participant; Pin is explicit. Record titles derive quietly from Action,
 context, and date and are not editable.
 
 The detail uses attributed editorial prose, fine rules, restrained context,
-and collapsed **Record Details**, not chat bubbles. Passage turns retain their
-exact excerpt and anchor; multi-note context appears once. Active Discussion
+and collapsed **Record Details**, not chat bubbles. New line Comments retain
+only their revision-bound inclusive line range; legacy exact-passage data is
+never required for a new Comment or agent handoff. Multi-note context appears
+once. Active Discussion
 never moves into this window. The toolbar, Research menu, and keyboard route
 open the window without revealing or changing Inspector state.
 
@@ -1399,7 +1440,7 @@ native presentation and state ownership without restating each workflow.
 - Give every mutable fact one owner. Route commands to the focused window or
   document; identities, repositories, indexes, watchers, and registries are
   shared workspace services, not view state.
-- Derive Read, Live Preview, Source, Properties, Search, and research views
+- Derive Review, Edit, Source, Properties, Search, and research views
   reversibly from authoritative Markdown; projections never reconstruct
   writable source.
 - Distinguish source, researcher prose, agent content, Discussion turns,
@@ -1554,9 +1595,18 @@ Menus follow researcher tasks:
 
 ### 18.4 Document modes, context, and Properties
 
-Read, Live Preview, and Source are modes, not tabs, and follow Section 5.1.
-Ordinary scrolling space clears initial editor content from chrome; there is no
-floating context surface.
+Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Ordinary
+scrolling space clears initial editor content from chrome. Review owns a
+transient Comment bar and its in-place field; Edit owns a separate formatting
+bar; Source owns neither. Each disappears when the selection clears, focus
+leaves its task, or the document mode changes. The Comment field also
+disappears when the researcher cancels or a save is acknowledged.
+
+The two selection surfaces share one restrained component style: an opaque
+semantic surface background, the resolved Scholium accent boundary, semantic
+text, and the same focus treatment. They consume only resolved roles derived
+from Variables and do not introduce independent colors, blur, glass, or
+shadow recipes.
 
 All modes use one adaptive editorial-grid configuration for insets, responsive
 threshold, trailing space, text scale, and semantic typography. The selected
@@ -1564,13 +1614,13 @@ Appearance supplies exactly one **Line width** value: default **72ch**, range
 **48–96ch**, step **1ch**. Scholium provides no built-in preset, full-width
 switch, percentage mode, or per-mode override. Remaining inline space is split
 symmetrically with `max(mode minimum inset, (available width - line width) / 2)`.
-The regular minimum inset is **32 CSS px** in Read/Live and **40 CSS px** in
+The regular minimum inset is **32 CSS px** in Review/Edit and **40 CSS px** in
 Source; all three reduce to **20 CSS px** below **44rem**. The **32 CSS px** top
 inset and existing trailing scrolling space remain separate. CSS lengths never
-convert to macOS points. `ch` resolves against Read/Live Body type or Source's
+convert to macOS points. `ch` resolves against Review/Edit Body type or Source's
 exact-source type and therefore does not promise an exact character count.
 Shared ownership and units are approved; the 72ch default still requires the
-adaptation matrix and researcher side-by-side acceptance. Live Preview and
+adaptation matrix and researcher side-by-side acceptance. Edit and
 Source reconfigure one retained CodeMirror state; window, split, theme,
 line-width, or text-size changes never replace it or create an Editor window.
 
@@ -1578,8 +1628,8 @@ Appearance is machine-local configuration and never Markdown or vault state.
 It stores multiple named configurations, keeps exactly one selected, and
 supports save, rename, duplicate, and deletion while retaining at least one.
 Structured controls configure the shared Line width plus Body, headings, and
-each semantic Callout. Line width applies to Read, Live Preview, and Source;
-Body, heading, and Callout presentation applies only to Read and Live Preview.
+each semantic Callout. Line width applies to Review, Edit, and Source; Body,
+heading, and Callout presentation applies only to Review and Edit.
 The default configuration uses the values in §19.2; Callout controls map
 presentation parameters without changing protected role structure, generated
 accessible role names, or source-controlled fold state. Mathematics remains
@@ -1619,8 +1669,8 @@ truncating. The selected mode is exposed accessibly, Left/Right Arrow changes
 mode, Tab enters its content, and every mode owns at most one vertical scroll.
 
 A new window begins in Overview and stores its last mode per window. Restoring
-a window restores that mode; switching notes, Document tabs, or Read/Live
-Preview/Source never changes it. Hiding the Inspector transfers only its Show
+a window restores that mode; switching notes, Document tabs, or
+Review/Edit/Source never changes it. Hiding the Inspector transfers only its Show
 route under §18.2; no Inspector content moves into Document. Research menu and
 keyboard commands may open an Action without revealing the Inspector or
 changing its mode.
@@ -1656,10 +1706,10 @@ the last complete graph readable and offers a full-row Retry action.
 
 Actions begins directly with the role-valid default Actions in Section 8.1.
 There is no horizontal Research Activity HUD, completed chronology, generic
-**Open Research Record** row, **Work with Agent** wrapper, or mode picker. A
-resumable active Discussion may appear as one quiet current-state row beside
-the Discuss Action; selecting it reopens the same Action sheet rather than a
-parallel Discussion destination.
+**Open Research Record** row, **Work with Agent** wrapper, or mode picker. The
+Discuss Action itself reopens the current Note's resumable active Discussion
+and automatically includes its existing line Comments. It has no second
+active-Discussion row or parallel destination.
 
 Researcher-enabled custom Actions follow under one **Researcher Skills** group
 in the researcher-chosen order. Only Profiles with **Show in Actions** enabled
@@ -1753,6 +1803,7 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Attention / Connect | 关注 / 连接 |
 | Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
+| Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Comment / Discussion / Response | 评论 / 讨论 / 回应 |
 | Research Record | 研究记录 |
 | Set Aside / SET ASIDE | 搁置 |
@@ -1807,7 +1858,7 @@ native safe area once; the titlebar owns vertical alignment.
   controls, Settings, alerts, section headings, field labels, action names,
   dates, and compact scanning cues. The fixed **Scholium** Alegreya wordmark
   remains the identity exception.
-- **Alegreya** is for Read/Live Preview prose and may identify content-derived
+- **Alegreya** is for Review/Edit prose and may identify content-derived
   titles, linked research objects, researcher judgments, field values,
   explanations, Scope, Limitations, and other research content when density,
   scaling, and mixed-script fallback remain legible.
@@ -1816,7 +1867,7 @@ native safe area once; the titlebar owns vertical alignment.
 - The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
   **2.0** line spacing, **1em** paragraph spacing, **0.02em** tracking,
   justified text, and no hyphenation. Line width is configurable from
-  **48–96ch** in **1ch** steps and is shared by Read, Live Preview, and Source.
+  **48–96ch** in **1ch** steps and is shared by Review, Edit, and Source.
   Its H1/H2/H3–H6 scales are provisionally **200/150/115%**, with centered H1
   and medium shared heading weight. These document typography values are
   user-configurable. Callouts inherit Body typography and expose independent
@@ -1876,8 +1927,8 @@ radius, shadow, border, gradient, or paper scales.
   create no parallel spacing namespace.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
   duration scale, parallax, animated grain, or decorative motion.
-- Document rhythm remains renderer-aware and provisional until Read/Live
-  Preview pass side-by-side review at ordinary, narrow, mixed-script, and 200%
+- Document rhythm remains renderer-aware and provisional until Review/Edit
+  pass side-by-side review at ordinary, narrow, mixed-script, and 200%
   text conditions.
 
 ### 19.4 Provisional layout defaults
@@ -1944,6 +1995,10 @@ a new recorded decision.
   removal follows the next/previous/Back focus sequence defined in §18.3.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
+- The separate Review Comment bar and Edit formatting bar are keyboard
+  reachable and expose every visible command by name. Review's Comment field announces the inclusive line
+  range, Return-to-save, Shift-Return-to-insert-line, and Escape-to-cancel
+  behavior without moving or erasing the underlying document selection.
 - The Appearance Line width slider has a localized label and help text, exposes
   its current value in character-width units, and supports standard keyboard
   adjustment and VoiceOver without requiring pointer dragging.
@@ -1988,7 +2043,7 @@ package, signing, or performance result.
 
 - Bootstrap success/failure, registration/restoration, and independent windows;
 - create/open/read/edit/save/Search and explicit cross-vault navigation;
-- Live Preview/Source fidelity, formatting, passage Comment and Markdown
+- Edit/Source fidelity, formatting, Review passage Comment, and Markdown
   Callout authoring,
   and mode changes;
 - About/Properties, optional Research Unit, Settle, and simplified Actions;
@@ -2069,6 +2124,7 @@ only in Git history.
 | **D-101** | 1–2, 5–11, 13–14, 18–22 | **D-102** | 5.2, 8.1, 13, 15.2, 18.4–18.7, 19.2–19.3, Appendix A |
 | **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
 | **D-105** | 7, 8.1–8.2, 9–11, 13, 18.1, 18.5, 18.7, 22 | **D-106** | 1–3, 5–11, 13, 16–22 |
+| **D-107** | 7.1, 8.1, 14, 22 | **D-108** | 7.2, 8.1–8.2, 18.4–18.5, 20, 22 |
 
 Clean-cutover inventory:
 
@@ -2115,7 +2171,7 @@ Clean-cutover inventory:
   raw-source corpus, vector/AI ranking, exposed implementation score, visible
   workspace scrim, custom blur, or partial system-selection slab.
 - **D-100:** Appearance exposes one machine-local Line width, default **72ch**,
-  range **48–96ch**, and step **1ch**, shared by Read, Live Preview, and Source.
+  range **48–96ch**, and step **1ch**, shared by Review, Edit, and Source.
   Retain no built-in preset, full-width switch, percentage mode, or per-mode
   override. Center the measure with the mode-specific minimum insets, keep
   Source exact-source typography, and update retained CodeMirror presentation
@@ -2211,6 +2267,23 @@ Clean-cutover inventory:
   Portable Settle state remains one current judgment per Note and remains
   semantically independent of recovery. Retention order is a durable per-Note
   monotonic sequence and does not change when the machine clock moves backward.
+- **D-108:** make Comment a lightweight revision-bound line annotation rather
+  than an agent handoff. Expose it only from Review through its transient
+  selection bar; keep Edit's separate selection bar limited to formatting;
+  save Comment in place with Return, insert a line with
+  Shift-Return, and cancel with Escape. New Comments retain only Note identity,
+  fingerprint, and inclusive line range, never selected text, quotation,
+  context, or exact offsets, and never attempt reattachment after the Note
+  changes. Discuss deliberately starts agent interaction, automatically
+  collects the current Note's Comments, and reopens the one active Discussion
+  through its own Action without a duplicate current-state row. Keep Source
+  exact and free of Comment presentation, and keep required Action validation
+  at preparation without blanking stable launchers or serially resolving the
+  same Profile before a sheet can appear. Keep common formatting in Edit's
+  selection bar, Format menu, and keyboard rather than duplicating it in the
+  secondary-click menu; omit Preview from secondary click and keep footnote
+  preview and navigation in Review. Give Review Comment and Edit formatting the same opaque,
+  Variables-derived selection-surface style.
 
 Unresolved work must not be described as complete:
 

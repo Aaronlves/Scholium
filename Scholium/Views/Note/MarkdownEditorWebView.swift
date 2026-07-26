@@ -6,8 +6,6 @@ import WebKit
 private final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
     weak var editorSession: MarkdownEditorSession?
-    /// A deliberate message to an external research agent.
-    var onRequestComment: (() -> Void)?
     private var rightMouseMonitor: Any?
 
     override func viewDidMoveToWindow() {
@@ -24,10 +22,7 @@ private final class WindowAttachedWebView: WKWebView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
-        return prepareEditorContextMenu(
-            menu,
-            previewPoint: convert(event.locationInWindow, from: nil)
-        )
+        return prepareEditorContextMenu(menu)
     }
 
     private func installRightMouseMonitorIfNeeded() {
@@ -48,7 +43,6 @@ private final class WindowAttachedWebView: WKWebView {
         guard event.window === window else { return event }
         let point = convert(event.locationInWindow, from: nil)
         guard bounds.contains(point) else { return event }
-
         // WKWebView dispatches pointer events to a private descendant view, so
         // overriding the outer view's menu(for:) is not enough. Ask the actual
         // hit view for WebKit's standard menu, append Scholium's domain
@@ -57,24 +51,75 @@ private final class WindowAttachedWebView: WKWebView {
         let standardMenu = targetView === self
             ? (super.menu(for: event) ?? NSMenu())
             : (targetView.menu(for: event) ?? NSMenu())
-        let menu = prepareEditorContextMenu(standardMenu, previewPoint: point)
-        NSMenu.popUpContextMenu(menu, with: event, for: targetView)
+        let menu = prepareEditorContextMenu(standardMenu)
+        // Return from the local monitor before opening the replacement menu.
+        // A synchronous nested menu loop lets WebKit enqueue its own generic
+        // menu before the original event is consumed, producing a second
+        // Font/Preview hierarchy after Scholium's menu closes.
+        DispatchQueue.main.async {
+            NSMenu.popUpContextMenu(menu, with: event, for: targetView)
+        }
         return nil
     }
 
-    private func prepareEditorContextMenu(_ menu: NSMenu, previewPoint: NSPoint? = nil) -> NSMenu {
+    private func prepareEditorContextMenu(_ menu: NSMenu) -> NSMenu {
         menu.identifier = NSUserInterfaceItemIdentifier("scholium.editor.contextMenu")
         for item in menu.items where item.identifier?.rawValue.hasPrefix("scholium.editor.") == true {
+            menu.removeItem(item)
+        }
+        let commonFormattingTitles = Set([
+            "Bold",
+            "Italic",
+            "Emphasis",
+            "Underline",
+            "Inline Code",
+            "Link",
+            ScholiumL10n.string("Bold"),
+            ScholiumL10n.string("Emphasis"),
+            ScholiumL10n.string("Inline Code"),
+            ScholiumL10n.string("Link"),
+        ])
+        for item in menu.items where commonFormattingTitles.contains(item.title) {
+            menu.removeItem(item)
+        }
+        let formattingSubmenuTitles = Set([
+            "Font",
+            "Typeface",
+            ScholiumL10n.string("Typeface"),
+        ])
+        for item in menu.items where item.submenu != nil {
+            let submenuDescriptors = item.submenu?.items.map { submenuItem in
+                "\(submenuItem.title) \(String(describing: submenuItem.action))".lowercased()
+            } ?? []
+            let containsCommonFormatting = submenuDescriptors.contains { descriptor in
+                descriptor.contains("bold")
+                    || descriptor.contains("italic")
+                    || descriptor.contains("underline")
+            }
+            if formattingSubmenuTitles.contains(item.title) || containsCommonFormatting {
+                menu.removeItem(item)
+            }
+        }
+        // Preview is already available through the clicked construct's
+        // ordinary inline interaction. Keep secondary click free of a second
+        // preview route and of WebKit's unexplained nested Preview menu.
+        let genericPreviewTitles = Set([
+            "Preview",
+            "Show Preview",
+            ScholiumL10n.string("Preview"),
+            ScholiumL10n.string("Show Preview"),
+        ])
+        for item in menu.items where genericPreviewTitles.contains(item.title) {
             menu.removeItem(item)
         }
         guard let editorSession else { return menu }
         let available = Set(editorSession.context?.availableCommands ?? [])
         var addedAction = false
+        // Selection formatting belongs to the Edit selection toolbar, the
+        // Format menu, and keyboard shortcuts. Keep secondary click for
+        // commands whose meaning depends on the clicked construct.
         for (title, command) in [
-            (ScholiumL10n.string("Bold"), MarkdownEditorCommand.bold),
-            (ScholiumL10n.string("Emphasis"), .emphasis),
-            (ScholiumL10n.string("Link"), .standardLink),
-            (ScholiumL10n.string("Toggle Task"), .toggleTask),
+            (ScholiumL10n.string("Toggle Task"), MarkdownEditorCommand.toggleTask),
         ] where available.contains(command) {
             if !addedAction { menu.addItem(.separator()) }
             menu.addItem(editorMenuItem(title, command: command))
@@ -102,33 +147,24 @@ private final class WindowAttachedWebView: WKWebView {
             menu.addItem(item)
             addedAction = true
         }
-        if editorSession.canAttemptPreview {
-            if !addedAction { menu.addItem(.separator()) }
-            let item = NSMenuItem(
-                title: ScholiumL10n.string("Preview"),
-                action: #selector(showPreview(_:)),
-                keyEquivalent: ""
-            )
-            item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.preview")
-            item.target = self
-            if let previewPoint {
-                item.representedObject = NSValue(point: previewPoint)
-            }
-            menu.addItem(item)
-            addedAction = true
-        }
-        if onRequestComment != nil,
-           editorSession.context?.composing != true,
-           editorSession.context?.selections.contains(where: \.isNonempty) == true {
-            if !addedAction { menu.addItem(.separator()) }
-            if onRequestComment != nil {
-                let item = NSMenuItem(title: ScholiumL10n.string("Comment…"), action: #selector(requestComment(_:)), keyEquivalent: "")
-                item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.agentComment")
-                item.target = self
-                menu.addItem(item)
-            }
-        }
+        removeRedundantSeparators(from: menu)
         return menu
+    }
+
+    private func removeRedundantSeparators(from menu: NSMenu) {
+        while menu.items.first?.isSeparatorItem == true {
+            menu.removeItem(at: 0)
+        }
+        while menu.items.last?.isSeparatorItem == true {
+            menu.removeItem(at: menu.items.count - 1)
+        }
+        var previousWasSeparator = false
+        for item in menu.items.reversed() {
+            if item.isSeparatorItem && previousWasSeparator {
+                menu.removeItem(item)
+            }
+            previousWasSeparator = item.isSeparatorItem
+        }
     }
 
     private func editorMenuItem(_ title: String, command: MarkdownEditorCommand) -> NSMenuItem {
@@ -152,22 +188,6 @@ private final class WindowAttachedWebView: WKWebView {
         }
     }
 
-    @objc private func requestComment(_ sender: NSMenuItem) {
-        onRequestComment?()
-    }
-
-    @objc private func showPreview(_ sender: NSMenuItem) {
-        if let point = (sender.representedObject as? NSValue)?.pointValue {
-            editorSession?.showPreview(
-                at: CGPoint(
-                    x: point.x,
-                    y: isFlipped ? point.y : bounds.height - point.y
-                )
-            )
-        } else {
-            editorSession?.showPreview()
-        }
-    }
 }
 
 enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
@@ -179,8 +199,8 @@ enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable
 
     var title: String {
         switch self {
-        case .read: ScholiumL10n.string("Read")
-        case .livePreview: ScholiumL10n.string("Live Preview")
+        case .read: ScholiumL10n.string("Review")
+        case .livePreview: ScholiumL10n.string("Edit")
         case .source: ScholiumL10n.string("Source")
         }
     }
@@ -361,35 +381,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if pendingLinkPreviews.contains(where: { head >= $0.from && head < $0.to }) {
             return true
         }
-        let normalized = checkedSource.replacingOccurrences(of: "\r\n", with: "\n") as NSString
-        guard head >= 0, head <= normalized.length,
-              let expression = try? NSRegularExpression(pattern: #"\[\^([^\]\n]{1,240})\]"#) else {
-            return false
-        }
-        return expression.matches(
-            in: normalized as String,
-            range: NSRange(location: 0, length: normalized.length)
-        ).contains { match in
-            guard NSLocationInRange(head, NSRange(location: match.range.location, length: match.range.length + 1)) else {
-                return false
-            }
-            let precedingNewline = normalized.range(
-                of: "\n",
-                options: .backwards,
-                range: NSRange(location: 0, length: match.range.location)
-            )
-            let lineStart = precedingNewline.location == NSNotFound
-                ? 0
-                : precedingNewline.location + precedingNewline.length
-            let prefix = normalized.substring(with: NSRange(
-                location: lineStart,
-                length: match.range.location - lineStart
-            ))
-            let following = match.range.upperBound < normalized.length
-                ? normalized.substring(with: NSRange(location: match.range.upperBound, length: 1))
-                : ""
-            return !prefix.allSatisfy(\.isWhitespace) || following != ":"
-        }
+        return false
     }
 
     override convenience init() {
@@ -666,7 +658,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     const display = document.querySelector('.cm-live-math.scholium-math-display');
                     return display ? getComputedStyle(display).overflowX : '';
                 })(),
-                previewAnchorCount: document.querySelectorAll('[data-link-preview-index], [data-footnote-preview-id]').length,
+                previewAnchorCount: document.querySelectorAll('[data-link-preview-index]').length,
                 previewPopoverHidden: document.getElementById('scholium-preview-popover')?.hidden !== false,
                 previewTitle: document.querySelector('#scholium-preview-popover .scholium-preview-title')?.textContent || '',
                 previewNestedListCount: document.querySelectorAll('#scholium-preview-popover ul ul').length,
@@ -880,27 +872,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard result as? Bool == true else { throw SessionError.invalidResult }
     }
 
-    func testingPreviewFirstFootnote() async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const anchor = document.querySelector('.cm-live-footnote-reference-widget [data-footnote-preview-id]');
-            if (!anchor) return false;
-            anchor.dispatchEvent(new PointerEvent('pointermove', {
-                bubbles: true,
-                cancelable: true,
-                metaKey: true
-            }));
-            await new Promise(resolve => setTimeout(resolve, 350));
-            return document.getElementById('scholium-preview-popover')?.hidden === false;
-            """,
-            arguments: [:],
-            in: nil,
-            contentWorld: .page
-        )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
-    }
-
     func testingApplyScrollAnchor(_ anchor: EditorScrollAnchor) async throws {
         guard isReady, isLoaded, let webView,
               let wireAnchor = wireAnchor(from: anchor, in: checkedSource) else {
@@ -936,7 +907,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startupTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, !self.isReady else { return }
-            self.reportError(String(localized: "Live Preview did not finish starting.", table: "Localizable", bundle: .module))
+            self.reportError(String(localized: "Edit mode did not finish starting.", table: "Localizable", bundle: .module))
         }
     }
 
@@ -2071,7 +2042,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onDocumentChange: (String) -> Void
     let onRequestSave: () -> Void
     let onRequestSearch: () -> Void
-    var onRequestComment: () -> Void = {}
     let onLinkActivation: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
@@ -2136,7 +2106,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         let webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         webView.editorSession = session
-        webView.onRequestComment = onRequestComment
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.documentID = documentID
@@ -2167,7 +2136,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
-            webView.onRequestComment = onRequestComment
         }
         context.coordinator.onDocumentChange = onDocumentChange
         context.coordinator.onRequestSave = onRequestSave
@@ -2214,7 +2182,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = nil
-            webView.onRequestComment = nil
         }
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
         webView.navigationDelegate = nil

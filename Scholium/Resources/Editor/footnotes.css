@@ -68,6 +68,7 @@
 }
 
 .cm-live-footnote-reference-widget { white-space: normal; }
+.cm-live-footnote-reference-widget .footnote-reference { cursor: text; }
 
 .cm-live-footnotes-widget {
   display: block;
@@ -76,8 +77,10 @@
   white-space: normal;
 }
 
-.cm-live-footnotes-widget li,
-.cm-live-footnotes-widget .footnote-return { cursor: text; }
+.cm-live-footnotes-widget li {
+  padding-inline-end: 0;
+  cursor: text;
+}
 
 .cm-live-footnote-definition-source {
   color: var(--scholium-color-secondary-text);

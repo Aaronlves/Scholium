@@ -1197,6 +1197,61 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Line Comments append without retaining selected prose or exact offsets")
+    func lineCommentsShareOneDiscussion() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let firstReference = try ResearchLineReference(
+            fingerprint: target.fingerprint,
+            line: 1,
+            endLine: 1
+        )
+        let secondReference = try ResearchLineReference(
+            fingerprint: target.fingerprint,
+            line: 2,
+            endLine: 2
+        )
+
+        let first = try await handle.research.createComment(
+            target: target,
+            lineReference: firstReference,
+            researcherMessage: "Clarify this transition."
+        )
+        let second = try await handle.research.createComment(
+            target: target,
+            lineReference: secondReference,
+            researcherMessage: "This premise may be doing two jobs."
+        )
+
+        #expect(second.id == first.id)
+        #expect(second.statements.count == 2)
+        #expect(second.statements.compactMap(\.lineReference) == [
+            firstReference, secondReference,
+        ])
+        #expect(second.statements.allSatisfy { $0.passage == nil })
+
+        let impossibleLine = try ResearchLineReference(
+            fingerprint: target.fingerprint,
+            line: 10_000,
+            endLine: 10_000
+        )
+        await #expect(throws: ResearchOperationError.self) {
+            _ = try await handle.research.createComment(
+                target: target,
+                lineReference: impossibleLine,
+                researcherMessage: "This cannot be attached."
+            )
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Synced duplicate primary Discussions are withheld from current projection")
     func duplicatePrimaryDiscussionsFailCurrentProjectionClosed() async throws {
         let fixture = try await ResearchFixture.make()
@@ -1290,8 +1345,8 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Passage-first Discuss Action returns the active Discussion ID without residue")
-    func passageFirstDiscussActionReturnsRepairIdentity() async throws {
+    @Test("A Comment-only Discussion activates through the resolved Discuss Method")
+    func commentOnlyDiscussionActivatesThroughDiscussMethod() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1308,27 +1363,28 @@ struct ResearchFunctionOperationsTests {
             passage: try commentAnchor(in: document),
             researcherMessage: "Begin with a passage Comment."
         )
-        let beforeRuns = try await handle.snapshot().research.functionRuns.map(\.id)
-
-        do {
-            _ = try await handle.research.prepareAction(
-                try await actionRequest(
-                    handle: handle,
-                    actionID: .discuss,
-                    target: actionNote(target),
-                    parameterValues: [
-                        ResearchActionModuleID(rawValue: "researcher-request")!:
-                            .text("Continue at whole-note scope."),
-                    ]
-                )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .discuss,
+                target: actionNote(target),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "researcher-request")!:
+                        .text("Continue at whole-note scope."),
+                ]
             )
-            Issue.record("Expected the active Discussion repair route.")
-        } catch ResearchFunctionContractError.activeDiscussionExists(let id) {
-            #expect(id == discussion.id)
-        }
+        )
 
-        #expect(try await handle.snapshot().research.functionRuns.map(\.id) == beforeRuns)
-        #expect(try await handle.research.activeDiscussion(id: discussion.id) == discussion)
+        #expect(preparation.runID == discussion.id)
+        let activated = try await handle.research.activeDiscussion(id: discussion.id)
+        #expect(activated.action?.actionID == .discuss)
+        #expect(activated.method != nil)
+        #expect(activated.statements.first == discussion.statements.first)
+        #expect(activated.statements.last?.id == preparation.runID)
+        #expect(activated.statements.last?.text == "Continue at whole-note scope.")
+        #expect(try await handle.snapshot().research.functionRuns.contains {
+            $0.id == discussion.id
+        })
         await runtime.shutdown()
     }
 

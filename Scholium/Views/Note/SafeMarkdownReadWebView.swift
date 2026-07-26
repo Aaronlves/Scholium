@@ -16,8 +16,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var linkPreviews: [DocumentLinkPreview] = []
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
-    /// A deliberate communication request to an external agent.
-    var onCommentSelection: ((MarkdownReviewSelection) -> Void)? = nil
+    /// A lightweight researcher Comment saved into the active Discussion.
+    var onCommentSelection: ((PassageCommentSubmission) -> Void)? = nil
+    var commentComposerRequestID: UUID? = nil
+    var commentResolution: PassageCommentResolution? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
@@ -41,6 +43,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
             onCommentSelection: onCommentSelection,
+            commentComposerRequestID: commentComposerRequestID,
+            commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
@@ -106,6 +110,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
             onCommentSelection: onCommentSelection,
+            commentComposerRequestID: commentComposerRequestID,
+            commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
@@ -173,7 +179,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
-        private var onCommentSelection: ((MarkdownReviewSelection) -> Void)?
+        private var onCommentSelection: ((PassageCommentSubmission) -> Void)?
+        private var commentComposerRequestID: UUID?
+        private var commentResolution: PassageCommentResolution?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
@@ -193,8 +201,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadFinalizationTask: Task<Void, Never>?
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var onScrollFractionChange: ((Double) -> Void)?
+
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
         private var sourceUTF16Length = 0
+        private var sourceUTF8Length = 0
+        private var source = ""
         private var targetSourceLine: Int?
         private var onSourceLineReached: (() -> Void)?
         private var lastReachedSourceLine: Int?
@@ -211,7 +222,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
-            onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
+            onCommentSelection: ((PassageCommentSubmission) -> Void)?,
+            commentComposerRequestID: UUID?,
+            commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
@@ -229,6 +242,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
+            self.commentComposerRequestID = commentComposerRequestID
+            self.commentResolution = commentResolution
             self.onSelectionChange = onSelectionChange
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
@@ -248,7 +263,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
-            onCommentSelection: ((MarkdownReviewSelection) -> Void)?,
+            onCommentSelection: ((PassageCommentSubmission) -> Void)?,
+            commentComposerRequestID: UUID?,
+            commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
@@ -292,6 +309,42 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
             schedulePostLoadPositioningIfNeeded(in: webView)
+            requestCommentComposerIfNeeded(commentComposerRequestID, in: webView)
+            resolveCommentIfNeeded(commentResolution, in: webView)
+        }
+
+        private func requestCommentComposerIfNeeded(_ requestID: UUID?, in webView: WKWebView) {
+            guard let requestID, requestID != commentComposerRequestID else { return }
+            commentComposerRequestID = requestID
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView, self.activeWebView === webView else { return }
+                _ = try? await webView.callAsyncJavaScript(
+                    "return window.scholiumShowCommentComposer?.() === true",
+                    arguments: [:],
+                    in: nil,
+                    contentWorld: .page
+                )
+            }
+        }
+
+        private func resolveCommentIfNeeded(
+            _ resolution: PassageCommentResolution?,
+            in webView: WKWebView
+        ) {
+            guard let resolution, resolution != commentResolution else { return }
+            commentResolution = resolution
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView, self.activeWebView === webView else { return }
+                _ = try? await webView.callAsyncJavaScript(
+                    "return window.scholiumResolveCommentSubmission?.(requestID, succeeded) === true",
+                    arguments: [
+                        "requestID": resolution.requestID,
+                        "succeeded": resolution.succeeded,
+                    ],
+                    in: nil,
+                    contentWorld: .page
+                )
+            }
         }
 
         private func adoptCallerScrollRestoreRequest(_ request: ScrollRestoreRequest?) {
@@ -337,7 +390,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 capabilitySignature,
             ].joined(separator: ":")
             guard loadedSignature != signature else { return }
+            self.source = source
             sourceUTF16Length = source.utf16.count
+            sourceUTF8Length = source.utf8.count
             ensureScrollRestoreRequest(
                 reason: hasLoadedPage ? .webViewRebuild : .documentLoad
             )
@@ -400,9 +455,40 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       !target.isEmpty,
                       target.utf8.count <= 8_192 else { return }
                 onLinkClick(target)
-            case "commentSelection":
-                guard let selection = reviewSelection(from: payload) else { return }
-                onCommentSelection?(selection)
+            case "commentSubmitted":
+                guard let requestID = payload["requestID"] as? String,
+                      !requestID.isEmpty else { return }
+                guard let comment = payload["comment"] as? String,
+                      !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      comment.utf8.count <= 16_384,
+                      let selection = reviewSelection(from: payload),
+                      let anchor = ResearchFunctionSelectionCapture.anchor(
+                          for: selection,
+                          in: source,
+                          relativePath: documentID
+                      ) else {
+                    if let activeWebView {
+                        resolveCommentIfNeeded(
+                            PassageCommentResolution(
+                                requestID: requestID,
+                                succeeded: false
+                            ),
+                            in: activeWebView
+                        )
+                    }
+                    return
+                }
+                onCommentSelection?(PassageCommentSubmission(
+                    requestID: requestID,
+                    documentID: documentID,
+                    fingerprint: DocumentFingerprint(
+                        sha256: fingerprint,
+                        byteCount: sourceUTF8Length
+                    ),
+                    startLine: anchor.line,
+                    endLine: anchor.endLine,
+                    text: comment
+                ))
             case "selectionChanged":
                 guard payload["text"] != nil else {
                     onSelectionChange?(nil)
@@ -1028,8 +1114,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     };
                   },
             """
+            let qaCommentSubmitControl = Bundle.main.bundleIdentifier == "com.scholium.qa"
+                ? #"<button id="qa-submit-comment" class="scholium-qa-only-control" type="button">Submit Comment for QA</button>"#
+                : ""
             #else
             let readScrollTestingMembers = ""
+            let qaCommentSubmitControl = ""
             #endif
             let previewPayload = base64JSON(linkPreviews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).map {
                 ReadLinkPreview(
@@ -1059,8 +1149,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 <p class="scholium-preview-metadata"></p>
                 <div class="scholium-preview-body"></div>
               </aside>
-              <div id="selection-actions" hidden>
-                <button id="comment-selection" type="button">Comment</button>
+              <div id="selection-actions" class="scholium-selection-actions" hidden>
+                <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar" aria-label="Selection actions">
+                  <button id="comment-selection" type="button">Comment</button>
+                </div>
+                <div id="comment-composer" hidden>
+                  <textarea id="comment-text" rows="2" maxlength="16384" aria-label="Comment" aria-describedby="comment-help"></textarea>
+                  <span id="comment-help">Return saves. Shift-Return inserts a line. Escape cancels.</span>
+                  \(qaCommentSubmitControl)
+                </div>
               </div>
               <script>
               (() => {
@@ -1081,7 +1178,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const previewMetadata = popover.querySelector('.scholium-preview-metadata');
                 const previewBody = popover.querySelector('.scholium-preview-body');
                 const selectionActions = document.getElementById('selection-actions');
+                const selectionToolbar = document.getElementById('selection-toolbar');
                 const commentButton = document.getElementById('comment-selection');
+                const commentComposer = document.getElementById('comment-composer');
+                const commentText = document.getElementById('comment-text');
+                const commentHelp = document.getElementById('comment-help');
+                const qaCommentSubmit = document.getElementById('qa-submit-comment');
+                let pendingCommentRequestID = null;
+                let commentAnchorElement = null;
+                let commentSelectionRange = null;
                 const previewByRange = new Map(linkPreviews.map(preview => [
                   preview.utf16LowerBound + ':' + preview.utf16UpperBound,
                   preview
@@ -1248,15 +1353,74 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 document.addEventListener('keydown', event => {
                   if (event.key === 'Escape') {
                     hidePopover();
+                    if (!commentComposer.hidden) return;
+                    commentComposer.hidden = true;
+                    selectionToolbar.hidden = false;
+                    commentText.value = '';
                     selectionActions.hidden = true;
                   }
                 });
 
+                function showCommentComposer() {
+                  if (!commentEnabled || selectionActions.hidden || !commentButton.dataset.startLine) return false;
+                  const startLine = Number(commentButton.dataset.startLine);
+                  const endLine = Number(commentButton.dataset.endLine || commentButton.dataset.startLine);
+                  const lineLabel = startLine === endLine
+                    ? 'line ' + startLine
+                    : 'lines ' + startLine + ' through ' + endLine;
+                  commentText.setAttribute('aria-label', 'Comment for ' + lineLabel);
+                  selectionToolbar.hidden = true;
+                  commentComposer.hidden = false;
+                  const measured = selectionActions.getBoundingClientRect();
+                  const anchorLeft = Number(commentButton.dataset.anchorLeft || '12');
+                  const anchorTop = Number(commentButton.dataset.anchorTop || '12');
+                  selectionActions.style.left = Math.max(12, Math.min(anchorLeft, window.innerWidth - measured.width - 12)) + 'px';
+                  selectionActions.style.top = Math.max(8, Math.min(anchorTop, window.innerHeight - measured.height - 12)) + 'px';
+                  commentText.focus();
+                  return true;
+                }
+                window.scholiumShowCommentComposer = showCommentComposer;
+
+                function restoreCommentFocus() {
+                  if (!commentAnchorElement) return;
+                  commentAnchorElement.tabIndex = -1;
+                  commentAnchorElement.focus({preventScroll: true});
+                  if (commentSelectionRange) {
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(commentSelectionRange);
+                  }
+                }
+
+                window.scholiumResolveCommentSubmission = (requestID, succeeded) => {
+                  if (!pendingCommentRequestID || requestID !== pendingCommentRequestID) return false;
+                  pendingCommentRequestID = null;
+                  commentText.disabled = false;
+                  if (!succeeded) {
+                    commentHelp.textContent = 'Could not save. Your Comment is still here.';
+                    commentText.focus();
+                    return true;
+                  }
+                  commentText.value = '';
+                  commentHelp.textContent = 'Return saves. Shift-Return inserts a line. Escape cancels.';
+                  commentComposer.hidden = true;
+                  selectionToolbar.hidden = false;
+                  selectionActions.hidden = true;
+                  restoreCommentFocus();
+                  return true;
+                };
+
                 if (selectionEnabled) {
-                  document.addEventListener('selectionchange', () => {
+                  const updateSelectionActions = () => {
+                    // Focusing the Comment textarea collapses the document
+                    // selection. Keep the anchored composer stable until the
+                    // researcher saves or cancels it; that focus transition is
+                    // not a request to discard the marginal note.
+                    if (!commentComposer.hidden) return;
                     const selection = window.getSelection();
                     const text = selection ? selection.toString().trim() : '';
                     if (!text) {
+                      commentSelectionRange = null;
                       selectionActions.hidden = true;
                       post('selectionChanged');
                       return;
@@ -1264,11 +1428,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     const range = selection.getRangeAt(0);
                     const main = document.getElementById('scholium-document');
                     if (!main || !main.contains(range.startContainer) || !main.contains(range.endContainer)) {
+                      commentSelectionRange = null;
                       selectionActions.hidden = true;
                       post('selectionChanged');
                       return;
                     }
                     const rect = range.getBoundingClientRect();
+                    commentSelectionRange = range.cloneRange();
                     const beforeRange = document.createRange();
                     beforeRange.selectNodeContents(main);
                     beforeRange.setEnd(range.startContainer, range.startOffset);
@@ -1277,39 +1443,129 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     afterRange.setStart(range.endContainer, range.endOffset);
                     const sourceElement = (range.startContainer.parentElement || range.startContainer)
                       .closest && (range.startContainer.parentElement || range.startContainer).closest('[data-source-line]');
+                    const endSourceElement = (range.endContainer.parentElement || range.endContainer)
+                      .closest && (range.endContainer.parentElement || range.endContainer).closest('[data-source-line]');
+                    const startLine = Number(sourceElement ? sourceElement.dataset.sourceLine : '1');
+                    const endLine = Number(endSourceElement ? endSourceElement.dataset.sourceLine : String(startLine));
                     const payload = {
                       text: text.slice(0, 2000),
                       contextBefore: beforeRange.toString().slice(-80),
                       contextAfter: afterRange.toString().slice(0, 80),
-                      startLine: Number(sourceElement ? sourceElement.dataset.sourceLine : '1'),
-                      endLine: Number(sourceElement ? sourceElement.dataset.sourceLine : '1')
+                      startLine: Math.min(startLine, endLine),
+                      endLine: Math.max(startLine, endLine)
                     };
                     post('selectionChanged', payload);
                     if (!commentEnabled) {
                       selectionActions.hidden = true;
                       return;
                     }
+                    commentButton.dataset.startLine = String(payload.startLine);
+                    commentButton.dataset.endLine = String(payload.endLine);
                     commentButton.dataset.selection = payload.text;
                     commentButton.dataset.contextBefore = payload.contextBefore;
                     commentButton.dataset.contextAfter = payload.contextAfter;
-                    commentButton.dataset.sourceLine = String(payload.startLine);
+                    commentButton.dataset.anchorLeft = String(rect.left);
+                    commentButton.dataset.anchorTop = String(rect.top - 38);
+                    commentAnchorElement = sourceElement;
                     commentButton.hidden = !commentEnabled;
                     selectionActions.style.left = Math.max(12, Math.min(rect.right - 175, window.innerWidth - 200)) + 'px';
                     selectionActions.style.top = Math.max(8, rect.top - 38) + 'px';
                     selectionActions.hidden = false;
+                  };
+                  document.addEventListener('selectionchange', updateSelectionActions);
+                  window.addEventListener('blur', () => {
+                    if (commentComposer.hidden) selectionActions.hidden = true;
                   });
                 }
                 if (commentEnabled) {
-                  commentButton.addEventListener('click', () => {
-                    const text = commentButton.dataset.selection || '';
-                    if (text) post('commentSelection', {
-                      text,
+                  // Keep the document selection alive through the button's
+                  // pointer-down. The subsequent click owns the deliberate
+                  // transition from the compact bar to the anchored field.
+                  commentButton.addEventListener('mousedown', event => event.preventDefault());
+                  commentButton.addEventListener('click', showCommentComposer);
+                  let preservesNextInsertedLineBreak = false;
+                  const makeRequestID = () => {
+                    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+                      return globalThis.crypto.randomUUID();
+                    }
+                    const bytes = new Uint8Array(16);
+                    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+                      globalThis.crypto.getRandomValues(bytes);
+                    } else {
+                      for (let index = 0; index < bytes.length; index += 1) {
+                        bytes[index] = Math.floor(Math.random() * 256);
+                      }
+                    }
+                    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+                    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+                    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
+                    return hex.slice(0, 4).join('') + '-' + hex.slice(4, 6).join('') + '-'
+                      + hex.slice(6, 8).join('') + '-' + hex.slice(8, 10).join('') + '-'
+                      + hex.slice(10, 16).join('');
+                  };
+                  const submitComment = () => {
+                    const comment = commentText.value.trim();
+                    if (!comment || pendingCommentRequestID) return;
+                    if (new TextEncoder().encode(comment).byteLength > 16384) {
+                      commentHelp.textContent = 'This Comment is too long to save here.';
+                      return;
+                    }
+                    pendingCommentRequestID = makeRequestID();
+                    commentText.disabled = true;
+                    commentHelp.textContent = 'Saving…';
+                    post('commentSubmitted', {
+                      requestID: pendingCommentRequestID,
+                      comment,
+                      text: commentButton.dataset.selection || '',
                       contextBefore: commentButton.dataset.contextBefore || '',
                       contextAfter: commentButton.dataset.contextAfter || '',
-                      startLine: Number(commentButton.dataset.sourceLine || '1'),
-                      endLine: Number(commentButton.dataset.sourceLine || '1')
+                      startLine: Number(commentButton.dataset.startLine || '1'),
+                      endLine: Number(commentButton.dataset.endLine || commentButton.dataset.startLine || '1')
                     });
-                    selectionActions.hidden = true;
+                  };
+                  qaCommentSubmit && qaCommentSubmit.addEventListener('click', submitComment);
+                  commentText.addEventListener('keydown', event => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (pendingCommentRequestID) return;
+                      commentText.value = '';
+                      commentHelp.textContent = 'Return saves. Shift-Return inserts a line. Escape cancels.';
+                      commentComposer.hidden = true;
+                      selectionToolbar.hidden = false;
+                      selectionActions.hidden = true;
+                      restoreCommentFocus();
+                      return;
+                    }
+                    const isReturn = event.key === 'Enter'
+                      || event.key === 'Return'
+                      || event.code === 'Enter'
+                      || event.code === 'NumpadEnter';
+                    if (!isReturn || event.isComposing) return;
+                    if (event.shiftKey) {
+                      preservesNextInsertedLineBreak = true;
+                      setTimeout(() => { preservesNextInsertedLineBreak = false; }, 0);
+                      return;
+                    }
+                    event.preventDefault();
+                    submitComment();
+                  });
+                  // Accessibility text insertion can bypass DOM keydown while
+                  // still producing an InputEvent whose type is insertText.
+                  // Treat only an actually inserted line break as Return-to-save;
+                  // a real Shift-Return marks exactly its following input as prose.
+                  commentText.addEventListener('input', event => {
+                    const insertedLineBreak = event.inputType === 'insertLineBreak'
+                      || event.inputType === 'insertParagraph'
+                      || (event.inputType === 'insertText'
+                        && ((typeof event.data === 'string' && /[\\r\\n]/.test(event.data))
+                          || /[\\r\\n]$/.test(commentText.value)));
+                    if (!insertedLineBreak) return;
+                    if (preservesNextInsertedLineBreak) {
+                      preservesNextInsertedLineBreak = false;
+                      return;
+                    }
+                    submitComment();
                   });
                 }
 
@@ -1593,12 +1849,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         img, video, svg { max-width: 100%; height: auto; }
         blockquote { margin: 1em 0; padding-left: var(--scholium-rhythm-quote-inset); border-left: 3px solid color-mix(in srgb, AccentColor 50%, transparent); color: color-mix(in srgb, CanvasText 78%, transparent); }
         \(ScholiumCalloutStyles.css)
-        #selection-actions { position: fixed; z-index: 110; display: flex; gap: 4px; padding: 4px; border: 1px solid color-mix(in srgb, AccentColor 40%, transparent); border-radius: 8px; background: color-mix(in srgb, Canvas 92%, AccentColor 8%); box-shadow: 0 6px 20px color-mix(in srgb, CanvasText 15%, transparent); }
-        #selection-actions button { border: 0; border-radius: 5px; padding: 4px 7px; color: CanvasText; background: transparent; font: inherit; }
-        #selection-actions button:hover, #selection-actions button:focus-visible { background: color-mix(in srgb, AccentColor 18%, transparent); outline: none; }
+        #comment-composer { display: grid; gap: 4px; width: min(320px, calc(100vw - 32px)); }
+        #comment-composer[hidden], #selection-toolbar[hidden] { display: none; }
+        #comment-text { box-sizing: border-box; width: 100%; min-height: 58px; max-height: 132px; resize: vertical; padding: 7px 8px; border: 1px solid var(--scholium-color-separator); border-radius: 5px; color: var(--scholium-color-primary-text); background: var(--scholium-color-document-background); font: 13px/1.35 -apple-system, BlinkMacSystemFont, sans-serif; }
+        #comment-text:focus-visible { outline: 2px solid var(--scholium-color-accent); outline-offset: 1px; }
+        #comment-help { color: var(--scholium-color-muted-text); font: 11px/1.25 -apple-system, BlinkMacSystemFont, sans-serif; }
+        .scholium-qa-only-control { justify-self: end; font: 10px -apple-system, BlinkMacSystemFont, sans-serif; }
         .raw-html, .raw-html-inline { color: GrayText; }
         @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
-        @media (prefers-reduced-transparency: reduce) { #selection-actions { background: Canvas; backdrop-filter: none; } }
         \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }

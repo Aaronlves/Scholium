@@ -27,6 +27,10 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
         statements.lazy.compactMap(\.passage).first
     }
 
+    public var lineReference: ResearchLineReference? {
+        statements.lazy.compactMap(\.lineReference).first
+    }
+
     public var awaitsAgentReply: Bool {
         statements.last?.author == .researcher
     }
@@ -118,6 +122,41 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
             statements: statements,
             createdAt: createdAt,
             updatedAt: updatedAt
+        )
+    }
+
+    /// Binds a Comment-only draft to the exact resolved Discuss Action while
+    /// preserving its earlier researcher-authored line Comments.
+    public func activating(
+        action: ResearchActionRecordIdentity,
+        method: PortableResearchMethodReference,
+        participatingNotes: [PortableResearchNoteRevision],
+        statement: PortableResearchStatement,
+        at updatedAt: Date
+    ) throws -> Self {
+        let currentNotes = Dictionary(
+            uniqueKeysWithValues: self.participatingNotes.map { ($0.noteID, $0) }
+        )
+        let activatedNotes = Dictionary(
+            uniqueKeysWithValues: participatingNotes.map { ($0.noteID, $0) }
+        )
+        guard self.action == nil,
+              self.method == nil,
+              currentNotes.allSatisfy({ activatedNotes[$0.key] == $0.value }),
+              statement.author == .researcher,
+              statement.createdAt >= createdAt else {
+            throw PortableResearchDiscussionError.invalidDiscussion
+        }
+        return try Self(
+            id: id,
+            triptychID: triptychID,
+            primaryNoteID: primaryNoteID,
+            action: action,
+            method: method,
+            participatingNotes: participatingNotes,
+            statements: statements + [statement],
+            createdAt: createdAt,
+            updatedAt: max(self.updatedAt, max(updatedAt, statement.createdAt))
         )
     }
 

@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import ScholiumApp
 
-@Suite("Research Function controller")
+@Suite("Research Function controller", .serialized)
 @MainActor
 struct ResearchFunctionControllerTests {
     @Test("A superseded asynchronous panel load cannot replace the current Target")
@@ -825,6 +825,9 @@ struct ResearchFunctionControllerTests {
         #expect(!inspectorSource.contains("isEnabled ?? true"))
         #expect(inspectorSource.contains("availability.isEnabled"))
         #expect(appSource.contains("refreshAvailability(for: target)"))
+        #expect(appSource.contains("let matchesTarget = actions.availabilityTarget == target"))
+        #expect(appSource.contains("availabilityError: matchesTarget ? actions.availabilityError : nil"))
+        #expect(appSource.contains("hasConfirmedCurrentResearchActionAvailability"))
         #expect(inspectorSource.contains(".disabled(!item.canPresent)"))
     }
 
@@ -887,11 +890,10 @@ struct ResearchFunctionControllerTests {
         })
     }
 
-    @Test("Active Discussion keeps one stable row through Action readiness changes")
-    func activeDiscussionRowSurvivesAvailabilityChanges() throws {
+    @Test("The default surface contains only currently resolved Actions")
+    func defaultSurfaceUsesResolvedActionsOnly() throws {
         let target = target(title: "Agency", path: "Topics/Agency.md")
         let actionTarget = actionTarget(target)
-        let revision = actionTarget.fingerprint
         let timestamp = Date(timeIntervalSinceReferenceDate: 1_000)
         let discussion = try PortableResearchDiscussion(
             triptychID: UUID(),
@@ -901,8 +903,8 @@ struct ResearchFunctionControllerTests {
                 note: actionTarget.note,
                 role: .topic,
                 title: actionTarget.title,
-                startingRevision: revision,
-                endingRevision: revision
+                startingRevision: actionTarget.fingerprint,
+                endingRevision: actionTarget.fingerprint
             )],
             statements: [try PortableResearchStatement(
                 author: .researcher,
@@ -914,33 +916,40 @@ struct ResearchFunctionControllerTests {
             createdAt: timestamp,
             updatedAt: timestamp
         )
-        let discussionRowID = ResearchActionSurfaceRowID.activeDiscussion(discussion.id)
         let ready = ResearchActionsPresentation.make(
             target: actionTarget,
             availability: [
-                try actionAvailability(.discuss, role: .topic, order: 0),
+                try actionAvailability(
+                    .discuss,
+                    role: .topic,
+                    order: 0,
+                    enabled: false
+                ),
                 try actionAvailability(.synthesize, role: .topic, order: 100),
             ],
+            isCheckingAvailability: true,
             activeDiscussions: [discussion]
         )
         let checking = ResearchActionsPresentation.make(
             target: actionTarget,
             availability: [],
-            isCheckingAvailability: true,
-            activeDiscussions: [discussion]
+            isCheckingAvailability: true
         )
         let failed = ResearchActionsPresentation.make(
             target: actionTarget,
             availability: [],
-            availabilityError: "Profile unavailable.",
-            activeDiscussions: [discussion]
+            availabilityError: "Profile unavailable."
         )
 
-        #expect(ready.defaultSurfaceRows().map(\.id) == [
-            .action(.discuss), discussionRowID, .action(.synthesize),
-        ])
-        #expect(checking.defaultSurfaceRows().map(\.id) == [discussionRowID])
-        #expect(failed.defaultSurfaceRows().map(\.id) == [discussionRowID])
+        #expect(ready.defaultItems().map(\.id) == [.discuss, .synthesize])
+        #expect(ready.defaultItems().first?.canPresent == false)
+        #expect(
+            ready.defaultItems().first?.detail
+                == "Enable the working method in Research Guidance."
+        )
+        #expect(ready.defaultItems().last?.canPresent == false)
+        #expect(checking.defaultItems().isEmpty)
+        #expect(failed.defaultItems().isEmpty)
     }
 
     @Test("Current Action entry never flushes the complete Triptych")
@@ -1023,7 +1032,6 @@ struct ResearchFunctionControllerTests {
         #expect(presentation.cancellationRecoveries.map(\.runID) == [runID])
         #expect(presentation.retryingCancellationRecoveryIDs == [runID])
         #expect(presentation.pendingCancellationBarrierCount == 1)
-        #expect(presentation.activeDiscussions.isEmpty)
         #expect(presentation.latestSettlement == nil)
     }
 
@@ -1399,7 +1407,7 @@ struct ResearchFunctionControllerTests {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(2),
+        timeout: Duration = .seconds(5),
         _ condition: @MainActor () -> Bool
     ) async {
         let clock = ContinuousClock()

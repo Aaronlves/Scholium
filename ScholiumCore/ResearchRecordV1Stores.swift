@@ -500,6 +500,61 @@ public actor PortableResearchRecordStore {
         }
     }
 
+    /// Atomically turns one Comment-only draft into the exact resolved
+    /// Discuss Action. Concurrently appended Comments are preserved because
+    /// the replacement is derived from the current file under the store lock.
+    @discardableResult
+    public func activateDiscussion(
+        id: UUID,
+        action: ResearchActionRecordIdentity,
+        method: PortableResearchMethodReference,
+        participatingNotes: [PortableResearchNoteRevision],
+        statement: PortableResearchStatement,
+        at updatedAt: Date = Date()
+    ) throws -> PortableResearchDiscussion {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                _ = try requireHealthyActiveListing()
+                let current = try readDiscussion(id: id)
+                try requireNoDeletionMarkers(
+                    noteIDs: Set(participatingNotes.map(\.noteID))
+                )
+                if current.action == action,
+                   current.method == method,
+                   current.participatingNotes == participatingNotes,
+                   current.statements.contains(statement) {
+                    return current
+                }
+                let updated = try current.activating(
+                    action: action,
+                    method: method,
+                    participatingNotes: participatingNotes,
+                    statement: statement,
+                    at: updatedAt
+                )
+                let (canonical, data) = try Self.canonicalized(updated)
+                guard data.count <= Self.maximumRecordByteCount else {
+                    throw ResearchRecordStoreV1Error.recordTooLarge(
+                        Self.maximumRecordByteCount
+                    )
+                }
+                let readback = try storage.replace(
+                    data,
+                    directory: "active",
+                    fileName: Self.fileName(id)
+                )
+                let stored = try Self.decode(
+                    PortableResearchDiscussion.self,
+                    from: readback
+                )
+                guard stored == canonical else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+                }
+                return stored
+            }
+        }
+    }
+
     /// Refreshes passage attachment only when the authoritative Markdown
     /// yields one reliable location. Ambiguity is retained explicitly and no
     /// scholarly statement text or note bytes are changed.

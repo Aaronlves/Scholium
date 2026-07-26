@@ -30392,7 +30392,7 @@ ${fence}
   var unsupportedFilePasteMessage = "File and image paste is not supported in Editor 1.0.";
   function editorAccessibilityAttributes(mode) {
     return {
-      "aria-label": mode === "livePreview" ? "Markdown live preview editor" : "Markdown source editor",
+      "aria-label": mode === "livePreview" ? "Markdown editor, Edit mode" : "Markdown source editor",
       role: "textbox",
       "aria-multiline": "true",
       spellcheck: "true",
@@ -30928,26 +30928,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       return [{ from, to, title, relationship, fragment, htmlBody }];
     });
   }
-  function footnotePreviewContent(source, identifier4, excluded = [], dialect = scholiumFootnoteDialect) {
-    const requested = identifier4.trim();
-    if (!requested || requested.length > 240) return null;
-    const definition = footnotePresentation(source, excluded, dialect).definitions.find((candidate) => candidate.identifier === requested);
-    const content2 = definition?.content.trim().slice(0, 1600) ?? "";
-    return content2 || null;
-  }
-  function footnoteReferenceAt(source, position, excluded = [], dialect = scholiumFootnoteDialect) {
-    if (!supportsFootnoteDialect(dialect)) return null;
-    if (!Number.isInteger(position) || position < 0 || position > source.length) return null;
-    for (const match of source.matchAll(/\[\^([^\]\n]{1,240})\]/g)) {
-      const from = match.index;
-      const to = from + match[0].length;
-      if (excluded.some((range) => range.from < to && range.to > from)) continue;
-      const lineStart = source.lastIndexOf("\n", from - 1) + 1;
-      if (/^ {0,3}\[\^[^\]]+\]:/.test(source.slice(lineStart, to + 1))) continue;
-      if (position >= from && position <= to) return match[1];
-    }
-    return null;
-  }
 
   // editor.ts
   var editorStartupStartedAt = performance.now();
@@ -30966,7 +30946,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var currentMode = "livePreview";
   var hiddenFrontmatterSourceSelection = null;
   var liveWidgetReuseCounts = { table: 0, callout: 0, footnote: 0 };
-  var selectedFootnotePreviewTarget = null;
   var lastUndoLabel;
   var lastRedoLabel;
   var post = (message) => nativeHandler?.postMessage({
@@ -31471,9 +31450,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function liveProjectionIndexForState(state) {
     return state.field(liveProjectionIndexField, false) ?? buildLiveProjectionIndex(state);
   }
-  function semanticLiteralRanges(state) {
-    return liveProjectionIndexForState(state).literals;
-  }
   function visibleMathExpressions(view, coveredRanges, index) {
     if (!editingDialect || coveredRanges.length === 0) return [];
     const doc2 = view.state.doc;
@@ -31931,34 +31907,25 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const wrapper = document.createElement("sup");
       wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
       wrapper.dataset.scholiumProtected = "footnote";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "footnote-reference";
-      button.dataset.footnote = String(this.reference.ordinal);
-      button.dataset.footnotePreviewId = this.reference.identifier.slice(0, 240);
-      button.dataset.scholiumProtected = "footnote-preview-anchor";
-      button.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
-      button.tabIndex = -1;
-      button.textContent = String(this.reference.ordinal);
+      const marker = document.createElement("span");
+      marker.className = "footnote-reference";
+      marker.dataset.footnote = String(this.reference.ordinal);
+      marker.dataset.scholiumProtected = "footnote-marker";
+      marker.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
+      marker.textContent = String(this.reference.ordinal);
       if (this.reference.definitionFrom === null) {
-        button.setAttribute("aria-disabled", "true");
-        button.classList.add("footnote-reference-missing");
+        marker.setAttribute("aria-disabled", "true");
+        marker.classList.add("footnote-reference-missing");
       }
       footnoteReferencePresentations.set(wrapper, this.reference);
       wrapper.addEventListener("mousedown", (event) => {
         event.preventDefault();
         const reference = footnoteReferencePresentations.get(wrapper);
         if (!reference) return;
-        const rect = button.getBoundingClientRect();
-        selectedFootnotePreviewTarget = {
-          identifier: reference.identifier,
-          from: reference.from,
-          rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
-        };
         view.dispatch({ selection: { anchor: reference.from }, scrollIntoView: true });
         view.focus();
       });
-      wrapper.append(button);
+      wrapper.append(marker);
       return wrapper;
     }
     updateDOM(dom) {
@@ -32011,12 +31978,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           mathematics: editingDialect?.mathematics,
           resolveCallout: calloutDefinition
         });
-        const back = document.createElement("button");
-        back.type = "button";
-        back.className = "footnote-return";
-        back.tabIndex = -1;
-        back.textContent = "\u21A9";
-        back.setAttribute("aria-label", `Edit footnote ${definition.ordinal}`);
         const revealSource = (event) => {
           event.preventDefault();
           const current = footnoteDefinitionPresentations.get(item);
@@ -32025,7 +31986,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           view.focus();
         };
         item.addEventListener("mousedown", revealSource);
-        item.append(content2, back);
+        item.append(content2);
         list.append(item);
       }
       section.append(list);
@@ -32569,10 +32530,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       notice.setAttribute("role", "note");
       notice.setAttribute(
         "aria-label",
-        "Live Preview is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."
+        "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."
       );
       const title = document.createElement("strong");
-      title.textContent = "Live Preview unavailable";
+      title.textContent = "Edit mode unavailable";
       const detail = document.createElement("span");
       detail.textContent = "Close the YAML frontmatter in Source mode to restore the visual projection.";
       notice.append(title, detail);
@@ -32644,9 +32605,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   );
   var idleTimer = null;
   var stateReporter = EditorView.updateListener.of((update) => {
-    if (update.selectionSet && selectedFootnotePreviewTarget?.from !== update.state.selection.main.head) {
-      selectedFootnotePreviewTarget = null;
-    }
     const isProgrammatic = update.transactions.some(
       (transaction) => transaction.annotation(programmaticDocumentChange) === true
     );
@@ -32904,6 +32862,93 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }));
     return { from: context.pos - match[2].length, options, filter: false };
   }
+  var selectionToolbar = document.createElement("div");
+  selectionToolbar.id = "scholium-selection-actions";
+  selectionToolbar.className = "scholium-selection-actions";
+  selectionToolbar.hidden = true;
+  selectionToolbar.dataset.scholiumProtected = "selection-actions";
+  var selectionCommandBar = document.createElement("div");
+  selectionCommandBar.className = "scholium-selection-toolbar";
+  selectionCommandBar.setAttribute("role", "toolbar");
+  selectionCommandBar.setAttribute("aria-label", "Formatting actions");
+  selectionToolbar.append(selectionCommandBar);
+  document.body.append(selectionToolbar);
+  var selectionToolbarView = null;
+  function selectionToolbarButton(title, label, action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = title;
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", action);
+    selectionCommandBar.append(button);
+    return button;
+  }
+  function applySelectionToolbarCommand(view, command2) {
+    const transformed = transformMarkdown(
+      view.state.doc.toString(),
+      view.state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head })),
+      command2,
+      { protectedRanges: protectedCommandRanges() }
+    );
+    if (!transformed) return;
+    const transformedSource = applySourceChanges(view.state.doc.toString(), transformed.changes);
+    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
+    view.dispatch({
+      changes: transformed.changes,
+      selection: EditorSelection.create(
+        transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))
+      ),
+      annotations: Transaction.userEvent.of(`input.scholium.${command2}`)
+    });
+    lastUndoLabel = transformed.undoLabel;
+    lastRedoLabel = transformed.undoLabel;
+    view.focus();
+  }
+  for (const [title, label, command2] of [
+    ["B", "Bold", "bold"],
+    ["I", "Italic", "emphasis"],
+    ["</>", "Inline Code", "inlineCode"],
+    ["\u2197", "Link", "standardLink"]
+  ]) {
+    selectionToolbarButton(title, label, () => {
+      if (selectionToolbarView) applySelectionToolbarCommand(selectionToolbarView, command2);
+    });
+  }
+  function hideSelectionToolbar() {
+    selectionToolbar.hidden = true;
+    selectionToolbarView = null;
+  }
+  function updateSelectionToolbar(view) {
+    const selection = view.state.selection;
+    const main = selection.main;
+    if (currentMode !== "livePreview" || view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
+      hideSelectionToolbar();
+      return;
+    }
+    const from = Math.min(main.anchor, main.head);
+    const to = Math.max(main.anchor, main.head);
+    const start = view.coordsAtPos(from);
+    const end = view.coordsAtPos(to);
+    if (!start || !end) {
+      hideSelectionToolbar();
+      return;
+    }
+    selectionToolbarView = view;
+    selectionToolbar.hidden = false;
+    const measured = selectionToolbar.getBoundingClientRect();
+    selectionToolbar.style.left = `${Math.max(12, Math.min(
+      Math.min(start.left, end.left),
+      window.innerWidth - measured.width - 12
+    ))}px`;
+    selectionToolbar.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
+  }
+  var selectionToolbarReporter = EditorView.updateListener.of((update) => {
+    if (update.docChanged || update.selectionSet || update.focusChanged) {
+      updateSelectionToolbar(update.view);
+    }
+  });
   var editorExtensions = [
     highlightSpecialChars(),
     history(),
@@ -32928,6 +32973,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     structuralInteractionKeymap,
     saveKeymap,
     stateReporter,
+    selectionToolbarReporter,
     linkActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
     liveProjectionIndexField,
@@ -33027,43 +33073,10 @@ ${preview.fragment}` : relationship;
     });
     positionPreview(anchor, startedAt);
   }
-  function showFootnotePreview(identifier4, anchor, startedAt) {
-    const source = editor.state.doc.toString();
-    const content2 = footnotePreviewContent(
-      source,
-      identifier4,
-      semanticLiteralRanges(editor.state).excluded,
-      editingDialect?.footnotes
-    );
-    if (!content2) {
-      announceEditorMessage(editor.contentDOM, "The referenced footnote is unavailable.");
-      hidePreview();
-      return false;
-    }
-    previewTitle.textContent = `Footnote ${identifier4}`;
-    previewMetadata.textContent = "Referenced footnote";
-    previewBody.replaceChildren();
-    appendMarkdownBlocks(content2, previewBody, {
-      mathematics: editingDialect?.mathematics,
-      resolveCallout: calloutDefinition
-    });
-    recordEditorMetric("cached-preview-work", startedAt, {
-      documentLength: editor.state.doc.length
-    });
-    positionPreview(anchor, startedAt);
-    return true;
-  }
   function showPreviewAtSelection() {
     const startedAt = performance.now();
     if (currentMode !== "livePreview") return false;
     const head = editor.state.selection.main.head;
-    if (selectedFootnotePreviewTarget?.from === head) {
-      return showFootnotePreview(
-        selectedFootnotePreviewTarget.identifier,
-        selectedFootnotePreviewTarget.rect,
-        startedAt
-      );
-    }
     const coords = editor.coordsAtPos(head);
     if (!coords) return false;
     const preview = linkPreviews.find((candidate) => head >= candidate.from && head < candidate.to);
@@ -33071,13 +33084,6 @@ ${preview.fragment}` : relationship;
       showLinkPreview(preview, coords, startedAt);
       return true;
     }
-    const identifier4 = footnoteReferenceAt(
-      editor.state.doc.toString(),
-      head,
-      semanticLiteralRanges(editor.state).excluded,
-      editingDialect?.footnotes
-    );
-    if (identifier4) return showFootnotePreview(identifier4, coords, startedAt);
     announceEditorMessage(editor.contentDOM, "No preview is available at the insertion point.");
     return false;
   }
@@ -33085,7 +33091,7 @@ ${preview.fragment}` : relationship;
     const startedAt = performance.now();
     if (currentMode !== "livePreview") return false;
     const anchor = document.elementFromPoint(x, y)?.closest(
-      "[data-link-preview-index], [data-footnote-preview-id]"
+      "[data-link-preview-index]"
     );
     if (!anchor) return showPreviewAtSelection();
     const previewIndex = Number(anchor.dataset.linkPreviewIndex);
@@ -33093,15 +33099,11 @@ ${preview.fragment}` : relationship;
       showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
       return true;
     }
-    const identifier4 = anchor.dataset.footnotePreviewId;
-    if (identifier4) {
-      return showFootnotePreview(identifier4, anchor.getBoundingClientRect(), startedAt);
-    }
     return showPreviewAtSelection();
   }
   function previewAnchorAtEvent(event) {
     if (!event.metaKey || currentMode !== "livePreview" || !(event.target instanceof Element)) return null;
-    return event.target.closest("[data-link-preview-index], [data-footnote-preview-id]");
+    return event.target.closest("[data-link-preview-index]");
   }
   document.addEventListener("pointermove", (event) => {
     const anchor = previewAnchorAtEvent(event);
@@ -33120,8 +33122,6 @@ ${preview.fragment}` : relationship;
         showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
         return;
       }
-      const identifier4 = anchor.dataset.footnotePreviewId;
-      if (identifier4) showFootnotePreview(identifier4, anchor.getBoundingClientRect(), startedAt);
     }, 300);
   }, { passive: true });
   document.addEventListener("keyup", (event) => {
@@ -33156,6 +33156,7 @@ ${preview.fragment}` : relationship;
   var scrollSessionLongestFrame = 0;
   var scrollSessionDroppedFrameCount = 0;
   editor.scrollDOM.addEventListener("scroll", () => {
+    updateSelectionToolbar(editor);
     if (scrollSessionStartedAt === null) scrollSessionStartedAt = performance.now();
     if (scrollMeasurementFrame === null) {
       scrollMeasurementFrame = window.requestAnimationFrame(() => {
@@ -33686,6 +33687,7 @@ ${preview.fragment}` : relationship;
       editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
       editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
       currentMode = nextMode;
+      updateSelectionToolbar(editor);
       updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
       scheduleEditorInteractionReport(true);
       recordEditorMetric("mode-toggle-work", startedAt, {

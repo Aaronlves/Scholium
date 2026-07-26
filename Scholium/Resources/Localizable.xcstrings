@@ -4257,18 +4257,18 @@
         }
       }
     },
-    "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Read, Live Preview, and Source." : {
+    "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Read, Live Preview, and Source."
+            "value" : "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择一项命名的文稿配置，然后分别调整行宽、排版和每种语义 Callout。保存后修改生效；阅读、实时预览和源码模式共用行宽。"
+            "value" : "选择一项命名的文稿配置，然后分别调整行宽、排版和每种语义 Callout。保存后修改生效；审阅、编辑和源码模式共用行宽。"
           }
         }
       }
@@ -7989,19 +7989,19 @@
         }
       }
     },
-    "Edit in Live Preview" : {
+    "Edit visually" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Edit in Live Preview"
+            "value" : "Edit visually"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在实时预览中编辑"
+            "value" : "可视化编辑"
           }
         }
       }
@@ -11031,34 +11031,34 @@
         }
       }
     },
-    "Live Preview" : {
+    "Edit" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Live Preview"
+            "value" : "Edit"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "实时预览"
+            "value" : "编辑"
           }
         }
       }
     },
-    "Live Preview did not finish starting." : {
+    "Edit mode did not finish starting." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Live Preview did not finish starting."
+            "value" : "Edit mode did not finish starting."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "实时预览未完成启动。"
+            "value" : "编辑模式未完成启动。"
           }
         }
       }
@@ -15937,34 +15937,34 @@
         }
       }
     },
-    "Read" : {
+    "Review" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Read"
+            "value" : "Review"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "阅读"
+            "value" : "审阅"
           }
         }
       }
     },
-    "Read mode is unavailable" : {
+    "Review mode is unavailable" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Read mode is unavailable"
+            "value" : "Review mode is unavailable"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "阅读模式不可用"
+            "value" : "审阅模式不可用"
           }
         }
       }
@@ -19552,18 +19552,18 @@
         }
       }
     },
-    "Scholium could not attach this selection to one exact source range. Select the passage again in Read, Live Preview, or Source." : {
+    "Scholium could not attach this selection to one exact source range. Select the passage again in Review, Edit, or Source." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Scholium could not attach this selection to one exact source range. Select the passage again in Read, Live Preview, or Source."
+            "value" : "Scholium could not attach this selection to one exact source range. Select the passage again in Review, Edit, or Source."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 无法将此选择附加到一个精确的源范围。在“阅读”、实时预览或来源中再次选择该段落。"
+            "value" : "Scholium 无法将此选择附加到一个精确的源范围。请在审阅、编辑或源码模式中重新选择该段落。"
           }
         }
       }
@@ -20820,6 +20820,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示全部"
+          }
+        }
+      }
+    },
+    "Show Preview" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show Preview"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示预览"
           }
         }
       }

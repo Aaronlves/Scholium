@@ -505,12 +505,16 @@ actually-used Materials, Application-confirmed changes, and discrepancies.
 They have no generic metadata escape hatch and cannot encode a
 protected Function ID, assembled instructions, raw key, bookmark, absolute
 path, diff, token count, transport log, or window state. Strict decoding is
-recursive through Note identities, fingerprints, passage anchors, Method
-resources, and Source references; unknown nested fields and path-shaped
+recursive through Note identities, fingerprints, passage anchors, line-only
+Comment references, Method resources, and Source references; unknown nested fields and path-shaped
 resource names fail closed rather than surviving as ignored JSON.
 
-The common Action sheet submits the execution kind, semantic Profile revision,
-and researcher Profile-document revision it presented. Application resolution
+The Inspector's already-visible Action availability initializes the common
+sheet synchronously; declared Note and Source modules load their bounded data
+inside the visible sheet rather than blocking its presentation. Same-Target
+availability refresh retains its rows but disables them until revalidation
+finishes. The sheet submits the execution kind, semantic Profile revision, and
+researcher Profile-document revision it presented. Application resolution
 compares all three before parameters or authority are constructed, so an old
 same-kind sheet cannot acquire broader readable roles, write operations, or
 property authority after Settings changes.
@@ -524,9 +528,15 @@ Store reopen removes incomplete app-owned staging files while holding the same
 lock and portable coordination boundary. The lock lives below the verified
 Application Support Triptych directory; it is not portable authority.
 
-`PortableResearchDiscussion` is the single current exchange model. Its primary
-Note may carry an exact passage anchor and its participant list may also contain
-whole-note or focal Note context. Appending a turn rewrites only that active
+`PortableResearchDiscussion` is the single current exchange model. A
+lightweight Comment statement carries only the exact Note fingerprint and a
+one-based inclusive line range; it stores no selected prose or source offsets.
+The Web surface keeps its textarea until an identity-bound native acknowledgement;
+failures preserve the entered text, and committed-refresh failures acknowledge
+the durable write without inviting a duplicate. Review resolves rendered text to
+its real Markdown source line only as transient input.
+Older passage statements retain their exact anchors for compatibility, and the
+participant list may also contain whole-note or focal Note context. Appending a turn rewrites only that active
 file; closing the sheet performs no storage action. Finish validates current
 participant revisions, creates exactly one `kind: discussion` record, and
 removes the active file under the shared coordination lock. A matching
@@ -587,13 +597,14 @@ independent record browser remains Session 19, and Record Trash/diff remains
 Session 20.
 While any active Discussion exists, the current document surface rereads the
 portable projection at a bounded interval. A cooperating CLI reply can
-therefore update the Actions row while the Discussion sheet is closed; reopening
-reads the active file directly and a finished or removed record dismisses the
-stale route.
-If a passage-first Discussion already exists when the researcher submits the
-default Discuss sheet, the typed preparation repair carries that Discussion's
-stable ID; the window closes the redundant Function sheet and opens the active
-portable exchange without leaving a local run or checkpoint.
+therefore update current state while the Discussion sheet is closed. Selecting
+Discuss opens a Method-bound exchange directly. A Comment-only draft instead
+passes once through the ordinary Action resolver, reuses its stable Discussion
+ID as the Local-v2 run ID, and atomically adds the exact Action/Method identity
+and request statement without losing earlier Comments. Subsequent handoffs
+reload that run's machine-local instructions. Actions has no duplicate
+active-Discussion row. A finished
+or removed record dismisses the stale route.
 
 Current Action opening flushes only the current editor registration. The Action
 request carries the execution kind shown in the sheet, and Application
@@ -1091,10 +1102,11 @@ Each retained `DocumentSessionModel` owns:
 
 - its persistent `MarkdownEditorSession` and flush token;
 - the exact editor mirror and committed revision;
-- Read, Live Preview, or Source mode;
+- user-facing Review, Edit, or Source mode, backed by the stable internal
+  `read`, `livePreview`, and `source` identifiers;
 - a revision-bound semantic source scroll anchor plus normalized fallback;
 - autosave and in-flight save tasks with stale tokens;
-- rendered Read projection state; and
+- rendered Review projection state; and
 - save error, conflict, retry, and comparison presentation state.
 
 CodeMirror remains authoritative while editing. The boundary uses full-buffer
@@ -1104,9 +1116,9 @@ model retains these facts across SwiftUI view reconstruction; it never
 reconstructs writable Markdown from HTML, parsed YAML, or another projection.
 
 `DocumentEditorHost` is the persistent presentation boundary for one selected
-document session. Read is mounted continuously; after first editor allocation,
-the retained CodeMirror surface is also mounted continuously. Read, Live
-Preview, and Source transitions change opacity, stacking, hit testing,
+document session. Review is mounted continuously; after first editor allocation,
+the retained CodeMirror surface is also mounted continuously. Review, Edit,
+and Source transitions change opacity, stacking, hit testing,
 accessibility exposure, and first-responder focus rather than view identity.
 `NoteContentView` observes that exact `DocumentSessionModel` directly; it does
 not depend on an ancestor's forwarded change notification to reveal a new
@@ -1123,8 +1135,8 @@ acceptance concern rather than permission to weaken this lifecycle contract.
 ### Editor boundary contract
 
 The editor is an app-private typed boundary, not a generic event bus. One exact
-Markdown source is the only writable authority. Live Preview and Source share
-one persistent CodeMirror `EditorState`; Read renders a fingerprint-bound
+Markdown source is the only writable authority. Edit and Source share one
+persistent CodeMirror `EditorState`; Review renders a fingerprint-bound
 committed revision. CodeMirror owns active editing state, selection,
 composition, and undo history. Swift owns a checked mirror reconstructed from
 accepted UTF-16 deltas and reconciled against complete editor text before
@@ -1212,22 +1224,24 @@ mode handoff, WebView rebuild, or navigation creates a numbered
 successful current-load restoration, so failure, cancellation, or the
 resulting scroll report cannot consume or recreate it.
 
-CodeMirror maps exact-source CRLF offsets to its geometry. Read maps the same
+CodeMirror maps exact-source CRLF offsets to its geometry. Review maps the same
 contract through a load-time registry of source-located DOM blocks, using
 `elementFromPoint` and the range map rather than full-DOM measurement on every
 scroll. Invalid ranges or fingerprints fall back to the normalized fraction.
 Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
-handoff anchor, and delayed restoration requires the same document or Read-load
+handoff anchor, and delayed restoration requires the same document or Review-load
 generation. It never depends only on throttle-prone animation frames.
 
 Written annotation is authoritative Markdown, including an ordinary semantic
 Callout when a separate visible note is useful; Scholium owns no parallel
-annotation store, overlay, or CodeMirror margin widget. Comment requires an
-exact source selection and opens a passage-scoped researcher-agent exchange.
-Agent replies remain pending until the researcher chooses Finish, which alone
-projects Commented activity. Critique binds all finished Comments attached to
-the exact current Target revision, narrowed to overlapping ranges for Passage
-scope.
+annotation store or CodeMirror margin widget. Review and Edit own separate
+transient selection toolbars: Review exposes only the in-place Comment
+textarea, while Edit exposes common Markdown formatting and no Comment. Return
+saves and closes a Review Comment, Shift-Return inserts a line, and Escape
+cancels. Source exposes neither toolbar. Saving appends a line-only researcher statement to the
+current active Discussion without opening a sheet, copying instructions, or
+contacting an agent. Discuss later collects and presents these statements; its
+agent request identifies their lines but never sends retained selected prose.
 `Command-F` opens Scholium's shared **This Note** Search;
 the embedded CodeMirror Find panel is not part of the product.
 
@@ -1353,19 +1367,19 @@ the reference-number role, end-section structure, logical-direction spacing,
 and contrast behavior. A direct Live `StateField` derives case-sensitive
 identifiers, first-reference ordinals, repeated occurrences, inline notes, and
 bounded two-space/tab continuations from the current buffer while excluding
-YAML, code, HTML, and comments. Inactive references become numbered inline
-widgets; the first inactive definition is hidden at its exact source range and
-appears in one semantic end-section widget. Activating a reference or endnote
-item places the caret at its source offset and removes only the affected
-projection. Duplicate, undefined, and unreferenced forms are not repaired, and
+YAML, code, HTML, and comments. Inactive references become nonbutton numbered
+inline markers; the first inactive definition is hidden at its exact source
+range and appears in one semantic end-section widget. Placing the Edit caret at
+a reference or endnote reveals only the affected source projection; it does not
+preview or navigate. Duplicate, undefined, and unreferenced forms are not repaired, and
 neither the widget DOM nor its rendered inline content can become writable
 Markdown authority.
 
 Continuation normalization removes exactly one two-space or tab ownership
 indent and preserves every deeper space. Nested lists, block quotations, and
-fenced code therefore retain their structure in both the committed Read
-renderer and Live's display-only `markdown-fragment` adapter. The same adapter
-renders the one-definition footnote preview; raw HTML stays inert. Shared
+fenced code therefore retain their structure in both the committed Review
+renderer and Edit's display-only `markdown-fragment` adapter. Review alone
+renders the one-definition footnote preview and owns footnote navigation; raw HTML stays inert. Shared
 fixtures compare definition content as well as identifiers so Swift and
 TypeScript cannot silently choose different block ownership.
 
@@ -1375,14 +1389,14 @@ CSS/fonts. The first admissible integration must use `htmlAndMathml`,
 escaped plain-source diagnostics for failures. KaTeX output is a projection;
 only the original delimiter span is editable or writable.
 
-Link, Vector-Link, and footnote previews are revision-bound requests. Swift
+Link and Vector-Link previews are revision-bound Edit requests. Review resolves
+footnote preview and navigation against its committed sanitized projection. Swift
 owns graph resolution, target selection, committed preview content, containment,
 and external-URL policy. WebKit owns only the source anchor, visible geometry,
-and transient presentation. Responses carry session, document, revision,
+and transient Edit presentation. Responses carry session, document, revision,
 generation, request, and target identity; stale or ambiguous responses are
-discarded. Footnote requests return one referenced definition, never the whole
-footnote section, and the definition uses the same safe Markdown-fragment
-presentation as the Live end section.
+discarded. A Review footnote preview contains one referenced definition, never
+the whole footnote section.
 
 The boundary requires pure TypeScript coverage for protocol validation, exact
 transformations, projection, clipboard conversion, composition, and

@@ -39,11 +39,7 @@ struct ResearchActionPanelView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     appOwnedContext
-                    if controller.phase == .loading {
-                        ProgressView("Loading Action…")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityIdentifier("scholium.researchAction.loading")
-                    } else if let profile = controller.profile {
+                    if let profile = controller.profile {
                         modules(profile.modules)
                     }
                     status
@@ -330,7 +326,11 @@ struct ResearchActionPanelView: View {
             .accessibilityIdentifier("scholium.researchAction.noteSearch.\(module.id.rawValue)")
             .padding(.bottom, 6)
 
-            if eligibleCandidates(for: module).isEmpty {
+            if controller.isLoadingMaterialCandidates {
+                ProgressView("Loading eligible notes…")
+                    .controlSize(.small)
+                    .accessibilityIdentifier("scholium.researchAction.notes.loading")
+            } else if eligibleCandidates(for: module).isEmpty {
                 Text("No eligible notes are available.")
                     .font(.callout)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
@@ -385,7 +385,11 @@ struct ResearchActionPanelView: View {
 
     @ViewBuilder
     private func source(_ module: ResearchActionModuleDefinition) -> some View {
-        if controller.sourceStatus?.state == .available,
+        if controller.isLoadingSourceStatus {
+            ProgressView("Checking source access…")
+                .controlSize(.small)
+                .accessibilityIdentifier("scholium.researchAction.source.loading")
+        } else if controller.sourceStatus?.state == .available,
            let reference = controller.sourceStatus?.reference {
             Label {
                 Text(verbatim: reference.displayName)

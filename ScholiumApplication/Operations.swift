@@ -553,6 +553,20 @@ public actor ResearchOperations: ResearchUseCases {
     }
 
     @discardableResult
+    public func createComment(
+        target: ResearchFunctionTarget,
+        lineReference: ResearchLineReference,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
+        let handle = try await reference.requireHandle()
+        return try await handle.createComment(
+            target: target,
+            lineReference: lineReference,
+            researcherMessage: researcherMessage
+        )
+    }
+
+    @discardableResult
     public func appendDiscussionStatement(
         discussionID: UUID,
         author: PortableResearchStatementAuthor,

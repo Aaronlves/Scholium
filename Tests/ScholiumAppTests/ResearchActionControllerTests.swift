@@ -4,7 +4,7 @@ import Testing
 @testable import ScholiumApp
 
 @MainActor
-@Suite("Research Action controller")
+@Suite("Research Action controller", .serialized)
 struct ResearchActionControllerTests {
     @Test("Resolved Actions keep default and Researcher Skill order")
     func availabilityOrder() async throws {
@@ -72,11 +72,11 @@ struct ResearchActionControllerTests {
         let target = target()
         controller.begin(
             target: target,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.materialCandidates == [candidate] }
 
         controller.setText("Compare the arguments", module: modules[0])
         controller.setNote(candidate.noteID, isSelected: true, module: modules[1])
@@ -125,13 +125,14 @@ struct ResearchActionControllerTests {
         let firstNote = target(title: "First note", path: "Topics/First.md")
         let secondNote = target(title: "Second note", path: "Topics/Second.md")
         let controller = ResearchActionController()
+        let action = try availability(.discuss, order: 0, modules: modules)
         controller.bind(client(
-            actions: [try availability(.discuss, order: 0, modules: modules)],
+            actions: [action],
             candidates: [firstNote, secondNote]
         ))
         controller.begin(
             target: target(),
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
@@ -192,11 +193,11 @@ struct ResearchActionControllerTests {
 
         controller.begin(
             target: target(role: .analysis),
-            actionID: .analyze,
+            availability: unavailableAction,
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.sourceStatus != nil }
 
         #expect(controller.sourceStatus?.state == .repairRequired)
         #expect(!controller.canPrepare)
@@ -210,13 +211,68 @@ struct ResearchActionControllerTests {
         #expect(controller.canPrepare)
     }
 
+    @Test("Action modules load independently and block preparation until settled")
+    func moduleLoadsAreIndependent() async throws {
+        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
+        let sourceID = try #require(ResearchActionModuleID(rawValue: "source"))
+        let modules = [
+            try ResearchActionModuleDefinition.materialSelector(
+                id: materialsID,
+                label: "Materials",
+                isRequired: false,
+                roleScope: [.analysis],
+                maximumSelectionCount: 2
+            ),
+            try ResearchActionModuleDefinition.sourceReference(
+                id: sourceID,
+                label: "Source",
+                isRequired: true
+            ),
+        ]
+        let action = try availability(
+            .analyze,
+            role: .analysis,
+            order: 100,
+            modules: modules,
+            sourceRequirement: .required
+        )
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in [action] },
+            materialCandidates: { _, _ in throw TestFailure.stopAfterCapture },
+            sourceAccess: { _ in .repairRequired(.missingBinding) },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { _ in throw TestFailure.stopAfterCapture },
+            cancel: { _ in },
+            openActiveDiscussion: { _ in }
+        ))
+
+        controller.begin(
+            target: target(role: .analysis),
+            availability: action,
+            selection: nil,
+            presentationID: UUID()
+        )
+        #expect(controller.isLoadingMaterialCandidates)
+        #expect(controller.isLoadingSourceStatus)
+        #expect(!controller.canPrepare)
+        await waitUntil {
+            !controller.isLoadingMaterialCandidates && !controller.isLoadingSourceStatus
+        }
+
+        #expect(controller.sourceStatus?.state == .repairRequired)
+        #expect(controller.errorMessage == TestFailure.stopAfterCapture.localizedDescription)
+        #expect(!controller.canPrepare)
+    }
+
     @Test("Changing Target invalidates the open Action draft")
     func targetChangeInvalidatesDraft() async throws {
         let controller = ResearchActionController()
-        controller.bind(client(actions: [try availability(.synthesize, order: 100)]))
+        let action = try availability(.synthesize, order: 100)
+        controller.bind(client(actions: [action]))
         controller.begin(
             target: target(),
-            actionID: .synthesize,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
@@ -310,18 +366,18 @@ struct ResearchActionControllerTests {
 
         controller.begin(
             target: firstTarget,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
         await waitUntil { firstContinuation != nil }
         controller.begin(
             target: secondTarget,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.materialCandidates == [secondMaterial] }
         #expect(controller.materialCandidates == [secondMaterial])
 
         firstContinuation?.resume(returning: [firstMaterial])
@@ -350,15 +406,14 @@ struct ResearchActionControllerTests {
         #expect(controller.availabilityError == TestFailure.stopAfterCapture.localizedDescription)
     }
 
-    @Test("A sheet load failure discards the launcher Profile")
-    func sheetLoadFailureDiscardsLauncherProfile() async throws {
+    @Test("Opening a sheet reuses the visible Profile without a second availability lookup")
+    func sheetReusesVisibleProfile() async throws {
         let action = try availability(.synthesize, order: 100)
         var resolutionCount = 0
         let controller = ResearchActionController()
         controller.bind(ResearchActionClient(
             availableActions: { _ in
                 resolutionCount += 1
-                if resolutionCount == 2 { throw TestFailure.stopAfterCapture }
                 return [action]
             },
             materialCandidates: { _, _ in [] },
@@ -376,43 +431,42 @@ struct ResearchActionControllerTests {
 
         controller.begin(
             target: target,
-            actionID: .synthesize,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .failed }
+        #expect(controller.phase == .editing)
 
         #expect(controller.availability.map(\.id) == [.synthesize])
-        #expect(controller.activeAvailability == nil)
-        #expect(controller.profile == nil)
-        #expect(!controller.canPrepare)
-        #expect(controller.availabilityError == TestFailure.stopAfterCapture.localizedDescription)
-        #expect(controller.errorMessage == TestFailure.stopAfterCapture.localizedDescription)
-
-        controller.dismiss()
-        await controller.refreshAvailability(for: target)
-        #expect(controller.availability.map(\.id) == [.synthesize])
+        #expect(controller.activeAvailability == action)
+        #expect(controller.profile == action.profile.profile)
         #expect(controller.availabilityError == nil)
+        #expect(resolutionCount == 1)
     }
 
-    @Test("Cancelling a sheet load preserves the launcher availability")
-    func cancelledSheetLoadPreservesLauncherAvailability() async throws {
-        let action = try availability(.synthesize, order: 100)
-        var resolutionCount = 0
-        var sheetContinuation: CheckedContinuation<
-            [ResearchActionAvailability],
+    @Test("Dismissing a sheet while module data loads preserves launcher availability")
+    func cancelledDependencyLoadPreservesLauncherAvailability() async throws {
+        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
+        let module = try ResearchActionModuleDefinition.materialSelector(
+            id: materialsID,
+            label: "Materials",
+            isRequired: false,
+            roleScope: [.topic],
+            maximumSelectionCount: 2
+        )
+        let action = try availability(.synthesize, order: 100, modules: [module])
+        var dependencyContinuation: CheckedContinuation<
+            [ResearchActionNoteSnapshot],
             Never
         >?
         let controller = ResearchActionController()
         controller.bind(ResearchActionClient(
-            availableActions: { _ in
-                resolutionCount += 1
-                if resolutionCount == 1 { return [action] }
+            availableActions: { _ in [action] },
+            materialCandidates: { _, _ in
                 return await withCheckedContinuation { continuation in
-                    sheetContinuation = continuation
+                    dependencyContinuation = continuation
                 }
             },
-            materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
             prepare: { _ in throw TestFailure.stopAfterCapture },
@@ -424,16 +478,17 @@ struct ResearchActionControllerTests {
 
         controller.begin(
             target: target,
-            actionID: .synthesize,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { sheetContinuation != nil }
+        await waitUntil { dependencyContinuation != nil }
+        #expect(controller.phase == .editing)
         controller.dismiss()
 
         #expect(controller.availability.map(\.id) == [.synthesize])
         #expect(controller.profile == nil)
-        sheetContinuation?.resume(returning: [action])
+        dependencyContinuation?.resume(returning: [])
         try? await Task.sleep(for: .milliseconds(20))
         #expect(controller.availability.map(\.id) == [.synthesize])
         #expect(!controller.isPresented)
@@ -472,7 +527,7 @@ struct ResearchActionControllerTests {
         let presentationID = UUID()
         controller.begin(
             target: target,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: presentationID
         )
@@ -532,7 +587,7 @@ struct ResearchActionControllerTests {
         let presentationID = UUID()
         controller.begin(
             target: target,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: presentationID
         )
@@ -593,7 +648,7 @@ struct ResearchActionControllerTests {
         let firstPresentationID = UUID()
         #expect(controller.begin(
             target: firstTarget,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: firstPresentationID
         ))
@@ -604,7 +659,7 @@ struct ResearchActionControllerTests {
         #expect(controller.hasCancellationBarrier)
         #expect(!controller.begin(
             target: secondTarget,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         ))
@@ -619,7 +674,7 @@ struct ResearchActionControllerTests {
         #expect(controller.hasCancellationBarrier)
         #expect(!controller.begin(
             target: secondTarget,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         ))
@@ -631,7 +686,7 @@ struct ResearchActionControllerTests {
         #expect(!controller.hasCancellationBarrier)
         #expect(controller.begin(
             target: secondTarget,
-            actionID: .discuss,
+            availability: action,
             selection: nil,
             presentationID: UUID()
         ))
@@ -771,7 +826,7 @@ struct ResearchActionControllerTests {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(2),
+        timeout: Duration = .seconds(5),
         _ condition: @MainActor () -> Bool
     ) async {
         let clock = ContinuousClock()

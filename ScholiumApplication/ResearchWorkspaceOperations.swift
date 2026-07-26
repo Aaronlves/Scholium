@@ -103,8 +103,8 @@ enum ResearchDiscussionFactory {
             && discussion.action == expected.action
             && discussion.method == expected.method
             && discussion.participatingNotes == expected.participatingNotes
-            && discussion.createdAt == expected.createdAt
-            && discussion.statements.first == expected.statements.first
+            && discussion.createdAt <= expected.createdAt
+            && expected.statements.first.map(discussion.statements.contains) == true
     }
 
     static func finishedMatches(
@@ -118,8 +118,8 @@ enum ResearchDiscussionFactory {
             && record.primaryNoteID == expected.primaryNoteID
             && record.action == expected.action
             && record.method == expected.method
-            && record.startedAt == expected.createdAt
-            && record.statements.first == expected.statements.first
+            && record.startedAt <= expected.createdAt
+            && expected.statements.first.map(record.statements.contains) == true
             && finishedByID.count == expected.participatingNotes.count
             && expected.participatingNotes.allSatisfy { expectedNote in
                 guard let finishedNote = finishedByID[expectedNote.noteID] else { return false }
@@ -401,6 +401,36 @@ extension WorkspaceHandle {
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
+        try await createResearcherDiscussion(
+            target: target,
+            focalNotes: focalNotes,
+            passage: passage,
+            lineReference: nil,
+            researcherMessage: researcherMessage
+        )
+    }
+
+    func createComment(
+        target: ResearchFunctionTarget,
+        lineReference: ResearchLineReference,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
+        try await createResearcherDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: nil,
+            lineReference: lineReference,
+            researcherMessage: researcherMessage
+        )
+    }
+
+    private func createResearcherDiscussion(
+        target: ResearchFunctionTarget,
+        focalNotes: [ResearchFunctionMaterial],
+        passage: CommentAnchor?,
+        lineReference: ResearchLineReference?,
+        researcherMessage: String
+    ) async throws -> PortableResearchDiscussion {
         let targetContext = try await researchContext(
             for: target.note,
             expectedRevision: target.fingerprint,
@@ -408,8 +438,18 @@ extension WorkspaceHandle {
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
         guard targetContext.identity.id == target.noteID,
-              passage?.fingerprint == target.fingerprint || passage == nil else {
+              passage == nil || lineReference == nil,
+              passage?.fingerprint == target.fingerprint || passage == nil,
+              lineReference?.fingerprint == target.fingerprint || lineReference == nil else {
             throw ResearchOperationError.noteUnavailable(target.note)
+        }
+        if let lineReference {
+            let lineCount = targetContext.document.rawContent.reduce(into: 1) { count, character in
+                if character.isNewline { count += 1 }
+            }
+            guard lineReference.endLine <= lineCount else {
+                throw ResearchOperationError.staleCommentRevision
+            }
         }
         var participants = [try portableDiscussionParticipant(
             noteID: target.noteID,
@@ -444,7 +484,8 @@ extension WorkspaceHandle {
             attribution: "Researcher",
             text: researcherMessage,
             createdAt: createdAt,
-            passage: passage
+            passage: passage,
+            lineReference: lineReference
         )
         let requestedParticipantIDs = Set(participants.map(\.noteID))
         let active = try await activeDiscussions(noteID: target.noteID)
