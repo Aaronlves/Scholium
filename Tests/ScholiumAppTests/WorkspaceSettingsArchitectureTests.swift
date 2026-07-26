@@ -200,12 +200,12 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("ResearchActionProfileDraftKey"))
         #expect(
             source.components(separatedBy: "try Task.checkCancellation()").count - 1
-                == 3
+                == 4
         )
         #expect(
             source.components(
                 separatedBy: "settingsModel.activeTriptychServicesID == requestedTriptychID"
-            ).count - 1 == 6
+            ).count - 1 == 13
         )
         #expect(
             source.components(
@@ -230,6 +230,12 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
         #expect(source.contains("RecommendedBibliographyMethodSettingsView()"))
+        #expect(source.contains("ResearchPermissionSettingsView()"))
+        #expect(source.contains("saveTriptychPermissionPolicy"))
+        #expect(source.contains("saveSkillPermissionOverride"))
+        #expect(source.contains("removeSkillPermissionOverride"))
+        #expect(source.contains("Needs Renewal"))
+        #expect(source.contains("do not monitor external agents or network activity"))
         for forbidden in [
             ".regularMaterial",
             ".ultraThinMaterial",
@@ -239,6 +245,25 @@ struct WorkspaceSettingsArchitectureTests {
         ] {
             #expect(!source.contains(forbidden))
         }
+    }
+
+    @Test("Bootstrap states the quiet default and later customization route")
+    func bootstrapExplainsStandingPermissionDefault() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSetupView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains(
+            "Agent changes will ask for permission every time. You can change this later for each Triptych or Skill in Research Guidance Settings."
+        ))
+        #expect(source.contains("scholium.guidedSetup.permissionDefault"))
+        #expect(!source.contains("Choose a permission policy"))
     }
 
     @Test("Settings model retains only delivery-neutral capabilities")

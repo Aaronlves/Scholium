@@ -1036,7 +1036,43 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchGuidance.permissions"
         ].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Ask Me Every Time"].exists)
+        let askEveryTime = app.radioButtons["Ask Me Every Time"]
+        let askOnlyForWorks = app.radioButtons["Ask Me Only for Works"]
+        let triptychWide = app.radioButtons["Triptych-wide"]
+        XCTAssertTrue(askEveryTime.waitForExistence(timeout: 8))
+        XCTAssertTrue(askOnlyForWorks.exists)
+        XCTAssertTrue(triptychWide.exists)
+        askOnlyForWorks.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            (askOnlyForWorks.value as? Int) == 1
+                || (askOnlyForWorks.value as? String) == "1"
+        })
+
+        let analyzePolicy = app.popUpButtons[
+            "scholium.researchGuidance.permissions.skill.scholium-working-analyze.policy"
+        ]
+        XCTAssertTrue(analyzePolicy.waitForExistence(timeout: 8))
+        analyzePolicy.click()
+        let skillWide = app.menuItems["Triptych-wide"]
+        XCTAssertTrue(skillWide.waitForExistence(timeout: 5))
+        skillWide.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            (analyzePolicy.value as? String) == "Triptych-wide"
+        })
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Methods"
+        ].click()
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Permissions"
+        ].click()
+        XCTAssertTrue(askOnlyForWorks.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            (askOnlyForWorks.value as? Int) == 1
+                || (askOnlyForWorks.value as? String) == "1"
+        })
+        XCTAssertTrue(analyzePolicy.waitForExistence(timeout: 8))
+        XCTAssertEqual(analyzePolicy.value as? String, "Triptych-wide")
 
         app.descendants(matching: .any)[
             "scholium.researchGuidance.category.Sources & Integrations"

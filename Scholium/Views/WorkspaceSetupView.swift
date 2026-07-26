@@ -413,6 +413,19 @@ private struct GuidedSetupFinishStep: View {
                 worksURL: outputURL,
                 containerURL: $portableContainerURL
             )
+
+            Divider()
+
+            Label {
+                Text("Agent changes will ask for permission every time. You can change this later for each Triptych or Skill in Research Guidance Settings.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "lock.shield")
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("scholium.guidedSetup.permissionDefault")
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)

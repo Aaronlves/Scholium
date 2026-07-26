@@ -1600,6 +1600,22 @@
         }
       }
     },
+    "Agent changes will ask for permission every time. You can change this later for each Triptych or Skill in Research Guidance Settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Agent changes will ask for permission every time. You can change this later for each Triptych or Skill in Research Guidance Settings."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能体每次提出修改都会请求许可。您可以稍后在“研究指导设置”中为每个脉络或技能更改此项。"
+          }
+        }
+      }
+    },
     "Agent evaluation handoff copied" : {
       "localizations" : {
         "en" : {
@@ -1921,6 +1937,38 @@
         }
       }
     },
+    "Allow validated Analysis and Topic continuations, but ask before every request that could modify a Work." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Allow validated Analysis and Topic continuations, but ask before every request that could modify a Work."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许已验证的分析和议题后续阶段，但每次可能修改写作的请求仍会询问。"
+          }
+        }
+      }
+    },
+    "Allow validated continuations within this Triptych only when every Skill, Profile, request, identity, and revision boundary also permits them." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Allow validated continuations within this Triptych only when every Skill, Profile, request, identity, and revision boundary also permits them."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅当技能、操作配置、请求、身份和修订的每项边界都允许时，才允许在此脉络内继续已验证的后续阶段。"
+          }
+        }
+      }
+    },
     "Also inspect: %@" : {
       "localizations" : {
         "en" : {
@@ -2211,6 +2259,22 @@
         }
       }
     },
+    "Applies only to this exact Skill and Action Profile envelope." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Applies only to this exact Skill and Action Profile envelope."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅适用于此技能及其操作配置的确切权限范围。"
+          }
+        }
+      }
+    },
     "Apply" : {
       "localizations" : {
         "en" : {
@@ -2271,6 +2335,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅修改作品时询问我"
+          }
+        }
+      }
+    },
+    "Ask before every additional Note or write-capable child phase. The Target you selected by clicking an Action is already authorized." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ask before every additional Note or write-capable child phase. The Target you selected by clicking an Action is already authorized."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次新增笔记或可写入的子阶段前都会询问。您点击操作时所选的目标已获授权。"
           }
         }
       }
@@ -4125,6 +4205,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择您控制的三个文件夹。"
+          }
+        }
+      }
+    },
+    "Choose when Scholium may issue a validated, short-lived grant without asking again. These policies never enlarge a Skill or Action Profile, and do not monitor external agents or network activity." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose when Scholium may issue a validated, short-lived grant without asking again. These policies never enlarge a Skill or Action Profile, and do not monitor external agents or network activity."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择 Scholium 何时可在不再次询问的情况下签发已验证的短期授权。这些政策绝不会扩大技能或操作配置的范围，也不会监控外部智能体或网络活动。"
           }
         }
       }
@@ -6427,6 +6523,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "默认开启"
+          }
+        }
+      }
+    },
+    "Default policy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Default policy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认政策"
           }
         }
       }
@@ -10839,6 +10951,22 @@
         }
       }
     },
+    "Loading permissions…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading permissions…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入权限…"
+          }
+        }
+      }
+    },
     "Loading recommendations…" : {
       "localizations" : {
         "en" : {
@@ -11947,6 +12075,22 @@
         }
       }
     },
+    "Needs Renewal" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Needs Renewal"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要重新确认"
+          }
+        }
+      }
+    },
     "Needs repair" : {
       "localizations" : {
         "en" : {
@@ -12652,6 +12796,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有与 DOI 或 ISBN、引文关键词或确切标题、作者和年份相匹配的 Zotero 项目。"
+          }
+        }
+      }
+    },
+    "No active Skills have permission envelopes in this Triptych." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No active Skills have permission envelopes in this Triptych."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此脉络中没有具有权限范围的活跃技能。"
           }
         }
       }
@@ -14717,6 +14877,22 @@
         }
       }
     },
+    "Permissions Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Permissions Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "权限不可用"
+          }
+        }
+      }
+    },
     "Pinned" : {
       "localizations" : {
         "en" : {
@@ -14729,6 +14905,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已固定"
+          }
+        }
+      }
+    },
+    "Policy for %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Policy for %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的政策"
           }
         }
       }
@@ -16450,6 +16642,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移除模块"
+          }
+        }
+      }
+    },
+    "Remove Override" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove Override"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除覆盖政策"
           }
         }
       }
@@ -18460,6 +18668,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SHA-256 %arg…"
+          }
+        }
+      }
+    },
+    "SKILL OVERRIDES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SKILL OVERRIDES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能覆盖政策"
           }
         }
       }
@@ -21231,6 +21455,22 @@
         }
       }
     },
+    "TRIPTYCH DEFAULT" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TRIPTYCH DEFAULT"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脉络默认政策"
+          }
+        }
+      }
+    },
     "Table" : {
       "localizations" : {
         "en" : {
@@ -21599,6 +21839,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "技能可以声明要求，但不能隐藏或扩大这些字段。"
+          }
+        }
+      }
+    },
+    "The Skill or one of its Action Profiles changed. Ask Me Every Time applies until you renew or remove this override." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Skill or one of its Action Profiles changed. Ask Me Every Time applies until you renew or remove this override."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此技能或它的一项操作配置已经改变。在您重新确认或移除此覆盖政策前，将采用“每次都询问我”。"
           }
         }
       }
@@ -22486,6 +22742,22 @@
         }
       }
     },
+    "This Skill is no longer active. Its retained override cannot authorize a run and may be removed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Skill is no longer active. Its retained override cannot authorize a run and may be removed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此技能已不再活跃。保留的覆盖政策无法授权运行，可以将其移除。"
+          }
+        }
+      }
+    },
     "This Triptych does not yet have editable Working Methods." : {
       "localizations" : {
         "en" : {
@@ -23311,6 +23583,22 @@
         }
       }
     },
+    "Try Again" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Try Again"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再试一次"
+          }
+        }
+      }
+    },
     "Type" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -23682,6 +23970,22 @@
         }
       }
     },
+    "Use Triptych Default" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Use Triptych Default"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用脉络默认政策"
+          }
+        }
+      }
+    },
     "Use as Context" : {
       "localizations" : {
         "en" : {
@@ -23907,6 +24211,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅用于从分析中筛选阅读线索。它不会创建研究功能、编辑笔记或写入 Zotero。"
+          }
+        }
+      }
+    },
+    "Uses the current Triptych default." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Uses the current Triptych default."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用当前的脉络默认政策。"
           }
         }
       }

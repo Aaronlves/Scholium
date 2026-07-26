@@ -18,6 +18,7 @@ struct WorkspaceServices: Sendable {
     let controlStore: TriptychControlStore
     let researchSkillStore: ResearchSkillStore
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
+    let researchPermissionPolicyStore: ResearchPermissionPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
     let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
@@ -452,6 +453,10 @@ public actor WorkspaceHandle {
                 controlStore: controlStore,
                 researchSkillStore: researchSkillStore,
                 researchSkillMaintenanceStore: researchSkillMaintenanceStore,
+                researchPermissionPolicyStore: ResearchPermissionPolicyStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
                 researchSourceAccessStore: ResearchSourceAccessStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id

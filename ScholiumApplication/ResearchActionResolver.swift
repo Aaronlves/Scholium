@@ -466,7 +466,7 @@ extension WorkspaceHandle {
         return values
     }
 
-    private static func defaultProfile(
+    static func defaultProfile(
         for definition: ResearchActionDefinition,
         targetRole: ResearchActionTargetRole
     ) throws -> ResearchActionProfile {

@@ -168,6 +168,22 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
         ResearchSkillInstallationPreparation, [UUID]
     ) async throws -> ResearchSkillInstallationOutcome
     let discardResearcherSkillInstallation: (UUID) async -> Void
+    let permissionSettings: (
+        UUID
+    ) async throws -> ResearchPermissionSettingsSnapshot
+    let saveTriptychPermissionPolicy: (
+        UUID, ResearchPermissionPolicy, DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot
+    let saveSkillPermissionOverride: (
+        UUID,
+        String,
+        ResearchPermissionPolicy,
+        DocumentFingerprint,
+        DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot
+    let removeSkillPermissionOverride: (
+        UUID, String, DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot
 }
 
 /// Delivery-neutral operations assembled by the macOS composition root.
@@ -422,6 +438,61 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await capabilities.researchGuidance.researchSkills(id)
+    }
+
+    func researchPermissionSettings() async throws
+        -> ResearchPermissionSettingsSnapshot
+    {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.permissionSettings(id)
+    }
+
+    func saveTriptychPermissionPolicy(
+        _ policy: ResearchPermissionPolicy,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.saveTriptychPermissionPolicy(
+            id,
+            policy,
+            expectedRevision
+        )
+    }
+
+    func saveSkillPermissionOverride(
+        packageID: String,
+        policy: ResearchPermissionPolicy,
+        expectedEnvelopeDigest: DocumentFingerprint,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.saveSkillPermissionOverride(
+            id,
+            packageID,
+            policy,
+            expectedEnvelopeDigest,
+            expectedRevision
+        )
+    }
+
+    func removeSkillPermissionOverride(
+        packageID: String,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot {
+        guard let id = snapshot.activeTriptychID, let capabilities else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return try await capabilities.researchGuidance.removeSkillPermissionOverride(
+            id,
+            packageID,
+            expectedRevision
+        )
     }
 
     func workingMethodBindings() async throws -> ResearchWorkingMethodBindingSnapshot? {

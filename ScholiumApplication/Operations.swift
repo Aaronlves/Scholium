@@ -305,7 +305,7 @@ public actor ResearchOperations: ResearchUseCases {
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
     public nonisolated let legacyResearchDataURL: URL
-    private let reference: WorkspaceHandleReference
+    let reference: WorkspaceHandleReference
     private let functionCoordinator: ResearchFunctionCoordinator
     private let bibliographyCoordinator: RecommendedBibliographyCoordinator
 

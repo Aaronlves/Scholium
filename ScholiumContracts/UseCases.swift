@@ -265,6 +265,31 @@ public protocol ResearchActionUseCases: Sendable {
     ) async throws -> ResearchActionPreparation
 }
 
+public protocol ResearchPermissionUseCases: Sendable {
+    func permissionSettings() async throws -> ResearchPermissionSettingsSnapshot
+
+    func saveTriptychPermissionPolicy(
+        _ policy: ResearchPermissionPolicy,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot
+
+    func saveSkillPermissionOverride(
+        packageID: String,
+        policy: ResearchPermissionPolicy,
+        expectedEnvelopeDigest: DocumentFingerprint,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot
+
+    func removeSkillPermissionOverride(
+        packageID: String,
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> ResearchPermissionSettingsSnapshot
+
+    func evaluateStandingPermission(
+        _ request: ResearchStandingPermissionRequest
+    ) async throws -> ResearchPermissionEvaluation
+}
+
 public protocol ResearchSourceAccessUseCases: Sendable {
     func sourceAccess(
         for target: ResearchFunctionTarget
@@ -287,6 +312,7 @@ public protocol ResearchUseCases:
     ResearchSkillUseCases,
     ResearchFunctionUseCases,
     ResearchActionUseCases,
+    ResearchPermissionUseCases,
     ResearchSourceAccessUseCases,
     RecommendedBibliographyUseCases
 {

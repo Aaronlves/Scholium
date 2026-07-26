@@ -140,8 +140,11 @@ legacy activity or Dialogue files. Passage Comment and whole-note or focal-note
 Discuss now create one portable active Discussion; attributed researcher and
 agent turns stay in that exchange, Close leaves it active, and explicit Finish
 creates one neutral portable Research Record without an approval or truth
-verdict. The independent two-panel Research Record window, standing
-permissions, Record Trash, and disposable diffs remain later migration work.
+verdict. Machine-local standing permissions now let the researcher choose a
+Triptych default and exact-envelope per-Skill overrides without enlarging any
+Skill, Profile, or frozen run. The independent two-panel Research Record
+window, mid-run change requests, child phases, Record Trash, and disposable
+diffs remain later migration work.
 Actions itself now exposes only the role-valid default matrix, active
 Discussions, one Researcher Skills group, and Settle. It contains no Research
 Activity HUD, Work with Agent wrapper, or duplicate Research Record launcher.

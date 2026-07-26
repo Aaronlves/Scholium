@@ -695,6 +695,33 @@ final class WorkspaceStore: ObservableObject {
                 await applicationRuntime.discardResearcherSkillInstallation(
                     preparationID: preparationID
                 )
+            },
+            permissionSettings: { [self] id in
+                try await workspaceHandle(id: id).research.permissionSettings()
+            },
+            saveTriptychPermissionPolicy: { [self] id, policy, revision in
+                try await workspaceHandle(id: id).research
+                    .saveTriptychPermissionPolicy(
+                        policy,
+                        expectedRevision: revision
+                    )
+            },
+            saveSkillPermissionOverride: {
+                [self] id, packageID, policy, digest, revision in
+                try await workspaceHandle(id: id).research
+                    .saveSkillPermissionOverride(
+                        packageID: packageID,
+                        policy: policy,
+                        expectedEnvelopeDigest: digest,
+                        expectedRevision: revision
+                    )
+            },
+            removeSkillPermissionOverride: { [self] id, packageID, revision in
+                try await workspaceHandle(id: id).research
+                    .removeSkillPermissionOverride(
+                        packageID: packageID,
+                        expectedRevision: revision
+                    )
             }
             )
         )

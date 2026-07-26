@@ -335,7 +335,8 @@ scope, execution kinds impose their direct-write role maximum, and Analyze
 requires one matching required source-reference module. These declarations do
 not grant authority. The Application resolver intersects them with the exact
 current request and live identities to produce one nonreusable preparation
-envelope; machine-local standing policy and digest approvals remain Session 14.
+envelope. Machine-local standing policy is a separate decision factor and
+cannot enlarge that envelope.
 Property-only mutation is rejected by the current resolver because the retained
 coordinator cannot yet prove a property-bounded source delta.
 `ResearchActionProfileDocument` stores at most 256
@@ -883,10 +884,38 @@ isolation move; production then archives the exact package through the
 machine-local recovery store rather than recursively deleting possibly late
 external writes. Applying one Profile to other Triptychs
 preflights a compatible independently installed package and writes independent
-copies; it never synchronizes Skill bytes. The visible Permissions category
-states that standing policies are not stored yet rather than simulating Session
-14 authority. The retained Function-era Settings implementation is unreachable
-migration code pending the final clean-cutover removal.
+copies; it never synchronizes Skill bytes. Permissions stores one Triptych
+default plus deliberate per-Skill overrides in machine-local Application
+Support. Bootstrap states the quiet Ask Me Every Time default and points to
+this later Settings route without requiring a policy choice. The retained
+Function-era Settings implementation is unreachable migration code pending the
+final clean-cutover removal.
+
+`ResearchPermissionPolicyStore` owns one strict schema-v1 file per Triptych at
+`Triptychs/<id>/research-guidance/standing-permissions-v1/` under Application
+Support. A missing file means Ask Me Every Time without creating state. The
+store uses descriptor-relative no-follow traversal, private directory/file
+modes, an advisory cross-process lock, exact expected revisions, atomic
+replacement, directory synchronization, identity proof, and decode/readback
+validation. Corrupt, cross-Triptych, linked, over-permissive, or stale state
+fails closed; no permission policy is portable research data or a bearer grant.
+
+Application derives every per-Skill approval digest from the current
+Triptych-local package revision and the complete set of current Action/Profile
+role revisions. Settings carries the exact digest it displayed only as an
+expected value; Application re-derives and rejects a stale envelope before
+saving. Missing overrides inherit the Triptych default; an explicit override
+whose Skill or any Profile changed becomes Ask Me Every Time and cannot fall
+through to a broader default. The same derivation is repeated for evaluation,
+so a caller-supplied stale digest cannot authorize work. Ask Me Only for Works
+requires a researcher decision for every request containing a Work write role,
+while Triptych-wide can only permit a later validated bounded grant after all
+independent System, Skill, Profile, request, identity, and revision
+intersections pass. The initial Target selected
+by deliberately clicking an Action is already authorized and is not prompted
+again. These policies govern only Scholium-mediated continuations; they neither
+monitor a model's reasoning or network activity nor police direct external file
+edits, which remain ordinary filesystem concurrency.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych

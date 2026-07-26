@@ -4070,6 +4070,274 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Standing permissions preserve explicit Action authority and escalate Works")
+    func standingPermissionApplicationPolicy() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let initial = try await handle.research.permissionSettings()
+        #expect(initial.policy.document.triptychDefault == .askEveryTime)
+
+        let askForWorks = try await handle.research.saveTriptychPermissionPolicy(
+            .askOnlyForWorks,
+            expectedRevision: initial.policy.revision
+        )
+        let analysisStatus = try #require(askForWorks.skills.first {
+            $0.packageID == "scholium-working-analyze"
+        })
+        #expect(analysisStatus.displayName == "Analyze")
+        let analysis = try #require(analysisStatus.subject)
+        let work = try #require(askForWorks.skills.first {
+            $0.packageID == "scholium-working-write"
+        }.flatMap(\.subject))
+
+        let analysisRequest = try ResearchStandingPermissionRequest(
+            kind: .additionalNoteChanges,
+            packageID: analysis.packageID,
+            currentEnvelopeDigest: analysis.envelopeDigest,
+            requestedWritableRoles: [.analysis]
+        )
+        let analysisEvaluation = try await handle.research
+            .evaluateStandingPermission(analysisRequest)
+        #expect(analysisEvaluation.source == .triptychDefault)
+        #expect(analysisEvaluation.disposition == .mayIssueBoundedGrant)
+
+        let workRequest = try ResearchStandingPermissionRequest(
+            kind: .writeCapableChildPhase,
+            packageID: work.packageID,
+            currentEnvelopeDigest: work.envelopeDigest,
+            requestedWritableRoles: [.work]
+        )
+        let workEvaluation = try await handle.research
+            .evaluateStandingPermission(workRequest)
+        #expect(workEvaluation.disposition == .requiresResearcherDecision)
+
+        let initialAction = try ResearchStandingPermissionRequest(
+            kind: .initialAction,
+            packageID: work.packageID,
+            currentEnvelopeDigest: work.envelopeDigest,
+            requestedWritableRoles: [.work]
+        )
+        let initialEvaluation = try await handle.research
+            .evaluateStandingPermission(initialAction)
+        #expect(initialEvaluation.source == .explicitAction)
+        #expect(initialEvaluation.disposition == .initialTargetAuthorized)
+
+        let wide = try await handle.research.saveTriptychPermissionPolicy(
+            .triptychWide,
+            expectedRevision: askForWorks.policy.revision
+        )
+        #expect(wide.policy.document.triptychDefault == .triptychWide)
+        #expect(try await handle.research.evaluateStandingPermission(workRequest)
+            .disposition == .mayIssueBoundedGrant)
+
+        let manuscriptPackage = try await handle.research.duplicateBundledSkill(
+            id: "scholium-manuscript",
+            as: "scholium-working-manuscript"
+        )
+        let workingBindings = try #require(
+            try await handle.research.workingMethodBindings()
+        )
+        _ = try await handle.research.activateResearcherSkill(
+            packageID: manuscriptPackage.id,
+            for: .manuscript,
+            expectedBindingRevision: workingBindings.revision
+        )
+        let instructionID = try #require(
+            ResearchActionModuleID(rawValue: "instruction")
+        )
+        let manuscriptProfile = try ResearchActionProfileBinding(
+            packageID: manuscriptPackage.id,
+            profile: ResearchActionProfile(
+                definition: .manuscript,
+                buttonName: "Manuscript",
+                order: 100,
+                applicableRoles: [.work],
+                showInActions: true,
+                modules: [try .boundedText(
+                    id: instructionID,
+                    label: "Instruction",
+                    isRequired: true,
+                    maximumTextUTF8ByteCount: 4_000,
+                    allowsMultipleLines: true
+                )],
+                sourceRequirement: .none,
+                capabilities: try ResearchActionCapabilityDeclaration(
+                    readableRoles: [.work]
+                ),
+                feedbackRequirement: .required
+            )
+        )
+        let profileSnapshot = try await handle.research.saveActionProfile(
+            manuscriptProfile,
+            expectedDocumentRevision: nil
+        )
+        let withManuscript = try await handle.research.permissionSettings()
+        let manuscript = try #require(withManuscript.skills.first {
+            $0.packageID == manuscriptPackage.id
+        })
+        #expect(manuscript.displayName == "Manuscript")
+        let manuscriptSubject = try #require(manuscript.subject)
+        let exactProfile = try #require(manuscriptSubject.profiles.first)
+        let expectedProfileRevision = try manuscriptProfile.profile.contentRevision()
+        #expect(manuscriptSubject.profiles.count == 1)
+        #expect(exactProfile.profileRevision == expectedProfileRevision)
+
+        let manuscriptApproval = try await handle.research
+            .saveSkillPermissionOverride(
+                packageID: manuscriptSubject.packageID,
+                policy: .triptychWide,
+                expectedEnvelopeDigest: manuscriptSubject.envelopeDigest,
+                expectedRevision: withManuscript.policy.revision
+            )
+        #expect(manuscriptApproval.skills.first {
+            $0.packageID == manuscriptSubject.packageID
+        }?.status == .approved)
+
+        let revisedProfile = try ResearchActionProfileBinding(
+            packageID: manuscriptPackage.id,
+            profile: ResearchActionProfile(
+                definition: .manuscript,
+                buttonName: "Manuscript",
+                order: 100,
+                applicableRoles: [.work],
+                showInActions: true,
+                modules: [try .boundedText(
+                    id: instructionID,
+                    label: "Instruction",
+                    isRequired: true,
+                    maximumTextUTF8ByteCount: 4_100,
+                    allowsMultipleLines: true
+                )],
+                sourceRequirement: .none,
+                capabilities: try ResearchActionCapabilityDeclaration(
+                    readableRoles: [.work]
+                ),
+                feedbackRequirement: .required
+            )
+        )
+        _ = try await handle.research.saveActionProfile(
+            revisedProfile,
+            expectedDocumentRevision: profileSnapshot.revision
+        )
+        let invalidatedManuscript = try await handle.research.permissionSettings()
+        let manuscriptAfterProfileChange = try #require(
+            invalidatedManuscript.skills.first {
+                $0.packageID == manuscriptSubject.packageID
+            }
+        )
+        #expect(manuscriptAfterProfileChange.status == .invalidated)
+        #expect(manuscriptAfterProfileChange.effectivePolicy == .askEveryTime)
+        await runtime.shutdown()
+    }
+
+    @Test("Skill changes invalidate exact-envelope overrides across window runtimes")
+    func standingPermissionDigestInvalidationAndWindowConsistency() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let firstRuntime = fixture.runtime()
+        let secondRuntime = fixture.runtime()
+        let first = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
+        let second = try await secondRuntime.openWorkspace(id: fixture.assignment.id)
+
+        let firstInitial = try await first.research.permissionSettings()
+        let secondInitial = try await second.research.permissionSettings()
+        #expect(firstInitial.policy.revision == nil)
+        #expect(secondInitial.policy.revision == nil)
+        let firstWide = try await first.research.saveTriptychPermissionPolicy(
+            .triptychWide,
+            expectedRevision: firstInitial.policy.revision
+        )
+        let secondObserved = try await second.research.permissionSettings()
+        #expect(secondObserved.policy == firstWide.policy)
+        await #expect(throws: (any Error).self) {
+            _ = try await second.research.saveTriptychPermissionPolicy(
+                .askOnlyForWorks,
+                expectedRevision: secondInitial.policy.revision
+            )
+        }
+
+        let subject = try #require(firstWide.skills.first {
+            $0.packageID == "scholium-working-analyze"
+        }.flatMap(\.subject))
+        let binding = try #require(try await first.research
+            .workingMethodBindings())
+        let package = try #require(try await first.research.skills().first {
+            $0.origin == .triptych && $0.id == subject.packageID
+        })
+        let packageRevision = try #require(package.revision)
+        let firstEdit = try await first.research.saveWorkingMethod(
+            for: .analyze,
+            source: package.source + "\nPreserve the first explicit uncertainty boundary.\n",
+            expectedPackageRevision: packageRevision,
+            expectedBindingRevision: binding.revision
+        )
+        await #expect(throws: ResearchPermissionOperationError.self) {
+            _ = try await second.research.saveSkillPermissionOverride(
+                packageID: subject.packageID,
+                policy: .triptychWide,
+                expectedEnvelopeDigest: subject.envelopeDigest,
+                expectedRevision: firstWide.policy.revision
+            )
+        }
+        let afterStaleApproval = try await second.research.permissionSettings()
+        let currentSubject = try #require(afterStaleApproval.skills.first {
+            $0.packageID == subject.packageID
+        }.flatMap(\.subject))
+        #expect(currentSubject.envelopeDigest != subject.envelopeDigest)
+        #expect(afterStaleApproval.policy.document.override(for: subject.packageID)
+            == nil)
+
+        let approved = try await first.research.saveSkillPermissionOverride(
+            packageID: currentSubject.packageID,
+            policy: .triptychWide,
+            expectedEnvelopeDigest: currentSubject.envelopeDigest,
+            expectedRevision: afterStaleApproval.policy.revision
+        )
+        #expect(approved.skills.first {
+            $0.packageID == currentSubject.packageID
+        }?.status == .approved)
+
+        let firstEditRevision = try #require(firstEdit.revision)
+        _ = try await first.research.saveWorkingMethod(
+            for: .analyze,
+            source: firstEdit.source + "\nPreserve the second explicit uncertainty boundary.\n",
+            expectedPackageRevision: firstEditRevision,
+            expectedBindingRevision: binding.revision
+        )
+
+        let invalidated = try await second.research.permissionSettings()
+        let invalidatedSkill = try #require(invalidated.skills.first {
+            $0.packageID == subject.packageID
+        })
+        #expect(invalidatedSkill.status == .invalidated)
+        #expect(invalidatedSkill.effectivePolicy == .askEveryTime)
+        let invalidatedSubject = try #require(invalidatedSkill.subject)
+        let currentRequest = try ResearchStandingPermissionRequest(
+            kind: .additionalNoteChanges,
+            packageID: invalidatedSubject.packageID,
+            currentEnvelopeDigest: invalidatedSubject.envelopeDigest,
+            requestedWritableRoles: [.analysis]
+        )
+        let evaluation = try await second.research
+            .evaluateStandingPermission(currentRequest)
+        #expect(evaluation.source == .invalidatedOverride)
+        #expect(evaluation.disposition == .requiresResearcherDecision)
+        let staleRequest = try ResearchStandingPermissionRequest(
+            kind: .additionalNoteChanges,
+            packageID: subject.packageID,
+            currentEnvelopeDigest: subject.envelopeDigest,
+            requestedWritableRoles: [.analysis]
+        )
+        await #expect(throws: ResearchPermissionOperationError.self) {
+            _ = try await first.research.evaluateStandingPermission(staleRequest)
+        }
+
+        await firstRuntime.shutdown()
+        await secondRuntime.shutdown()
+    }
+
     private func actionNote(
         _ target: ResearchFunctionTarget
     ) -> ResearchActionNoteSnapshot {
