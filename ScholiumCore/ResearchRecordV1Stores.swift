@@ -1760,6 +1760,24 @@ public actor LocalResearchExecutionStore {
         }
     }
 
+    /// Returns the local Action runs whose private state mentions one of the
+    /// supplied Notes. Permanent deletion uses this before removing the runs
+    /// so dependent coordination requests can be purged in the same journaled
+    /// privacy-finalization phase.
+    public func executionIDs(containing noteIDs: Set<UUID>) throws -> [UUID] {
+        guard !noteIDs.isEmpty else { return [] }
+        let listing = try listing()
+        guard listing.issues.isEmpty else {
+            throw ResearchRecordStoreV1Error.unsafeStore(
+                listing.issues.map(\.id).joined(separator: ", ")
+            )
+        }
+        return listing.records
+            .filter { !Self.noteIDs(in: $0).isDisjoint(with: noteIDs) }
+            .map(\.id)
+            .sorted { $0.uuidString < $1.uuidString }
+    }
+
     /// Removes machine-local runs that contain any permanently deleted note.
     /// Finished portable records are deliberately not touched; participant
     /// tombstones belong to the separate Research Record lifecycle.

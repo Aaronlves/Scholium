@@ -964,6 +964,44 @@ again. These policies govern only Scholium-mediated continuations; they neither
 monitor a model's reasoning or network activity nor police direct external file
 edits, which remain ordinary filesystem concurrency.
 
+`AgentNoteChangeRequest` schema 1 is the non-authorizing coordination contract
+for one additional-note or child-Action request. It binds a caller-provided
+request UUID to the exact Triptych and parent Local Execution v2 run; the
+parent and requested Action, Method Skill, Profile, and Profile-document
+revisions; a bounded canonical set of stable Note identities and
+expected fingerprints; existing-note operations; and one bounded attributed
+agent reason. The request carries no display title or lifecycle assertion;
+the Application derives both from current state before presentation. The
+Application authenticates the parent against the local run,
+rejects requests that do not expand its frozen scope, and re-resolves the
+requested Action, package, Profile, role, operation, identity, lifecycle, and
+source revision. A cancelled, stale, awaiting-Fidelity, or otherwise
+incomplete parent completion closes an unresolved request; a normal complete
+parent may remain provenance for a separately authorized continuation. A live
+mismatch records only a terminal stale disposition; it never widens the parent
+snapshot or grant.
+
+`AgentNoteChangeRequestStore` keeps one strict file per request under
+`Application Support/Triptychs/<id>/agent-change-requests-v1/`. The store uses
+private modes, descriptor-relative no-follow access, an advisory cross-process
+lock plus in-process serialization, atomic replacement, and exact readback.
+Request submission and current-state queries borrow the Workspace source-
+mutation gate across authentication, source revalidation, and the store
+operation, so permanent deletion cannot interleave a new orphaned request
+between parent-run discovery and privacy cleanup. Dates retain subsecond
+precision so a valid decision immediately before expiry survives canonical
+readback.
+Exact replay of one request UUID returns the first record. Reusing that UUID
+with different payload fails closed, and one parent run has at most one
+unresolved request. Pending records expire after a bounded machine-owned
+lifetime; decisions are pending, allowed subset, continue without changes,
+cancelled, stale, or expired. A decision remains coordination state rather than
+a completion key or child grant. Journaled permanent-deletion finalization
+purges requests targeting the deleted Note and requests whose authenticated
+parent execution contains it. Session 16 must still add the local bridge,
+Session 17 the native decision sheet, and Session 18 an independently prepared
+child phase and lineage.
+
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych
 Method may be self-contained or name its own bounded resources; it is never

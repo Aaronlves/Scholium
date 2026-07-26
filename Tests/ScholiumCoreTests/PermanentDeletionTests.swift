@@ -138,6 +138,50 @@ struct PermanentDeletionTests {
         let fixture = try await WorkFixture()
         defer { fixture.remove() }
 
+        let parentRunID = UUID()
+        let parentAction = try makeDeletionTestActionSnapshot(
+            noteID: fixture.workIdentity.id,
+            vaultID: fixture.vaultID,
+            relativePath: fixture.workPath,
+            fingerprint: fixture.workFingerprint
+        )
+        _ = try await fixture.localExecutionStore.create(
+            try makeDeletionTestLocalExecution(
+                triptychID: fixture.triptychID,
+                runID: parentRunID,
+                action: parentAction
+            )
+        )
+        let revision = try AgentNoteChangeActionRevision(
+            actionSnapshot: parentAction
+        )
+        let requestByParent = try makeDeletionTestAgentRequest(
+            triptychID: fixture.triptychID,
+            parentRunID: parentRunID,
+            revision: revision,
+            targetNoteID: UUID(),
+            vaultID: fixture.vaultID,
+            relativePath: "Unrelated Work.md",
+            fingerprint: DocumentFingerprint(content: "# Unrelated Work\n")
+        )
+        let requestByTarget = try makeDeletionTestAgentRequest(
+            triptychID: fixture.triptychID,
+            parentRunID: UUID(),
+            revision: revision,
+            targetNoteID: fixture.workIdentity.id,
+            vaultID: fixture.vaultID,
+            relativePath: fixture.workPath,
+            fingerprint: fixture.workFingerprint
+        )
+        _ = try await fixture.agentNoteChangeRequestStore.submitValidated(
+            requestByParent,
+            isCurrent: true
+        )
+        _ = try await fixture.agentNoteChangeRequestStore.submitValidated(
+            requestByTarget,
+            isCurrent: true
+        )
+
         let commit = try await fixture.coordinator().delete(
             noteID: fixture.workIdentity.id,
             vaultID: fixture.vaultID,
@@ -163,6 +207,19 @@ struct PermanentDeletionTests {
         ) == nil)
         #expect(await fixture.checkpointStore.checkpoints().isEmpty)
         #expect(try await fixture.portableRecordStore.settlementListing().settlements.isEmpty)
+        #expect(try await fixture.localExecutionStore.recordIfPresent(
+            id: parentRunID
+        ) == nil)
+        await #expect(throws: AgentNoteChangeRequestStoreError.self) {
+            _ = try await fixture.agentNoteChangeRequestStore.record(
+                id: requestByParent.id
+            )
+        }
+        await #expect(throws: AgentNoteChangeRequestStoreError.self) {
+            _ = try await fixture.agentNoteChangeRequestStore.record(
+                id: requestByTarget.id
+            )
+        }
         let pending = try await fixture.recoveryStore.pending()
         #expect(pending.isEmpty)
     }
@@ -431,6 +488,7 @@ struct PermanentDeletionTests {
         let recoveryStore: TriptychMutationRecoveryStore
         let portableRecordStore: PortableResearchRecordStore
         let localExecutionStore: LocalResearchExecutionStore
+        let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
         let workSettlement: SettlementRecord
         let critiqueSettlement: SettlementRecord
 
@@ -481,6 +539,10 @@ struct PermanentDeletionTests {
                 triptychID: triptychID
             )
             localExecutionStore = try LocalResearchExecutionStore(
+                applicationSupportURL: support,
+                triptychID: triptychID
+            )
+            agentNoteChangeRequestStore = try AgentNoteChangeRequestStore(
                 applicationSupportURL: support,
                 triptychID: triptychID
             )
@@ -600,6 +662,7 @@ struct PermanentDeletionTests {
                 recoveryStore: recoveryStore,
                 portableRecordStore: portableRecordStore,
                 localExecutionStore: localExecutionStore,
+                agentNoteChangeRequestStore: agentNoteChangeRequestStore,
                 faultPlan: faultPlan
             )
         }
@@ -629,6 +692,10 @@ struct PermanentDeletionTests {
                 localExecutionStore: try LocalResearchExecutionStore(
                     applicationSupportURL: support,
                     triptychID: triptychID
+                ),
+                agentNoteChangeRequestStore: try AgentNoteChangeRequestStore(
+                    applicationSupportURL: support,
+                    triptychID: triptychID
                 )
             )
         }
@@ -646,6 +713,130 @@ struct PermanentDeletionTests {
             try? FileManager.default.removeItem(at: root)
         }
     }
+}
+
+private func makeDeletionTestActionSnapshot(
+    noteID: UUID,
+    vaultID: UUID,
+    relativePath: String,
+    fingerprint: DocumentFingerprint
+) throws -> ResearchActionSnapshot {
+    let definition = ResearchActionDefinition.write
+    let target = ResearchActionNoteSnapshot(
+        noteID: noteID,
+        note: VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: relativePath
+        ),
+        role: .work,
+        lifecycle: .active,
+        fingerprint: fingerprint,
+        title: "Work"
+    )
+    let profile = try ResearchActionProfile(
+        definition: definition,
+        buttonName: "Write",
+        order: 100,
+        applicableRoles: [.work],
+        showInActions: true,
+        modules: [],
+        sourceRequirement: .none,
+        capabilities: try ResearchActionCapabilityDeclaration(
+            readableRoles: [.work],
+            candidateWritableRoles: [.work],
+            candidateWriteOperations: [.modifyMarkdown]
+        ),
+        feedbackRequirement: .requested
+    )
+    return try ResearchActionSnapshot(
+        definition: definition,
+        target: target,
+        method: try ResearchActionMethodSnapshot(
+            packageID: "scholium-working-write",
+            origin: .triptych,
+            version: "working",
+            packageRevision: DocumentFingerprint(content: "package"),
+            loadedResources: [ResearchActionResourceSnapshot(
+                relativePath: "SKILL.md",
+                revision: DocumentFingerprint(content: "method")
+            )]
+        ),
+        resolvedProfile: try ResearchActionResolvedProfileSnapshot(
+            origin: .applicationDefault,
+            profile: profile,
+            profileRevision: profile.contentRevision(),
+            profileDocumentRevision: nil
+        ),
+        parameters: try ResearchActionParameterModel(profile: profile),
+        authority: try ResearchAuthorityEnvelope(
+            readableNotes: [target],
+            writableNotes: [target],
+            writeOperations: [.modifyMarkdown],
+            editablePropertyKeys: []
+        )
+    )
+}
+
+private func makeDeletionTestLocalExecution(
+    triptychID: UUID,
+    runID: UUID,
+    action: ResearchActionSnapshot
+) throws -> LocalResearchExecutionRecord {
+    let target = ResearchFunctionTarget(
+        noteID: action.target.noteID,
+        note: action.target.note,
+        role: .work,
+        lifecycle: .active,
+        fingerprint: action.target.fingerprint,
+        title: action.target.title
+    )
+    let snapshot = ResearchFunctionSnapshot(
+        runID: runID,
+        request: ResearchFunctionRequest(
+            function: .revise,
+            target: target,
+            writeScope: .currentNote,
+            authorizedWriteTargets: [target]
+        ),
+        actionSnapshot: action,
+        recordKind: .functionEnvelope,
+        recordID: runID,
+        confirmationToken: UUID(),
+        preparedAt: Date(timeIntervalSince1970: 10)
+    )
+    return try LocalResearchExecutionRecord(
+        triptychID: triptychID,
+        snapshot: snapshot,
+        preparedInstructions: "Local protected instructions."
+    )
+}
+
+private func makeDeletionTestAgentRequest(
+    triptychID: UUID,
+    parentRunID: UUID,
+    revision: AgentNoteChangeActionRevision,
+    targetNoteID: UUID,
+    vaultID: UUID,
+    relativePath: String,
+    fingerprint: DocumentFingerprint
+) throws -> AgentNoteChangeRequest {
+    try AgentNoteChangeRequest(
+        triptychID: triptychID,
+        parentRunID: parentRunID,
+        parentAction: revision,
+        requestedAction: revision,
+        targets: [try AgentNoteChangeTarget(
+            noteID: targetNoteID,
+            note: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: relativePath
+            ),
+            role: .work,
+            expectedFingerprint: fingerprint
+        )],
+        operations: [.modifyMarkdown],
+        agentReason: "Request one independently authorized Work change."
+    )
 }
 
 private func testDiscussSnapshot(

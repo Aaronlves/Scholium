@@ -4434,6 +4434,302 @@ struct ResearchFunctionOperationsTests {
         await secondRuntime.shutdown()
     }
 
+    @Test("Agent Note Change requests authenticate parents, replay idempotently, expire, and reject stale scope")
+    func agentNoteChangeRequestCoordination() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let alternativeURL = fixture.rootURL
+            .appendingPathComponent("Works", isDirectory: true)
+            .appendingPathComponent("Alternative Work.md")
+        try Data("# Alternative Work\n\nA second bounded argument.\n".utf8)
+            .write(to: alternativeURL, options: .atomic)
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parentTarget = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let parentNote = actionNote(parentTarget)
+        let parentRequest = try await actionRequest(
+            handle: handle,
+            actionID: .write,
+            target: parentNote
+        )
+        let parent = try await handle.research.prepareAction(parentRequest)
+        let parentRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: parent.snapshot
+        )
+
+        let workVaultID = try #require(
+            fixture.assignment.vault(for: .output)?.id
+        )
+        let alternativeID = VaultQualifiedNoteID(
+            vaultID: workVaultID,
+            relativePath: "Alternative Work.md"
+        )
+        var alternativeTarget = try await researchFunctionTarget(
+            alternativeID,
+            role: .work,
+            handle: handle
+        )
+        let requestID = UUID()
+        let request = try AgentNoteChangeRequest(
+            requestID: requestID,
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: parentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Develop the second Work as an alternative argument."
+        )
+        let receivedAt = Date(timeIntervalSince1970: 10_000)
+        let first = try await handle.research.submitAgentNoteChangeRequest(
+            request,
+            receivedAt: receivedAt,
+            validFor: 1
+        )
+        let replay = try await handle.research.submitAgentNoteChangeRequest(
+            request,
+            receivedAt: receivedAt.addingTimeInterval(0.5),
+            validFor: 1
+        )
+        #expect(replay == first)
+        #expect(first.decision.state == .pending)
+
+        let changedPayload = try AgentNoteChangeRequest(
+            requestID: requestID,
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: parentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Use the same ID for a different request."
+        )
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.submitAgentNoteChangeRequest(
+                changedPayload,
+                receivedAt: receivedAt
+            )
+        }
+        let competing = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: parentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Compete for the same unresolved parent."
+        )
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.submitAgentNoteChangeRequest(
+                competing,
+                receivedAt: receivedAt.addingTimeInterval(0.5)
+            )
+        }
+
+        let forged = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: UUID(),
+            parentAction: parentRevision,
+            requestedAction: parentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Use a parent that Scholium never prepared."
+        )
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.research.submitAgentNoteChangeRequest(forged)
+        }
+        let crossTriptych = try AgentNoteChangeRequest(
+            triptychID: UUID(),
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: parentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Cross a Triptych boundary."
+        )
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.research.submitAgentNoteChangeRequest(crossTriptych)
+        }
+
+        let expired = try await handle.research.agentNoteChangeRequest(
+            id: requestID,
+            now: receivedAt.addingTimeInterval(2)
+        )
+        #expect(expired.decision.state == .expired)
+
+        let mismatchedSkillRevision = try AgentNoteChangeActionRevision(
+            definition: parentRevision.definition,
+            packageID: parentRevision.packageID,
+            skillRevision: DocumentFingerprint(content: "different skill"),
+            profileOrigin: parentRevision.profileOrigin,
+            profileRevision: parentRevision.profileRevision,
+            profileDocumentRevision: parentRevision.profileDocumentRevision
+        )
+        let skillMismatch = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: mismatchedSkillRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Claim a Method Skill revision that is not installed."
+        )
+        #expect(try await handle.research.submitAgentNoteChangeRequest(
+            skillMismatch,
+            receivedAt: receivedAt.addingTimeInterval(2.1)
+        ).decision.state == .stale)
+
+        let mismatchedProfileRevision = try AgentNoteChangeActionRevision(
+            definition: parentRevision.definition,
+            packageID: parentRevision.packageID,
+            skillRevision: parentRevision.skillRevision,
+            profileOrigin: parentRevision.profileOrigin,
+            profileRevision: DocumentFingerprint(content: "different profile"),
+            profileDocumentRevision: parentRevision.profileDocumentRevision
+        )
+        let profileMismatch = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: mismatchedProfileRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Claim an Action Profile revision that is not current."
+        )
+        #expect(try await handle.research.submitAgentNoteChangeRequest(
+            profileMismatch,
+            receivedAt: receivedAt.addingTimeInterval(2.2)
+        ).decision.state == .stale)
+
+        let oldTarget = actionNote(alternativeTarget)
+        let document = try await handle.documents.load(alternativeID)
+        let saved = try await handle.documents.save(
+            alternativeID,
+            changeSet: .exactContent(
+                document.rawContent + "\nChanged after the request was assembled.\n"
+            ),
+            expectedRevision: document.fingerprint
+        )
+        #expect(saved.document.fingerprint != oldTarget.fingerprint)
+        alternativeTarget = try await researchFunctionTarget(
+            alternativeID,
+            role: .work,
+            handle: handle
+        )
+        #expect(alternativeTarget.fingerprint == saved.document.fingerprint)
+
+        let stale = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: parentRevision,
+            targets: [
+                try AgentNoteChangeTarget(snapshot: parentNote),
+                try AgentNoteChangeTarget(snapshot: oldTarget),
+            ],
+            operations: [.modifyMarkdown],
+            agentReason: "Try a current first target and stale second target."
+        )
+        let staleRecord = try await handle.research.submitAgentNoteChangeRequest(
+            stale,
+            receivedAt: receivedAt.addingTimeInterval(3)
+        )
+        #expect(staleRecord.decision.state == .stale)
+        #expect(try await handle.research.pendingAgentNoteChangeRequests(
+            now: receivedAt.addingTimeInterval(4)
+        ).isEmpty)
+
+        let cancelledParent = try await handle.research.prepareAction(parentRequest)
+        let cancelledParentRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: cancelledParent.snapshot
+        )
+        let pendingBeforeCancellation = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: cancelledParent.runID,
+            parentAction: cancelledParentRevision,
+            requestedAction: cancelledParentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Request another Work before the parent is cancelled."
+        )
+        let pendingRecord = try await handle.research.submitAgentNoteChangeRequest(
+            pendingBeforeCancellation,
+            receivedAt: receivedAt.addingTimeInterval(5),
+            validFor: 60
+        )
+        #expect(pendingRecord.decision.state == .pending)
+        try await handle.research.cancelFunction(runID: cancelledParent.runID)
+        #expect(try await handle.research.agentNoteChangeRequest(
+            id: pendingBeforeCancellation.id,
+            now: receivedAt.addingTimeInterval(6)
+        ).decision.state == .stale)
+
+        let afterCancellation = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: cancelledParent.runID,
+            parentAction: cancelledParentRevision,
+            requestedAction: cancelledParentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Try to continue from a cancelled parent."
+        )
+        #expect(try await handle.research.submitAgentNoteChangeRequest(
+            afterCancellation,
+            receivedAt: receivedAt.addingTimeInterval(7)
+        ).decision.state == .stale)
+
+        let deletionParent = try await handle.research.prepareAction(parentRequest)
+        let deletionParentRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: deletionParent.snapshot
+        )
+        let requestRacingDeletion = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: deletionParent.runID,
+            parentAction: deletionParentRevision,
+            requestedAction: deletionParentRevision,
+            targets: [try agentChangeTarget(alternativeTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "This private reason must not outlive permanent deletion of its parent."
+        )
+        let movedToTrash = try await handle.documents.moveToTrash(
+            fixture.workID,
+            expectedRevision: parentTarget.fingerprint
+        )
+        let trashedWork = try await handle.documents.load(movedToTrash.destination)
+        let deletion = Task {
+            try await handle.documents.deletePermanently(
+                movedToTrash.destination,
+                expectedRevision: trashedWork.fingerprint
+            )
+        }
+        await Task.yield()
+        do {
+            _ = try await handle.research.submitAgentNoteChangeRequest(
+                requestRacingDeletion
+            )
+        } catch let error as AgentNoteChangeOperationError {
+            guard case .parentRunNotFound(let runID) = error,
+                  runID == deletionParent.runID else {
+                Issue.record("Unexpected deletion-race refusal: \(error)")
+                _ = try await deletion.value
+                await runtime.shutdown()
+                return
+            }
+        }
+        _ = try await deletion.value
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.agentNoteChangeRequest(
+                id: requestRacingDeletion.id
+            )
+        }
+        await runtime.shutdown()
+    }
+
     private func actionNote(
         _ target: ResearchFunctionTarget
     ) -> ResearchActionNoteSnapshot {
@@ -4450,6 +4746,12 @@ struct ResearchFunctionOperationsTests {
             fingerprint: target.fingerprint,
             title: target.title
         )
+    }
+
+    private func agentChangeTarget(
+        _ target: ResearchFunctionTarget
+    ) throws -> AgentNoteChangeTarget {
+        try AgentNoteChangeTarget(snapshot: actionNote(target))
     }
 
     private func actionRequest(

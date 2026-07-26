@@ -19,6 +19,7 @@ struct WorkspaceServices: Sendable {
     let researchSkillStore: ResearchSkillStore
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
     let researchPermissionPolicyStore: ResearchPermissionPolicyStore
+    let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
     let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
     let recommendedBibliographyStore: RecommendedBibliographyStore
@@ -467,6 +468,10 @@ public actor WorkspaceHandle {
                 researchSkillStore: researchSkillStore,
                 researchSkillMaintenanceStore: researchSkillMaintenanceStore,
                 researchPermissionPolicyStore: ResearchPermissionPolicyStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
+                agentNoteChangeRequestStore: try AgentNoteChangeRequestStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
                 ),
@@ -1107,7 +1112,8 @@ public actor WorkspaceHandle {
             recoveryStore: services.transactionRecoveryStore,
             sourceAccessStore: services.researchSourceAccessStore,
             portableRecordStore: services.portableResearchRecordStore,
-            localExecutionStore: services.localResearchExecutionStore
+            localExecutionStore: services.localResearchExecutionStore,
+            agentNoteChangeRequestStore: services.agentNoteChangeRequestStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
@@ -1163,7 +1169,8 @@ public actor WorkspaceHandle {
                 recoveryStore: services.transactionRecoveryStore,
                 sourceAccessStore: services.researchSourceAccessStore,
                 portableRecordStore: services.portableResearchRecordStore,
-                localExecutionStore: services.localResearchExecutionStore
+                localExecutionStore: services.localResearchExecutionStore,
+                agentNoteChangeRequestStore: services.agentNoteChangeRequestStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -1639,11 +1646,24 @@ public actor WorkspaceHandle {
         return id
     }
 
+    /// Agent change-request validation reads source-bound identities and local
+    /// executions that permanent deletion may remove. Borrowing the same gate
+    /// keeps those checks and their store write on one side of every source
+    /// mutation instead of leaving an orphaned private request across actor
+    /// reentrancy.
+    func beginAgentNoteChangeCoordination() async throws -> UUID {
+        try await beginSourceMutation()
+    }
+
     private func endSourceMutation(_ id: UUID) {
         precondition(activeSourceMutationID == id)
         activeSourceMutationID = nil
         signalSourceGateChange()
         startLiveIndexRefreshIfNeeded()
+    }
+
+    func endAgentNoteChangeCoordination(_ id: UUID) {
+        endSourceMutation(id)
     }
 
     private func beginRefreshCycle() async throws {
