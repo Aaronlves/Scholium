@@ -52,7 +52,6 @@ public actor TriptychControlStore {
 
     private let manifestURL: URL
     private let settingsURL: URL
-    private let discussResponseProfileURL: URL
     private let identitiesURL: URL
     private let fileManager: FileManager
 
@@ -63,10 +62,6 @@ public actor TriptychControlStore {
         unclassifiedURL = controlURL.appendingPathComponent("unclassified", isDirectory: true)
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
-        discussResponseProfileURL = controlURL.appendingPathComponent(
-            "dialogue-response.json",
-            isDirectory: false
-        )
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         self.fileManager = fileManager
     }
@@ -120,28 +115,6 @@ public actor TriptychControlStore {
     public func saveSettings(_ settings: TriptychSettings) throws {
         try ensureControlDirectory()
         try encode(settings, to: settingsURL)
-    }
-
-    /// Returns the mutable default for new Discuss requests. The legacy file
-    /// name is retained only so existing Triptychs open without migration loss.
-    public func discussResponseProfile() throws -> DialogueResponseProfile {
-        do {
-            return try decodeIfPresent(
-                DialogueResponseProfile.self,
-                from: discussResponseProfileURL
-            ) ?? DialogueResponseProfile()
-        } catch {
-            throw TriptychControlError.invalidDialogueResponseProfile(error.localizedDescription)
-        }
-    }
-
-    public func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) throws {
-        guard profile.validationIssues.isEmpty else {
-            throw TriptychControlError.invalidDialogueResponseProfile(
-                profile.validationIssues.joined(separator: " ")
-            )
-        }
-        try encode(profile, to: discussResponseProfileURL)
     }
 
     /// Copies source Markdown into portable Unclassified staging without

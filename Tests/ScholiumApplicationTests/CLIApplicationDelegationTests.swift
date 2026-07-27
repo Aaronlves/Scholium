@@ -31,42 +31,43 @@ struct CLIApplicationDelegationTests {
         #expect(!sources.zotero.contains("ZoteroMCPTransportLocator."))
     }
 
-    @Test("Function CLI is a thin Contracts-to-Application adapter")
-    func functionCommandsDelegateWithoutRoutingPolicy() throws {
+    @Test("Action CLI is a thin Contracts-to-Application adapter")
+    func actionCommandsDelegateWithoutRoutingPolicy() throws {
         let sources = try CLISources.load()
 
-        #expect(sources.entry.contains(#"case "function":"#))
-        #expect(sources.function.contains("handle.research.availableFunctions(for: target)"))
-        #expect(sources.function.contains("handle.research.prepareFunction(request)"))
-        #expect(sources.function.contains("handle.research.functionRun(id: runID)"))
-        #expect(sources.function.contains("handle.research.prepareAutomaticFidelity("))
-        #expect(!sources.function.contains("select-resources"))
-        #expect(sources.function.contains("handle.research.completeFunction(submission)"))
-        #expect(sources.function.contains("handle.research.cancelFunction(runID: runID)"))
-        #expect(!sources.function.contains("import " + "ScholiumCore"))
-        #expect(!sources.function.contains("supportedFunctions"))
-        #expect(!sources.function.contains("supported_modes"))
-        #expect(!sources.function.contains("packageID"))
-        #expect(!sources.function.contains("createCheckpoint"))
+        #expect(sources.entry.contains(#"case "action":"#))
+        #expect(sources.action.contains("handle.research.availableActions(for: target)"))
+        #expect(sources.action.contains("handle.research.prepareAction(request)"))
+        #expect(sources.action.contains("handle.research.actionRun(id: runID)"))
+        #expect(sources.action.contains("handle.research.prepareActionFidelity("))
+        #expect(!sources.action.contains("select-resources"))
+        #expect(sources.action.contains("handle.research.completeAction(submission)"))
+        #expect(sources.action.contains("handle.research.cancelAction(runID: runID)"))
+        #expect(!sources.action.contains("import " + "ScholiumCore"))
+        #expect(!sources.action.contains("ResearchFunction"))
+        #expect(!sources.action.contains("packageID"))
+        #expect(!sources.action.contains("createCheckpoint"))
     }
 
-    @Test("Function CLI preserves legacy conditional values without making them active")
-    func functionJSONRoundTrips() throws {
-        let target = ResearchFunctionTarget(
+    @Test("Action CLI JSON uses only the public Action request and completion contracts")
+    func actionJSONRoundTrips() throws {
+        let target = ResearchActionNoteSnapshot(
             noteID: UUID(),
             note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Work.md"),
             role: .work,
+            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "work"),
             title: "Work"
         )
-        let request = ResearchFunctionRequest(
-            function: .revise,
+        let request = ResearchActionExecutionRequest(
+            actionID: .write,
+            expectedExecutionKind: .writing,
+            expectedProfileRevision: DocumentFingerprint(content: "profile"),
+            expectedProfileDocumentRevision: nil,
             target: target,
-            instruction: "Strengthen only the stated inference.",
-            scope: .whole,
-            conditionalResources: [.revisionFeedback]
+            parameterValues: [:]
         )
-        let submission = ResearchFunctionCompletionSubmission(
+        let submission = ResearchActionCompletionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
             finalTargetFingerprint: DocumentFingerprint(content: "revised"),
@@ -80,11 +81,6 @@ struct CLIApplicationDelegationTests {
             childRunIDs: [UUID()],
             submittedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        let methodSelection = ResearchFunctionResourceSelectionSubmission(
-            runID: UUID(),
-            confirmationToken: UUID(),
-            resources: [.revisionFeedback]
-        )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -92,20 +88,13 @@ struct CLIApplicationDelegationTests {
         decoder.dateDecodingStrategy = .iso8601
 
         #expect(try decoder.decode(
-            ResearchFunctionRequest.self,
+            ResearchActionExecutionRequest.self,
             from: encoder.encode(request)
         ) == request)
-        #expect(throws: ResearchFunctionContractError.self) {
-            try request.validate()
-        }
         #expect(try decoder.decode(
-            ResearchFunctionCompletionSubmission.self,
+            ResearchActionCompletionSubmission.self,
             from: encoder.encode(submission)
         ) == submission)
-        #expect(try decoder.decode(
-            ResearchFunctionResourceSelectionSubmission.self,
-            from: encoder.encode(methodSelection)
-        ) == methodSelection)
     }
 
     @Test("Bibliography CLI is a thin Contracts-to-Application adapter")
@@ -168,7 +157,7 @@ private struct CLISources {
     let workspace: String
     let document: String
     let zotero: String
-    let function: String
+    let action: String
     let bibliography: String
 
     static func load() throws -> Self {
@@ -198,8 +187,8 @@ private struct CLISources {
                 contentsOf: cli.appendingPathComponent("ZoteroCommandHandler.swift"),
                 encoding: .utf8
             ),
-            function: String(
-                contentsOf: cli.appendingPathComponent("ResearchFunctionCommandHandler.swift"),
+            action: String(
+                contentsOf: cli.appendingPathComponent("ResearchActionCommandHandler.swift"),
                 encoding: .utf8
             ),
             bibliography: String(

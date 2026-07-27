@@ -49,9 +49,7 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
-        if value == "dialogue" {
-            self = .discuss
-        } else if let function = Self(rawValue: value) {
+        if let function = Self(rawValue: value) {
             self = function
         } else {
             throw DecodingError.dataCorruptedError(
@@ -810,9 +808,7 @@ public enum ResearchFunctionRecordKind: String, Codable, Hashable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
-        if value == "dialogue" {
-            self = .discuss
-        } else if let kind = Self(rawValue: value) {
+        if let kind = Self(rawValue: value) {
             self = kind
         } else {
             throw DecodingError.dataCorruptedError(
@@ -1479,23 +1475,23 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .targetUnavailable:
-            "The Research Function Target is not available in the current Triptych generation."
+            "The Action Target is not available in the current Triptych generation."
         case .targetChanged:
-            "The Research Function Target changed after the panel captured it. Reload the current note before continuing."
+            "The Action Target changed after the sheet captured it. Reload the current note before continuing."
         case .targetIdentityChanged:
-            "The Research Function Target no longer has the same stable identity."
+            "The Action Target no longer has the same stable identity."
         case .inactiveTarget:
-            "A Research Function requires an active Target, not a set-aside or trashed note."
-        case .invalidTargetRole(let function, let role):
-            "The \(function.rawValue) function is not available for a \(role.rawValue) Target."
+            "An Action requires an active Target, not a set-aside or trashed note."
+        case .invalidTargetRole(_, let role):
+            "This Action is not available for a \(role.rawValue) Target."
         case .emptyTargetTitle:
-            "The Research Function Target must have a nonempty title projection."
+            "The Action Target must have a nonempty title projection."
         case .duplicateMaterial:
-            "Each Research Function Material may be selected only once."
+            "Each Action Material may be selected only once."
         case .targetRepeatedAsMaterial:
-            "The Research Function Target cannot also be selected as Material."
+            "The Action Target cannot also be selected as Material."
         case .inactiveMaterial:
-            "Research Function Materials must be active, identified notes."
+            "Action Materials must be active, identified notes."
         case .invalidWriteScope:
             "The selected Write scope does not match its frozen note set."
         case .unexpectedWriteScope:
@@ -1511,7 +1507,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
         case .unexpectedFidelityTargets:
             "Only Fidelity may carry a shared target set."
         case .materialChanged(let title):
-            "The Material '\(title)' changed while the Research Function was being prepared."
+            "The Material '\(title)' changed while the Action was being prepared."
         case .sourceAccessUnavailable(let failure):
             "Analyze requires the exact readable source. Source access failed with \(failure.code.rawValue); choose the source again before continuing."
         case .duplicateComment:
@@ -1523,33 +1519,33 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
         case .unexpectedFidelityCheck:
             "Fidelity checks belong only to the Fidelity function."
         case .invalidMethodSelection:
-            "A selected internal method does not belong to this Research Function."
+            "A selected internal method does not belong to this Action."
         case .duplicateDialogueResponseModule:
             "Each optional Discuss response module may be selected only once."
         case .unexpectedDialogueResponseModules:
             "Discuss response modules belong only to the Discuss function."
-        case .methodSelectionNotRequired(let function):
-            "The \(function.rawValue) function has no pending conditional method selection."
+        case .methodSelectionNotRequired:
+            "This Action has no pending conditional method selection."
         case .methodSelectionAlreadyResolved(let id):
-            "Research Function methods are already finalized for run \(id.uuidString)."
+            "Action methods are already finalized for run \(id.uuidString)."
         case .methodSelectionRequired(let id):
             "Select the conditional methods, including an explicit empty selection when the primary method is sufficient, before completing run \(id.uuidString)."
         case .missingCapability(let capability):
             "The Triptych has no active Researcher Skill for \(capability.rawValue)."
-        case .emptyInstruction(let function):
-            "The \(function.rawValue) function requires a researcher instruction."
+        case .emptyInstruction:
+            "This Action requires a researcher instruction."
         case .preparationNotFound(let id):
-            "Research Function preparation not found: \(id.uuidString)"
+            "Action preparation not found: \(id.uuidString)"
         case .activeDiscussionExists(let id):
             "Discussion \(id.uuidString) is already active for this Note. Reopen it from Active Discussions to add the whole-note turn."
         case .confirmationMismatch:
-            "The completion does not match the prepared Research Function run."
+            "The completion does not match the prepared Action run."
         case .completionAlreadyRecorded(let id):
-            "Research Function completion is already recorded: \(id.uuidString)"
+            "Action completion is already recorded: \(id.uuidString)"
         case .invalidCompletion(let reason):
-            "The Research Function completion is invalid. \(reason)"
+            "The Action completion is invalid. \(reason)"
         case .cancellationAfterCompletion(let id):
-            "A completed Research Function run cannot be cancelled: \(id.uuidString)"
+            "A completed Action run cannot be cancelled: \(id.uuidString)"
         }
     }
 }

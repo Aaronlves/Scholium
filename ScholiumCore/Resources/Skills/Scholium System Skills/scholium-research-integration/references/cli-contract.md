@@ -10,7 +10,7 @@ Scholium CLI and that its local configuration is usable:
 ```sh
 scholium version --format json
 scholium doctor --format json
-scholium help function --format json
+scholium help action --format json
 ```
 
 Use `scholium help <command> <subcommand>` or append `--help` to that command.
@@ -53,23 +53,18 @@ Retain:
 
 A fingerprint detects stale state. It does not grant permission.
 
-## 3. Execute prepared Research Functions
+## 3. Execute prepared Research Actions
 
 Prefer `nextActions` from JSON preparation and completion results. Each action
 contains an argument-vector `command`, not a shell string. Execute the
 arguments without interpolation and supply `inputTemplate` through stdin only
 after replacing every `REPLACE_WITH` marker with checked evidence.
-For Discuss, the typed `promote` action carries the fixed Target, Materials,
-scope, and Comments into the protected execution of Analyze, Synthesize, or Write. Use it when an explicitly
-authorized request would change the note; do not reconstruct that request or
-mutate the note through Discuss.
-
 The normal lifecycle is:
 
 ```sh
-scholium function available --from <target-json|-> --format json
-scholium function prepare --from <request-json|-> --format json
-scholium function show <run-id> --triptych <triptych> --format json
+scholium action available --from <target-json|-> --format json
+scholium action prepare --from <request-json|-> --format json
+scholium action show <run-id> --triptych <triptych> --format json
 ```
 
 Current preparations attach one complete Action Method and expose no
@@ -79,19 +74,19 @@ unchanged and prepare a fresh Action. Generic `skills show` retrieval is not
 attached to a run.
 
 Record any required Discuss reply or Critique output, perform only the
-authorized write, and submit the function-specific completion schema. An
+authorized write, and submit the Action-specific completion schema. An
 Analyze, Synthesize, or Write completion that changed the Target returns
 `awaiting_fidelity` plus a `prepare_fidelity` action. Use it instead of
 constructing a Fidelity request manually:
 
 ```sh
-scholium function prepare-fidelity <parent-run-id> \
+scholium action prepare-fidelity <parent-run-id> \
   --triptych <triptych> --format json
 ```
 
 Complete the returned read-only Fidelity child. Call `prepare-fidelity` again
 when recovery is needed; exact existing evidence is reused and the result
-provides the parent-link completion action. Use `function show` after process
+provides the parent-link completion action. Use `action show` after process
 loss or uncertainty. Cancellation is idempotent only before durable completion
 evidence exists.
 

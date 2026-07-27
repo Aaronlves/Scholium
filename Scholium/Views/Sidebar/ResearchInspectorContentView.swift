@@ -305,7 +305,7 @@ struct ResearchOverviewView: View {
             sourceBasisValue(key: "text_reliability", suffix: "text"),
             sourceBasisValue(key: "locators", suffix: "locators"),
         ].compactMap { $0 }
-        return components.isEmpty ? nil : components.joined(separator: " · ")
+        return components.isEmpty ? nil : components.joined(separator: ", ")
     }
 
     private func sourceBasisValue(key: String, suffix: String?) -> String? {

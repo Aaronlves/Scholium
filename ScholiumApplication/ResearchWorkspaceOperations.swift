@@ -962,35 +962,11 @@ extension WorkspaceHandle {
         let association = try await services.critiqueRegistry.completeRound(
             roundID: roundID
         )
-        guard let round = association.rounds.first(where: { $0.id == roundID }),
-              let completedAt = round.completedAt else {
+        guard association.rounds.contains(where: {
+            $0.id == roundID && $0.completedAt != nil
+        }) else {
             throw CritiqueRegistryError.incompleteDispositions(roundID)
         }
-        let title = ResearchNoteTitleResolver.resolve(
-            document: context.document,
-            vaultRole: context.vault.role
-        ).title
-        let reference = ResearchActivityNoteReference(
-            noteID: context.identity.id,
-            note: workNote,
-            role: .work,
-            title: title
-        )
-        _ = try await services.researchActivityStore.appendEvent(
-            ResearchActivityEvent(
-                id: ResearchActivityEvent.stableID(
-                    activityID: roundID,
-                    noteID: context.identity.id,
-                    kind: .critiqueAddressed
-                ),
-                activityID: roundID,
-                note: reference,
-                kind: .critiqueAddressed,
-                occurredAt: completedAt,
-                origin: reference,
-                researchRecordID: roundID
-            )
-        )
         try await refreshAfterResearchCommit("The completed Critique round")
         return association
     }

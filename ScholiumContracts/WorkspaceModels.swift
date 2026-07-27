@@ -248,39 +248,30 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
 /// mutations are performed only through `ResearchOperations`; this value is
 /// immutable delivery-neutral state for GUI, CLI, and future snapshot readers.
 public struct WorkspaceResearchSnapshot: Sendable {
-    public let activityEvents: [ResearchActivityEvent]
     public let settlements: [SettlementRecord]
     public let activeDiscussions: [PortableResearchDiscussion]
     public let finishedResearchRecords: [PortableResearchRecord]
     public let pendingResearchStates: [PendingResearchState]
-    public let activityGrants: [ResearchActivityGrant]
     public let critiques: [CritiqueAssociation]
-    public let functionRuns: [ResearchFunctionRecordProjection]
     public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
     public let healthIssues: [String]
 
     public init(
-        activityEvents: [ResearchActivityEvent] = [],
         settlements: [SettlementRecord] = [],
         activeDiscussions: [PortableResearchDiscussion] = [],
         finishedResearchRecords: [PortableResearchRecord] = [],
         pendingResearchStates: [PendingResearchState] = [],
-        activityGrants: [ResearchActivityGrant] = [],
         critiques: [CritiqueAssociation],
-        functionRuns: [ResearchFunctionRecordProjection] = [],
         checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         healthIssues: [String]
     ) {
-        self.activityEvents = activityEvents
         self.settlements = settlements
         self.activeDiscussions = activeDiscussions
         self.finishedResearchRecords = finishedResearchRecords
         self.pendingResearchStates = pendingResearchStates
-        self.activityGrants = activityGrants
         self.critiques = critiques
-        self.functionRuns = functionRuns
         self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords
         self.healthIssues = healthIssues

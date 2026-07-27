@@ -64,8 +64,8 @@ struct ScholiumCLI {
                     try await runSkills(Array(arguments.dropFirst()), context: context)
                 case "workflow":
                     try await runWorkflow(Array(arguments.dropFirst()), context: context)
-                case "function":
-                    try await runFunction(Array(arguments.dropFirst()), context: context)
+                case "action":
+                    try await runAction(Array(arguments.dropFirst()), context: context)
                 case "bibliography":
                     try await runBibliography(Array(arguments.dropFirst()), context: context)
                 case "read":

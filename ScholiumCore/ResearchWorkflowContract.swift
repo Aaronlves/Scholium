@@ -157,9 +157,9 @@ public enum ResearchWorkflowAssembler {
         let warnings = unique(resolvedPhases.flatMap(\.warnings))
         let conflicts = unique(resolvedPhases.flatMap(\.blockingConflicts))
         let rendered = ([
-            "# Scholium Research Function",
+            "# Scholium Research Workflow",
             "",
-            "This is an ephemeral function packet. It does not grant permission, certify philosophical adequacy, or merge authority across phases.",
+            "This is an ephemeral workflow packet. It does not grant permission, certify philosophical adequacy, or merge authority across phases.",
             "",
         ] + resolvedPhases.map(\.renderedInstructions)).joined(separator: "\n")
         return ResolvedResearchWorkflowEnvelope(

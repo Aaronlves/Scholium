@@ -67,81 +67,6 @@ struct FrontendArchitectureTests {
         #expect(router.alert == nil)
     }
 
-    @Test("Properties can suspend and resume exactly one Research Function route")
-    func frontmatterResearchFunctionContinuation() throws {
-        let router = WindowPresentationRouter()
-        let functionRoute = ResearchFunctionPanelRoute(
-            target: VaultNoteReference(
-                vaultID: UUID(),
-                vaultName: "Topics",
-                vaultRole: .topicKnowledge,
-                relativePath: "Topics/Agency.md"
-            ),
-            function: .develop,
-            presentationID: UUID()
-        )
-        let propertiesRoute = FrontmatterPanelRoute(
-            path: "Topics/Agency.md",
-            returnToResearchFunction: functionRoute
-        )
-
-        router.present(.researchFunction(functionRoute))
-        router.present(.frontmatter(propertiesRoute))
-        #expect(router.suspendsResearchFunction(
-            presentationID: functionRoute.presentationID
-        ))
-
-        router.finishFrontmatter(propertiesRoute)
-        guard case .researchFunction(let resumedRoute) = router.sheet else {
-            Issue.record("Expected the same Write route to resume")
-            return
-        }
-        #expect(resumedRoute == functionRoute)
-        router.dismissSheet(if: propertiesRoute.id)
-        #expect(router.sheet?.id == "research-function:\(functionRoute.presentationID.uuidString.lowercased())")
-    }
-
-    @Test("A stale Properties completion cannot replace a newer same-path continuation")
-    func staleFrontmatterContinuationIsRejected() {
-        let router = WindowPresentationRouter()
-        let target = VaultNoteReference(
-            vaultID: UUID(),
-            vaultName: "Topics",
-            vaultRole: .topicKnowledge,
-            relativePath: "Topics/Agency.md"
-        )
-        let olderFunction = ResearchFunctionPanelRoute(
-            target: target,
-            function: .develop,
-            presentationID: UUID()
-        )
-        let newerFunction = ResearchFunctionPanelRoute(
-            target: target,
-            function: .discuss,
-            presentationID: UUID()
-        )
-        let older = FrontmatterPanelRoute(
-            path: target.relativePath,
-            returnToResearchFunction: olderFunction
-        )
-        let newer = FrontmatterPanelRoute(
-            path: target.relativePath,
-            returnToResearchFunction: newerFunction
-        )
-
-        router.present(.frontmatter(older))
-        router.present(.frontmatter(newer))
-        router.finishFrontmatter(older)
-        #expect(router.sheet?.id == newer.id)
-
-        router.finishFrontmatter(newer)
-        guard case .researchFunction(let resumed) = router.sheet else {
-            Issue.record("Expected only the current Properties continuation to resume")
-            return
-        }
-        #expect(resumed == newerFunction)
-    }
-
     @Test("Bootstrap is a separate scene without the workspace shell")
     func bootstrapSceneBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -698,9 +623,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let functionsSource = try String(
+        let actionsSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift"
+                "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift"
             ),
             encoding: .utf8
         )
@@ -763,7 +688,7 @@ struct FrontendArchitectureTests {
         #expect(connectionsSource.contains(
             "ScholiumInterfaceTypography.apparatusResearchContent"
         ))
-        #expect(functionsSource.contains(
+        #expect(actionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
         #expect(researchSource.contains("visibleAttentionItems.prefix(3)"))
@@ -1171,49 +1096,6 @@ struct FrontendArchitectureTests {
 
     }
 
-    @Test("Research Function presentation is target-locked and resettable")
-    func researchFunctionStateTransitions() {
-        let controller = ResearchController()
-        let vaultID = UUID()
-        let target = ResearchFunctionTarget(
-            noteID: UUID(),
-            note: VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: "Topics/Agency.md"
-            ),
-            role: .topic,
-            fingerprint: DocumentFingerprint(content: "# Agency\n"),
-            title: "Agency"
-        )
-        let firstPresentation = UUID()
-        controller.functions.begin(
-            target: target,
-            function: .discuss,
-            selection: nil,
-            presentationID: firstPresentation
-        )
-        #expect(controller.functions.activeFunction == .discuss)
-        #expect(controller.functions.target == target)
-        #expect(controller.functions.presentationID == firstPresentation)
-
-        let secondPresentation = UUID()
-        controller.functions.begin(
-            target: target,
-            function: .develop,
-            selection: nil,
-            presentationID: secondPresentation
-        )
-        #expect(controller.functions.activeFunction == .develop)
-        #expect(controller.functions.presentationID == secondPresentation)
-
-        controller.functions.dismiss(presentationID: firstPresentation)
-        #expect(controller.functions.presentationID == secondPresentation)
-
-        controller.functions.dismiss(presentationID: secondPresentation)
-        #expect(controller.functions.presentationID == nil)
-        #expect(controller.functions.target == nil)
-    }
-
     @Test("Command-F restores the previous ordinary scope and rejects late results")
     func temporaryFindScopeRestoration() {
         let controller = DiscoveryController()
@@ -1266,6 +1148,8 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("private let tabViewController = NSTabViewController()"))
         #expect(splitSource.contains("tabViewController.tabStyle = .unspecified"))
         #expect(splitSource.contains("tabButtonStack.distribution = .fillEqually"))
+        #expect(splitSource.contains("tabStrip.setAccessibilityElement(true)"))
+        #expect(splitSource.contains("tabStrip.setAccessibilityRole(.group)"))
         #expect(splitSource.contains("let documentTabsController:"))
         #expect(appSource.contains("NSWindow.allowsAutomaticWindowTabbing = false"))
         #expect(!appSource.contains("NativeWindowTabCoordinator"))
@@ -1549,7 +1433,7 @@ struct FrontendArchitectureTests {
                 ".scholiumSurface(.navigation)",
                 "ScholiumColorRole.documentBackground",
             ],
-            "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift": [
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift": [
                 "scholiumSurface(.denseEvidence)",
                 "ScholiumColorRole.documentBackground",
                 "scholiumForeground(.attention)",
@@ -1988,21 +1872,15 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let recordStart = try #require(source.range(of: "// MARK: - Research Record"))
-        let recordEnd = try #require(
-            source.range(of: "// MARK: - Preview", range: recordStart.upperBound..<source.endIndex)
-        )
-        let recordSource = String(source[recordStart.lowerBound..<recordEnd.lowerBound])
-
         #expect(!source.contains("PageAnnotation"))
         #expect(!source.contains("AnnotationRecord"))
         #expect(!editorSource.contains("setPageAnnotations"))
         #expect(!editorSource.contains("PageAnnotationMarginWidget"))
         #expect(!readSource.contains("applyPageAnnotations"))
-        #expect(recordSource.contains("Write Activities"))
-        #expect(!recordSource.contains("Earlier Review Archive"))
-        #expect(!recordSource.contains("Earlier Dialogue Archive"))
-        #expect(!recordSource.contains("entry.functionSnapshot == nil"))
+        #expect(!source.contains("Write Activities"))
+        #expect(!source.contains("Earlier Review Archive"))
+        #expect(!source.contains("Earlier Dialogue Archive"))
+        #expect(!source.contains("entry.functionSnapshot == nil"))
     }
 
     @Test("Read and Live Preview share one offline mathematics runtime and font set")

@@ -127,7 +127,7 @@ failure moves proved installed copies into hidden nonexecuting recovery
 quarantine rather than deleting possible late external writes. Archives,
 network content, links, executables, scripts, nested resources, and implicit
 Action/permission bindings are rejected. Profiles remain declarative and
-cannot grant authority. New Action and retained Function entry-point runs now keep protected execution
+cannot grant authority. Action runs keep protected execution
 state in per-run Application Support files and write terminal
 nonconversational outcomes as one portable, Action-identified Research Record;
 raw keys, assembled prompts, bookmarks, absolute paths, transport details, and
@@ -141,7 +141,7 @@ Technical retains the latest 10, 30, or 50 per Note by durable Settle order, or
 does not delete them automatically; 30 is the default. Lowering the limit
 journals only the exact versions the researcher previewed until their
 idempotent removal completes. Retained
-Function IDs remain protected execution vocabulary, but no new run writes the
+Internal execution IDs remain protected implementation vocabulary, but no new run writes the
 legacy activity or Dialogue files. Passage Comment and whole-note or focal-note
 Discuss now create one portable active Discussion; attributed researcher and
 agent turns stay in that exchange, Close leaves it active, and explicit Finish
@@ -152,8 +152,9 @@ Skill, Profile, or frozen run. An allowed authenticated mid-run change request
 now prepares one independent child per approved Note, with its own frozen
 Action, Method, checkpoint, grant, Fidelity, completion verification, and
 durable parent/request/group lineage; it never mutates the parent authority.
-The independent two-panel Research Record window, Record Trash, and disposable
-diffs remain later migration work.
+The independent fixed-size two-panel Research Record window is implemented.
+Record deletion is a direct researcher-confirmed permanent action with no
+Record Trash; record-specific comparisons are disposable and never persisted.
 Actions itself now exposes only the role-valid default matrix, active
 Discussions, one Researcher Skills group, and Settle. It contains no Research
 Activity HUD, Work with Agent wrapper, or duplicate Research Record launcher.
@@ -366,15 +367,15 @@ Inspect available commands rather than relying on examples that may become stale
 ```bash
 scholium version --format json
 scholium doctor --format json
-scholium help function
-scholium function prepare --help
+scholium help action
+scholium action prepare --help
 ```
 
 The CLI supports registered-vault inspection, shared search, links, graph
 traces, canonical workspace catalog and Attention output, exact reads,
-Dialogue replies, resumable Research Functions, Recommended Bibliography, and
-revision-checked direct note operations. JSON Function results include typed
-next actions; use `function show` for recovery and `function prepare-fidelity`
+Discussion replies, resumable Research Actions, Recommended Bibliography, and
+revision-checked direct note operations. JSON Action results include typed
+next actions; use `action show` for recovery and `action prepare-fidelity`
 after a changed Analyze, Synthesize, or Write run. Existing-note mutations require the
 current SHA-256 returned by `scholium read --format json`.
 

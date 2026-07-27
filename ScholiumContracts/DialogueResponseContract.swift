@@ -231,6 +231,24 @@ public struct DialogueResponseContract: Codable, Hashable, Sendable {
     }
 }
 
+/// The bounded response contract frozen into one machine-local Discuss run.
+/// Scholarly turns live only in the portable active Discussion; this value is
+/// transport evidence and cannot authorize file mutation.
+public struct ResearchDiscussionExecutionContract: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public let responseContract: DialogueResponseContract
+
+    public init(id: UUID, responseContract: DialogueResponseContract) throws {
+        guard responseContract.validationIssues.isEmpty else {
+            throw ResearchOperationError.invalidDialogueResponseContract(
+                responseContract.validationIssues
+            )
+        }
+        self.id = id
+        self.responseContract = responseContract
+    }
+}
+
 /// Renders the bounded locator attached to copied Dialogue instructions.
 /// The locator exposes the immutable request snapshot without persisting a
 /// workflow contract or presenting the snapshot as file-edit authorization.

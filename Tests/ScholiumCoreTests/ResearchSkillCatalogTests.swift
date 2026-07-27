@@ -398,7 +398,7 @@ struct ResearchSkillCatalogTests {
         #expect(transport.contains(
             "--resource <relative-path> --format text"
         ))
-        #expect(transport.contains("Prepared Function state and typed `nextActions` remain JSON"))
+        #expect(transport.contains("Prepared Action state and typed `nextActions` remain JSON"))
         #expect(!transport.contains(
             "scholium skills catalog --triptych <triptych> --format json"
         ))
@@ -447,17 +447,14 @@ struct ResearchSkillCatalogTests {
         #expect(withMethod.contains("scholium-discuss"))
     }
 
-    @Test("Legacy Dialogue mode decodes as Discuss and re-encodes canonically")
-    func legacyDialogueModeDecode() throws {
-        let decoder = JSONDecoder()
-        let encoder = JSONEncoder()
-        let mode = try decoder.decode(
-            ResearchSkillMode.self,
-            from: Data("\"dialogue\"".utf8)
-        )
-
-        #expect(mode == .discuss)
-        #expect(String(decoding: try encoder.encode(mode), as: UTF8.self) == "\"discuss\"")
+    @Test("Unsupported Dialogue mode is rejected instead of projected as Discuss")
+    func legacyDialogueModeIsRejected() throws {
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                ResearchSkillMode.self,
+                from: Data("\"dialogue\"".utf8)
+            )
+        }
     }
 
     @Test("Explicit Analyze assembly includes only its Method dependency closure")
@@ -569,34 +566,12 @@ struct ResearchSkillCatalogTests {
         }
     }
 
-    @Test("Discuss response profile persists beside Works and snapshots independently")
-    func profilePersistenceAndSnapshot() async throws {
-        let root = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let works = root.appendingPathComponent("Works", isDirectory: true)
-        try FileManager.default.createDirectory(at: works, withIntermediateDirectories: true)
-        let control = TriptychControlStore(worksVaultURL: works)
-        let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
-            ($0, UUID())
-        })
-        _ = try await control.bootstrap(vaultIDs: vaultIDs)
-
+    @Test("Discuss response contract freezes one request snapshot")
+    func profileSnapshot() {
         let profile = DialogueResponseProfile(
             modules: [.criticalReflection, .remainingQuestions],
             commentPreservation: .keepAllComments
         )
-        try await control.saveDiscussResponseProfile(profile)
-        let loaded = try await control.discussResponseProfile()
-        #expect(loaded.profileRevision == profile.profileRevision)
-        #expect(abs(loaded.updatedAt.timeIntervalSince(profile.updatedAt)) < 1)
-        #expect(loaded.base == profile.base)
-        #expect(loaded.modules == profile.modules)
-        #expect(loaded.concision == profile.concision)
-        #expect(loaded.commentPreservation == profile.commentPreservation)
-        #expect(FileManager.default.fileExists(
-            atPath: root.appendingPathComponent(".scholium/dialogue-response.json").path
-        ))
-
         let contract = DialogueResponseContract(profile: profile)
         let changed = profile.updated(
             modules: [DialogueResponseModule.researchDirections.rawValue]

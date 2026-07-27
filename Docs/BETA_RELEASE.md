@@ -74,7 +74,7 @@ Before creating the tag or uploading assets:
    Scholium state. Verify the canonical icon in Finder and the Dock at ordinary
    and small sizes. Exercise first launch, Triptych selection, read/edit/save,
    conflicts, Search, all three Research Inspector modes and a representative
-   Research Function, checkpoints, restoration, and unavailable optional
+   Research Action, checkpoints, restoration, and unavailable optional
    integrations.
 6. Complete applicable specification gates and record every waiver or known
    limitation. Never report an ad-hoc signature as Developer ID signing,

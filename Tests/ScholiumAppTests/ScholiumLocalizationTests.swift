@@ -35,19 +35,15 @@ struct ScholiumLocalizationTests {
         )
     }
 
-    @Test("Research Function presentation localizes independently of stable identifiers")
-    func researchFunctions() {
-        #expect(ResearchFunctionID.discuss.interfaceTitle(locale: english) == "Discuss")
-        #expect(ResearchFunctionID.discuss.interfaceTitle(locale: simplifiedChinese) == "讨论")
-        #expect(ResearchFunctionID.develop.interfaceTitle(locale: simplifiedChinese) == "发展")
-        #expect(ResearchFunctionID.fidelity.interfaceTitle(locale: simplifiedChinese) == "核查")
-        #expect(
-            ResearchFunctionID.critique.interfaceHelp(locale: simplifiedChinese)
-                == "请求对这篇写作进行署名评析"
-        )
-
-        #expect(ResearchFunctionID.discuss.interfaceIdentifier == "discuss")
-        #expect(ResearchFunctionID.fidelity.interfaceIdentifier == "fidelity")
+    @Test("Public Research Actions localize without exposing protected mechanism names")
+    func researchActions() {
+        #expect(ScholiumL10n.string("Discuss", locale: english) == "Discuss")
+        #expect(ScholiumL10n.string("Discuss", locale: simplifiedChinese) == "讨论")
+        #expect(ScholiumL10n.string("Analyze", locale: simplifiedChinese) == "分析")
+        #expect(ScholiumL10n.string("Synthesize", locale: simplifiedChinese) == "综合")
+        #expect(ScholiumL10n.string("Write", locale: simplifiedChinese) == "写入")
+        #expect(ScholiumL10n.string("Critique", locale: simplifiedChinese) == "评析")
+        #expect(ScholiumL10n.string("Check Fidelity", locale: simplifiedChinese) == "核查忠实度")
     }
 
     @Test("Default interface catalog resolves ordinary controls in Simplified Chinese")
@@ -71,9 +67,7 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Source", locale: simplifiedChinese) == "源文本")
         #expect(ScholiumL10n.string("Review", locale: english) == "Review")
         #expect(ScholiumL10n.string("Edit", locale: english) == "Edit")
-        #expect(ScholiumL10n.string("Work with Agent", locale: simplifiedChinese) == "与 Agent 协作")
         #expect(ScholiumL10n.string("Settle", locale: simplifiedChinese) == "暂定")
-        #expect(ScholiumL10n.string("RESEARCH ACTIVITY", locale: simplifiedChinese) == "研究活动")
         #expect(ScholiumL10n.string("Completion", locale: simplifiedChinese) == "完成度")
         #expect(ScholiumL10n.string("Incomplete", locale: simplifiedChinese) == "未完成")
         #expect(ScholiumL10n.string("Research Scope", locale: simplifiedChinese) == "研究范围")

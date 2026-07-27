@@ -9,7 +9,7 @@ Apply `scholium-core-protocol`. This protected System Skill governs how an exter
 
 The skill file supplies the instruction contract; it does not itself create an MCP transport. If the supported Zotero MCP capability is unavailable, report that exact limitation and continue only from sources already available within the task.
 
-## Prepared Analysis Research Function
+## Prepared Analyze Action
 
 When a prepared packet contains a labelled **Zotero bibliographic metadata**
 snapshot, Application has already performed the one permitted exact item read.
@@ -17,7 +17,7 @@ Treat that immutable snapshot as the complete Zotero context for the run. Do
 not probe, search, inspect the item again, fetch an attachment, or replace the
 snapshot with newer library state. A warning in the snapshot is nonblocking:
 continue from available sources and fill only information genuinely needed by
-the function. Abstract, tags, and Collections remain metadata rather than
+the Action. Abstract, tags, and Collections remain metadata rather than
 paper content or philosophical evidence. Never copy the snapshot into Markdown.
 
 The remaining sections govern explicit external-agent Zotero operations when

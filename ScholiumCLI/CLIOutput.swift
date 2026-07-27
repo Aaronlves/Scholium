@@ -77,12 +77,12 @@ extension ScholiumCLI {
           scholium workflow assemble --from <file|-> [--triptych <selector>]
               --format markdown|json
           scholium workflow audit-plan --from <file|-> --format json
-          scholium function available --from <json|-> --format json
-          scholium function prepare --from <json|-> --format json|markdown
-          scholium function show <run-id> [--triptych <selector>] --format json|markdown
-          scholium function prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown
-          scholium function complete --from <json|-> [--triptych <selector>] --format json
-          scholium function cancel <run-id> [--triptych <selector>]
+          scholium action available --from <json|-> --format json
+          scholium action prepare --from <json|-> --format json|markdown
+          scholium action show <run-id> [--triptych <selector>] --format json|markdown
+          scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown
+          scholium action complete --from <json|-> [--triptych <selector>] --format json
+          scholium action cancel <run-id> [--triptych <selector>]
           scholium bibliography prepare --from <json|-> --format json|markdown
           scholium bibliography show <request-id> [--triptych <selector>] --format json|markdown
           scholium bibliography complete --from <json|-> [--triptych <selector>] --format json
@@ -170,12 +170,12 @@ private extension ScholiumCLI {
             "workflow validate": "Usage: scholium workflow validate --from <json|-> [--triptych <selector>] --format json",
             "workflow assemble": "Usage: scholium workflow assemble --from <json|-> [--triptych <selector>] --format markdown|json",
             "workflow audit-plan": "Usage: scholium workflow audit-plan --from <json|-> --format json",
-            "function available": "Usage: scholium function available --from <target-json|-> --format json",
-            "function prepare": "Usage: scholium function prepare --from <request-json|-> --format json|markdown",
-            "function show": "Usage: scholium function show <run-id> [--triptych <selector>] --format json|markdown",
-            "function prepare-fidelity": "Usage: scholium function prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Develop or Revise run.",
-            "function complete": "Usage: scholium function complete --from <completion-json|-> [--triptych <selector>] --format json",
-            "function cancel": "Usage: scholium function cancel <run-id> [--triptych <selector>] [--format json]",
+            "action available": "Usage: scholium action available --from <target-json|-> --format json",
+            "action prepare": "Usage: scholium action prepare --from <request-json|-> --format json|markdown",
+            "action show": "Usage: scholium action show <run-id> [--triptych <selector>] --format json|markdown",
+            "action prepare-fidelity": "Usage: scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Analyze, Synthesize, or Write Action.",
+            "action complete": "Usage: scholium action complete --from <completion-json|-> [--triptych <selector>] --format json",
+            "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
             "bibliography prepare": "Usage: scholium bibliography prepare --from <request-json|-> --format json|markdown",
             "bibliography show": "Usage: scholium bibliography show <request-id> [--triptych <selector>] --format json|markdown",
             "bibliography complete": "Usage: scholium bibliography complete --from <completion-json|-> [--triptych <selector>] --format json",

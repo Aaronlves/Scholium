@@ -704,7 +704,7 @@ public struct ResearchActionAvailability: Codable, Hashable, Identifiable, Senda
 
 /// Delivery-neutral request. The Application resolves the Action, Profile,
 /// Method, current source, and authority again before creating a run.
-public struct ResearchActionExecutionRequest: Hashable, Sendable {
+public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
     public let actionID: ResearchActionID
     /// The execution semantics presented to the researcher when the sheet was
     /// opened. Application resolution must still match this value before a
@@ -739,15 +739,74 @@ public struct ResearchActionExecutionRequest: Hashable, Sendable {
             ($0.key.rawValue, $0.value)
         })
     }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case actionID
+        case expectedExecutionKind
+        case expectedProfileRevision
+        case expectedProfileDocumentRevision
+        case target
+        case parameterValues
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchActionExecutionValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawValues = try container.decode(
+            [String: ResearchActionParameterValue].self,
+            forKey: .parameterValues
+        )
+        self.init(
+            actionID: try container.decode(ResearchActionID.self, forKey: .actionID),
+            expectedExecutionKind: try container.decode(
+                ResearchActionExecutionKind.self,
+                forKey: .expectedExecutionKind
+            ),
+            expectedProfileRevision: try container.decode(
+                DocumentFingerprint.self,
+                forKey: .expectedProfileRevision
+            ),
+            expectedProfileDocumentRevision: try container.decodeIfPresent(
+                DocumentFingerprint.self,
+                forKey: .expectedProfileDocumentRevision
+            ),
+            target: try container.decode(
+                ResearchActionNoteSnapshot.self,
+                forKey: .target
+            ),
+            parameterValues: Dictionary(uniqueKeysWithValues: rawValues.compactMap {
+                guard let id = ResearchActionModuleID(rawValue: $0.key) else { return nil }
+                return (id, $0.value)
+            })
+        )
+        guard parameterValues.count == rawValues.count else {
+            let unknown = rawValues.keys.sorted().first {
+                ResearchActionModuleID(rawValue: $0) == nil
+            } ?? ""
+            throw ResearchActionExecutionContractError.unknownParameter(unknown)
+        }
+    }
 }
 
 /// Public preparation result. The protected Function remains an internal
 /// compatibility mechanism and is therefore absent from this value.
-public struct ResearchActionPreparation: Hashable, Sendable {
+public enum ResearchActionRunState: String, Codable, Hashable, Sendable {
+    case prepared
+    case awaitingFidelity = "awaiting_fidelity"
+    case complete
+    case unverified
+    case stale
+    case cancelled
+}
+
+public struct ResearchActionPreparation: Codable, Hashable, Sendable {
     public let snapshot: ResearchActionSnapshot
     public let runID: UUID
     public let instructions: String
-    public let state: ResearchFunctionRunState
+    public let state: ResearchActionRunState
     public let derivedRefreshWarning: String?
     public let nextActions: [AgentCommandAction]
 
@@ -755,7 +814,7 @@ public struct ResearchActionPreparation: Hashable, Sendable {
         snapshot: ResearchActionSnapshot,
         runID: UUID,
         instructions: String,
-        state: ResearchFunctionRunState,
+        state: ResearchActionRunState,
         derivedRefreshWarning: String? = nil,
         nextActions: [AgentCommandAction] = []
     ) {
@@ -764,6 +823,230 @@ public struct ResearchActionPreparation: Hashable, Sendable {
         self.instructions = instructions
         self.state = state
         self.derivedRefreshWarning = derivedRefreshWarning
+        self.nextActions = nextActions
+    }
+}
+
+/// Agent-authored candidate paths for one write-capable Action. Scholium owns
+/// the authoritative fingerprint checks and final change report.
+public struct ResearchActionWriteCompletionSubmission: Codable, Hashable, Sendable {
+    public let runID: UUID
+    public let writeKey: String
+    public let candidateModifiedNotes: [VaultQualifiedNoteID]
+    public let summary: String
+    public let submittedAt: Date
+
+    public init(
+        runID: UUID,
+        writeKey: String,
+        candidateModifiedNotes: [VaultQualifiedNoteID],
+        summary: String,
+        submittedAt: Date = Date()
+    ) {
+        self.runID = runID
+        self.writeKey = writeKey
+        self.candidateModifiedNotes = Array(Set(candidateModifiedNotes)).sorted()
+        self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.submittedAt = submittedAt
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case runID
+        case writeKey
+        case candidateModifiedNotes
+        case summary
+        case submittedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchActionExecutionValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            runID: try container.decode(UUID.self, forKey: .runID),
+            writeKey: try container.decode(String.self, forKey: .writeKey),
+            candidateModifiedNotes: try container.decode(
+                [VaultQualifiedNoteID].self,
+                forKey: .candidateModifiedNotes
+            ),
+            summary: try container.decode(String.self, forKey: .summary),
+            submittedAt: try container.decode(Date.self, forKey: .submittedAt)
+        )
+    }
+}
+
+public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
+    public let runID: UUID
+    public let confirmationToken: UUID
+    public let finalTargetFingerprint: DocumentFingerprint?
+    public let finalMaterialFingerprints: [UUID: DocumentFingerprint]
+    public let actuallyUsedMaterialNoteIDs: [UUID]
+    public let summary: String
+    public let didModifyTarget: Bool
+    public let writeCompletion: ResearchActionWriteCompletionSubmission?
+    public let outputFingerprint: DocumentFingerprint?
+    public let fidelityOutcomes: [FidelityCheckOutcome]
+    public let childRunIDs: [UUID]
+    public let submittedAt: Date
+
+    public init(
+        runID: UUID,
+        confirmationToken: UUID,
+        finalTargetFingerprint: DocumentFingerprint? = nil,
+        finalMaterialFingerprints: [UUID: DocumentFingerprint] = [:],
+        actuallyUsedMaterialNoteIDs: [UUID] = [],
+        summary: String,
+        didModifyTarget: Bool,
+        writeCompletion: ResearchActionWriteCompletionSubmission? = nil,
+        outputFingerprint: DocumentFingerprint? = nil,
+        fidelityOutcomes: [FidelityCheckOutcome] = [],
+        childRunIDs: [UUID] = [],
+        submittedAt: Date = Date()
+    ) {
+        self.runID = runID
+        self.confirmationToken = confirmationToken
+        self.finalTargetFingerprint = finalTargetFingerprint
+        self.finalMaterialFingerprints = finalMaterialFingerprints
+        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs.sorted {
+            $0.uuidString < $1.uuidString
+        }
+        self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.didModifyTarget = didModifyTarget
+        self.writeCompletion = writeCompletion
+        self.outputFingerprint = outputFingerprint
+        self.fidelityOutcomes = fidelityOutcomes
+        self.childRunIDs = childRunIDs
+        self.submittedAt = submittedAt
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case runID
+        case confirmationToken
+        case finalTargetFingerprint
+        case finalMaterialFingerprints
+        case actuallyUsedMaterialNoteIDs
+        case summary
+        case didModifyTarget
+        case writeCompletion
+        case outputFingerprint
+        case fidelityOutcomes
+        case childRunIDs
+        case submittedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchActionExecutionValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            runID: try container.decode(UUID.self, forKey: .runID),
+            confirmationToken: try container.decode(
+                UUID.self,
+                forKey: .confirmationToken
+            ),
+            finalTargetFingerprint: try container.decodeIfPresent(
+                DocumentFingerprint.self,
+                forKey: .finalTargetFingerprint
+            ),
+            finalMaterialFingerprints: try container.decode(
+                [UUID: DocumentFingerprint].self,
+                forKey: .finalMaterialFingerprints
+            ),
+            actuallyUsedMaterialNoteIDs: try container.decode(
+                [UUID].self,
+                forKey: .actuallyUsedMaterialNoteIDs
+            ),
+            summary: try container.decode(String.self, forKey: .summary),
+            didModifyTarget: try container.decode(Bool.self, forKey: .didModifyTarget),
+            writeCompletion: try container.decodeIfPresent(
+                ResearchActionWriteCompletionSubmission.self,
+                forKey: .writeCompletion
+            ),
+            outputFingerprint: try container.decodeIfPresent(
+                DocumentFingerprint.self,
+                forKey: .outputFingerprint
+            ),
+            fidelityOutcomes: try container.decode(
+                [FidelityCheckOutcome].self,
+                forKey: .fidelityOutcomes
+            ),
+            childRunIDs: try container.decode([UUID].self, forKey: .childRunIDs),
+            submittedAt: try container.decode(Date.self, forKey: .submittedAt)
+        )
+    }
+}
+
+public struct ResearchActionCompletion: Codable, Hashable, Sendable {
+    public let actionID: ResearchActionID
+    public let runID: UUID
+    public let state: ResearchActionRunState
+    public let targetFingerprint: DocumentFingerprint
+    public let materialFingerprints: [UUID: DocumentFingerprint]
+    public let actuallyUsedMaterialNoteIDs: [UUID]
+    public let summary: String
+    public let didModifyTarget: Bool
+    public let outputFingerprint: DocumentFingerprint?
+    public let fidelityOutcomes: [FidelityCheckOutcome]
+    public let childRunIDs: [UUID]
+    public let completedAt: Date
+    public let derivedRefreshWarning: String?
+    public let nextActions: [AgentCommandAction]
+
+    public init(
+        actionID: ResearchActionID,
+        runID: UUID,
+        state: ResearchActionRunState,
+        targetFingerprint: DocumentFingerprint,
+        materialFingerprints: [UUID: DocumentFingerprint],
+        actuallyUsedMaterialNoteIDs: [UUID] = [],
+        summary: String,
+        didModifyTarget: Bool,
+        outputFingerprint: DocumentFingerprint? = nil,
+        fidelityOutcomes: [FidelityCheckOutcome] = [],
+        childRunIDs: [UUID] = [],
+        completedAt: Date,
+        derivedRefreshWarning: String? = nil,
+        nextActions: [AgentCommandAction] = []
+    ) {
+        self.actionID = actionID
+        self.runID = runID
+        self.state = state
+        self.targetFingerprint = targetFingerprint
+        self.materialFingerprints = materialFingerprints
+        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs
+        self.summary = summary
+        self.didModifyTarget = didModifyTarget
+        self.outputFingerprint = outputFingerprint
+        self.fidelityOutcomes = fidelityOutcomes
+        self.childRunIDs = childRunIDs
+        self.completedAt = completedAt
+        self.derivedRefreshWarning = derivedRefreshWarning
+        self.nextActions = nextActions
+    }
+}
+
+public struct ResearchActionFidelityPreparation: Codable, Hashable, Sendable {
+    public let parentRunID: UUID
+    public let preparation: ResearchActionPreparation
+    public let effectiveRunID: UUID
+    public let reusedExistingEvidence: Bool
+    public let nextActions: [AgentCommandAction]
+
+    public init(
+        parentRunID: UUID,
+        preparation: ResearchActionPreparation,
+        effectiveRunID: UUID,
+        reusedExistingEvidence: Bool,
+        nextActions: [AgentCommandAction] = []
+    ) {
+        self.parentRunID = parentRunID
+        self.preparation = preparation
+        self.effectiveRunID = effectiveRunID
+        self.reusedExistingEvidence = reusedExistingEvidence
         self.nextActions = nextActions
     }
 }

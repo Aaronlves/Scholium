@@ -264,7 +264,7 @@ private struct PropertiesTypographySample: View {
                         }
                     }
 
-                    sampleSection("WORK WITH AGENT") {
+                    sampleSection("ACTIONS") {
                         VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
                             action(
                                 "Discuss",
@@ -274,29 +274,15 @@ private struct PropertiesTypographySample: View {
                             action(
                                 "Write",
                                 symbol: "square.and.pencil",
-                                detail: "Prepare one bounded Revise activity."
+                                detail: "Prepare one bounded write to the current Work."
                             )
-                        }
-                    }
-
-                    sampleSection("OTHER ACTIONS") {
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
                             action(
                                 "Check Fidelity",
                                 symbol: "checkmark.seal",
                                 detail: "Save the current edit before preparing this check.",
                                 enabled: false
                             )
-                            action(
-                                "Open Research Record",
-                                symbol: "clock.arrow.circlepath",
-                                detail: nil
-                            )
                         }
-                    }
-
-                    sampleSection("RESEARCH ACTIVITY", count: "0") {
-                        EmptyView()
                     }
                 }
                 .padding(ScholiumGrid.Spacing.sectionSeparation)
@@ -671,10 +657,10 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
             HStack(spacing: 16) {
                 Text(verbatim: "Overview")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
-                Text(verbatim: "Connections")
+                Text(verbatim: "Connect")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
                     .foregroundStyle(.secondary)
-                Text(verbatim: "Functions")
+                Text(verbatim: "Actions")
                     .font(ScholiumInterfaceTypography.apparatusTitle)
                     .foregroundStyle(.secondary)
             }

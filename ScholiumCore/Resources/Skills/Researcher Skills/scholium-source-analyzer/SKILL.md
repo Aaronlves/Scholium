@@ -1,6 +1,6 @@
 ---
 name: scholium-source-analyzer
-description: Analyze philosophical and philosophically relevant sources as arguments, conceptual interventions, interpretations, dialectical moves, cases, formal results, normative reasoning, empirical contributions, or topic maps. Use for accessible papers, books, chapters, primary texts, commentaries, handbooks, surveys, and interdisciplinary sources. Keep source claims, authorial positioning, reconstruction, evaluation, and later-use proposals distinct. This is a complete agent method, not a Research Function or note-write authority.
+description: Analyze philosophical and philosophically relevant sources as arguments, conceptual interventions, interpretations, dialectical moves, cases, formal results, normative reasoning, empirical contributions, or topic maps. Use for accessible papers, books, chapters, primary texts, commentaries, handbooks, surveys, and interdisciplinary sources. Keep source claims, authorial positioning, reconstruction, evaluation, and later-use proposals distinct. This is a complete agent method, not a Research Action or note-write authority.
 ---
 
 # Source Analyzer

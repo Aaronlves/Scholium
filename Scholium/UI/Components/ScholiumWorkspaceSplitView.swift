@@ -489,6 +489,9 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         tabButtonStack.setAccessibilityIdentifier("scholium.documentTabSelector")
 
         tabStrip.translatesAutoresizingMaskIntoConstraints = false
+        tabStrip.setAccessibilityElement(true)
+        tabStrip.setAccessibilityRole(.group)
+        tabStrip.setAccessibilityLabel("Document Tabs")
         tabStrip.setAccessibilityIdentifier("scholium.documentTabs")
         tabStrip.addSubview(tabButtonStack)
 

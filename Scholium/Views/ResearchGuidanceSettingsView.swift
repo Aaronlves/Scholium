@@ -2699,7 +2699,7 @@ private struct ResearchRecoverySettingsView: View {
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Manage settled Note versions, inspect machine-local Skill recovery snapshots, and reveal portable or legacy files without projecting legacy guidance into current Actions.",
+                        "Manage settled Note versions, inspect machine-local Skill recovery snapshots, and reveal the current portable Skills folder.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -2776,13 +2776,7 @@ private struct ResearchRecoverySettingsView: View {
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    HStack {
-                        Button("Reveal Skills Folder") { revealSkillsFolder() }
-                        Button("Reveal Legacy Data") { revealLegacyData() }
-                    }
-                    Text("Legacy files remain byte-unchanged and cannot authorize a current Action.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Button("Reveal Skills Folder") { revealSkillsFolder() }
                 }
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
@@ -2992,15 +2986,4 @@ private struct ResearchRecoverySettingsView: View {
         }
     }
 
-    private func revealLegacyData() {
-        Task { @MainActor in
-            do {
-                settingsModel.openExternal(
-                    try await settingsModel.legacyResearchDataURL()
-                )
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
 }

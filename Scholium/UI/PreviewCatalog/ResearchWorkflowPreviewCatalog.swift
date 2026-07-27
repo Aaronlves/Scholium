@@ -682,9 +682,9 @@ private struct ResearchSkillSettingsDetail: View {
             ], actionTitle: nil)
         case .recovery:
             ResearchSkillGroup(title: "RECOVERY", detail: "Machine-local operational state", rows: [
-                "Reveal Legacy Data",
-                "Checkpoint location",
-                "Rebuild derived search index",
+                "Reveal Skills Folder",
+                "Settled version policy",
+                "Skill recovery snapshots",
             ], actionTitle: nil)
         }
     }

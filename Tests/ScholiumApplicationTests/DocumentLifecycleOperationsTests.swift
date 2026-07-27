@@ -384,7 +384,7 @@ struct DocumentLifecycleOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
-        let discussionPreparation = try await handle.research.prepareFunction(
+        let discussionPreparation = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .discuss,
                 target: ResearchFunctionTarget(

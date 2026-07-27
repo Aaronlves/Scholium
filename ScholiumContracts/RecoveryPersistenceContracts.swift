@@ -107,9 +107,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public let relativePath: String
     public let expectedRevision: DocumentFingerprint
     public let checkpointArea: TriptychCheckpointArea
-    public let dialogues: [DialogueEntry]
     public let critiqueNoteID: UUID?
-    public let critiqueDialogues: [DialogueEntry]
     public let critiqueAssociations: [CritiqueAssociation]
     public let identity: PermanentDeletionIdentityBackup?
     public let critiqueIdentity: PermanentDeletionIdentityBackup?
@@ -125,9 +123,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         relativePath: String,
         expectedRevision: DocumentFingerprint,
         checkpointArea: TriptychCheckpointArea,
-        dialogues: [DialogueEntry],
         critiqueNoteID: UUID?,
-        critiqueDialogues: [DialogueEntry],
         critiqueAssociations: [CritiqueAssociation],
         identity: PermanentDeletionIdentityBackup?,
         critiqueIdentity: PermanentDeletionIdentityBackup?,
@@ -142,9 +138,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         self.relativePath = relativePath
         self.expectedRevision = expectedRevision
         self.checkpointArea = checkpointArea
-        self.dialogues = dialogues
         self.critiqueNoteID = critiqueNoteID
-        self.critiqueDialogues = critiqueDialogues
         self.critiqueAssociations = critiqueAssociations
         self.identity = identity
         self.critiqueIdentity = critiqueIdentity
@@ -170,9 +164,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             relativePath: relativePath,
             expectedRevision: expectedRevision,
             checkpointArea: checkpointArea,
-            dialogues: dialogues,
             critiqueNoteID: critiqueNoteID,
-            critiqueDialogues: critiqueDialogues,
             critiqueAssociations: critiqueAssociations,
             identity: identity,
             critiqueIdentity: critiqueIdentity,
@@ -185,7 +177,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case phase, noteID, vaultID, relativePath, expectedRevision
-        case checkpointArea, dialogues, critiqueNoteID, critiqueDialogues
+        case checkpointArea, critiqueNoteID
         case critiqueAssociations, identity, critiqueIdentity, sourceDeletion
         case critiqueDeletion, checkpointPurge, settlements
     }
@@ -205,12 +197,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
                 TriptychCheckpointArea.self,
                 forKey: .checkpointArea
             ),
-            dialogues: try container.decode([DialogueEntry].self, forKey: .dialogues),
             critiqueNoteID: try container.decodeIfPresent(UUID.self, forKey: .critiqueNoteID),
-            critiqueDialogues: try container.decode(
-                [DialogueEntry].self,
-                forKey: .critiqueDialogues
-            ),
             critiqueAssociations: try container.decode(
                 [CritiqueAssociation].self,
                 forKey: .critiqueAssociations

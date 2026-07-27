@@ -3,7 +3,6 @@ import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
     case frontmatter(FrontmatterPanelRoute)
-    case researchFunction(ResearchFunctionPanelRoute)
     case researchAction(ResearchActionPanelRoute)
     case agentNoteChange(UUID)
     case createCheckpoint
@@ -16,8 +15,6 @@ enum WindowSheetRoute: Identifiable {
     var id: String {
         switch self {
         case .frontmatter(let route): route.id
-        case .researchFunction(let route):
-            "research-function:\(route.presentationID.uuidString.lowercased())"
         case .researchAction(let route):
             "research-action:\(route.presentationID.uuidString.lowercased())"
         case .agentNoteChange(let requestID):
@@ -81,28 +78,13 @@ final class WindowPresentationRouter: ObservableObject {
         sheet = nil
     }
 
-    func presentFrontmatter(
-        path: String,
-        returningTo researchFunction: ResearchFunctionPanelRoute? = nil
-    ) {
-        present(.frontmatter(FrontmatterPanelRoute(
-            path: path,
-            returnToResearchFunction: researchFunction
-        )))
+    func presentFrontmatter(path: String) {
+        present(.frontmatter(FrontmatterPanelRoute(path: path)))
     }
 
     func finishFrontmatter(_ route: FrontmatterPanelRoute) {
         guard sheet?.id == route.id else { return }
-        if let continuation = route.returnToResearchFunction {
-            present(.researchFunction(continuation))
-        } else {
-            dismissSheet()
-        }
-    }
-
-    func suspendsResearchFunction(presentationID: UUID) -> Bool {
-        guard case .frontmatter(let route) = sheet else { return false }
-        return route.returnToResearchFunction?.presentationID == presentationID
+        dismissSheet()
     }
 
     func setOverlay(_ route: WindowOverlayRoute, isPresented: Bool) {

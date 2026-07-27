@@ -1993,11 +1993,6 @@ final class WindowModel: ObservableObject {
         set { documentController.identityResolutionError = newValue }
     }
 
-    var dialogueInitialNotes: Set<VaultQualifiedNoteID> {
-        get { researchController.dialogueInitialNotes }
-        set { researchController.dialogueInitialNotes = newValue }
-    }
-
     var checkpointListingError: String? {
         get { researchController.checkpointListingError }
         set { researchController.checkpointListingError = newValue }
@@ -2622,11 +2617,6 @@ final class WindowModel: ObservableObject {
                     self.vaultError = error.localizedDescription
                 }
             }
-        case .presentResearchFunction(let route):
-            guard currentResearchFunctionReference == route.target,
-                  researchController.functions.presentationID == route.presentationID,
-                  researchController.functions.activeFunction == route.function else { return }
-            presentationRouter.present(.researchFunction(route))
         case .presentResearchAction(let route):
             guard currentResearchFunctionReference == route.target,
                   researchController.actions.presentationID == route.presentationID,
@@ -3153,73 +3143,6 @@ final class WindowModel: ObservableObject {
     func clearRequestedDiscussionPresentation() {
         discussionPresentationRequestID = nil
         requestedDiscussionID = nil
-    }
-
-    func openResearchFunction(
-        _ function: ResearchFunctionID,
-        selection: CommentAnchor? = nil,
-        focusCommentComposer: Bool = false,
-        permitsUnavailablePresentation: Bool = false
-    ) {
-        guard let assignment = workspaceAssignment,
-              let initialTarget = currentResearchFunctionTarget,
-              function.allowedTargetRoles.contains(initialTarget.role),
-              permitsUnavailablePresentation
-                || researchController.functions.availability[function]?.isEnabled == true else {
-            return
-        }
-        let initialNoteID = initialTarget.noteID
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.workspaceStore.flushEditors(in: assignment.id)
-                guard let target = self.currentResearchFunctionTarget,
-                      target.noteID == initialNoteID,
-                      let reference = self.currentResearchFunctionReference else { return }
-                await self.researchController.functions.refreshAvailability(for: target)
-                guard let refreshedTarget = self.currentResearchFunctionTarget,
-                      refreshedTarget == target,
-                      let availability = self.researchController.functions.availability[function],
-                      permitsUnavailablePresentation || availability.isEnabled else {
-                    let reason = self.researchController.functions.availability[function]?
-                        .repairReasons.first?.interfaceDescription
-                        ?? "Scholium could not confirm that this function is available for the current note."
-                    self.showToast(reason, kind: .information)
-                    return
-                }
-                let capturedSelection: CommentAnchor?
-                if let selection, selection.fingerprint == target.fingerprint {
-                    capturedSelection = selection
-                } else {
-                    capturedSelection = nil
-                    if selection != nil {
-                        self.showToast(
-                            "The selected passage changed while Scholium saved the note. The function will open for the whole note.",
-                            kind: .information
-                        )
-                    }
-                }
-                let presentationID = UUID()
-                self.researchController.functions.begin(
-                    target: target,
-                    function: function,
-                    selection: capturedSelection,
-                    presentationID: presentationID
-                )
-                self.researchController.requestPresentFunction(
-                    function,
-                    target: reference,
-                    presentationID: presentationID,
-                    focusCommentComposer: focusCommentComposer
-                )
-            } catch {
-                self.showToast(
-                    "Scholium could not save the current editor before opening \(function.interfaceTitle). \(error.localizedDescription)",
-                    kind: .error
-                )
-            }
-        }
     }
 
     var hasDerivedRefreshFailure: Bool {
@@ -3830,52 +3753,15 @@ final class WindowModel: ObservableObject {
             }
         )
         researchController.bind(to: capabilities.research, snapshot: snapshot)
-        researchController.functions.bind(ResearchFunctionClient(
-            availableFunctions: { target in
-                try await capabilities.research.availableFunctions(for: target)
-            },
-            materialCandidates: { target, function in
-                try await capabilities.research.materialCandidates(
-                    for: target,
-                    function: function
-                )
-            },
-            discussResponseProfile: {
-                try await capabilities.research.discussResponseProfile()
-            },
-            prepare: { [weak self] request in
-                guard let self, let assignment = self.workspaceAssignment else {
-                    throw ScholiumApplicationError.researchStoreUnavailable(
-                        "No workspace is active."
-                    )
-                }
-                try await self.workspaceStore.flushEditors(in: assignment.id)
-                return try await capabilities.research.prepareFunction(request)
-            },
-            complete: { submission in
-                try await capabilities.research.completeFunction(submission)
-            },
-            cancel: { runID in
-                try await capabilities.research.cancelFunction(runID: runID)
-            },
-            openActiveDiscussion: { [weak self] discussionID in
-                guard let self else { return }
-                self.presentationRouter.dismissSheet()
-                Task { @MainActor [weak self] in
-                    await Task.yield()
-                    self?.requestDiscussionPresentation(discussionID)
-                }
-            }
-        ))
         researchController.actions.bind(ResearchActionClient(
             availableActions: { target in
                 try await capabilities.research.availableActions(for: target)
             },
             materialCandidates: { target, definition in
                 try await capabilities.research.materialCandidates(
-                    for: target.functionTarget,
-                    function: definition.protectedFunction
-                ).map { $0.material.actionNote }
+                    for: target,
+                    actionID: definition.id
+                )
             },
             sourceAccess: { target in
                 try await capabilities.research.sourceAccess(for: target.functionTarget)
@@ -3903,7 +3789,7 @@ final class WindowModel: ObservableObject {
                 return try await capabilities.research.prepareAction(request)
             },
             cancel: { runID in
-                try await capabilities.research.cancelFunction(runID: runID)
+                try await capabilities.research.cancelAction(runID: runID)
             },
             openActiveDiscussion: { [weak self] discussionID in
                 guard let self else { return }
@@ -4015,14 +3901,6 @@ final class WindowModel: ObservableObject {
     func saveTriptychSettings(_ settings: TriptychSettings) async throws {
         try await researchController.saveSettings(settings)
         triptychSettings = settings
-    }
-
-    func discussResponseProfile() async throws -> DialogueResponseProfile {
-        try await researchController.discussResponseProfile()
-    }
-
-    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
-        try await researchController.saveDiscussResponseProfile(profile)
     }
 
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
@@ -5780,7 +5658,6 @@ final class WindowModel: ObservableObject {
         pendingIdentityRebindings = []
         identityMigrationFailures = []
         identityResolutionError = nil
-        dialogueInitialNotes = []
         documentRevisions = [:]
         relationshipGraph = nil
         workspaceVaultSnapshotsByID = [:]

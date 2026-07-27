@@ -190,25 +190,6 @@ struct WindowDocumentRoute: Hashable, Sendable {
     }
 }
 
-struct ResearchFunctionPanelRoute: Hashable, Sendable {
-    let target: VaultNoteReference
-    let function: ResearchFunctionID
-    let presentationID: UUID
-    let focusCommentComposer: Bool
-
-    init(
-        target: VaultNoteReference,
-        function: ResearchFunctionID,
-        presentationID: UUID,
-        focusCommentComposer: Bool = false
-    ) {
-        self.target = target
-        self.function = function
-        self.presentationID = presentationID
-        self.focusCommentComposer = focusCommentComposer
-    }
-}
-
 struct ResearchActionPanelRoute: Hashable, Sendable {
     let target: VaultNoteReference
     let actionID: ResearchActionID
@@ -225,13 +206,10 @@ struct ResearchActionPanelRoute: Hashable, Sendable {
     }
 }
 
-/// Typed Properties presentation. A Research Function may temporarily hand
-/// off to Properties without dismissing its scoped draft; the return route
-/// makes that continuation explicit instead of relying on unrelated booleans.
+/// Typed Properties presentation.
 struct FrontmatterPanelRoute: Hashable, Sendable {
     let presentationID: UUID
     let path: String
-    let returnToResearchFunction: ResearchFunctionPanelRoute?
 
     var id: String {
         "frontmatter:\(presentationID.uuidString.lowercased())"
@@ -239,12 +217,10 @@ struct FrontmatterPanelRoute: Hashable, Sendable {
 
     init(
         presentationID: UUID = UUID(),
-        path: String,
-        returnToResearchFunction: ResearchFunctionPanelRoute? = nil
+        path: String
     ) {
         self.presentationID = presentationID
         self.path = path
-        self.returnToResearchFunction = returnToResearchFunction
     }
 }
 
@@ -256,7 +232,6 @@ enum WindowIntent: Equatable, Sendable {
     case openSearchResult(SearchResultSelection, disposition: WindowOpenDisposition)
     case revealSourceLocator(vaultID: UUID, locator: SourceLocator)
     case switchVault(UUID)
-    case presentResearchFunction(ResearchFunctionPanelRoute)
     case presentResearchAction(ResearchActionPanelRoute)
     case presentLifecycle(NoteLifecycleRequest)
 }

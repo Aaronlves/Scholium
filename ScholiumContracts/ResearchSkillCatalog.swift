@@ -47,9 +47,7 @@ public enum ResearchSkillMode: String, Codable, CaseIterable, Hashable, Sendable
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
-        if value == "dialogue" {
-            self = .discuss
-        } else if let mode = Self(rawValue: value) {
+        if let mode = Self(rawValue: value) {
             self = mode
         } else {
             throw DecodingError.dataCorruptedError(

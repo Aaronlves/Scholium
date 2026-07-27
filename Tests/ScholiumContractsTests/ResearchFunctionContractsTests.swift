@@ -295,7 +295,7 @@ struct ResearchFunctionContractsTests {
         #expect(roundTrip.dialogueResponseModules == selected.dialogueResponseModules)
 
         let defaultData = try JSONSerialization.data(withJSONObject: [
-            "function": "dialogue",
+            "function": "discuss",
             "target": try JSONSerialization.jsonObject(with: encoder.encode(analysis)),
             "materials": [],
             "instruction": "State the bounded academic outcome.",
@@ -306,16 +306,15 @@ struct ResearchFunctionContractsTests {
         #expect(defaults.dialogueResponseModules == nil)
     }
 
-    @Test("Legacy Dialogue decodes as Discuss and never re-encodes the retired function name")
-    func legacyDialogueFunctionDecode() throws {
-        let decoder = JSONDecoder()
-        let encoder = JSONEncoder()
-        let decoded = try decoder.decode(
-            ResearchFunctionID.self,
-            from: Data("\"dialogue\"".utf8)
-        )
-        #expect(decoded == .discuss)
-        #expect(String(decoding: try encoder.encode(decoded), as: UTF8.self) == "\"discuss\"")
+    @Test("Unsupported Dialogue identifiers are rejected instead of projected")
+    func legacyDialogueIdentifiersAreRejected() throws {
+        let data = Data("\"dialogue\"".utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(ResearchFunctionID.self, from: data)
+        }
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(ResearchFunctionRecordKind.self, from: data)
+        }
     }
 
     @Test("Legacy multi-target writes round-trip but cannot authorize a current Action")

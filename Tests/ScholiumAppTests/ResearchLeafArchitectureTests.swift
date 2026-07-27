@@ -16,7 +16,7 @@ struct ResearchLeafArchitectureTests {
             "Scholium/Views/CheckpointView.swift",
             "Scholium/Views/Note/CritiqueProvenanceView.swift",
             "Scholium/Views/Sidebar/ResearchInspectorContentView.swift",
-            "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
+            "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift",
         ]
         let sources = try Dictionary(uniqueKeysWithValues: relativePaths.map { path in
             (
@@ -136,7 +136,7 @@ struct ResearchLeafArchitectureTests {
         #expect(noteContent.contains("CritiqueProvenanceView("))
         #expect(noteContent.contains("context: critiqueProvenanceContext"))
         #expect(noteContent.contains("ResearchOverviewView("))
-        #expect(noteContent.contains("ResearchFunctionsInspectorView("))
+        #expect(noteContent.contains("ResearchActionsInspectorView("))
         #expect(noteContent.contains("context: researchInspectorContentContext"))
         #expect(content.contains("controller: appState.researchController"))
         #expect(content.contains("graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph"))

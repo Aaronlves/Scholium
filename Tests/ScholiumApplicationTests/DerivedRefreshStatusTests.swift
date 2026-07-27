@@ -204,7 +204,7 @@ struct DerivedRefreshStatusTests {
         defer { try? FileManager.default.removeItem(at: invalidURL) }
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
 
-        let preparation = try await handle.research.prepareFunction(
+        let preparation = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .fidelity,
                 target: target,
@@ -215,11 +215,11 @@ struct DerivedRefreshStatusTests {
 
         try FileManager.default.removeItem(at: invalidURL)
         _ = try await handle.discovery.refresh()
-        #expect(try await handle.snapshot().research.functionRuns.contains {
+        #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
             $0.id == preparation.runID
         })
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
-        let completion = try await handle.research.completeFunction(
+        let completion = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: preparation.snapshot.confirmationToken,
@@ -238,7 +238,7 @@ struct DerivedRefreshStatusTests {
 
         try FileManager.default.removeItem(at: invalidURL)
         _ = try await handle.discovery.refresh()
-        #expect(try await handle.snapshot().research.functionRuns.first {
+        #expect(try await handle.services.localResearchExecutionStore.listing().records.first {
             $0.id == preparation.runID
         }?.completion?.state == .complete)
         await runtime.shutdown()
@@ -262,7 +262,7 @@ struct DerivedRefreshStatusTests {
         defer { try? FileManager.default.removeItem(at: invalidURL) }
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
 
-        let preparation = try await handle.research.prepareFunction(
+        let preparation = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .fidelity,
                 target: target,
@@ -270,7 +270,7 @@ struct DerivedRefreshStatusTests {
             )
         )
         #expect(preparation.derivedRefreshWarning?.isEmpty == false)
-        let completion = try await handle.research.completeFunction(
+        let completion = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: preparation.snapshot.confirmationToken,
@@ -283,12 +283,12 @@ struct DerivedRefreshStatusTests {
         #expect(completion.state == .complete)
         #expect(completion.derivedRefreshWarning?.isEmpty == false)
 
-        // Both post-commit refreshes failed, so the disposable projection still
-        // has no record of this run. Reuse must come from the durable store.
-        #expect(try await handle.snapshot().research.functionRuns.contains {
-            $0.id == preparation.runID
-        } == false)
-        let reused = try await handle.research.prepareFunction(
+        // Action execution is intentionally absent from the disposable
+        // workspace projection. Reuse must come from the durable store.
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: preparation.runID
+        ).completion?.state == .complete)
+        let reused = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .fidelity,
                 target: target,
@@ -300,7 +300,8 @@ struct DerivedRefreshStatusTests {
 
         try FileManager.default.removeItem(at: invalidURL)
         _ = try await handle.discovery.refresh()
-        let persistedMatches = try await handle.snapshot().research.functionRuns.filter {
+        let persistedMatches = try await handle.services.localResearchExecutionStore
+            .listing().records.filter {
             $0.snapshot.request.function == .fidelity
                 && $0.snapshot.request.target.noteID == target.noteID
         }
@@ -340,10 +341,10 @@ struct DerivedRefreshStatusTests {
             expectedBindingRevision: manuscriptBindings.revision
         )
 
-        let manuscript = try await handle.research.prepareFunction(
+        let manuscript = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
         )
-        let revise = try await handle.research.prepareFunction(
+        let revise = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
         )
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
@@ -370,7 +371,7 @@ struct DerivedRefreshStatusTests {
             candidateModifiedNotes: [workID],
             summary: "Revised the Work."
         )
-        let awaitingRevision = try await handle.research.completeFunction(
+        let awaitingRevision = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
@@ -388,14 +389,14 @@ struct DerivedRefreshStatusTests {
             fingerprint: revisedFingerprint,
             title: work.title
         )
-        let fidelity = try await handle.research.prepareFunction(
+        let fidelity = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .fidelity,
                 target: finalWork,
                 checks: try #require(revise.snapshot.fidelityHandoff).checks
             )
         )
-        _ = try await handle.research.completeFunction(
+        _ = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: fidelity.runID,
                 confirmationToken: fidelity.snapshot.confirmationToken,
@@ -405,7 +406,7 @@ struct DerivedRefreshStatusTests {
                 fidelityOutcomes: fidelityOutcomes
             )
         )
-        let reviseCompletion = try await handle.research.completeFunction(
+        let reviseCompletion = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
@@ -418,12 +419,12 @@ struct DerivedRefreshStatusTests {
         #expect(reviseCompletion.state == .complete)
         #expect(reviseCompletion.derivedRefreshWarning?.isEmpty == false)
 
-        // The last-known-good snapshot contains the prepared child but not its
-        // committed completion. Child selection must consult the durable store.
-        #expect(try await handle.snapshot().research.functionRuns.first {
-            $0.id == revise.runID
-        }?.completion == nil)
-        let manuscriptCompletion = try await handle.research.completeFunction(
+        // Child selection consults durable execution evidence, not the
+        // disposable workspace projection.
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: revise.runID
+        ).completion?.state == .complete)
+        let manuscriptCompletion = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: manuscript.runID,
                 confirmationToken: manuscript.snapshot.confirmationToken,
@@ -440,7 +441,8 @@ struct DerivedRefreshStatusTests {
 
         try FileManager.default.removeItem(at: invalidURL)
         _ = try await handle.discovery.refresh()
-        let functionRuns = try await handle.snapshot().research.functionRuns
+        let functionRuns = try await handle.services.localResearchExecutionStore
+            .listing().records
         #expect(functionRuns.first { $0.id == revise.runID }?.completion?.state == .complete)
         #expect(functionRuns.first { $0.id == manuscript.runID }?.completion?.state == .complete)
         await runtime.shutdown()
@@ -469,7 +471,7 @@ private func researchActivityCompletion(
     summary: String,
     submittedAt: Date = Date()
 ) throws -> ResearchActivityCompletionSubmission {
-    let prefix = "Activity key: "
+    let prefix = "Write key: "
     let key = try #require(
         preparation.instructions
             .split(separator: "\n")

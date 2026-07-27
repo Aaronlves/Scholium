@@ -226,7 +226,7 @@ struct WorkspaceSettingsArchitectureTests {
             "actionID == .manuscript && binding.state == .researcherSkill"
         ))
         #expect(source.contains("Reveal Skills Folder"))
-        #expect(source.contains("Reveal Legacy Data"))
+        #expect(!source.contains("Reveal Legacy Data"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
         #expect(source.contains("RecommendedBibliographyMethodSettingsView()"))
@@ -308,138 +308,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(boundary.components(separatedBy: "\n").filter {
             $0.trimmingCharacters(in: .whitespaces).hasPrefix("let ")
         }.count == 4)
-    }
-
-    @Test("Skill summary uses exact ownership and actual binding status")
-    func skillSummaryPresentation() {
-        let builtIn = makeSkill(
-            id: "scholium-analyze",
-            origin: .bundled,
-            skillClass: .method,
-            updatePolicy: "release-managed-duplicable",
-            supportedFunctions: [.develop]
-        )
-        let triptych = makeSkill(
-            id: "researcher-development",
-            origin: .triptych,
-            skillClass: .researcher,
-            supportedFunctions: [.develop]
-        )
-        let manuscript = makeSkill(
-            id: "scholium-manuscript",
-            origin: .bundled,
-            skillClass: .method,
-            updatePolicy: "release-managed-duplicable",
-            supportedFunctions: [.manuscript]
-        )
-        let defaultStatus = ResearchFunctionSkillBindingStatus(
-            function: .develop,
-            candidates: [],
-            selection: ResearchFunctionSkillSelection(function: .develop),
-            bindingRevision: nil,
-            issue: nil
-        )
-
-        #expect(ResearchGuidancePresentation.ownershipLabel(for: builtIn) == "Built-in")
-        #expect(ResearchGuidancePresentation.ownershipLabel(for: triptych) == "Triptych")
-        #expect(ResearchGuidancePresentation.statusLabel(
-            for: builtIn,
-            allSkills: [builtIn, triptych],
-            methodStatuses: [.develop: defaultStatus],
-            citationStatus: nil,
-            loadState: .loaded
-        ) == "Active — Develop")
-        #expect(ResearchGuidancePresentation.statusLabel(
-            for: triptych,
-            allSkills: [builtIn, triptych],
-            methodStatuses: [.develop: defaultStatus],
-            citationStatus: nil,
-            loadState: .loaded
-        ) == "Not active")
-        let manuscriptStatus = ResearchFunctionSkillBindingStatus(
-            function: .manuscript,
-            candidates: [],
-            selection: ResearchFunctionSkillSelection(function: .manuscript),
-            bindingRevision: nil,
-            issue: nil
-        )
-        #expect(ResearchGuidancePresentation.statusLabel(
-            for: manuscript,
-            allSkills: [manuscript],
-            methodStatuses: [.manuscript: manuscriptStatus],
-            citationStatus: nil,
-            loadState: .loaded
-        ) == "Not active")
-
-        let boundStatus = ResearchFunctionSkillBindingStatus(
-            function: .develop,
-            candidates: [],
-            selection: ResearchFunctionSkillSelection(
-                function: .develop,
-                primaryPackageID: triptych.id
-            ),
-            bindingRevision: nil,
-            issue: nil
-        )
-        #expect(ResearchGuidancePresentation.statusLabel(
-            for: triptych,
-            allSkills: [builtIn, triptych],
-            methodStatuses: [.develop: boundStatus],
-            citationStatus: nil,
-            loadState: .loaded
-        ) == "Bound — Primary for Develop")
-    }
-
-    @Test("Missing and malformed guidance route to exact Advanced repair destinations")
-    func repairDestinations() {
-        let methodStatus = ResearchFunctionSkillBindingStatus(
-            function: .revise,
-            candidates: [],
-            selection: ResearchFunctionSkillSelection(function: .revise),
-            bindingRevision: nil,
-            issue: ResearchFunctionSkillBindingIssue(code: .malformedBinding)
-        )
-        let citationStatus = ResearchCitationMethodStatus(
-            bundledTemplateAvailable: true,
-            candidates: [],
-            activePackageID: nil,
-            bindingRevision: nil,
-            issue: ResearchCitationMethodIssue(code: .missing)
-        )
-
-        let prompts = ResearchGuidancePresentation.repairPrompts(
-            methodStatuses: [.revise: methodStatus],
-            citationStatus: citationStatus
-        )
-        #expect(prompts.map(\.destination) == [
-            .citationMethod,
-            .researchMethod(.revise),
-        ])
-        #expect(prompts.allSatisfy { $0.destination.anchorID.hasPrefix(
-            "scholium.researchGuidance.advanced."
-        ) })
-    }
-
-    @Test("Ownership labels do not weaken System and Method duplication rules")
-    func duplicationRulesRemainClassSpecific() {
-        let system = makeSkill(
-            id: "scholium-core-protocol",
-            origin: .bundled,
-            skillClass: .system,
-            updatePolicy: "release-managed-protected"
-        )
-        let method = makeSkill(
-            id: "scholium-write",
-            origin: .bundled,
-            skillClass: .method,
-            updatePolicy: "release-managed-duplicable",
-            supportedFunctions: [.revise]
-        )
-
-        #expect(ResearchGuidancePresentation.ownershipLabel(for: system) == "Built-in")
-        #expect(ResearchGuidancePresentation.ownershipLabel(for: method) == "Built-in")
-        #expect(!system.canDuplicate)
-        #expect(method.canDuplicate)
     }
 
     @Test("Concurrent Settings restoration does not drop the visible Vaults refresh")
@@ -541,25 +409,6 @@ struct WorkspaceSettingsArchitectureTests {
 
         #expect(model.workspaceAssignment?.id == second.id)
         #expect(!model.isRefreshing)
-    }
-
-    private func makeSkill(
-        id: String,
-        origin: ResearchSkillOrigin,
-        skillClass: ResearchSkillClass,
-        updatePolicy: String = "researcher-owned",
-        supportedFunctions: [ResearchFunctionID] = []
-    ) -> ResearchSkillPackage {
-        ResearchSkillPackage(
-            id: id,
-            name: id,
-            description: "Purpose",
-            source: "---\nname: \(id)\ndescription: Purpose\n---\nInstructions.",
-            origin: origin,
-            skillClass: skillClass,
-            updatePolicy: updatePolicy,
-            supportedFunctions: supportedFunctions
-        )
     }
 
     private func makeAssignment(name: String) -> TriptychAssignment {

@@ -3,19 +3,12 @@ import ScholiumContracts
 import ScholiumCore
 
 struct ResolvedResearchActionContext: Sendable {
-    enum ExecutionStorage: Sendable {
-        case legacyFunction
-        case localExecutionV2
-    }
-
     let availability: ResearchActionAvailability
     let function: ResearchFunctionID
     let primaryPackageID: String
     let profileBinding: ResearchActionProfileBinding?
     let parameterValues: [String: ResearchActionParameterValue]
     let authority: ResearchAuthorityEnvelope
-    let allowsLegacyFidelityExpansion: Bool
-    let executionStorage: ExecutionStorage
 }
 
 private struct ResolvedResearchActionCandidate: Sendable {
@@ -42,9 +35,11 @@ extension WorkspaceHandle {
         _ request: ResearchActionExecutionRequest
     ) async throws -> ResearchActionPreparation {
         let resolved = try await resolvedResearchActionExecution(request)
-        let functionPreparation = try await prepareResearchFunction(
-            resolved.request,
-            actionContext: resolved.context
+        let functionPreparation = try attachingAgentActions(
+            to: await prepareResearchFunction(
+                resolved.request,
+                actionContext: resolved.context
+            )
         )
         guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
             throw ResearchActionExecutionContractError.staleResolution
@@ -53,10 +48,86 @@ extension WorkspaceHandle {
             snapshot: snapshot,
             runID: functionPreparation.runID,
             instructions: functionPreparation.instructions,
-            state: functionPreparation.state,
+            state: ResearchActionRunState(functionPreparation.state),
             derivedRefreshWarning: functionPreparation.derivedRefreshWarning,
             nextActions: functionPreparation.nextActions ?? []
         )
+    }
+
+    func researchActionMaterialCandidates(
+        for target: ResearchActionNoteSnapshot,
+        actionID: ResearchActionID
+    ) async throws -> [ResearchActionNoteSnapshot] {
+        let candidates = try await resolvedResearchActions(
+            for: target.functionTarget,
+            checkingSourceAccess: false
+        )
+        guard let candidate = candidates.first(where: {
+            $0.availability.id == actionID && $0.availability.isEnabled
+        }) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        return try await researchFunctionMaterialCandidates(
+            for: target.functionTarget,
+            function: candidate.function
+        ).map { $0.material.actionNote }
+    }
+
+    func researchActionRun(id: UUID) async throws -> ResearchActionPreparation {
+        try await publicActionPreparation(from: researchFunctionRun(id: id))
+    }
+
+    func prepareResearchActionFidelity(
+        parentRunID: UUID
+    ) async throws -> ResearchActionFidelityPreparation {
+        let automatic = try await attachingAgentActions(
+            to: prepareAutomaticFidelity(parentRunID: parentRunID)
+        )
+        let preparation = try await publicActionPreparation(from: automatic.preparation)
+        return ResearchActionFidelityPreparation(
+            parentRunID: automatic.parentRunID,
+            preparation: preparation,
+            effectiveRunID: automatic.effectiveFidelityRunID,
+            reusedExistingEvidence: automatic.reusedExistingEvidence,
+            nextActions: automatic.nextActions ?? []
+        )
+    }
+
+    func completeResearchAction(
+        _ submission: ResearchActionCompletionSubmission
+    ) async throws -> ResearchActionCompletion {
+        let stored = try await researchFunctionRun(id: submission.runID)
+        guard let actionID = stored.snapshot.actionSnapshot?.actionID else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let protectedCompletion = try await completeResearchFunction(
+            submission.functionSubmission
+        )
+        let completion = attachingAgentActions(to: protectedCompletion)
+        return ResearchActionCompletion(
+            actionID: actionID,
+            runID: completion.runID,
+            state: ResearchActionRunState(completion.state),
+            targetFingerprint: completion.targetFingerprint,
+            materialFingerprints: completion.materialFingerprints,
+            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs ?? [],
+            summary: completion.summary,
+            didModifyTarget: completion.didModifyTarget,
+            outputFingerprint: completion.outputFingerprint,
+            fidelityOutcomes: completion.fidelityOutcomes,
+            childRunIDs: completion.childRunIDs ?? [],
+            completedAt: completion.completedAt,
+            derivedRefreshWarning: completion.derivedRefreshWarning,
+            nextActions: completion.nextActions ?? []
+        )
+    }
+
+    func cancelResearchAction(runID: UUID) async throws {
+        let stored = try await researchFunctionRun(id: runID)
+        guard stored.snapshot.actionSnapshot != nil else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        try await cancelResearchFunction(runID: runID)
     }
 
     func prepareResearchResynthesis(
@@ -120,13 +191,15 @@ extension WorkspaceHandle {
             requestID: runID,
             kind: .resynthesis
         )
-        let functionPreparation = try await prepareResearchFunction(
-            resolved.request,
-            actionContext: resolved.context,
-            runIDOverride: runID,
-            continuationLineage: lineage,
-            resynthesisContext: context,
-            requiresAutomaticCheckpoint: true
+        let functionPreparation = try attachingAgentActions(
+            to: await prepareResearchFunction(
+                resolved.request,
+                actionContext: resolved.context,
+                runIDOverride: runID,
+                continuationLineage: lineage,
+                resynthesisContext: context,
+                requiresAutomaticCheckpoint: true
+            )
         )
         guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
             throw ResearchActionExecutionContractError.staleResolution
@@ -135,9 +208,26 @@ extension WorkspaceHandle {
             snapshot: snapshot,
             runID: functionPreparation.runID,
             instructions: functionPreparation.instructions,
-            state: functionPreparation.state,
+            state: ResearchActionRunState(functionPreparation.state),
             derivedRefreshWarning: functionPreparation.derivedRefreshWarning,
             nextActions: functionPreparation.nextActions ?? []
+        )
+    }
+
+    private func publicActionPreparation(
+        from preparation: ResearchFunctionPreparation
+    ) async throws -> ResearchActionPreparation {
+        guard let snapshot = preparation.snapshot.actionSnapshot else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let attached = try attachingAgentActions(to: preparation)
+        return ResearchActionPreparation(
+            snapshot: snapshot,
+            runID: attached.runID,
+            instructions: attached.instructions,
+            state: ResearchActionRunState(attached.state),
+            derivedRefreshWarning: attached.derivedRefreshWarning,
+            nextActions: attached.nextActions ?? []
         )
     }
 
@@ -186,16 +276,13 @@ extension WorkspaceHandle {
             primaryPackageID: primaryPackageID,
             profileBinding: candidate.profileBinding,
             parameterValues: parameters.values,
-            authority: prepared.authority,
-            allowsLegacyFidelityExpansion: false,
-            executionStorage: .localExecutionV2
+            authority: prepared.authority
         )
         return (prepared.request, context)
     }
 
     func resolvedDefaultActionContext(
-        for request: ResearchFunctionRequest,
-        executionStorage: ResolvedResearchActionContext.ExecutionStorage = .localExecutionV2
+        for request: ResearchFunctionRequest
     ) async throws -> ResolvedResearchActionContext {
         try request.validate()
         let definition = try ResearchActionFunctionMapping.definition(
@@ -246,9 +333,7 @@ extension WorkspaceHandle {
             primaryPackageID: primaryPackageID,
             profileBinding: nil,
             parameterValues: values,
-            authority: authority,
-            allowsLegacyFidelityExpansion: true,
-            executionStorage: executionStorage
+            authority: authority
         )
     }
 
@@ -741,6 +826,46 @@ extension WorkspaceHandle {
     private static let fidelityChecksModuleID = ResearchActionModuleID(
         rawValue: "fidelity-checks"
     )!
+}
+
+private extension ResearchActionRunState {
+    init(_ state: ResearchFunctionRunState) {
+        switch state {
+        case .prepared: self = .prepared
+        case .awaitingFidelity: self = .awaitingFidelity
+        case .complete: self = .complete
+        case .unverified: self = .unverified
+        case .stale: self = .stale
+        case .cancelled: self = .cancelled
+        }
+    }
+}
+
+private extension ResearchActionCompletionSubmission {
+    var functionSubmission: ResearchFunctionCompletionSubmission {
+        ResearchFunctionCompletionSubmission(
+            runID: runID,
+            confirmationToken: confirmationToken,
+            finalTargetFingerprint: finalTargetFingerprint,
+            finalMaterialFingerprints: finalMaterialFingerprints,
+            actuallyUsedMaterialNoteIDs: actuallyUsedMaterialNoteIDs,
+            summary: summary,
+            didModifyTarget: didModifyTarget,
+            activityCompletion: writeCompletion.map {
+                ResearchActivityCompletionSubmission(
+                    activityID: $0.runID,
+                    activityKey: $0.writeKey,
+                    candidateModifiedNotes: $0.candidateModifiedNotes,
+                    summary: $0.summary,
+                    submittedAt: $0.submittedAt
+                )
+            },
+            outputFingerprint: outputFingerprint,
+            fidelityOutcomes: fidelityOutcomes,
+            childRunIDs: childRunIDs,
+            submittedAt: submittedAt
+        )
+    }
 }
 
 extension ResearchFunctionTarget {

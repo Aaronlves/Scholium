@@ -137,10 +137,8 @@ public protocol ResearchRecordUseCases: Sendable {
         roundID: UUID,
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation
-    func discussResponseProfile() async throws -> DialogueResponseProfile
     func settings() async throws -> TriptychSettings
     func saveSettings(_ settings: TriptychSettings) async throws
-    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
 }
@@ -176,17 +174,6 @@ public protocol ResearchSkillUseCases: Sendable {
         source: String,
         origin: ResearchSkillOrigin
     ) async -> ResearchSkillPackage
-    func researchFunctionSkillBindingStatus(
-        for function: ResearchFunctionID
-    ) async throws -> ResearchFunctionSkillBindingStatus
-    func saveResearchFunctionSkillSelection(
-        _ selection: ResearchFunctionSkillSelection,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchFunctionSkillBindingStatus
-    func clearResearchFunctionSkillSelection(
-        for function: ResearchFunctionID,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchFunctionSkillBindingStatus
     func citationMethodStatus() async throws -> ResearchCitationMethodStatus
     func activateCitationMethod(
         selection: ResearchCitationMethodSelection,
@@ -242,42 +229,6 @@ public protocol ResearchSkillInstallationUseCases: Sendable {
     func discardResearcherSkillInstallation(preparationID: UUID) async
 }
 
-public protocol ResearchFunctionUseCases: Sendable {
-    func availableFunctions(
-        for target: ResearchFunctionTarget
-    ) async throws -> [ResearchFunctionAvailability]
-
-    func materialCandidates(
-        for target: ResearchFunctionTarget,
-        function: ResearchFunctionID
-    ) async throws -> [ResearchFunctionMaterialCandidate]
-
-    func prepareFunction(
-        _ request: ResearchFunctionRequest
-    ) async throws -> ResearchFunctionPreparation
-
-    func functionRun(
-        id: UUID
-    ) async throws -> ResearchFunctionPreparation
-
-    func prepareAutomaticFidelity(
-        parentRunID: UUID
-    ) async throws -> AutomaticFidelityPreparation
-
-    func completeFunction(
-        _ submission: ResearchFunctionCompletionSubmission
-    ) async throws -> ResearchFunctionCompletion
-
-    func finishDiscussion(
-        runID: UUID
-    ) async throws -> PortableResearchRecord
-
-    func cancelFunction(
-        runID: UUID
-    ) async throws
-
-}
-
 public protocol ResearchActionUseCases: Sendable {
     func availableActions(
         for target: ResearchActionNoteSnapshot
@@ -286,6 +237,23 @@ public protocol ResearchActionUseCases: Sendable {
     func prepareAction(
         _ request: ResearchActionExecutionRequest
     ) async throws -> ResearchActionPreparation
+
+    func materialCandidates(
+        for target: ResearchActionNoteSnapshot,
+        actionID: ResearchActionID
+    ) async throws -> [ResearchActionNoteSnapshot]
+
+    func actionRun(id: UUID) async throws -> ResearchActionPreparation
+
+    func prepareActionFidelity(
+        parentRunID: UUID
+    ) async throws -> ResearchActionFidelityPreparation
+
+    func completeAction(
+        _ submission: ResearchActionCompletionSubmission
+    ) async throws -> ResearchActionCompletion
+
+    func cancelAction(runID: UUID) async throws
 
     func prepareResynthesis(
         _ request: ResearchActionExecutionRequest,
@@ -338,7 +306,6 @@ public protocol ResearchUseCases:
     ResearchRecordUseCases,
     ResearchCheckpointUseCases,
     ResearchSkillUseCases,
-    ResearchFunctionUseCases,
     ResearchActionUseCases,
     ResearchPermissionUseCases,
     ResearchSourceAccessUseCases,
@@ -346,7 +313,6 @@ public protocol ResearchUseCases:
 {
     var skillsURL: URL { get }
     var recoveryRecordsURL: URL { get }
-    var legacyResearchDataURL: URL { get }
 }
 
 public protocol SettingsUseCases: Sendable {

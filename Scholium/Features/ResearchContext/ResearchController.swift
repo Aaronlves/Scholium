@@ -12,7 +12,7 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     init(restoring rawValue: String?) {
         switch rawValue?.lowercased() {
         case "connect", "connections", "incoming", "outgoing": self = .connect
-        case "actions", "functions": self = .actions
+        case "actions": self = .actions
         case "overview", "research", "relationships", .none: self = .overview
         default: self = .overview
         }
@@ -32,7 +32,7 @@ struct ResearchInspectorState: Equatable, Sendable {
     var isVisible = false
 }
 
-/// Per-window owner for research-context data and function presentation.
+/// Per-window owner for research-context data and Action presentation.
 /// Inspector visibility and mode belong to the surrounding workspace window,
 /// so changing the selected document tab doesn't change the shell.
 /// Research records and checkpoints remain borrowed from Application.
@@ -43,12 +43,10 @@ final class ResearchController: ObservableObject {
     @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var records: WorkspaceResearchSnapshot?
     @Published private(set) var errorMessage: String?
-    @Published var dialogueInitialNotes: Set<VaultQualifiedNoteID> = []
     @Published var checkpointListingError: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
 
-    let functions = ResearchFunctionController()
     let actions = ResearchActionController()
     let bibliography = RecommendedBibliographyController()
 
@@ -66,9 +64,6 @@ final class ResearchController: ObservableObject {
         peripheralPresentation.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
-        functions.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
         actions.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -82,7 +77,7 @@ final class ResearchController: ObservableObject {
     }
 
     /// Borrows the capabilities selected by WorkspaceStore while retaining
-    /// this window's independent inspector and function presentation state.
+    /// this window's independent Inspector and Action presentation state.
     func bind(to operations: any ResearchUseCases, snapshot: WorkspaceSnapshot? = nil) {
         self.operations = operations
         errorMessage = nil
@@ -91,7 +86,6 @@ final class ResearchController: ObservableObject {
 
     func unbind() {
         operations = nil
-        functions.unbind()
         actions.unbind()
         bibliography.unbind()
         records = nil
@@ -108,19 +102,15 @@ final class ResearchController: ObservableObject {
         let active = try await operations.activeDiscussions(noteID: nil)
         let finished = try await operations.finishedResearchRecords(noteID: nil)
         records = WorkspaceResearchSnapshot(
-            activityEvents: current.activityEvents,
             settlements: current.settlements,
             activeDiscussions: active,
             finishedResearchRecords: finished,
             pendingResearchStates: current.pendingResearchStates,
-            activityGrants: current.activityGrants,
             critiques: current.critiques,
-            functionRuns: current.functionRuns,
             checkpointListing: current.checkpointListing,
             recoveryRecords: current.recoveryRecords,
             healthIssues: current.healthIssues
         )
-        projectFunctionRuns()
         errorMessage = nil
     }
 
@@ -228,7 +218,7 @@ final class ResearchController: ObservableObject {
     }
 
     func discussionAgentInstructions(id: UUID) async throws -> String {
-        try await requireOperations().functionRun(id: id).instructions
+        try await requireOperations().actionRun(id: id).instructions
     }
 
     @discardableResult
@@ -254,10 +244,6 @@ final class ResearchController: ObservableObject {
     }
 
     @discardableResult
-    func finishDiscussion(runID: UUID) async throws -> PortableResearchRecord {
-        try await requireOperations().finishDiscussion(runID: runID)
-    }
-
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
         try await requireOperations().critique(critiqueRelativePath: critiqueRelativePath)
     }
@@ -348,20 +334,12 @@ final class ResearchController: ObservableObject {
         try await requireOperations().restoreCheckpoint(checkpointID, selection: selection)
     }
 
-    func discussResponseProfile() async throws -> DialogueResponseProfile {
-        try await requireOperations().discussResponseProfile()
-    }
-
     func settings() async throws -> TriptychSettings {
         try await requireOperations().settings()
     }
 
     func saveSettings(_ settings: TriptychSettings) async throws {
         try await requireOperations().saveSettings(settings)
-    }
-
-    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
-        try await requireOperations().saveDiscussResponseProfile(profile)
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
@@ -467,7 +445,6 @@ final class ResearchController: ObservableObject {
     func setActiveDocument(_ reference: VaultNoteReference?) {
         guard activeDocument != reference else { return }
         activeDocument = reference
-        projectFunctionRuns()
     }
 
     func selectInspectorMode(_ mode: ResearchInspectorMode) {
@@ -483,20 +460,6 @@ final class ResearchController: ObservableObject {
             storedMode: storedMode,
             isVisible: isVisible
         )
-    }
-
-    func requestPresentFunction(
-        _ function: ResearchFunctionID,
-        target: VaultNoteReference,
-        presentationID: UUID,
-        focusCommentComposer: Bool = false
-    ) {
-        intentHandler(.presentResearchFunction(ResearchFunctionPanelRoute(
-            target: target,
-            function: function,
-            presentationID: presentationID,
-            focusCommentComposer: focusCommentComposer
-        )))
     }
 
     func requestPresentAction(
@@ -529,20 +492,13 @@ final class ResearchController: ObservableObject {
 
     func reset() {
         activeDocument = nil
-        functions.dismiss()
         actions.dismiss()
         bibliography.unbind()
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {
         records = snapshot.research
-        projectFunctionRuns()
         errorMessage = nil
-    }
-
-    private func projectFunctionRuns() {
-        let noteID = activeDocument?.stableNoteID.flatMap(UUID.init(uuidString:))
-        functions.receive(records?.functionRuns ?? [], targetNoteID: noteID)
     }
 
     private func requireOperations() throws -> any ResearchUseCases {

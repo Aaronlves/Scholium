@@ -29,7 +29,7 @@ struct WindowControllerArchitectureTests {
         discovery.requestOpen(reference, disposition: .newTab)
         document.requestLifecycle(.move(lifecycleTarget))
         research.setActiveDocument(reference)
-        research.requestPresentFunction(
+        research.requestPresentAction(
             .discuss,
             target: reference,
             presentationID: presentationID
@@ -43,9 +43,9 @@ struct WindowControllerArchitectureTests {
         ])
         #expect(documentIntents == [.presentLifecycle(.move(lifecycleTarget))])
         #expect(researchIntents == [
-            .presentResearchFunction(ResearchFunctionPanelRoute(
+            .presentResearchAction(ResearchActionPanelRoute(
                 target: reference,
-                function: .discuss,
+                actionID: .discuss,
                 presentationID: presentationID
             )),
         ])
@@ -148,14 +148,14 @@ struct WindowControllerArchitectureTests {
     }
 
     @Test(
-        "Inspector restoration normalizes current, legacy, absent, and unknown mode values",
+        "Inspector restoration normalizes current, adjacent, absent, and unknown mode values",
         arguments: [
             (nil as String?, ResearchInspectorMode.overview),
             ("overview", ResearchInspectorMode.overview),
             ("connect", .connect),
             ("actions", .actions),
             ("connections", .connect),
-            ("functions", .actions),
+            ("functions", .overview),
             ("research", .overview),
             ("relationships", .overview),
             ("incoming", .connect),
@@ -712,17 +712,7 @@ struct WindowControllerArchitectureTests {
         controller.showResearchInspector(true)
         #expect(controller.inspector.isVisible)
 
-        let current = UUID()
-        controller.functions.begin(
-            target: fixtureFunctionTarget(),
-            function: .discuss,
-            selection: nil,
-            presentationID: current
-        )
-        controller.functions.dismiss(presentationID: UUID())
-        #expect(controller.functions.presentationID == current)
-        controller.functions.dismiss(presentationID: current)
-        #expect(controller.functions.presentationID == nil)
+        #expect(controller.actions.presentationID == nil)
     }
 
     @Test("Research destinations receive narrow contexts instead of the window model")
@@ -732,8 +722,8 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let relativePaths = [
-            "Scholium/Views/ResearchFunctions/ResearchFunctionPanelView.swift",
-            "Scholium/Views/ResearchFunctions/ResearchFunctionsInspectorView.swift",
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift",
+            "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift",
             "Scholium/Views/Note/NoteContentView.swift",
             "Scholium/Views/Note/SafeMarkdownReadWebView.swift",
         ]
@@ -748,7 +738,7 @@ struct WindowControllerArchitectureTests {
         }
     }
 
-    @Test("The typed Research Function route is the only judgment and agent entry panel")
+    @Test("The typed Research Action route is the only judgment and agent entry panel")
     func legacyResearchPanelsStayRetired() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -767,7 +757,7 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(router.contains("case researchFunction(ResearchFunctionPanelRoute)"))
+        #expect(router.contains("case researchAction(ResearchActionPanelRoute)"))
         #expect(!router.contains("case critique(path:"))
         #expect(!router.contains("case qualityReview"))
         #expect(!router.contains("case researcherComments"))
@@ -873,7 +863,7 @@ struct WindowControllerArchitectureTests {
         }
         #expect(windowModelSource.contains("documentController.createUntitledNote("))
         #expect(windowModelSource.contains("discoveryController.executeSearch("))
-        #expect(windowModelSource.contains("researchController.functions"))
+        #expect(windowModelSource.contains("researchController.actions"))
     }
 
     @Test("Window and document ownership boundaries cannot regress")
@@ -930,7 +920,7 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("@Published var dialogueInitialNotes"))
         #expect(!windowModelSource.contains("@Published var checkpointListingError"))
         #expect(!windowModelSource.contains("@Published var transactionRecoveryRecords"))
-        #expect(researchControllerSource.contains("@Published var dialogueInitialNotes"))
+        #expect(!researchControllerSource.contains("@Published var dialogueInitialNotes"))
         #expect(researchControllerSource.contains("@Published var transactionRecoveryRecords"))
 
         #expect(controllerSource.contains("private let sessions = DocumentSessionStore()"))
@@ -950,17 +940,4 @@ struct WindowControllerArchitectureTests {
         )
     }
 
-    private func fixtureFunctionTarget() -> ResearchFunctionTarget {
-        let vaultID = UUID()
-        return ResearchFunctionTarget(
-            noteID: UUID(),
-            note: VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: "Topics/Agency.md"
-            ),
-            role: .topic,
-            fingerprint: DocumentFingerprint(content: "# Agency\n"),
-            title: "Agency"
-        )
-    }
 }

@@ -159,9 +159,6 @@ struct ContentView: View {
                 appState.presentationRouter.dismissSheet()
                 appState.researchController.actions.dismiss()
                 restoreResearchActionFocus(ifOwnedBy: actionID)
-            } else if appState.presentationRouter.sheet == nil,
-                      appState.researchController.functions.isPresented {
-                appState.researchController.functions.dismiss()
             }
             appState.agentNoteChangePresentationCoordinator
                 .presentationBecameAvailable(windowID: appState.nativeWindowID)
@@ -628,62 +625,6 @@ struct ContentView: View {
                 }
                     .frame(minWidth: 520, minHeight: 560)
             }
-        case .researchFunction(let route):
-            if note(at: route.target.relativePath) != nil {
-                ResearchFunctionPanelView(
-                    controller: appState.researchController.functions,
-                    context: ResearchFunctionPanelContext(
-                        repairCitationMethod: {
-                            UserDefaults.standard.set(
-                                WorkspaceSettingsPane.researchGuidance.rawValue,
-                                forKey: "scholium.settings.selectedPane"
-                            )
-                            UserDefaults.standard.set(
-                                "skills",
-                                forKey: "scholium.settings.researchGuidanceCollection"
-                            )
-                            openSettings()
-                        },
-                        repairDiscussResponseDefaults: {
-                            UserDefaults.standard.set(
-                                WorkspaceSettingsPane.researchGuidance.rawValue,
-                                forKey: "scholium.settings.selectedPane"
-                            )
-                            UserDefaults.standard.set(
-                                "prompt-templates",
-                                forKey: "scholium.settings.researchGuidanceCollection"
-                            )
-                            UserDefaults.standard.set(
-                                "dialogue-response",
-                                forKey: "scholium.settings.researchGuidancePromptSection"
-                            )
-                            openSettings()
-                        },
-                        agentApplicationHandoff: appState.agentApplicationHandoff,
-                        copyInstructions: { instructions in
-                            try appState.copyTextToClipboard(instructions)
-                            appState.showToast(String(localized: "Function instructions copied.", table: "Localizable", bundle: .module))
-                        },
-                        dismiss: {
-                            appState.presentationRouter.dismissSheet()
-                        }
-                    )
-                )
-                .onDisappear {
-                    // Normal sheet dismissal is finalized by the root
-                    // `onDismiss`, after AppKit has yielded keyboard focus.
-                    // A direct route replacement still invalidates this draft
-                    // immediately so it cannot leak into the next sheet.
-                    if appState.presentationRouter.sheet != nil,
-                       !appState.presentationRouter.suspendsResearchFunction(
-                           presentationID: route.presentationID
-                       ) {
-                        appState.researchController.functions.dismiss(
-                            presentationID: route.presentationID
-                        )
-                    }
-                }
-            }
         case .researchAction(let route):
             if note(at: route.target.relativePath) != nil {
                 ResearchActionPanelView(
@@ -897,7 +838,7 @@ struct ContentView: View {
                 }
             )
         } else if appState.researchController.actions.hasCancellationBarrier {
-            ResearchFunctionsInspectorView(
+            ResearchActionsInspectorView(
                 presentation: appState.researchActionsPresentation(),
                 freshness: .current,
                 focusRequest: nil,

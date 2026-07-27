@@ -628,54 +628,6 @@ struct ResearchRecordV1StoresTests {
         ])
     }
 
-    @Test("Local Execution v2 ignores a matching legacy grant")
-    func legacyGrantCannotAuthorizeV2Completion() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let runID = UUID()
-        let localStore = try fixture.localStore()
-        let seed = try makeLocalExecutionRecord(runID: runID, grant: nil)
-        let target = seed.snapshot.request.target
-        let localAuthorization = try LocalResearchExecutionStore.prepareGrant(
-            activityID: runID,
-            origin: activityReference(target),
-            writeScope: .currentNote,
-            allowedTargets: [activityReference(target)],
-            startingFingerprints: [target.noteID: target.fingerprint],
-            issuedAt: Date(timeIntervalSince1970: 10)
-        )
-        let localRecord = try makeLocalExecutionRecord(
-            runID: runID,
-            grant: localAuthorization.grant
-        )
-        _ = try await localStore.create(localRecord)
-
-        let legacyDirectory = fixture.triptychSupport
-            .appendingPathComponent("research-activity", isDirectory: true)
-        let legacyStore = ResearchActivityStore(storageURL: legacyDirectory)
-        let legacy = try await legacyStore.issueGrant(
-            activityID: runID,
-            origin: activityReference(target),
-            writeScope: .currentNote,
-            allowedTargets: [activityReference(target)],
-            startingFingerprints: [target.noteID: target.fingerprint],
-            issuedAt: Date(timeIntervalSince1970: 10)
-        )
-
-        await #expect(throws: ResearchActivityGrantError.self) {
-            _ = try await localStore.authorizeCompletion(
-                activityID: runID,
-                activityKey: legacy.activityKey,
-                at: Date(timeIntervalSince1970: 20)
-            )
-        }
-        #expect(try await localStore.authorizeCompletion(
-            activityID: runID,
-            activityKey: localAuthorization.activityKey,
-            at: Date(timeIntervalSince1970: 20)
-        ).state == .active)
-        #expect(await legacyStore.grant(activityID: runID)?.state == .active)
-    }
 
     @Test("Local Execution v2 keeps only the Agent coordination digest")
     func localCoordinationKeyIsTransient() async throws {

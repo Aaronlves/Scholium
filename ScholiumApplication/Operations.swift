@@ -304,23 +304,18 @@ public actor DiscoveryOperations: DiscoveryUseCases {
 public actor ResearchOperations: ResearchUseCases {
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
-    public nonisolated let legacyResearchDataURL: URL
     let reference: WorkspaceHandleReference
-    private let functionCoordinator: ResearchFunctionCoordinator
     private let bibliographyCoordinator: RecommendedBibliographyCoordinator
 
     init(
         reference: WorkspaceHandleReference,
         skillsURL: URL,
         recoveryRecordsURL: URL,
-        legacyResearchDataURL: URL
     ) {
         self.reference = reference
-        functionCoordinator = ResearchFunctionCoordinator(reference: reference)
         bibliographyCoordinator = RecommendedBibliographyCoordinator(reference: reference)
         self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
-        self.legacyResearchDataURL = legacyResearchDataURL
     }
 
     public nonisolated static func inspectSkillDraft(
@@ -352,65 +347,88 @@ public actor ResearchOperations: ResearchUseCases {
         return inspected.addingValidationIssues(packageBoundaryIssues)
     }
 
-    public func availableFunctions(
+    // Protected execution seams remain internal so owning tests can exercise
+    // containment, exact revisions, recovery, and Fidelity without restoring a
+    // public Function API or CLI route.
+    func availableProtectedFunctions(
         for target: ResearchFunctionTarget
     ) async throws -> [ResearchFunctionAvailability] {
-        try await functionCoordinator.availableFunctions(for: target)
+        let handle = try await reference.requireHandle()
+        return try await handle.researchFunctionAvailability(for: target)
     }
 
-    public func materialCandidates(
+    func protectedMaterialCandidates(
         for target: ResearchFunctionTarget,
         function: ResearchFunctionID
     ) async throws -> [ResearchFunctionMaterialCandidate] {
-        try await functionCoordinator.materialCandidates(for: target, function: function)
+        let handle = try await reference.requireHandle()
+        return try await handle.researchFunctionMaterialCandidates(
+            for: target,
+            function: function
+        )
     }
 
-    public func prepareFunction(
+    func prepareProtectedFunction(
         _ request: ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation {
-        try await functionCoordinator.prepareFunction(request)
+        let handle = try await reference.requireHandle()
+        let preparation = try await handle.prepareResearchFunction(request)
+        return try await handle.attachingAgentActions(to: preparation)
     }
 
-    public func functionRun(id: UUID) async throws -> ResearchFunctionPreparation {
-        try await functionCoordinator.functionRun(id: id)
+    func protectedFunctionRun(id: UUID) async throws -> ResearchFunctionPreparation {
+        let handle = try await reference.requireHandle()
+        let preparation = try await handle.researchFunctionRun(id: id)
+        return try await handle.attachingAgentActions(to: preparation)
     }
 
-    public func prepareAutomaticFidelity(
+    func prepareProtectedAutomaticFidelity(
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation {
-        try await functionCoordinator.prepareAutomaticFidelity(parentRunID: parentRunID)
+        let handle = try await reference.requireHandle()
+        let preparation = try await handle.prepareAutomaticFidelity(
+            parentRunID: parentRunID
+        )
+        return try await handle.attachingAgentActions(to: preparation)
     }
 
-    public func completeFunction(
+    func completeProtectedFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion {
-        try await functionCoordinator.completeFunction(submission)
+        let handle = try await reference.requireHandle()
+        let completion = try await handle.completeResearchFunction(submission)
+        return await handle.attachingAgentActions(to: completion)
     }
 
-    public func finishDiscussion(runID: UUID) async throws -> PortableResearchRecord {
-        try await functionCoordinator.finishDiscussion(runID: runID)
+    func cancelProtectedFunction(runID: UUID) async throws {
+        let handle = try await reference.requireHandle()
+        try await handle.cancelResearchFunction(runID: runID)
     }
 
-    public func cancelFunction(runID: UUID) async throws {
-        try await functionCoordinator.cancelFunction(runID: runID)
+    func finishProtectedDiscussion(runID: UUID) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.finishResearchDiscussion(runID: runID)
     }
 
     public func sourceAccess(
         for target: ResearchFunctionTarget
     ) async throws -> ResearchSourceAccessStatus {
-        try await functionCoordinator.sourceAccess(for: target)
+        let handle = try await reference.requireHandle()
+        return try await handle.researchSourceAccessStatus(for: target)
     }
 
     public func bindSourceAccess(
         _ request: ResearchSourceBindingRequest
     ) async throws -> ResearchSourceReference {
-        try await functionCoordinator.bindSourceAccess(request)
+        let handle = try await reference.requireHandle()
+        return try await handle.bindResearchSourceAccess(request)
     }
 
     public func removeSourceAccess(
         for target: ResearchFunctionTarget
     ) async throws {
-        try await functionCoordinator.removeSourceAccess(for: target)
+        let handle = try await reference.requireHandle()
+        try await handle.removeResearchSourceAccess(for: target)
     }
 
     public func recommendations(
@@ -733,11 +751,6 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.restoreCheckpoint(checkpointID, selection: selection)
     }
 
-    public func discussResponseProfile() async throws -> DialogueResponseProfile {
-        let handle = try await reference.requireHandle()
-        return try await handle.discussResponseProfile()
-    }
-
     public func settings() async throws -> TriptychSettings {
         let handle = try await reference.requireHandle()
         return try await handle.triptychSettings()
@@ -746,13 +759,6 @@ public actor ResearchOperations: ResearchUseCases {
     public func saveSettings(_ settings: TriptychSettings) async throws {
         let handle = try await reference.requireHandle()
         try await handle.saveTriptychSettings(settings)
-    }
-
-    public func saveDiscussResponseProfile(
-        _ profile: DialogueResponseProfile
-    ) async throws {
-        let handle = try await reference.requireHandle()
-        try await handle.saveDiscussResponseProfile(profile)
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
@@ -857,13 +863,6 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.resolveWorkflow(contract)
     }
 
-    public func researchFunctionSkillBindingStatus(
-        for function: ResearchFunctionID
-    ) async throws -> ResearchFunctionSkillBindingStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchFunctionSkillBindingStatus(for: function)
-    }
-
     public func workingMethodBindings()
         async throws -> ResearchWorkingMethodBindingSnapshot?
     {
@@ -883,6 +882,41 @@ public actor ResearchOperations: ResearchUseCases {
     ) async throws -> ResearchActionPreparation {
         let handle = try await reference.requireHandle()
         return try await handle.prepareResearchAction(request)
+    }
+
+    public func materialCandidates(
+        for target: ResearchActionNoteSnapshot,
+        actionID: ResearchActionID
+    ) async throws -> [ResearchActionNoteSnapshot] {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchActionMaterialCandidates(
+            for: target,
+            actionID: actionID
+        )
+    }
+
+    public func actionRun(id: UUID) async throws -> ResearchActionPreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchActionRun(id: id)
+    }
+
+    public func prepareActionFidelity(
+        parentRunID: UUID
+    ) async throws -> ResearchActionFidelityPreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareResearchActionFidelity(parentRunID: parentRunID)
+    }
+
+    public func completeAction(
+        _ submission: ResearchActionCompletionSubmission
+    ) async throws -> ResearchActionCompletion {
+        let handle = try await reference.requireHandle()
+        return try await handle.completeResearchAction(submission)
+    }
+
+    public func cancelAction(runID: UUID) async throws {
+        let handle = try await reference.requireHandle()
+        try await handle.cancelResearchAction(runID: runID)
     }
 
     public func prepareResynthesis(
@@ -989,28 +1023,6 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.restoreBundledWorkingMethod(
             for: actionID,
             expectedPackageState: expectedPackageState,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
-    public func saveResearchFunctionSkillSelection(
-        _ selection: ResearchFunctionSkillSelection,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchFunctionSkillBindingStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveResearchFunctionSkillSelection(
-            selection,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
-    public func clearResearchFunctionSkillSelection(
-        for function: ResearchFunctionID,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchFunctionSkillBindingStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.clearResearchFunctionSkillSelection(
-            for: function,
             expectedBindingRevision: expectedBindingRevision
         )
     }

@@ -145,7 +145,7 @@ struct ResearchActionItemPresentation: Identifiable {
     }
 }
 
-struct ResearchFunctionsInspectorView: View {
+struct ResearchActionsInspectorView: View {
     @FocusedValue(\.scholiumResearchActionActions) private var focusedResearchActions
 
     let presentation: ResearchActionsPresentation
@@ -486,66 +486,5 @@ private struct ResearchActionRowButton: View {
             focusRestorationTask?.cancel()
             focusRestorationTask = nil
         }
-    }
-}
-
-extension ResearchFunctionID {
-    var interfaceSymbol: String {
-        switch self {
-        case .discuss: "text.bubble"
-        case .develop: "lightbulb"
-        case .fidelity: "checkmark.shield"
-        case .critique: "doc.text.magnifyingglass"
-        case .revise: "pencil"
-        case .manuscript: "doc.text"
-        }
-    }
-
-    var interfaceIdentifier: String { rawValue }
-}
-
-extension ResearchActivityEventKind {
-    var activitySymbol: String {
-        switch self {
-        case .created: "plus"
-        case .commented: "bubble.left"
-        case .discussed: "bubble.left.and.bubble.right"
-        case .developed: "arrow.triangle.branch"
-        case .fidelityChecked: "checkmark.shield"
-        case .settled: "checkmark.circle"
-        case .critiqued: "doc.text.magnifyingglass"
-        case .revised: "pencil.line"
-        case .critiqueAddressed: "checkmark.seal"
-        }
-    }
-
-    var activityTitle: String {
-        switch self {
-        case .created: "Created"
-        case .commented: "Commented"
-        case .discussed: "Discussed"
-        case .developed: "Developed"
-        case .fidelityChecked: "Fidelity Checked"
-        case .settled: "Settled"
-        case .critiqued: "Critiqued"
-        case .revised: "Revised"
-        case .critiqueAddressed: "Critique Addressed"
-        }
-    }
-}
-
-extension ResearchActivityEvent {
-    var activityDetail: String {
-        var lines = [
-            occurredAt.formatted(date: .abbreviated, time: .omitted),
-            "Origin note: \(origin.title)",
-        ]
-        if confirmedModifiedNoteCount > 0 {
-            lines.append("This activity modified \(confirmedModifiedNoteCount) notes.")
-        }
-        if unmodifiedNoteCount > 0 {
-            lines.append("\(unmodifiedNoteCount) notes were not modified.")
-        }
-        return lines.joined(separator: "\n")
     }
 }

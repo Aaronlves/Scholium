@@ -44,32 +44,6 @@ struct PermanentDeletionTests {
             relativePath: path,
             fingerprint: fingerprint
         ))
-        let dialogueStore = DialogueStore(
-            storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
-        )
-        let reference = DialogueNoteReference(
-            noteID: identity.id,
-            vaultID: vaultID,
-            vaultName: "Analyses",
-            title: "Delete Me",
-            relativePath: path,
-            fingerprint: fingerprint
-        )
-        let dialogueID = UUID()
-        let dialogue = DialogueEntry(
-            id: dialogueID,
-            triptychID: triptychID,
-            instruction: "Inspect private research.",
-            selectedNotes: [reference],
-            includedComments: [],
-            preparedInstructions: "Private transport context.",
-            checkpointID: UUID(),
-            functionSnapshot: testDiscussSnapshot(
-                runID: dialogueID,
-                references: [reference]
-            )
-        )
-        _ = try await dialogueStore.save(dialogue)
         let critiqueRegistry = CritiqueRegistry(controlURL: await control.controlURL)
         let checkpointStore = TriptychCheckpointStore(
             triptychID: triptychID,
@@ -105,7 +79,6 @@ struct PermanentDeletionTests {
         let coordinator = NotePermanentDeletionCoordinator(
             triptychID: triptychID,
             repository: repository,
-            dialogueStore: dialogueStore,
             critiqueRegistry: critiqueRegistry,
             checkpointStore: checkpointStore,
             controlStore: control,
@@ -119,10 +92,8 @@ struct PermanentDeletionTests {
             checkpointArea: .analyses
         )
 
-        #expect(commit.removedDialogueIDs.isEmpty)
         #expect(commit.invalidatedCheckpointIDs == [checkpoint.id])
         #expect(!FileManager.default.fileExists(atPath: sourceURL.path))
-        #expect(await dialogueStore.entries(noteID: identity.id).map(\.id) == [dialogue.id])
         #expect(await repository.recoveryEntries(relativePath: path).isEmpty)
         #expect(await checkpointStore.checkpoints().isEmpty)
         #expect(try await control.identity(
@@ -192,15 +163,11 @@ struct PermanentDeletionTests {
 
         #expect(commit.removedCritiqueDocumentPath == fixture.critiquePath)
         #expect(commit.removedCritiqueAssociationIDs == [fixture.association.id])
-        #expect(commit.removedDialogueIDs.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
         #expect(await fixture.repository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
         #expect(await fixture.repository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id) == nil)
-        #expect(await fixture.dialogueStore.entries(
-            noteID: fixture.critiqueIdentity.id
-        ).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(try await fixture.control.identityRecord(
             vaultID: fixture.vaultID,
             relativePath: fixture.critiquePath
@@ -229,7 +196,6 @@ struct PermanentDeletionTests {
         arguments: [
             PermanentDeletionFaultPoint.afterCritiqueDeletion,
             .afterSourceDeletion,
-            .afterDialoguePurge,
             .afterSettlementPurge,
             .afterCritiqueAssociationPurge,
             .afterCheckpointPurge,
@@ -258,8 +224,6 @@ struct PermanentDeletionTests {
 
         #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
         #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
-        #expect(await fixture.dialogueStore.entries(noteID: fixture.workIdentity.id).map(\.id) == [fixture.dialogue.id])
-        #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
         #expect(await fixture.checkpointStore.checkpoints().map(\.id) == [fixture.checkpoint.id])
         #expect(try await fixture.portableRecordStore.latestSettlement(
@@ -300,8 +264,6 @@ struct PermanentDeletionTests {
 
         #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
         #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
-        #expect(await fixture.dialogueStore.entries(noteID: fixture.workIdentity.id).map(\.id) == [fixture.dialogue.id])
-        #expect(await fixture.dialogueStore.entries(noteID: fixture.critiqueIdentity.id).map(\.id) == [fixture.critiqueDialogue.id])
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
         #expect(await fixture.checkpointStore.checkpoints().map(\.id) == [fixture.checkpoint.id])
         #expect(try await fixture.portableRecordStore.latestSettlement(
@@ -320,7 +282,7 @@ struct PermanentDeletionTests {
         let interrupted = fixture.coordinator(
             faultPlan: PermanentDeletionFaultPlan(
                 failures: [],
-                interruptions: [.afterDialoguePurge]
+                interruptions: [.afterSettlementPurge]
             )
         )
 
@@ -476,9 +438,6 @@ struct PermanentDeletionTests {
         let workFingerprint: DocumentFingerprint
         let workIdentity: NoteIdentityRecord
         let critiqueIdentity: NoteIdentityRecord
-        let dialogueStore: DialogueStore
-        let dialogue: DialogueEntry
-        let critiqueDialogue: DialogueEntry
         let critiqueRegistry: CritiqueRegistry
         let association: CritiqueAssociation
         let checkpointStore: TriptychCheckpointStore
@@ -568,55 +527,6 @@ struct PermanentDeletionTests {
                 rationale: nil,
                 settledAt: Date(timeIntervalSince1970: 11)
             )
-            dialogueStore = DialogueStore(
-                storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
-            )
-            let workReference = DialogueNoteReference(
-                noteID: workIdentity.id,
-                vaultID: vaultID,
-                vaultName: "Works",
-                title: "Work",
-                relativePath: workPath,
-                fingerprint: workFingerprint
-            )
-            let dialogueID = UUID()
-            dialogue = DialogueEntry(
-                id: dialogueID,
-                triptychID: triptychID,
-                instruction: "Inspect the Work.",
-                selectedNotes: [workReference],
-                includedComments: [],
-                preparedInstructions: "",
-                checkpointID: UUID(),
-                functionSnapshot: testDiscussSnapshot(
-                    runID: dialogueID,
-                    references: [workReference]
-                )
-            )
-            _ = try await dialogueStore.save(dialogue)
-            let critiqueReference = DialogueNoteReference(
-                noteID: critiqueIdentity.id,
-                vaultID: vaultID,
-                vaultName: "Works",
-                title: "Work Critique",
-                relativePath: critiquePath,
-                fingerprint: DocumentFingerprint(content: critiqueSource)
-            )
-            let critiqueDialogueID = UUID()
-            critiqueDialogue = DialogueEntry(
-                id: critiqueDialogueID,
-                triptychID: triptychID,
-                instruction: "Inspect the Critique.",
-                selectedNotes: [critiqueReference],
-                includedComments: [],
-                preparedInstructions: "",
-                checkpointID: UUID(),
-                functionSnapshot: testDiscussSnapshot(
-                    runID: critiqueDialogueID,
-                    references: [critiqueReference]
-                )
-            )
-            _ = try await dialogueStore.save(critiqueDialogue)
             critiqueRegistry = CritiqueRegistry(controlURL: await control.controlURL)
             association = try await critiqueRegistry.save(CritiqueAssociation(
                 workNoteID: workIdentity.id,
@@ -655,7 +565,6 @@ struct PermanentDeletionTests {
             NotePermanentDeletionCoordinator(
                 triptychID: triptychID,
                 repository: repository,
-                dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
                 checkpointStore: checkpointStore,
                 controlStore: control,
@@ -672,9 +581,6 @@ struct PermanentDeletionTests {
             return NotePermanentDeletionCoordinator(
                 triptychID: triptychID,
                 repository: try reopenedRepository(),
-                dialogueStore: DialogueStore(
-                    storageURL: support.appendingPathComponent("Dialogue", isDirectory: true)
-                ),
                 critiqueRegistry: CritiqueRegistry(controlURL: await reopenedControl.controlURL),
                 checkpointStore: TriptychCheckpointStore(
                     triptychID: triptychID,
@@ -836,31 +742,5 @@ private func makeDeletionTestAgentRequest(
         )],
         operations: [.modifyMarkdown],
         agentReason: "Request one independently authorized Work change."
-    )
-}
-
-private func testDiscussSnapshot(
-    runID: UUID,
-    references: [DialogueNoteReference]
-) -> ResearchFunctionSnapshot {
-    let reference = references[0]
-    return ResearchFunctionSnapshot(
-        runID: runID,
-        request: ResearchFunctionRequest(
-            function: .discuss,
-            target: ResearchFunctionTarget(
-                noteID: reference.noteID,
-                note: VaultQualifiedNoteID(
-                    vaultID: reference.vaultID,
-                    relativePath: reference.relativePath
-                ),
-                role: .work,
-                fingerprint: reference.fingerprint,
-                title: reference.title
-            ),
-            instruction: "Test discussion"
-        ),
-        recordKind: .discuss,
-        recordID: runID
     )
 }

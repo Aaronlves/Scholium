@@ -223,9 +223,9 @@ or metadata-overwrite workflow. A protected machine or authorized agent path
 may write the key only through the current-fingerprint source-mutation
 boundary. Ordinary Properties cannot display or edit it.
 
-### 8.2 Task-scoped Research Function context
+### 8.2 Task-scoped Research Action context
 
-When an Analysis Research Function begins preparation and the exact
+When an Analyze Action begins preparation and the exact
 `zotero_item_key` is present, Scholium performs one exact local read and
 automatically attaches the protected `scholium-zotero-integration` package.
 The immutable task snapshot may contain:
@@ -239,7 +239,7 @@ The immutable task snapshot may contain:
 
 The snapshot is labelled **Zotero bibliographic metadata**. Abstract, tags,
 and Collections remain metadata and are never paper content or philosophical
-evidence. The same Research Function reuses its snapshot when resumed; every
+evidence. The same Research Action reuses its snapshot when resumed; every
 new function reads Zotero again. There is no cross-task metadata cache.
 
 Zotero unavailability, a missing item, or an invalid response produces one

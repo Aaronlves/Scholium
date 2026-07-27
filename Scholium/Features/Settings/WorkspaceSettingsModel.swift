@@ -50,8 +50,6 @@ struct WorkspaceSettingsWorkspaceCapabilities {
         URL, URL, URL, URL, UUID?, String?
     ) async throws -> WorkspaceSettingsSnapshot
     let saveTriptychSettings: (UUID, TriptychSettings) async throws -> WorkspaceSettingsSnapshot
-    let discussResponseProfile: (UUID) async throws -> DialogueResponseProfile
-    let saveDiscussResponseProfile: (UUID, DialogueResponseProfile) async throws -> Void
     let portableContainerURL: (URL) async -> URL?
 }
 
@@ -79,12 +77,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     let inspectResearchSkillDraft: (
         UUID, String, String, ResearchSkillOrigin
     ) async throws -> ResearchSkillPackage
-    let researchFunctionSkillBindingStatus: (
-        UUID, ResearchFunctionID
-    ) async throws -> ResearchFunctionSkillBindingStatus
-    let saveResearchFunctionSkillSelection: (
-        UUID, ResearchFunctionSkillSelection, DocumentFingerprint?
-    ) async throws -> ResearchFunctionSkillBindingStatus
     let citationMethodStatus: (UUID) async throws -> ResearchCitationMethodStatus
     let activateCitationMethod: (
         UUID, ResearchCitationMethodSelection, DocumentFingerprint?
@@ -123,7 +115,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
         UUID, UUID, ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome
     let researchSkillsURL: (UUID) async throws -> URL
-    let legacyResearchDataURL: (UUID) async throws -> URL
     let workingMethodBindings: (
         UUID
     ) async throws -> ResearchWorkingMethodBindingSnapshot?
@@ -378,20 +369,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         replaceSnapshot(try await capabilities.workspace.saveTriptychSettings(id, settings))
-    }
-
-    func discussResponseProfile() async throws -> DialogueResponseProfile {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.workspace.discussResponseProfile(id)
-    }
-
-    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await capabilities.workspace.saveDiscussResponseProfile(id, profile)
     }
 
     func configureTriptych(
@@ -738,18 +715,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         return try await capabilities.researchGuidance.citationMethodStatus(workspaceID)
     }
 
-    func researchFunctionSkillBindingStatus(
-        for function: ResearchFunctionID
-    ) async throws -> ResearchFunctionSkillBindingStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.researchFunctionSkillBindingStatus(
-            workspaceID,
-            function
-        )
-    }
-
     func bibliographyMethodStatus() async throws -> RecommendedBibliographyMethodStatus {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
@@ -767,20 +732,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         return try await capabilities.researchGuidance.setBibliographyMethod(
             workspaceID,
             packageID,
-            expectedBindingRevision
-        )
-    }
-
-    func saveResearchFunctionSkillSelection(
-        _ selection: ResearchFunctionSkillSelection,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchFunctionSkillBindingStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.saveResearchFunctionSkillSelection(
-            workspaceID,
-            selection,
             expectedBindingRevision
         )
     }
@@ -1005,13 +956,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await capabilities.researchGuidance.researchSkillsURL(workspaceID)
-    }
-
-    func legacyResearchDataURL() async throws -> URL {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.legacyResearchDataURL(workspaceID)
     }
 
     func openExternal(_ url: URL) {

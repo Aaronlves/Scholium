@@ -1,16 +1,15 @@
 # Researcher-Governed Skills Implementation Roadmap
 
-**Status:** execution guide for the active migration
+**Status:** completed migration; retained as the execution and evidence guide
 
 **Branch:** `codex/researcher-governed-skills`
 
-**Completed product Session:** 19
+**Completed product Session:** 22
 
-**Session 19 commit:** `965a2a3`, `Build the scholarly Research Record window`
+**Session 22 commit:** this commit,
+`Close the researcher-governed workflow cutover`
 
-**Session 19 acceptance closure:** this commit, `Close the Research Record QA matrix`
-
-**Next product Session:** 20
+**Next product Session:** none in this migration sequence
 
 This document lets a fresh Codex task continue the researcher-governed Skills
 migration without depending on an earlier conversation. It records sequencing,
@@ -197,6 +196,9 @@ This table is only a Git orientation index.
 | 17 | Present Agent-requested Note changes | `aa76d9d` |
 | 18 | Add permission-bound research continuations | `752fd20` |
 | 19 | Build the scholarly Research Record window | `965a2a3` |
+| 20 | Add record recovery and disposable comparison | `b69669c` |
+| 21 | Add revision-bound synthesis attention | `9305dc9` |
+| 22 | Close the researcher-governed workflow cutover | this commit |
 
 Do not infer release readiness from this sequence. Some completed Sessions
 retain explicitly scheduled migration debt, and support commits in Session 13
@@ -393,8 +395,9 @@ automatable production-surface gaps without beginning Record Trash:
   route, old record projection, and superseded construction path.
 - Remove scheduled unreachable legacy source, decoders, tests, and resources
   only after proving the replacement is reachable.
-- Preserve old data files unchanged and retain `Reveal Legacy Data` without
-  parsing, migration, projection, or new authorization.
+- Preserve old data files unchanged without parsing, migration, projection,
+  recovery, new authorization, or a dedicated product entry. Because the app
+  has not shipped, do not retain `Reveal Legacy Data`.
 - Audit public terminology: no public Develop, Revise, Proposal, old Activity
   HUD, or middle-dot separator.
 - Reconcile `SCHOLIUM_SPEC.md`, architecture, status, README, live
@@ -432,24 +435,9 @@ automatable production-surface gaps without beginning Record Trash:
   separately required evidence.
 - End with a clean worktree. Do not push until the researcher explicitly asks.
 
-## 10. Fresh-task handoff template
+## 10. Completed-sequence handoff
 
-Use this prompt for the next task, replacing the Session number, base commit,
-and exact Session section when appropriate:
-
-```text
-Continue the Scholium researcher-governed Skills implementation with Session 20
-only. Work in /Users/jacuqeas73/Developer/Scholium on branch
-codex/researcher-governed-skills. Read AGENTS.md and
-Docs/RESEARCHER_GOVERNED_SKILLS_IMPLEMENTATION_ROADMAP.md completely, then
-follow its Session 20 contract and mandatory Session protocol. Confirm the
-current clean HEAD is the Session 19 acceptance-closure commit named
-`Close the Research Record QA matrix`. Search current
-official documentation before programming. Follow the roadmap's minimum
-sufficient execution rule: preserve every required quality gate, but do not
-repeat reads, builds, reviews, tests, or UI journeys without a concrete need.
-Review, run focused tests and the complete verify.sh, then create exactly one
-commit named
-"Add record recovery and disposable comparison", report the full SHA and open
-uncertainty, then end the task. Do not begin Session 21 and do not push.
-```
+Session 22 closes this migration sequence. Any further product Session requires
+a newly approved scope and roadmap contract grounded in the current
+specification and implementation status; do not repeat or extend this sequence
+implicitly.

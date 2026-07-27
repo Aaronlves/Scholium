@@ -3,17 +3,17 @@ import Foundation
 import ScholiumApplication
 import Testing
 
-@Suite("Executable Research Function CLI lifecycle")
-struct FunctionCLIExecutableLifecycleTests {
+@Suite("Executable Research Action CLI lifecycle")
+struct ActionCLIExecutableLifecycleTests {
     @Test("The Agent MCP wrapper stays on stdio and reports an absent App without opening a snapshot runtime")
     func agentMCPUnavailableContract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_FUNCTION_CLI_BINARY"
+            "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
 
-        let fixture = try await FunctionCLIFixture.make()
+        let fixture = try await ActionCLIFixture.make()
         defer { fixture.remove() }
-        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
         let bridgeSupport = URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
             isDirectory: true
@@ -90,12 +90,12 @@ struct FunctionCLIExecutableLifecycleTests {
     @Test("The real CLI exposes the Search v4 text and JSONL contracts")
     func searchV4Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_FUNCTION_CLI_BINARY"
+            "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
 
-        let fixture = try await FunctionCLIFixture.make()
+        let fixture = try await ActionCLIFixture.make()
         defer { fixture.remove() }
-        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
         let triptych = fixture.assignment.id.uuidString
         let analyses = try #require(fixture.assignment.vault(for: .paperAnalysis))
 
@@ -160,62 +160,56 @@ struct FunctionCLIExecutableLifecycleTests {
         )
     }
 
-    @Test("The real CLI preserves one complete Function lifecycle")
+    @Test("The real CLI preserves one complete Action lifecycle")
     func lifecycle() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_FUNCTION_CLI_BINARY"
+            "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else {
             // The dedicated verifier supplies the built executable. Ordinary
             // package-test runs retain their delivery-neutral unit coverage.
             return
         }
 
-        let fixture = try await FunctionCLIFixture.make()
+        let fixture = try await ActionCLIFixture.make()
         defer { fixture.remove() }
-        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
         let encoder = Self.encoder()
         let decoder = Self.decoder()
 
         let availability = try cli.run(
-            ["function", "available", "--from", "-", "--format", "json"],
+            ["action", "available", "--from", "-", "--format", "json"],
             stdin: try encoder.encode(fixture.analysisTarget)
         )
         let available = try decoder.decode(
-            [ResearchFunctionAvailability].self,
+            [ResearchActionAvailability].self,
             from: availability.stdout
         )
-        #expect(available.contains { $0.function == .discuss && $0.isEnabled })
+        #expect(available.contains { $0.id == .discuss && $0.isEnabled })
 
-        let dialogueRequest = ResearchFunctionRequest(
-            function: .discuss,
+        let dialogueRequest = try Self.actionRequest(
+            actionID: .discuss,
             target: fixture.analysisTarget,
-            instruction: "State the synthetic fixture's bounded academic outcome.",
-            dialogueResponseModules: [
-                .criticalReflection,
-                .philosophicalSignificance,
-            ]
+            availability: available,
+            instruction: "State the synthetic fixture's bounded academic outcome."
         )
         let dialogueRequestURL = fixture.rootURL.appendingPathComponent("dialogue.json")
         try encoder.encode(dialogueRequest).write(to: dialogueRequestURL, options: .atomic)
         let dialogueResult = try cli.run([
-            "function", "prepare", "--from", dialogueRequestURL.path,
+            "action", "prepare", "--from", dialogueRequestURL.path,
             "--format", "json",
         ])
         let dialogue = try decoder.decode(
-            ResearchFunctionPreparation.self,
+            ResearchActionPreparation.self,
             from: dialogueResult.stdout
         )
-        #expect(dialogue.snapshot.request.dialogueResponseModules == [
-            .criticalReflection,
-            .philosophicalSignificance,
-        ])
-        #expect(Set(dialogue.nextActions?.map(\.kind) ?? []) == [
-            .reply, .promote, .complete, .inspect, .cancel,
+        #expect(dialogue.snapshot.actionID == .discuss)
+        #expect(Set(dialogue.nextActions.map(\.kind)) == [
+            .reply, .complete, .inspect, .cancel,
         ])
         let shownDialogueRun = try decoder.decode(
-            ResearchFunctionPreparation.self,
+            ResearchActionPreparation.self,
             from: try cli.run([
-                "function", "show", dialogue.runID.uuidString,
+                "action", "show", dialogue.runID.uuidString,
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ]).stdout
@@ -263,36 +257,43 @@ struct FunctionCLIExecutableLifecycleTests {
                 == "Synthetic attributed transport evidence only."
         )
 
-        let dialogueCompletion = ResearchFunctionCompletionSubmission(
+        let dialogueCompletion = ResearchActionCompletionSubmission(
             runID: dialogue.runID,
-            confirmationToken: dialogue.snapshot.confirmationToken,
+            confirmationToken: try Self.confirmationToken(for: dialogue),
             finalTargetFingerprint: fixture.analysisTarget.fingerprint,
             summary: "Recorded synthetic Discuss transport evidence.",
             didModifyTarget: false
         )
         let dialogueCompleted = try decoder.decode(
-            ResearchFunctionCompletion.self,
+            ResearchActionCompletion.self,
             from: try cli.run([
-                "function", "complete", "--from", "-",
+                "action", "complete", "--from", "-",
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ], stdin: try encoder.encode(dialogueCompletion)).stdout
         )
         #expect(dialogueCompleted.state == .complete)
 
-        let reviseRequest = ResearchFunctionRequest(
-            function: .revise,
-            target: fixture.workTarget
+        let workAvailable = try decoder.decode(
+            [ResearchActionAvailability].self,
+            from: try cli.run(
+                ["action", "available", "--from", "-", "--format", "json"],
+                stdin: try encoder.encode(fixture.workTarget)
+            ).stdout
         )
-        let revise = try decoder.decode(
-            ResearchFunctionPreparation.self,
+        let writeRequest = try Self.actionRequest(
+            actionID: .write,
+            target: fixture.workTarget,
+            availability: workAvailable,
+            instruction: "Strengthen only the stated inference."
+        )
+        let write = try decoder.decode(
+            ResearchActionPreparation.self,
             from: try cli.run([
-                "function", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(reviseRequest)).stdout
+                "action", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(writeRequest)).stdout
         )
-        #expect(!revise.awaitsResourceSelection)
-        #expect(revise.snapshot.request.conditionalResources == nil)
-        let finalizedRevise = revise
+        #expect(write.snapshot.actionID == .write)
 
         let readBefore = try Self.readPayload(try cli.run([
             "read", "Works:Draft Argument.md", "--format", "json",
@@ -318,50 +319,51 @@ struct FunctionCLIExecutableLifecycleTests {
             sha256: readAfter.sha256,
             byteCount: Data(readAfter.content.utf8).count
         )
-        let reviseActivityCompletion = try Self.activityCompletion(
-            for: finalizedRevise,
+        let writeCompletion = ResearchActionWriteCompletionSubmission(
+            runID: write.runID,
+            writeKey: try Self.writeKey(for: write),
             candidateModifiedNotes: [fixture.workTarget.note],
             summary: "Reported the candidate Work path after the synthetic revision."
         )
 
         let awaiting = try decoder.decode(
-            ResearchFunctionCompletion.self,
+            ResearchActionCompletion.self,
             from: try cli.run([
-                "function", "complete", "--from", "-",
+                "action", "complete", "--from", "-",
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
-            ], stdin: try encoder.encode(ResearchFunctionCompletionSubmission(
-                runID: revise.runID,
-                confirmationToken: revise.snapshot.confirmationToken,
+            ], stdin: try encoder.encode(ResearchActionCompletionSubmission(
+                runID: write.runID,
+                confirmationToken: try Self.confirmationToken(for: write),
                 finalTargetFingerprint: finalWorkFingerprint,
                 summary: "Reported a synthetic Work revision.",
                 didModifyTarget: true,
-                activityCompletion: reviseActivityCompletion
+                writeCompletion: writeCompletion
             ))).stdout
         )
         #expect(awaiting.state == .awaitingFidelity)
-        #expect(awaiting.nextActions?.first?.kind == .prepareFidelity)
+        #expect(awaiting.nextActions.first?.kind == .prepareFidelity)
 
         let automatic = try decoder.decode(
-            AutomaticFidelityPreparation.self,
+            ResearchActionFidelityPreparation.self,
             from: try cli.run([
-                "function", "prepare-fidelity", revise.runID.uuidString,
+                "action", "prepare-fidelity", write.runID.uuidString,
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ]).stdout
         )
         let fidelity = automatic.preparation
-        #expect(fidelity.snapshot.request.target.fingerprint == finalWorkFingerprint)
-        #expect(fidelity.snapshot.resolvedFidelityInvocation == .automatic(parentRunID: revise.runID))
+        #expect(fidelity.snapshot.target.fingerprint == finalWorkFingerprint)
+        #expect(fidelity.snapshot.actionID == .checkFidelity)
         let fidelityCompletion = try decoder.decode(
-            ResearchFunctionCompletion.self,
+            ResearchActionCompletion.self,
             from: try cli.run([
-                "function", "complete", "--from", "-",
+                "action", "complete", "--from", "-",
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
-            ], stdin: try encoder.encode(ResearchFunctionCompletionSubmission(
+            ], stdin: try encoder.encode(ResearchActionCompletionSubmission(
                 runID: fidelity.runID,
-                confirmationToken: fidelity.snapshot.confirmationToken,
+                confirmationToken: try Self.confirmationToken(for: fidelity),
                 finalTargetFingerprint: finalWorkFingerprint,
                 summary: "Synthetic revision-bound transport evidence.",
                 didModifyTarget: false,
@@ -375,26 +377,26 @@ struct FunctionCLIExecutableLifecycleTests {
         #expect(fidelityCompletion.state == .complete)
 
         let reusedAutomatic = try decoder.decode(
-            AutomaticFidelityPreparation.self,
+            ResearchActionFidelityPreparation.self,
             from: try cli.run([
-                "function", "prepare-fidelity", revise.runID.uuidString,
+                "action", "prepare-fidelity", write.runID.uuidString,
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ]).stdout
         )
         #expect(reusedAutomatic.reusedExistingEvidence)
-        let parentAction = try #require(reusedAutomatic.nextActions?.first {
+        let parentAction = try #require(reusedAutomatic.nextActions.first {
             $0.kind == .complete
         })
         let parentInput = try #require(parentAction.inputTemplate)
         let parentSubmission = try decoder.decode(
-            ResearchFunctionCompletionSubmission.self,
+            ResearchActionCompletionSubmission.self,
             from: Data(parentInput.utf8)
         )
         let verifiedParent = try decoder.decode(
-            ResearchFunctionCompletion.self,
+            ResearchActionCompletion.self,
             from: try cli.run([
-                "function", "complete", "--from", "-",
+                "action", "complete", "--from", "-",
                 "--triptych", fixture.assignment.id.uuidString,
                 "--format", "json",
             ], stdin: try encoder.encode(parentSubmission)).stdout
@@ -402,28 +404,37 @@ struct FunctionCLIExecutableLifecycleTests {
         #expect(verifiedParent.state == .complete)
         #expect(verifiedParent.childRunIDs == [fidelity.runID])
 
+        let currentWorkTarget = ResearchActionNoteSnapshot(
+            noteID: fixture.workTarget.noteID,
+            note: fixture.workTarget.note,
+            role: .work,
+            lifecycle: fixture.workTarget.lifecycle,
+            fingerprint: finalWorkFingerprint,
+            title: fixture.workTarget.title
+        )
+        let currentWorkAvailable = try decoder.decode(
+            [ResearchActionAvailability].self,
+            from: try cli.run(
+                ["action", "available", "--from", "-", "--format", "json"],
+                stdin: try encoder.encode(currentWorkTarget)
+            ).stdout
+        )
         let cancellable = try decoder.decode(
-            ResearchFunctionPreparation.self,
+            ResearchActionPreparation.self,
             from: try cli.run([
-                "function", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .discuss,
-                target: ResearchFunctionTarget(
-                    noteID: fixture.workTarget.noteID,
-                    note: fixture.workTarget.note,
-                    role: .work,
-                    fingerprint: finalWorkFingerprint,
-                    title: fixture.workTarget.title
-                ),
-                instruction: "Prepare a cancellable synthetic Dialogue.",
-                dialogueResponseModules: []
+                "action", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(Self.actionRequest(
+                actionID: .discuss,
+                target: currentWorkTarget,
+                availability: currentWorkAvailable,
+                instruction: "Prepare a cancellable synthetic Discussion."
             ))).stdout
         )
         for _ in 0..<2 {
             let cancellation = try decoder.decode(
                 CLICancellationReport.self,
                 from: try cli.run([
-                    "function", "cancel", cancellable.runID.uuidString,
+                    "action", "cancel", cancellable.runID.uuidString,
                     "--triptych", fixture.assignment.id.uuidString,
                 ]).stdout
             )
@@ -441,82 +452,58 @@ struct FunctionCLIExecutableLifecycleTests {
         #expect(cancelledDiscussion.awaitsAgentReply)
         #expect(
             cancelledDiscussion.statements.last?.text
-                == "Prepare a cancellable synthetic Dialogue."
+                == "Prepare a cancellable synthetic Discussion."
         )
         try cli.expectFailure(
-            ["function", "prepare", "--from", "-", "--format", "json"],
-            stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .discuss,
-                target: ResearchFunctionTarget(
-                    noteID: fixture.workTarget.noteID,
-                    note: fixture.workTarget.note,
-                    role: .work,
-                    fingerprint: finalWorkFingerprint,
-                    title: fixture.workTarget.title
-                ),
+            ["action", "prepare", "--from", "-", "--format", "json"],
+            stdin: try encoder.encode(Self.actionRequest(
+                actionID: .discuss,
+                target: currentWorkTarget,
+                availability: currentWorkAvailable,
                 instruction: "This second Discussion must remain blocked."
             )),
             contains: "already active"
         )
 
         let markdown = try cli.run([
-            "function", "prepare", "--from", "-", "--format", "markdown",
-        ], stdin: try encoder.encode(ResearchFunctionRequest(
-            function: .discuss,
+            "action", "prepare", "--from", "-", "--format", "markdown",
+        ], stdin: try encoder.encode(Self.actionRequest(
+            actionID: .discuss,
             target: fixture.topicTarget,
-            instruction: "Render a Markdown handoff fixture.",
-            dialogueResponseModules: [.remainingQuestions]
+            availability: try decoder.decode(
+                [ResearchActionAvailability].self,
+                from: cli.run(
+                    ["action", "available", "--from", "-", "--format", "json"],
+                    stdin: try encoder.encode(fixture.topicTarget)
+                ).stdout
+            ),
+            instruction: "Render a Markdown handoff fixture."
         )))
         #expect(String(decoding: markdown.stdout, as: UTF8.self).contains("Scholium"))
 
         try cli.expectFailure(
-            ["function", "prepare", "--from", "-", "--format", "json"],
+            ["action", "prepare", "--from", "-", "--format", "json"],
             stdin: Data("{malformed".utf8),
             contains: "invalid_json"
-        )
-        try cli.expectFailure(
-            ["function", "prepare", "--from", "-", "--format", "json"],
-            stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .revise,
-                target: fixture.analysisTarget
-            )),
-            contains: "analysis Target"
-        )
-        let duplicateMaterial = ResearchFunctionMaterial(
-            noteID: fixture.analysisTarget.noteID,
-            note: fixture.analysisTarget.note,
-            role: fixture.analysisTarget.role,
-            fingerprint: fixture.analysisTarget.fingerprint,
-            title: fixture.analysisTarget.title
-        )
-        try cli.expectFailure(
-            ["function", "prepare", "--from", "-", "--format", "json"],
-            stdin: try encoder.encode(ResearchFunctionRequest(
-                function: .discuss,
-                target: fixture.analysisTarget,
-                materials: [duplicateMaterial],
-                instruction: "Reject Target duplication."
-            )),
-            contains: "Target"
         )
     }
 
     @Test("Help, version, doctor, and strict parsing work without a configured Triptych")
     func discoveryAndStrictParsing() throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_FUNCTION_CLI_BINARY"
+            "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "scholium-cli-discovery-\(UUID().uuidString)",
             isDirectory: true
         )
         defer { try? FileManager.default.removeItem(at: root) }
-        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: root)
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
 
         let version = try cli.run(["version", "--format", "json"])
         #expect(String(decoding: version.stdout, as: UTF8.self).contains("cli_version"))
-        let help = try cli.run(["function", "prepare", "--help", "--format", "json"])
-        #expect(String(decoding: help.stdout, as: UTF8.self).contains("function prepare"))
+        let help = try cli.run(["action", "prepare", "--help", "--format", "json"])
+        #expect(String(decoding: help.stdout, as: UTF8.self).contains("action prepare"))
         let doctor = try cli.run(["doctor", "--format", "json"])
         #expect(String(decoding: doctor.stdout, as: UTF8.self).contains("triptych_count"))
         try cli.expectFailure(
@@ -532,12 +519,12 @@ struct FunctionCLIExecutableLifecycleTests {
     @Test("The real CLI preserves the Recommended Bibliography lifecycle")
     func bibliographyLifecycle() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_FUNCTION_CLI_BINARY"
+            "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
 
-        let fixture = try await FunctionCLIFixture.make()
+        let fixture = try await ActionCLIFixture.make()
         defer { fixture.remove() }
-        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
         let encoder = Self.encoder()
         let decoder = Self.decoder()
         let analysis = RecommendedBibliographyTarget(
@@ -699,25 +686,58 @@ struct FunctionCLIExecutableLifecycleTests {
         try JSONDecoder().decode(CLIReadPayload.self, from: data)
     }
 
-    private static func activityCompletion(
-        for preparation: ResearchFunctionPreparation,
-        candidateModifiedNotes: [VaultQualifiedNoteID],
-        summary: String
-    ) throws -> ResearchActivityCompletionSubmission {
-        let prefix = "Activity key: "
-        let key = try #require(
+    private static func actionRequest(
+        actionID: ResearchActionID,
+        target: ResearchActionNoteSnapshot,
+        availability: [ResearchActionAvailability],
+        instruction: String? = nil
+    ) throws -> ResearchActionExecutionRequest {
+        let presented = try #require(availability.first {
+            $0.id == actionID && $0.isEnabled
+        })
+        var values: [ResearchActionModuleID: ResearchActionParameterValue] = [:]
+        if let instruction,
+           let module = presented.profile.profile.modules.first(where: {
+               $0.kind == .boundedText
+           }) {
+            values[module.id] = .text(instruction)
+        }
+        return ResearchActionExecutionRequest(
+            actionID: actionID,
+            expectedExecutionKind: presented.definition.executionKind,
+            expectedProfileRevision: presented.profile.profileRevision,
+            expectedProfileDocumentRevision:
+                presented.profile.profileDocumentRevision,
+            target: target,
+            parameterValues: values
+        )
+    }
+
+    private static func confirmationToken(
+        for preparation: ResearchActionPreparation
+    ) throws -> UUID {
+        let template = try #require(preparation.nextActions.first {
+            $0.kind == .complete
+        }?.inputTemplate)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(template.utf8))
+                as? [String: Any]
+        )
+        let rawToken = try #require(object["confirmationToken"] as? String)
+        return try #require(UUID(uuidString: rawToken))
+    }
+
+    private static func writeKey(
+        for preparation: ResearchActionPreparation
+    ) throws -> String {
+        let prefix = "Write key: "
+        return String(try #require(
             preparation.instructions
                 .split(separator: "\n")
                 .map(String.init)
                 .first(where: { $0.hasPrefix(prefix) })?
                 .dropFirst(prefix.count)
-        )
-        return ResearchActivityCompletionSubmission(
-            activityID: try #require(preparation.snapshot.activityID),
-            activityKey: String(key),
-            candidateModifiedNotes: candidateModifiedNotes,
-            summary: summary
-        )
+        ))
     }
 
     private static func bibliographyCandidate(
@@ -764,7 +784,7 @@ private struct BibliographyCancellationReport: Decodable {
     }
 }
 
-private struct FunctionCLIProcess {
+private struct ActionCLIProcess {
     struct Result {
         let stdout: Data
         let stderr: Data
@@ -805,7 +825,7 @@ private struct FunctionCLIProcess {
             status: process.terminationStatus
         )
         guard result.status == 0 else {
-            throw FunctionCLIProcessError.failed(
+            throw ActionCLIProcessError.failed(
                 arguments,
                 String(decoding: result.stderr, as: UTF8.self)
             )
@@ -821,28 +841,28 @@ private struct FunctionCLIProcess {
         do {
             _ = try run(arguments, stdin: stdin)
             Issue.record("CLI command unexpectedly succeeded: \(arguments.joined(separator: " "))")
-        } catch let FunctionCLIProcessError.failed(_, stderr) {
+        } catch let ActionCLIProcessError.failed(_, stderr) {
             #expect(stderr.localizedCaseInsensitiveContains(expected))
         }
     }
 }
 
-private enum FunctionCLIProcessError: Error {
+private enum ActionCLIProcessError: Error {
     case failed([String], String)
 }
 
-private struct FunctionCLIFixture {
+private struct ActionCLIFixture {
     let rootURL: URL
     let homeURL: URL
     let assignment: TriptychAssignment
-    let analysisTarget: ResearchFunctionTarget
-    let topicTarget: ResearchFunctionTarget
-    let workTarget: ResearchFunctionTarget
+    let analysisTarget: ResearchActionNoteSnapshot
+    let topicTarget: ResearchActionNoteSnapshot
+    let workTarget: ResearchActionNoteSnapshot
     let analysisURL: URL
 
     static func make() async throws -> Self {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "ScholiumFunctionCLI-\(UUID().uuidString)",
+            "ScholiumActionCLI-\(UUID().uuidString)",
             isDirectory: true
         )
         let home = root.appendingPathComponent("home", isDirectory: true)
@@ -871,7 +891,7 @@ private struct FunctionCLIFixture {
             topicKnowledgeURL: topics,
             outputURL: works,
             portableContainerURL: root,
-            triptychName: "Function CLI Fixture"
+            triptychName: "Action CLI Fixture"
         )
         let assignment = handle.assignment
         let analysisVault = try #require(assignment.vault(for: .paperAnalysis))
@@ -906,11 +926,11 @@ private struct FunctionCLIFixture {
 
     private static func target(
         _ id: VaultQualifiedNoteID,
-        role: ResearchFunctionTargetRole,
+        role: ResearchActionTargetRole,
         handle: WorkspaceHandle
-    ) async throws -> ResearchFunctionTarget {
+    ) async throws -> ResearchActionNoteSnapshot {
         let note = try #require(try await handle.snapshot().document(id: id))
-        return ResearchFunctionTarget(
+        return ResearchActionNoteSnapshot(
             noteID: try #require(note.stableIdentity.resolvedID),
             note: id,
             role: role,

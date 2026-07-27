@@ -50,7 +50,8 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── DocumentController
             │   │   └── DocumentSessionStore
             │   ├── ResearchController
-            │   │   └── ResearchFunctionController
+            │   │   ├── ResearchActionController
+            │   │   └── RecommendedBibliographyController
             │   ├── WindowPresentationRouter
             │   └── typed WindowIntent routing
             └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
@@ -276,14 +277,14 @@ failure or early unregister preserves setup. An existing
 Triptych with lost folder authorization stays in the workspace and replaces
 only that authorization through Restore Access.
 
-## Research Action and protected Function boundary
+## Research Action and protected execution boundary
 
 Research Actions follow the same in-process compiler boundary as every other
 delivery-neutral capability. The protected Function adapter remains below the
 public presentation and use-case boundary:
 
 ```text
-ResearchFunctionsInspectorView / ResearchActionPanelView
+ResearchActionsInspectorView / ResearchActionPanelView
         ↓ immutable presentation values and closures
 ResearchActionController (one window, production UI)
         ↓ ResearchActionClient
@@ -294,17 +295,15 @@ ResearchFunctionCoordinator + Action resolver (Application)
 Core skill, checkpoint, record, and repository authorities
 ```
 
-`ResearchFunctionController`, its panel route, and retained Function use cases
-remain compiled compatibility code for scheduled clean deletion. No production
-Inspector, Research menu, or focused document action reaches them.
-
-`ScholiumContracts` owns `ResearchFunctionID`, Target/Material/scope, Fidelity
-checks, availability/repair codes, runs, submissions, fingerprints, and
-`ResearchFunctionUseCases`. Workspace `ResearchUseCases` composes record,
-checkpoint, Skill, function, and bibliography capabilities. Contracts contain
-no application-defined labels, symbols, package storage, YAML inspection, or
-layout. Researcher-owned Profile labels are declarative data, not interface
-code.
+The old Function controller, panel, presentation route, and public use cases are
+deleted. `ScholiumContracts` owns public Action identity, Target/Material/scope,
+Fidelity checks, availability/repair codes, runs, submissions, and fingerprints.
+Workspace `ResearchUseCases` composes record, checkpoint, Skill, Action,
+permission, source-access, and bibliography capabilities. Protected Function
+types remain only behind Application as the mechanism used by the Action
+adapter. Contracts contain no application-defined labels, symbols, package
+storage, YAML inspection, or layout. Researcher-owned Profile labels are
+declarative data, not interface code.
 
 D-106's public layer begins in `ScholiumContracts` with validated
 `ResearchActionID`, public execution kinds and Target roles, role-filtered
@@ -381,29 +380,27 @@ An internal-only `ResearchActionFunctionMapping` in `ScholiumApplication` maps
 Analysis and Synthesis to Develop, Write to Revise, and the remaining public
 execution kinds to their protected Function mechanisms after role validation.
 The same internal adapter derives the exact bundled Action from Function plus
-Target role for retained callers. Core Skill resolution accepts that Action
+Target role inside the protected coordinator. Core Skill resolution accepts that Action
 identity explicitly: Analysis Develop resolves `scholium-analyze`, Topic
 Develop resolves `scholium-synthesize`, and a package bound to one fails closed
 for the other. `ResearchActionUseCases` now resolves and prepares default and
-researcher Actions, while retained Function preparation passes through the same
-resolver and embeds the resulting Action snapshot. Binding v1 never enters
-either path. The production Inspector, Research menu, and common modular sheet
-now enter through Action identity; retained Function entry points are
-compatibility implementation only. Every new Action and retained Function
-entry-point run now uses the separated Local Execution v2
-boundary below; legacy run files remain reveal-only and cannot authorize or
-appear in current projection.
+researcher Actions and embeds the resulting Action snapshot before protected
+execution. Binding v1 never enters this path. The Inspector, Research menu,
+common modular sheet, CLI, and delivery contracts enter only through Action
+identity. Every Action run uses the separated Local Execution v2 boundary
+below; unsupported pre-production run files remain byte-unchanged, invisible,
+and unable to authorize current work.
 
 The product Skill catalog schema 4 separates protected mechanism from ordinary
 method prose. `ResearchSkillClass.method` packages each declare exactly one
-public Action plus the retained internal Function. Discuss is an ordinary
+public Action plus one internal protected mechanism. Discuss is an ordinary
 Method and `scholium-discussion-protocol` is its automatic mechanism-only
 adapter. Analyze, Synthesize, Write, Critique, Content Fidelity, and optional
 hidden Manuscript are similarly distinct bundled Method references. System
 Skills own authority and persistence boundaries; they cannot supply the
 intellectual procedure. The old conditional Development, Revision, and
-Manuscript resource selectors remain decodable only for legacy machine-local
-records and are no longer offered by current Functions; each Method now loads
+Manuscript resource selectors remain internal to protected stored execution
+records and are never offered by current Actions; each Method now loads
 its complete adaptive core, with Write feedback guidance included by default.
 Before a new Triptych manifest is committed, `ResearchSkillStore` installs six
 independent editable packages under `.scholium/skills/` and atomically writes
@@ -564,8 +561,7 @@ identity, the store reports every conflicting file, all ID-addressed reads and
 mutations fail closed, and the workspace publishes no active Discussion row
 until the conflict is repaired.
 
-`LocalResearchExecutionStore` owns one schema-v2 file per new Action or retained
-Function entry-point run at
+`LocalResearchExecutionStore` owns one schema-v2 file per Action run at
 `Application Support/Triptychs/<id>/research-execution-v2/`. It may retain the
 protected Function snapshot, assembled instructions, grant digest, static
 Discuss transport contract, and completion evidence. Scholarly Discussion
@@ -584,9 +580,9 @@ record only after a terminal validated nonconversational completion. It never
 writes `research-activity.json` or `dialogue.json`. Legacy activity, Dialogue,
 binding, and grant files are not migrated, rewritten, or imported as current
 authority. Legacy Comment and Dialogue content is no longer projected into the
-current exchange model; the retained activity chronology remains visible only
-as migration debt until Sessions 13 and 22. The existing **Reveal Legacy Data**
-command opens the exact machine-local Triptych directory. Critique preparation
+current exchange model. No decoder, projection, recovery workflow, or product
+entry exposes those pre-production files; their bytes remain untouched.
+Critique preparation
 writes a machine-local handoff intent under
 `research-execution-v2/critique-handoffs/<run>.json` before its portable
 association becomes staging. The intent contains only Triptych, run, an
@@ -683,16 +679,17 @@ Exact evidence keys prevent duplicate storage or scheduling.
 Core separates Skill discovery/bindings (`ResearchSkillStore`), machine-local
 source access (`ResearchSourceAccessStore`), dependency and
 instruction assembly (`ResearchWorkflowAssembler`), checkpoints
-(`TriptychCheckpointStore`), portable Discussion, Critique, and retained
-legacy Research Activity decoding. The clean cutover retains no Human Review,
-Qualification, pre-Function Dialogue, ResearcherComment, or app-owned
-Annotation store; repositories alone mutate revision-checked source.
+(`TriptychCheckpointStore`), portable Discussion, Critique, and Research Record
+storage. The clean cutover retains no Research Activity decoder/store, Human
+Review, Qualification, pre-Function Dialogue, ResearcherComment, or app-owned
+Annotation store; unsupported pre-production files remain unread and
+repositories alone mutate revision-checked source.
 `RecommendedBibliographyStore` alone owns its atomic portable JSON and never
 mutates notes or Zotero. No omnibus function store exists.
 
 CLI decodes Contracts, invokes the same Application use cases, and encodes the
-canonical function and bibliography command families. No pre-1.0 aliases
-remain. `AgentCommandAction` uses argument vectors; CLI rendering never owns
+canonical Action and bibliography command families. No pre-1.0 aliases remain.
+`AgentCommandAction` uses argument vectors; CLI rendering never owns
 eligibility, Skill routing, checkpoints, write sets, or shell command strings.
 
 `CommandLineToolInstaller` is an app-wide Application capability. It verifies
@@ -712,11 +709,12 @@ All SwiftPM scratch and Xcode DerivedData live in isolated lanes beneath the
 ignored repository-local `.build/`; none may use `/tmp`. This requires the
 checkout to remain outside File Provider-managed locations.
 
-Per-window `ResearchController` owns a `ResearchFunctionController` containing
-only Target, draft inputs, progress/cancellation/errors, presentation identity,
-and stale-response tokens. A narrow client composes document flush/selection
-capture with async use cases; the controller owns no repository, filesystem,
-document controller, or authoritative research data.
+Per-window `ResearchController` owns a `ResearchActionController` containing
+only the selected public Action/Profile, draft inputs,
+progress/cancellation/errors, presentation identity, and stale-response tokens.
+A narrow client composes document flush/selection capture with async use cases;
+the controller owns no repository, filesystem, document controller, protected
+Function identity, or authoritative research data.
 
 Recommended Bibliography follows a separate Triptych-library capability
 boundary:
@@ -733,7 +731,7 @@ RecommendedBibliographyCoordinator (Application)
 ResearchSkillStore + RecommendedBibliographyStore + Zotero read adapter (Core)
 ```
 
-The controller is a sibling of `ResearchFunctionController` under the
+The controller is a sibling of `ResearchActionController` under the
 per-window `ResearchController`. The current Application preparation path
 still locks an Analysis identity and fingerprint; replacing that migration
 bridge with a Triptych-owned preparation identity is tracked in Implementation
@@ -880,9 +878,9 @@ either cancelled successfully or become its own visible, retryable recovery
 entry in Actions. One recovery can therefore never overwrite another. When a
 window temporarily has no current Note, a recovery-only Apparatus keeps those
 window-owned cleanup entries reachable without inventing a Target or Action.
-Protected Function mapping occurs only in Application composition;
-the retained Function route and controller remain compiled migration debt and
-have no production Inspector or menu entry. Neither leaf receives
+Protected Function mapping occurs only in Application composition. The public
+route and controller are Action-owned, and the superseded Function route,
+controller, panel, and record projection are absent. Neither leaf receives
 `WindowModel`, Core, or Application authority.
 
 ### Interface localization
@@ -898,7 +896,7 @@ delivery boundary.
 
 Translation keys and stable application identities are distinct. Persistence
 keys, accessibility identifiers, command IDs, enum raw values, vault-relative
-paths, and Research Function IDs never change with locale. Researcher-authored
+paths, and internal execution IDs never change with locale. Researcher-authored
 prose, note titles, quotations, citations, imported text, exact source, and
 filesystem paths bypass the interface catalog and render verbatim. Purely
 internal vocabulary that has no researcher-facing presentation is not a
@@ -1172,7 +1170,7 @@ enforces explicit request and confirmation. Core validates the proposal against 
 dependency graph as installed local Skills, snapshots the entire opted-in
 Triptych-local package, replaces it through descriptor-relative operations,
 reads it back, and rolls back on failure. Bundled packages remain immutable.
-This path is never selected by a Research Function.
+This path is never selected by Action execution.
 
 Snapshot inventory is global to Research Guidance rather than derived from the
 selected Skill. Core enumerates snapshots through stable directory descriptors
@@ -1249,7 +1247,7 @@ ownership authority. It defines role-specific keys, value kinds, empty
 creation requirements, allowed values, cross-field constraints, and validation.
 `ResearchUnitDeclaration` separately parses Analysis Completion versus
 Topic/Work Scope, and `ResearchNoteTitleResolver` supplies one role-aware
-identity fallback to Workspace, Search, Link Graph, and Research Functions.
+identity fallback to Workspace, Search, Link Graph, and Research Actions.
 App's independent `AboutProfileCatalog` owns default display choices and order;
 `PropertyPresentation` adds labels, help, grouping, and control style only.
 Property edits are validated through Contracts and applied by Application as targeted

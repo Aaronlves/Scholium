@@ -1547,17 +1547,49 @@ private struct StrictResearchRecordFingerprint: Decodable {
     }
 }
 
+public enum LocalResearchExecutionGrantError: LocalizedError, Sendable {
+    case emptyWriteSet
+    case incompleteStartingFingerprints
+    case notFound(UUID)
+    case keyMismatch
+    case inactive(ResearchActivityGrantState)
+    case activityMismatch
+    case completionAlreadyRecorded(UUID)
+    case invalidConfirmedSets
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyWriteSet:
+            "A write-capable Action requires at least one explicitly authorized Note."
+        case .incompleteStartingFingerprints:
+            "Every authorized Note requires one frozen starting fingerprint."
+        case .notFound(let id):
+            "The Action write grant was not found: \(id.uuidString)"
+        case .keyMismatch:
+            "The write key does not match this Action run."
+        case .inactive(let state):
+            "The Action write grant is no longer active: \(state.rawValue)"
+        case .activityMismatch:
+            "The completion report does not belong to this Action run."
+        case .completionAlreadyRecorded(let id):
+            "A different completion is already recorded for Action run \(id.uuidString)."
+        case .invalidConfirmedSets:
+            "The confirmed, unmodified, and unreported sets must be disjoint and remain inside the frozen authorization."
+        }
+    }
+}
+
 /// Machine-local execution evidence. Protected Function identity and assembled
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let triptychID: UUID
     public let snapshot: ResearchFunctionSnapshot
     public let preparedInstructions: String
-    public var dialogue: DialogueEntry?
+    public var discussion: ResearchDiscussionExecutionContract?
     public var grant: ResearchActivityGrant?
     public var agentCoordinationGrant: AgentCoordinationGrant?
     public var agentCoordinationRequestID: UUID?
@@ -1570,7 +1602,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         triptychID: UUID,
         snapshot: ResearchFunctionSnapshot,
         preparedInstructions: String,
-        dialogue: DialogueEntry? = nil,
+        discussion: ResearchDiscussionExecutionContract? = nil,
         grant: ResearchActivityGrant? = nil,
         agentCoordinationGrant: AgentCoordinationGrant? = nil,
         agentCoordinationRequestID: UUID? = nil,
@@ -1620,8 +1652,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         guard snapshot.actionSnapshot != nil,
               snapshot.runID == snapshot.recordID,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024,
-              dialogue?.id == snapshot.runID || dialogue == nil,
-              dialogue?.functionSnapshot == snapshot || dialogue == nil,
+              discussion?.id == snapshot.runID || discussion == nil,
               grant?.activityID == snapshot.activityID || grant == nil,
               coordinationGrantMatches,
               continuationMatches,
@@ -1640,7 +1671,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         self.triptychID = triptychID
         self.snapshot = snapshot
         self.preparedInstructions = preparedInstructions
-        self.dialogue = dialogue
+        self.discussion = discussion
         self.grant = grant
         self.agentCoordinationGrant = agentCoordinationGrant
         self.agentCoordinationRequestID = agentCoordinationRequestID
@@ -1653,7 +1684,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         case triptychID = "triptych_id"
         case snapshot
         case preparedInstructions = "prepared_instructions"
-        case dialogue, grant
+        case discussion, grant
         case agentCoordinationGrant = "agent_coordination_grant"
         case agentCoordinationRequestID = "agent_coordination_request_id"
         case completion
@@ -1677,7 +1708,10 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 String.self,
                 forKey: .preparedInstructions
             ),
-            dialogue: container.decodeIfPresent(DialogueEntry.self, forKey: .dialogue),
+            discussion: container.decodeIfPresent(
+                ResearchDiscussionExecutionContract.self,
+                forKey: .discussion
+            ),
             grant: container.decodeIfPresent(ResearchActivityGrant.self, forKey: .grant),
             agentCoordinationGrant: container.decodeIfPresent(
                 AgentCoordinationGrant.self,
@@ -1811,10 +1845,10 @@ public actor LocalResearchExecutionStore {
             uniquingKeysWith: { first, _ in first }
         )
         guard !distinctTargets.isEmpty else {
-            throw ResearchActivityGrantError.emptyWriteSet
+            throw LocalResearchExecutionGrantError.emptyWriteSet
         }
         guard Set(distinctTargets.keys) == Set(startingFingerprints.keys) else {
-            throw ResearchActivityGrantError.incompleteStartingFingerprints
+            throw LocalResearchExecutionGrantError.incompleteStartingFingerprints
         }
         let duration = min(max(1, requestedDuration), 24 * 60 * 60)
         let rawKey = [UUID().uuidString, UUID().uuidString]
@@ -2103,7 +2137,7 @@ public actor LocalResearchExecutionStore {
     ) throws -> ResearchActivityGrant {
         let record = try update(activityID) { record in
             guard var grant = record.grant else {
-                throw ResearchActivityGrantError.notFound(activityID)
+                throw LocalResearchExecutionGrantError.notFound(activityID)
             }
             if grant.state == .active, date > grant.expiresAt {
                 grant.state = .expired
@@ -2111,16 +2145,16 @@ public actor LocalResearchExecutionStore {
             }
         }
         guard let grant = record.grant else {
-            throw ResearchActivityGrantError.notFound(activityID)
+            throw LocalResearchExecutionGrantError.notFound(activityID)
         }
         guard grant.keyDigest == DocumentFingerprint(content: activityKey).sha256 else {
-            throw ResearchActivityGrantError.keyMismatch
+            throw LocalResearchExecutionGrantError.keyMismatch
         }
         switch grant.state {
         case .active, .completed:
             return grant
         case .cancelled, .revoked, .expired:
-            throw ResearchActivityGrantError.inactive(grant.state)
+            throw LocalResearchExecutionGrantError.inactive(grant.state)
         }
     }
 
@@ -2143,16 +2177,16 @@ public actor LocalResearchExecutionStore {
     ) throws -> LocalResearchExecutionRecord {
         try update(activityID) { record in
             guard var grant = record.grant else {
-                throw ResearchActivityGrantError.notFound(activityID)
+                throw LocalResearchExecutionGrantError.notFound(activityID)
             }
             guard grant.keyDigest == DocumentFingerprint(content: activityKey).sha256 else {
-                throw ResearchActivityGrantError.keyMismatch
+                throw LocalResearchExecutionGrantError.keyMismatch
             }
             if grant.state == .active, report.completedAt > grant.expiresAt {
-                throw ResearchActivityGrantError.inactive(.expired)
+                throw LocalResearchExecutionGrantError.inactive(.expired)
             }
             guard report.activityID == activityID else {
-                throw ResearchActivityGrantError.activityMismatch
+                throw LocalResearchExecutionGrantError.activityMismatch
             }
             guard completion.runID == activityID,
                   completion.function == record.snapshot.request.function else {
@@ -2163,7 +2197,7 @@ public actor LocalResearchExecutionStore {
                       grant.completionPayloadDigest == completionPayloadDigest,
                       grant.completionReport == report,
                       let existing = record.completion else {
-                    throw ResearchActivityGrantError.completionAlreadyRecorded(activityID)
+                    throw LocalResearchExecutionGrantError.completionAlreadyRecorded(activityID)
                 }
                 if existing == completion,
                    record.completionSubmissionDigest == submissionDigest {
@@ -2174,14 +2208,14 @@ public actor LocalResearchExecutionStore {
                     to: completion,
                     snapshot: record.snapshot
                 ) else {
-                    throw ResearchActivityGrantError.completionAlreadyRecorded(activityID)
+                    throw LocalResearchExecutionGrantError.completionAlreadyRecorded(activityID)
                 }
                 record.completion = completion
                 record.completionSubmissionDigest = submissionDigest
                 return
             }
             guard grant.state == .active else {
-                throw ResearchActivityGrantError.inactive(grant.state)
+                throw LocalResearchExecutionGrantError.inactive(grant.state)
             }
             let allowed = Set(grant.allowedTargets.map(\.noteID))
             let confirmed = Set(report.confirmedModifiedNotes.map(\.noteID))
@@ -2192,7 +2226,7 @@ public actor LocalResearchExecutionStore {
                   unmodified.isDisjoint(with: unreported),
                   confirmed.union(unmodified).union(unreported).isSubset(of: allowed),
                   Set(report.observedFingerprints.keys) == allowed else {
-                throw ResearchActivityGrantError.invalidConfirmedSets
+                throw LocalResearchExecutionGrantError.invalidConfirmedSets
             }
             grant.state = .completed
             grant.completionPayloadDigest = completionPayloadDigest
@@ -2209,11 +2243,11 @@ public actor LocalResearchExecutionStore {
     ) throws {
         _ = try update(activityID) { record in
             guard var grant = record.grant else {
-                throw ResearchActivityGrantError.notFound(activityID)
+                throw LocalResearchExecutionGrantError.notFound(activityID)
             }
             if grant.state == state { return }
             guard grant.state == .active else {
-                throw ResearchActivityGrantError.inactive(grant.state)
+                throw LocalResearchExecutionGrantError.inactive(grant.state)
             }
             grant.state = state
             record.grant = grant
@@ -2446,12 +2480,6 @@ public actor LocalResearchExecutionStore {
                 noteIDs.formUnion(report.unreportedChangedNotes.map(\.noteID))
                 noteIDs.formUnion(report.observedFingerprints.keys)
             }
-        }
-        if let dialogue = record.dialogue {
-            noteIDs.formUnion(dialogue.selectedNotes.map(\.noteID))
-            noteIDs.formUnion(dialogue.includedComments.map(\.note.noteID))
-            noteIDs.formUnion(dialogue.replies.compactMap(\.noteID))
-            noteIDs.formUnion(dialogue.followUpComments.compactMap(\.noteID))
         }
         return noteIDs
     }

@@ -211,6 +211,50 @@ struct ResearchActionExecutionContractsTests {
         }
     }
 
+    @Test("Public Action mutation inputs reject unknown fields")
+    func publicMutationInputsFailClosed() throws {
+        let target = note(role: .work, seed: "target")
+        let request = ResearchActionExecutionRequest(
+            actionID: .write,
+            expectedExecutionKind: .writing,
+            expectedProfileRevision: DocumentFingerprint(content: "profile"),
+            expectedProfileDocumentRevision: nil,
+            target: target
+        )
+        let completion = ResearchActionCompletionSubmission(
+            runID: UUID(),
+            confirmationToken: UUID(),
+            finalTargetFingerprint: target.fingerprint,
+            summary: "No change.",
+            didModifyTarget: false
+        )
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        var requestObject = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(request)) as? [String: Any]
+        )
+        requestObject["unsupported"] = true
+        #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try decoder.decode(
+                ResearchActionExecutionRequest.self,
+                from: JSONSerialization.data(withJSONObject: requestObject)
+            )
+        }
+
+        var completionObject = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(completion))
+                as? [String: Any]
+        )
+        completionObject["unsupported"] = true
+        #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try decoder.decode(
+                ResearchActionCompletionSubmission.self,
+                from: JSONSerialization.data(withJSONObject: completionObject)
+            )
+        }
+    }
+
     private func parameterProfile() throws -> ResearchActionProfile {
         let actionID = ResearchActionID(researcherOwnedRawValue: "stress-test")!
         let definition = try ResearchActionDefinition(

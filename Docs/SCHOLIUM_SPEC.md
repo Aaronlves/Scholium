@@ -599,8 +599,9 @@ reachable; they are not retained as compatibility architecture.
 The cutover never deletes or rewrites researcher Markdown, unknown YAML,
 unrecognized Triptych files, or pre-existing machine-local data merely because
 the new application no longer reads it. Unsupported legacy data remains
-byte-unchanged and can be revealed for manual inspection, but it never appears
-in the current interface, authorizes a run, or becomes a new Research Record.
+byte-unchanged, but a pre-production application provides no parser, migration,
+projection, recovery path, authorization route, or dedicated reveal entry for
+it. It never appears in the current interface or becomes a new Research Record.
 
 ## 8. Research Actions, Method Skills, and direct agent work
 
@@ -774,8 +775,7 @@ than one flat package list:
 4. **Sources & Integrations** owns source bindings, Zotero, citation methods,
    agent handoff, and the Scholium CLI.
 5. **Recovery & Technical** owns settled-version retention, Skill snapshots,
-   restore, validation detail, and **Reveal Skills Folder** or **Reveal Legacy
-   Data**.
+   restore, validation detail, and **Reveal Skills Folder**.
 
 These categories use a restrained native list/detail hierarchy with persistent
 selection, succinct rows, semantic grouping, and one detail destination. They
@@ -1724,12 +1724,12 @@ only its first executable repair. Settle remains a quiet direct current-note
 action, and Attention remains in Overview/Library rather than becoming
 completed history.
 
-Each Action is one native full-row button with a direct symbol, short title,
-optional explanation, and only when useful a trailing chevron or shortcut. Its
-modular sheet shows the necessary scholarly inputs and app-owned authority or
-recovery facts without exposing assembled prompts, package internals, or
-technical mode names. The active Action and its sheet retain keyboard, menu,
-pointer, focus, cancellation, and VoiceOver parity.
+Each Action is one native full-row button with a direct symbol, the shortest
+accurate title, explanation only under §19.6, and only when useful a trailing
+chevron or shortcut. Its modular sheet shows the necessary scholarly inputs
+and app-owned authority or recovery facts without exposing assembled prompts,
+package internals, or technical mode names. The active Action and its sheet
+retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
 
 Functional text is never a generic blue link or a separate **Open** button.
 Body and secondary colors, hover surface, focus ring, button semantics, and
@@ -1974,6 +1974,41 @@ those representations; Scholium does not crop, recompose, or maintain a second
 icon lineage. Replacing the artwork requires explicit researcher approval and
 a new recorded decision.
 
+### 19.6 Interface writing and explanatory copy
+
+Interface words earn their space. A control or Action begins with the shortest
+accurate label that lets a researcher predict its immediate result. Prefer a
+direct verb or established research term; do not add explanatory copy merely
+to restate the label, nearby heading, standard component, or visible state.
+
+Visible supporting copy is optional. Add it only when the label and immediate
+context cannot communicate a necessary research boundary, unfamiliar result,
+or first executable repair. Use one short sentence or fragment authored to fit
+within two lines at the component's ordinary supported width and default text
+size. Localization, mixed scripts, and 200% text may reflow rather than
+truncate, but the source wording does not expand to compensate. An unavailable
+Action replaces its ordinary explanation with only the first executable
+repair; it does not show both.
+
+One meaning has one presentation:
+
+- A visible explanation is never repeated as a tooltip or accessibility hint.
+- A macOS tooltip describes only the indicated control, begins with the action,
+  repeats no visible name, and stays within 60–75 Latin characters or an
+  equivalently terse localized phrase.
+- An accessibility hint adds only a result, consequence, or context missing
+  from the current label, role, value, and visible copy. Brevity never removes
+  the names, values, state, or consequences needed to complete the task.
+- Permission, provenance, destructive consequence, conflict, failure, and
+  recovery detail belongs in the relevant body, alert, comparison, or sheet.
+  It is neither hidden nor truncated to make a button annotation appear short.
+
+Default Actions prefer title-only rows when their group and title already
+identify the task. Researcher-defined Actions may use one terse explanation
+when the title cannot faithfully distinguish their declared boundary. No
+control accumulates a label, subtitle, tooltip, and adjacent paragraph that all
+explain the same action.
+
 ## 20. Accessibility and adaptation
 
 - Support System, Light, and Dark without hard-coded inversion.
@@ -2001,6 +2036,9 @@ a new recorded decision.
   removal follows the next/previous/Back focus sequence defined in §18.3.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
+- Keep accessibility labels and hints semantically complete but nonduplicative
+  under §19.6. The visible two-line authoring budget never removes information
+  needed to distinguish source, state, authority, consequence, or recovery.
 - The separate Review Comment bar and Edit formatting bar are keyboard
   reachable and expose every visible command by name. Review's Comment field announces the inclusive line
   range, Return-to-save, Shift-Return-to-insert-line, and Escape-to-cancel
@@ -2131,7 +2169,7 @@ only in Git history.
 | **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
 | **D-105** | 7, 8.1–8.2, 9–11, 13, 18.1, 18.5, 18.7, 22 | **D-106** | 1–3, 5–11, 13, 16–22 |
 | **D-107** | 7.1, 8.1, 14, 22 | **D-108** | 7.2, 8.1–8.2, 18.4–18.5, 20, 22 |
-| **D-109** | 18.5, 20, 22 | | |
+| **D-109** | 18.5, 20, 22 | **D-112** | 18.5, 19.6, 20, 22 |
 
 Clean-cutover inventory:
 
@@ -2304,6 +2342,20 @@ Clean-cutover inventory:
   projections; it never deletes Markdown, checkpoints, exact-note recovery, or
   unrelated records. D-110 supersedes D-106 only where D-106 requires
   recoverable Record Trash.
+- **D-111:** because Scholium has not shipped, clean cutover exposes no legacy
+  data entry. Unsupported pre-production machine-local bytes remain untouched,
+  invisible, unparsed, unmigrated, unrecoverable through the product, and
+  nonauthorizing. Current portable Skills retain **Reveal Skills Folder**;
+  there is no **Reveal Legacy Data** command. D-111 supersedes D-106 only where
+  its preservation rule previously implied a manual reveal route.
+- **D-112:** make interface explanation exceptional rather than routine. Begin
+  with the shortest accurate label; omit supporting copy when label and context
+  suffice. When necessary, use one terse sentence or fragment authored for at
+  most two ordinary-width lines. Do not repeat one meaning across visible copy,
+  tooltip, and accessibility hint. A disabled Action shows only its first
+  executable repair. Keep permission, provenance, conflict, destructive
+  consequence, failure, and recovery detail in the appropriate body or
+  presentation rather than hiding or truncating it to satisfy brevity.
 
 Unresolved work must not be described as complete:
 

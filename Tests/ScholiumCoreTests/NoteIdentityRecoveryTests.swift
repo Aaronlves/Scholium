@@ -23,29 +23,6 @@ struct NoteIdentityRecoveryTests {
             fingerprint: saved.document.fingerprint
         ))
 
-        let reference = DialogueNoteReference(
-            noteID: identity.id,
-            vaultID: fixture.worksID,
-            vaultName: "Works",
-            title: "Work",
-            relativePath: "Old.md",
-            fingerprint: saved.document.fingerprint
-        )
-        let dialogueID = UUID()
-        let dialogueEntry = DialogueEntry(
-            id: dialogueID,
-            triptychID: UUID(),
-            instruction: "Revise.",
-            selectedNotes: [reference],
-            includedComments: [],
-            preparedInstructions: "Historical target: Old.md",
-            checkpointID: UUID(),
-            functionSnapshot: testDiscussSnapshot(
-                runID: dialogueID,
-                references: [reference]
-            )
-        )
-        _ = try await stores.dialogue.save(dialogueEntry)
         _ = try await stores.critiques.recordRequest(
             workNoteID: identity.id,
             workRelativePath: "Old.md",
@@ -75,7 +52,6 @@ struct NoteIdentityRecoveryTests {
         let moved = try await repository.load(relativePath: "Folder/New.md")
         let coordinator = NoteIdentityRecoveryCoordinator(
             control: stores.control,
-            dialogue: stores.dialogue,
             critiques: stores.critiques,
             windowSessions: stores.sessions
         )
@@ -89,9 +65,6 @@ struct NoteIdentityRecoveryTests {
         #expect(state.identities["Folder/New.md"]?.id == identity.id)
         #expect(state.pendingRebindings.isEmpty)
         #expect(state.failures.isEmpty)
-        let migratedDialogue = try await stores.dialogue.entry(id: dialogueEntry.id)
-        #expect(migratedDialogue.selectedNotes[0].relativePath == "Folder/New.md")
-        #expect(migratedDialogue.preparedInstructions == "Historical target: Old.md")
         #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
         #expect(session.selectedDocument?.relativePath == "Folder/New.md")
@@ -118,40 +91,6 @@ struct NoteIdentityRecoveryTests {
             relativePath: "Shared.md",
             fingerprint: topicDocument.fingerprint
         ))
-        let references = [
-            DialogueNoteReference(
-                noteID: analysisIdentity.id,
-                vaultID: fixture.analysesID,
-                vaultName: "Analyses",
-                title: "Shared",
-                relativePath: "Shared.md",
-                fingerprint: analysisDocument.fingerprint
-            ),
-            DialogueNoteReference(
-                noteID: topicIdentity.id,
-                vaultID: fixture.topicsID,
-                vaultName: "Topics",
-                title: "Shared",
-                relativePath: "Shared.md",
-                fingerprint: topicDocument.fingerprint
-            ),
-        ]
-        let dialogueID = UUID()
-        let dialogueEntry = DialogueEntry(
-            id: dialogueID,
-            triptychID: UUID(),
-            instruction: "Compare.",
-            selectedNotes: references,
-            includedComments: [],
-            preparedInstructions: "Two Shared.md files",
-            checkpointID: UUID(),
-            functionSnapshot: testDiscussSnapshot(
-                runID: dialogueID,
-                references: references
-            )
-        )
-        _ = try await stores.dialogue.save(dialogueEntry)
-
         try FileManager.default.moveItem(
             at: fixture.analyses.appendingPathComponent("Shared.md"),
             to: fixture.analyses.appendingPathComponent("Moved.md")
@@ -159,7 +98,6 @@ struct NoteIdentityRecoveryTests {
         let moved = try await analysesRepository.load(relativePath: "Moved.md")
         let coordinator = NoteIdentityRecoveryCoordinator(
             control: stores.control,
-            dialogue: stores.dialogue,
             critiques: stores.critiques,
             windowSessions: stores.sessions
         )
@@ -171,9 +109,10 @@ struct NoteIdentityRecoveryTests {
         )
 
         #expect(state.identities["Moved.md"]?.id == analysisIdentity.id)
-        let migratedDialogue = try await stores.dialogue.entry(id: dialogueEntry.id)
-        #expect(migratedDialogue.selectedNotes.first { $0.vaultID == fixture.analysesID }?.relativePath == "Moved.md")
-        #expect(migratedDialogue.selectedNotes.first { $0.vaultID == fixture.topicsID }?.relativePath == "Shared.md")
+        #expect(try await stores.control.identityRecord(
+            vaultID: fixture.topicsID,
+            relativePath: "Shared.md"
+        )?.id == topicIdentity.id)
     }
 
     @Test("A failed app-state migration remains persisted and blocks identity")
@@ -212,7 +151,6 @@ struct NoteIdentityRecoveryTests {
         let moved = try await repository.load(relativePath: "New.md")
         let coordinator = NoteIdentityRecoveryCoordinator(
             control: stores.control,
-            dialogue: stores.dialogue,
             critiques: stores.critiques,
             windowSessions: stores.sessions
         )
@@ -232,7 +170,6 @@ struct NoteIdentityRecoveryTests {
 
     private struct Stores {
         let control: TriptychControlStore
-        let dialogue: DialogueStore
         let critiques: CritiqueRegistry
         let sessions: WindowSessionSnapshotStore
         let sessionID: UUID
@@ -271,7 +208,6 @@ struct NoteIdentityRecoveryTests {
             let sessionID = UUID()
             return Stores(
                 control: control,
-                dialogue: DialogueStore(storageURL: triptychState.appendingPathComponent("dialogue")),
                 critiques: CritiqueRegistry(controlURL: triptychState),
                 sessions: WindowSessionSnapshotStore(applicationSupportURL: support),
                 sessionID: sessionID
@@ -290,44 +226,4 @@ struct NoteIdentityRecoveryTests {
             try? FileManager.default.removeItem(at: root)
         }
     }
-}
-
-private func testDiscussSnapshot(
-    runID: UUID,
-    references: [DialogueNoteReference]
-) -> ResearchFunctionSnapshot {
-    let targetReference = references[0]
-    let target = ResearchFunctionTarget(
-        noteID: targetReference.noteID,
-        note: VaultQualifiedNoteID(
-            vaultID: targetReference.vaultID,
-            relativePath: targetReference.relativePath
-        ),
-        role: .work,
-        fingerprint: targetReference.fingerprint,
-        title: targetReference.title
-    )
-    let materials = references.dropFirst().map { reference in
-        ResearchFunctionMaterial(
-            noteID: reference.noteID,
-            note: VaultQualifiedNoteID(
-                vaultID: reference.vaultID,
-                relativePath: reference.relativePath
-            ),
-            role: .work,
-            fingerprint: reference.fingerprint,
-            title: reference.title
-        )
-    }
-    return ResearchFunctionSnapshot(
-        runID: runID,
-        request: ResearchFunctionRequest(
-            function: .discuss,
-            target: target,
-            materials: materials,
-            instruction: "Test discussion"
-        ),
-        recordKind: .discuss,
-        recordID: runID
-    )
 }

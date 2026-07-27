@@ -664,7 +664,7 @@ extension ResearchActionDefinition {
         case .synthesis:
             String(localized: "Integrate Analyses, Sources, and reliable information into this Topic.", table: "Localizable", bundle: .module)
         case .writing:
-            String(localized: "Revise this Work within its explicit write boundary.", table: "Localizable", bundle: .module)
+            String(localized: "Write to this Work within its explicit boundary.", table: "Localizable", bundle: .module)
         case .critique:
             String(localized: "Produce bounded critical feedback before any separately authorized writing.", table: "Localizable", bundle: .module)
         case .checkFidelity:

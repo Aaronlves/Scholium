@@ -345,7 +345,7 @@ enum WorkspaceSnapshotBuilder {
         }
         activeDiscussionListing = try await services.portableResearchRecordStore
             .activeDiscussions()
-        let activityGrants = await services.researchActivityStore.grants()
+        let actionGrants = localExecutionListing.records.compactMap(\.grant)
         let latestSettlementByNoteID = Dictionary(
             settlements.map { ($0.noteID, $0) },
             uniquingKeysWith: { lhs, rhs in
@@ -429,7 +429,7 @@ enum WorkspaceSnapshotBuilder {
         let loadedVaultsByID = Dictionary(
             uniqueKeysWithValues: loadedVaults.map { ($0.vault.id, $0) }
         )
-        let attributionAttention = activityGrants.flatMap { grant -> [AttentionQueueItem] in
+        let attributionAttention = actionGrants.flatMap { grant -> [AttentionQueueItem] in
             guard let report = grant.completionReport else { return [] }
             return report.unreportedChangedNotes.compactMap { changed in
                 guard let loaded = loadedVaultsByID[changed.note.vaultID],
@@ -469,9 +469,6 @@ enum WorkspaceSnapshotBuilder {
         var healthIssues: [String] = []
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
         if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
-        if let issue = await services.researchActivityStore.healthError() {
-            healthIssues.append(issue)
-        }
         healthIssues.append(contentsOf: portableSettlementListing.issues.map {
             "Portable Settlement \($0.fileName): \($0.reason)"
         })
@@ -726,82 +723,7 @@ enum WorkspaceSnapshotBuilder {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
-        // Retained Critique Function evidence remains reveal-only. Current
-        // planning and projection publish only Local Execution v2 records.
-        let storedFunctionRuns = localFunctionRuns.sorted {
-            if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
-                return $0.snapshot.preparedAt > $1.snapshot.preparedAt
-            }
-            return $0.id.uuidString < $1.id.uuidString
-        }
-        let currentByStableID: [UUID: DocumentFingerprint] = Dictionary(
-            vaultSnapshots.flatMap(\.documents).compactMap { note in
-                guard case .resolved(let stableID) = note.stableIdentity else { return nil }
-                return (stableID, note.fingerprint)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let currentByLocation: [VaultQualifiedNoteID: DocumentFingerprint] = Dictionary(
-            uniqueKeysWithValues: vaultSnapshots.flatMap(\.documents).map {
-                ($0.id, $0.fingerprint)
-            }
-        )
-        let functionRuns = storedFunctionRuns.map { run in
-            guard let completion = run.completion,
-                  completion.state != .cancelled,
-                  completion.state != .stale else { return run }
-            let targetIsCurrent = currentByStableID[run.snapshot.request.target.noteID]
-                == completion.targetFingerprint
-            let materialsAreCurrent = run.snapshot.request.materials.allSatisfy { material in
-                currentByStableID[material.noteID]
-                    == completion.materialFingerprints[material.noteID]
-            }
-            let outputIsCurrent: Bool
-            if let preparedOutput = run.snapshot.preparedOutput {
-                outputIsCurrent = currentByLocation[preparedOutput.note]
-                    == completion.outputFingerprint
-            } else {
-                outputIsCurrent = completion.outputFingerprint == nil
-            }
-            let currentEvidence: [DocumentFingerprint]? = run.snapshot.request.commentIDs.isEmpty
-                ? []
-                : nil
-            let preparedEvidence = run.snapshot.evidenceRevisions.sorted { lhs, rhs in
-                if lhs.sha256 != rhs.sha256 { return lhs.sha256 < rhs.sha256 }
-                return lhs.byteCount < rhs.byteCount
-            }
-            guard targetIsCurrent,
-                  materialsAreCurrent,
-                  outputIsCurrent,
-                  currentEvidence == preparedEvidence else {
-                return ResearchFunctionRecordProjection(
-                    snapshot: run.snapshot,
-                    completion: ResearchFunctionCompletion(
-                        runID: completion.runID,
-                        function: completion.function,
-                        state: .stale,
-                        targetFingerprint: completion.targetFingerprint,
-                        materialFingerprints: completion.materialFingerprints,
-                        actuallyUsedMaterialNoteIDs:
-                            completion.actuallyUsedMaterialNoteIDs ?? [],
-                        summary: completion.summary,
-                        didModifyTarget: completion.didModifyTarget,
-                        outputFingerprint: completion.outputFingerprint,
-                        fidelityOutcomes: completion.fidelityOutcomes,
-                        fidelityTargetResults: completion.fidelityTargetResults ?? [],
-                        fidelityEvidenceKey: completion.fidelityEvidenceKey,
-                        reusedFidelityRunID: completion.reusedFidelityRunID,
-                        childRunIDs: completion.childRunIDs ?? [],
-                        completedAt: completion.completedAt,
-                        derivedRefreshWarning: completion.derivedRefreshWarning
-                    ),
-                    preparedInstructions: run.preparedInstructions
-                )
-            }
-            return run
-        }
         let research = WorkspaceResearchSnapshot(
-            activityEvents: await services.researchActivityStore.allEvents(),
             settlements: settlements,
             activeDiscussions: activeDiscussionListing.issues.isEmpty
                 ? activeDiscussionListing.discussions
@@ -813,9 +735,7 @@ enum WorkspaceSnapshotBuilder {
                     }
                     return $0.id.uuidString < $1.id.uuidString
                 },
-            activityGrants: activityGrants,
             critiques: critiqueAssociations,
-            functionRuns: functionRuns,
             checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,
             healthIssues: Array(Set(healthIssues)).sorted()
@@ -896,6 +816,26 @@ enum WorkspaceSnapshotBuilder {
     private static func latestSynthesisMaterialUses(
         records: [PortableResearchRecord]
     ) -> [MaterialUseKey: RecordedMaterialUse] {
+        let recordsByID = Dictionary(
+            uniqueKeysWithValues: records.map { ($0.id, $0) }
+        )
+        func descends(
+            _ record: PortableResearchRecord,
+            from ancestorID: UUID
+        ) -> Bool {
+            var current = record
+            var visited: Set<UUID> = []
+            while let lineage = current.continuationLineage,
+                  lineage.kind == .resynthesis,
+                  visited.insert(current.id).inserted {
+                if lineage.parentRunID == ancestorID { return true }
+                guard let parent = recordsByID[lineage.parentRunID] else {
+                    return false
+                }
+                current = parent
+            }
+            return false
+        }
         var latestByUse: [MaterialUseKey: RecordedMaterialUse] = [:]
         for record in records where record.kind == .action
             && record.action?.actionID == .synthesize {
@@ -923,11 +863,23 @@ enum WorkspaceSnapshotBuilder {
                     topicNoteID: topicNoteID,
                     materialNoteID: material.noteID
                 )
-                if let existing = latestByUse[key],
-                   existing.record.finishedAt > record.finishedAt
-                    || (existing.record.finishedAt == record.finishedAt
-                        && existing.record.id.uuidString < record.id.uuidString) {
-                    continue
+                if let existing = latestByUse[key] {
+                    let candidateSupersedesExisting = descends(
+                        record,
+                        from: existing.record.id
+                    )
+                    let existingSupersedesCandidate = descends(
+                        existing.record,
+                        from: record.id
+                    )
+                    if existingSupersedesCandidate
+                        || (!candidateSupersedesExisting
+                            && (existing.record.finishedAt > record.finishedAt
+                                || (existing.record.finishedAt == record.finishedAt
+                                    && existing.record.id.uuidString
+                                        < record.id.uuidString))) {
+                        continue
+                    }
                 }
                 latestByUse[key] = RecordedMaterialUse(
                     record: record,

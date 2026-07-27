@@ -577,12 +577,6 @@ final class WorkspaceStore: ObservableObject {
                     try await handle.research.saveSettings(settings)
                     return try await settingsSnapshot(preferredTriptychID: id)
                 },
-                discussResponseProfile: { [self] id in
-                    try await workspaceHandle(id: id).research.discussResponseProfile()
-                },
-                saveDiscussResponseProfile: { [self] id, profile in
-                    try await workspaceHandle(id: id).research.saveDiscussResponseProfile(profile)
-                },
                 portableContainerURL: { [self] url in
                     await portableContainerURL(forWorksURL: url)
                 }
@@ -616,18 +610,6 @@ final class WorkspaceStore: ObservableObject {
                     source: source,
                     origin: origin
                 )
-            },
-            researchFunctionSkillBindingStatus: { [self] workspaceID, function in
-                try await workspaceHandle(id: workspaceID).research
-                    .researchFunctionSkillBindingStatus(for: function)
-            },
-            saveResearchFunctionSkillSelection: {
-                [self] workspaceID, selection, revision in
-                try await workspaceHandle(id: workspaceID).research
-                    .saveResearchFunctionSkillSelection(
-                        selection,
-                        expectedBindingRevision: revision
-                    )
             },
             citationMethodStatus: { [self] workspaceID in
                 try await workspaceHandle(id: workspaceID).research.citationMethodStatus()
@@ -722,9 +704,6 @@ final class WorkspaceStore: ObservableObject {
             },
             researchSkillsURL: { [self] id in
                 try await workspaceHandle(id: id).research.skillsURL
-            },
-            legacyResearchDataURL: { [self] id in
-                try await workspaceHandle(id: id).research.legacyResearchDataURL
             },
             workingMethodBindings: { [self] id in
                 try await workspaceHandle(id: id).research.workingMethodBindings()

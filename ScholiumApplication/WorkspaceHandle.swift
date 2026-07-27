@@ -26,8 +26,6 @@ struct WorkspaceServices: Sendable {
     let zotero: ZoteroOperations
     let portableResearchRecordStore: PortableResearchRecordStore
     let localResearchExecutionStore: LocalResearchExecutionStore
-    let researchActivityStore: ResearchActivityStore
-    let dialogueStore: DialogueStore
     let critiqueRegistry: CritiqueRegistry
     let checkpointStore: TriptychCheckpointStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
@@ -426,18 +424,6 @@ public actor WorkspaceHandle {
             }
             let initialWorkspaceGeneration = priorWorkspaceGeneration + 1
 
-            let researchActivityStore = ResearchActivityStore(
-                storageURL: triptychStorage.appendingPathComponent(
-                    "research-activity",
-                    isDirectory: true
-                )
-            )
-            let dialogueStore = DialogueStore(
-                storageURL: triptychStorage.appendingPathComponent(
-                    "dialogue",
-                    isDirectory: true
-                )
-            )
             let portableResearchRecordStore = try PortableResearchRecordStore(
                 controlURL: controlURL,
                 applicationSupportURL: applicationSupportURL,
@@ -492,8 +478,6 @@ public actor WorkspaceHandle {
                 zotero: zotero,
                 portableResearchRecordStore: portableResearchRecordStore,
                 localResearchExecutionStore: localResearchExecutionStore,
-                researchActivityStore: researchActivityStore,
-                dialogueStore: dialogueStore,
                 critiqueRegistry: critiqueRegistry,
                 checkpointStore: TriptychCheckpointStore(
                     triptychID: manifest.id,
@@ -502,7 +486,6 @@ public actor WorkspaceHandle {
                 transactionRecoveryStore: transactionRecoveryStore,
                 identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator(
                     control: controlStore,
-                    dialogue: dialogueStore,
                     critiques: critiqueRegistry,
                     windowSessions: windowSessionStore
                 ),
@@ -544,8 +527,7 @@ public actor WorkspaceHandle {
             let researchOperations = ResearchOperations(
                 reference: reference,
                 skillsURL: services.researchSkillStore.skillsURL,
-                recoveryRecordsURL: services.transactionRecoveryStore.storageURL,
-                legacyResearchDataURL: triptychStorage
+                recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
             let handle = WorkspaceHandle(
                 assignment: assignment,
@@ -695,35 +677,20 @@ public actor WorkspaceHandle {
             relativePath: id.relativePath,
             content: content
         )
-        let identity: NoteIdentityRecord
         do {
-            guard let createdIdentity = try await services.controlStore.identity(
+            guard try await services.controlStore.identity(
                 forVaultID: id.vaultID,
                 relativePath: id.relativePath,
                 fingerprint: document.fingerprint
-            ) else {
+            ) != nil else {
                 throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
             }
-            identity = createdIdentity
         } catch {
             try? await repository.removeCreatedFileForRollback(
                 relativePath: id.relativePath,
                 createdRevision: document.fingerprint
             )
             throw error
-        }
-        if let role = ResearchFunctionTargetRole(vaultRole: registeredVault.role) {
-            let title = ResearchNoteTitleResolver.resolve(
-                document: document,
-                vaultRole: registeredVault.role
-            ).title
-            let reference = ResearchActivityNoteReference(
-                noteID: identity.id,
-                note: id,
-                role: role,
-                title: title
-            )
-            _ = try await services.researchActivityStore.recordCreated(note: reference)
         }
         endSourceMutation(mutationID)
         ownsMutation = false
@@ -1108,7 +1075,6 @@ public actor WorkspaceHandle {
         let coordinator = NotePermanentDeletionCoordinator(
             triptychID: services.manifest.id,
             repository: repository,
-            dialogueStore: services.dialogueStore,
             critiqueRegistry: services.critiqueRegistry,
             checkpointStore: services.checkpointStore,
             controlStore: services.controlStore,
@@ -1165,7 +1131,6 @@ public actor WorkspaceHandle {
             let coordinator = NotePermanentDeletionCoordinator(
                 triptychID: services.manifest.id,
                 repository: repository,
-                dialogueStore: services.dialogueStore,
                 critiqueRegistry: services.critiqueRegistry,
                 checkpointStore: services.checkpointStore,
                 controlStore: services.controlStore,
@@ -1952,11 +1917,6 @@ public actor WorkspaceHandle {
         return await services.critiqueRegistry.association(workNoteID: workNoteID)
     }
 
-    func discussResponseProfile() async throws -> DialogueResponseProfile {
-        try requireActive()
-        return try await services.controlStore.discussResponseProfile()
-    }
-
     func triptychSettings() async throws -> TriptychSettings {
         try requireActive()
         return try await services.controlStore.settings()
@@ -1967,15 +1927,6 @@ public actor WorkspaceHandle {
         try await services.controlStore.saveSettings(settings)
         try await refreshAfterCommittedOperation(
             "The Triptych settings",
-            publication: .researchRecords
-        )
-    }
-
-    func saveDiscussResponseProfile(_ profile: DialogueResponseProfile) async throws {
-        try requireActive()
-        try await services.controlStore.saveDiscussResponseProfile(profile)
-        try await refreshAfterCommittedOperation(
-            "The Discuss response profile",
             publication: .researchRecords
         )
     }

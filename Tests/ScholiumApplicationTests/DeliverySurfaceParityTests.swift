@@ -34,18 +34,17 @@ struct DeliverySurfaceParityTests {
             expectedRevision: declared.document.fingerprint,
             rationale: "Fixture settlement visible to every delivery surface."
         )
-        _ = try await appHandle.research.prepareFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
-                target: ResearchFunctionTarget(
-                    noteID: try #require(original.stableIdentity.resolvedID),
-                    note: fixture.analysisNoteID,
-                    role: .analysis,
-                    fingerprint: declared.document.fingerprint,
-                    title: "Agency"
-                ),
-                instruction: "Inspect the fixture argument."
-            )
+        _ = try await appHandle.research.createDiscussion(
+            target: ResearchFunctionTarget(
+                noteID: try #require(original.stableIdentity.resolvedID),
+                note: fixture.analysisNoteID,
+                role: .analysis,
+                fingerprint: declared.document.fingerprint,
+                title: "Agency"
+            ),
+            focalNotes: [],
+            passage: nil,
+            researcherMessage: "Inspect the fixture argument."
         )
         let appSnapshot = try await appHandle.snapshot()
         let appHits = try await appHandle.discovery.search(SearchRequest(
@@ -93,7 +92,6 @@ struct DeliverySurfaceParityTests {
         #expect(cliHits.hasMore == appHits.hasMore)
         #expect(cliHits.diagnostics == appHits.diagnostics)
         #expect(cliMetadataIssues == appMetadataIssues)
-        #expect(cliResearch.activityEvents == appResearch.activityEvents)
         #expect(cliResearch.settlements == appResearch.settlements)
         #expect(cliResearch.activeDiscussions == appResearch.activeDiscussions)
         #expect(cliResearch.finishedResearchRecords == appResearch.finishedResearchRecords)

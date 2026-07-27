@@ -42,6 +42,7 @@ PY
 # and documentation remain valid test data rather than false UI failures.
 if rg -n --glob '*.swift' '[\p{Han}]' \
   "${ROOT}/Scholium/App" \
+  "${ROOT}/Scholium/Features" \
   "${ROOT}/Scholium/Models" \
   "${ROOT}/Scholium/Services" \
   "${ROOT}/Scholium/Views" \
@@ -50,16 +51,18 @@ if rg -n --glob '*.swift' '[\p{Han}]' \
   exit 1
 fi
 
-# The typed Research Function route is the one workflow doorway. Retired
+# The typed Research Action route is the one workflow doorway. Retired
 # Scholia routing and standalone Dialogue/Critique presentations would recreate
 # duplicate surfaces beside the Inspector and typed sheet.
 if rg -n --glob '*.swift' \
-  '\b(showDialogue|ScholiaPanelView|ScholiaPresentationState|beginScholiaPresentation|pushScholiaDestination)\b|case[[:space:]]+scholia\b|\.[[:space:]]*scholia[[:space:]]*\(' \
+  '\b(showDialogue|ScholiaPanelView|ScholiaPresentationState|beginScholiaPresentation|pushScholiaDestination|ResearchFunctionPanelRoute|ResearchFunctionController|ResearchFunctionsInspectorView|ResearchActivityStore|DialogueStore|ResearchSkillMaintenanceProposalDraft)\b|case[[:space:]]+scholia\b|\.[[:space:]]*scholia[[:space:]]*\(|case[[:space:]]+"function"' \
   "${ROOT}/Scholium/App" \
+  "${ROOT}/Scholium/Features" \
   "${ROOT}/Scholium/Models" \
   "${ROOT}/Scholium/Services" \
-  "${ROOT}/Scholium/Views"; then
-  echo "Research Function route guard failed: production Swift sources contain a retired Scholia route." >&2
+  "${ROOT}/Scholium/Views" \
+  "${ROOT}/ScholiumCLI"; then
+  echo "Research Action route guard failed: production sources contain a retired workflow entry." >&2
   exit 1
 fi
 
@@ -91,7 +94,7 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# The document leaf retains only its focused Research Function action. Adjacent
+# The document leaf retains only its focused Research Action. Adjacent
 # Inspector and Research Record views in this source file may own their narrow
 # adapters, so inspect only the NoteContentView declaration rather than matching
 # the entire file.
@@ -208,7 +211,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
-  "${ROOT}/Tools/Scripts/verify-function-cli.sh" \
+  "${ROOT}/Tools/Scripts/verify-action-cli.sh" \
   "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh" \
   "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh" \
   "${ROOT}/Tools/Scripts/verify-workflow-cli.sh"; do
@@ -368,7 +371,7 @@ if rg -n 'ScholiumCore' \
 fi
 
 "${ROOT}/Tools/Scripts/verify-workflow-cli.sh" "${SCRATCH}/debug/scholium"
-"${ROOT}/Tools/Scripts/verify-function-cli.sh" \
+"${ROOT}/Tools/Scripts/verify-action-cli.sh" \
   "${SCRATCH}/debug/scholium" \
   "${SCRATCH}"
 SCHOLIUM_AGENT_BRIDGE_BUILD="${SCRATCH}" \

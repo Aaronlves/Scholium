@@ -4,7 +4,6 @@ import Foundation
 enum PermanentDeletionFaultPoint: Hashable, Sendable {
     case afterCritiqueDeletion
     case afterSourceDeletion
-    case afterDialoguePurge
     case afterSettlementPurge
     case afterCritiqueAssociationPurge
     case afterCheckpointPurge
@@ -44,7 +43,6 @@ private struct PermanentDeletionInjectedFailure: LocalizedError, Sendable {
 public actor NotePermanentDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
-    private let dialogueStore: DialogueStore
     private let critiqueRegistry: CritiqueRegistry
     private let checkpointStore: TriptychCheckpointStore
     private let controlStore: TriptychControlStore
@@ -58,7 +56,6 @@ public actor NotePermanentDeletionCoordinator {
     public init(
         triptychID: UUID,
         repository: VaultRepository,
-        dialogueStore: DialogueStore,
         critiqueRegistry: CritiqueRegistry,
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
@@ -70,7 +67,6 @@ public actor NotePermanentDeletionCoordinator {
     ) {
         self.triptychID = triptychID
         self.repository = repository
-        self.dialogueStore = dialogueStore
         self.critiqueRegistry = critiqueRegistry
         self.checkpointStore = checkpointStore
         self.controlStore = controlStore
@@ -85,7 +81,6 @@ public actor NotePermanentDeletionCoordinator {
     init(
         triptychID: UUID,
         repository: VaultRepository,
-        dialogueStore: DialogueStore,
         critiqueRegistry: CritiqueRegistry,
         checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
@@ -98,7 +93,6 @@ public actor NotePermanentDeletionCoordinator {
     ) {
         self.triptychID = triptychID
         self.repository = repository
-        self.dialogueStore = dialogueStore
         self.critiqueRegistry = critiqueRegistry
         self.checkpointStore = checkpointStore
         self.controlStore = controlStore
@@ -165,17 +159,14 @@ public actor NotePermanentDeletionCoordinator {
             critiqueIdentityRecord = nil
         }
         let critiqueNoteID = critiqueIdentityRecord?.id
-        let critiqueDialogues: [DialogueEntry]
         let critiqueIdentityBackup: PermanentDeletionIdentityBackup?
         if let critiqueIdentityRecord {
-            critiqueDialogues = []
             critiqueIdentityBackup = try await controlStore.prepareIdentityPurge(
                 id: critiqueIdentityRecord.id,
                 vaultID: critiqueIdentityRecord.vaultID,
                 relativePath: critiqueIdentityRecord.relativePath
             )
         } else {
-            critiqueDialogues = []
             critiqueIdentityBackup = nil
         }
 
@@ -195,9 +186,7 @@ public actor NotePermanentDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision,
             checkpointArea: checkpointArea,
-            dialogues: [],
             critiqueNoteID: critiqueNoteID,
-            critiqueDialogues: critiqueDialogues,
             critiqueAssociations: associations,
             identity: try await controlStore.prepareIdentityPurge(
                 id: noteID,
@@ -262,7 +251,6 @@ public actor NotePermanentDeletionCoordinator {
             try await repository.applyPreparedPermanentDeletion(sourceDeletion)
             try faultPlan.trigger(.afterSourceDeletion)
 
-            try faultPlan.trigger(.afterDialoguePurge)
             let settlementsByNoteID = Dictionary(
                 uniqueKeysWithValues: backup.settlements.map { ($0.noteID, $0) }
             )
