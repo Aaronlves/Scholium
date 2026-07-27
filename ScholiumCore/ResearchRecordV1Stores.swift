@@ -331,6 +331,54 @@ public actor PortableResearchRecordStore {
         }
     }
 
+    /// Replaces only the explicit researcher-owned pin state of one finished
+    /// record. The current file is reread under the shared portable-record
+    /// lock so concurrent tombstones or other record changes are preserved.
+    @discardableResult
+    public func setPinned(
+        _ isPinned: Bool,
+        for id: UUID
+    ) throws -> PortableResearchRecord {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                let current = try readRecord(id: id, location: .records)
+                guard current.isPinned != isPinned else { return current }
+                let updated = try Self.replacingPin(in: current, isPinned: isPinned)
+                let (canonical, data) = try Self.canonicalized(updated)
+                guard data.count <= Self.maximumRecordByteCount else {
+                    throw ResearchRecordStoreV1Error.recordTooLarge(
+                        Self.maximumRecordByteCount
+                    )
+                }
+                do {
+                    let readback = try storage.replace(
+                        data,
+                        directory: PortableResearchRecordLocation.records.rawValue,
+                        fileName: Self.fileName(id)
+                    )
+                    let stored = try Self.decode(
+                        PortableResearchRecord.self,
+                        from: readback
+                    )
+                    guard stored == canonical else {
+                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+                    }
+                    return stored
+                } catch SecureRecordDirectoryError.replacementNotCommitted(
+                    let reason
+                ) {
+                    throw ResearchRecordStoreV1Error.replacementNotCommitted(reason)
+                } catch SecureRecordDirectoryError.replacementCommitUncertain(
+                    let reason
+                ) {
+                    throw ResearchRecordStoreV1Error.replacementCommitUncertain(reason)
+                } catch let error as SecureRecordDirectoryError {
+                    throw Self.map(error)
+                }
+            }
+        }
+    }
+
     /// Establishes a durable machine-local gate before permanent deletion
     /// mutates Markdown or identity state. The marker and active-record writes
     /// share the same cross-process lock, so a creator either wins before the
@@ -1166,6 +1214,30 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             isPinned: record.isPinned
+        )
+    }
+
+    private static func replacingPin(
+        in record: PortableResearchRecord,
+        isPinned: Bool
+    ) throws -> PortableResearchRecord {
+        try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: record.participatingNotes,
+            statements: record.statements,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            isPinned: isPinned
         )
     }
 

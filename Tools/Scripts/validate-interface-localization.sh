@@ -81,7 +81,7 @@ placeholder_mismatches="$({
     .strings
     | to_entries[]
     | .key as $key
-    | ([.value.localizations.en.stringUnit.value | scan("%(?:[0-9]+\\$)?(?:arg|@|d|lld|ld|f)")] | sort) as $en
+    | ([(.value.localizations.en.stringUnit.value // .key) | scan("%(?:[0-9]+\\$)?(?:arg|@|d|lld|ld|f)")] | sort) as $en
     | ([.value.localizations["zh-Hans"].stringUnit.value | scan("%(?:[0-9]+\\$)?(?:arg|@|d|lld|ld|f)")] | sort) as $zh
     | select($en != $zh)
     | $key

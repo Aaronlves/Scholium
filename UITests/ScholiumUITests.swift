@@ -2688,6 +2688,41 @@ final class ScholiumUITests: XCTestCase {
         ).filter { $0.pathExtension == "json" }
         XCTAssertTrue(activeFiles.isEmpty)
         XCTAssertEqual(finishedFiles.count, 1)
+
+        let recordID = try XCTUnwrap(
+            UUID(uuidString: finishedFiles[0].deletingPathExtension().lastPathComponent)
+        )
+        let recordButton = app.buttons["scholium.showResearchRecord"]
+        XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
+        recordButton.click()
+        let recordWindow = app.windows["Research Record"].firstMatch
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
+        XCTAssertTrue(recordWindow.textFields[
+            "scholium.researchRecord.search"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.list"
+        ].exists)
+        XCTAssertTrue(recordWindow.staticTexts[
+            "What follows from this passage?"
+        ].waitForExistence(timeout: 5))
+        XCTAssertTrue(recordWindow.staticTexts["Synthetic Agent"].exists)
+        XCTAssertTrue(recordWindow.staticTexts["A bounded synthetic reply."].exists)
+
+        let pin = recordWindow.buttons[
+            "scholium.researchRecord.pin.\(recordID.uuidString)"
+        ]
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        XCTAssertEqual(pin.value as? String, "Not Pinned")
+        pin.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { (pin.value as? String) == "Pinned" })
+
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.detail"
+        ].waitForExistence(timeout: 5))
+        XCTAssertTrue(recordWindow.staticTexts["Participating Notes"].exists)
+        recordWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
     }
 
     @MainActor
@@ -3565,10 +3600,14 @@ final class ScholiumUITests: XCTestCase {
 
         let recordWindow = app.windows["Research Record"].firstMatch
         XCTAssertTrue(recordWindow.waitForExistence(timeout: 5))
-        XCTAssertFalse(recordWindow.staticTexts["No Active Document"].exists)
         XCTAssertTrue(record.waitForExistence(timeout: 8))
         XCTAssertTrue(inspector.exists)
-        XCTAssertTrue(recordWindow.staticTexts["QA Autosave A"].waitForExistence(timeout: 5))
+        XCTAssertTrue(recordWindow.textFields[
+            "scholium.researchRecord.search"
+        ].waitForExistence(timeout: 5))
+        XCTAssertTrue(recordWindow.staticTexts[
+            "No Matching Research Records"
+        ].waitForExistence(timeout: 5))
 
         focusWorkspaceWindow(originalWorkspace)
         app.typeKey("n", modifierFlags: [.command])
@@ -3581,17 +3620,10 @@ final class ScholiumUITests: XCTestCase {
         )
         focusWorkspaceWindow(newWorkspace)
         openNote("QA Autosave B.md", expectedTitle: "QA Autosave B", in: newWorkspace)
-        XCTAssertTrue(
-            waitUntil(timeout: 8) {
-                recordWindow.staticTexts["QA Autosave B"].exists
-            },
-            "Research Record must follow the focused workspace without retaining a manual window model."
-        )
+        XCTAssertTrue(recordWindow.textFields["scholium.researchRecord.search"].exists)
 
         focusWorkspaceWindow(originalWorkspace)
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            recordWindow.staticTexts["QA Autosave A"].exists
-        })
+        XCTAssertTrue(recordWindow.textFields["scholium.researchRecord.search"].exists)
         recordWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !record.exists })
         XCTAssertTrue(inspector.exists)
@@ -5600,15 +5632,12 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(proofWindow.buttons["Cancel the Run"].exists)
 
         proofWindow.staticTexts["Research Record"].click()
-        resizeProofWindow(proofWindow, toWidth: 1_180)
         XCTAssertTrue(proofWindow.textFields["Search records"].waitForExistence(timeout: 3))
         XCTAssertTrue(proofWindow.staticTexts["Date"].exists)
         XCTAssertTrue(proofWindow.staticTexts["Skill"].exists)
         XCTAssertTrue(proofWindow.staticTexts["Action"].exists)
         XCTAssertTrue(proofWindow.staticTexts["Participant"].exists)
-        resizeProofWindow(proofWindow, toWidth: 900)
-        XCTAssertTrue(proofWindow.buttons["Back to Records"].waitForExistence(timeout: 3))
-        resizeProofWindow(proofWindow, toWidth: 1_180)
+        XCTAssertFalse(proofWindow.buttons["Back to Records"].exists)
 
         proofWindow.staticTexts["State Matrix"].click()
         XCTAssertTrue(

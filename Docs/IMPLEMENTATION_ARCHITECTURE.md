@@ -592,9 +592,9 @@ findings.
 Discussion agent replies are appended only to the portable active exchange;
 completion validates that attributed evidence, while Finish remains a separate
 researcher action with no legacy activity projection. The production Action
-surface now uses the public role matrix and declarative Profile modules; the
-independent record browser remains Session 19, and Record Trash/diff remains
-Session 20.
+surface uses the public role matrix and declarative Profile modules. The
+independent record browser consumes only finished portable records; Record
+Trash/diff remains Session 20.
 While any active Discussion exists, the current document surface rereads the
 portable projection at a bounded interval. A cooperating CLI reply can
 therefore update current state while the Discussion sheet is closed. Selecting
@@ -794,14 +794,20 @@ participates.
 Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
 receives the current native focused object observed at the app scene boundary;
 each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
-registry, notification, generation counter, presentation coordinator, custom
-focused key, or manually retained window model participates. The window
-projects Research Activity, finished portable Discussions, Write attribution,
-Critique association, and provenance through a
-narrow `ResearchRecordContext`. Ordinary Markdown annotations remain in the
-document and never become separate chronology. It never enters the trailing
-split item and never owns checkpoints, a document buffer, autosave, undo, or
-conflicts.
+registry, notification, presentation coordinator, custom focused key, or
+manually retained window model participates. Each presentation owns one
+`ResearchRecordBrowserModel`: a disposable deterministic in-memory index plus
+search, Note/date/Skill/Action/participant filters and selection. Reopening
+resets to the current Note when available and the
+researcher can remove that scope to browse the complete Triptych. The window
+renders only finished portable Discussion and nonconversational Action records,
+preserves attribution and evidence-class qualifications, exposes tombstones,
+and deep-links live participating Notes through the focused Workspace. Pin is
+the only record mutation here; Core replaces only `is_pinned` under the existing
+portable-record lock and atomic read-back boundary. Ordinary Markdown
+annotations remain in the document and never become separate chronology. The
+fixed 760 × 680 window never enters the trailing split item and never owns checkpoints, a
+document buffer, autosave, undo, conflicts, trash, or diff state.
 Closing Research Record therefore cannot reveal or resize Research Inspector.
 
 The Library-owned Attention queue is an inline Library destination, not a sheet

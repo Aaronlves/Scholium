@@ -143,7 +143,7 @@ struct ScholiumApp: App {
             ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)
         }
         .defaultSize(width: 760, height: 680)
-        .windowResizability(.automatic)
+        .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         .commandsRemoved()
@@ -181,9 +181,9 @@ private struct ScholiumResearchRecordUtilityRoot: View {
                 ScholiumResearchRecordFocusedContent(appState: appState)
             } else {
                 ContentUnavailableView(
-                    "No Active Document",
+                    "No Active Triptych",
                     systemImage: "clock.arrow.circlepath",
-                    description: Text("Focus a Scholium workspace and open a note to view its Research Record.")
+                    description: Text("Focus a Scholium workspace to view its Research Record.")
                 )
             }
         }
@@ -193,59 +193,59 @@ private struct ScholiumResearchRecordUtilityRoot: View {
 
 private struct ScholiumResearchRecordFocusedContent: View {
     @ObservedObject var appState: WindowModel
+    @State private var browserModel = ResearchRecordBrowserModel()
 
     var body: some View {
-        if let note = appState.currentNote,
-           appState.documentController.editingDocumentPath == nil,
-           appState.currentDocumentIdentityByPath[note.relativePath] != nil {
-            ResearchRecordView(note: note, context: researchRecordContext)
-                .id(appState.currentDocumentDescriptor?.sessionKey.noteID)
+        if let assignment = appState.workspaceAssignment {
+            ResearchRecordBrowserView(
+                model: browserModel,
+                triptychName: assignment.triptych.name,
+                initialNoteID: currentNoteID,
+                context: ResearchRecordBrowserContext(
+                    setPinned: { id, isPinned in
+                        try await appState.researchController.setResearchRecordPinned(
+                            id: id,
+                            isPinned: isPinned
+                        )
+                    },
+                    openNote: { noteID, note, sourceLine in
+                        appState.requestOpenNote(
+                            note,
+                            stableNoteID: noteID,
+                            sourceLine: sourceLine
+                        )
+                    }
+                )
+            )
+            .onAppear {
+                browserModel.prepareForOpen(
+                    triptychID: assignment.id,
+                    records: finishedRecords,
+                    initialNoteID: currentNoteID
+                )
+            }
+            .onReceive(appState.researchController.$records) { snapshot in
+                browserModel.receive(
+                    triptychID: assignment.id,
+                    records: snapshot?.finishedResearchRecords ?? [],
+                    currentNoteID: currentNoteID
+                )
+            }
         } else {
             ContentUnavailableView(
-                "No Research Record",
+                "No Active Triptych",
                 systemImage: "clock.arrow.circlepath",
-                description: Text("Open a note with a resolved identity to view its scholarly record.")
+                description: Text("Focus a Scholium workspace to view its Research Record.")
             )
         }
     }
 
-    private var researchRecordContext: ResearchRecordContext {
-        ResearchRecordContext(
-            controller: appState.researchController,
-            documentRevisions: appState.currentDocumentRevisions,
-            loadCritique: { await appState.critiqueAssociationRelated(to: $0) },
-            finishDiscussion: { runID in
-                _ = try await appState.researchController.finishDiscussion(runID: runID)
-            },
-            setCritiqueFindingDisposition: {
-                workNote,
-                roundID,
-                findingID,
-                decision,
-                rationale,
-                noTextChangeRationale,
-                expectedRevision in
-                try await appState.researchController.setCritiqueFindingDisposition(
-                    workNote: workNote,
-                    roundID: roundID,
-                    findingID: findingID,
-                    decision: decision,
-                    rationale: rationale,
-                    noTextChangeRationale: noTextChangeRationale,
-                    expectedRevision: expectedRevision
-                )
-            },
-            completeCritiqueRound: { workNote, roundID, expectedRevision in
-                try await appState.researchController.completeCritiqueRound(
-                    workNote: workNote,
-                    roundID: roundID,
-                    expectedRevision: expectedRevision
-                )
-            },
-            copyText: { try appState.copyTextToClipboard($0) },
-            openNote: { appState.requestOpenNote($0) },
-            notify: { appState.showToast($0) }
-        )
+    private var currentNoteID: UUID? {
+        appState.currentDocumentDescriptor?.sessionKey.noteID
+    }
+
+    private var finishedRecords: [PortableResearchRecord] {
+        appState.researchController.records?.finishedResearchRecords ?? []
     }
 }
 
@@ -976,7 +976,7 @@ private struct ScholiumCommands: Commands {
             }
             Divider()
             WindowVisibilityToggle(windowID: "scholium-research-record")
-            .disabled(appState?.currentNote == nil)
+                .disabled(appState?.workspaceAssignment == nil)
         }
         #if DEBUG
         if qaEditorFaultsAreEnabled || qaResearchWorkflowProofsAreEnabled {
@@ -2761,6 +2761,45 @@ final class WindowModel: ObservableObject {
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
+        }
+    }
+
+    func requestOpenNote(
+        _ note: VaultQualifiedNoteID,
+        stableNoteID: UUID,
+        sourceLine: Int? = nil
+    ) {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == note.vaultID
+        }) else {
+            showToast(
+                String(
+                    localized: "The selected vault is no longer available.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                kind: .warning
+            )
+            return
+        }
+        let reference = VaultNoteReference(
+            vaultID: vault.id,
+            vaultName: vault.name,
+            vaultRole: vault.role,
+            relativePath: note.relativePath,
+            stableNoteID: stableNoteID.uuidString.lowercased()
+        )
+        enqueueDocumentTransition { [weak self] in
+            guard let self else { return }
+            try self.activateWorkspaceReference(
+                reference,
+                tabActivation: .place(.replaceSelected)
+            )
+            if let sourceLine {
+                self.pendingSourceRange = nil
+                self.pendingSourceLine = max(1, sourceLine)
+                self.requestPresentationMode = .source
+            }
         }
     }
 

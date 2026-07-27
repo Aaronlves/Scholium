@@ -149,6 +149,16 @@ final class ResearchController: ObservableObject {
         try await requireOperations().activeDiscussion(id: id)
     }
 
+    func setResearchRecordPinned(
+        id: UUID,
+        isPinned: Bool
+    ) async throws -> PortableResearchRecord {
+        try await requireOperations().setResearchRecordPinned(
+            id: id,
+            isPinned: isPinned
+        )
+    }
+
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
         try await requireOperations().activeDiscussionIfPresent(id: id)
     }

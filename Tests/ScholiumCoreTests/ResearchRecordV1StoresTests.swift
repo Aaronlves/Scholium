@@ -109,6 +109,37 @@ struct ResearchRecordV1StoresTests {
         #expect(try await reopened.record(id: record.id) == stored)
     }
 
+    @Test("Pinning replaces only the portable record pin")
+    func portablePinReplacementPreservesRecord() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+
+        let pinned = try await store.setPinned(true, for: record.id)
+
+        #expect(pinned.isPinned)
+        #expect(pinned.id == record.id)
+        #expect(pinned.triptychID == record.triptychID)
+        #expect(pinned.kind == record.kind)
+        #expect(pinned.action == record.action)
+        #expect(pinned.method == record.method)
+        #expect(pinned.primaryNoteID == record.primaryNoteID)
+        #expect(pinned.participatingNotes == record.participatingNotes)
+        #expect(pinned.statements == record.statements)
+        #expect(pinned.actuallyUsedMaterials == record.actuallyUsedMaterials)
+        #expect(pinned.confirmedChanges == record.confirmedChanges)
+        #expect(pinned.discrepancies == record.discrepancies)
+        #expect(pinned.sourceReference == record.sourceReference)
+        #expect(pinned.startedAt == record.startedAt)
+        #expect(pinned.finishedAt == record.finishedAt)
+        #expect(try await store.record(id: record.id) == pinned)
+
+        let restored = try await store.setPinned(false, for: record.id)
+        #expect(restored == record)
+    }
+
     @Test("One corrupt portable file does not hide valid records")
     func portableCorruptionIsIsolated() async throws {
         let fixture = try Fixture()

@@ -89,7 +89,7 @@ private struct ResearchWorkflowProofDetail: View {
         case .changeRequest:
             AgentChangeRequestProof()
         case .researchRecord:
-            ResearchRecordResponsiveProof()
+            ResearchRecordUtilityProof()
         case .stateMatrix:
             ResearchWorkflowStateMatrixProof()
         }
@@ -875,7 +875,7 @@ private let researchRecordEntries = [
     ),
 ]
 
-private struct ResearchRecordResponsiveProof: View {
+private struct ResearchRecordUtilityProof: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -883,7 +883,7 @@ private struct ResearchRecordResponsiveProof: View {
                     .font(ScholiumInterfaceTypography.metadata)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 Spacer()
-                Text("Adapts to window width")
+                Text("Fixed 760 × 680 utility window")
                     .font(ScholiumInterfaceTypography.metadata)
                     .foregroundStyle(ScholiumColorRole.mutedText.color)
             }
@@ -891,22 +891,8 @@ private struct ResearchRecordResponsiveProof: View {
             .frame(minHeight: ScholiumGrid.Dimension.regionHeaderHeight)
             ScholiumStructuralRule()
 
-            GeometryReader { geometry in
-                Group {
-                    if geometry.size.width >= 700 {
-                        ResearchRecordTwoColumnProof()
-                            .accessibilityIdentifier("scholium.proofs.record.twoColumn")
-                    } else {
-                        ResearchRecordStackedProof()
-                            .accessibilityIdentifier("scholium.proofs.record.stacked")
-                    }
-                }
-                .frame(
-                    width: geometry.size.width,
-                    height: geometry.size.height,
-                    alignment: .topLeading
-                )
-            }
+            ResearchRecordTwoColumnProof()
+                .accessibilityIdentifier("scholium.proofs.record.fixedUtility")
         }
     }
 }
@@ -919,23 +905,6 @@ private struct ResearchRecordTwoColumnProof: View {
             ScholiumStructuralRule(orientation: .vertical)
             ResearchRecordReadingProof()
                 .frame(minWidth: 380, maxWidth: .infinity)
-        }
-    }
-}
-
-private struct ResearchRecordStackedProof: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button("Back to Records", systemImage: "chevron.backward") {}
-                Spacer()
-                Text("This Note")
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            }
-            .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-            .frame(minHeight: ScholiumGrid.Dimension.regionHeaderHeight)
-            ScholiumStructuralRule()
-            ResearchRecordReadingProof()
         }
     }
 }
@@ -992,7 +961,7 @@ private struct ResearchRecordListProof: View {
                 ResearchRecordListRow(entry: entry)
                     .tag(entry.id)
             }
-            .listStyle(.sidebar)
+            .listStyle(.inset)
         }
         .scholiumSurface(.navigation)
     }
@@ -1252,11 +1221,6 @@ private struct ResearchProofSection<Content: View>: View {
 #Preview("Research Record Two-column") {
     ResearchWorkflowProofDetail(proof: .researchRecord)
         .frame(width: 960, height: 720)
-}
-
-#Preview("Research Record Narrow") {
-    ResearchRecordStackedProof()
-        .frame(width: 520, height: 680)
 }
 
 #Preview("Workflow States") {

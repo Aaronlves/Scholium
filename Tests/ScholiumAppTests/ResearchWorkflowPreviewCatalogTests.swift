@@ -30,16 +30,18 @@ struct ResearchWorkflowPreviewCatalogTests {
         }
 
         #expect(source.contains("ResearchRecordTwoColumnProof"))
-        #expect(source.contains("ResearchRecordStackedProof"))
-        let responsiveRecordProof = try #require(
-            source.components(separatedBy: "private struct ResearchRecordResponsiveProof")
+        #expect(source.contains("ResearchRecordUtilityProof"))
+        #expect(!source.contains("ResearchRecordStackedProof"))
+        let utilityRecordProof = try #require(
+            source.components(separatedBy: "private struct ResearchRecordUtilityProof")
                 .dropFirst()
                 .first?
                 .components(separatedBy: "private struct ResearchRecordTwoColumnProof")
                 .first
         )
-        #expect(responsiveRecordProof.contains("GeometryReader"))
-        #expect(responsiveRecordProof.contains("geometry.size.width >= 700"))
+        #expect(!utilityRecordProof.contains("GeometryReader"))
+        #expect(utilityRecordProof.contains("Fixed 760 × 680 utility window"))
+        #expect(!source.contains(".listStyle(.sidebar)"))
         #expect(!source.contains("Show Narrow Fallback"))
         #expect(source.contains("researcherSkillProofFixtures.filter"))
         #expect(source.contains("$0.isEnabled && $0.showsInActions"))
