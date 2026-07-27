@@ -43,6 +43,8 @@ struct ResearchWorkflowPreviewCatalogTests {
         #expect(utilityRecordProof.contains("Fixed 760 × 680 utility window"))
         #expect(!source.contains(".listStyle(.sidebar)"))
         #expect(!source.contains("Show Narrow Fallback"))
+        #expect(source.contains("#Preview(\"Research Record Fixed Utility\")"))
+        #expect(source.contains(".frame(width: 760, height: 680)"))
         #expect(source.contains("researcherSkillProofFixtures.filter"))
         #expect(source.contains("$0.isEnabled && $0.showsInActions"))
         #expect(source.contains("counterexampleStressTestFixture.applicableRoles"))

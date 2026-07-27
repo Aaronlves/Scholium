@@ -133,6 +133,45 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.selectedRecord?.isPinned == true)
     }
 
+    @Test("An Action title summarizes live participants without guessing its Target")
+    func actionTitleSummarizesLiveParticipants() throws {
+        let targetID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
+        let base = try makeAction(
+            id: deterministicUUID(90),
+            noteID: targetID,
+            title: "Live Analysis",
+            finishedAt: Date(timeIntervalSince1970: 100),
+            isPinned: false
+        )
+        let topic = try makeParticipant(
+            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+            role: .analysis,
+            title: "Additional Analysis"
+        )
+        let tombstone = try makeParticipant(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            role: .analysis,
+            title: "Deleted Analysis",
+            isTombstone: true
+        )
+        let record = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            participatingNotes: base.participatingNotes + [topic, tombstone],
+            statements: base.statements,
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt
+        )
+
+        #expect(
+            ResearchRecordDerivedIndex(records: [record]).entries.first?.contextTitle
+                == "Additional Analysis, Live Analysis"
+        )
+    }
+
     private func makeDiscussion(
         id: UUID,
         triptychID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
@@ -194,7 +233,7 @@ struct ResearchRecordBrowserModelTests {
                 vaultID: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!,
                 relativePath: "Works/Argument.md"
             ),
-            role: .work,
+            role: .analysis,
             title: title,
             startingRevision: fingerprint,
             endingRevision: fingerprint
@@ -223,6 +262,27 @@ struct ResearchRecordBrowserModelTests {
             startedAt: finishedAt,
             finishedAt: finishedAt,
             isPinned: isPinned
+        )
+    }
+
+    private func makeParticipant(
+        id: UUID,
+        role: ResearchActionTargetRole,
+        title: String,
+        isTombstone: Bool = false
+    ) throws -> PortableResearchNoteRevision {
+        let fingerprint = DocumentFingerprint(content: title)
+        return try PortableResearchNoteRevision(
+            noteID: id,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!,
+                relativePath: "Notes/\(id.uuidString).md"
+            ),
+            role: role,
+            title: title,
+            startingRevision: fingerprint,
+            endingRevision: isTombstone ? nil : fingerprint,
+            isTombstone: isTombstone
         )
     }
 

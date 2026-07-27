@@ -740,7 +740,7 @@ rows. Prior results remain visible through refresh and failure.
   plus named appearance and accessibility review entry points. Its synthetic
   research-workflow catalog proves the D-106 Action matrix, modular Skill-run
   sheet, staged installer, categorized Skill settings, Agent change request,
-  responsive Research Record, and permission-invalid state without resolving
+  fixed-size secondary Research Record, and permission-invalid state without resolving
   or mutating production state. A suppressed Debug window makes that catalog
   reachable only from an explicitly enabled QA command. Preview code is
   development-only and does not enter the released interface.

@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-26 (D-107)
+**Last target change:** 2026-07-27 (D-109)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -1657,9 +1657,11 @@ quiet, and `zotero_item_key` and Analysis title are never selectable there.
 Apparatus contains Research Inspector only; active Discussion, Research Record,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
 Action sheet. Research Record is an independent, nonrestored `UtilityWindow`,
-reads the focused Triptych directly, and starts at **760 × 680** without
-treating that size as a minimum. It uses a native list/detail split with a
-stacked narrow-width fallback and never appears inside Inspector. There is
+reads the focused Triptych directly, and keeps a fixed **760 × 680** content
+size chosen for readable temporary inspection. It uses one native list/detail
+layout, has no Workspace Sidebar control or alternate wide/narrow presentation,
+does not adapt into another primary interface, and never appears inside
+Inspector. There is
 exactly one native trailing Inspector per
 Workspace, with **Overview, Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
@@ -1980,7 +1982,7 @@ a new recorded decision.
 - Actions exposes every official and researcher-enabled operation as a linear
   accessible list without requiring hover. Research Record exposes its list,
   filters, dialogue order, participants, anchors, and Record Details with
-  complete keyboard navigation and a coherent stacked narrow-width fallback.
+  complete keyboard navigation inside its fixed readable utility-window size.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, Action sheets, conflict comparison, and
   Research Record close.
@@ -2125,6 +2127,7 @@ only in Git history.
 | **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
 | **D-105** | 7, 8.1–8.2, 9–11, 13, 18.1, 18.5, 18.7, 22 | **D-106** | 1–3, 5–11, 13, 16–22 |
 | **D-107** | 7.1, 8.1, 14, 22 | **D-108** | 7.2, 8.1–8.2, 18.4–18.5, 20, 22 |
+| **D-109** | 18.5, 20, 22 | | |
 
 Clean-cutover inventory:
 
@@ -2241,8 +2244,8 @@ Clean-cutover inventory:
   agent-requested child phases. Unify passage and whole-note Comments inside
   resumable Discussion. Remove Research Activity history and keep active
   Discussion in Actions while portable finished records use one independent
-  two-panel Research Record window, recoverable Record Trash, and disposable
-  on-demand comparison. Record only narrow application facts, attributed agent
+  fixed-size list/detail Research Record window, recoverable Record Trash, and
+  disposable on-demand comparison. Record only narrow application facts, attributed agent
   testimony, and deliberate researcher judgment; infer no intention, truth,
   success, failure, or acceptance. Add revision-bound Material Changed Since
   Use without calling a Topic wrong or outdated. Delete superseded repository
@@ -2284,6 +2287,10 @@ Clean-cutover inventory:
   secondary-click menu; omit Preview from secondary click and keep footnote
   preview and navigation in Review. Give Review Comment and Edit formatting the same opaque,
   Variables-derived selection-surface style.
+- **D-109:** keep Research Record recognizably secondary: one nonrestored,
+  fixed **760 × 680** utility window with a readable list/detail layout. Retain
+  no Workspace Sidebar control, user-facing wide/narrow choice, stacked
+  responsive replacement, or primary-workspace adaptation.
 
 Unresolved work must not be described as complete:
 

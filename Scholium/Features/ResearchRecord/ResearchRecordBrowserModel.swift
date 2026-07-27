@@ -44,6 +44,30 @@ struct ResearchRecordIndexEntry: Identifiable, Equatable, Sendable {
     var isPinned: Bool { record.isPinned }
 }
 
+extension PortableResearchRecord {
+    var researchRecordContextParticipant: PortableResearchNoteRevision? {
+        if let primaryNoteID,
+           let primary = participatingNotes.first(where: {
+               $0.noteID == primaryNoteID
+           }) {
+            return primary
+        }
+        let liveParticipants = participatingNotes.filter { !$0.isTombstone }
+        return liveParticipants.count == 1 ? liveParticipants.first : nil
+    }
+
+    var researchRecordContextTitle: String? {
+        if let primary = researchRecordContextParticipant {
+            return primary.title
+        }
+        let liveTitles = participatingNotes
+            .filter { !$0.isTombstone }
+            .map(\.title)
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return liveTitles.isEmpty ? nil : liveTitles.joined(separator: ", ")
+    }
+}
+
 /// A disposable in-memory projection of finished portable records. The index
 /// owns no files, authorization, or record mutation; rebuilding from the same
 /// portable records yields the same ordered entries.
@@ -127,14 +151,12 @@ struct ResearchRecordDerivedIndex: Equatable, Sendable {
         let actionID = record.kind == .discussion
             ? ResearchActionID.discuss
             : record.action?.actionID ?? .discuss
-        let primary = record.primaryNoteID.flatMap { primaryID in
-            record.participatingNotes.first { $0.noteID == primaryID }
-        } ?? record.participatingNotes.first
+        let contextTitle = record.researchRecordContextTitle
         let authors = Set(record.statements.map(\.author)).sorted {
             $0.rawValue < $1.rawValue
         }
         let searchableParts = [
-            primary?.title,
+            contextTitle,
             actionID.rawValue,
             record.method?.packageID,
             record.method?.version,
@@ -152,7 +174,7 @@ struct ResearchRecordDerivedIndex: Equatable, Sendable {
 
         return ResearchRecordIndexEntry(
             record: record,
-            contextTitle: primary?.title ?? actionID.rawValue,
+            contextTitle: contextTitle ?? actionID.rawValue,
             actionID: actionID,
             skillID: record.method?.packageID,
             skillVersion: record.method?.version,

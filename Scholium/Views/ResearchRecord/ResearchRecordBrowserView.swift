@@ -22,7 +22,6 @@ struct ResearchRecordBrowserView: View {
         )
         .frame(width: 760, height: 680)
         .scholiumSurface(.document)
-        .accessibilityIdentifier("scholium.researchRecord")
         .alert("Research Record Unavailable", isPresented: $model.isShowingError) {
             Button("Dismiss", role: .cancel) { model.dismissError() }
         } message: {
@@ -395,9 +394,7 @@ private struct ResearchRecordDetailView: View {
     }
 
     private var primaryParticipant: PortableResearchNoteRevision? {
-        record.primaryNoteID.flatMap { primaryID in
-            record.participatingNotes.first { $0.noteID == primaryID }
-        } ?? record.participatingNotes.first
+        record.researchRecordContextParticipant
     }
 }
 
@@ -408,9 +405,7 @@ private struct ResearchRecordDetailHeader: View {
         let actionID = record.kind == .discussion
             ? ResearchActionID.discuss
             : record.action?.actionID ?? .discuss
-        let contextTitle = record.primaryNoteID.flatMap { primaryID in
-            record.participatingNotes.first { $0.noteID == primaryID }?.title
-        } ?? record.participatingNotes.first?.title ?? actionTitle(actionID)
+        let contextTitle = record.researchRecordContextTitle ?? actionTitle(actionID)
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             HStack(alignment: .firstTextBaseline) {
                 Text("\(actionTitle(actionID)): \(contextTitle)")
@@ -447,6 +442,9 @@ private struct ResearchRecordParticipantSection: View {
                             .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     }
                     .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(
+                        "scholium.researchRecord.tombstone.\(participant.noteID.uuidString)"
+                    )
                 } else {
                     Button {
                         openNote(participant.noteID, participant.note, nil)
@@ -464,6 +462,9 @@ private struct ResearchRecordParticipantSection: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier(
+                        "scholium.researchRecord.note.\(participant.noteID.uuidString)"
+                    )
                     .accessibilityHint("Open this participating Note in the focused workspace")
                 }
             }

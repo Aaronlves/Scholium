@@ -1218,9 +1218,9 @@ private struct ResearchProofSection<Content: View>: View {
         .frame(width: 760, height: 720)
 }
 
-#Preview("Research Record Two-column") {
+#Preview("Research Record Fixed Utility") {
     ResearchWorkflowProofDetail(proof: .researchRecord)
-        .frame(width: 960, height: 720)
+        .frame(width: 760, height: 680)
 }
 
 #Preview("Workflow States") {

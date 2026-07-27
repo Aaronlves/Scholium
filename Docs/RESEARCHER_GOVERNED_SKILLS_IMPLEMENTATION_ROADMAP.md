@@ -4,11 +4,13 @@
 
 **Branch:** `codex/researcher-governed-skills`
 
-**Completed product Session:** 18
+**Completed product Session:** 19
 
-**Session 18 commit:** this commit, `Add permission-bound research continuations`
+**Session 19 commit:** `965a2a3`, `Build the scholarly Research Record window`
 
-**Next product Session:** 19
+**Session 19 acceptance closure:** this commit, `Close the Research Record QA matrix`
+
+**Next product Session:** 20
 
 This document lets a fresh Codex task continue the researcher-governed Skills
 migration without depending on an earlier conversation. It records sequencing,
@@ -177,6 +179,8 @@ This table is only a Git orientation index.
 | 15 | Define Agent change-request coordination | `94c7385` |
 | 16 | Add the local Agent request bridge | `794c239` |
 | 17 | Present Agent-requested Note changes | `aa76d9d` |
+| 18 | Add permission-bound research continuations | `752fd20` |
+| 19 | Build the scholarly Research Record window | `965a2a3` |
 
 Do not infer release readiness from this sequence. Some completed Sessions
 retain explicitly scheduled migration debt, and support commits in Session 13
@@ -258,18 +262,20 @@ Inspector section, document-owned panel, Discussion panel, or chat transcript.
 - Use an independent utility scene/controller with its own window lifecycle.
 - Opening from a Note initially applies `This Note`, but the researcher can
   clear the filter and browse the Triptych.
-- Use two columns at ordinary width:
+- Use one fixed **760 × 680** secondary utility-window layout:
   - left: one row per Discussion or run, with derived title, date, pin,
     participants, and public Action;
   - right: full attributed Discussion or run, Agent feedback, researcher
     replies, and collapsed Record Details.
 - Search and filter by Note, date, Skill, Action, and participant using a local
   rebuildable derived index.
-- Switch to stacked navigation at narrow width.
+- Keep the window nonrestored and content-sized. Provide no Workspace Sidebar
+  control, user-facing wide/narrow choice, stacked responsive replacement, or
+  primary-workspace adaptation.
 - Preserve an editorial, work-like reading rhythm: attributed prose, quiet
   rules, no chat bubbles, no middle-dot separators, and no invented verdict.
-- Support tombstoned Note participants, deep links, independent window
-  restoration, keyboard navigation, Dynamic Type, and accessibility structure.
+- Support tombstoned Note participants, deep links, focused-Triptych transfer,
+  keyboard navigation, Dynamic Type, and accessibility structure.
 - Do not persist a row per turn and do not automatically summarize or delete
   records.
 
@@ -279,10 +285,32 @@ Inspector section, document-owned panel, Discussion panel, or chat transcript.
 - Discussion and nonconversational run presentation;
 - Note tombstones and cross-Note records;
 - search/filter combinations and deep links;
-- ordinary two-column and narrow stacked layouts;
-- window reopen/restoration, focus, keyboard, and VoiceOver structure;
+- fixed list/detail size, absence of Workspace Sidebar controls, and fresh
+  presentation after close;
+- focus transfer among distinct Triptych workspaces, keyboard, and VoiceOver
+  structure;
 - light/dark, Increase Contrast, Reduce Transparency, Reduce Motion, and large
   text against a disposable TestVault.
+
+### Acceptance closure
+
+The bounded support step after the Session 19 product commit must close the
+automatable production-surface gaps without beginning Record Trash:
+
+- retain the passing Review Comment to Discussion to Agent reply to explicit
+  Finish journey, including exact Markdown-byte preservation, attribution, pin,
+  detail, and independent window closure;
+- add one strict disposable portable-record fixture and production XCU journey
+  covering a nonconversational Action, cross-Note participants, a nonactionable
+  tombstone, and stable-identity Note navigation;
+- create and register a second disposable Triptych through production Bootstrap,
+  then prove the one utility window follows focus between the two distinct
+  Triptych identities;
+- verify the fixed **760 × 680** window and absence of a Sidebar route. Do not
+  add responsive modes merely for automation;
+- keep genuine assistive-technology use, researcher visual acceptance, and any
+  concurrency stress not required to invalidate this interface patch explicit
+  in `IMPLEMENTATION_STATUS.md` rather than claiming them from XCUITest.
 
 ## 7. Session 20: Record Trash and disposable comparison
 
@@ -391,18 +419,18 @@ Use this prompt for the next task, replacing the Session number, base commit,
 and exact Session section when appropriate:
 
 ```text
-Continue the Scholium researcher-governed Skills implementation with Session 19
+Continue the Scholium researcher-governed Skills implementation with Session 20
 only. Work in /Users/jacuqeas73/Developer/Scholium on branch
 codex/researcher-governed-skills. Read AGENTS.md and
 Docs/RESEARCHER_GOVERNED_SKILLS_IMPLEMENTATION_ROADMAP.md completely, then
-follow its Session 19 contract and mandatory Session protocol. Confirm the
-current clean HEAD is the Session 18 commit named
-`Add permission-bound research continuations`. Search current
+follow its Session 20 contract and mandatory Session protocol. Confirm the
+current clean HEAD is the Session 19 acceptance-closure commit named
+`Close the Research Record QA matrix`. Search current
 official documentation before programming. Follow the roadmap's minimum
 sufficient execution rule: preserve every required quality gate, but do not
 repeat reads, builds, reviews, tests, or UI journeys without a concrete need.
 Review, run focused tests and the complete verify.sh, then create exactly one
 commit named
-"Build the scholarly Research Record window", report the full SHA and open
-uncertainty, then end the task. Do not begin Session 20 and do not push.
+"Add record recovery and disposable comparison", report the full SHA and open
+uncertainty, then end the task. Do not begin Session 21 and do not push.
 ```

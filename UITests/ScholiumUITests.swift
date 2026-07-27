@@ -78,6 +78,13 @@ final class ScholiumUITests: XCTestCase {
     private var testDirectory: URL!
     private var homeDirectory: URL!
     private var triptychDirectory: URL!
+    private var secondTriptychDirectory: URL?
+
+    private struct QAResearchRecordFixture {
+        let recordID: UUID
+        let topicNoteID: UUID
+        let tombstoneNoteID: UUID
+    }
 
     /// `defaultSize` is a first-presentation input. Tests that need a specific
     /// starting width must request it before their first scene appears; a
@@ -113,6 +120,11 @@ final class ScholiumUITests: XCTestCase {
         continueAfterFailure = false
         sessionID = UUID()
         try createIsolatedTriptych()
+        if name.contains(
+            "testResearchRecordActionTombstoneDeepLinkAndCrossTriptychFocus"
+        ) {
+            secondTriptychDirectory = try createSecondTriptychFixture()
+        }
         if name.contains("testStorageUnavailableRetriesWithoutConstructingWorkspace") {
             try FileManager.default.createDirectory(
                 at: homeDirectory,
@@ -3589,7 +3601,6 @@ final class ScholiumUITests: XCTestCase {
         let originalWorkspace = app.windows[originalWorkspaceID]
         let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
         let recordButton = app.buttons["scholium.showResearchRecord"]
-        let record = app.descendants(matching: .any)["scholium.researchRecord"]
 
         if !inspector.exists {
             app.typeKey("b", modifierFlags: [.command, .option])
@@ -3600,7 +3611,7 @@ final class ScholiumUITests: XCTestCase {
 
         let recordWindow = app.windows["Research Record"].firstMatch
         XCTAssertTrue(recordWindow.waitForExistence(timeout: 5))
-        XCTAssertTrue(record.waitForExistence(timeout: 8))
+        XCTAssertTrue(recordWindow.exists)
         XCTAssertTrue(inspector.exists)
         XCTAssertTrue(recordWindow.textFields[
             "scholium.researchRecord.search"
@@ -3625,10 +3636,163 @@ final class ScholiumUITests: XCTestCase {
         focusWorkspaceWindow(originalWorkspace)
         XCTAssertTrue(recordWindow.textFields["scholium.researchRecord.search"].exists)
         recordWindow.buttons[XCUIIdentifierCloseWindow].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !record.exists })
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
         XCTAssertTrue(inspector.exists)
         focusWorkspaceWindow(newWorkspace)
         closeFrontmostWindow()
+    }
+
+    @MainActor
+    func testResearchRecordActionTombstoneDeepLinkAndCrossTriptychFocus() throws {
+        let secondTriptychDirectory = try XCTUnwrap(secondTriptychDirectory)
+
+        // The first isolated launch registers the fixture Triptych. Relaunch
+        // without the fixture shortcut so File > New Triptych exercises the
+        // production Bootstrap route instead of opening another copy of the
+        // first QA workspace.
+        app.terminate()
+        let fixture = try seedResearchRecordFixture()
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth),
+            usesFixtureWorkspace: false
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        let workspaceWindows = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        )
+        let initialWorkspaceMatch = workspaceWindows.firstMatch
+        XCTAssertTrue(initialWorkspaceMatch.waitForExistence(timeout: 10))
+        let initialWorkspaceID = initialWorkspaceMatch.identifier
+        let initialWorkspace = app.windows[initialWorkspaceID]
+
+        app.menuBars.menuBarItems["File"].click()
+        let newTriptych = app.menuItems["New Triptych…"]
+        XCTAssertTrue(newTriptych.waitForExistence(timeout: 3))
+        newTriptych.click()
+
+        let setup = app.descendants(matching: .any)["scholium.triptychSetup"]
+        XCTAssertTrue(setup.waitForExistence(timeout: 10))
+        app.buttons["Get Started"].click()
+        chooseSetupFolder(
+            secondTriptychDirectory.appendingPathComponent("01-analyses", isDirectory: true),
+            role: "Analyses"
+        )
+        app.buttons["Continue"].click()
+        chooseSetupFolder(
+            secondTriptychDirectory.appendingPathComponent("02-topics", isDirectory: true),
+            role: "Topics"
+        )
+        app.buttons["Continue"].click()
+        chooseSetupFolder(
+            secondTriptychDirectory.appendingPathComponent("03-works", isDirectory: true),
+            role: "Works"
+        )
+        app.buttons["Continue"].click()
+
+        let triptychName = app.textFields["Triptych Name"]
+        XCTAssertTrue(triptychName.waitForExistence(timeout: 5))
+        try paste("QA Secondary Triptych", into: triptychName)
+        authorizePortableFolder(secondTriptychDirectory)
+        let createTriptych = app.buttons["Create Triptych"]
+        XCTAssertTrue(createTriptych.isEnabled)
+        createTriptych.click()
+
+        XCTAssertTrue(waitUntil(timeout: 45) {
+            workspaceWindows.count == 2 && !setup.exists
+        })
+        let secondWorkspace = app.windows.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND identifier != %@",
+                "scholium-main-",
+                initialWorkspaceID
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            secondWorkspace.waitForExistence(timeout: 10),
+            "The second Triptych must open in its own native Workspace window."
+        )
+        XCTAssertNotEqual(
+            try triptychID(at: triptychDirectory),
+            try triptychID(at: secondTriptychDirectory),
+            "The focus journey must use two distinct Triptych identities."
+        )
+
+        focusWorkspaceWindow(initialWorkspace)
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: initialWorkspace)
+        let recordButton = initialWorkspace.buttons["scholium.showResearchRecord"]
+        XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
+        recordButton.click()
+
+        let recordWindow = app.windows["Research Record"].firstMatch
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
+        XCTAssertEqual(
+            recordWindow.frame.width,
+            760,
+            accuracy: QAWorkspaceMetricContract.frameTolerance
+        )
+        XCTAssertEqual(
+            recordWindow.frame.height,
+            704,
+            accuracy: 8,
+            "XCUITest reports the 680pt fixed content plus the native 24pt title bar."
+        )
+        XCTAssertFalse(
+            recordWindow.descendants(matching: .any)["scholium.toggleSidebar"].exists
+        )
+        for nativeSidebarLabel in ["Show Sidebar", "Hide Sidebar", "Toggle Sidebar"] {
+            XCTAssertFalse(recordWindow.buttons[nativeSidebarLabel].exists)
+        }
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(recordWindow.staticTexts[
+            "Analyze: QA Autosave A, QA Topic"
+        ].exists)
+        XCTAssertTrue(recordWindow.staticTexts["Synthetic Action Agent"].exists)
+        XCTAssertTrue(recordWindow.staticTexts[
+            "A bounded nonconversational analysis report."
+        ].exists)
+
+        let tombstoneIdentifier =
+            "scholium.researchRecord.tombstone.\(fixture.tombstoneNoteID.uuidString)"
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            tombstoneIdentifier
+        ].waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            recordWindow.buttons[tombstoneIdentifier].exists,
+            "A tombstoned participant must remain informative rather than actionable."
+        )
+
+        let topicLink = recordWindow.buttons[
+            "scholium.researchRecord.note.\(fixture.topicNoteID.uuidString)"
+        ]
+        XCTAssertTrue(topicLink.waitForExistence(timeout: 5))
+        topicLink.click()
+        let initialDocumentTitle = initialWorkspace.descendants(matching: .any)[
+            "scholium.documentNoteName"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (initialDocumentTitle.value as? String) == "QA Topic"
+        })
+        XCTAssertTrue(recordWindow.exists)
+
+        focusWorkspaceWindow(secondWorkspace)
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: secondWorkspace)
+        XCTAssertTrue(recordWindow.staticTexts[
+            "No Matching Research Records"
+        ].waitForExistence(timeout: 10))
+
+        focusWorkspaceWindow(initialWorkspace)
+        XCTAssertTrue(recordWindow.staticTexts[
+            "A bounded nonconversational analysis report."
+        ].waitForExistence(timeout: 10))
+        recordWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
     }
 
     @MainActor
@@ -5683,6 +5847,7 @@ final class ScholiumUITests: XCTestCase {
         sessionID: UUID,
         initialWorkspaceWidth: Int? = 1380,
         usesFixedSessionID: Bool = true,
+        usesFixtureWorkspace: Bool = true,
         autosaveDelayMS: Int = 5_000,
         ignoresSystemWindowRestoration: Bool = true,
         appearance: QAAppearance? = nil,
@@ -5719,7 +5884,14 @@ final class ScholiumUITests: XCTestCase {
         application.launchEnvironment["SCHOLIUM_CLI_INSTALL_PATH"] = testDirectory
             .appendingPathComponent("cli-bin/scholium")
             .path
-        application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = triptychDirectory.path
+        if usesFixtureWorkspace {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = triptychDirectory.path
+        }
+        if let secondTriptychDirectory {
+            application.launchEnvironment[
+                "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
+            ] = secondTriptychDirectory.path
+        }
         // Keep navigation assertions independent of the user's persisted note
         // sort preference. The journey deliberately starts from A, then
         // crosses to the peer Topics vault and back again.
@@ -6248,6 +6420,218 @@ final class ScholiumUITests: XCTestCase {
             ),
             as: UTF8.self
         )
+    }
+
+    private struct QAStoredNoteIdentity {
+        let noteID: UUID
+        let vaultID: UUID
+        let relativePath: String
+        let fingerprint: [String: Any]
+    }
+
+    private func seedResearchRecordFixture() throws -> QAResearchRecordFixture {
+        let triptychID = try triptychID(at: triptychDirectory)
+        let manifestURL = triptychDirectory.appendingPathComponent(
+            ".scholium/manifest.json"
+        )
+        let manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: manifestURL)
+            ) as? [String: Any]
+        )
+        let currentVaultIDs = Set(
+            (manifest["vaultIDs"] as? [String] ?? []).compactMap(UUID.init(uuidString:))
+        )
+        let identityURL = triptychDirectory.appendingPathComponent(
+            ".scholium/identities.json"
+        )
+        let identityDocument = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: identityURL)
+            ) as? [String: Any]
+        )
+        let records = identityDocument["records"] as? [[String: Any]] ?? []
+
+        func identity(_ relativePath: String) throws -> QAStoredNoteIdentity {
+            let record = try XCTUnwrap(records.first(where: { candidate in
+                guard candidate["relativePath"] as? String == relativePath,
+                      let vault = candidate["vaultID"] as? String,
+                      let vaultID = UUID(uuidString: vault) else { return false }
+                return currentVaultIDs.contains(vaultID)
+            }))
+            return QAStoredNoteIdentity(
+                noteID: try XCTUnwrap(
+                    (record["id"] as? String).flatMap(UUID.init(uuidString:))
+                ),
+                vaultID: try XCTUnwrap(
+                    (record["vaultID"] as? String).flatMap(UUID.init(uuidString:))
+                ),
+                relativePath: relativePath,
+                fingerprint: try XCTUnwrap(record["fingerprint"] as? [String: Any])
+            )
+        }
+
+        let analysis = try identity("QA Autosave A.md")
+        let topic = try identity("QA Topic.md")
+        let recordID = UUID(uuidString: "5E551019-0000-4000-8000-000000000001")!
+        let statementID = UUID(uuidString: "5E551019-0000-4000-8000-000000000002")!
+        let tombstoneNoteID = UUID(
+            uuidString: "5E551019-0000-4000-8000-000000000003"
+        )!
+        let startedAt = "2026-07-27T04:00:00Z"
+        let finishedAt = "2026-07-27T04:01:00Z"
+        let methodRevision = qaFingerprint("QA bounded Analyze Method")
+        let profileRevision = qaFingerprint("QA bounded Analyze Profile")
+        let deletedRevision = qaFingerprint("Deleted QA Note starting bytes")
+
+        func note(
+            _ identity: QAStoredNoteIdentity,
+            role: String,
+            title: String,
+            recordedRelativePath: String? = nil
+        ) -> [String: Any] {
+            [
+                "note_id": identity.noteID.uuidString,
+                "note": [
+                    "vaultID": identity.vaultID.uuidString,
+                    "relativePath": recordedRelativePath ?? identity.relativePath,
+                ],
+                "role": role,
+                "title": title,
+                "starting_revision": identity.fingerprint,
+                "ending_revision": identity.fingerprint,
+                "is_tombstone": false,
+            ]
+        }
+
+        let portableRecord: [String: Any] = [
+            "schema_version": 2,
+            "id": recordID.uuidString,
+            "triptych_id": triptychID.uuidString,
+            "kind": "action",
+            "action": [
+                "schema_version": 1,
+                "action_id": "analyze",
+            ],
+            "method": [
+                "package_id": "scholium-analyze",
+                "origin": "bundled",
+                "version": "1.0.0",
+                "package_revision": methodRevision,
+                "loaded_resources": [[
+                    "relative_path": "SKILL.md",
+                    "revision": methodRevision,
+                ]],
+                "profile_revision": profileRevision,
+            ],
+            "participating_notes": [
+                note(analysis, role: "analysis", title: "QA Autosave A"),
+                note(
+                    topic,
+                    role: "topic",
+                    title: "QA Topic",
+                    recordedRelativePath: "Historical/QA Topic Before Rename.md"
+                ),
+                [
+                    "note_id": tombstoneNoteID.uuidString,
+                    "note": [
+                        "vaultID": analysis.vaultID.uuidString,
+                        "relativePath": "Deleted QA Note.md",
+                    ],
+                    "role": "analysis",
+                    "title": "Deleted QA Note",
+                    "starting_revision": deletedRevision,
+                    "is_tombstone": true,
+                ],
+            ],
+            "statements": [[
+                "id": statementID.uuidString,
+                "author": "agent",
+                "kind": "agent_feedback",
+                "attribution": "Synthetic Action Agent",
+                "text": "A bounded nonconversational analysis report.",
+                "created_at": finishedAt,
+            ]],
+            "actually_used_materials": [[
+                "note_id": topic.noteID.uuidString,
+                "note": [
+                    "vaultID": topic.vaultID.uuidString,
+                    "relativePath": "Historical/QA Topic Before Rename.md",
+                ],
+                "role": "topic",
+                "title": "QA Topic",
+                "revision": topic.fingerprint,
+            ]],
+            "confirmed_changes": [],
+            "discrepancies": [],
+            "started_at": startedAt,
+            "finished_at": finishedAt,
+            "is_pinned": false,
+        ]
+
+        let recordsDirectory = triptychDirectory.appendingPathComponent(
+            ".scholium/research-records/v1/records",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: recordsDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o755)]
+        )
+        let recordURL = recordsDirectory.appendingPathComponent(
+            recordID.uuidString.lowercased() + ".json"
+        )
+        try JSONSerialization.data(
+            withJSONObject: portableRecord,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        ).write(to: recordURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: recordURL.path
+        )
+
+        return QAResearchRecordFixture(
+            recordID: recordID,
+            topicNoteID: topic.noteID,
+            tombstoneNoteID: tombstoneNoteID
+        )
+    }
+
+    private func createSecondTriptychFixture() throws -> URL {
+        let destination = testDirectory.appendingPathComponent(
+            "Second Triptych",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: destination,
+            withIntermediateDirectories: true
+        )
+        for component in ["01-analyses", "02-topics", "03-works"] {
+            try FileManager.default.copyItem(
+                at: triptychDirectory.appendingPathComponent(component, isDirectory: true),
+                to: destination.appendingPathComponent(component, isDirectory: true)
+            )
+        }
+        return destination
+    }
+
+    private func triptychID(at root: URL) throws -> UUID {
+        let document = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: root.appendingPathComponent(
+                    ".scholium/manifest.json"
+                ))
+            ) as? [String: Any]
+        )
+        return try XCTUnwrap(
+            (document["id"] as? String).flatMap(UUID.init(uuidString:))
+        )
+    }
+
+    private func qaFingerprint(_ source: String) -> [String: Any] {
+        let data = Data(source.utf8)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return ["sha256": digest, "byteCount": data.count]
     }
 
     private func createIsolatedTriptych() throws {
