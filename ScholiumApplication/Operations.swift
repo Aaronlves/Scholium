@@ -607,6 +607,22 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.setResearchRecordPinned(id: id, isPinned: isPinned)
     }
 
+    public func deleteResearchRecordPermanently(id: UUID) async throws {
+        let handle = try await reference.requireHandle()
+        try await handle.deleteResearchRecordPermanently(id: id)
+    }
+
+    public func researchRecordComparison(
+        recordID: UUID,
+        noteID: UUID
+    ) async throws -> ResearchRecordComparison {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchRecordComparison(
+            recordID: recordID,
+            noteID: noteID
+        )
+    }
+
     public func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
         let handle = try await reference.requireHandle()
         return try await handle.critique(workNoteID: workNoteID)

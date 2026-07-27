@@ -82,6 +82,7 @@ final class ScholiumUITests: XCTestCase {
 
     private struct QAResearchRecordFixture {
         let recordID: UUID
+        let analysisNoteID: UUID
         let topicNoteID: UUID
         let tombstoneNoteID: UUID
     }
@@ -3643,6 +3644,126 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testResearchRecordConfirmedDeletionAndDisposableComparison() throws {
+        app.terminate()
+        let fixture = try seedResearchRecordFixture(
+            hasUnavailableTopicRevision: true
+        )
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth)
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
+        let recordButton = workspace.buttons["scholium.showResearchRecord"]
+        XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
+        recordButton.click()
+
+        let recordWindow = app.windows["Research Record"].firstMatch
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
+        XCTAssertFalse(recordWindow.buttons["Record Trash"].exists)
+        XCTAssertFalse(recordWindow.descendants(matching: .any)[
+            "Record Trash"
+        ].exists)
+        XCTAssertFalse(recordWindow.buttons["Restore"].exists)
+        let row = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
+        ]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+
+        let compare = recordWindow.buttons[
+            "scholium.researchRecord.compare.\(fixture.analysisNoteID.uuidString)"
+        ]
+        let detailScroll = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.detail"
+        ]
+        XCTAssertTrue(detailScroll.waitForExistence(timeout: 5))
+        XCTAssertTrue(compare.waitForExistence(timeout: 5))
+        XCTAssertTrue(compare.isHittable)
+        XCTAssertTrue(compare.isEnabled)
+        compare.click()
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.comparison"
+        ].waitForExistence(timeout: 8))
+        let closeComparison = recordWindow.buttons[
+            "scholium.researchRecord.cancelComparison"
+        ]
+        XCTAssertTrue(closeComparison.exists)
+        closeComparison.click()
+
+        let unavailableCompare = recordWindow.buttons[
+            "scholium.researchRecord.compare.\(fixture.topicNoteID.uuidString)"
+        ]
+        XCTAssertTrue(unavailableCompare.waitForExistence(timeout: 5))
+        XCTAssertTrue(unavailableCompare.isHittable)
+        unavailableCompare.click()
+        let unavailableTitle = app.staticTexts["Comparison Unavailable"]
+        XCTAssertTrue(unavailableTitle.waitForExistence(timeout: 8))
+        let dismissUnavailable = recordWindow.sheets.buttons["Dismiss"].firstMatch
+        XCTAssertTrue(dismissUnavailable.waitForExistence(timeout: 5))
+        dismissUnavailable.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !unavailableTitle.exists })
+
+        for _ in 0..<6 where !recordWindow.buttons[
+            "scholium.researchRecord.deletePermanently"
+        ].isHittable {
+            detailScroll.swipeDown()
+        }
+        let deletePermanently = recordWindow.buttons[
+            "scholium.researchRecord.deletePermanently"
+        ]
+        XCTAssertTrue(deletePermanently.waitForExistence(timeout: 5))
+        deletePermanently.click()
+        XCTAssertTrue(app.staticTexts[
+            "Delete This Research Record Permanently?"
+        ].waitForExistence(timeout: 5))
+        let deletionTitle = app.staticTexts[
+            "Delete This Research Record Permanently?"
+        ]
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !deletionTitle.exists })
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let focusedRecordElement = recordWindow.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            .firstMatch
+        XCTAssertTrue(
+            focusedRecordElement.waitForExistence(timeout: 5),
+            "Keyboard cancellation must keep focus within the independent Record window."
+        )
+        XCTAssertTrue(deletePermanently.isHittable)
+        deletePermanently.click()
+        XCTAssertTrue(app.staticTexts[
+            "Delete This Research Record Permanently?"
+        ].waitForExistence(timeout: 5))
+        let confirm = recordWindow.sheets.buttons["action-button-1"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertEqual(confirm.label, "Delete Permanently")
+        confirm.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !row.exists })
+        XCTAssertTrue(recordWindow.staticTexts[
+            "No Matching Research Records"
+        ].waitForExistence(timeout: 5))
+        recordWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
+        focusWorkspaceWindow(workspace)
+        recordButton.click()
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
+        XCTAssertFalse(
+            row.exists,
+            "A reopened browser must consume the controller's republished deletion."
+        )
+        recordWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
+    }
+
+    @MainActor
     func testResearchRecordActionTombstoneDeepLinkAndCrossTriptychFocus() throws {
         let secondTriptychDirectory = try XCTUnwrap(secondTriptychDirectory)
 
@@ -6466,7 +6587,9 @@ final class ScholiumUITests: XCTestCase {
         let fingerprint: [String: Any]
     }
 
-    private func seedResearchRecordFixture() throws -> QAResearchRecordFixture {
+    private func seedResearchRecordFixture(
+        hasUnavailableTopicRevision: Bool = false
+    ) throws -> QAResearchRecordFixture {
         let triptychID = try triptychID(at: triptychDirectory)
         let manifestURL = triptychDirectory.appendingPathComponent(
             ".scholium/manifest.json"
@@ -6541,6 +6664,23 @@ final class ScholiumUITests: XCTestCase {
             ]
         }
 
+        var topicParticipant = note(
+            topic,
+            role: "topic",
+            title: "QA Topic",
+            recordedRelativePath: "Historical/QA Topic Before Rename.md"
+        )
+        let topicStartingRevision: [String: Any]
+        if hasUnavailableTopicRevision {
+            topicStartingRevision = [
+                "sha256": String(repeating: "0", count: 64),
+                "byteCount": 1,
+            ]
+        } else {
+            topicStartingRevision = topic.fingerprint
+        }
+        topicParticipant["starting_revision"] = topicStartingRevision
+
         let portableRecord: [String: Any] = [
             "schema_version": 2,
             "id": recordID.uuidString,
@@ -6563,12 +6703,7 @@ final class ScholiumUITests: XCTestCase {
             ],
             "participating_notes": [
                 note(analysis, role: "analysis", title: "QA Autosave A"),
-                note(
-                    topic,
-                    role: "topic",
-                    title: "QA Topic",
-                    recordedRelativePath: "Historical/QA Topic Before Rename.md"
-                ),
+                topicParticipant,
                 [
                     "note_id": tombstoneNoteID.uuidString,
                     "note": [
@@ -6597,7 +6732,7 @@ final class ScholiumUITests: XCTestCase {
                 ],
                 "role": "topic",
                 "title": "QA Topic",
-                "revision": topic.fingerprint,
+                "revision": topicStartingRevision,
             ]],
             "confirmed_changes": [],
             "discrepancies": [],
@@ -6629,6 +6764,7 @@ final class ScholiumUITests: XCTestCase {
 
         return QAResearchRecordFixture(
             recordID: recordID,
+            analysisNoteID: analysis.noteID,
             topicNoteID: topic.noteID,
             tombstoneNoteID: tombstoneNoteID
         )

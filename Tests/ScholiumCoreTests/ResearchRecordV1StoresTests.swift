@@ -140,6 +140,34 @@ struct ResearchRecordV1StoresTests {
         #expect(restored == record)
     }
 
+    @Test("Portable record permanent deletion is bounded to the selected record")
+    func portableRecordPermanentDeletionIsBounded() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        let unrelated = try makePortableRecord(
+            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAB")!
+        )
+        _ = try await store.createFinishedRecord(record)
+        _ = try await store.createFinishedRecord(unrelated)
+        let recordsURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        let trashURL = fixture.control
+            .appendingPathComponent("research-records/v1/trash", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        #expect(try await store.deletePermanently(id: record.id) == record)
+        #expect(!FileManager.default.fileExists(atPath: recordsURL.path))
+        #expect(!FileManager.default.fileExists(atPath: trashURL.path))
+        #expect(try await store.listing(location: .records).records == [unrelated])
+        #expect(try await store.listing(location: .trash).records.isEmpty)
+        #expect(try await store.record(id: unrelated.id) == unrelated)
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.record(id: record.id)
+        }
+    }
+
     @Test("One corrupt portable file does not hide valid records")
     func portableCorruptionIsIsolated() async throws {
         let fixture = try Fixture()
@@ -156,6 +184,46 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.records.map(\.id) == [record.id])
         #expect(listing.issues.count == 1)
         #expect(listing.issues.first?.fileName == corruptURL.lastPathComponent)
+    }
+
+    @Test("An interrupted permanent-deletion rename restores on reopen")
+    func interruptedPermanentDeletionRenameRecovers() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+        let fileName = record.id.uuidString.lowercased() + ".json"
+        let records = fixture.control.appendingPathComponent(
+            "research-records/v1/records",
+            isDirectory: true
+        )
+        try FileManager.default.moveItem(
+            at: records.appendingPathComponent(fileName),
+            to: records.appendingPathComponent(".scholium-deleting-\(fileName)")
+        )
+
+        let reopened = try fixture.portableStore()
+        #expect(try await reopened.record(id: record.id) == record)
+        #expect(try await reopened.listing(location: .records).issues.isEmpty)
+    }
+
+    @Test("Lifecycle post-commit uncertainty reconciles exact deletion state")
+    func lifecyclePostCommitUncertaintyReconciles() async throws {
+        enum InjectedFailure: Error { case afterCommit }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+
+        await store.setPostCommitFaultForTesting { _ in
+            throw InjectedFailure.afterCommit
+        }
+        #expect(try await store.deletePermanently(id: record.id) == record)
+        let reopened = try fixture.portableStore()
+        #expect(try await reopened.listing(location: .records).records.isEmpty)
+        #expect(try await reopened.listing(location: .trash).records.isEmpty)
     }
 
     @Test("Concurrent store instances make one idempotent record")
@@ -850,7 +918,9 @@ struct ResearchRecordV1StoresTests {
         #expect(try await store.record(id: retainedRun.id) == retainedRun)
     }
 
-    private func makePortableRecord() throws -> PortableResearchRecord {
+    private func makePortableRecord(
+        id: UUID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
+    ) throws -> PortableResearchRecord {
         let action = try makeActionSnapshot()
         let note = try PortableResearchNoteRevision(
             noteID: action.target.noteID,
@@ -861,7 +931,7 @@ struct ResearchRecordV1StoresTests {
             endingRevision: action.target.fingerprint
         )
         return try PortableResearchRecord(
-            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+            id: id,
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
             kind: .action,
             action: ResearchActionRecordIdentity(snapshot: action),

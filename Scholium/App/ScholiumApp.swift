@@ -208,6 +208,15 @@ private struct ScholiumResearchRecordFocusedContent: View {
                             isPinned: isPinned
                         )
                     },
+                    deletePermanently: { id in
+                        try await appState.researchController.deleteResearchRecordPermanently(id: id)
+                    },
+                    comparison: { recordID, noteID in
+                        try await appState.researchController.researchRecordComparison(
+                            recordID: recordID,
+                            noteID: noteID
+                        )
+                    },
                     openNote: { noteID, note, sourceLine in
                         appState.requestOpenNote(
                             note,

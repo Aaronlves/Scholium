@@ -714,7 +714,7 @@ public actor VaultRepository {
         removeEmptyParentDirectories(startingAt: recheckedURL.deletingLastPathComponent())
     }
 
-    func recoveryEntries(relativePath: String) -> [PrewriteRecoveryReference] {
+    package func recoveryEntries(relativePath: String) -> [PrewriteRecoveryReference] {
         (try? recoveryLedger.entries(relativePath: relativePath)) ?? []
     }
 
@@ -741,6 +741,10 @@ public actor VaultRepository {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
         return content
+    }
+
+    package func recoveryData(entryID: UUID) throws -> Data {
+        try recoveryLedger.content(entryID: entryID)
     }
 
     package func pinSettledSnapshot(

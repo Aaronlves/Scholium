@@ -468,8 +468,11 @@ Dialogue/Critique have no alternate preparation path.
 
 `PortableResearchRecordStore` owns one JSON file per intellectual record under
 `.scholium/research-records/v1/records/`; `active/` owns one file per unfinished
-portable Discussion and `trash/` remains reserved for the Record Trash
-migration. A
+portable Discussion. The retained empty `trash/` directory is legacy reserved
+storage, not a current lifecycle or projection. Confirmed record deletion
+isolates the exact reread JSON with a descriptor-relative rename inside
+`records/`, verifies the isolated bytes, unlinks only that file, and restores an
+interrupted pre-unlink rename on startup. A
 separate `settlements/` directory stores exactly one replaceable current-state
 file per Note. Settle therefore no longer appends an application-authored
 history event, and Changed Since Settled is derived against the current
@@ -593,8 +596,14 @@ Discussion agent replies are appended only to the portable active exchange;
 completion validates that attributed evidence, while Finish remains a separate
 researcher action with no legacy activity projection. The production Action
 surface uses the public role matrix and declarative Profile modules. The
-independent record browser consumes only finished portable records; Record
-Trash/diff remains Session 20.
+independent record browser consumes only finished portable records. Application
+comparison resolves each recorded
+start and end fingerprint independently from an exact current snapshot,
+machine-local prewrite recovery object, or checkpoint file. If either digest
+cannot be matched to retained bytes, comparison is unavailable. The line
+projection is non-Codable, created only after an explicit request, and discarded
+on close, selection change, or cancellation; no diff hunk enters portable or
+machine-local record storage.
 While any active Discussion exists, the current document surface rereads the
 portable projection at a bounded interval. A cooperating CLI reply can
 therefore update current state while the Discussion sheet is closed. Selecting
@@ -796,18 +805,21 @@ receives the current native focused object observed at the app scene boundary;
 each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
 registry, notification, presentation coordinator, custom focused key, or
 manually retained window model participates. Each presentation owns one
-`ResearchRecordBrowserModel`: a disposable deterministic in-memory index plus
-search, Note/date/Skill/Action/participant filters and selection. Reopening
+`ResearchRecordBrowserModel`: one disposable deterministic in-memory index plus
+search, Note/date/Skill/Action/participant filters, selection, and at most one
+cancellable comparison task. Reopening
 resets to the current Note when available and the
 researcher can remove that scope to browse the complete Triptych. The window
-renders only finished portable Discussion and nonconversational Action records,
+renders finished portable Discussion and nonconversational Action records,
 preserves attribution and evidence-class qualifications, exposes tombstones,
-and deep-links live participating Notes through the focused Workspace. Pin is
-the only record mutation here; Core replaces only `is_pinned` under the existing
-portable-record lock and atomic read-back boundary. Ordinary Markdown
+and deep-links live participating Notes through the focused Workspace. Pin
+replaces only `is_pinned`; **Delete Record…** requires a second confirmation
+before Core permanently removes only the selected portable record under the
+same descriptor-relative coordination boundary. Ordinary Markdown
 annotations remain in the document and never become separate chronology. The
 fixed 760 × 680 window never enters the trailing split item and never owns checkpoints, a
-document buffer, autosave, undo, conflicts, trash, or diff state.
+document buffer, autosave, undo, conflict, or retained trash state. Its diff is
+disposable presentation over retained exact bytes, not a second writable source.
 Closing Research Record therefore cannot reveal or resize Research Inspector.
 
 The Library-owned Attention queue is an inline Library destination, not a sheet

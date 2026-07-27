@@ -3,6 +3,11 @@ import SwiftUI
 
 struct ResearchRecordBrowserContext {
     let setPinned: @MainActor (UUID, Bool) async throws -> PortableResearchRecord
+    let deletePermanently: @MainActor (UUID) async throws -> Void
+    let comparison: @MainActor (
+        UUID,
+        UUID
+    ) async throws -> ResearchRecordComparison
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 }
 
@@ -22,7 +27,13 @@ struct ResearchRecordBrowserView: View {
         )
         .frame(width: 760, height: 680)
         .scholiumSurface(.document)
-        .alert("Research Record Unavailable", isPresented: $model.isShowingError) {
+        .onDisappear { model.cancelComparison() }
+        .alert(
+            model.isComparisonError
+                ? "Comparison Unavailable"
+                : "Research Record Unavailable",
+            isPresented: $model.isShowingError
+        ) {
             Button("Dismiss", role: .cancel) { model.dismissError() }
         } message: {
             Text(model.errorMessage)
@@ -70,7 +81,7 @@ private struct ResearchRecordSelectedDetail: View {
 
     var body: some View {
         if let record = model.selectedRecord {
-            ResearchRecordDetailView(record: record, context: context)
+            ResearchRecordDetailView(record: record, model: model, context: context)
         } else {
             ContentUnavailableView(
                 "Select a Research Record",
@@ -113,7 +124,8 @@ private struct ResearchRecordListPane: View {
                         noteTitles: entry.noteParticipants.map(\.title),
                         authorParticipants: entry.authorParticipants,
                         isPinned: entry.isPinned,
-                        isPinning: model.pinningRecordIDs.contains(entry.id),
+                        isPinning: model.pinningRecordIDs.contains(entry.id)
+                            || model.mutatingRecordIDs.contains(entry.id),
                         select: {
                             model.select(entry.id)
                             opensSelection?(entry.id)
@@ -372,16 +384,28 @@ private struct ResearchRecordListRow: View {
 
 private struct ResearchRecordDetailView: View {
     let record: PortableResearchRecord
+    let model: ResearchRecordBrowserModel
     let context: ResearchRecordBrowserContext
+    @State private var confirmsPermanentDeletion = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 ResearchRecordDetailHeader(record: record)
-                ResearchRecordParticipantSection(
-                    participants: record.participatingNotes,
-                    openNote: context.openNote
+                ResearchRecordLifecycleControls(
+                    recordID: record.id,
+                    model: model,
+                    confirmsPermanentDeletion: $confirmsPermanentDeletion
                 )
+                ResearchRecordParticipantSection(
+                    recordID: record.id,
+                    participants: record.participatingNotes,
+                    model: model,
+                    context: context
+                )
+                if model.comparingNoteID != nil {
+                    ResearchRecordComparisonSection(model: model)
+                }
                 ScholiumStructuralRule()
                 ResearchRecordStatementSection(
                     statements: record.statements,
@@ -402,10 +426,46 @@ private struct ResearchRecordDetailView: View {
         }
         .scholiumSurface(.document)
         .accessibilityIdentifier("scholium.researchRecord.detail")
+        .alert("Delete This Research Record Permanently?", isPresented: $confirmsPermanentDeletion) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Permanently", role: .destructive) {
+                Task {
+                    await model.deletePermanently(
+                        recordID: record.id,
+                        update: context.deletePermanently
+                    )
+                }
+            }
+        } message: {
+            Text(
+                "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone."
+            )
+        }
     }
 
     private var primaryParticipant: PortableResearchNoteRevision? {
         record.researchRecordContextParticipant
+    }
+}
+
+private struct ResearchRecordLifecycleControls: View {
+    let recordID: UUID
+    let model: ResearchRecordBrowserModel
+    @Binding var confirmsPermanentDeletion: Bool
+
+    var body: some View {
+        Button("Delete Record…", systemImage: "trash", role: .destructive) {
+            confirmsPermanentDeletion = true
+        }
+        .accessibilityHint(
+            "Ask for confirmation before permanently deleting only this portable record"
+        )
+        .accessibilityIdentifier("scholium.researchRecord.deletePermanently")
+        .disabled(
+            model.mutatingRecordIDs.contains(recordID)
+                || model.pinningRecordIDs.contains(recordID)
+        )
+        .controlSize(.small)
     }
 }
 
@@ -437,8 +497,10 @@ private struct ResearchRecordDetailHeader: View {
 }
 
 private struct ResearchRecordParticipantSection: View {
+    let recordID: UUID
     let participants: [PortableResearchNoteRevision]
-    let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
+    let model: ResearchRecordBrowserModel
+    let context: ResearchRecordBrowserContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -457,26 +519,44 @@ private struct ResearchRecordParticipantSection: View {
                         "scholium.researchRecord.tombstone.\(participant.noteID.uuidString)"
                     )
                 } else {
-                    Button {
-                        openNote(participant.noteID, participant.note, nil)
-                    } label: {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(participant.role.interfaceTitle)
-                                .font(ScholiumInterfaceTypography.editorialLabel)
-                                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                            Text(participant.title)
-                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Image(systemName: "arrow.up.forward.app")
-                                .accessibilityHidden(true)
+                    HStack(alignment: .firstTextBaseline) {
+                        Button {
+                            context.openNote(participant.noteID, participant.note, nil)
+                        } label: {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(participant.role.interfaceTitle)
+                                    .font(ScholiumInterfaceTypography.editorialLabel)
+                                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                Text(participant.title)
+                                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "arrow.up.forward.app")
+                                    .accessibilityHidden(true)
+                            }
+                            .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(
+                            "scholium.researchRecord.note.\(participant.noteID.uuidString)"
+                        )
+                        .accessibilityHint("Open this participating Note in the focused workspace")
+                        if participant.endingRevision != nil {
+                            Button("Compare Revisions") {
+                                model.compare(
+                                    recordID: recordID,
+                                    noteID: participant.noteID,
+                                    load: context.comparison
+                                )
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityHint(
+                                "Compare only the exact retained starting and ending bytes"
+                            )
+                            .accessibilityIdentifier(
+                                "scholium.researchRecord.compare.\(participant.noteID.uuidString)"
+                            )
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier(
-                        "scholium.researchRecord.note.\(participant.noteID.uuidString)"
-                    )
-                    .accessibilityHint("Open this participating Note in the focused workspace")
                 }
             }
         }
@@ -661,6 +741,150 @@ private struct ResearchRecordRevisionDetails: View {
                 Text("Deleted Note")
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             }
+        }
+    }
+}
+
+private struct ResearchRecordComparisonSection: View {
+    let model: ResearchRecordBrowserModel
+
+    var body: some View {
+        ScholiumStructuralRule()
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack {
+                Text("Revision Comparison")
+                    .font(ScholiumInterfaceTypography.sectionTitle)
+                    .accessibilityHeading(.h2)
+                Spacer()
+                if model.comparison == nil {
+                    Button("Cancel") { model.cancelComparison() }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier(
+                            "scholium.researchRecord.cancelComparison"
+                        )
+                } else {
+                    Button("Close") { model.cancelComparison() }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier(
+                            "scholium.researchRecord.cancelComparison"
+                        )
+                }
+            }
+            if let comparison = model.comparison {
+                ResearchRecordComparisonMetadata(comparison: comparison)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(comparison.lines) { line in
+                        ResearchRecordComparisonLineView(line: line)
+                    }
+                }
+                .accessibilityIdentifier("scholium.researchRecord.comparison")
+            } else {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Comparing exact retained revisions…")
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Comparing exact retained revisions")
+                .accessibilityIdentifier("scholium.researchRecord.comparisonProgress")
+            }
+        }
+    }
+}
+
+private struct ResearchRecordComparisonMetadata: View {
+    let comparison: ResearchRecordComparison
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            LabeledContent("Starting bytes") {
+                Text("\(comparison.startingRevision.byteCount), \(bomDescription(comparison.startingHasUTF8BOM))")
+            }
+            LabeledContent("Ending bytes") {
+                Text("\(comparison.endingRevision.byteCount), \(bomDescription(comparison.endingHasUTF8BOM))")
+            }
+        }
+        .font(ScholiumInterfaceTypography.metadata)
+        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+    }
+
+    private func bomDescription(_ hasBOM: Bool) -> String {
+        if hasBOM {
+            return String(localized: "UTF-8 BOM", table: "Localizable", bundle: .module)
+        }
+        return String(localized: "No BOM", table: "Localizable", bundle: .module)
+    }
+}
+
+private struct ResearchRecordComparisonLineView: View {
+    let line: ResearchRecordComparisonLine
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Text(marker)
+                .frame(width: 12, alignment: .center)
+                .accessibilityHidden(true)
+            Text(lineNumber)
+                .frame(width: 72, alignment: .trailing)
+                .foregroundStyle(ScholiumColorRole.mutedText.color)
+            Text(line.text.isEmpty ? " " : line.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(line.lineEnding.interfaceTitle)
+                .foregroundStyle(ScholiumColorRole.mutedText.color)
+        }
+        .font(.system(.caption, design: .monospaced))
+        .textSelection(.enabled)
+        .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var marker: String {
+        switch line.kind {
+        case .unchanged: " "
+        case .startingOnly: "−"
+        case .endingOnly: "+"
+        }
+    }
+
+    private var lineNumber: String {
+        let starting = line.startingLineNumber.map(String.init) ?? "–"
+        let ending = line.endingLineNumber.map(String.init) ?? "–"
+        return "\(starting)  \(ending)"
+    }
+
+    private var accessibilityDescription: String {
+        switch line.kind {
+        case .unchanged:
+            String(
+                localized: "Unchanged line \(line.endingLineNumber ?? 0), \(line.lineEnding.interfaceTitle) line ending: \(line.text)",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .startingOnly:
+            String(
+                localized: "Starting revision only, line \(line.startingLineNumber ?? 0), \(line.lineEnding.interfaceTitle) line ending: \(line.text)",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .endingOnly:
+            String(
+                localized: "Ending revision only, line \(line.endingLineNumber ?? 0), \(line.lineEnding.interfaceTitle) line ending: \(line.text)",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
+}
+
+private extension ResearchRecordComparisonLineEnding {
+    var interfaceTitle: String {
+        switch self {
+        case .lf: "LF"
+        case .crlf: "CRLF"
+        case .none:
+            String(localized: "None", table: "Localizable", bundle: .module)
         }
     }
 }

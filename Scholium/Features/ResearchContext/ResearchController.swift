@@ -159,6 +159,42 @@ final class ResearchController: ObservableObject {
         )
     }
 
+    func deleteResearchRecordPermanently(id: UUID) async throws {
+        let operations = try requireOperations()
+        do {
+            try await operations.deleteResearchRecordPermanently(id: id)
+            try await refreshRecordProjection(
+                after: "The permanent Research Record deletion"
+            )
+        } catch let committed as ScholiumApplicationError
+            where committed.durableMutationWasCommitted {
+            do { try await refreshResearchProjection() } catch { throw committed }
+            let remains = records?.finishedResearchRecords.contains { $0.id == id } == true
+            guard !remains else { throw committed }
+        }
+    }
+
+    func researchRecordComparison(
+        recordID: UUID,
+        noteID: UUID
+    ) async throws -> ResearchRecordComparison {
+        try await requireOperations().researchRecordComparison(
+            recordID: recordID,
+            noteID: noteID
+        )
+    }
+
+    private func refreshRecordProjection(after operation: String) async throws {
+        do {
+            try await refreshResearchProjection()
+        } catch {
+            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
+                operation: operation,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
         try await requireOperations().activeDiscussionIfPresent(id: id)
     }

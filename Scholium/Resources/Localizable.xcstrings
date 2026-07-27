@@ -17,6 +17,138 @@
         }
       }
     },
+    "Compare Revisions" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Compare Revisions" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "比较修订" } }
+      }
+    },
+    "Comparison Unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparison Unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "比较不可用" } }
+      }
+    },
+    "Comparison is unavailable because exact revision %@ is not retained." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparison is unavailable because exact revision %@ is not retained." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "比较不可用，因为未保留准确修订 %@。" } }
+      }
+    },
+    "Comparison is unavailable because retained bytes %@ do not match recorded revision %@." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparison is unavailable because retained bytes %1$@ do not match recorded revision %2$@." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "比较不可用，因为保留的字节 %1$@ 与记录的修订 %2$@ 不匹配。" } }
+      }
+    },
+    "Comparison is unavailable because revision %@ is not valid UTF-8 Markdown." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparison is unavailable because revision %@ is not valid UTF-8 Markdown." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "比较不可用，因为修订 %@ 不是有效的 UTF-8 Markdown。" } }
+      }
+    },
+    "Comparison is unavailable because the record has no exact ending revision." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparison is unavailable because the record has no exact ending revision." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "比较不可用，因为该记录没有准确的结束修订。" } }
+      }
+    },
+    "Ending revision only, line %lld, %@ line ending: %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Ending revision only, line %1$lld, %2$@ line ending: %3$@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "仅结束修订，第 %1$lld 行，行尾为 %2$@：%3$@" } }
+      }
+    },
+    "Starting revision only, line %lld, %@ line ending: %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Starting revision only, line %1$lld, %2$@ line ending: %3$@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "仅起始修订，第 %1$lld 行，行尾为 %2$@：%3$@" } }
+      }
+    },
+    "This note is not part of the selected Research Record." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "This note is not part of the selected Research Record." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此笔记不属于所选研究记录。" } }
+      }
+    },
+    "Unchanged line %lld, %@ line ending: %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Unchanged line %1$lld, %2$@ line ending: %3$@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未更改的第 %1$lld 行，行尾为 %2$@：%3$@" } }
+      }
+    },
+    "Compare only the exact retained starting and ending bytes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Compare only the exact retained starting and ending bytes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "仅比较准确保留的起始和结束字节" } }
+      }
+    },
+    "Comparing exact retained revisions" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparing exact retained revisions" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在比较准确保留的修订" } }
+      }
+    },
+    "Comparing exact retained revisions…" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Comparing exact retained revisions…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在比较准确保留的修订…" } }
+      }
+    },
+    "Delete Record…" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Delete Record…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除记录…" } }
+      }
+    },
+    "Delete This Research Record Permanently?" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Delete This Research Record Permanently?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "永久删除此研究记录？" } }
+      }
+    },
+    "Ending bytes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Ending bytes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "结束字节" } }
+      }
+    },
+    "No BOM" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "No BOM" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无 BOM" } }
+      }
+    },
+    "Ask for confirmation before permanently deleting only this portable record" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Ask for confirmation before permanently deleting only this portable record" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "确认后仅永久删除此可移植记录" } }
+      }
+    },
+    "Revision Comparison" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Revision Comparison" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "修订比较" } }
+      }
+    },
+    "Starting bytes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Starting bytes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "起始字节" } }
+      }
+    },
+    "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这会从每个派生的笔记视图中移除此可移植记录。它不会删除源 Markdown、检查点、精确笔记恢复证据或无关记录。此操作无法撤销。" } }
+      }
+    },
+    "UTF-8 BOM" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "UTF-8 BOM" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "UTF-8 BOM" } }
+      }
+    },
     "%@  %@" : {
       "localizations" : {
         "en" : {

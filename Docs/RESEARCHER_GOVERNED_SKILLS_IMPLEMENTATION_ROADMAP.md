@@ -331,17 +331,17 @@ automatable production-surface gaps without beginning Record Trash:
   concurrency stress not required to invalidate this interface patch explicit
   in `IMPLEMENTATION_STATUS.md` rather than claiming them from XCUITest.
 
-## 7. Session 20: Record Trash and disposable comparison
+## 7. Session 20: confirmed record deletion and disposable comparison
 
 **Commit:** `Add record recovery and disposable comparison`
 
 ### Implementation
 
-- Add manual Move to Trash, Restore, and confirmed Permanently Delete for
-  portable records.
+- Add researcher-initiated **Delete Record…** with a destructive second
+  confirmation and no Record Trash or Restore workflow.
 - Removing a shared record removes all of its derived Note projections without
   deleting Markdown, checkpoints, exact-note recovery, or unrelated records.
-- Keep deletion researcher-initiated and recoverable until permanent deletion.
+- Delete only the selected portable record; do not retain a hidden trash copy.
 - Generate a diff only on explicit request from exact start/end fingerprints
   and available checkpoint/current/recovery bytes.
 - Never persist diff hunks. If either exact revision cannot be established,
@@ -350,11 +350,11 @@ automatable production-surface gaps without beginning Record Trash:
 
 ### Required tests and QA
 
-- Trash/Restore round trip and confirmed permanent deletion;
+- direct deletion, second-confirmation cancellation, and confirmed deletion;
 - shared-record projections across Notes;
 - missing checkpoint/recovery and mismatched fingerprint refusal;
 - byte fidelity, large-file cancellation, and absence of persisted hunks;
-- keyboard, focus, accessibility, and recovery states in the independent
+- keyboard, focus, accessibility, cancellation, and unavailable states in the independent
   Research Record window.
 
 ## 8. Session 21: Material Changed Since Use
@@ -418,7 +418,7 @@ automatable production-surface gaps without beginning Record Trash:
    invisible, and nonauthorizing.
 6. Privacy: keys, prompts, bookmarks, absolute paths, and diffs never enter
    portable records.
-7. Multiwindow, conflict, cancellation, recovery, Record Trash, and permanent
+7. Multiwindow, conflict, cancellation, recovery, and confirmed direct record
    deletion.
 
 ### Final review

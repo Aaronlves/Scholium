@@ -133,6 +133,88 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.selectedRecord?.isPinned == true)
     }
 
+    @Test("Pin and confirmed deletion cannot race a removed record back into the browser")
+    func pinAndDeletionAreSerializedPerRecord() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(11),
+            noteID: deterministicUUID(12),
+            title: "Concurrent Record",
+            text: "One lifecycle mutation at a time",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let pinned = try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: record.participatingNotes,
+            statements: record.statements,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            isPinned: true
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            initialNoteID: nil
+        )
+        var pinContinuation: CheckedContinuation<PortableResearchRecord, Never>?
+        let pinTask = Task { @MainActor in
+            await model.setPinned(recordID: record.id) { _, _ in
+                await withCheckedContinuation { continuation in
+                    pinContinuation = continuation
+                }
+            }
+        }
+        while pinContinuation == nil {
+            await Task.yield()
+        }
+
+        var deletionCallCount = 0
+        await model.deletePermanently(recordID: record.id) { _ in
+            deletionCallCount += 1
+        }
+        #expect(deletionCallCount == 0)
+        #expect(model.visibleEntries.map(\.id) == [record.id])
+
+        pinContinuation?.resume(returning: pinned)
+        await pinTask.value
+        #expect(model.visibleEntries.map(\.id) == [record.id])
+        #expect(model.selectedRecord?.isPinned == true)
+
+        // A concurrent reload/removal is also forbidden from being resurrected
+        // by a late pin result, even if another caller bypasses the UI guards.
+        var lateContinuation: CheckedContinuation<PortableResearchRecord, Never>?
+        let latePinTask = Task { @MainActor in
+            await model.setPinned(recordID: record.id) { _, _ in
+                await withCheckedContinuation { continuation in
+                    lateContinuation = continuation
+                }
+            }
+        }
+        while lateContinuation == nil {
+            await Task.yield()
+        }
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [],
+            initialNoteID: nil
+        )
+        lateContinuation?.resume(returning: record)
+        await latePinTask.value
+        #expect(model.visibleEntries.isEmpty)
+        #expect(model.selectedRecord == nil)
+    }
+
     @Test("An Action title summarizes live participants without guessing its Target")
     func actionTitleSummarizesLiveParticipants() throws {
         let targetID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
@@ -170,6 +252,116 @@ struct ResearchRecordBrowserModelTests {
             ResearchRecordDerivedIndex(records: [record]).entries.first?.contextTitle
                 == "Additional Analysis, Live Analysis"
         )
+    }
+
+    @Test("Confirmed record deletion removes only the selected disposable projection")
+    func recordDeletionLifecycle() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(301),
+            noteID: deterministicUUID(302),
+            title: "Recoverable Record",
+            text: "Researcher-owned evidence",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            initialNoteID: nil
+        )
+
+        await model.deletePermanently(recordID: record.id) { _ in }
+        #expect(model.visibleEntries.isEmpty)
+        #expect(model.selectedRecord == nil)
+    }
+
+    @Test("Closing a disposable comparison cancels its load")
+    func comparisonCancellation() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(401),
+            noteID: deterministicUUID(402),
+            title: "Large Record",
+            text: "Large comparison",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            initialNoteID: nil
+        )
+        model.compare(recordID: record.id, noteID: record.participatingNotes[0].noteID) {
+            _, _ in
+            try await Task.sleep(for: .seconds(30))
+            return ResearchRecordComparison(
+                startingRevision: record.participatingNotes[0].startingRevision,
+                endingRevision: record.participatingNotes[0].endingRevision!,
+                startingHasUTF8BOM: false,
+                endingHasUTF8BOM: false,
+                lines: []
+            )
+        }
+        #expect(model.comparingNoteID == record.participatingNotes[0].noteID)
+        model.cancelComparison()
+        await Task.yield()
+        #expect(model.comparingNoteID == nil)
+        #expect(model.comparison == nil)
+        #expect(!model.isShowingError)
+    }
+
+    @Test("A stale noncooperative comparison cannot erase its replacement")
+    func staleComparisonCannotReplaceCurrentResult() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(501),
+            noteID: deterministicUUID(502),
+            title: "Replacement Record",
+            text: "Latest comparison wins",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            initialNoteID: nil
+        )
+        let staleRevision = DocumentFingerprint(content: "stale")
+        let currentRevision = DocumentFingerprint(content: "current")
+        var staleContinuation: CheckedContinuation<ResearchRecordComparison, Never>?
+        model.compare(recordID: record.id, noteID: record.participatingNotes[0].noteID) {
+            _, _ in
+            await withCheckedContinuation { continuation in
+                staleContinuation = continuation
+            }
+        }
+        await Task.yield()
+        let continuation = try #require(staleContinuation)
+
+        model.compare(recordID: record.id, noteID: record.participatingNotes[0].noteID) {
+            _, _ in
+            ResearchRecordComparison(
+                startingRevision: currentRevision,
+                endingRevision: currentRevision,
+                startingHasUTF8BOM: false,
+                endingHasUTF8BOM: false,
+                lines: []
+            )
+        }
+        await Task.yield()
+        #expect(model.comparison?.startingRevision == currentRevision)
+
+        continuation.resume(returning: ResearchRecordComparison(
+            startingRevision: staleRevision,
+            endingRevision: staleRevision,
+            startingHasUTF8BOM: false,
+            endingHasUTF8BOM: false,
+            lines: []
+        ))
+        await Task.yield()
+        #expect(model.comparison?.startingRevision == currentRevision)
+        #expect(!model.isShowingError)
     }
 
     private func makeDiscussion(

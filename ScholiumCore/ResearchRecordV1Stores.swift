@@ -64,6 +64,8 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case unsafeStore(String)
     case replacementNotCommitted(String)
     case replacementCommitUncertain(String)
+    case lifecycleNotCommitted(String)
+    case lifecycleCommitUncertain(String)
     case recordAlreadyExists(UUID)
     case recordNotFound(UUID)
     case recordIdentityMismatch(UUID)
@@ -87,6 +89,10 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
             "The Research Record replacement did not commit: \(reason)"
         case .replacementCommitUncertain(let reason):
             "The Research Record replacement may have committed: \(reason)"
+        case .lifecycleNotCommitted(let reason):
+            "The Research Record deletion did not commit: \(reason)"
+        case .lifecycleCommitUncertain(let reason):
+            "The Research Record deletion may have committed: \(reason)"
         case .recordAlreadyExists(let id):
             "Research Record \(id.uuidString) already exists."
         case .recordNotFound(let id):
@@ -185,6 +191,7 @@ public actor PortableResearchRecordStore {
                 try initialStorage.removeAbandonedStagingFiles(
                     in: directories.map(Optional.some)
                 )
+                try initialStorage.recoverAbandonedDeletionFiles(in: "records")
                 try Self.recoverFinishedDiscussionCutovers(
                     storage: initialStorage,
                     triptychID: triptychID
@@ -277,6 +284,81 @@ public actor PortableResearchRecordStore {
         try lock.withSharedLock {
             try Self.coordinateRead(at: storageURL) {
                 try readRecord(id: id, location: location)
+            }
+        }
+    }
+
+    /// Removes only the selected portable record. Source Markdown, portable
+    /// settlements, checkpoints, and machine-local recovery evidence are
+    /// owned by separate stores and are intentionally outside this operation.
+    @discardableResult
+    public func deletePermanently(id: UUID) throws -> PortableResearchRecord {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                let exactData: Data
+                let record: PortableResearchRecord
+                do {
+                    exactData = try storage.read(
+                        directory: PortableResearchRecordLocation.records.rawValue,
+                        fileName: Self.fileName(id)
+                    )
+                    record = try Self.decode(PortableResearchRecord.self, from: exactData)
+                    guard record.id == id, record.triptychID == triptychID else {
+                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+                    }
+                } catch let error as SecureRecordDirectoryError {
+                    if case .notFound = error {
+                        throw ResearchRecordStoreV1Error.recordNotFound(id)
+                    }
+                    throw Self.map(error)
+                }
+                do {
+                    try storage.remove(
+                        directory: PortableResearchRecordLocation.records.rawValue,
+                        fileName: Self.fileName(id),
+                        expected: exactData
+                    )
+                    return record
+                } catch let error as SecureRecordDirectoryError {
+                    switch error {
+                    case .replacementCommitUncertain:
+                        do {
+                            let source = try storage.readIfPresent(
+                                directory: PortableResearchRecordLocation.records.rawValue,
+                                fileName: Self.fileName(id)
+                            )
+                            let isolated = try storage.readIfPresent(
+                                directory: PortableResearchRecordLocation.records.rawValue,
+                                fileName: ".scholium-deleting-\(Self.fileName(id))"
+                            )
+                            if source == nil, isolated == nil {
+                                try storage.synchronize(
+                                    directories: [
+                                        PortableResearchRecordLocation.records.rawValue,
+                                    ]
+                                )
+                                return record
+                            }
+                            if source == exactData, isolated == nil {
+                                throw ResearchRecordStoreV1Error.lifecycleNotCommitted(
+                                    "The exact record remains in Records."
+                                )
+                            }
+                        } catch let reconciled as ResearchRecordStoreV1Error {
+                            throw reconciled
+                        } catch {
+                            // Preserve the original uncertainty when the
+                            // recovery-state inspection itself is unsafe.
+                        }
+                        throw ResearchRecordStoreV1Error.lifecycleCommitUncertain(
+                            error.localizedDescription
+                        )
+                    default:
+                        throw ResearchRecordStoreV1Error.lifecycleNotCommitted(
+                            error.localizedDescription
+                        )
+                    }
+                }
             }
         }
     }
@@ -2658,6 +2740,28 @@ struct SecureRecordDirectory: Sendable {
         return try read(parent: parent, fileName: fileName)
     }
 
+    func readIfPresent(directory: String?, fileName: String) throws -> Data? {
+        do {
+            return try read(directory: directory, fileName: fileName)
+        } catch let error as SecureRecordDirectoryError {
+            if case .notFound = error { return nil }
+            throw error
+        }
+    }
+
+    func synchronize(directories: [String]) throws {
+        for directory in directories {
+            let descriptor = try openTargetDirectory(
+                directory,
+                createIfMissing: false
+            )
+            defer { Darwin.close(descriptor) }
+            guard fsync(descriptor) == 0 else {
+                throw unsafe("flush \(directory) record directory")
+            }
+        }
+    }
+
     func fileNames(in directory: String?) throws -> [String] {
         try fileNames(in: directory, includingStaging: false)
     }
@@ -2716,6 +2820,9 @@ struct SecureRecordDirectory: Sendable {
             if !includingStaging, name.hasPrefix(".scholium-pending-") {
                 continue
             }
+            if !includingStaging, name.hasPrefix(".scholium-deleting-") {
+                continue
+            }
             names.append(name)
         }
         return names.sorted()
@@ -2729,6 +2836,113 @@ struct SecureRecordDirectory: Sendable {
         if result != 0, errno == ENOENT { return }
         guard result == 0, fsync(parent) == 0 else {
             throw unsafe("remove \(fileName)")
+        }
+    }
+
+    func remove(directory: String?, fileName: String, expected: Data) throws {
+        try validateFileName(fileName)
+        let parent = try openTargetDirectory(directory, createIfMissing: false)
+        defer { Darwin.close(parent) }
+        let deletingName = ".scholium-deleting-\(fileName)"
+        let renameResult = fileName.withCString { source in
+            deletingName.withCString { destination in
+                renameatx_np(
+                    parent,
+                    source,
+                    parent,
+                    destination,
+                    UInt32(RENAME_EXCL)
+                )
+            }
+        }
+        if renameResult != 0, errno == ENOENT {
+            throw SecureRecordDirectoryError.notFound(fileName)
+        }
+        if renameResult != 0, errno == EEXIST {
+            throw SecureRecordDirectoryError.unsafe(
+                "An interrupted deletion already owns \(fileName)."
+            )
+        }
+        guard renameResult == 0 else { throw unsafe("isolate \(fileName) for deletion") }
+
+        do {
+            let observed = try read(parent: parent, fileName: deletingName)
+            guard observed == expected else {
+                throw SecureRecordDirectoryError.replacementNotCommitted(
+                    "Record \(fileName) changed before deletion."
+                )
+            }
+            let unlinkResult = deletingName.withCString { unlinkat(parent, $0, 0) }
+            guard unlinkResult == 0 else {
+                throw SecureRecordDirectoryError.replacementCommitUncertain(
+                    unsafe("delete isolated \(fileName)").localizedDescription
+                )
+            }
+            do {
+                try postCommitFault?(fileName)
+            } catch {
+                throw SecureRecordDirectoryError.replacementCommitUncertain(
+                    error.localizedDescription
+                )
+            }
+            guard fsync(parent) == 0 else {
+                throw SecureRecordDirectoryError.replacementCommitUncertain(
+                    unsafe("flush deleted record directory").localizedDescription
+                )
+            }
+        } catch let error as SecureRecordDirectoryError {
+            var deletingStatus = stat()
+            let stillExists = deletingName.withCString {
+                fstatat(parent, $0, &deletingStatus, AT_SYMLINK_NOFOLLOW)
+            } == 0
+            guard stillExists else { throw error }
+            let rollback = deletingName.withCString { source in
+                fileName.withCString { destination in
+                    renameatx_np(
+                        parent,
+                        source,
+                        parent,
+                        destination,
+                        UInt32(RENAME_EXCL)
+                    )
+                }
+            }
+            guard rollback == 0, fsync(parent) == 0 else {
+                throw SecureRecordDirectoryError.replacementCommitUncertain(
+                    "The unverified record was preserved as \(deletingName)."
+                )
+            }
+            throw error
+        }
+    }
+
+    func recoverAbandonedDeletionFiles(in directory: String) throws {
+        let parent = try openTargetDirectory(directory, createIfMissing: false)
+        defer { Darwin.close(parent) }
+        let prefix = ".scholium-deleting-"
+        for deletingName in try fileNames(parent: parent, includingStaging: true)
+            where deletingName.hasPrefix(prefix) {
+            let fileName = String(deletingName.dropFirst(prefix.count))
+            try validateFileName(fileName)
+            let result = deletingName.withCString { source in
+                fileName.withCString { destination in
+                    renameatx_np(
+                        parent,
+                        source,
+                        parent,
+                        destination,
+                        UInt32(RENAME_EXCL)
+                    )
+                }
+            }
+            guard result == 0 else {
+                throw SecureRecordDirectoryError.unsafe(
+                    "An interrupted deletion conflicts with \(fileName)."
+                )
+            }
+            guard fsync(parent) == 0 else {
+                throw unsafe("recover interrupted deletion of \(fileName)")
+            }
         }
     }
 

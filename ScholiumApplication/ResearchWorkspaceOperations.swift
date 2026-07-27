@@ -687,6 +687,49 @@ extension WorkspaceHandle {
         return updated
     }
 
+    func deleteResearchRecordPermanently(id: UUID) async throws {
+        try requireActive()
+        _ = try await services.portableResearchRecordStore.deletePermanently(id: id)
+        try await refreshAfterResearchCommit("The permanent Research Record deletion")
+    }
+
+    func researchRecordComparison(
+        recordID: UUID,
+        noteID: UUID
+    ) async throws -> ResearchRecordComparison {
+        try requireActive()
+        let record = try await services.portableResearchRecordStore.record(id: recordID)
+        guard let participant = record.participatingNotes.first(where: {
+            $0.noteID == noteID
+        }) else {
+            throw ResearchRecordComparisonError.participantNotFound
+        }
+        guard let endingRevision = participant.endingRevision else {
+            throw ResearchRecordComparisonError.endingRevisionUnavailable
+        }
+        let startingData = try await exactResearchRecordRevision(
+            participant.startingRevision,
+            participant: participant
+        )
+        let endingData = try await exactResearchRecordRevision(
+            endingRevision,
+            participant: participant
+        )
+        let comparisonTask = Task.detached(priority: .userInitiated) {
+            try ResearchRecordComparisonBuilder.build(
+                startingData: startingData,
+                endingData: endingData,
+                startingRevision: participant.startingRevision,
+                endingRevision: endingRevision
+            )
+        }
+        return try await withTaskCancellationHandler {
+            try await comparisonTask.value
+        } onCancel: {
+            comparisonTask.cancel()
+        }
+    }
+
     // MARK: Checkpoints and Recovery
 
     func createCheckpoint(
@@ -1379,6 +1422,77 @@ extension WorkspaceHandle {
             throw ResearchOperationError.noteUnavailable(noteID)
         }
         return (stableID, try checkpointArea(vaultID: noteID.vaultID))
+    }
+
+    private func exactResearchRecordRevision(
+        _ revision: DocumentFingerprint,
+        participant: PortableResearchNoteRevision
+    ) async throws -> Data {
+        let current = currentSnapshot.vaults.lazy.flatMap(\.documents).first {
+            $0.stableIdentity.resolvedID == participant.noteID
+                && $0.fingerprint == revision
+        }
+        if let current { return current.document.sourceBytes }
+
+        var repositories: [(VaultRepository, [String])] = []
+        if let repository = services.repositories[participant.note.vaultID] {
+            repositories.append((repository, [participant.note.relativePath]))
+        }
+        if let current = currentSnapshot.vaults.lazy.flatMap(\.documents).first(where: {
+            $0.stableIdentity.resolvedID == participant.noteID
+        }), let repository = services.repositories[current.id.vaultID] {
+            if let index = repositories.firstIndex(where: { $0.0 === repository }) {
+                repositories[index].1.append(current.id.relativePath)
+            } else {
+                repositories.append((repository, [current.id.relativePath]))
+            }
+        }
+        for (repository, paths) in repositories {
+            try Task.checkCancellation()
+            for path in Set(paths) {
+                for entry in await repository.recoveryEntries(relativePath: path)
+                    where entry.fingerprint == revision {
+                    try Task.checkCancellation()
+                    let data = try await repository.recoveryData(entryID: entry.id)
+                    if DocumentFingerprint(data: data) == revision { return data }
+                }
+            }
+        }
+
+        let area = try checkpointArea(vaultID: participant.note.vaultID)
+        for checkpoint in await services.checkpointStore.listing().checkpoints {
+            try Task.checkCancellation()
+            var keys: [TriptychCheckpointFileKey] = []
+            if let identityKey = try await services.checkpointStore.noteFileKey(
+                checkpointID: checkpoint.id,
+                noteID: participant.noteID,
+                area: area
+            ) {
+                keys.append(identityKey)
+            }
+            keys.append(TriptychCheckpointFileKey(
+                area: area,
+                relativePath: participant.note.relativePath
+            ))
+            if let current = currentSnapshot.vaults.lazy.flatMap(\.documents).first(where: {
+                $0.stableIdentity.resolvedID == participant.noteID
+            }) {
+                keys.append(TriptychCheckpointFileKey(
+                    area: area,
+                    relativePath: current.id.relativePath
+                ))
+            }
+            for key in Set(keys) where checkpoint.files.contains(where: {
+                $0.key == key && $0.fingerprint == revision
+            }) {
+                let data = try await services.checkpointStore.fileData(
+                    checkpointID: checkpoint.id,
+                    key: key
+                )
+                if DocumentFingerprint(data: data) == revision { return data }
+            }
+        }
+        throw ResearchRecordComparisonError.exactRevisionUnavailable(revision)
     }
 
     private func checkpointNoteKey(

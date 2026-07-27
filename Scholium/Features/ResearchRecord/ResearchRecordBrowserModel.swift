@@ -212,8 +212,14 @@ final class ResearchRecordBrowserModel {
     private(set) var participantOptions: [ResearchRecordParticipantOption] = []
     private(set) var rebuildingGeneration = 0
     private(set) var pinningRecordIDs: Set<UUID> = []
+    private(set) var mutatingRecordIDs: Set<UUID> = []
+    private(set) var comparingNoteID: UUID?
+    private(set) var comparison: ResearchRecordComparison?
     var selectedRecordID: UUID? {
-        didSet { selectedRecord = selectedRecordID.flatMap(index.record(id:)) }
+        didSet {
+            if oldValue != selectedRecordID { cancelComparison() }
+            selectedRecord = selectedRecordID.flatMap(index.record(id:))
+        }
     }
     var searchText = "" { didSet { refilter() } }
     var noteFilterID: UUID? { didSet { refilter() } }
@@ -224,9 +230,13 @@ final class ResearchRecordBrowserModel {
         didSet { refilter() }
     }
     private(set) var errorMessage = ""
+    private(set) var isComparisonError = false
     var isShowingError = false
 
     private var index = ResearchRecordDerivedIndex(records: [])
+    private var currentRecords: [PortableResearchRecord] = []
+    @ObservationIgnored private var comparisonTask: Task<Void, Never>?
+    @ObservationIgnored private var comparisonGeneration: UInt64 = 0
     private var triptychID: UUID?
     private var now: Date
     private var calendar: Calendar
@@ -289,6 +299,66 @@ final class ResearchRecordBrowserModel {
     func dismissError() {
         isShowingError = false
         errorMessage = ""
+        isComparisonError = false
+    }
+
+    func deletePermanently(
+        recordID: UUID,
+        update: @MainActor (UUID) async throws -> Void
+    ) async {
+        guard !mutatingRecordIDs.contains(recordID),
+              !pinningRecordIDs.contains(recordID) else { return }
+        mutatingRecordIDs.insert(recordID)
+        dismissError()
+        cancelComparison()
+        defer { mutatingRecordIDs.remove(recordID) }
+        do {
+            try await update(recordID)
+            rebuild(records: currentRecords.filter { $0.id != recordID })
+        } catch {
+            present(error)
+        }
+    }
+
+    func compare(
+        recordID: UUID,
+        noteID: UUID,
+        load: @escaping @MainActor (
+            UUID,
+            UUID
+        ) async throws -> ResearchRecordComparison
+    ) {
+        cancelComparison()
+        dismissError()
+        comparingNoteID = noteID
+        let generation = comparisonGeneration
+        comparisonTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try Task.checkCancellation()
+                let result = try await load(recordID, noteID)
+                try Task.checkCancellation()
+                guard generation == comparisonGeneration else { return }
+                comparison = result
+            } catch is CancellationError {
+                guard generation == comparisonGeneration else { return }
+                comparison = nil
+            } catch {
+                guard generation == comparisonGeneration else { return }
+                comparison = nil
+                comparingNoteID = nil
+                isComparisonError = true
+                presentComparison(error)
+            }
+        }
+    }
+
+    func cancelComparison() {
+        comparisonGeneration &+= 1
+        comparisonTask?.cancel()
+        comparisonTask = nil
+        comparingNoteID = nil
+        comparison = nil
     }
 
     func refreshClock(_ now: Date, calendar: Calendar? = nil) {
@@ -302,12 +372,17 @@ final class ResearchRecordBrowserModel {
         update: @MainActor (UUID, Bool) async throws -> PortableResearchRecord
     ) async {
         guard !pinningRecordIDs.contains(recordID),
+              !mutatingRecordIDs.contains(recordID),
               let current = index.record(id: recordID) else { return }
         pinningRecordIDs.insert(recordID)
         dismissError()
         defer { pinningRecordIDs.remove(recordID) }
         do {
             let updated = try await update(recordID, !current.isPinned)
+            guard let currentIndex = currentRecords.firstIndex(where: {
+                $0.id == recordID
+            }) else { return }
+            currentRecords[currentIndex] = updated
             index = index.replacing(updated)
             rebuildOptions()
             refilter()
@@ -318,10 +393,56 @@ final class ResearchRecordBrowserModel {
     }
 
     private func rebuild(records: [PortableResearchRecord]) {
+        currentRecords = records
         index = ResearchRecordDerivedIndex(records: records)
         rebuildingGeneration &+= 1
         rebuildOptions()
         refilter()
+    }
+
+    private func present(_ error: Error) {
+        errorMessage = error.localizedDescription
+        isShowingError = true
+    }
+
+    private func presentComparison(_ error: Error) {
+        guard let comparisonError = error as? ResearchRecordComparisonError else {
+            present(error)
+            return
+        }
+        errorMessage = switch comparisonError {
+        case .participantNotFound:
+            String(
+                localized: "This note is not part of the selected Research Record.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .endingRevisionUnavailable:
+            String(
+                localized: "Comparison is unavailable because the record has no exact ending revision.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .exactRevisionUnavailable(let fingerprint):
+            String(
+                localized: "Comparison is unavailable because exact revision \(fingerprint.sha256) is not retained.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .nonUTF8Revision(let fingerprint):
+            String(
+                localized: "Comparison is unavailable because revision \(fingerprint.sha256) is not valid UTF-8 Markdown.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .fingerprintMismatch(let expected, let observed):
+            String(
+                localized: "Comparison is unavailable because retained bytes \(observed.sha256) do not match recorded revision \(expected.sha256).",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        isShowingError = true
     }
 
     private func rebuildOptions() {

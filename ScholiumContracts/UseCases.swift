@@ -116,6 +116,11 @@ public protocol ResearchRecordUseCases: Sendable {
         id: UUID,
         isPinned: Bool
     ) async throws -> PortableResearchRecord
+    func deleteResearchRecordPermanently(id: UUID) async throws
+    func researchRecordComparison(
+        recordID: UUID,
+        noteID: UUID
+    ) async throws -> ResearchRecordComparison
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
     func setCritiqueFindingDisposition(

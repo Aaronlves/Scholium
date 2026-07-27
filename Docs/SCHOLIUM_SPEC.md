@@ -722,7 +722,7 @@ absolute paths, token counts, transport logs, routine save events, derived
 index freshness, window state, and stored diff hunks.
 
 Intellectual records live under `.scholium/research-records/v1/` as one file
-per record in `active/`, `records/`, or `trash/`. Pending requests, grants,
+per record in `active/` or `records/`. Pending requests, grants,
 credentials, temporary transport state, and rebuildable indexes remain in
 Application Support. Markdown remains authoritative research content; a record
 never reconstructs writable source.
@@ -743,9 +743,10 @@ never moves into this window. The toolbar, Research menu, and keyboard route
 open the window without revealing or changing Inspector state.
 
 Records are never summarized or deleted automatically. **Delete Record…**
-moves the one underlying record to recoverable Record Trash;
-**Delete Permanently…** requires confirmation and removes its projections from
-every participant without editing Markdown or checkpoints. A diff is computed
+opens a second confirmation, then permanently removes the one underlying record
+and its projections from every participant without editing Markdown,
+checkpoints, exact-note recovery, or unrelated records. Scholium provides no Record Trash
+or Restore workflow for portable records. A diff is computed
 only on request from exact retained revisions or checkpoints. If those bytes
 cannot be verified, the interface states **Comparison Unavailable**; diff text
 or rendered hunks are never permanent record content.
@@ -2296,6 +2297,13 @@ Clean-cutover inventory:
   responsive replacement, or primary-workspace adaptation. Keep the leading
   list compact and top-aligned without shrinking custom controls below the
   accessibility threshold.
+- **D-110:** keep portable Research Record deletion as one researcher-initiated
+  **Delete Record…** action with a destructive second confirmation. Do not
+  expose Record Trash, Restore, or a hidden retained-trash lifecycle. Permanent
+  deletion removes only the selected portable record and its derived Note
+  projections; it never deletes Markdown, checkpoints, exact-note recovery, or
+  unrelated records. D-110 supersedes D-106 only where D-106 requires
+  recoverable Record Trash.
 
 Unresolved work must not be described as complete:
 

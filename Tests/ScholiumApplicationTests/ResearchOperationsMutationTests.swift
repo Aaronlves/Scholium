@@ -1153,6 +1153,130 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Research Record deletion and exact comparison stay outside source authority")
+    func researchRecordDeletionAndExactComparison() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let focal = ResearchFunctionMaterial(
+            noteID: topic.noteID,
+            note: topic.note,
+            role: topic.role,
+            lifecycle: topic.lifecycle,
+            fingerprint: topic.fingerprint,
+            title: topic.title
+        )
+        let original = try await handle.documents.load(fixture.analysisID)
+        let checkpoint = try await handle.research.createCheckpoint(
+            name: "Before Research Record comparison",
+            kind: .manual
+        )
+        let discussion = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [focal],
+            passage: nil,
+            researcherMessage: "Retain both exact revisions."
+        )
+        let changedSource = original.rawContent.replacingOccurrences(
+            of: "narrow reconstruction",
+            with: "strictly bounded reconstruction"
+        )
+        let saved = try await handle.documents.save(
+            fixture.analysisID,
+            changeSet: .exactContent(changedSource),
+            expectedRevision: original.fingerprint
+        )
+        let record = try await handle.research.finishDiscussion(
+            discussionID: discussion.id
+        )
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        let recordBytes = try Data(contentsOf: portableURL)
+
+        let comparison = try await handle.research.researchRecordComparison(
+            recordID: record.id,
+            noteID: target.noteID
+        )
+        #expect(comparison.startingRevision == original.fingerprint)
+        #expect(comparison.endingRevision == saved.document.fingerprint)
+        #expect(comparison.startingHasUTF8BOM)
+        #expect(comparison.endingHasUTF8BOM)
+        #expect(comparison.lines.contains {
+            $0.kind == .startingOnly && $0.text.contains("narrow reconstruction")
+        })
+        #expect(comparison.lines.contains {
+            $0.kind == .endingOnly && $0.text.contains("strictly bounded reconstruction")
+        })
+        #expect(try Data(contentsOf: portableURL) == recordBytes)
+
+        try await handle.research.deleteResearchRecordPermanently(id: record.id)
+        #expect(try await handle.research.finishedResearchRecords(noteID: target.noteID).isEmpty)
+        #expect(try await handle.research.finishedResearchRecords(noteID: topic.noteID).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: portableURL.path))
+        #expect(try await handle.documents.load(fixture.analysisID).sourceBytes
+            == saved.document.sourceBytes)
+        #expect(try await handle.research.checkpoints().checkpoints.contains {
+            $0.id == checkpoint.id
+        })
+        await runtime.shutdown()
+    }
+
+    @Test("Research Record comparison refuses an unretained exact fingerprint")
+    func researchRecordComparisonRefusesMissingRevision() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let discussion = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: nil,
+            researcherMessage: "Do not approximate unavailable bytes."
+        )
+        let record = try await handle.research.finishDiscussion(discussionID: discussion.id)
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: portableURL)) as? [String: Any]
+        )
+        var participants = try #require(object["participating_notes"] as? [[String: Any]])
+        participants[0]["starting_revision"] = [
+            "sha256": String(repeating: "0", count: 64),
+            "byteCount": 1,
+        ]
+        object["participating_notes"] = participants
+        try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys]
+        ).write(to: portableURL, options: .atomic)
+
+        await #expect(throws: ResearchRecordComparisonError.self) {
+            _ = try await handle.research.researchRecordComparison(
+                recordID: record.id,
+                noteID: target.noteID
+            )
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Passage Comments append to one active Discussion and one finished record")
     func passageCommentsShareOneDiscussion() async throws {
         let fixture = try await ResearchFixture.make()
