@@ -5,6 +5,10 @@
 **Scope:** current reachability, verification evidence, migration debt, and open
 acceptance only. This ledger cannot redefine the target specification.
 
+The nonauthoritative implementation sequence and fresh-task handoff contract
+are maintained in
+[RESEARCHER_GOVERNED_SKILLS_IMPLEMENTATION_ROADMAP.md](RESEARCHER_GOVERNED_SKILLS_IMPLEMENTATION_ROADMAP.md).
+
 ## Reachable target behavior
 
 | Area | Current reachable boundary |
