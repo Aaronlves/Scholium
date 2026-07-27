@@ -3750,6 +3750,28 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(recordWindow.descendants(matching: .any)[
             "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
         ].waitForExistence(timeout: 8))
+        let populatedSearchField = recordWindow.textFields[
+            "scholium.researchRecord.search"
+        ]
+        XCTAssertTrue(populatedSearchField.waitForExistence(timeout: 5))
+        let populatedSearchFrame = populatedSearchField.frame
+        let recordList = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.list"
+        ]
+        XCTAssertTrue(recordList.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(
+            recordList.frame.width,
+            272,
+            "The record list must remain a compact secondary column."
+        )
+        let recordRow = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
+        ]
+        XCTAssertLessThanOrEqual(
+            recordRow.frame.height,
+            88,
+            "A scanning row must not expand back into a card-like summary."
+        )
         XCTAssertTrue(recordWindow.staticTexts[
             "Analyze: QA Autosave A, QA Topic"
         ].exists)
@@ -3786,6 +3808,21 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(recordWindow.staticTexts[
             "No Matching Research Records"
         ].waitForExistence(timeout: 10))
+        let emptySearchFrame = recordWindow.textFields[
+            "scholium.researchRecord.search"
+        ].frame
+        XCTAssertEqual(
+            emptySearchFrame.minY,
+            populatedSearchFrame.minY,
+            accuracy: 2,
+            "An empty result set must not vertically recenter the search and filters."
+        )
+        XCTAssertEqual(
+            emptySearchFrame.height,
+            populatedSearchFrame.height,
+            accuracy: 1,
+            "The compact filter controls must retain their size across content states."
+        )
 
         focusWorkspaceWindow(initialWorkspace)
         XCTAssertTrue(recordWindow.staticTexts[

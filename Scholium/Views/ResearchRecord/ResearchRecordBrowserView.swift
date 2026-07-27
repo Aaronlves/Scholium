@@ -31,9 +31,9 @@ struct ResearchRecordBrowserView: View {
 }
 
 private enum ResearchRecordLayout {
-    static let listMinimumWidth: CGFloat = 260
-    static let listIdealWidth: CGFloat = 300
-    static let listMaximumWidth: CGFloat = 340
+    static let listMinimumWidth: CGFloat = 224
+    static let listIdealWidth: CGFloat = 244
+    static let listMaximumWidth: CGFloat = 268
     static let readingMeasure: CGFloat = 720
 }
 
@@ -128,12 +128,21 @@ private struct ResearchRecordListPane: View {
                         }
                     )
                     .tag(entry.id)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: ScholiumGrid.Spacing.opticalAlignmentAdjustment,
+                            leading: ScholiumGrid.Spacing.inlineControlGap,
+                            bottom: ScholiumGrid.Spacing.opticalAlignmentAdjustment,
+                            trailing: ScholiumGrid.Spacing.inlineControlGap
+                        )
+                    )
                 }
-                .listStyle(.inset)
+                .listStyle(.plain)
                 .accessibilityLabel("Research Records")
                 .accessibilityIdentifier("scholium.researchRecord.list")
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .scholiumSurface(.navigation)
         .navigationTitle("Research Record")
     }
@@ -147,7 +156,7 @@ private struct ResearchRecordFilterControls: View {
 
     var body: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             TextField("Search records", text: $model.searchText)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("scholium.researchRecord.search")
@@ -189,7 +198,9 @@ private struct ResearchRecordFilterControls: View {
             .font(ScholiumInterfaceTypography.metadata)
             .foregroundStyle(ScholiumColorRole.secondaryText.color)
         }
-        .padding(ScholiumGrid.Spacing.nestedContentInset)
+        .controlSize(.small)
+        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
     }
 }
 
@@ -285,6 +296,7 @@ private struct ResearchRecordEmptyResults: View {
             Button("Clear Filters") { model.clearAllFilters() }
                 .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -303,34 +315,34 @@ private struct ResearchRecordListRow: View {
     let togglePin: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Button(action: select) {
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+                ) {
                     Text("\(actionTitle(actionID)): \(contextTitle)")
                         .font(ScholiumInterfaceTypography.rowTitle)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack {
                         Text(finishedAt, format: .dateTime.year().month().day().hour().minute())
-                        Spacer(minLength: ScholiumGrid.Spacing.labelAccessoryGap)
-                        Text(actionTitle(actionID))
+                        Spacer(minLength: ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+                        if let skillID {
+                            Text("\(skillID), version \(skillVersion ?? "—")")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        } else {
+                            Text("No recorded Skill")
+                                .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        }
                     }
                     .font(ScholiumInterfaceTypography.metadata)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    if let skillID {
-                        Text("\(skillID), version \(skillVersion ?? "—")")
-                            .font(ScholiumInterfaceTypography.metadata)
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                            .lineLimit(1)
-                    } else {
-                        Text("No recorded Skill")
-                            .font(ScholiumInterfaceTypography.metadata)
-                            .foregroundStyle(ScholiumColorRole.mutedText.color)
-                    }
                     Text(noteTitles.formatted())
                         .font(ScholiumInterfaceTypography.metadata)
                         .foregroundStyle(ScholiumColorRole.mutedText.color)
-                        .lineLimit(2)
+                        .lineLimit(1)
                     Text(authorParticipants.map(\.interfaceTitle).formatted())
                         .font(ScholiumInterfaceTypography.metadata)
                         .foregroundStyle(ScholiumColorRole.mutedText.color)
@@ -353,7 +365,6 @@ private struct ResearchRecordListRow: View {
             .accessibilityValue(isPinned ? "Pinned" : "Not Pinned")
             .accessibilityIdentifier("scholium.researchRecord.pin.\(id.uuidString)")
         }
-        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchRecord.row.\(id.uuidString)")
     }

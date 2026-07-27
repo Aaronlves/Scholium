@@ -228,6 +228,57 @@ python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
 # Xcode beta's Swift Testing helper can crash while multiple test products
 # tear down their event graphs (and AppKit/WebKit resources) in one invocation.
 # Run the complete product set serially; no suite or test is excluded.
+report_swift_test_success() {
+  local label="$1"
+  local log="$2"
+  local summary
+  summary="$(rg -o 'Test run with .* passed after [0-9.]+ seconds\.' "${log}" | tail -n 1 || true)"
+  if [[ -n "${summary}" ]]; then
+    print "${label}: ${summary}"
+  else
+    print "${label}: passed"
+  fi
+
+  if rg -q 'SEARCH_V4_PERFORMANCE_REPORT' "${log}"; then
+    rg 'SEARCH_V4_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
+      "${log}" || true
+  fi
+}
+
+report_swift_test_failure() {
+  local label="$1"
+  local log="$2"
+  print -u2 "${label} failed. Relevant diagnostics:"
+  rg -n 'recorded an issue|Test run with .* failed|Suite .* failed|error:|fatal error|unexpected signal code' \
+    "${log}" | tail -n 120 >&2 || true
+  print -u2 "Last 80 log lines:"
+  tail -n 80 "${log}" >&2
+  print -u2 "Complete log: ${log}"
+}
+
+run_swift_test_once() {
+  local label="$1"
+  local log_name="$2"
+  shift 2
+  local log="${SCRATCH}/${log_name}.log"
+  local command_status
+
+  mkdir -p "${SCRATCH}"
+  set +e
+  swift test \
+    --package-path "${ROOT}" \
+    --scratch-path "${SCRATCH}" \
+    "$@" > "${log}" 2>&1
+  command_status=$?
+  set -e
+  if (( command_status == 0 )); then
+    report_swift_test_success "${label}" "${log}"
+    return 0
+  fi
+  report_swift_test_failure "${label}" "${log}"
+  return "${command_status}"
+}
+
 run_swift_test_product() {
   local test_product="$1"
   local attempt log command_status
@@ -262,10 +313,11 @@ run_swift_test_product() {
       --package-path "${ROOT}" \
       --scratch-path "${SCRATCH}" \
       "${parallelism_arguments[@]}" \
-      "${selection_arguments[@]}" 2>&1 | tee "${log}"
-    command_status=${pipestatus[1]}
+      "${selection_arguments[@]}" > "${log}" 2>&1
+    command_status=$?
     set -e
     if (( command_status == 0 )); then
+      report_swift_test_success "${test_product}" "${log}"
       return 0
     fi
     if (( attempt < 3 )) \
@@ -274,6 +326,7 @@ run_swift_test_product() {
       echo "Retrying ${test_product} after the known Xcode beta Swift Testing teardown fault (attempt ${attempt}/3)." >&2
       continue
     fi
+    report_swift_test_failure "${test_product}" "${log}"
     return "${command_status}"
   done
 }
@@ -285,20 +338,20 @@ for test_product in \
   ScholiumAppTests; do
   run_swift_test_product "${test_product}"
   if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
-    swift test \
-      --package-path "${ROOT}" \
-      --scratch-path "${SCRATCH}" \
+    run_swift_test_once \
+      "ScholiumCoreTests performance" \
+      "ScholiumCoreTests-performance" \
       --no-parallel \
       --filter 'ScholiumCoreTests.PerformanceRegressionMicrobenchmarkTests'
   elif [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
-    swift test \
-      --package-path "${ROOT}" \
-      --scratch-path "${SCRATCH}" \
+    run_swift_test_once \
+      "ScholiumApplicationTests bridge" \
+      "ScholiumApplicationTests-bridge" \
       --no-parallel \
       --filter 'ScholiumApplicationTests.LocalAgentBridgeTests'
-    swift test \
-      --package-path "${ROOT}" \
-      --scratch-path "${SCRATCH}" \
+    run_swift_test_once \
+      "ScholiumApplicationTests architecture measurement" \
+      "ScholiumApplicationTests-architecture" \
       --no-parallel \
       --filter 'ScholiumApplicationTests.ArchitectureStabilityMeasurementTests'
   fi
@@ -320,4 +373,18 @@ fi
   "${SCRATCH}"
 SCHOLIUM_AGENT_BRIDGE_BUILD="${SCRATCH}" \
   "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh"
-swift build --package-path "${ROOT}" -c release --scratch-path "${RELEASE_SCRATCH}"
+mkdir -p "${RELEASE_SCRATCH}"
+release_log="${RELEASE_SCRATCH}/release-build.log"
+set +e
+swift build --package-path "${ROOT}" -c release \
+  --scratch-path "${RELEASE_SCRATCH}" > "${release_log}" 2>&1
+release_status=$?
+set -e
+if (( release_status != 0 )); then
+  print -u2 "Release build failed. Last 120 log lines:"
+  tail -n 120 "${release_log}" >&2
+  print -u2 "Complete log: ${release_log}"
+  exit "${release_status}"
+fi
+release_summary="$(rg 'Build complete!' "${release_log}" | tail -n 1 || true)"
+print "Release build: ${release_summary:-passed}"

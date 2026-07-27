@@ -1661,7 +1661,10 @@ reads the focused Triptych directly, and keeps a fixed **760 × 680** content
 size chosen for readable temporary inspection. It uses one native list/detail
 layout, has no Workspace Sidebar control or alternate wide/narrow presentation,
 does not adapt into another primary interface, and never appears inside
-Inspector. There is
+Inspector. Its leading record list remains compact and top-aligned in ready,
+empty, and filtered-empty states; controls and rows use compact native macOS
+density while every custom target retains the minimum accessible hit region.
+There is
 exactly one native trailing Inspector per
 Workspace, with **Overview, Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
@@ -2290,7 +2293,9 @@ Clean-cutover inventory:
 - **D-109:** keep Research Record recognizably secondary: one nonrestored,
   fixed **760 × 680** utility window with a readable list/detail layout. Retain
   no Workspace Sidebar control, user-facing wide/narrow choice, stacked
-  responsive replacement, or primary-workspace adaptation.
+  responsive replacement, or primary-workspace adaptation. Keep the leading
+  list compact and top-aligned without shrinking custom controls below the
+  accessibility threshold.
 
 Unresolved work must not be described as complete:
 

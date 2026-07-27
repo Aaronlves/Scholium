@@ -89,6 +89,11 @@ An Agent must not perform extra operations merely to appear thorough.
 - During implementation, run the narrow owning tests. Do not repeatedly run a
   clean build, the complete `verify.sh`, the whole UI suite, packaging, or
   release checks while still iterating.
+- Batch presentation-only support polish that changes no state, authority,
+  serialization, source mutation, recovery, or packaging boundary. Run focused
+  owner tests and at most one existing journey for each materially changed
+  interaction boundary; do not promote each sub-change into another Session
+  closure or another complete repository run.
 - Run the required complete verification once, after the patch and reviewer
   fixes are stable. Rerun an expensive passing gate only if a later change can
   affect what that gate established; a documentation-only correction does not
@@ -97,6 +102,10 @@ An Agent must not perform extra operations merely to appear thorough.
   only the representative disposable UI journeys named by the Session. Do not
   automate every visual variation when the result still requires later human
   acceptance.
+- Treat long multiwindow, multi-Triptych, Bootstrap, recovery, and lifecycle
+  journeys as milestone evidence. Run one only when its distinct routing,
+  isolation, or recovery claim can be invalidated by the current patch; ordinary
+  density, spacing, and copy changes do not inherit those journeys.
 - Ask for researcher input only when product intent or authority is genuinely
   missing. Do not pause for permissions already granted by `AGENTS.md`.
 - Request the independent reviewer once the diff is stable. Request another
@@ -114,6 +123,13 @@ These limits do not relax source fidelity, researcher authority, exact-byte
 safety, failure-closed behavior, required recovery, or the Session's explicit
 acceptance gates. They prevent ritual and duplication while preserving the
 evidence that can actually invalidate the result.
+
+The complete gate remains mandatory once for every named product Session and
+for changes to verification orchestration itself. The complete UI suite remains
+reserved for the final cutover and any separately declared release milestone.
+Successful commands retain full logs beneath `.build/` but report concise
+product-level summaries; failures expose only bounded relevant diagnostics plus
+the complete log path.
 
 ### Session sequence
 
@@ -306,6 +322,9 @@ automatable production-surface gaps without beginning Record Trash:
 - create and register a second disposable Triptych through production Bootstrap,
   then prove the one utility window follows focus between the two distinct
   Triptych identities;
+- treat that one focus-transfer journey as an application-routing and stale-index
+  isolation check, not as evidence for `.scholium` placement, and do not multiply
+  it into additional Triptych combinations without a concrete failure mode;
 - verify the fixed **760 × 680** window and absence of a Sidebar route. Do not
   add responsive modes merely for automation;
 - keep genuine assistive-technology use, researcher visual acceptance, and any

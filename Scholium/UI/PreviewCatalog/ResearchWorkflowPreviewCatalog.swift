@@ -901,7 +901,7 @@ private struct ResearchRecordTwoColumnProof: View {
     var body: some View {
         HStack(spacing: 0) {
             ResearchRecordListProof()
-                .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
+                .frame(minWidth: 224, idealWidth: 244, maxWidth: 268)
             ScholiumStructuralRule(orientation: .vertical)
             ResearchRecordReadingProof()
                 .frame(minWidth: 380, maxWidth: .infinity)
@@ -921,7 +921,7 @@ private struct ResearchRecordListProof: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 TextField("Search records", text: $searchText)
                     .textFieldStyle(.roundedBorder)
                 Picker("Scope", selection: $scope) {
@@ -955,13 +955,23 @@ private struct ResearchRecordListProof: View {
                     .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
                 }
             }
-            .padding(ScholiumGrid.Spacing.nestedContentInset)
+            .controlSize(.small)
+            .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+            .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             ScholiumStructuralRule()
             List(researchRecordEntries, selection: $selection) { entry in
                 ResearchRecordListRow(entry: entry)
                     .tag(entry.id)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: ScholiumGrid.Spacing.opticalAlignmentAdjustment,
+                            leading: ScholiumGrid.Spacing.inlineControlGap,
+                            bottom: ScholiumGrid.Spacing.opticalAlignmentAdjustment,
+                            trailing: ScholiumGrid.Spacing.inlineControlGap
+                        )
+                    )
             }
-            .listStyle(.inset)
+            .listStyle(.plain)
         }
         .scholiumSurface(.navigation)
     }
@@ -990,11 +1000,14 @@ private struct ResearchRecordListRow: View {
     let entry: ResearchRecordEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+        VStack(
+            alignment: .leading,
+            spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+        ) {
             HStack(alignment: .firstTextBaseline) {
-                Text(entry.title)
+                Text("\(entry.action): \(entry.title)")
                     .font(ScholiumInterfaceTypography.rowTitle)
-                    .lineLimit(2)
+                    .lineLimit(1)
                 Spacer(minLength: ScholiumGrid.Spacing.labelAccessoryGap)
                 if entry.isPinned {
                     Image(systemName: "pin.fill")
@@ -1003,21 +1016,19 @@ private struct ResearchRecordListRow: View {
                         .accessibilityLabel("Pinned")
                 }
             }
-            HStack {
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(entry.date)
                 Spacer()
-                Text(entry.action)
+                Text(entry.skill)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             .font(ScholiumInterfaceTypography.metadata)
             .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            Text(entry.skill)
-                .font(ScholiumInterfaceTypography.metadata)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
             Text(entry.participants)
                 .font(ScholiumInterfaceTypography.metadata)
                 .foregroundStyle(ScholiumColorRole.mutedText.color)
         }
-        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
     }
 }
 
