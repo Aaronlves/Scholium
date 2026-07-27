@@ -13,6 +13,8 @@ extension WorkspaceHandle {
         expectedDocumentRevision: DocumentFingerprint?
     ) async throws -> ResearchActionProfileSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.saveActionProfile(
             binding,
             expectedDocumentRevision: expectedDocumentRevision
@@ -24,6 +26,8 @@ extension WorkspaceHandle {
         expectedDocumentRevision: DocumentFingerprint
     ) async throws -> ResearchActionProfileSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.removeActionProfile(
             actionID: actionID,
             expectedDocumentRevision: expectedDocumentRevision
@@ -35,6 +39,8 @@ extension WorkspaceHandle {
         expectedDocumentRevision: DocumentFingerprint?
     ) async throws -> ResearchActionProfileSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.saveActionProfileDocument(
             document,
             expectedRevision: expectedDocumentRevision
@@ -45,6 +51,8 @@ extension WorkspaceHandle {
         async throws -> ResearchWorkingMethodBindingSnapshot
     {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.installDefaultWorkingMethods()
     }
 
@@ -60,6 +68,8 @@ extension WorkspaceHandle {
         expectedBindingRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.saveWorkingMethod(
             for: actionID,
             source: source,
@@ -73,6 +83,8 @@ extension WorkspaceHandle {
         expectedBindingRevision: DocumentFingerprint
     ) async throws -> ResearchWorkingMethodBindingSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.disableWorkingMethod(
             for: actionID,
             expectedBindingRevision: expectedBindingRevision
@@ -85,6 +97,8 @@ extension WorkspaceHandle {
         expectedBindingRevision: DocumentFingerprint
     ) async throws -> ResearchWorkingMethodBindingSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.activateResearcherSkill(
             packageID: packageID,
             for: actionID,
@@ -98,6 +112,8 @@ extension WorkspaceHandle {
         expectedBindingRevision: DocumentFingerprint
     ) async throws -> ResearchWorkingMethodRestoreOutcome {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.restoreBundledWorkingMethod(
             for: actionID,
             expectedPackageState: expectedPackageState,

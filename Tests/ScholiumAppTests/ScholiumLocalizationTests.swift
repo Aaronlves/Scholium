@@ -132,6 +132,36 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Materials", locale: simplifiedChinese) == "材料")
         #expect(ScholiumL10n.string("Read-only", locale: simplifiedChinese) == "只读")
         #expect(
+            ScholiumL10n.string("REQUESTED AUTHORITY", locale: simplifiedChinese)
+                == "请求的权限"
+        )
+        #expect(
+            ScholiumL10n.string("Loading…", locale: simplifiedChinese)
+                == "正在加载…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Current Action details are unavailable. Scholium will not allow this request.",
+                locale: simplifiedChinese
+            ) == "当前操作详情不可用。Scholium 不会允许此请求。"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Allow These Notes Once",
+                locale: simplifiedChinese
+            ) == "仅本次允许这些笔记"
+        )
+        #expect(
+            ScholiumL10n.string("Cancel the Run", locale: simplifiedChinese)
+                == "取消本次运行"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Expected revision %@; current revision matches",
+                locale: simplifiedChinese
+            ) == "预期修订为 %@；当前修订一致"
+        )
+        #expect(
             ScholiumL10n.string(
                 "Copy and Choose Agent App…",
                 locale: simplifiedChinese

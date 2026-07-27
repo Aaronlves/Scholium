@@ -144,8 +144,9 @@ final class WorkspaceStore: ObservableObject {
     let zoteroBridge: ZoteroBridge
     let commandLineToolInstaller: CommandLineToolInstaller
     let agentApplicationHandoff: AgentApplicationHandoffController
-    let localAgentBridge: LocalAgentBridgeServer?
-    let localAgentBridgeStartupFailure: LocalAgentBridgeError?
+    let agentNoteChangePresentations: AgentNoteChangePresentationCoordinator
+    private(set) var localAgentBridge: LocalAgentBridgeServer?
+    private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
     @Published private(set) var workspaceEventGenerations: [UUID: UInt64] = [:]
@@ -184,11 +185,14 @@ final class WorkspaceStore: ObservableObject {
         agentApplicationHandoff = AgentApplicationHandoffController(
             applicationSupportURL: applicationSupportURL
         )
+        let agentNoteChangePresentations = AgentNoteChangePresentationCoordinator()
+        self.agentNoteChangePresentations = agentNoteChangePresentations
         do {
             localAgentBridge = try LocalAgentBridgeServer(
                 applicationSupportURL: applicationSupportURL
-            ) { request in
+            ) { [weak self] request in
                 try Task.checkCancellation()
+                guard let self else { throw LocalAgentBridgeError.unavailable }
                 let handle = try await runtime.openWorkspace(id: request.triptychID)
                 try Task.checkCancellation()
                 switch request.operation {
@@ -196,28 +200,51 @@ final class WorkspaceStore: ObservableObject {
                     guard let changeRequest = request.changeRequest else {
                         throw LocalAgentBridgeError.invalidRequest
                     }
-                    return try await handle.research
+                    var record = try await handle.research
                         .submitAgentNoteChangeRequestFromBridge(
                             changeRequest,
                             coordinationKey: request.coordinationKey
                         )
+                    if record.isUnresolved {
+                        try await self.flushEditors(in: request.triptychID)
+                        try Task.checkCancellation()
+                        record = try await handle.research
+                            .applyStandingPermissionToAgentNoteChangeRequest(
+                                id: record.id
+                            )
+                    }
+                    await agentNoteChangePresentations.receive(
+                        record,
+                        intent: .submit
+                    )
+                    return record
                 case .status:
                     guard let requestID = request.changeRequestID else {
                         throw LocalAgentBridgeError.invalidRequest
                     }
-                    return try await handle.research.agentNoteChangeRequestFromBridge(
+                    let record = try await handle.research.agentNoteChangeRequestFromBridge(
                         id: requestID,
                         coordinationKey: request.coordinationKey
                     )
+                    await agentNoteChangePresentations.receive(
+                        record,
+                        intent: .showExisting
+                    )
+                    return record
                 case .cancel:
                     guard let requestID = request.changeRequestID else {
                         throw LocalAgentBridgeError.invalidRequest
                     }
-                    return try await handle.research
+                    let record = try await handle.research
                         .cancelAgentNoteChangeRequestFromBridge(
                             id: requestID,
                             coordinationKey: request.coordinationKey
                         )
+                    await agentNoteChangePresentations.receive(
+                        record,
+                        intent: .cancel
+                    )
+                    return record
                 }
             }
             localAgentBridgeStartupFailure = nil
@@ -851,6 +878,86 @@ final class WorkspaceStore: ObservableObject {
                 try await registration.flush()
             }
         }
+    }
+
+    func refreshPendingAgentNoteChangeRequests(in triptychID: UUID) async {
+        guard let handle = handles[triptychID],
+              let records = try? await handle.research.pendingAgentNoteChangeRequests()
+        else { return }
+        for record in records {
+            agentNoteChangePresentations.receive(record, intent: .refresh)
+        }
+    }
+
+    func agentNoteChangePresentationIdentity(
+        for record: AgentNoteChangeRequestRecord
+    ) async throws -> AgentNoteChangePresentationIdentity {
+        let handle = try await workspaceHandle(id: record.request.triptychID)
+        guard let target = record.request.targets.first,
+              let document = workspaceSnapshots[record.request.triptychID]?
+                .document(id: target.note),
+              document.stableIdentity.resolvedID == target.noteID else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        let note = ResearchActionNoteSnapshot(
+            noteID: target.noteID,
+            note: target.note,
+            role: target.role,
+            lifecycle: document.lifecycle,
+            fingerprint: document.fingerprint,
+            title: ResearchNoteTitleResolver.resolve(
+                document: document.document,
+                vaultRole: document.vaultRole
+            ).title
+        )
+        let actions = try await handle.research.availableActions(for: note)
+        guard let action = actions.first(where: {
+            $0.definition == record.request.requestedAction.definition
+                && $0.profile.origin == record.request.requestedAction.profileOrigin
+                && $0.profile.profileRevision
+                    == record.request.requestedAction.profileRevision
+                && $0.profile.profileDocumentRevision
+                    == record.request.requestedAction.profileDocumentRevision
+        }) else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        let skills = try await handle.research.skills()
+        guard let skill = skills.first(where: {
+            $0.id == record.request.requestedAction.packageID
+                && $0.revision == record.request.requestedAction.skillRevision
+        }) else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return AgentNoteChangePresentationIdentity(
+            actionName: action.buttonName,
+            skillName: skill.name
+        )
+    }
+
+    func refreshAgentNoteChangeRequest(
+        id: UUID,
+        in triptychID: UUID
+    ) async throws {
+        let handle = try await workspaceHandle(id: triptychID)
+        let record = try await handle.research.agentNoteChangeRequest(id: id)
+        agentNoteChangePresentations.receive(record, intent: .refresh)
+    }
+
+    func resolveAgentNoteChangeRequest(
+        triptychID: UUID,
+        requestID: UUID,
+        state: AgentNoteChangeDecisionState,
+        allowedNoteIDs: [UUID] = []
+    ) async throws -> AgentNoteChangeRequestRecord {
+        try await flushEditors(in: triptychID)
+        let record = try await workspaceHandle(id: triptychID).research
+            .resolveAgentNoteChangeRequest(
+                id: requestID,
+                state: state,
+                allowedNoteIDs: allowedNoteIDs
+            )
+        agentNoteChangePresentations.receive(record, intent: .decision)
+        return record
     }
 
     private func install(

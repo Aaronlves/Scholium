@@ -5617,6 +5617,39 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testAgentNoteChangeRequestSheetUsesNativeBoundedDecisionUI() {
+        let window = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        guard let windowID = UUID(uuidString: String(window.identifier.suffix(36))) else {
+            XCTFail("The workspace window must expose its exact route identity.")
+            return
+        }
+
+        XCTAssertEqual(
+            notify_post(
+                "com.scholium.qa.present-agent-change-request.\(windowID.uuidString)"
+            ),
+            UInt32(NOTIFY_STATUS_OK)
+        )
+
+        let sheet = app.descendants(matching: .any)[
+            "scholium.agentNoteChange.sheet"
+        ]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Allow These Notes Once"].exists)
+        XCTAssertTrue(app.buttons["Continue Without Changes"].exists)
+        XCTAssertTrue(app.buttons["Cancel the Run"].exists)
+        XCTAssertTrue(app.staticTexts["AGENT REASON"].exists)
+        XCTAssertTrue(app.staticTexts["REQUESTED AUTHORITY"].exists)
+        XCTAssertTrue(app.staticTexts["REQUESTED NOTES"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+        XCTAssertTrue(window.exists)
+    }
+
+    @MainActor
     private func configuredApplication(
         sessionID: UUID,
         initialWorkspaceWidth: Int? = 1380,
@@ -5645,6 +5678,9 @@ final class ScholiumUITests: XCTestCase {
         ]
         if name.contains("testResearchWorkflowInterfaceProofs") {
             application.launchArguments += ["--scholium-research-workflow-proofs"]
+        }
+        if name.contains("testAgentNoteChangeRequestSheet") {
+            application.launchArguments += ["--scholium-agent-change-request-fixture"]
         }
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]

@@ -151,7 +151,10 @@ struct ContentView: View {
             value: appState.showSearchSurface
         )
         .sheet(item: presentedSheet, onDismiss: {
-            if appState.researchController.actions.isPresented {
+            if appState.presentedAgentNoteChangeRequest != nil {
+                windowCoordinator.restoreAgentNoteChangeFocus()
+                appState.finishAgentNoteChangeRequestDismissal()
+            } else if appState.researchController.actions.isPresented {
                 let actionID = appState.researchController.actions.activeActionID
                 appState.presentationRouter.dismissSheet()
                 appState.researchController.actions.dismiss()
@@ -160,6 +163,8 @@ struct ContentView: View {
                       appState.researchController.functions.isPresented {
                 appState.researchController.functions.dismiss()
             }
+            appState.agentNoteChangePresentationCoordinator
+                .presentationBecameAvailable(windowID: appState.nativeWindowID)
         }) { route in
             sheetContent(for: route)
         }
@@ -724,6 +729,27 @@ struct ContentView: View {
                         )
                     }
                 }
+            }
+        case .agentNoteChange(let requestID):
+            if let record = appState.presentedAgentNoteChangeRequest,
+               record.id == requestID {
+                AgentNoteChangeRequestView(
+                    record: record,
+                    targets: appState.displayTargets(for: record),
+                    identity: appState.presentedAgentNoteChangeIdentity,
+                    identityLoadFailed: appState.agentNoteChangeIdentityLoadFailed,
+                    hasLocallyExpired: appState.agentNoteChangeHasLocallyExpired,
+                    isResolving: appState.isResolvingAgentNoteChangeRequest,
+                    resolve: { state, allowedNoteIDs in
+                        appState.resolvePresentedAgentNoteChangeRequest(
+                            state: state,
+                            allowedNoteIDs: allowedNoteIDs
+                        )
+                    },
+                    dismiss: {
+                        appState.dismissPresentedAgentNoteChangeRequest(id: requestID)
+                    }
+                )
             }
         case .createCheckpoint:
             CreateCheckpointView { name in

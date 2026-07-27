@@ -1202,6 +1202,13 @@ final class WindowModel: ObservableObject {
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
+    @Published private(set) var presentedAgentNoteChangeRequest:
+        AgentNoteChangeRequestRecord?
+    @Published private(set) var presentedAgentNoteChangeIdentity:
+        AgentNoteChangePresentationIdentity?
+    @Published private(set) var agentNoteChangeIdentityLoadFailed = false
+    @Published private(set) var agentNoteChangeHasLocallyExpired = false
+    @Published private(set) var isResolvingAgentNoteChangeRequest = false
     @Published private(set) var workspaceVaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
     @Published var registeredVaults: [RegisteredVault] = []
     @Published var windowSessionPersistenceError: String?
@@ -1437,6 +1444,288 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    var agentNoteChangePresentationCoordinator:
+        AgentNoteChangePresentationCoordinator
+    {
+        workspaceStore.agentNoteChangePresentations
+    }
+
+    func presentAgentNoteChangeRequest(_ record: AgentNoteChangeRequestRecord) {
+        guard activeTriptychServicesID == record.request.triptychID,
+              presentationRouter.sheet == nil else { return }
+        presentedAgentNoteChangeRequest = record
+        presentedAgentNoteChangeIdentity = nil
+        agentNoteChangeIdentityLoadFailed = false
+        agentNoteChangeHasLocallyExpired = false
+        scheduleAgentNoteChangeExpiryRefresh(for: record)
+        presentationRouter.present(.agentNoteChange(record.id))
+        resolveAgentNoteChangePresentationIdentity(for: record)
+    }
+
+    private func resolveAgentNoteChangePresentationIdentity(
+        for record: AgentNoteChangeRequestRecord
+    ) {
+        guard record.isUnresolved,
+              presentedAgentNoteChangeRequest?.id == record.id,
+              agentNoteChangeIdentityTask == nil else { return }
+        agentNoteChangeIdentityLoadFailed = false
+        agentNoteChangeIdentityTask = Task { [weak self] in
+            guard let self else { return }
+            for attempt in 0..<3 {
+                do {
+                    let identity = try await workspaceStore
+                        .agentNoteChangePresentationIdentity(for: record)
+                    guard presentedAgentNoteChangeRequest?.id == record.id else {
+                        agentNoteChangeIdentityTask = nil
+                        return
+                    }
+                    presentedAgentNoteChangeIdentity = identity
+                    agentNoteChangeIdentityTask = nil
+                    return
+                } catch where attempt < 2 {
+                    do {
+                        try await Task.sleep(
+                            for: .milliseconds(250 * (attempt + 1))
+                        )
+                    } catch {
+                        agentNoteChangeIdentityTask = nil
+                        return
+                    }
+                } catch {
+                    break
+                }
+            }
+            try? await workspaceStore.refreshAgentNoteChangeRequest(
+                id: record.id,
+                in: record.request.triptychID
+            )
+            guard presentedAgentNoteChangeRequest?.id == record.id else {
+                agentNoteChangeIdentityTask = nil
+                return
+            }
+            agentNoteChangeIdentityLoadFailed = true
+            agentNoteChangeIdentityTask = nil
+        }
+    }
+
+    func updatePresentedAgentNoteChangeRequest(
+        _ record: AgentNoteChangeRequestRecord
+    ) {
+        guard presentedAgentNoteChangeRequest?.id == record.id else { return }
+        presentedAgentNoteChangeRequest = record
+        isResolvingAgentNoteChangeRequest = false
+        agentNoteChangeHasLocallyExpired = false
+        scheduleAgentNoteChangeExpiryRefresh(for: record)
+        if record.isUnresolved,
+           presentedAgentNoteChangeIdentity == nil {
+            resolveAgentNoteChangePresentationIdentity(for: record)
+        } else if !record.isUnresolved {
+            agentNoteChangeIdentityTask?.cancel()
+            agentNoteChangeIdentityTask = nil
+        }
+    }
+
+    func dismissPresentedAgentNoteChangeRequest(id: UUID) {
+        presentationRouter.dismissSheet(
+            if: "agent-note-change:\(id.uuidString.lowercased())"
+        )
+    }
+
+    func finishAgentNoteChangeRequestDismissal() {
+        guard let requestID = presentedAgentNoteChangeRequest?.id else { return }
+        presentedAgentNoteChangeRequest = nil
+        presentedAgentNoteChangeIdentity = nil
+        agentNoteChangeIdentityLoadFailed = false
+        isResolvingAgentNoteChangeRequest = false
+        agentNoteChangeHasLocallyExpired = false
+        agentNoteChangeExpiryTask?.cancel()
+        agentNoteChangeExpiryTask = nil
+        agentNoteChangeIdentityTask?.cancel()
+        agentNoteChangeIdentityTask = nil
+        agentNoteChangePresentationCoordinator.presentationDidDismiss(
+            requestID: requestID,
+            windowID: nativeWindowID
+        )
+        agentNoteChangePresentationCoordinator.presentationBecameAvailable(
+            windowID: nativeWindowID
+        )
+    }
+
+    func resolvePresentedAgentNoteChangeRequest(
+        state: AgentNoteChangeDecisionState,
+        allowedNoteIDs: [UUID]
+    ) {
+        guard !isResolvingAgentNoteChangeRequest,
+              let record = presentedAgentNoteChangeRequest,
+              record.isUnresolved else { return }
+        #if DEBUG
+        if Bundle.main.bundleIdentifier == "com.scholium.qa",
+           ProcessInfo.processInfo.arguments.contains(
+               "--scholium-agent-change-request-fixture"
+           ) {
+            do {
+                let resolved = try record.resolving(
+                    state: state,
+                    allowedNoteIDs: allowedNoteIDs,
+                    at: Date()
+                )
+                agentNoteChangePresentationCoordinator.receive(
+                    resolved,
+                    intent: .decision
+                )
+            } catch {
+                showToast(error.localizedDescription, kind: .error)
+            }
+            return
+        }
+        #endif
+        isResolvingAgentNoteChangeRequest = true
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let resolved = try await workspaceStore.resolveAgentNoteChangeRequest(
+                    triptychID: record.request.triptychID,
+                    requestID: record.id,
+                    state: state,
+                    allowedNoteIDs: allowedNoteIDs
+                )
+                if resolved.decision.state == .stale
+                    || resolved.decision.state == .expired {
+                    updatePresentedAgentNoteChangeRequest(resolved)
+                }
+            } catch {
+                isResolvingAgentNoteChangeRequest = false
+                showToast(
+                    "Scholium could not record this decision. \(error.localizedDescription)",
+                    kind: .error
+                )
+            }
+        }
+    }
+
+    private func scheduleAgentNoteChangeExpiryRefresh(
+        for record: AgentNoteChangeRequestRecord
+    ) {
+        agentNoteChangeExpiryTask?.cancel()
+        agentNoteChangeExpiryTask = nil
+        guard record.isUnresolved else { return }
+        let delay = max(0, record.expiresAt.timeIntervalSinceNow)
+        agentNoteChangeExpiryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+                try Task.checkCancellation()
+            } catch {
+                return
+            }
+            guard let self,
+                  self.presentedAgentNoteChangeRequest?.id == record.id else {
+                return
+            }
+            self.agentNoteChangeHasLocallyExpired = true
+            self.isResolvingAgentNoteChangeRequest = true
+            for attempt in 0..<3 {
+                do {
+                    try await self.workspaceStore.refreshAgentNoteChangeRequest(
+                        id: record.id,
+                        in: record.request.triptychID
+                    )
+                    return
+                } catch where attempt < 2 {
+                    try? await Task.sleep(for: .milliseconds(250 * (attempt + 1)))
+                } catch {
+                    break
+                }
+            }
+            guard self.presentedAgentNoteChangeRequest?.id == record.id,
+                  let expired = try? record.expiringIfNeeded(at: Date()) else {
+                return
+            }
+            self.agentNoteChangePresentationCoordinator.receive(
+                expired,
+                intent: .refresh
+            )
+        }
+    }
+
+    func displayTargets(
+        for record: AgentNoteChangeRequestRecord
+    ) -> [AgentNoteChangeDisplayTarget] {
+        let snapshot = workspaceStore.snapshot(for: record.request.triptychID)
+        return record.request.targets.map { target in
+            let currentDocument = snapshot?.document(id: target.note)
+            let title: String
+            if let note = currentDocument {
+                title = ResearchNoteTitleResolver.resolve(
+                    document: note.document,
+                    vaultRole: note.vaultRole
+                ).title
+            } else {
+                title = URL(fileURLWithPath: target.note.relativePath)
+                    .deletingPathExtension().lastPathComponent
+            }
+            return AgentNoteChangeDisplayTarget(
+                id: target.noteID,
+                title: title,
+                relativePath: target.note.relativePath,
+                role: target.role,
+                expectedFingerprint: target.expectedFingerprint,
+                currentFingerprint: currentDocument?.fingerprint
+            )
+        }
+    }
+
+    #if DEBUG
+    private func presentQASyntheticAgentNoteChangeRequest() {
+        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
+              let triptychID = activeTriptychServicesID,
+              let snapshot = workspaceStore.snapshot(for: triptychID),
+              let note = snapshot.vaults
+                .first(where: { $0.vault.role == .topicKnowledge })?
+                .documents.first,
+              let noteID = note.stableIdentity.resolvedID else { return }
+        do {
+            let parent = try AgentNoteChangeActionRevision(
+                definition: .analyze,
+                packageID: "scholium-analyze",
+                skillRevision: DocumentFingerprint(content: "qa-analyze-skill"),
+                profileOrigin: .applicationDefault,
+                profileRevision: DocumentFingerprint(content: "qa-analyze-profile"),
+                profileDocumentRevision: nil
+            )
+            let requested = try AgentNoteChangeActionRevision(
+                definition: .synthesize,
+                packageID: "scholium-synthesize",
+                skillRevision: DocumentFingerprint(content: "qa-synthesize-skill"),
+                profileOrigin: .applicationDefault,
+                profileRevision: DocumentFingerprint(content: "qa-synthesize-profile"),
+                profileDocumentRevision: nil
+            )
+            let request = try AgentNoteChangeRequest(
+                triptychID: triptychID,
+                parentRunID: UUID(),
+                parentAction: parent,
+                requestedAction: requested,
+                targets: [try AgentNoteChangeTarget(
+                    noteID: noteID,
+                    note: note.id,
+                    role: .topic,
+                    expectedFingerprint: note.fingerprint
+                )],
+                operations: [.modifyMarkdown],
+                agentReason: "The current analysis may qualify this Topic. Review the requested Note before allowing a separate synthesis phase."
+            )
+            let record = try AgentNoteChangeRequestRecord(
+                request: request,
+                receivedAt: Date(),
+                validFor: 10 * 60
+            )
+            agentNoteChangePresentationCoordinator.receive(record, intent: .submit)
+        } catch {
+            showToast(error.localizedDescription, kind: .error)
+        }
+    }
+    #endif
+
     // MARK: Services
     private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities?
     let cssSnippetStore: CSSSnippetStore
@@ -1463,6 +1752,8 @@ final class WindowModel: ObservableObject {
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var workspaceCatalogRefreshTask: Task<Void, Never>?
     private var researchActionOpenTask: Task<Void, Never>?
+    private var agentNoteChangeExpiryTask: Task<Void, Never>?
+    private var agentNoteChangeIdentityTask: Task<Void, Never>?
     private var researchActionOpenRequestID: UUID?
     private var discussionPresentationRequestID: UUID?
     private var workspaceCatalogNeedsAnotherRefresh = false
@@ -1571,6 +1862,21 @@ final class WindowModel: ObservableObject {
                 }
             }
         }
+        if Bundle.main.bundleIdentifier == "com.scholium.qa",
+           ProcessInfo.processInfo.arguments.contains(
+               "--scholium-agent-change-request-fixture"
+           ) {
+            var token: Int32 = 0
+            let name = "com.scholium.qa.present-agent-change-request.\(resolvedWindowID.uuidString)"
+            let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.presentQASyntheticAgentNoteChangeRequest()
+                }
+            }
+            if status == NOTIFY_STATUS_OK {
+                qaPerformanceModeNotificationTokens.append(token)
+            }
+        }
         #endif
         if let saved = UserDefaults.standard.string(forKey: "colorScheme"),
            let choice = ColorSchemeChoice(rawValue: saved) {
@@ -1603,6 +1909,8 @@ final class WindowModel: ObservableObject {
 
     deinit {
         researchActionOpenTask?.cancel()
+        agentNoteChangeExpiryTask?.cancel()
+        agentNoteChangeIdentityTask?.cancel()
         #if DEBUG
         for token in qaPerformanceModeNotificationTokens {
             notify_cancel(token)
@@ -3535,6 +3843,11 @@ final class WindowModel: ObservableObject {
             snapshot: activation.snapshot
         )
         installStableEditorFlushCapability(for: activation.workspaceID)
+        Task { [weak self] in
+            await self?.workspaceStore.refreshPendingAgentNoteChangeRequests(
+                in: activation.workspaceID
+            )
+        }
 
         if let previousVault {
             let previousSlot = WorkspaceVaultSlot.allCases.first(where: { slot in
@@ -5383,6 +5696,16 @@ final class WindowModel: ObservableObject {
         guard activeWorkspaceCapabilities?.runtimeIdentity == runtimeIdentity else { return }
         documentController.receive(snapshot)
         researchController.receive(snapshot)
+        if let request = presentedAgentNoteChangeRequest,
+           request.isUnresolved,
+           request.request.triptychID == snapshot.triptych.id {
+            Task { [weak self] in
+                try? await self?.workspaceStore.refreshAgentNoteChangeRequest(
+                    id: request.id,
+                    in: request.request.triptychID
+                )
+            }
+        }
         guard let watchedVaultID = currentRegisteredVault?.id else { return }
 
         let predecessor = workspaceProjectionTail

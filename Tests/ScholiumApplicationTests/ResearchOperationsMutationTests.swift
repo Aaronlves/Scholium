@@ -4734,6 +4734,149 @@ struct ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Agent Note Change decisions revalidate live scope and standing policy")
+    func agentNoteChangeDecisionRevalidation() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let additionalURL = fixture.rootURL
+            .appendingPathComponent("Works", isDirectory: true)
+            .appendingPathComponent("Decision Target.md")
+        try Data("# Decision Target\n\nA bounded candidate.\n".utf8)
+            .write(to: additionalURL, options: .atomic)
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parentTarget = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let parentRequest = try await actionRequest(
+            handle: handle,
+            actionID: .write,
+            target: actionNote(parentTarget)
+        )
+        let vaultID = try #require(fixture.assignment.vault(for: .output)?.id)
+        let targetID = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Decision Target.md"
+        )
+        var target = try await researchFunctionTarget(
+            targetID,
+            role: .work,
+            handle: handle
+        )
+
+        let firstParent = try await handle.research.prepareAction(parentRequest)
+        let firstRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: firstParent.snapshot
+        )
+        let firstRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: firstParent.runID,
+            parentAction: firstRevision,
+            requestedAction: firstRevision,
+            targets: [try agentChangeTarget(target)],
+            operations: [.modifyMarkdown],
+            agentReason: "Permit this exact additional Work only once."
+        )
+        let pending = try await handle.research.submitAgentNoteChangeRequest(
+            firstRequest
+        )
+        #expect(pending.decision.state == .pending)
+        let allowed = try await handle.research.resolveAgentNoteChangeRequest(
+            id: firstRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [target.noteID]
+        )
+        #expect(allowed.decision.state == .allowedSubset)
+        #expect(allowed.decision.allowedNoteIDs == [target.noteID])
+
+        let secondParent = try await handle.research.prepareAction(parentRequest)
+        let secondRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: secondParent.snapshot
+        )
+        let staleRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: secondParent.runID,
+            parentAction: secondRevision,
+            requestedAction: secondRevision,
+            targets: [try agentChangeTarget(target)],
+            operations: [.modifyMarkdown],
+            agentReason: "This request must become stale after the Note changes."
+        )
+        _ = try await handle.research.submitAgentNoteChangeRequest(staleRequest)
+        let document = try await handle.documents.load(targetID)
+        _ = try await handle.documents.save(
+            targetID,
+            changeSet: .exactContent(document.rawContent + "\nChanged.\n"),
+            expectedRevision: document.fingerprint
+        )
+        let stale = try await handle.research.resolveAgentNoteChangeRequest(
+            id: staleRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [target.noteID]
+        )
+        #expect(stale.decision.state == .stale)
+        target = try await researchFunctionTarget(
+            targetID,
+            role: .work,
+            handle: handle
+        )
+
+        // This is the durable state left if Cancel the Run commits its parent
+        // cancellation but the request decision write is interrupted.
+        let cancellationParent = try await handle.research.prepareAction(parentRequest)
+        let cancellationRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: cancellationParent.snapshot
+        )
+        let cancellationRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: cancellationParent.runID,
+            parentAction: cancellationRevision,
+            requestedAction: cancellationRevision,
+            targets: [try agentChangeTarget(target)],
+            operations: [.modifyMarkdown],
+            agentReason: "Preserve the researcher's explicit cancellation on retry."
+        )
+        _ = try await handle.research.submitAgentNoteChangeRequest(
+            cancellationRequest
+        )
+        try await handle.research.cancelFunction(runID: cancellationParent.runID)
+        let recoveredCancellation = try await handle.research
+            .resolveAgentNoteChangeRequest(
+                id: cancellationRequest.id,
+                state: .cancelled
+            )
+        #expect(recoveredCancellation.decision.state == .cancelled)
+
+        let settings = try await handle.research.permissionSettings()
+        _ = try await handle.research.saveTriptychPermissionPolicy(
+            .triptychWide,
+            expectedRevision: settings.policy.revision
+        )
+        let automaticParent = try await handle.research.prepareAction(parentRequest)
+        let automaticRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: automaticParent.snapshot
+        )
+        let automaticRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: automaticParent.runID,
+            parentAction: automaticRevision,
+            requestedAction: automaticRevision,
+            targets: [try agentChangeTarget(target)],
+            operations: [.modifyMarkdown],
+            agentReason: "Use the current Triptych-wide standing policy."
+        )
+        let automatic = try await handle.research.submitAgentNoteChangeRequest(
+            automaticRequest
+        )
+        #expect(automatic.decision.state == .allowedSubset)
+        #expect(automatic.decision.allowedNoteIDs == [target.noteID])
+
+        await runtime.shutdown()
+    }
+
     @Test("The Agent bridge key authenticates submit, status, and idempotent cancellation")
     func agentBridgeCoordinationKey() async throws {
         let fixture = try await ResearchFixture.make()

@@ -367,6 +367,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
     private var researchRecordPresenter: @MainActor () -> Void = {}
+    private weak var agentRequestPriorResponder: NSResponder?
+    private var agentRequestWindowIsRegistered = false
     #if DEBUG
     private var qaFocusNotificationToken: Int32?
     #endif
@@ -442,6 +444,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         installLoadingToolbarIfNeeded()
         previousDelegate = window.delegate
         window.delegate = self
+        registerAgentNoteChangeWindow()
         installToolbarIfPossible()
         markReadyIfPossible()
     }
@@ -479,6 +482,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         closeIsAuthorized = false
         removeToolbar()
         splitController = nil
+        unregisterAgentNoteChangeWindow()
         detachWindow()
         researchRecordPresenter = {}
         if isRegistered {
@@ -497,6 +501,67 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             _ = try await appState.prepareForWindowClose()
         }
         isRegistered = true
+    }
+
+    private func registerAgentNoteChangeWindow() {
+        guard !agentRequestWindowIsRegistered else { return }
+        agentRequestWindowIsRegistered = true
+        appState.agentNoteChangePresentationCoordinator.register(.init(
+            id: windowID,
+            triptychID: { [weak appState] in
+                appState?.activeTriptychServicesID
+            },
+            isKeyWindow: { [weak self] in
+                self?.window?.isKeyWindow == true
+            },
+            canPresent: { [weak self, weak appState] in
+                guard let self, let appState, let window = self.window else {
+                    return false
+                }
+                return window.isVisible
+                    && !window.isMiniaturized
+                    && window.attachedSheet == nil
+                    && appState.presentationRouter.sheet == nil
+            },
+            present: { [weak self, weak appState] record in
+                self?.agentRequestPriorResponder = self?.window?.firstResponder
+                appState?.presentAgentNoteChangeRequest(record)
+            },
+            update: { [weak appState] record in
+                appState?.updatePresentedAgentNoteChangeRequest(record)
+            },
+            dismiss: { [weak appState] requestID in
+                appState?.dismissPresentedAgentNoteChangeRequest(id: requestID)
+            },
+            focus: { [weak self] _ in
+                self?.focusAgentNoteChangeSheet()
+            }
+        ))
+    }
+
+    private func unregisterAgentNoteChangeWindow() {
+        guard agentRequestWindowIsRegistered else { return }
+        appState.agentNoteChangePresentationCoordinator.unregister(windowID: windowID)
+        agentRequestWindowIsRegistered = false
+        agentRequestPriorResponder = nil
+    }
+
+    private func focusAgentNoteChangeSheet() {
+        guard let window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.attachedSheet?.makeKeyAndOrderFront(nil)
+    }
+
+    func restoreAgentNoteChangeFocus() {
+        defer { agentRequestPriorResponder = nil }
+        guard let window, let responder = agentRequestPriorResponder else { return }
+        window.makeFirstResponder(responder)
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        appState.agentNoteChangePresentationCoordinator.noteWindowActivated(windowID)
+        previousDelegate?.windowDidBecomeKey?(notification)
     }
 
     private func registerQAFocusRequest() {

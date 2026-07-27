@@ -1658,6 +1658,13 @@ public actor WorkspaceHandle {
         try await beginSourceMutation()
     }
 
+    /// Research Method, Profile, Skill, and standing-policy writes share the
+    /// Agent decision gate so an exact-current check and its non-authorizing
+    /// durable decision cannot be separated by an in-App configuration edit.
+    func beginResearchConfigurationMutation() async throws -> UUID {
+        try await beginSourceMutation()
+    }
+
     private func endSourceMutation(_ id: UUID) {
         precondition(activeSourceMutationID == id)
         activeSourceMutationID = nil
@@ -1666,6 +1673,10 @@ public actor WorkspaceHandle {
     }
 
     func endAgentNoteChangeCoordination(_ id: UUID) {
+        endSourceMutation(id)
+    }
+
+    func endResearchConfigurationMutation(_ id: UUID) {
         endSourceMutation(id)
     }
 
@@ -1986,6 +1997,8 @@ public actor WorkspaceHandle {
 
     func createSkill(id: String, source: String) async throws -> ResearchSkillPackage {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.create(id: id, source: source)
     }
 
@@ -1994,6 +2007,8 @@ public actor WorkspaceHandle {
         as newID: String
     ) async throws -> ResearchSkillPackage {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.duplicateBundled(id: id, as: newID)
     }
 
@@ -2003,6 +2018,8 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.save(
             id: id,
             source: source,
@@ -2016,6 +2033,8 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         return try await services.researchSkillStore.rename(
             id: id,
             to: newID,
@@ -2025,6 +2044,8 @@ public actor WorkspaceHandle {
 
     func deleteSkill(id: String, expectedRevision: DocumentFingerprint) async throws {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         try await services.researchSkillStore.delete(
             id: id,
             expectedRevision: expectedRevision

@@ -40,10 +40,31 @@ extension WorkspaceHandle {
         try requireActive()
         let coordinationID = try await beginAgentNoteChangeCoordination()
         defer { endAgentNoteChangeCoordination(coordinationID) }
-        return try await submitAgentNoteChangeRequestWithinCoordination(
+        let record = try await submitAgentNoteChangeRequestWithinCoordination(
             request,
             receivedAt: receivedAt,
             validFor: validFor
+        )
+        return try await applyingStandingPermissionIfPossible(
+            to: record,
+            decidedAt: receivedAt
+        )
+    }
+
+    func applyStandingPermissionToAgentNoteChangeRequest(
+        id: UUID,
+        decidedAt: Date = Date()
+    ) async throws -> AgentNoteChangeRequestRecord {
+        try requireActive()
+        let coordinationID = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let record = try await currentAgentNoteChangeRequest(
+            id: id,
+            now: decidedAt
+        )
+        return try await applyingStandingPermissionIfPossible(
+            to: record,
+            decidedAt: decidedAt
         )
     }
 
@@ -152,7 +173,7 @@ extension WorkspaceHandle {
         )
         try Task.checkCancellation()
         let grant = try requireCoordinationGrant(execution)
-        return try await submitAgentNoteChangeRequestWithinCoordination(
+        let record = try await submitAgentNoteChangeRequestWithinCoordination(
             request,
             receivedAt: receivedAt,
             validFor: validFor,
@@ -165,6 +186,133 @@ extension WorkspaceHandle {
                         requestID: request.id
                     )
             }
+        )
+        return record
+    }
+
+    func resolveAgentNoteChangeRequest(
+        id: UUID,
+        state: AgentNoteChangeDecisionState,
+        allowedNoteIDs: [UUID] = [],
+        decidedAt: Date = Date()
+    ) async throws -> AgentNoteChangeRequestRecord {
+        try requireActive()
+        guard state == .allowedSubset
+                || state == .continueWithoutChanges
+                || state == .cancelled else {
+            throw AgentNoteChangeContractError.invalidDecision
+        }
+        let coordinationID = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationID) }
+
+        let current: AgentNoteChangeRequestRecord
+        if state == .cancelled {
+            current = try await currentAgentNoteChangeRequestForCancellation(
+                id: id,
+                now: decidedAt
+            )
+        } else {
+            current = try await currentAgentNoteChangeRequest(id: id, now: decidedAt)
+        }
+        guard current.isUnresolved else { return current }
+        _ = try await evaluateStandingPermission(for: current.request)
+        let parentBeforeDecision = try await services.localResearchExecutionStore
+            .record(id: current.request.parentRunID)
+        let permitsCancelledParent = state == .cancelled
+            && parentBeforeDecision.completion?.state == .cancelled
+        guard try await isCurrentAgentNoteChangeRequest(
+            current.request,
+            permittingCancelledParent: permitsCancelledParent
+        ) else {
+            return try await services.agentNoteChangeRequestStore.resolve(
+                id: id,
+                state: .stale,
+                decidedAt: decidedAt
+            )
+        }
+
+        if state == .cancelled {
+            let parent = try await services.localResearchExecutionStore.record(
+                id: current.request.parentRunID
+            )
+            if parent.completion == nil {
+                try await cancelResearchFunction(runID: current.request.parentRunID)
+            }
+        }
+        return try await services.agentNoteChangeRequestStore.resolve(
+            id: id,
+            state: state,
+            allowedNoteIDs: allowedNoteIDs,
+            decidedAt: decidedAt
+        )
+    }
+
+    /// Recovers the researcher-authored Cancel the Run decision if the parent
+    /// cancellation committed but the request-store transition was interrupted.
+    /// Other decisions continue to treat a cancelled parent as stale.
+    private func currentAgentNoteChangeRequestForCancellation(
+        id: UUID,
+        now: Date
+    ) async throws -> AgentNoteChangeRequestRecord {
+        var record = try await services.agentNoteChangeRequestStore.record(
+            id: id,
+            now: now
+        )
+        guard record.isUnresolved else { return record }
+        let parent = try await services.localResearchExecutionStore.record(
+            id: record.request.parentRunID
+        )
+        let isRecoveringCommittedCancellation = parent.completion?.state == .cancelled
+        if !(try await isCurrentAgentNoteChangeRequest(
+            record.request,
+            permittingCancelledParent: isRecoveringCommittedCancellation
+        )) {
+            record = try await services.agentNoteChangeRequestStore.resolve(
+                id: id,
+                state: .stale,
+                decidedAt: now
+            )
+        }
+        return record
+    }
+
+    private func applyingStandingPermissionIfPossible(
+        to record: AgentNoteChangeRequestRecord,
+        decidedAt: Date
+    ) async throws -> AgentNoteChangeRequestRecord {
+        guard record.isUnresolved else { return record }
+        let initialEvaluation = try await evaluateStandingPermission(
+            for: record.request
+        )
+        guard initialEvaluation.disposition == .mayIssueBoundedGrant else {
+            return record
+        }
+        guard try await isCurrentAgentNoteChangeRequest(record.request) else {
+            return try await services.agentNoteChangeRequestStore.resolve(
+                id: record.id,
+                state: .stale,
+                decidedAt: max(decidedAt, record.receivedAt)
+            )
+        }
+        let finalEvaluation = try await evaluateStandingPermission(
+            for: record.request
+        )
+        guard finalEvaluation == initialEvaluation,
+              finalEvaluation.disposition == .mayIssueBoundedGrant else {
+            return record
+        }
+        guard try await isCurrentAgentNoteChangeRequest(record.request) else {
+            return try await services.agentNoteChangeRequestStore.resolve(
+                id: record.id,
+                state: .stale,
+                decidedAt: max(decidedAt, record.receivedAt)
+            )
+        }
+        return try await services.agentNoteChangeRequestStore.resolve(
+            id: record.id,
+            state: .allowedSubset,
+            allowedNoteIDs: record.request.targets.map(\.noteID),
+            decidedAt: max(decidedAt, record.receivedAt)
         )
     }
 
@@ -316,7 +464,8 @@ extension WorkspaceHandle {
     }
 
     private func isCurrentAgentNoteChangeRequest(
-        _ request: AgentNoteChangeRequest
+        _ request: AgentNoteChangeRequest,
+        permittingCancelledParent: Bool = false
     ) async throws -> Bool {
         do {
             try await authenticateParent(of: request)
@@ -325,7 +474,9 @@ extension WorkspaceHandle {
         }
         guard let parent = try await services.localResearchExecutionStore
             .recordIfPresent(id: request.parentRunID),
-              Self.parentPermitsChangeRequest(parent) else {
+              Self.parentPermitsChangeRequest(parent)
+                || (permittingCancelledParent
+                    && parent.completion?.state == .cancelled) else {
             return false
         }
         var currentTargets: [ResearchActionNoteSnapshot] = []
@@ -512,5 +663,30 @@ extension ResearchOperations {
             coordinationKey: coordinationKey,
             now: now
         )
+    }
+
+    public func resolveAgentNoteChangeRequest(
+        id: UUID,
+        state: AgentNoteChangeDecisionState,
+        allowedNoteIDs: [UUID] = [],
+        decidedAt: Date = Date()
+    ) async throws -> AgentNoteChangeRequestRecord {
+        try await reference.requireHandle().resolveAgentNoteChangeRequest(
+            id: id,
+            state: state,
+            allowedNoteIDs: allowedNoteIDs,
+            decidedAt: decidedAt
+        )
+    }
+
+    public func applyStandingPermissionToAgentNoteChangeRequest(
+        id: UUID,
+        decidedAt: Date = Date()
+    ) async throws -> AgentNoteChangeRequestRecord {
+        try await reference.requireHandle()
+            .applyStandingPermissionToAgentNoteChangeRequest(
+                id: id,
+                decidedAt: decidedAt
+            )
     }
 }

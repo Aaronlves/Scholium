@@ -28,6 +28,8 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         let saved = try await services.researchPermissionPolicyStore
             .saveTriptychDefault(policy, expectedRevision: expectedRevision)
         return try await permissionSettings(policy: saved)
@@ -40,6 +42,8 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         guard let subject = try await researchPermissionSubjects()
             .first(where: { $0.packageID == packageID }) else {
             throw ResearchPermissionOperationError.subjectUnavailable(packageID)
@@ -61,6 +65,8 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot {
         try requireActive()
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
         let saved = try await services.researchPermissionPolicyStore.removeOverride(
             packageID: packageID,
             expectedRevision: expectedRevision
@@ -88,6 +94,39 @@ extension WorkspaceHandle {
         return ResearchPermissionPolicyResolver.evaluate(
             document: snapshot.document,
             request: request
+        )
+    }
+
+    func evaluateStandingPermission(
+        for request: AgentNoteChangeRequest
+    ) async throws -> ResearchPermissionEvaluation {
+        guard let subject = try await researchPermissionSubjects()
+            .first(where: { $0.packageID == request.requestedAction.packageID }) else {
+            throw ResearchPermissionOperationError.subjectUnavailable(
+                request.requestedAction.packageID
+            )
+        }
+        let requestedRoles = Set(request.targets.map(\.role))
+        guard subject.packageRevision == request.requestedAction.skillRevision,
+              requestedRoles.allSatisfy({ role in
+                  subject.profiles.contains {
+                      $0.actionID == request.requestedAction.definition.id
+                          && $0.targetRole == role
+                          && $0.profileRevision
+                            == request.requestedAction.profileRevision
+                  }
+              }) else {
+            throw ResearchPermissionOperationError.staleSubject(
+                request.requestedAction.packageID
+            )
+        }
+        return try await evaluateStandingPermission(
+            ResearchStandingPermissionRequest(
+                kind: .additionalNoteChanges,
+                packageID: subject.packageID,
+                currentEnvelopeDigest: subject.envelopeDigest,
+                requestedWritableRoles: requestedRoles
+            )
         )
     }
 

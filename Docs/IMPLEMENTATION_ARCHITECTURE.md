@@ -1000,6 +1000,47 @@ a completion key or child grant. Journaled permanent-deletion finalization
 purges requests targeting the deleted Note and requests whose authenticated
 parent execution contains it.
 
+`AgentNoteChangePresentationCoordinator` is the one MainActor, App-wide owner
+of native presentation claims. Each `WorkspaceWindowCoordinator` explicitly
+registers its exact scene identity, live Triptych identity, key-window state,
+presentation availability, focus route, and bounded present/update/dismiss
+closures; the coordinator never searches the global AppKit window list. One
+request ID can be claimed by only one matching window. The key matching window
+wins, a closing window releases its claim for another live matching window,
+and a busy window retains the request without replacing its existing sheet.
+Exact bridge replay updates the claimed sheet, while
+`show_note_change_request` only focuses that existing claim and never creates a
+second presentation.
+
+The shared `WindowSheetRoute` presents one native Agent Note Change sheet. It
+derives current titles, roles, and revision state from the live Workspace
+snapshot, exposes the requested Action, write operations, Method/Profile
+revisions, subset selection, Allow These Notes Once, Continue Without Changes,
+and Cancel the Run, and keeps stale or expired state readable. Before a researcher
+decision, `WorkspaceStore` flushes registered editors for that Triptych and
+Application reauthenticates the parent, Action, Method Skill, Profile, standing
+policy subject, Note identities, roles, lifecycle, operations, and exact
+fingerprints under the source-mutation gate. Bridge submission authenticates
+and binds the request before any editor flush; only then may the App flush and
+evaluate standing policy. Both manual and automatic decisions repeat frozen
+request validation after policy evaluation, while automatic resolution also
+requires a stable repeated policy evaluation whose subject package and
+Action/Profile role revisions equal the frozen request. A qualifying standing
+policy may resolve the exact validated request without a sheet. The sheet
+resolves the current Profile button name and exact Skill display name for
+researcher-owned Actions; Allow remains disabled while those names are loading
+or unavailable, and raw package identity remains separately labeled technical
+evidence. Identity lookup uses a bounded retry, and a later exact replay or
+refresh retries a still-pending unavailable identity. At `expiresAt` it removes
+the decision controls immediately and uses a
+bounded durable-refresh retry before retaining the contract-derived expired
+state. Either route records only coordination state; creating a separately
+bounded child snapshot and grant remains the next implementation phase.
+All in-App mutations of active Working Methods, Action Profiles, Skill package
+content, Skill maintenance state, and standing policy borrow the same gate as
+the final request validation and decision write. Actor reentrancy therefore
+cannot place a configuration commit between those two operations.
+
 Every new Local Execution v2 Action also receives one short-lived
 `AgentCoordinationGrant`. The local execution persists only its SHA-256 digest,
 bound Triptych, parent run, exact Action revision, and expiry; a non-Codable
@@ -1041,8 +1082,8 @@ terminal decision. Tool failures retain a typed bridge
 error code in structured MCP output. Status and cancel first read the stored
 parent without applying expiry, authenticate the grant, and only then execute
 the ordinary state-changing query. A bridge decision is still not a write
-grant. Session 17 must add the native decision sheet, and Session 18 an
-independently prepared child phase and lineage.
+grant. The native Session 17 sheet consumes these authenticated bridge results;
+Session 18 must add an independently prepared child phase and lineage.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych

@@ -5,6 +5,7 @@ enum WindowSheetRoute: Identifiable {
     case frontmatter(FrontmatterPanelRoute)
     case researchFunction(ResearchFunctionPanelRoute)
     case researchAction(ResearchActionPanelRoute)
+    case agentNoteChange(UUID)
     case createCheckpoint
     case restoreCheckpoint
     case lifecycle(NoteLifecycleRequest)
@@ -19,6 +20,8 @@ enum WindowSheetRoute: Identifiable {
             "research-function:\(route.presentationID.uuidString.lowercased())"
         case .researchAction(let route):
             "research-action:\(route.presentationID.uuidString.lowercased())"
+        case .agentNoteChange(let requestID):
+            "agent-note-change:\(requestID.uuidString.lowercased())"
         case .createCheckpoint: "create-checkpoint"
         case .restoreCheckpoint: "restore-checkpoint"
         case .lifecycle(let request): "lifecycle:\(request.id)"

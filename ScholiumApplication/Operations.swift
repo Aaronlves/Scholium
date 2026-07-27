@@ -1026,7 +1026,7 @@ public actor ResearchOperations: ResearchUseCases {
         confirmationToken: ResearchSkillMaintenanceConfirmationToken
     ) async throws -> ResearchSkillMaintenanceApplyOutcome {
         let handle = try await reference.requireHandle()
-        return try await handle.services.researchSkillMaintenanceStore.apply(
+        return try await handle.applyCoordinatedSkillMaintenance(
             preparation,
             confirmationToken: confirmationToken
         )
@@ -1037,7 +1037,7 @@ public actor ResearchOperations: ResearchUseCases {
         expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
         let handle = try await reference.requireHandle()
-        return try await handle.services.researchSkillMaintenanceStore.restore(
+        return try await handle.restoreCoordinatedSkillMaintenance(
             snapshotID: snapshotID,
             expectedCurrentState: expectedCurrentState
         )
@@ -1052,6 +1052,32 @@ public actor ResearchOperations: ResearchUseCases {
         )
     }
 
+}
+
+extension WorkspaceHandle {
+    fileprivate func applyCoordinatedSkillMaintenance(
+        _ preparation: ResearchSkillMaintenancePreparation,
+        confirmationToken: ResearchSkillMaintenanceConfirmationToken
+    ) async throws -> ResearchSkillMaintenanceApplyOutcome {
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
+        return try await services.researchSkillMaintenanceStore.apply(
+            preparation,
+            confirmationToken: confirmationToken
+        )
+    }
+
+    fileprivate func restoreCoordinatedSkillMaintenance(
+        snapshotID: UUID,
+        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
+    ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
+        let mutationID = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationID) }
+        return try await services.researchSkillMaintenanceStore.restore(
+            snapshotID: snapshotID,
+            expectedCurrentState: expectedCurrentState
+        )
+    }
 }
 
 /// Delivery-neutral access to the protected bundled research-guidance
