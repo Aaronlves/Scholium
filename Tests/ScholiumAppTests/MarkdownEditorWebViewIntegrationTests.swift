@@ -180,6 +180,37 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Edit footnote markers hand pointer placement back to CodeMirror")
+    func editFootnoteReferenceUsesOrdinaryPointerPlacement() async throws {
+        let source = "Claim[^note].\n\n[^note]: Basis.\n"
+        let referenceRange = try #require(source.range(of: "[^note]"))
+        let referenceFrom = referenceRange.lowerBound.utf16Offset(in: source)
+        let referenceTo = referenceRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let initialPresentation = try await harness.waitUntilPresentation(
+            stage: "passive Edit footnote marker"
+        ) {
+            $0.footnoteReferenceCount == 1 && $0.footnoteDefinitionSourceCount == 0
+        }
+        #expect(initialPresentation.footnoteItemCount == 1)
+
+        try await harness.session.testingClickFirstFootnoteReference()
+        _ = try await harness.waitUntilSelection(in: referenceFrom..<(referenceTo + 1))
+        let sourcePresentation = try await harness.waitUntilPresentation(
+            stage: "pointer-revealed Edit footnote source"
+        ) {
+            $0.footnoteReferenceCount == 0 && $0.footnoteDefinitionSourceCount == 0
+        }
+        #expect(sourcePresentation.footnoteItemCount == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Bridge v5 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
@@ -333,7 +364,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.liveTableSourceLineCount > 0
                 && $0.footnoteItemCount == 2
         }
-        try await harness.session.testingRevealFirstFootnoteDefinition()
+        let namedDefinitionLine = try #require(
+            normalizedLines.firstIndex(where: { $0.hasPrefix("[^note]:") }).map { $0 + 1 }
+        )
+        harness.session.goToLine(namedDefinitionLine)
         let namedDefinitionOffset = try #require(normalizedOriginal.range(of: "[^note]:")?.lowerBound)
             .utf16Offset(in: normalizedOriginal)
         try await harness.waitUntilSelection(head: namedDefinitionOffset)
@@ -745,7 +779,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             source: String,
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
-            lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()
+            lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
+            laysOutForPointerTesting: Bool = false
         ) {
             _ = NSApplication.shared
             session = bridgeDispatcher.map {
@@ -770,7 +805,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 session: session,
                 documentID: documentID,
                 sourceBox: sourceBox,
-                linkPreviews: linkPreviews
+                linkPreviews: linkPreviews,
+                laysOutForPointerTesting: laysOutForPointerTesting
             )
             let hostingController = NSHostingController(rootView: editor)
             self.hostingController = hostingController
@@ -872,7 +908,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 }
                 if clock.now >= deadline {
                     Issue.record(
-                        "The editor did not publish an insertion point inside \(expectedRange.lowerBound)..<\(expectedRange.upperBound)."
+                        "The editor did not publish an insertion point inside \(expectedRange.lowerBound)..<\(expectedRange.upperBound); head=\(session.context?.selections.first?.head ?? -1)."
                     )
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
@@ -1078,22 +1114,30 @@ struct MarkdownEditorWebViewIntegrationTests {
         let session: MarkdownEditorSession
         let documentID: String
         let linkPreviews: [DocumentLinkPreview]
+        let laysOutForPointerTesting: Bool
 
         init(
             session: MarkdownEditorSession,
             documentID: String,
             sourceBox: SourceBox,
-            linkPreviews: [DocumentLinkPreview]
+            linkPreviews: [DocumentLinkPreview],
+            laysOutForPointerTesting: Bool
         ) {
             self.session = session
             self.documentID = documentID
             self.sourceBox = sourceBox
             self.linkPreviews = linkPreviews
+            self.laysOutForPointerTesting = laysOutForPointerTesting
         }
 
         var body: some View {
             if sourceBox.showsEditor {
-                editorSurface
+                if laysOutForPointerTesting {
+                    editorSurface
+                        .frame(width: 720, height: 520)
+                } else {
+                    editorSurface
+                }
             }
         }
 

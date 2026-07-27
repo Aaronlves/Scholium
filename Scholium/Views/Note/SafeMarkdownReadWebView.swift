@@ -1322,7 +1322,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     const ordinal = reference.dataset.footnote;
                     const target = document.getElementById(reference.dataset.target);
                     if (target) {
-                      origins.set(ordinal, reference.id);
+                      const origin = reference.closest('.footnote-reference-wrap') || reference;
+                      origins.set(ordinal, origin.id);
                       target.tabIndex = -1;
                       target.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
                       target.focus({preventScroll: true});
@@ -1336,8 +1337,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     const originID = origins.get(ordinal) || 'fnref-' + ordinal + '-1';
                     const origin = document.getElementById(originID);
                     if (origin) {
+                      const focusTarget = origin.matches('.footnote-reference')
+                        ? origin
+                        : origin.querySelector('.footnote-reference');
                       origin.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
-                      origin.focus({preventScroll: true});
+                      (focusTarget || origin).focus({preventScroll: true});
                     }
                     event.preventDefault();
                     return;

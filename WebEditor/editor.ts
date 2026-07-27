@@ -1271,7 +1271,7 @@ class FootnoteReferenceWidget extends WidgetType {
     return equal;
   }
 
-  toDOM(view: EditorView) {
+  toDOM() {
     const wrapper = document.createElement("sup");
     wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
     wrapper.dataset.scholiumProtected = "footnote";
@@ -1286,13 +1286,6 @@ class FootnoteReferenceWidget extends WidgetType {
       marker.classList.add("footnote-reference-missing");
     }
     footnoteReferencePresentations.set(wrapper, this.reference);
-    wrapper.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      const reference = footnoteReferencePresentations.get(wrapper);
-      if (!reference) return;
-      view.dispatch({selection: {anchor: reference.from}, scrollIntoView: true});
-      view.focus();
-    });
     wrapper.append(marker);
     return wrapper;
   }
@@ -1310,11 +1303,10 @@ class FootnoteReferenceWidget extends WidgetType {
     return true;
   }
 
-  ignoreEvent() { return true; }
+  ignoreEvent() { return false; }
 }
 
 const footnoteSectionPresentations = new WeakMap<HTMLElement, readonly FootnoteDefinitionPresentation[]>();
-const footnoteDefinitionPresentations = new WeakMap<HTMLElement, FootnoteDefinitionPresentation>();
 
 class FootnoteSectionWidget extends WidgetType {
   constructor(readonly definitions: readonly FootnoteDefinitionPresentation[]) { super(); }
@@ -1337,7 +1329,7 @@ class FootnoteSectionWidget extends WidgetType {
     return Math.max(72, this.definitions.length * 52);
   }
 
-  toDOM(view: EditorView) {
+  toDOM() {
     const section = document.createElement("section");
     section.className = "footnotes cm-live-footnotes-widget";
     section.dataset.scholiumProtected = "footnotes";
@@ -1349,21 +1341,12 @@ class FootnoteSectionWidget extends WidgetType {
       const item = document.createElement("li");
       item.dataset.footnote = String(definition.ordinal);
       item.dataset.sourceOffset = String(definition.from);
-      footnoteDefinitionPresentations.set(item, definition);
       const content = document.createElement("div");
       content.className = "footnote-content";
       appendMarkdownBlocks(definition.content, content, {
         mathematics: editingDialect?.mathematics,
         resolveCallout: calloutDefinition,
       });
-      const revealSource = (event: MouseEvent) => {
-        event.preventDefault();
-        const current = footnoteDefinitionPresentations.get(item);
-        if (!current) return;
-        view.dispatch({selection: {anchor: current.from}, scrollIntoView: true});
-        view.focus();
-      };
-      item.addEventListener("mousedown", revealSource);
       item.append(content);
       list.append(item);
     }
@@ -1387,14 +1370,13 @@ class FootnoteSectionWidget extends WidgetType {
     items.forEach((item, index) => {
       const definition = this.definitions[index];
       item.dataset.sourceOffset = String(definition.from);
-      footnoteDefinitionPresentations.set(item, definition);
     });
     footnoteSectionPresentations.set(dom, this.definitions);
     liveWidgetReuseCounts.footnote += 1;
     return true;
   }
 
-  ignoreEvent() { return true; }
+  ignoreEvent() { return false; }
 }
 
 interface LiveFootnoteProjectionState extends LiveBlockProjectionState {

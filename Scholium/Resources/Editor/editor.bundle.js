@@ -31903,7 +31903,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (equal) liveWidgetReuseCounts.footnote += 1;
       return equal;
     }
-    toDOM(view) {
+    toDOM() {
       const wrapper = document.createElement("sup");
       wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
       wrapper.dataset.scholiumProtected = "footnote";
@@ -31918,13 +31918,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         marker.classList.add("footnote-reference-missing");
       }
       footnoteReferencePresentations.set(wrapper, this.reference);
-      wrapper.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        const reference = footnoteReferencePresentations.get(wrapper);
-        if (!reference) return;
-        view.dispatch({ selection: { anchor: reference.from }, scrollIntoView: true });
-        view.focus();
-      });
       wrapper.append(marker);
       return wrapper;
     }
@@ -31937,11 +31930,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return true;
     }
     ignoreEvent() {
-      return true;
+      return false;
     }
   };
   var footnoteSectionPresentations = /* @__PURE__ */ new WeakMap();
-  var footnoteDefinitionPresentations = /* @__PURE__ */ new WeakMap();
   var FootnoteSectionWidget = class extends WidgetType {
     constructor(definitions) {
       super();
@@ -31959,7 +31951,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     get estimatedHeight() {
       return Math.max(72, this.definitions.length * 52);
     }
-    toDOM(view) {
+    toDOM() {
       const section = document.createElement("section");
       section.className = "footnotes cm-live-footnotes-widget";
       section.dataset.scholiumProtected = "footnotes";
@@ -31971,21 +31963,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const item = document.createElement("li");
         item.dataset.footnote = String(definition.ordinal);
         item.dataset.sourceOffset = String(definition.from);
-        footnoteDefinitionPresentations.set(item, definition);
         const content2 = document.createElement("div");
         content2.className = "footnote-content";
         appendMarkdownBlocks(definition.content, content2, {
           mathematics: editingDialect?.mathematics,
           resolveCallout: calloutDefinition
         });
-        const revealSource = (event) => {
-          event.preventDefault();
-          const current = footnoteDefinitionPresentations.get(item);
-          if (!current) return;
-          view.dispatch({ selection: { anchor: current.from }, scrollIntoView: true });
-          view.focus();
-        };
-        item.addEventListener("mousedown", revealSource);
         item.append(content2);
         list.append(item);
       }
@@ -32004,14 +31987,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       items.forEach((item, index) => {
         const definition = this.definitions[index];
         item.dataset.sourceOffset = String(definition.from);
-        footnoteDefinitionPresentations.set(item, definition);
       });
       footnoteSectionPresentations.set(dom, this.definitions);
       liveWidgetReuseCounts.footnote += 1;
       return true;
     }
     ignoreEvent() {
-      return true;
+      return false;
     }
   };
   function liveFootnoteDecorations(state, presentation) {

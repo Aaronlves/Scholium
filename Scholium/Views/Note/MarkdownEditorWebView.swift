@@ -799,24 +799,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return try JSONDecoder().decode(TestingAccessibilitySnapshot.self, from: data)
     }
 
-    func testingRevealFirstFootnoteDefinition() async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const item = document.querySelector('.cm-live-footnotes-widget li');
-            if (!item) return false;
-            return !item.dispatchEvent(new MouseEvent('mousedown', {
-                bubbles: true,
-                cancelable: true
-            }));
-            """,
-            arguments: [:],
-            in: nil,
-            contentWorld: .page
-        )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
-    }
-
     func testingClickFirstCalloutText(_ requestedText: String) async throws {
         guard let webView else { throw SessionError.unavailable }
         let result = try await webView.callAsyncJavaScript(
@@ -848,6 +830,64 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             contentWorld: .page
         )
         guard result as? Bool == true else { throw SessionError.invalidResult }
+    }
+
+    func testingClickFirstFootnoteReference() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const marker = document.querySelector('.cm-live-footnote-reference-widget .footnote-reference');
+            if (!marker) return null;
+            marker.scrollIntoView({block: 'center', behavior: 'auto'});
+            const rect = marker.getBoundingClientRect();
+            return {
+              x: (rect.left + rect.right) / 2,
+              y: (rect.top + rect.bottom) / 2
+            };
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let position = result as? [String: Any],
+              let x = position["x"] as? Double,
+              let y = position["y"] as? Double,
+              let window = webView.window else {
+            throw SessionError.invalidResult
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        let webViewPoint = NSPoint(
+            x: x,
+            y: webView.isFlipped ? y : webView.bounds.height - y
+        )
+        let windowPoint = webView.convert(webViewPoint, to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        guard let mouseDown = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        ), let mouseUp = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0
+        ) else {
+            throw SessionError.invalidResult
+        }
+        webView.mouseDown(with: mouseDown)
+        webView.mouseUp(with: mouseUp)
     }
 
     func testingPressArrow(_ key: String, shiftKey: Bool = false) async throws {

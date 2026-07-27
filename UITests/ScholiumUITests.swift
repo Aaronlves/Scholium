@@ -2520,6 +2520,43 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testReviewOwnsFootnoteNavigationAndEditKeepsItPassive() throws {
+        let reference = app.buttons["Footnote 1"].firstMatch
+        XCTAssertTrue(reference.waitForExistence(timeout: 8))
+        reference.click()
+
+        let returnToReference = app.buttons["Return to footnote reference 1"].firstMatch
+        XCTAssertTrue(returnToReference.waitForExistence(timeout: 5))
+        returnToReference.click()
+        let referenceFocus = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hasKeyboardFocus == true"),
+            object: reference
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [referenceFocus], timeout: 5), .completed)
+
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        mode.click()
+        let edit = app.menuItems["Edit"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 3))
+        edit.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Markdown editor, Edit mode"]
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertFalse(app.buttons["Footnote 1"].exists)
+        XCTAssertFalse(app.buttons["Return to footnote reference 1"].exists)
+
+        mode.click()
+        let source = app.menuItems["Source"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 3))
+        source.click()
+        XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["Footnote 1"].exists)
+        XCTAssertFalse(app.buttons["Return to footnote reference 1"].exists)
+    }
+
+    @MainActor
     func testLineCommentDiscussReopenAndFinish() throws {
         let noteURL = triptychDirectory
             .appendingPathComponent("01-analyses", isDirectory: true)
@@ -6249,6 +6286,18 @@ final class ScholiumUITests: XCTestCase {
                 A final long paragraph makes the lower page rhythm visible after tables, code, mathematics, and callouts. It remains synthetic, contains no private research material, and exists only inside this test-owned Triptych copy.
                 """# + "\n",
                 to: visualNoteURL
+            )
+        }
+        if name.contains("testReviewOwnsFootnoteNavigationAndEditKeepsItPassive") {
+            let footnoteNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
+            let existingFootnoteFixture = try String(
+                contentsOf: footnoteNoteURL,
+                encoding: .utf8
+            )
+            try write(
+                existingFootnoteFixture + "\nQA footnote marker[^qa-footnote].\n\n"
+                    + "[^qa-footnote]: Synthetic Review-only footnote.\n",
+                to: footnoteNoteURL
             )
         }
         if name.contains("testSearchKeepsDirectResultsSeparateFromRelatedConnections") {

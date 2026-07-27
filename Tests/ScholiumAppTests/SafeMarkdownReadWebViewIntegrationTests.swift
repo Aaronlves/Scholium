@@ -159,6 +159,41 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review footnotes preview, navigate, and return")
+    func reviewFootnotesOwnInteraction() async throws {
+        let source = "First claim[^one], then another claim[^one].\n\n[^one]: Basis.\n"
+        let document = NoteDocument(relativePath: "Footnotes.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let interaction = try await harness.footnoteInteractionSnapshot()
+        #expect(interaction.previewTitle == "Footnote 1")
+        #expect(interaction.originID == "fnref-1-2")
+        #expect(!interaction.previewHiddenAfterHover)
+        #expect(interaction.navigatedToDefinition)
+        #expect(interaction.definitionFocused)
+        #expect(interaction.returnedToReference)
+        #expect(interaction.referenceFocused)
+        await harness.closeAndDrain()
+    }
+
+    private struct FootnoteInteractionSnapshot: Decodable {
+        let previewTitle: String
+        let originID: String
+        let previewHiddenAfterHover: Bool
+        let navigatedToDefinition: Bool
+        let definitionFocused: Bool
+        let returnedToReference: Bool
+        let referenceFocused: Bool
+    }
+
     struct TestingPresentationScenario {
         let name: String
         let width: CGFloat
@@ -923,6 +958,56 @@ extension MarkdownEditorWebViewIntegrationTests {
                 in: nil,
                 contentWorld: .page
             )
+        }
+
+        func footnoteInteractionSnapshot() async throws -> FootnoteInteractionSnapshot {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            let rawResult = try await webView.callAsyncJavaScript(
+                """
+                const references = Array.from(document.querySelectorAll('.footnote-reference'));
+                const reference = references[1];
+                const origin = reference && reference.closest('.footnote-reference-wrap');
+                const definition = reference && document.getElementById(reference.dataset.target);
+                const back = definition && definition.querySelector('.footnote-return');
+                const popover = document.getElementById('scholium-preview-popover');
+                const title = popover && popover.querySelector('.scholium-preview-title');
+                if (!reference || !origin || !definition || !back || !popover || !title) return null;
+
+                let navigatedToDefinition = false;
+                let returnedToReference = false;
+                definition.scrollIntoView = () => { navigatedToDefinition = true; };
+                origin.scrollIntoView = () => { returnedToReference = true; };
+
+                reference.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
+                const previewTitle = title.textContent || '';
+                const previewHiddenAfterHover = popover.hidden;
+
+                reference.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                const definitionFocused = document.activeElement === definition;
+                back.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+
+                return {
+                  previewTitle,
+                  originID: origin.id,
+                  previewHiddenAfterHover,
+                  navigatedToDefinition,
+                  definitionFocused,
+                  returnedToReference,
+                  referenceFocused: document.activeElement === reference
+                };
+                """,
+                arguments: [:],
+                in: nil,
+                contentWorld: .page
+            )
+            guard JSONSerialization.isValidJSONObject(rawResult as Any),
+                  let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
+                throw ReadHarnessError.invalidSnapshot
+            }
+            return try JSONDecoder().decode(FootnoteInteractionSnapshot.self, from: data)
         }
 
         func scrollRegistrySnapshot() async throws -> (

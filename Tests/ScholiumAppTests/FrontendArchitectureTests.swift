@@ -2091,6 +2091,53 @@ struct FrontendArchitectureTests {
         ).contains(css))
     }
 
+    @Test("Review alone owns footnote preview and navigation")
+    func reviewOwnsFootnoteInteraction() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let referenceStart = try #require(editorSource.range(of: "class FootnoteReferenceWidget"))
+        let referenceEnd = try #require(
+            editorSource.range(
+                of: "const footnoteSectionPresentations",
+                range: referenceStart.upperBound..<editorSource.endIndex
+            )
+        )
+        let sectionStart = try #require(editorSource.range(of: "class FootnoteSectionWidget"))
+        let sectionEnd = try #require(
+            editorSource.range(
+                of: "interface LiveFootnoteProjectionState",
+                range: sectionStart.upperBound..<editorSource.endIndex
+            )
+        )
+        let editReference = String(editorSource[referenceStart.lowerBound..<referenceEnd.lowerBound])
+        let editSection = String(editorSource[sectionStart.lowerBound..<sectionEnd.lowerBound])
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<p>Claim<button class="footnote-reference" data-footnote="1">1</button>.</p><section class="footnotes"><ol><li data-footnote="1"><div class="footnote-content">Basis.</div><button class="footnote-return">Return</button></li></ol></section>"#,
+            source: "Claim[^one].\n\n[^one]: Basis.\n",
+            documentID: "Footnotes.md",
+            fingerprint: DocumentFingerprint(content: "Claim[^one].\n\n[^one]: Basis.\n").sha256,
+            commentEnabled: false,
+            selectionEnabled: true,
+            linkPreviews: [],
+            presentationCSS: "",
+            userCSS: ""
+        )
+
+        #expect(!editReference.contains("addEventListener(\"mousedown\""))
+        #expect(!editSection.contains("addEventListener(\"mousedown\""))
+        #expect(editReference.contains("ignoreEvent() { return false; }"))
+        #expect(editSection.contains("ignoreEvent() { return false; }"))
+        #expect(readHTML.contains("showFootnotePopover"))
+        #expect(readHTML.contains("event.target.closest('.footnote-reference')"))
+        #expect(readHTML.contains("event.target.closest('.footnote-return')"))
+    }
+
     @Test("Read and Live Preview share the bounded preview presentation")
     func sharedPreviewPresentation() throws {
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
