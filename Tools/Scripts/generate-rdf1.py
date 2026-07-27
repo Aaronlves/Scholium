@@ -34,6 +34,17 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
+def markdown_section_bytes(path: Path, heading: str) -> bytes:
+    source = path.read_text(encoding="utf-8")
+    marker = f"### {heading}\n"
+    start = source.find(marker)
+    if start == -1:
+        raise SystemExit(f"Missing canonical protocol section: {heading}")
+    end = source.find("\n### ", start + len(marker))
+    section = source[start:] if end == -1 else source[start:end]
+    return section.encode("utf-8")
+
+
 def body_word_count(value: str) -> int:
     return len(TOKEN_PATTERN.findall(value))
 
@@ -225,7 +236,8 @@ def generate(output: Path) -> dict[str, object]:
         f"{entry['vault']}:{entry['relative_path']}:{entry['sha256']}" for entry in entries
     ).encode("utf-8")
     script_path = Path(__file__).resolve()
-    protocol_path = project_file("Docs/PERFORMANCE_BENCHMARK.md")
+    protocol_path = project_file("Docs/SCHOLIUM_SPEC.md")
+    protocol_section = "21.4 Packaged performance gate"
     manifest: dict[str, object] = {
         "fixture": "Scholium Reference Data Fixture 1",
         "version": FIXTURE_VERSION,
@@ -235,8 +247,13 @@ def generate(output: Path) -> dict[str, object]:
             "sha256": sha256_file(script_path),
         },
         "protocol": {
-            "path": "Docs/PERFORMANCE_BENCHMARK.md",
-            "sha256": sha256_file(protocol_path) if protocol_path.exists() else None,
+            "path": "Docs/SCHOLIUM_SPEC.md",
+            "section": "21.4",
+            "sha256": (
+                sha256_bytes(markdown_section_bytes(protocol_path, protocol_section))
+                if protocol_path.exists()
+                else None
+            ),
         },
         "triptych": {
             "note_count": len(entries),

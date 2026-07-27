@@ -973,9 +973,8 @@ preflights a compatible independently installed package and writes independent
 copies; it never synchronizes Skill bytes. Permissions stores one Triptych
 default plus deliberate per-Skill overrides in machine-local Application
 Support. Bootstrap states the quiet Ask Me Every Time default and points to
-this later Settings route without requiring a policy choice. The retained
-Function-era Settings implementation is unreachable migration code pending the
-final clean-cutover removal.
+this later Settings route without requiring a policy choice. Superseded
+Function-era Settings construction was deleted at the clean cutover.
 
 `ResearchPermissionPolicyStore` owns one strict schema-v1 file per Triptych at
 `Triptychs/<id>/research-guidance/standing-permissions-v1/` under Application
@@ -1367,6 +1366,26 @@ external authority. A real WKWebView integration journey drives 50 typed
 Source/Live mode transitions through one attached session and requires the
 dirty buffer, accessibility mode chrome, and bounded performance ring to remain
 coherent. It does not infer process-memory convergence or visible p95 latency.
+
+Performance verification keeps target, mechanism, and evidence separate.
+`Tools/Scripts/generate-rdf1.py` owns the deterministic RDF-1 bytes and
+manifest; repository verification regenerates and verifies it beneath ignored
+`.build/` state. `Tools/Scripts/run-performance-benchmarks.sh` owns the external
+visible-boundary driver, five-warm-up/30-sample protocol, strict result
+validation, scenario-versus-gate mode, and output inventory. Gate mode accepts
+only the packaged app, requires release-owner threshold approval, and verifies
+`ScholiumBuildProvenance.plist` against a clean exact tag and commit.
+
+Metric runs use isolated app state and metric-specific processes. Warm Search
+and Review reuse their post-setup process; launch and cold Review relaunch per
+sample. The driver expands deterministic Library targets rather than routing a
+Search result through Source mode. Native publication, AppKit layout, WebKit
+navigation, bridge acknowledgement, paint, and exact app/WebKit process
+attribution jointly define readiness. Run records contain only timing,
+correctness counts, fixture identity, artifact identity, and environment
+metadata—never queries, Note paths/titles, or research text. The target
+thresholds and evidence-class rules live in `SCHOLIUM_SPEC.md` §21.4; dated
+measurements and incomplete series live only in `IMPLEMENTATION_STATUS.md`.
 
 `ScholiumContracts` owns durable Markdown meanings and the immutable editing
 dialect. TypeScript may parse an uncommitted buffer for immediate projection

@@ -4,92 +4,68 @@
 
 > 一间安静、本地优先的哲学写作室。
 
-哲学很少以完整论证的形态突然降临。它生长在专注的阅读之中：一个从文本里
-辨认出的区分，一项动摇熟悉立场的反驳，以及一份反复修改、直到足以独立成立的
-回应。Scholium 是一款围绕这种缓慢而真实的研究过程构建的原生 macOS 研究工作台。
-研究文档——
-而不是仪表盘、任务板或聊天记录——始终位于中心。一个研究领域在
-**脉络（Triptych）**中逐渐成形：**分析**保存对来源的研究，**议题**汇集
-概念与争论，**写作**则承载研究者自己的论证。
+Scholium 是一款原生 macOS 研究工作台，用于专注阅读、忠实于来源的分析、概念
+发展与哲学写作。研究文档——而不是仪表盘、任务板或聊天记录——始终是主要界面
+对象。一个研究领域以**脉络（Triptych）**组织：**分析**保存来源研究，**议题**
+汇集概念与争论，**写作**承载研究者自己的论证。
 
-*Scholium* 原指写在文本旁边的注疏。这款应用延续了这种精神：帮助研究者
-与来源共同思考，却不取代研究者的作者身份或判断。Markdown 始终是研究者所选
-文件夹中普通、可检查的文本；阅读、写作、搜索、关联、评审与恢复这些基本实践
-都不依赖 agent。当研究者邀请外部 agent 参与时，Scholium 会为其工作提供明确的
-目标与材料、修订检查、来源记录和恢复点，使协助保持有边界、可审查、可恢复。
-
-Scholium 写给那些希望“让软件安静，让思想响亮”的人：专注地阅读与写作，
-永不冒充证据的关联，以及记得一个论证如何改变的研究记录。它仍在被认真塑造。
-如果您珍视哲学技艺、持久的纯文本档案，以及只协助您而不替您作判断的工具，
-我们希望您会喜欢这里。
-
-Scholium 也将成为一个由研究者治理 Agent 参与方法的地方。它安静地保存可以
-验证的操作事实，邀请 Agent 报告有边界的学术结果，并且只在研究者主动表达时
-记录研究者的判断。它既不要求一份完整的研究心理档案，也不自行编造这样的档案。
-方法 Skills 可以被检查、直接编辑、替换或停用；准确来源、权限、来源记录、冲突
-与恢复仍由 Scholium 的受保护机制负责。
+Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅读、写作、搜索、关联、
+评审与恢复不依赖 Agent。研究者邀请外部 Agent 时，Scholium 会冻结准确的目标、
+材料、修订、方法与权限，使协助保持有边界、可归属、可审查、可恢复。
 
 ## 文档
 
 请使用足以回答问题的最小权威集合：
 
-1. [Scholium 规格](Docs/SCHOLIUM_SPEC.md)：产品行为、界面设计、
-   Scholarly Editorialism、辅助功能、发布要求和现行决策的唯一目标权威。
-2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)：模块、运行时、状态所有权
-   以及 CodeMirror/WKWebView 边界的从属结构合同。
-3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)：当前可达行为、证据、迁移债务与
-   尚未完成的验收。
-4. 本 README、实际构建调用点、可执行测试和脚本：设置方法与当前可达性的证据。
+1. [Scholium 规格](Docs/SCHOLIUM_SPEC.md)是产品行为、界面设计、辅助功能、发布
+   要求和现行决策的唯一目标权威。
+2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)说明模块、运行时、状态所有权
+   与编辑器边界。
+3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)记录当前可达行为、带日期的证据、
+   迁移债务和尚未完成的验收。
+4. 本 README、实际构建、测试和脚本提供设置方法与当前实现证据。
 
-目标规则不等于实现声明。实际构建调用点、可执行测试与脚本仍是判断当前行为是否
-可达的最终证据。
+目标文字不等于实现证明。已经完成使命的迁移 Roadmap 与被取代的决策记录保留在
+Git 历史中，不再作为平行权威。
 
-其他操作参考包括 [CSS 片段](Docs/CSS_SNIPPETS.md)、
-[第一方 Zotero MCP 传输](Docs/ZOTERO_MCP.md)，以及内置的
-[产品技能包](ScholiumCore/Resources/Skills/README.md)。
-[Beta 性能基准](Docs/PERFORMANCE_BENCHMARK.md)区分内部回归微基准、
-仅场景运行和尚未执行的打包应用 G7 门禁，并定义 RDF-1 及其失败关闭运行器。
+仍然独立的任务型操作参考包括：
+
+- [CSS 片段合同](Docs/CSS_SNIPPETS.md)
+- [第一方 Zotero MCP 传输](Docs/ZOTERO_MCP.md)
+- [产品 Skill 包](ScholiumCore/Resources/Skills/README.md)
 
 ## 当前实现
 
-当前构建是一个由编译器强制边界的模块化单体：不可变值与用例协议位于
-`ScholiumContracts`，内部 I/O 位于 `ScholiumCore`，macOS 应用与 CLI 共享
-一个无界面的 `ScholiumApplication` 层。Core 不是公共产品，两个交付目标都
-不能导入它。当前可达行为包括多脉络注册与窗口路由、脉络控制、安全的笔记生命
-周期、Comment、当前由 Function 支撑的 Discussion、评析、机器本地的写入前恢复、
-完整脉络恢复点、带修订检查的 CLI 直接写入、研究库范围的属性、未分类导入、统一
-搜索、受保护的 CSS 片段、仅限 localhost 的 Zotero 读取，以及供外部 Agent
-选择使用的第一方 Zotero MCP 服务。Canvas 已从产品中移除。“写作”文件夹仍是
-研究者自行管理的普通文件夹；
-Scholium 不注册或管理项目。代码所有权请参阅
-[实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)，精确证据与剩余缺口请参阅
-[实现状态](Docs/IMPLEMENTATION_STATUS.md)。
+Scholium 是一个由编译器强制边界的模块化单体。不可变值与用例协议位于
+`ScholiumContracts`；内部仓储、存储、索引、监听与文件系统 I/O 位于
+`ScholiumCore`；原生应用与 CLI 共享无界面的 `ScholiumApplication` 层。两个
+交付目标都不导入 Core。
 
-D-106 的公共 Action 合约、可直接编辑的 Working Method Skills、分类的 Skills
-设置、通用解析器与执行入口现已可达。新 Action 运行把受保护的执行状态按运行保存
-在 Application Support，并把已验证的非对话结果写成一个只记录 Action 身份的
-便携式 Research Record；该合约递归拒绝未声明字段，原始 key、组装后的 prompt、
-bookmark、绝对路径、传输细节与 diff 不能进入。写入报告、已使用的 grant 与完成
-证据在同一个本地运行文件中原子推进。Settle 也只保存每个 Note 的一个便携式当前
-状态，而不创建应用解释的历史。保留的 Function 入口在生产 Actions 界面切换前仍
-使用未改写的旧存储；Action Discussion 的 Finish 在统一迁移前失败关闭，不写入旧
-activity。standing permissions、统一 Discussion、独立双栏 Research
-Record 窗口、Record Trash 与一次性 diff 仍属于后续迁移。
+当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、笔记和文件夹
+生命周期、外部编辑冲突、恢复点和逐笔记恢复、Settle、统一 Discussion、Critique、
+Research Actions、可编辑 Working Methods、Researcher Skills、常驻权限、带独立
+有界子阶段的 Agent 笔记变更请求、便携式 Research Records、推荐文献、Zotero
+本地只读上下文，以及可选的第一方 Zotero MCP 传输。
+
+应用、CLI、交付合同与记录全部使用 Action 身份。受保护的 Local Execution v2
+仅作为内部的容纳、修订、完成、冲突与恢复机制。未知的预发布数据保持原字节、
+不可见、不解析且不产生授权；产品中没有旧数据入口或兼容命令。
+
+准确证据以及尚未完成的人类、辅助功能、性能、打包和发布工作，请参阅
+[实现状态](Docs/IMPLEMENTATION_STATUS.md)。
 
 ## 环境要求
 
 运行打包构建需要 macOS 26 或更高版本。测试者不需要 Xcode。
 
-构建 Scholium 需要完整的 Xcode 安装，以及 `Package.swift` 要求的编译器与
-SDK。仓库解析器会依次采用明确且有效的 `DEVELOPER_DIR`、完整的
-`xcode-select` 选择，或常规位置中的 Beta/正式版 Xcode。只有重新构建
-TypeScript 编辑器 bundle 时才需要 Node.js。
+构建 Scholium 需要完整 Xcode，以及 `Package.swift` 要求的编译器与 SDK。仓库
+解析器会采用明确且有效的 `DEVELOPER_DIR`、完整的 `xcode-select` 选择，或常规
+位置中的 Beta/正式版 Xcode。只有重新构建 TypeScript 编辑器 bundle 时才需要
+Node.js。
 
 ## 构建与测试
 
-请从仓库根目录运行开发命令。
-
-运行完整仓库验证：
+请从仓库根目录运行命令。完整仓库门禁为：
 
 ```bash
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
@@ -103,46 +79,36 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" swift build
 DEVELOPER_DIR="$developer_dir" swift test
 ./Tools/Scripts/run-debug-app.sh
+./Tools/Scripts/run-ui-tests.sh smoke
+./Tools/Scripts/run-ui-tests.sh complete
 ```
 
-Debug 启动器会在被忽略的 `.build/debug-app/Scholium-Debug.app` 中组装应用，
-并通过 LaunchServices 打开。GUI 开发应使用这一入口，让场景启动、恢复、激活和
-原生窗口行为运行在真实 app bundle 中；`swift run ScholiumApp` 不适合作为
-macOS GUI 宿主。
+UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状态。`smoke`
+运行规范旅程；`complete` 枚举当前测试套件、只构建一次并串行执行。这些属于自动化
+开发检查，不等于人类视觉或辅助技术验收。
 
-在隔离窗口 QA 中，可以只读获取最前方 QA 窗口的准确 frame，而不改变窗口：
+修改 `WebEditor/` 后，请重建并验证已检入的 bundle：
 
 ```bash
-./Tools/Scripts/inspect-window-size.sh
+./Tools/Scripts/build-editor.sh
+./Tools/Scripts/verify-editor-bundle.sh
 ```
 
-第一次运行可能需要授予终端辅助功能权限。该探针只读，默认检查
-`com.scholium.qa` bundle。
+升级安全 runner 使用不同的一次性 QA 构建，不接触研究库：
 
-所有 SwiftPM 构建产物、依赖 checkout、编译器索引和测试产物都位于被忽略的
-仓库 `.build/` 目录下。这样做是安全的，因为 checkout 本身位于桌面、文稿、
-CloudStorage 和其他 File Provider 管理位置之外。不要把构建缓存或索引重定向到
-`/tmp`。
+```bash
+./Tools/Scripts/verify-qa-upgrade-safety.sh \
+  --baseline .build/upgrade/baseline/Scholium-QA.app \
+  --candidate .build/qa-runtime/Scholium-QA.app \
+  --output .build/upgrade/evidence
+```
 
-### 开发存储
+所有 SwiftPM scratch、Xcode DerivedData、QA 应用、fixture 副本、索引、日志与结果
+bundle 都放在仓库内被忽略的 `.build/` 路径下。仓库本身必须位于 Desktop、
+Documents、CloudStorage 和其他 File Provider 管理路径之外。
 
-如需检查、打开或清理 Scholium 的开发存储，请在 Finder 中双击
-[`Manage Scholium Development Storage.command`](Manage%20Scholium%20Development%20Storage.command)。
-原生菜单提供以下操作：
-
-- **显示存储报告**：报告当前 `.build`、过时开发产物和打包构建的大小与准确位置。
-- **打开**：在 Finder 中显示 `.build`、临时目录、Xcode DerivedData 或
-  `~/Applications/Scholium Builds`。
-- **删除过时产物**：移除过时的 Scholium 临时文件、DerivedData、QA 应用，
-  以及旧外部构建布局留下的缓存；保留当前仓库的 `.build`。
-- **删除所有可重建产物**：移除同一批过时文件以及当前 `.build`。下一次构建会
-  按需重新下载依赖、编译并建立索引。
-
-当 Swift、Xcode 或 Scholium 正在运行时，清理器会拒绝执行。删除许可列表只包含
-已识别的 Scholium 开发路径；它不会移除源文件、应用状态、打包构建、脉络文件或
-便携式 `.scholium/` 数据。
-
-命令行提供相同操作：
+可在 Finder 中使用 `Manage Scholium Development Storage.command`，也可从命令行
+检查和清理可重建状态：
 
 ```bash
 ./Tools/Scripts/manage-development-storage.sh report
@@ -150,186 +116,109 @@ CloudStorage 和其他 File Provider 管理位置之外。不要把构建缓存�
 ./Tools/Scripts/manage-development-storage.sh clean-all
 ```
 
-两个清理命令默认都是 dry run：只打印每个候选项和可回收空间，不会删除文件。
-请先检查列表，再添加 `--delete`：
+清理命令默认为 dry run；审查准确的 allowlist 目标后才添加 `--delete`。它们不会
+删除源码、应用状态、打包构建、脉络文件或便携式 `.scholium/` 数据。
 
-```bash
-./Tools/Scripts/manage-development-storage.sh clean-stale --delete
-./Tools/Scripts/manage-development-storage.sh clean-all --delete
-```
-
-可选的外部 agent Zotero 传输由单独构建的 `scholium` CLI 提供。支持的源码安装
-路径、agent 配置和受保护的导入合同请参阅 [Zotero MCP](Docs/ZOTERO_MCP.md)。
-
-当 `WebEditor/` 发生变化时：
-
-```bash
-./Tools/Scripts/build-editor.sh
-./Tools/Scripts/verify-editor-bundle.sh
-```
-
-这些脚本会把锁定的 npm 依赖安装到临时存储，而不是同步工作树。仓库内的
-`WebEditor/node_modules` 会被拒绝；请将其移除后重新运行仓库脚本。
-
-确定性界面开发只能使用隔离的 QA 应用和一次性 fixture 副本：
-
-```bash
-./Tools/Scripts/build-qa-app.sh
-./Tools/Scripts/run-ui-tests.sh
-```
-
-这些命令使用 bundle identifier 为 `com.scholium.qa` 的
-`.build/qa-runtime/Scholium-QA.app`，并复制 `SCHOLIUM_TEST_VAULTS` 所指目录作为一次性
-fixture（默认 `~/Desktop/TestVaults`）。它们不会打包发布版本，也不会打开
-真实研究库。
-
-采用未来构建之前，请在一个一次性脉络与一个隔离应用 home 上比较旧 QA 应用和
-候选应用：
-
-```bash
-./Tools/Scripts/verify-qa-upgrade-safety.sh \
-  --baseline /tmp/Scholium-Previous-QA.app \
-  --candidate .build/qa-runtime/Scholium-QA.app \
-  --output /tmp/Scholium-Upgrade-Evidence
-```
-
-该门禁会生成 BOM、CRLF、LF、无末尾换行、注释、未知及多行 YAML、Unicode/CJK
-和空笔记案例。它会在启动前及每个应用运行后记录路径、字节大小、SHA-256、权限
-和修改时间；只要“分析”“议题”或“写作”中的任何文件发生变化就会失败。
-便携式 `.scholium/` 的变化同样会失败，除非相应路径已在
-`Tools/Fixtures/qa-upgrade-portable-allowlist.txt` 中明确审查。日志、manifest
-和两个 `.xcresult` bundle 会保留在指定的证据目录。相同 app hash 下通过只能
-证明测试 harness 有效；版本间证据需要不同的基线和候选构建。
-
-打包、签名、公证和分发属于独立的发布工作，不属于日常验证。
+打包性能属于独立发布门禁。规范性阈值、fixture、采样、provenance 与证据要求位于
+[规格 §21.4](Docs/SCHOLIUM_SPEC.md#214-packaged-performance-gate)；当前结果和缺口
+位于实现状态。
 
 ## 源码优先的 Beta 分发
 
-计划中的首个外部构建是 `0.1.0-beta.1`：在同一 GitHub release 页面发布采用
-`GPL-3.0-or-later` 的公开标签源码，以及可选的 ad-hoc 签名 Scholium app ZIP
-和 SHA-256 校验值。公开 Beta 不单独提供 CLI 资产；应用内包含版本匹配的
-Scholium CLI helper，研究者可从“研究指导”中明确选择安装到本机。
+计划中的首个外部版本是 `v0.1.0-beta.1`：在同一 GitHub release 页面发布采用
+`GPL-3.0-or-later` 的准确标签源码、可选的注明架构的 ad-hoc 签名应用 ZIP 和
+SHA-256 校验值。应用包含版本匹配的 CLI helper，不单独发布 CLI 资产。
 
-便利版应用没有 Developer ID 签名，也未经过公证。测试者不需要 Xcode，但首次
-尝试启动后必须前往 **系统设置 → 隐私与安全性 → 仍要打开**，批准可信下载。
-Developer ID 和公证仍是可选的未来分发改进。准确门禁与安装说明请参阅
-[Beta 发布指南](Docs/BETA_RELEASE.md)。
+便利版应用没有 Developer ID 签名，也未经过公证。从可信的项目 release 下载并
+核对校验值后：
+
+1. 解压 ZIP，并把 **Scholium** 移到“应用程序”；
+2. 尝试启动一次；
+3. 打开**系统设置 → 隐私与安全性**，选择**仍要打开**；
+4. 完成认证并确认**打开**。
+
+不要关闭 Gatekeeper，也不要递归移除 quarantine。准确发布门禁、产物内容、干净
+账户验证与未来签名渠道规则维护在
+[规格 §21.5](Docs/SCHOLIUM_SPEC.md#215-source-first-beta-distribution)。
 
 ## 脉络设置
 
-首次启动会要求研究者分别选择 **分析**、**议题**和**写作**文件夹。由于便携式
-`.scholium/` 数据位于“写作”旁边，macOS 还会一次性请求访问“写作”所在的
-文件夹；这是访问边界，不是第四个研究库。建议将三者置于同一父目录，但不作强制
-要求。之后可通过 Scholium 设置中的**管理脉络…**添加或更改完整脉络。
+首次启动会要求研究者分别选择**分析**、**议题**和**写作**文件夹。便携式
+`.scholium/` 数据位于“写作”旁边，因此 macOS 还会请求访问“写作”所在文件夹；
+该访问边界不是第四个研究库。建议三者位于同一父目录，但不作强制要求。
 
-使用**文件 → 新建脉络…**配置另一个完整研究领域；使用**文件 → 打开脉络**在
-独立窗口中打开已注册脉络；使用**文件 → 新建窗口**为当前脉络打开另一个独立
-窗口。每个脉络始终只包含分析、议题和写作；“写作”的子文件夹不是应用管理的
-项目。
-
-每个脉络都需要独立的“写作”父目录，因为便携式 `.scholium/` 控制目录位于
-“写作”旁边。若两个脉络的“写作”文件夹会共享同一控制目录，Scholium 将拒绝
-配置。
-
-研究者界面与 CLI 只使用当前的三研究库脉络合同。预发布版本的角色别名与位置式
-搜索语法不再接受。
+使用**文件 → 新建脉络…**配置另一个研究领域，使用**文件 → 打开脉络**在独立
+窗口打开已注册脉络，使用**文件 → 新建窗口**为当前脉络打开另一个独立窗口。
+两个脉络不能共享同一个“写作”侧控制目录。
 
 ## Scholium CLI
 
-在打包应用中，打开**设置 → 研究指导 → 技能 → 高级 → Scholium CLI**并选择
+在打包应用中，打开**设置 → 研究指导 → 来源与集成 → Scholium CLI**并选择
 **安装**。Scholium 会把版本匹配的 helper 安装到 `~/.local/bin/scholium`，
-报告当前 PATH 能否发现该目录，并提供 PATH 设置命令，而不编辑 shell 文件。
+验证安装，并提供 PATH 指引而不编辑 shell profile。
 
-随应用提供的 [Scholium CLI 合同](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)
-定义准确的 agent 生命周期与失败行为。[Zotero MCP 指南](Docs/ZOTERO_MCP.md)
-说明可选的第一方 Zotero 传输。本 README 仍是面向人的简明安装入口。
-
-从源码 checkout 本地构建并安装当前 CLI：
+源码 checkout 的安装与检查方式：
 
 ```bash
-chmod +x Tools/Scripts/install-cli.sh
 Tools/Scripts/install-cli.sh
-```
-
-请直接检查可用命令，不要依赖可能过时的示例：
-
-```bash
 scholium version --format json
 scholium doctor --format json
-scholium help function
-scholium function prepare --help
+scholium help action
+scholium action prepare --help
 ```
 
-CLI 支持检查已注册研究库、共享搜索、链接、图路径、规范工作区目录和关注输出、
-精确读取、对话回复、可恢复的研究功能、推荐文献，以及带修订检查的直接笔记操作。
-JSON Function 结果包含类型化的后续动作；恢复时使用 `function show`，变更过的
-“发展”或“修订”运行完成后使用 `function prepare-fidelity`。修改现有笔记必须
-提供 `scholium read --format json` 返回的当前 SHA-256。
+CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关注、准确读取、Discussion
+回复、可恢复 Actions、推荐文献和带修订检查的笔记操作。修改已有笔记时必须提供
+`scholium read --format json` 返回的当前 SHA-256。
 
-隔离测试 CLI：
-
-```bash
-SCHOLIUM_HOME=/tmp/scholium-cli-check swift run \
-  scholium --help
-```
+`scholium agent mcp serve` 通过 stdio 与私有同用户应用桥，为外部 Agent 提供
+协作式运行中笔记变更请求；它既不启动 Scholium，也不授予写权限。准确生命周期见
+随应用提供的 [CLI 合同](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)，
+可选 Zotero 传输见 [Zotero MCP](Docs/ZOTERO_MCP.md)。
 
 ## 存储与安全
 
-权威研究内容始终保留在所选 Markdown 研究库中。按运行保存的受保护执行证据、旧
-评审与 Dialogue、恢复点、索引、已存搜索及其他设备状态位于：
+权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型
+便携式 `.scholium/` 控制结构，只保存规格允许的脉络 manifest、便携式设置与
+Skills、当前研究者状态、活跃 Discussion 和白名单 Research Records。
+
+Bookmark、绝对路径、窗口 session、索引、保存的查询、受保护执行、恢复、传输
+状态、组装后的指令与未知预发布字节保存在本机：
 
 ```text
 ~/Library/Application Support/Scholium/
 ```
 
-“写作”旁的小型便携式 `.scholium/` 目录只保存脉络 manifest、脉络本地设置、
-属性与评析配置、身份映射、未分类 Markdown、Action-keyed Working Method 绑定、
-`.scholium/skills/<skill-id>/` 下的脉络技能包，以及
-`.scholium/research-records/v1/` 下经过字段白名单约束的学术记录与 Settle 当前
-状态。技能包包含 `SKILL.md`，并可包含受限的单层 `references/`、`templates/`
-或 `evals/` 资源。这里不保存项目注册表、bookmark、绝对路径、密码、索引、窗口
-会话、组装后的 prompt、原始 key、已存 diff hunks 或私人传输状态。
+每次权威写入都必须验证容纳边界与预期修订、保留被替换字节、验证目标源码、原子
+写入，并在冲突时保留未保存的编辑器 buffer。派生的搜索、图、渲染与诊断状态都是
+可丢弃投影，绝不用于重建可写源码。
 
-每次应用对权威内容的写入都必须验证路径包含关系与预期修订，保留先前字节，验证
-frontmatter，执行原子写入，并在不丢弃编辑器缓冲区的前提下报告冲突。派生的搜索、
-图、渲染和诊断状态都可丢弃，绝不能反向重建可写源文本。
-
-开发测试不得使用真实研究库。请将 `SCHOLIUM_TEST_VAULTS` 指向非私人 fixture
-根目录；无需 UI harness 的测试则使用生成的一次性研究库。
+开发测试绝不能使用真实研究库。
 
 ## 许可证
 
-除非另有说明，Scholium 的原创源代码采用
-[GNU General Public License version 3 或更高版本](LICENSE)
-（`GPL-3.0-or-later`）。第三方组件仍采用各自的许可证；详见
+除非另有说明，Scholium 原创源码采用
+[GNU General Public License, version 3 or later](LICENSE)
+（`GPL-3.0-or-later`）。第三方组件保留各自许可证；详见
 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
 ## 仓库结构
 
 ```text
-ScholiumContracts/         不可变值、协议、源文本语义、错误
-ScholiumCore/              内部仓库、存储、索引、watcher、I/O
-ScholiumApplication/       无界面运行时与能力实现
-Scholium/                  macOS 应用与面向人的交互
-ScholiumCLI/               CLI 解析、格式化与 Contracts handler
+ScholiumContracts/         不可变值、协议与源码语义
+ScholiumCore/              内部仓储、索引、监听与 I/O
+ScholiumApplication/       应用与 CLI 共享的无界面能力
+Scholium/                  原生 macOS 应用与面向人的交互
+ScholiumCLI/               CLI 解析、格式化与交付适配
 WebEditor/                 TypeScript 与 CodeMirror 源码
-Tests/ScholiumContractsTests/
-                           合同与边界测试
-Tests/ScholiumCoreTests/   Core 单元与集成测试
-Tests/ScholiumApplicationTests/
-                           运行时、操作、事件与交付一致性测试
-Tests/ScholiumAppTests/    窗口组合与界面架构测试
-UITests/                   隔离的 macOS UI 测试
-Docs/SCHOLIUM_SPEC.md      产品、界面与发布目标权威
-Docs/IMPLEMENTATION_STATUS.md
-                           当前证据与迁移账本
+Tests/                     Contracts、Core、Application 与 App 测试
+UITests/                   隔离的一次性 macOS UI 旅程
+Docs/SCHOLIUM_SPEC.md      产品、界面、辅助功能与发布目标
 Docs/IMPLEMENTATION_ARCHITECTURE.md
                            模块、运行时、状态与编辑器所有权
-Docs/CSS_SNIPPETS.md       支持的文档样式自定义合同
-ScholiumCore/Resources/Skills/README.md
-                           内置产品技能架构与证据边界
-Docs/BETA_RELEASE.md       源码优先的 Beta 政策与发布门禁
-Tools/Scripts/             构建、验证、QA 与发布脚本
-Docs/PERFORMANCE_BENCHMARK.md
-                           RDF-1 fixture 与打包应用 G7 协议
+Docs/IMPLEMENTATION_STATUS.md
+                           当前证据、债务与开放验收
+Docs/CSS_SNIPPETS.md       高级文档样式自定义合同
+Docs/ZOTERO_MCP.md         可选的第一方 Zotero 传输指南
+Tools/Scripts/             构建、验证、QA、性能与发布工具
 ```

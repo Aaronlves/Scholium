@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-27 (D-109)
+**Last target change:** 2026-07-27 (D-112)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -2121,7 +2121,7 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G4 Recovery and deletion** | Conflict, checkpoints/restore, Trash/purge, external rename, and derived failures pass fixture journeys. |
 | **G5 Scholarly transparency** | Authoritative Markdown, Discussion turns, Action outputs, Settle, Critique, Fidelity, provenance, authority, agent feedback, and uncertainty remain visibly distinct. |
 | **G6 Accessibility/i18n** | Section 20's declared threshold is met. |
-| **G7 Performance** | The packaged-app `PERFORMANCE_BENCHMARK.md` protocol passes on frozen fixture/machine. |
+| **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |
 | **G10 Agent skill architecture** | Protected mechanism, editable Working Methods, Researcher Skills, declarative Action Profiles, staged installation, permissions, change requests, records, bootstrap, and Zotero/agent bridges pass declared journeys. |
@@ -2132,7 +2132,105 @@ Beta requires every applicable gate including G10. 1.0 additionally requires
 the full **Open in Codex** journey; **Run with Codex** is not a gate. Current
 evidence belongs only in `IMPLEMENTATION_STATUS.md`.
 
-### 21.4 Change control
+### 21.4 Packaged performance gate
+
+Performance evidence has three noninterchangeable classes:
+
+1. regression microbenchmarks detect internal slowdowns;
+2. scenario measurements exercise an incomplete fixture, fewer than 30
+   retained samples, or a nonrelease artifact; and
+3. product-gate measurements exercise the exact packaged Release app, frozen
+   RDF-1, complete visible boundaries, and the full retained sample set.
+
+Only the third class can satisfy G7. Debug builds, unit tests, internal timers,
+human stopwatches, and partial memory series are never substitutes.
+
+The candidate Beta thresholds remain subject to explicit release-owner
+approval. Once approved, use nearest-rank p95 over exactly 30 valid samples
+after five excluded warm-ups:
+
+| Interaction | Candidate p95 limit |
+| --- | ---: |
+| Warm library launch to a usable note list | `< 1,000 ms` |
+| Indexed Search query to complete visible results | `< 100 ms` |
+| Warm Review-note activation to interactive rendering | `< 300 ms` |
+| Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
+
+Editor candidate limits remain separately unapproved: `< 100 ms` for key to
+first painted edit, visible Edit/Source transition, and cached preview;
+`< 300 ms` for warm Edit activation; `< 1,000 ms` for application-cold
+5,000-word Edit activation; and `< 5 ms` for one visible-range projection.
+Continuous scrolling must add no uninterrupted Editor task longer than one
+display refresh interval, and neither native nor Web UI work may add an
+uninterrupted task over 100 ms.
+
+`Tools/Scripts/generate-rdf1.py` owns the deterministic no-RNG RDF-1 fixture.
+Its verified manifest fixes exactly 800 synthetic Markdown notes, complete
+path/size/SHA-256 inventory and tree hash, role and malformed-frontmatter
+counts, link/folder coverage, one 5,000-word Work, one 100,000-CJK-character
+Work, fixed navigation targets, and fixed English/CJK Search queries with
+expected identities. RDF-1 is disposable test data, never a research source.
+
+The gate must use the exact app produced by the release packager from one clean,
+reviewed, exactly tagged commit. App provenance, tag, commit, source-clean
+state, architecture, and fixture manifest must match. One unchanged machine
+record covers macOS, hardware, power mode, display, foreground applications,
+window size, accessibility settings, and logging. Each metric uses isolated
+Application Support, preferences, bookmarks, and derived state.
+
+The measured boundary is user-visible and accessible: a selectable, unblocked
+library; complete visible Search results; or rendered, interactive Review/Edit
+content after native publication and WebKit readiness. Semantic projection or
+an internal callback alone is insufficient. Retain raw durations, p50, p95,
+maximum, mean, valid and invalid sample counts with reasons, correctness,
+machine record, artifact identity, fixture identity, and raw outputs outside
+every research vault. Missing process roles, changed process sets, provenance
+mismatch, incomplete samples, or unapproved thresholds fail closed.
+
+The 100,000-CJK fixture must remain editable at beginning, middle, and end with
+working undo, mode switching, and byte-exact save. After 50 note/mode switches,
+retained editor/WebView counts and total app-plus-WebKit memory must converge
+rather than grow monotonically. These are correctness and stability conditions,
+not percentile results. Current measurements and remaining activation work
+belong only in `IMPLEMENTATION_STATUS.md`.
+
+### 21.5 Source-first Beta distribution
+
+The first external release identity is:
+
+- tag and public label `v0.1.0-beta.1`;
+- app marketing version `0.1.0`, build `1`, minimum macOS 26;
+- exact tagged source under `GPL-3.0-or-later`; and
+- an optional architecture-labelled, ad-hoc-signed Scholium app ZIP plus its
+  SHA-256 checksum on the same release page.
+
+The app bundle includes its version-matched `scholium` helper. There is no
+separate public CLI asset. The release also includes applicable license texts
+and notices, identifies verified architectures without overstating universal
+support, and contains no real vault, Application Support state, bookmark,
+credential, index, absolute private path, or research content.
+
+Ad-hoc signing is not Developer ID signing, notarization, publisher
+verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub
+download through **System Settings → Privacy & Security → Open Anyway** after
+the first launch attempt. Documentation must never advise disabling Gatekeeper,
+recursively removing quarantine, or installing an untrusted root certificate.
+
+Before tagging or upload, freeze a reviewed clean commit; audit the tree and
+history for private material; run complete repository verification with
+disposable fixtures; package with the clean-source requirement; inspect app and
+helper metadata, resources, entitlements, architecture, signatures, icon, ZIP,
+checksum, and licenses; pass G7; and exercise the exact expanded ZIP in a clean
+macOS account through first launch, Triptych setup, read/edit/save, Search,
+conflict/recovery, Inspector/Action, restoration, and unavailable integrations.
+No real research vault may be opened during release verification.
+
+Developer ID signing, notarization, and stapling are optional future channel
+improvements. If adopted, rebuild from the exact release commit and repeat the
+complete external smoke test; never re-sign an already tested artifact or
+share a certificate private key outside its responsible organization.
+
+### 21.6 Change control
 
 Every target change records task, affected sections/scope, trust/source impact,
 vault/app compatibility, required evidence, and new non-goals/questions.
@@ -2169,7 +2267,8 @@ only in Git history.
 | **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
 | **D-105** | 7, 8.1–8.2, 9–11, 13, 18.1, 18.5, 18.7, 22 | **D-106** | 1–3, 5–11, 13, 16–22 |
 | **D-107** | 7.1, 8.1, 14, 22 | **D-108** | 7.2, 8.1–8.2, 18.4–18.5, 20, 22 |
-| **D-109** | 18.5, 20, 22 | **D-112** | 18.5, 19.6, 20, 22 |
+| **D-109** | 18.5, 20, 22 | **D-110** | 8.2, 17, 22 |
+| **D-111** | 7.3, 17, 22 | **D-112** | 18.5, 19.6, 20, 22 |
 
 Clean-cutover inventory:
 
