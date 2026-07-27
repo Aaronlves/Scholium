@@ -371,6 +371,15 @@ next actions; use `function show` for recovery and `function prepare-fidelity`
 after a changed Analyze, Synthesize, or Write run. Existing-note mutations require the
 current SHA-256 returned by `scholium read --format json`.
 
+`scholium agent mcp serve` exposes the local, cooperative mid-run Note-change
+request tools to an external agent over MCP stdio. It talks only to an already
+running Scholium App through the private same-user bridge: it does not launch
+the App, queue work, grant writes, or accept coordination keys in command-line
+arguments. If a request times out after dispatch, query the same request ID;
+do not retry it under a new ID because the outcome may already be durable. One
+coordination key is consumed by one request ID; terminal state never frees it
+for a different request.
+
 For isolated CLI testing:
 
 ```bash

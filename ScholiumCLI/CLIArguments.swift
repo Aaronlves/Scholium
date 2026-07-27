@@ -114,6 +114,10 @@ extension ScholiumCLI {
            !arguments[2].hasPrefix("-") {
             return arguments.prefix(3).joined(separator: " ")
         }
+        if command == "agent", arguments.count >= 3, arguments[1] == "mcp",
+           !arguments[2].hasPrefix("-") {
+            return arguments.prefix(3).joined(separator: " ")
+        }
         guard arguments.count >= 2 else { return command }
         return arguments.prefix(2).joined(separator: " ")
     }
@@ -125,6 +129,7 @@ extension ScholiumCLI {
             "--format": .value,
         ]
         var rules: [String: CLICommandRule] = [
+            "agent mcp serve": .init(pathLength: 3),
             "doctor": .init(pathLength: 1, options: format),
             "vault list": .init(pathLength: 2, options: format),
             "search": .init(

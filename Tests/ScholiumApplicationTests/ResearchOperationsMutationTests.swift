@@ -2746,9 +2746,13 @@ struct ResearchFunctionOperationsTests {
         }?.loadedResources.contains {
             $0.relativePath == "references/persistence-method.md"
         } == true)
-        #expect(try await handle.snapshot().research.functionRuns.first {
-            $0.id == critique.runID
-        }?.preparedInstructions == critique.instructions)
+        let storedCritiqueInstructions = try #require(
+            try await handle.snapshot().research.functionRuns.first {
+                $0.id == critique.runID
+            }?.preparedInstructions
+        )
+        #expect(critique.instructions.hasPrefix(storedCritiqueInstructions))
+        #expect(!storedCritiqueInstructions.contains("Coordination key:"))
         let missingOutput = ResearchFunctionCompletionSubmission(
             runID: critique.runID,
             confirmationToken: critique.snapshot.confirmationToken,
@@ -4726,6 +4730,188 @@ struct ResearchFunctionOperationsTests {
             _ = try await handle.research.agentNoteChangeRequest(
                 id: requestRacingDeletion.id
             )
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("The Agent bridge key authenticates submit, status, and idempotent cancellation")
+    func agentBridgeCoordinationKey() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let alternativeURL = fixture.rootURL
+            .appendingPathComponent("Works", isDirectory: true)
+            .appendingPathComponent("Bridge Target.md")
+        try Data("# Bridge Target\n\nA bounded alternative.\n".utf8)
+            .write(to: alternativeURL, options: .atomic)
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parentTarget = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let parent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .write,
+                target: actionNote(parentTarget)
+            )
+        )
+        let marker = "Coordination key: "
+        let line = try #require(parent.instructions.split(separator: "\n")
+            .first(where: { $0.hasPrefix(marker) }))
+        let key = String(line.dropFirst(marker.count))
+        #expect(key.utf8.count == 73)
+
+        let vaultID = try #require(fixture.assignment.vault(for: .output)?.id)
+        let target = try await researchFunctionTarget(
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Bridge Target.md"),
+            role: .work,
+            handle: handle
+        )
+        let revision = try AgentNoteChangeActionRevision(
+            actionSnapshot: parent.snapshot
+        )
+        let request = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: revision,
+            requestedAction: revision,
+            targets: [try agentChangeTarget(target)],
+            operations: [.modifyMarkdown],
+            agentReason: "Continue with this additional Work only if Scholium permits it."
+        )
+
+        let copiedGrantParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .write,
+                target: actionNote(parentTarget)
+            )
+        )
+        let executionDirectory = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+        let firstExecutionURL = executionDirectory
+            .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
+        let copiedExecutionURL = executionDirectory.appendingPathComponent(
+            copiedGrantParent.runID.uuidString.lowercased() + ".json"
+        )
+        let firstExecution = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: firstExecutionURL)
+            ) as? [String: Any]
+        )
+        var copiedExecution = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: copiedExecutionURL)
+            ) as? [String: Any]
+        )
+        copiedExecution["agent_coordination_grant"] = firstExecution[
+            "agent_coordination_grant"
+        ]
+        try JSONSerialization.data(
+            withJSONObject: copiedExecution,
+            options: [.sortedKeys]
+        ).write(to: copiedExecutionURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: copiedExecutionURL.path
+        )
+        let copiedRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: copiedGrantParent.snapshot
+        )
+        let copiedGrantRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: copiedGrantParent.runID,
+            parentAction: copiedRevision,
+            requestedAction: copiedRevision,
+            targets: [try agentChangeTarget(target)],
+            operations: [.modifyMarkdown],
+            agentReason: "Attempt to replay another parent run's copied grant."
+        )
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.submitAgentNoteChangeRequestFromBridge(
+                copiedGrantRequest,
+                coordinationKey: key
+            )
+        }
+
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.research.submitAgentNoteChangeRequestFromBridge(
+                request,
+                coordinationKey: String(repeating: "x", count: 73)
+            )
+        }
+        let submitted = try await handle.research
+            .submitAgentNoteChangeRequestFromBridge(
+                request,
+                coordinationKey: key
+            )
+        #expect(submitted.decision.state == .pending)
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.research.agentNoteChangeRequestFromBridge(
+                id: request.id,
+                coordinationKey: String(repeating: "x", count: 73),
+                now: submitted.expiresAt.addingTimeInterval(1)
+            )
+        }
+        let requestURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("agent-change-requests-v1", isDirectory: true)
+            .appendingPathComponent(request.id.uuidString.lowercased() + ".json")
+        let requestDecoder = JSONDecoder()
+        requestDecoder.dateDecodingStrategy = .deferredToDate
+        #expect(try requestDecoder.decode(
+            AgentNoteChangeRequestRecord.self,
+            from: Data(contentsOf: requestURL)
+        ).decision.state == .pending)
+        #expect(try await handle.research.agentNoteChangeRequestFromBridge(
+            id: request.id,
+            coordinationKey: key
+        ) == submitted)
+        let cancelled = try await handle.research
+            .cancelAgentNoteChangeRequestFromBridge(
+                id: request.id,
+                coordinationKey: key
+            )
+        #expect(cancelled.decision.state == .cancelled)
+        #expect(try await handle.research.cancelAgentNoteChangeRequestFromBridge(
+            id: request.id,
+            coordinationKey: key
+        ) == cancelled)
+        #expect(try await handle.research.submitAgentNoteChangeRequestFromBridge(
+            request,
+            coordinationKey: key
+        ) == cancelled)
+        let secondRequest = try AgentNoteChangeRequest(
+            triptychID: request.triptychID,
+            parentRunID: request.parentRunID,
+            parentAction: request.parentAction,
+            requestedAction: request.requestedAction,
+            targets: request.targets,
+            operations: request.operations,
+            agentReason: "Attempt a second request after the first is terminal."
+        )
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.research.submitAgentNoteChangeRequestFromBridge(
+                secondRequest,
+                coordinationKey: key
+            )
+        }
+
+        let persistedFiles = FileManager.default.enumerator(
+            at: fixture.applicationSupportURL,
+            includingPropertiesForKeys: [.isRegularFileKey]
+        )
+        while let url = persistedFiles?.nextObject() as? URL {
+            guard try url.resourceValues(forKeys: [.isRegularFileKey])
+                .isRegularFile == true else { continue }
+            #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self)
+                .contains(key))
         }
         await runtime.shutdown()
     }

@@ -144,6 +144,8 @@ final class WorkspaceStore: ObservableObject {
     let zoteroBridge: ZoteroBridge
     let commandLineToolInstaller: CommandLineToolInstaller
     let agentApplicationHandoff: AgentApplicationHandoffController
+    let localAgentBridge: LocalAgentBridgeServer?
+    let localAgentBridgeStartupFailure: LocalAgentBridgeError?
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
     @Published private(set) var workspaceEventGenerations: [UUID: UInt64] = [:]
@@ -171,16 +173,67 @@ final class WorkspaceStore: ObservableObject {
             "Workspace",
             isDirectory: true
         )
-        applicationRuntime = WorkspaceRuntime(configuration: .live(.init(
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: applicationSupportURL,
             workspaceRegistryStorageURL: workspaceURL
         )))
+        applicationRuntime = runtime
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
         commandLineToolInstaller = CommandLineToolInstaller()
         agentApplicationHandoff = AgentApplicationHandoffController(
             applicationSupportURL: applicationSupportURL
         )
+        do {
+            localAgentBridge = try LocalAgentBridgeServer(
+                applicationSupportURL: applicationSupportURL
+            ) { request in
+                try Task.checkCancellation()
+                let handle = try await runtime.openWorkspace(id: request.triptychID)
+                try Task.checkCancellation()
+                switch request.operation {
+                case .submit:
+                    guard let changeRequest = request.changeRequest else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return try await handle.research
+                        .submitAgentNoteChangeRequestFromBridge(
+                            changeRequest,
+                            coordinationKey: request.coordinationKey
+                        )
+                case .status:
+                    guard let requestID = request.changeRequestID else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return try await handle.research.agentNoteChangeRequestFromBridge(
+                        id: requestID,
+                        coordinationKey: request.coordinationKey
+                    )
+                case .cancel:
+                    guard let requestID = request.changeRequestID else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return try await handle.research
+                        .cancelAgentNoteChangeRequestFromBridge(
+                            id: requestID,
+                            coordinationKey: request.coordinationKey
+                        )
+                }
+            }
+            localAgentBridgeStartupFailure = nil
+        } catch let error as LocalAgentBridgeError {
+            localAgentBridge = nil
+            localAgentBridgeStartupFailure = error
+            Self.publicationLogger.error(
+                "Local Agent bridge startup failed: \(error.localizedDescription, privacy: .public)"
+            )
+        } catch {
+            localAgentBridge = nil
+            localAgentBridgeStartupFailure = .systemCall("start", EIO)
+            Self.publicationLogger.error(
+                "Local Agent bridge startup failed with an unclassified local error."
+            )
+        }
     }
 
     private static func validateApplicationSupportURL(_ url: URL) throws {
@@ -211,11 +264,26 @@ final class WorkspaceStore: ObservableObject {
     }
 
     deinit {
+        let bridge = localAgentBridge
         let runtime = applicationRuntime
-        Task { await runtime.shutdown() }
+        Task {
+            if let bridge {
+                while !(await bridge.stopAndWait(timeout: 30)) {
+                    await Task.yield()
+                }
+            }
+            await runtime.shutdown()
+        }
     }
 
     func shutdownApplicationRuntime() async {
+        if let localAgentBridge,
+           !(await localAgentBridge.stopAndWait()) {
+            Self.publicationLogger.fault(
+                "Application runtime shutdown was deferred because the local Agent bridge handler did not stop."
+            )
+            return
+        }
         let pendingInstallations = installationTasks.values.map(\.task)
         installationTasks.removeAll()
         pendingInstallations.forEach { $0.cancel() }

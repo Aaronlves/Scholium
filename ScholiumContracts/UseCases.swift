@@ -398,6 +398,13 @@ public protocol ZoteroUseCases: Sendable {
     func clearConnectionHistory() async throws
 }
 
+/// Delivery-neutral MCP request handling for the local Agent coordination
+/// bridge. The CLI owns stdio framing; Application owns bridge discovery,
+/// authentication, and request execution.
+public protocol AgentBridgeUseCases: Sendable {
+    func handle(requestData: Data) async -> Data?
+}
+
 public protocol WorkspaceEventStreaming: Sendable {
     func events() async -> AsyncStream<WorkspaceEvent>
 }

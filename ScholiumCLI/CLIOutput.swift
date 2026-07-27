@@ -102,6 +102,7 @@ extension ScholiumCLI {
           scholium zotero mcp config [--format text|json]
           scholium zotero mcp status [--probe] [--format text|json]
           scholium zotero mcp serve
+          scholium agent mcp serve
         Omitting --triptych requires exactly one configured Triptych.
         Triptych roles: analyses, topics, works
         Workflow contracts add exact task boundaries, phase isolation, Practice
@@ -192,6 +193,7 @@ private extension ScholiumCLI {
             "zotero mcp config": "Usage: scholium zotero mcp config [--format text|json]",
             "zotero mcp status": "Usage: scholium zotero mcp status [--probe] [--format text|json]",
             "zotero mcp serve": "Usage: scholium zotero mcp serve",
+            "agent mcp serve": "Usage: scholium agent mcp serve",
         ]
     }
 }

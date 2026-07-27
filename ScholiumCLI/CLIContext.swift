@@ -25,6 +25,37 @@ struct CLIContext: Sendable {
         return CLIContext(runtime: runtime)
     }
 
+    /// Creates only the local Agent bridge adapter. It deliberately does not
+    /// construct the ordinary snapshot runtime or touch vault state.
+    static func makeAgentBridge() throws -> AgentBridgeOperations {
+        let environment = ProcessInfo.processInfo.environment
+        let applicationSupportURL: URL
+#if DEBUG
+        if let explicit = environment["SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT"],
+           !explicit.isEmpty {
+            applicationSupportURL = URL(
+                fileURLWithPath: (explicit as NSString).expandingTildeInPath,
+                isDirectory: true
+            ).standardizedFileURL
+        } else if environment["SCHOLIUM_HOME"] != nil {
+            applicationSupportURL = ScholiumPaths.cliHomeURL()
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+        } else {
+            applicationSupportURL = try ScholiumPaths.sharedApplicationSupportURL()
+        }
+#else
+        if environment["SCHOLIUM_HOME"] != nil {
+            applicationSupportURL = ScholiumPaths.cliHomeURL()
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+        } else {
+            applicationSupportURL = try ScholiumPaths.sharedApplicationSupportURL()
+        }
+#endif
+        return try AgentBridgeOperations(
+            applicationSupportURL: applicationSupportURL
+        )
+    }
+
     func shutdown() async {
         await runtime.shutdown()
     }

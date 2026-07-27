@@ -5,6 +5,88 @@ import Testing
 
 @Suite("Executable Research Function CLI lifecycle")
 struct FunctionCLIExecutableLifecycleTests {
+    @Test("The Agent MCP wrapper stays on stdio and reports an absent App without opening a snapshot runtime")
+    func agentMCPUnavailableContract() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_FUNCTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await FunctionCLIFixture.make()
+        defer { fixture.remove() }
+        let cli = FunctionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let bridgeSupport = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeSupport,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeSupport) }
+        let triptychID = fixture.assignment.id.uuidString.lowercased()
+        let requestID = UUID().uuidString.lowercased()
+        let messages: [[String: Any]] = [
+            [
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": ["protocolVersion": "2025-06-18"],
+            ],
+            ["jsonrpc": "2.0", "id": 2, "method": "tools/list"],
+            [
+                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": [
+                    "name": "show_note_change_request",
+                    "arguments": [
+                        "triptych_id": triptychID,
+                        "request_id": requestID,
+                        "coordination_key": String(repeating: "a", count: 73),
+                    ],
+                ],
+            ],
+        ]
+        let input = try messages.reduce(into: Data()) { result, message in
+            result.append(try JSONSerialization.data(
+                withJSONObject: message,
+                options: [.sortedKeys]
+            ))
+            result.append(0x0A)
+        }
+        let result = try cli.run(
+            ["agent", "mcp", "serve"],
+            stdin: input,
+            environment: [
+                "SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT": bridgeSupport.path,
+            ]
+        )
+        #expect(result.stderr.isEmpty)
+        let responses = try String(decoding: result.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .map {
+                try #require(JSONSerialization.jsonObject(
+                    with: Data($0.utf8)
+                ) as? [String: Any])
+            }
+        #expect(responses.count == 3)
+        let tools = try #require(
+            (responses[1]["result"] as? [String: Any])?["tools"]
+                as? [[String: Any]]
+        )
+        #expect(Set(tools.compactMap { $0["name"] as? String }) == [
+            "request_note_changes",
+            "show_note_change_request",
+            "cancel_note_change_request",
+        ])
+        let callResult = try #require(responses[2]["result"] as? [String: Any])
+        #expect(callResult["isError"] as? Bool == true)
+        let structured = try #require(
+            callResult["structuredContent"] as? [String: Any]
+        )
+        let bridgeError = try #require(structured["error"] as? [String: Any])
+        #expect(bridgeError["code"] as? String == "unavailable")
+    }
+
     @Test("The real CLI exposes the Search v4 text and JSONL contracts")
     func searchV4Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
@@ -692,7 +774,11 @@ private struct FunctionCLIProcess {
     let binaryPath: String
     let home: URL
 
-    func run(_ arguments: [String], stdin: Data? = nil) throws -> Result {
+    func run(
+        _ arguments: [String],
+        stdin: Data? = nil,
+        environment additionalEnvironment: [String: String] = [:]
+    ) throws -> Result {
         let process = Process()
         let output = Pipe()
         let errors = Pipe()
@@ -701,7 +787,9 @@ private struct FunctionCLIProcess {
         process.arguments = arguments
         process.environment = ProcessInfo.processInfo.environment.merging([
             "SCHOLIUM_HOME": home.path,
-        ]) { _, isolated in isolated }
+        ]) { _, isolated in isolated }.merging(additionalEnvironment) {
+            _, explicit in explicit
+        }
         process.standardOutput = output
         process.standardError = errors
         if stdin != nil { process.standardInput = input }

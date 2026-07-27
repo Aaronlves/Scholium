@@ -209,6 +209,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/verify-function-cli.sh" \
+  "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh" \
   "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh" \
   "${ROOT}/Tools/Scripts/verify-workflow-cli.sh"; do
   zsh -n "${shell_script}"
@@ -248,7 +249,10 @@ run_swift_test_product() {
   if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
     # The canonical RDF-1 refresh measurement needs its own quiet process
     # boundary so graph/Search timings are not scheduler-contention artifacts.
+    # The Agent bridge likewise compresses production socket and cancellation
+    # deadlines for adversarial tests; run it without unrelated executor load.
     selection_arguments+=(--skip 'ArchitectureStabilityMeasurementTests')
+    selection_arguments+=(--skip 'LocalAgentBridgeTests')
   fi
   mkdir -p "${SCRATCH}"
   for attempt in 1 2 3; do
@@ -291,6 +295,11 @@ for test_product in \
       --package-path "${ROOT}" \
       --scratch-path "${SCRATCH}" \
       --no-parallel \
+      --filter 'ScholiumApplicationTests.LocalAgentBridgeTests'
+    swift test \
+      --package-path "${ROOT}" \
+      --scratch-path "${SCRATCH}" \
+      --no-parallel \
       --filter 'ScholiumApplicationTests.ArchitectureStabilityMeasurementTests'
   fi
 done
@@ -309,4 +318,6 @@ fi
 "${ROOT}/Tools/Scripts/verify-function-cli.sh" \
   "${SCRATCH}/debug/scholium" \
   "${SCRATCH}"
+SCHOLIUM_AGENT_BRIDGE_BUILD="${SCRATCH}" \
+  "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh"
 swift build --package-path "${ROOT}" -c release --scratch-path "${RELEASE_SCRATCH}"

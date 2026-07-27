@@ -267,6 +267,9 @@ public actor WorkspaceHandle {
     /// durable grant store keeps a digest, so reopening never reconstructs a
     /// credential from persisted state.
     var activeResearchActivityKeys: [UUID: String] = [:]
+    /// Plaintext Agent coordination keys are likewise process-local. Local
+    /// Execution v2 persists only their digest and expiry.
+    var activeAgentCoordinationKeys: [UUID: String] = [:]
 
     private init(
         assignment: TriptychAssignment,

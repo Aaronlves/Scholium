@@ -95,6 +95,40 @@ provides the parent-link completion action. Use `function show` after process
 loss or uncertainty. Cancellation is idempotent only before durable completion
 evidence exists.
 
+### Request a separately bounded continuation
+
+When the live packet supplies a Triptych ID, parent run ID, and coordination
+key, an agent may ask Scholium to consider additional Notes or another
+write-capable Action through the local MCP service:
+
+```sh
+scholium agent mcp serve
+```
+
+Use only these advertised tools:
+
+- `request_note_changes` submits the complete schema-v1 request supplied or
+  assembled from current exact identities and revisions;
+- `show_note_change_request` reads the existing request state and never creates
+  a second request;
+- `cancel_note_change_request` cancels an unresolved request without changing a
+  Note.
+
+Pass the coordination key only inside the MCP tool arguments over stdin. Never
+place it in command-line arguments, a temporary file, shell history, logs,
+feedback, or a Research Record. If the App is not running, the service returns
+unavailable; do not launch it, queue the request, or bypass the route. Exact
+request replay is safe, but reusing one request ID for changed content is not.
+If dispatch returns `outcome_unknown`, query the same request ID before any
+retry; never create a new request ID merely because the first response timed
+out. The first request ID consumes that coordination key permanently; a
+terminal decision does not authorize a second ID.
+
+A pending or allowed request is coordination state, not write authority. The
+parent packet remains unchanged. Wait for a separately prepared child packet
+before any additional write; if none is available, report the recommendation
+and continue read-only or stop.
+
 ## 4. Create or replace notes
 
 Create only an exact authorized path:

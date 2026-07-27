@@ -1404,6 +1404,8 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
     public let preparedInstructions: String
     public var dialogue: DialogueEntry?
     public var grant: ResearchActivityGrant?
+    public var agentCoordinationGrant: AgentCoordinationGrant?
+    public var agentCoordinationRequestID: UUID?
     public var completion: ResearchFunctionCompletion?
     public var completionSubmissionDigest: String?
 
@@ -1415,15 +1417,28 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         preparedInstructions: String,
         dialogue: DialogueEntry? = nil,
         grant: ResearchActivityGrant? = nil,
+        agentCoordinationGrant: AgentCoordinationGrant? = nil,
+        agentCoordinationRequestID: UUID? = nil,
         completion: ResearchFunctionCompletion? = nil,
         completionSubmissionDigest: String? = nil
     ) throws {
+        let coordinationRevision = snapshot.actionSnapshot.flatMap {
+            try? AgentNoteChangeActionRevision(actionSnapshot: $0)
+        }
+        let coordinationGrantMatches = agentCoordinationGrant.map {
+            $0.triptychID == triptychID
+                && $0.parentRunID == snapshot.runID
+                && $0.actionRevision == coordinationRevision
+        } ?? true
         guard snapshot.actionSnapshot != nil,
               snapshot.runID == snapshot.recordID,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024,
               dialogue?.id == snapshot.runID || dialogue == nil,
               dialogue?.functionSnapshot == snapshot || dialogue == nil,
               grant?.activityID == snapshot.activityID || grant == nil,
+              coordinationGrantMatches,
+              agentCoordinationRequestID == nil
+                || agentCoordinationGrant != nil,
               completion?.runID == snapshot.runID || completion == nil,
               completion?.function == snapshot.request.function || completion == nil,
               grant?.state != .completed || completion != nil,
@@ -1439,6 +1454,8 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         self.preparedInstructions = preparedInstructions
         self.dialogue = dialogue
         self.grant = grant
+        self.agentCoordinationGrant = agentCoordinationGrant
+        self.agentCoordinationRequestID = agentCoordinationRequestID
         self.completion = completion
         self.completionSubmissionDigest = completionSubmissionDigest
     }
@@ -1448,7 +1465,10 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         case triptychID = "triptych_id"
         case snapshot
         case preparedInstructions = "prepared_instructions"
-        case dialogue, grant, completion
+        case dialogue, grant
+        case agentCoordinationGrant = "agent_coordination_grant"
+        case agentCoordinationRequestID = "agent_coordination_request_id"
+        case completion
         case completionSubmissionDigest = "completion_submission_digest"
     }
 
@@ -1471,6 +1491,14 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
             ),
             dialogue: container.decodeIfPresent(DialogueEntry.self, forKey: .dialogue),
             grant: container.decodeIfPresent(ResearchActivityGrant.self, forKey: .grant),
+            agentCoordinationGrant: container.decodeIfPresent(
+                AgentCoordinationGrant.self,
+                forKey: .agentCoordinationGrant
+            ),
+            agentCoordinationRequestID: container.decodeIfPresent(
+                UUID.self,
+                forKey: .agentCoordinationRequestID
+            ),
             completion: container.decodeIfPresent(
                 ResearchFunctionCompletion.self,
                 forKey: .completion
@@ -1620,6 +1648,43 @@ public actor LocalResearchExecutionStore {
         )
     }
 
+    public nonisolated static func prepareAgentCoordination(
+        triptychID: UUID,
+        parentRunID: UUID,
+        actionRevision: AgentNoteChangeActionRevision,
+        issuedAt: Date,
+        validFor requestedDuration: TimeInterval = 60 * 60
+    ) throws -> AgentCoordinationAuthorization {
+        guard requestedDuration.isFinite,
+              issuedAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw AgentNoteChangeContractError.invalidCoordinationGrant
+        }
+        let duration = min(
+            max(1, requestedDuration),
+            AgentCoordinationGrant.maximumLifetime
+        )
+        let rawKey = [UUID().uuidString, UUID().uuidString]
+            .joined(separator: "-")
+            .lowercased()
+        let grant = try AgentCoordinationGrant(
+            triptychID: triptychID,
+            parentRunID: parentRunID,
+            actionRevision: actionRevision,
+            keyDigest: AgentCoordinationGrant.boundKeyDigest(
+                coordinationKey: rawKey,
+                triptychID: triptychID,
+                parentRunID: parentRunID,
+                actionRevision: actionRevision
+            ),
+            issuedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(duration)
+        )
+        return AgentCoordinationAuthorization(
+            grant: grant,
+            coordinationKey: rawKey
+        )
+    }
+
     @discardableResult
     public func create(
         _ record: LocalResearchExecutionRecord
@@ -1662,6 +1727,44 @@ public actor LocalResearchExecutionStore {
         try lock.withSharedLock {
             do { return try readRecord(id: id) }
             catch ResearchRecordStoreV1Error.executionNotFound { return nil }
+        }
+    }
+
+    /// Installs the digest-only Agent coordination grant when Critique's
+    /// crash-recovery handoff won the race to create the otherwise identical
+    /// local execution. It never replaces a different run or grant.
+    public func installAgentCoordinationGrant(
+        runID: UUID,
+        expectedSnapshot: ResearchFunctionSnapshot,
+        expectedPreparedInstructions: String,
+        grant: AgentCoordinationGrant
+    ) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            guard current.snapshot == expectedSnapshot,
+                  current.preparedInstructions == expectedPreparedInstructions,
+                  current.agentCoordinationGrant == nil
+                    || current.agentCoordinationGrant == grant else {
+                throw ResearchRecordStoreV1Error.executionAlreadyExists(runID)
+            }
+            current.agentCoordinationGrant = grant
+        }
+    }
+
+    /// Atomically consumes one coordination grant for one immutable request
+    /// identity. Exact retry of that ID is allowed; no later ID may reuse the
+    /// bearer key even after the request reaches a terminal state.
+    public func bindAgentCoordinationRequest(
+        runID: UUID,
+        expectedGrant: AgentCoordinationGrant,
+        requestID: UUID
+    ) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            guard current.agentCoordinationGrant == expectedGrant,
+                  current.agentCoordinationRequestID == nil
+                    || current.agentCoordinationRequestID == requestID else {
+                throw ResearchRecordStoreV1Error.executionAlreadyExists(runID)
+            }
+            current.agentCoordinationRequestID = requestID
         }
     }
 

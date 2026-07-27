@@ -87,10 +87,12 @@ public actor AgentNoteChangeRequestStore {
         receivedAt: Date = Date(),
         validFor: TimeInterval = 10 * 60
     ) throws -> AgentNoteChangeRequestRecord {
+        try Task.checkCancellation()
         guard request.triptychID == triptychID else {
             throw AgentNoteChangeRequestStoreError.triptychMismatch(request.id)
         }
         return try withExclusiveLock {
+            try Task.checkCancellation()
             var records = try readAllRecords()
             try expirePendingRecords(&records, at: receivedAt)
 
@@ -125,7 +127,9 @@ public actor AgentNoteChangeRequestStore {
         id: UUID,
         now: Date = Date()
     ) throws -> AgentNoteChangeRequestRecord {
-        try withExclusiveLock {
+        try Task.checkCancellation()
+        return try withExclusiveLock {
+            try Task.checkCancellation()
             var record = try readRecord(id: id)
             let current = try record.expiringIfNeeded(at: now)
             if current != record {
@@ -143,6 +147,19 @@ public actor AgentNoteChangeRequestStore {
             return try record(id: id, now: now)
         } catch AgentNoteChangeRequestStoreError.requestNotFound {
             return nil
+        }
+    }
+
+    /// Reads the exact stored request solely to locate its authenticated
+    /// parent. It performs no expiry or decision transition; an untrusted
+    /// bridge caller must authenticate before any machine-local mutation.
+    public func recordForAuthentication(
+        id: UUID
+    ) throws -> AgentNoteChangeRequestRecord {
+        try Task.checkCancellation()
+        return try withExclusiveLock {
+            try Task.checkCancellation()
+            return try readRecord(id: id)
         }
     }
 
@@ -201,10 +218,12 @@ public actor AgentNoteChangeRequestStore {
         allowedNoteIDs: [UUID] = [],
         decidedAt: Date = Date()
     ) throws -> AgentNoteChangeRequestRecord {
+        try Task.checkCancellation()
         guard state != .pending else {
             throw AgentNoteChangeContractError.invalidDecision
         }
         return try withExclusiveLock {
+            try Task.checkCancellation()
             var current = try readRecord(id: id)
             let expired = try current.expiringIfNeeded(at: decidedAt)
             if expired != current {
@@ -298,10 +317,15 @@ public actor AgentNoteChangeRequestStore {
 
     private func readRecord(id: UUID) throws -> AgentNoteChangeRequestRecord {
         do {
-            return try Self.decode(storage.read(
+            let record = try Self.decode(storage.read(
                 directory: nil,
                 fileName: Self.fileName(id)
             ))
+            guard record.id == id,
+                  record.request.triptychID == triptychID else {
+                throw AgentNoteChangeRequestStoreError.corruptStore
+            }
+            return record
         } catch let error as SecureRecordDirectoryError {
             if case .notFound = error {
                 throw AgentNoteChangeRequestStoreError.requestNotFound(id)

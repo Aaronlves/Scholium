@@ -25,6 +25,14 @@ Always read `references/cli-contract.md` before accessing a live Triptych. Read 
 
 For Discuss, persist only the attributed turn under `scholium-discussion-protocol`; never mutate Markdown. For Critique, use only the typed prepared-output binding and leave the Work and Materials read-only. If the agent needs another Note or phase, use the typed change-request route supplied by the run rather than constructing an unmediated command.
 
+The supplied coordination key is a transient bearer secret. Pass it only as an
+MCP tool argument through `scholium agent mcp serve`; never put it in argv, a
+file, feedback, or a log. A submitted or allowed request does not change the
+parent write set. Do not modify the requested Note until Scholium returns a
+separately prepared child phase with its own exact authority. One key belongs
+to one request ID: retry only that exact ID, and never invent a second ID after
+a terminal or uncertain result.
+
 ## Never
 
 - edit `.scholium` coordination state directly;

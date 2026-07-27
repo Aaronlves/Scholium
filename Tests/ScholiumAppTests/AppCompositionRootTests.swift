@@ -436,6 +436,28 @@ struct AppCompositionRootTests {
         }
     }
 
+    @Test("Agent bridge startup failure is retained without disabling the App runtime")
+    func agentBridgeStartupFailureIsRetained() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let root = repositoryRoot
+            .appendingPathComponent(".build/bridge-startup", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
+        let support = root.appendingPathComponent(
+            String(repeating: "long-path-", count: 8),
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = try WorkspaceStore(applicationSupportURL: support)
+        #expect(store.localAgentBridge == nil)
+        #expect(store.localAgentBridgeStartupFailure == .socketPathTooLong)
+        #expect(try await store.applicationRuntime.availableWorkspaces().isEmpty)
+        await store.shutdownApplicationRuntime()
+    }
+
     @Test("Two existing windows adopt one replacement and preserve local state")
     func twoWindowsAdoptRuntimeReplacement() async throws {
         let fileManager = FileManager.default

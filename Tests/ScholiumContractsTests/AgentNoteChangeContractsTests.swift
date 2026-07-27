@@ -4,6 +4,64 @@ import Testing
 
 @Suite("Agent Note Change contracts")
 struct AgentNoteChangeContractsTests {
+    @Test("Coordination grants persist only a bounded digest")
+    func coordinationGrantRoundTrip() throws {
+        let issuedAt = Date(timeIntervalSince1970: 100)
+        let triptychID = UUID(uuidString: "00000000-0000-4000-8000-000000000010")!
+        let parentRunID = UUID(uuidString: "00000000-0000-4000-8000-000000000020")!
+        let revision = try actionRevision()
+        let key = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        let grant = try AgentCoordinationGrant(
+            triptychID: triptychID,
+            parentRunID: parentRunID,
+            actionRevision: revision,
+            keyDigest: try AgentCoordinationGrant.boundKeyDigest(
+                coordinationKey: key,
+                triptychID: triptychID,
+                parentRunID: parentRunID,
+                actionRevision: revision
+            ),
+            issuedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(60)
+        )
+        let data = try JSONEncoder().encode(grant)
+        #expect(!String(decoding: data, as: UTF8.self).contains("coordination_key"))
+        #expect(try JSONDecoder().decode(
+            AgentCoordinationGrant.self,
+            from: data
+        ) == grant)
+        #expect(try grant.boundKeyDigest(coordinationKey: key) == grant.keyDigest)
+        #expect(try AgentCoordinationGrant.boundKeyDigest(
+            coordinationKey: key,
+            triptychID: triptychID,
+            parentRunID: UUID(),
+            actionRevision: revision
+        ) != grant.keyDigest)
+
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try AgentCoordinationGrant(
+                triptychID: triptychID,
+                parentRunID: parentRunID,
+                actionRevision: revision,
+                keyDigest: "not-a-digest",
+                issuedAt: issuedAt,
+                expiresAt: issuedAt.addingTimeInterval(60)
+            )
+        }
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try AgentCoordinationGrant(
+                triptychID: triptychID,
+                parentRunID: parentRunID,
+                actionRevision: revision,
+                keyDigest: String(repeating: "a", count: 64),
+                issuedAt: issuedAt,
+                expiresAt: issuedAt.addingTimeInterval(
+                    AgentCoordinationGrant.maximumLifetime + 1
+                )
+            )
+        }
+    }
+
     @Test("Canonical requests round-trip with a deterministic payload digest")
     func requestRoundTripAndDigest() throws {
         let first = try note(index: 1)

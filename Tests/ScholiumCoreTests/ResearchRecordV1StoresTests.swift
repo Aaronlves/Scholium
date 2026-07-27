@@ -578,6 +578,57 @@ struct ResearchRecordV1StoresTests {
         #expect(await legacyStore.grant(activityID: runID)?.state == .active)
     }
 
+    @Test("Local Execution v2 keeps only the Agent coordination digest")
+    func localCoordinationKeyIsTransient() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let runID = UUID()
+        let seed = try makeLocalExecutionRecord(runID: runID, grant: nil)
+        let actionSnapshot = try #require(seed.snapshot.actionSnapshot)
+        let authorization = try LocalResearchExecutionStore
+            .prepareAgentCoordination(
+                triptychID: seed.triptychID,
+                parentRunID: runID,
+                actionRevision: try AgentNoteChangeActionRevision(
+                    actionSnapshot: actionSnapshot
+                ),
+                issuedAt: Date(timeIntervalSince1970: 10),
+                validFor: 60
+            )
+        let record = try makeLocalExecutionRecord(
+            runID: runID,
+            grant: nil,
+            coordinationGrant: authorization.grant
+        )
+        let store = try fixture.localStore()
+        _ = try await store.create(record)
+        let data = try Data(contentsOf: store.storageURL
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json"))
+        let source = String(decoding: data, as: UTF8.self)
+        #expect(source.contains(authorization.grant.keyDigest))
+        #expect(!source.contains(authorization.coordinationKey))
+        #expect(try await store.record(id: record.id).agentCoordinationGrant
+            == authorization.grant)
+        let requestID = UUID()
+        #expect(try await store.bindAgentCoordinationRequest(
+            runID: record.id,
+            expectedGrant: authorization.grant,
+            requestID: requestID
+        ).agentCoordinationRequestID == requestID)
+        #expect(try await store.bindAgentCoordinationRequest(
+            runID: record.id,
+            expectedGrant: authorization.grant,
+            requestID: requestID
+        ).agentCoordinationRequestID == requestID)
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.bindAgentCoordinationRequest(
+                runID: record.id,
+                expectedGrant: authorization.grant,
+                requestID: UUID()
+            )
+        }
+    }
+
     @Test("Local write grant and Function completion commit in one record transition")
     func localGrantAndCompletionAreAtomic() async throws {
         let fixture = try Fixture()
@@ -852,6 +903,7 @@ struct ResearchRecordV1StoresTests {
     private func makeLocalExecutionRecord(
         runID: UUID,
         grant: ResearchActivityGrant?,
+        coordinationGrant: AgentCoordinationGrant? = nil,
         noteID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
     ) throws -> LocalResearchExecutionRecord {
         let action = try makeActionSnapshot(noteID: noteID)
@@ -883,7 +935,8 @@ struct ResearchRecordV1StoresTests {
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
             snapshot: snapshot,
             preparedInstructions: "Local protected instructions.",
-            grant: grant
+            grant: grant,
+            agentCoordinationGrant: coordinationGrant
         )
     }
 

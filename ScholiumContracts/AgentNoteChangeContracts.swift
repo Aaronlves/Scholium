@@ -1,5 +1,129 @@
 import Foundation
 
+/// Short-lived authority to ask Scholium to coordinate a separately bounded
+/// continuation from one frozen local Action run. Only the digest is durable;
+/// the plaintext key exists solely in the live delivery packet and bridge
+/// request.
+public struct AgentCoordinationGrant: Codable, Hashable, Sendable {
+    public static let maximumLifetime: TimeInterval = 24 * 60 * 60
+
+    public let triptychID: UUID
+    public let parentRunID: UUID
+    public let actionRevision: AgentNoteChangeActionRevision
+    public let keyDigest: String
+    public let issuedAt: Date
+    public let expiresAt: Date
+
+    public init(
+        triptychID: UUID,
+        parentRunID: UUID,
+        actionRevision: AgentNoteChangeActionRevision,
+        keyDigest: String,
+        issuedAt: Date,
+        expiresAt: Date
+    ) throws {
+        guard keyDigest.range(
+            of: #"^[0-9a-f]{64}$"#,
+            options: .regularExpression
+        ) != nil,
+        issuedAt.timeIntervalSinceReferenceDate.isFinite,
+        expiresAt.timeIntervalSinceReferenceDate.isFinite,
+        expiresAt > issuedAt,
+        expiresAt.timeIntervalSince(issuedAt) <= Self.maximumLifetime else {
+            throw AgentNoteChangeContractError.invalidCoordinationGrant
+        }
+        self.triptychID = triptychID
+        self.parentRunID = parentRunID
+        self.actionRevision = actionRevision
+        self.keyDigest = keyDigest
+        self.issuedAt = issuedAt
+        self.expiresAt = expiresAt
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case triptychID = "triptych_id"
+        case parentRunID = "parent_run_id"
+        case actionRevision = "action_revision"
+        case keyDigest = "key_digest"
+        case issuedAt = "issued_at"
+        case expiresAt = "expires_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try AgentNoteChangeValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            triptychID: container.decode(UUID.self, forKey: .triptychID),
+            parentRunID: container.decode(UUID.self, forKey: .parentRunID),
+            actionRevision: container.decode(
+                AgentNoteChangeActionRevision.self,
+                forKey: .actionRevision
+            ),
+            keyDigest: container.decode(String.self, forKey: .keyDigest),
+            issuedAt: container.decode(Date.self, forKey: .issuedAt),
+            expiresAt: container.decode(Date.self, forKey: .expiresAt)
+        )
+    }
+
+    public static func boundKeyDigest(
+        coordinationKey: String,
+        triptychID: UUID,
+        parentRunID: UUID,
+        actionRevision: AgentNoteChangeActionRevision
+    ) throws -> String {
+        guard coordinationKey.utf8.count == 73 else {
+            throw AgentNoteChangeContractError.invalidCoordinationGrant
+        }
+        let input = AgentCoordinationDigestInput(
+            coordinationKey: coordinationKey,
+            triptychID: triptychID,
+            parentRunID: parentRunID,
+            actionRevision: actionRevision
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return DocumentFingerprint(data: try encoder.encode(input)).sha256
+    }
+
+    public func boundKeyDigest(coordinationKey: String) throws -> String {
+        try Self.boundKeyDigest(
+            coordinationKey: coordinationKey,
+            triptychID: triptychID,
+            parentRunID: parentRunID,
+            actionRevision: actionRevision
+        )
+    }
+}
+
+private struct AgentCoordinationDigestInput: Encodable {
+    let coordinationKey: String
+    let triptychID: UUID
+    let parentRunID: UUID
+    let actionRevision: AgentNoteChangeActionRevision
+
+    private enum CodingKeys: String, CodingKey {
+        case coordinationKey = "coordination_key"
+        case triptychID = "triptych_id"
+        case parentRunID = "parent_run_id"
+        case actionRevision = "action_revision"
+    }
+}
+
+/// The only value that carries the plaintext coordination key. It is
+/// intentionally not Codable.
+public struct AgentCoordinationAuthorization: Sendable {
+    public let grant: AgentCoordinationGrant
+    public let coordinationKey: String
+
+    public init(grant: AgentCoordinationGrant, coordinationKey: String) {
+        self.grant = grant
+        self.coordinationKey = coordinationKey
+    }
+}
+
 /// Exact Action, Method Skill, and Profile revision participating in an
 /// agent-requested continuation.
 ///
@@ -619,6 +743,7 @@ public enum AgentNoteChangeContractError: LocalizedError, Hashable, Sendable {
     case invalidRequest
     case invalidDecision
     case invalidRecord
+    case invalidCoordinationGrant
 
     public var errorDescription: String? {
         switch self {
@@ -634,6 +759,8 @@ public enum AgentNoteChangeContractError: LocalizedError, Hashable, Sendable {
             "The Agent Note Change decision is invalid."
         case .invalidRecord:
             "The Agent Note Change record is invalid."
+        case .invalidCoordinationGrant:
+            "The Agent coordination grant is invalid."
         }
     }
 }

@@ -23,6 +23,14 @@ struct ScholiumCLI {
         if try renderMetaCommandIfPresent(arguments) { return }
         try validateCLIArguments(arguments)
 
+        if command == "agent" {
+            try await runAgent(
+                Array(arguments.dropFirst()),
+                operations: try CLIContext.makeAgentBridge()
+            )
+            return
+        }
+
         switch command {
         case "doctor":
             let context = try await CLIContext.make()

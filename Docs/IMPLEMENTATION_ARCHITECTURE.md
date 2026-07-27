@@ -998,9 +998,51 @@ lifetime; decisions are pending, allowed subset, continue without changes,
 cancelled, stale, or expired. A decision remains coordination state rather than
 a completion key or child grant. Journaled permanent-deletion finalization
 purges requests targeting the deleted Note and requests whose authenticated
-parent execution contains it. Session 16 must still add the local bridge,
-Session 17 the native decision sheet, and Session 18 an independently prepared
-child phase and lineage.
+parent execution contains it.
+
+Every new Local Execution v2 Action also receives one short-lived
+`AgentCoordinationGrant`. The local execution persists only its SHA-256 digest,
+bound Triptych, parent run, exact Action revision, and expiry; a non-Codable
+authorization carries the plaintext key only in the live delivery packet.
+`WorkspaceStore` owns one process-wide AF_UNIX listener
+under its validated Application Support root. Its private parent is mode 0700
+and the socket is mode 0600. The server holds an exclusive owner lock,
+validates the peer with `getpeereid`, accepts one versioned length-prefixed JSON
+request per connection, bounds frames and I/O time, and never logs request
+bodies. The client validates socket type, owner, private modes, and server UID
+before transmitting the key. App absence is a typed unavailable result; the
+bridge neither launches the App nor queues work.
+
+The serial listener owns at most one asynchronous request handler. At its
+deadline it cancels the task and reports `outcome_unknown`: cancellation can
+race a durable state transition, so the caller must converge by querying the
+same request ID instead of inventing a new one. If the handler exits within a
+bounded cancellation grace it is reaped before another request. If it ignores
+cancellation, the listener closes and retains its exclusive owner lock until
+the task finally exits; no later request can accumulate behind it. A
+client-side I/O deadline after connection is classified the same way because
+delivery cannot be disproved. `stopAndWait` reports failure after a bounded
+wait; `WorkspaceStore` then leaves its still-borrowed Application runtime alive
+rather than racing shutdown against that task. It also retains and logs a typed
+bridge-startup diagnostic without disabling an otherwise valid runtime. Its
+nonblocking deinitialization cleanup likewise retains both bridge and runtime
+until owner release, then shuts the runtime down; it never destroys the runtime
+under a cancellation-insensitive handler.
+
+`scholium agent mcp serve` is handled before CLI snapshot-runtime creation and
+uses MCP stdio framing only. It exposes `request_note_changes`,
+`show_note_change_request`, and `cancel_note_change_request`; coordination keys
+are tool arguments arriving on stdin, never command-line options. Submit,
+status, and cancel authenticate the parent grant digest, while exact request
+replay and cancellation remain idempotent. The first accepted request ID is
+atomically bound into the parent Local Execution before request publication;
+that ID may be retried, but no later ID can consume the key even after a
+terminal decision. Tool failures retain a typed bridge
+error code in structured MCP output. Status and cancel first read the stored
+parent without applying expiry, authenticate the grant, and only then execute
+the ordinary state-changing query. A bridge decision is still not a write
+grant. Session 17 must add the native decision sheet, and Session 18 an
+independently prepared child phase and lineage.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych
