@@ -875,6 +875,87 @@ public struct ResearchFunctionOutputSnapshot: Codable, Hashable, Sendable {
     }
 }
 
+/// Correlation identity for one permission-bound continuation run.
+///
+/// Lineage is durable provenance only. It cannot replace the request decision,
+/// current Action/Profile resolution, checkpoint, grant, or completion checks.
+public struct ResearchContinuationLineage: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public enum Kind: String, Codable, Hashable, Sendable {
+        case approvedAction = "approved_action"
+        case fidelity
+    }
+
+    public let schemaVersion: Int
+    public let groupID: UUID
+    public let parentRunID: UUID
+    public let requestID: UUID
+    public let kind: Kind
+
+    public init(
+        groupID: UUID,
+        parentRunID: UUID,
+        requestID: UUID,
+        kind: Kind
+    ) {
+        schemaVersion = Self.currentSchemaVersion
+        self.groupID = groupID
+        self.parentRunID = parentRunID
+        self.requestID = requestID
+        self.kind = kind
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case groupID = "group_id"
+        case parentRunID = "parent_run_id"
+        case requestID = "request_id"
+        case kind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(
+            keyedBy: ResearchContinuationLineageAnyCodingKey.self
+        )
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        if let unknown = raw.allKeys.map(\.stringValue).sorted()
+            .first(where: { !allowed.contains($0) }) {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Unsupported continuation-lineage field \(unknown)."
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try container.decode(Int.self, forKey: .schemaVersion)
+        guard version == Self.currentSchemaVersion else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Unsupported continuation-lineage schema version \(version)."
+            )
+        }
+        self.init(
+            groupID: try container.decode(UUID.self, forKey: .groupID),
+            parentRunID: try container.decode(UUID.self, forKey: .parentRunID),
+            requestID: try container.decode(UUID.self, forKey: .requestID),
+            kind: try container.decode(Kind.self, forKey: .kind)
+        )
+    }
+}
+
+private struct ResearchContinuationLineageAnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
 /// Immutable request-time evidence embedded in an existing Dialogue or
 /// Critique record. It records only resources actually resolved for the run.
 public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
@@ -907,6 +988,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// Exact source identity and revision validated for Analyze. This safe
     /// projection contains no bookmark, absolute path, or source bytes.
     public let sourceReference: ResearchSourceReference?
+    public let continuationLineage: ResearchContinuationLineage?
     public let fidelityHandoff: ResearchFunctionFidelityHandoff?
     /// Present only for Fidelity runs.
     public let fidelityInvocation: FidelityInvocationKind?
@@ -928,6 +1010,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         evidenceRevisions: [DocumentFingerprint] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         sourceReference: ResearchSourceReference? = nil,
+        continuationLineage: ResearchContinuationLineage? = nil,
         fidelityHandoff: ResearchFunctionFidelityHandoff? = nil,
         fidelityInvocation: FidelityInvocationKind? = nil,
         confirmationToken: UUID = UUID(),
@@ -949,6 +1032,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.evidenceRevisions = evidenceRevisions
         self.zoteroBibliographicContext = zoteroBibliographicContext
         self.sourceReference = sourceReference
+        self.continuationLineage = continuationLineage
         self.fidelityHandoff = fidelityHandoff
         self.fidelityInvocation = request.function == .fidelity
             ? (fidelityInvocation ?? .manual)

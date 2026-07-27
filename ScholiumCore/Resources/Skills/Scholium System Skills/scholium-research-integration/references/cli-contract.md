@@ -125,9 +125,19 @@ out. The first request ID consumes that coordination key permanently; a
 terminal decision does not authorize a second ID.
 
 A pending or allowed request is coordination state, not write authority. The
-parent packet remains unchanged. Wait for a separately prepared child packet
-before any additional write; if none is available, report the recommendation
-and continue read-only or stop.
+parent packet remains unchanged. An allowed `request_note_changes` or
+`show_note_change_request` result includes `child_preparations` only after
+Scholium has independently prepared the approved children against current live
+state. Each entry binds one `note_id` to one complete preparation with its own
+run ID, snapshot, exact revisions, checkpoint, completion grant, and Fidelity
+route. Use only that entry's instructions and authority for that Note; never
+combine sibling write sets or reuse the parent's keys.
+
+Querying the same request returns the same reserved child run IDs and does not
+create another grant. A cancelled child is not revived. A denied, continued
+without changes, stale, expired, or no-longer-eligible parent returns no child
+packet. If none is available, report the recommendation and continue read-only
+or stop.
 
 ## 4. Create or replace notes
 

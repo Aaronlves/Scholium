@@ -256,7 +256,7 @@ struct RestoreCheckpointView: View {
         List(checkpoints, selection: $selectedCheckpointID) { checkpoint in
             VStack(alignment: .leading, spacing: 3) {
                 Text(checkpoint.name).fontWeight(.medium)
-                Text("\(checkpoint.kind == .automatic ? "Automatic" : "Manual") — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                Text("\(checkpoint.kind.displayName) — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -285,7 +285,11 @@ struct RestoreCheckpointView: View {
             .buttonStyle(.borderedProminent)
             .disabled(selectedFiles.isEmpty || isRestoring)
             Button("Restore Complete Triptych") { confirmCompleteRestore = true }
-                .disabled(selectedCheckpointID == nil || isRestoring)
+                .disabled(
+                    selectedCheckpointID == nil
+                        || selectedCheckpoint?.kind == .researchContinuation
+                        || isRestoring
+                )
         }
         .padding(16)
     }
@@ -344,6 +348,16 @@ struct RestoreCheckpointView: View {
                 else { selectedFiles.remove(key) }
             }
         )
+    }
+}
+
+private extension TriptychCheckpointKind {
+    var displayName: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .manual: "Manual"
+        case .researchContinuation: "Continuation Recovery"
+        }
     }
 }
 

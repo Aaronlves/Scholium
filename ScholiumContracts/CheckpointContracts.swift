@@ -42,6 +42,9 @@ public enum TriptychCheckpointArea: String, Codable, CaseIterable, Sendable {
 public enum TriptychCheckpointKind: String, Codable, Sendable {
     case automatic
     case manual
+    /// Exact-note recovery owned by one independently authorized continuation
+    /// run. It is not part of the rolling automatic-checkpoint retention set.
+    case researchContinuation = "research_continuation"
 }
 
 public struct TriptychCheckpointFileKey: Codable, Hashable, Sendable {
@@ -163,6 +166,7 @@ public struct TriptychCheckpointRestoreResult: Sendable {
 
 public enum TriptychCheckpointError: LocalizedError, Sendable {
     case invalidName
+    case invalidKind(TriptychCheckpointKind)
     case missingRoot(String)
     case symbolicLink(String)
     case invalidCheckpoint(UUID)
@@ -178,6 +182,8 @@ public enum TriptychCheckpointError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .invalidName: return "A checkpoint requires a name."
+        case .invalidKind(let kind):
+            return "Checkpoint kind \(kind.rawValue) requires its dedicated creation boundary."
         case .missingRoot(let path): return "A Triptych location is unavailable: \(path)"
         case .symbolicLink(let path): return "Checkpoints do not follow symbolic links: \(path)"
         case .invalidCheckpoint(let id): return "Checkpoint not found or invalid: \(id.uuidString)"

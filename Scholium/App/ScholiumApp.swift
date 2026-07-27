@@ -1567,6 +1567,16 @@ final class WindowModel: ObservableObject {
                 let resolved = try record.resolving(
                     state: state,
                     allowedNoteIDs: allowedNoteIDs,
+                    continuationPlan: state == .allowedSubset
+                        ? AgentNoteChangeContinuationPlan(
+                            groupID: record.request.parentRunID,
+                            parentRunID: record.request.parentRunID,
+                            requestID: record.id,
+                            childPhases: allowedNoteIDs.map {
+                                AgentNoteChangeChildPhasePlan(noteID: $0)
+                            }
+                        )
+                        : nil,
                     at: Date()
                 )
                 agentNoteChangePresentationCoordinator.receive(

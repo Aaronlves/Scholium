@@ -123,31 +123,100 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 }
 
 public struct LocalAgentBridgeResponse: Codable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let record: AgentNoteChangeRequestRecord?
+    public let childPreparations: [AgentNoteChangeChildPreparation]
     public let error: LocalAgentBridgeErrorPayload?
 
     public init(
         correlationID: UUID,
         record: AgentNoteChangeRequestRecord? = nil,
+        childPreparations: [AgentNoteChangeChildPreparation] = [],
         error: LocalAgentBridgeErrorPayload? = nil
     ) throws {
-        guard (record == nil) != (error == nil) else {
+        guard (record == nil) != (error == nil),
+              error == nil || childPreparations.isEmpty,
+              Self.validContinuationDelivery(
+                record: record,
+                childPreparations: childPreparations
+              ) else {
             throw LocalAgentBridgeError.invalidResponse
         }
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
         self.record = record
+        self.childPreparations = childPreparations.sorted {
+            $0.noteID.uuidString < $1.noteID.uuidString
+        }
         self.error = error
+    }
+
+    private static func validContinuationDelivery(
+        record: AgentNoteChangeRequestRecord?,
+        childPreparations: [AgentNoteChangeChildPreparation]
+    ) -> Bool {
+        guard let record else { return childPreparations.isEmpty }
+        guard record.decision.state == .allowedSubset else {
+            return childPreparations.isEmpty
+        }
+        // Schema-v1 allowed records predate continuation delivery and remain
+        // readable but nonauthorizing.
+        guard record.canDeliverContinuations else {
+            return childPreparations.isEmpty
+        }
+        guard let plan = record.continuationPlan,
+              childPreparations.count == plan.childPhases.count,
+              Set(childPreparations.map(\.noteID)).count
+                == childPreparations.count else {
+            return false
+        }
+        let phases = Dictionary(uniqueKeysWithValues: plan.childPhases.map {
+            ($0.noteID, $0)
+        })
+        return childPreparations.allSatisfy { child in
+            guard let phase = phases[child.noteID],
+                  let requested = record.request.targets.first(where: {
+                      $0.noteID == child.noteID
+                  }),
+                  phase.runID == child.preparation.runID,
+                  child.preparation.snapshot.request.target.noteID == child.noteID,
+                  child.preparation.snapshot.request.target.note == requested.note,
+                  child.preparation.snapshot.request.target.fingerprint
+                    == requested.expectedFingerprint,
+                  child.preparation.snapshot.checkpointID != nil,
+                  child.preparation.snapshot.activityID
+                    == child.preparation.runID,
+                  let action = child.preparation.snapshot.actionSnapshot,
+                  action.target.note == requested.note,
+                  action.target.role == requested.role,
+                  action.target.fingerprint == requested.expectedFingerprint,
+                  (try? AgentNoteChangeActionRevision(actionSnapshot: action))
+                    == record.request.requestedAction,
+                  action.authority.writableNotes.map(\.noteID) == [child.noteID],
+                  Set(action.authority.writeOperations).isSubset(
+                    of: Set(record.request.operations)
+                  ),
+                  let lineage = child.preparation.snapshot.continuationLineage else {
+                return false
+            }
+            return lineage == ResearchContinuationLineage(
+                groupID: plan.groupID,
+                parentRunID: plan.parentRunID,
+                requestID: plan.requestID,
+                kind: .approvedAction
+            )
+        }
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
-        case record, error
+        case record
+        case childPreparations = "child_preparations"
+        case error
     }
 
     public init(from decoder: Decoder) throws {
@@ -157,7 +226,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable {
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let version = try container.decode(Int.self, forKey: .schemaVersion)
-        guard version == Self.currentSchemaVersion else {
+        guard version == 1 || version == Self.currentSchemaVersion else {
             throw LocalAgentBridgeError.unsupportedVersion(version)
         }
         try self.init(
@@ -166,6 +235,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable {
                 AgentNoteChangeRequestRecord.self,
                 forKey: .record
             ),
+            childPreparations: container.decodeIfPresent(
+                [AgentNoteChangeChildPreparation].self,
+                forKey: .childPreparations
+            ) ?? [],
             error: container.decodeIfPresent(
                 LocalAgentBridgeErrorPayload.self,
                 forKey: .error
@@ -298,7 +371,7 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
 
 public final class LocalAgentBridgeServer: @unchecked Sendable {
     public typealias Handler = @Sendable (LocalAgentBridgeRequest) async throws
-        -> AgentNoteChangeRequestRecord
+        -> AgentNoteChangeContinuationResult
 
     private let queue = DispatchQueue(label: "com.scholium.agent-bridge")
     private let socketURL: URL
@@ -517,12 +590,13 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
             guard finishedInTime else {
                 throw LocalAgentBridgeError.outcomeUnknown
             }
-            let record = try result.value?.get() ?? {
+            let outcome = try result.value?.get() ?? {
                 throw LocalAgentBridgeError.invalidResponse
             }()
             let response = try LocalAgentBridgeResponse(
                 correlationID: request.correlationID,
-                record: record
+                record: outcome.record,
+                childPreparations: outcome.childPreparations
             )
             try LocalAgentBridgeIO.writeFrame(
                 LocalAgentBridgeWireCoding.encode(response),
@@ -569,8 +643,8 @@ private final class LocalAgentBridgeStopWaiter: @unchecked Sendable {
 
 private final class LocalAgentBridgeResultBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var stored: Result<AgentNoteChangeRequestRecord, Error>?
-    var value: Result<AgentNoteChangeRequestRecord, Error>? {
+    private var stored: Result<AgentNoteChangeContinuationResult, Error>?
+    var value: Result<AgentNoteChangeContinuationResult, Error>? {
         get { lock.withLock { stored } }
         set { lock.withLock { stored = newValue } }
     }

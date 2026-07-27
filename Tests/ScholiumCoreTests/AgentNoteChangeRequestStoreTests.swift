@@ -80,6 +80,7 @@ struct AgentNoteChangeRequestStoreTests {
             id: second.id,
             state: .allowedSubset,
             allowedNoteIDs: [second.targets[0].noteID],
+            continuationPlan: try fixture.continuationPlan(for: second),
             decidedAt: now.addingTimeInterval(4)
         )
         #expect(allowed.decision.state == .allowedSubset)
@@ -87,6 +88,7 @@ struct AgentNoteChangeRequestStoreTests {
             id: second.id,
             state: .allowedSubset,
             allowedNoteIDs: [second.targets[0].noteID],
+            continuationPlan: try fixture.continuationPlan(for: second),
             decidedAt: now.addingTimeInterval(5)
         ) == allowed)
         #expect(pending.requestDigest == allowed.requestDigest)
@@ -111,6 +113,7 @@ struct AgentNoteChangeRequestStoreTests {
             id: request.id,
             state: .allowedSubset,
             allowedNoteIDs: [request.targets[0].noteID],
+            continuationPlan: try fixture.continuationPlan(for: request),
             decidedAt: decidedAt
         )
 
@@ -223,6 +226,19 @@ private struct Fixture {
             )],
             operations: [.modifyMarkdown],
             agentReason: reason
+        )
+    }
+
+    func continuationPlan(
+        for request: AgentNoteChangeRequest
+    ) throws -> AgentNoteChangeContinuationPlan {
+        try AgentNoteChangeContinuationPlan(
+            groupID: request.parentRunID,
+            parentRunID: request.parentRunID,
+            requestID: request.id,
+            childPhases: request.targets.map {
+                AgentNoteChangeChildPhasePlan(noteID: $0.noteID)
+            }
         )
     }
 

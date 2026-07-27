@@ -538,7 +538,7 @@ public struct PortableResearchDiscrepancy: Codable, Hashable, Identifiable, Send
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let id: UUID
@@ -547,6 +547,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let action: ResearchActionRecordIdentity?
     public let method: PortableResearchMethodReference?
     public let sourceReference: ResearchSourceReference?
+    public let continuationLineage: ResearchContinuationLineage?
     public let primaryNoteID: UUID?
     public let participatingNotes: [PortableResearchNoteRevision]
     public let statements: [PortableResearchStatement]
@@ -564,6 +565,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         action: ResearchActionRecordIdentity?,
         method: PortableResearchMethodReference?,
         sourceReference: ResearchSourceReference? = nil,
+        continuationLineage: ResearchContinuationLineage? = nil,
         primaryNoteID: UUID? = nil,
         participatingNotes: [PortableResearchNoteRevision],
         statements: [PortableResearchStatement],
@@ -622,7 +624,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case .discussion:
             guard let primaryNoteID,
                   participatingByID[primaryNoteID] != nil,
-                  !statements.isEmpty else {
+                  !statements.isEmpty,
+                  continuationLineage == nil else {
                 throw PortableResearchRecordError.invalidRecord
             }
         }
@@ -633,6 +636,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.action = action
         self.method = method
         self.sourceReference = sourceReference
+        self.continuationLineage = continuationLineage
         self.primaryNoteID = primaryNoteID
         self.participatingNotes = participatingNotes.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
@@ -659,6 +663,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case triptychID = "triptych_id"
         case kind, action, method
         case sourceReference = "source_reference"
+        case continuationLineage = "continuation_lineage"
         case primaryNoteID = "primary_note_id"
         case participatingNotes = "participating_notes"
         case statements
@@ -677,8 +682,16 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == Self.currentSchemaVersion else {
+        guard schemaVersion == 1 || schemaVersion == Self.currentSchemaVersion else {
             throw PortableResearchRecordError.unsupportedSchemaVersion(schemaVersion)
+        }
+        let continuationLineage = try container.decodeIfPresent(
+            ResearchContinuationLineage.self,
+            forKey: .continuationLineage
+        )
+        guard schemaVersion == Self.currentSchemaVersion
+                || continuationLineage == nil else {
+            throw PortableResearchRecordError.invalidRecord
         }
         try self.init(
             id: container.decode(UUID.self, forKey: .id),
@@ -696,6 +709,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                 PortableResearchStrictSourceReference.self,
                 forKey: .sourceReference
             )?.value,
+            continuationLineage: continuationLineage,
             primaryNoteID: container.decodeIfPresent(UUID.self, forKey: .primaryNoteID),
             participatingNotes: container.decode(
                 [PortableResearchNoteRevision].self,

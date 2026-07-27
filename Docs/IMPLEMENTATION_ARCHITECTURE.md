@@ -1082,8 +1082,18 @@ terminal decision. Tool failures retain a typed bridge
 error code in structured MCP output. Status and cancel first read the stored
 parent without applying expiry, authenticate the grant, and only then execute
 the ordinary state-changing query. A bridge decision is still not a write
-grant. The native Session 17 sheet consumes these authenticated bridge results;
-Session 18 must add an independently prepared child phase and lineage.
+grant. An allowed schema-v2 decision stores only a versioned correlation plan:
+one shared group ID plus reserved independent child run IDs for the exact
+approved Note subset. Application then re-resolves current Action, Profile,
+Method, Note identities, and fingerprints before preparing each child as its
+own Local Execution v2 run. Every child has one frozen Target, its own
+exact-Note continuation recovery checkpoint outside rolling automatic
+retention, its own activity grant and completion validation, optional
+final-revision Fidelity child, and durable parent/request/group lineage. The AF_UNIX response
+delivers those live child packets only after their complete persisted evidence
+matches the plan; plaintext keys remain delivery-only. Neither the plan nor
+lineage is consulted as authority without the exact allowed request, current
+parent, Action snapshot, checkpoint, and grant.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych

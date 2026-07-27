@@ -204,6 +204,14 @@ struct AgentNoteChangePresentationCoordinatorTests {
         let allowed = try second.resolving(
             state: .allowedSubset,
             allowedNoteIDs: second.request.targets.map(\.noteID),
+            continuationPlan: try AgentNoteChangeContinuationPlan(
+                groupID: second.request.parentRunID,
+                parentRunID: second.request.parentRunID,
+                requestID: second.id,
+                childPhases: second.request.targets.map {
+                    AgentNoteChangeChildPhasePlan(noteID: $0.noteID)
+                }
+            ),
             at: second.receivedAt.addingTimeInterval(1)
         )
         coordinator.receive(allowed, intent: .decision)

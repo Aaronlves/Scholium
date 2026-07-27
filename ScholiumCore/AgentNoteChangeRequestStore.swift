@@ -216,6 +216,7 @@ public actor AgentNoteChangeRequestStore {
         id: UUID,
         state: AgentNoteChangeDecisionState,
         allowedNoteIDs: [UUID] = [],
+        continuationPlan: AgentNoteChangeContinuationPlan? = nil,
         decidedAt: Date = Date()
     ) throws -> AgentNoteChangeRequestRecord {
         try Task.checkCancellation()
@@ -242,6 +243,7 @@ public actor AgentNoteChangeRequestStore {
             let resolved = try current.resolving(
                 state: state,
                 allowedNoteIDs: allowedNoteIDs,
+                continuationPlan: continuationPlan,
                 at: decidedAt
             )
             return try replace(resolved)

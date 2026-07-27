@@ -10,6 +10,7 @@ public enum AgentNoteChangeOperationError: LocalizedError, Hashable, Sendable {
     case invalidCoordinationKey
     case expiredCoordinationKey
     case coordinationRequestAlreadyBound(UUID)
+    case continuationUnavailable(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -27,6 +28,8 @@ public enum AgentNoteChangeOperationError: LocalizedError, Hashable, Sendable {
             "The Agent coordination key has expired."
         case .coordinationRequestAlreadyBound(let id):
             "The Agent coordination key is already bound to request \(id.uuidString.lowercased())."
+        case .continuationUnavailable(let id):
+            "Agent Note Change request \(id.uuidString.lowercased()) has no current, independently authorized continuation."
         }
     }
 }
@@ -239,10 +242,17 @@ extension WorkspaceHandle {
                 try await cancelResearchFunction(runID: current.request.parentRunID)
             }
         }
+        let continuationPlan = state == .allowedSubset
+            ? try await makeAgentNoteChangeContinuationPlan(
+                request: current.request,
+                allowedNoteIDs: allowedNoteIDs
+            )
+            : nil
         return try await services.agentNoteChangeRequestStore.resolve(
             id: id,
             state: state,
             allowedNoteIDs: allowedNoteIDs,
+            continuationPlan: continuationPlan,
             decidedAt: decidedAt
         )
     }
@@ -308,10 +318,15 @@ extension WorkspaceHandle {
                 decidedAt: max(decidedAt, record.receivedAt)
             )
         }
+        let continuationPlan = try await makeAgentNoteChangeContinuationPlan(
+            request: record.request,
+            allowedNoteIDs: record.request.targets.map(\.noteID)
+        )
         return try await services.agentNoteChangeRequestStore.resolve(
             id: record.id,
             state: .allowedSubset,
             allowedNoteIDs: record.request.targets.map(\.noteID),
+            continuationPlan: continuationPlan,
             decidedAt: max(decidedAt, record.receivedAt)
         )
     }
@@ -582,11 +597,359 @@ extension WorkspaceHandle {
     /// A normal completion may be the provenance for a separately authorized
     /// continuation. Cancellation or stale/incomplete completion evidence may
     /// not keep or revive an unresolved change request.
-    private static func parentPermitsChangeRequest(
+    static func parentPermitsChangeRequest(
         _ record: LocalResearchExecutionRecord
     ) -> Bool {
         guard let completion = record.completion else { return true }
         return completion.state == .complete
+    }
+
+    private func makeAgentNoteChangeContinuationPlan(
+        request: AgentNoteChangeRequest,
+        allowedNoteIDs: [UUID]
+    ) async throws -> AgentNoteChangeContinuationPlan {
+        let allowed = Set(allowedNoteIDs)
+        guard !allowed.isEmpty,
+              allowed.count == allowedNoteIDs.count,
+              allowed.isSubset(of: Set(request.targets.map(\.noteID))),
+              let parent = try await services.localResearchExecutionStore
+                .recordIfPresent(id: request.parentRunID),
+              Self.parentPermitsChangeRequest(parent) else {
+            throw AgentNoteChangeOperationError.continuationUnavailable(
+                request.id
+            )
+        }
+        let groupID = parent.snapshot.continuationLineage?.groupID
+            ?? parent.snapshot.runID
+        return try AgentNoteChangeContinuationPlan(
+            groupID: groupID,
+            parentRunID: request.parentRunID,
+            requestID: request.id,
+            childPhases: allowed.map {
+                AgentNoteChangeChildPhasePlan(noteID: $0)
+            }
+        )
+    }
+
+    func agentNoteChangeContinuations(
+        id: UUID,
+        now: Date = Date()
+    ) async throws -> AgentNoteChangeContinuationResult {
+        try requireActive()
+        let coordinationID = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationID) }
+
+        let record = try await services.agentNoteChangeRequestStore.record(
+            id: id,
+            now: now
+        )
+        guard record.decision.state == .allowedSubset,
+              let plan = record.continuationPlan,
+              plan.parentRunID == record.request.parentRunID,
+              plan.requestID == record.id,
+              let parent = try await services.localResearchExecutionStore
+                .recordIfPresent(id: record.request.parentRunID),
+              Self.parentPermitsChangeRequest(parent) else {
+            throw AgentNoteChangeOperationError.continuationUnavailable(id)
+        }
+
+        var existingChildren: [UUID: LocalResearchExecutionRecord] = [:]
+        for phase in plan.childPhases {
+            if let existing = try await services.localResearchExecutionStore
+                .recordIfPresent(id: phase.runID) {
+                existingChildren[phase.runID] = existing
+            }
+        }
+        var isExactReplay = existingChildren.count == plan.childPhases.count
+        if !existingChildren.isEmpty, !isExactReplay {
+            let lineage = ResearchContinuationLineage(
+                groupID: plan.groupID,
+                parentRunID: plan.parentRunID,
+                requestID: plan.requestID,
+                kind: .approvedAction
+            )
+            for phase in plan.childPhases {
+                guard let existing = existingChildren[phase.runID],
+                      let target = record.request.targets.first(where: {
+                          $0.noteID == phase.noteID
+                      }) else { continue }
+                try validatePreparedAgentContinuation(
+                    existing,
+                    record: record,
+                    target: target,
+                    lineage: lineage
+                )
+                guard existing.completion == nil
+                        || existing.completion?.state == .cancelled,
+                      existing.grant?.state != .completed else {
+                    throw AgentNoteChangeOperationError.continuationUnavailable(id)
+                }
+            }
+            for existing in existingChildren.values {
+                try await discardFailedAgentContinuation(
+                    existing,
+                    lineage: lineage
+                )
+            }
+            existingChildren.removeAll()
+            isExactReplay = false
+        }
+        if !isExactReplay,
+           !(try await isCurrentAgentNoteChangeRequest(record.request)) {
+            throw AgentNoteChangeOperationError.continuationUnavailable(id)
+        }
+
+        var createdRunIDs: [UUID] = []
+        do {
+            let contextNotes = isExactReplay
+                ? []
+                : try await agentContinuationContextNotes(parent: parent)
+            var children: [AgentNoteChangeChildPreparation] = []
+            for phase in plan.childPhases {
+                try Task.checkCancellation()
+                guard let requestedTarget = record.request.targets.first(where: {
+                    $0.noteID == phase.noteID
+                }) else {
+                    throw AgentNoteChangeOperationError.continuationUnavailable(id)
+                }
+                let lineage = ResearchContinuationLineage(
+                    groupID: plan.groupID,
+                    parentRunID: plan.parentRunID,
+                    requestID: plan.requestID,
+                    kind: .approvedAction
+                )
+                let preparation: ResearchFunctionPreparation
+                if let existing = existingChildren[phase.runID] {
+                    try validatePreparedAgentContinuation(
+                        existing,
+                        record: record,
+                        target: requestedTarget,
+                        lineage: lineage
+                    )
+                    preparation = try await researchFunctionRun(id: phase.runID)
+                } else {
+                    guard let target = try await currentAgentChangeTarget(
+                        requestedTarget
+                    ) else {
+                        throw AgentNoteChangeOperationError.continuationUnavailable(id)
+                    }
+                    let availability = try await researchActionAvailability(
+                        for: target
+                    )
+                    guard let action = availability.first(where: {
+                        $0.definition == record.request.requestedAction.definition
+                            && $0.profile.origin
+                                == record.request.requestedAction.profileOrigin
+                            && $0.profile.profileRevision
+                                == record.request.requestedAction.profileRevision
+                            && $0.profile.profileDocumentRevision
+                                == record.request.requestedAction
+                                    .profileDocumentRevision
+                    }), action.isEnabled else {
+                        throw AgentNoteChangeOperationError.continuationUnavailable(id)
+                    }
+                    let parameters = agentContinuationParameterValues(
+                        for: action.profile.profile,
+                        target: target,
+                        contextNotes: contextNotes
+                    )
+                    let execution = try await resolvedResearchActionExecution(
+                        ResearchActionExecutionRequest(
+                            actionID: action.id,
+                            expectedExecutionKind: action.definition.executionKind,
+                            expectedProfileRevision: action.profile.profileRevision,
+                            expectedProfileDocumentRevision:
+                                action.profile.profileDocumentRevision,
+                            target: target,
+                            parameterValues: parameters
+                        )
+                    )
+                    guard execution.context.authority.writableNotes == [target],
+                          !execution.context.authority.writeOperations.isEmpty,
+                          Set(execution.context.authority.writeOperations)
+                            .isSubset(of: Set(record.request.operations)) else {
+                        throw AgentNoteChangeOperationError.continuationUnavailable(id)
+                    }
+                    preparation = try await prepareResearchFunction(
+                        execution.request,
+                        actionContext: execution.context,
+                        runIDOverride: phase.runID,
+                        continuationLineage: lineage,
+                        requiresAutomaticCheckpoint: true,
+                        suppressRefresh: true
+                    )
+                    createdRunIDs.append(phase.runID)
+                }
+                children.append(AgentNoteChangeChildPreparation(
+                    noteID: phase.noteID,
+                    preparation: preparation
+                ))
+            }
+
+            let requestRemainsCurrent = isExactReplay
+                ? true
+                : try await isCurrentAgentNoteChangeRequest(record.request)
+            guard requestRemainsCurrent,
+                  let currentParent = try await services.localResearchExecutionStore
+                    .recordIfPresent(id: record.request.parentRunID),
+                  Self.parentPermitsChangeRequest(currentParent) else {
+                throw AgentNoteChangeOperationError.continuationUnavailable(id)
+            }
+            return AgentNoteChangeContinuationResult(
+                record: record,
+                childPreparations: children
+            )
+        } catch {
+            for runID in createdRunIDs {
+                if let existing = try? await services.localResearchExecutionStore
+                    .record(id: runID),
+                   let lineage = existing.snapshot.continuationLineage {
+                    do {
+                        try await discardFailedAgentContinuation(
+                            existing,
+                            lineage: lineage
+                        )
+                    } catch {
+                        try? await cancelResearchFunction(runID: runID)
+                    }
+                }
+            }
+            scheduleAgentContinuationCleanupRefresh()
+            throw error
+        }
+    }
+
+    private func discardFailedAgentContinuation(
+        _ child: LocalResearchExecutionRecord,
+        lineage: ResearchContinuationLineage
+    ) async throws {
+        guard child.snapshot.continuationLineage == lineage,
+              let checkpointID = child.snapshot.checkpointID else {
+            throw AgentNoteChangeOperationError.continuationUnavailable(
+                lineage.requestID
+            )
+        }
+        try await services.localResearchExecutionStore.discardFailedContinuation(
+            runID: child.id,
+            expectedLineage: lineage
+        )
+        activeResearchActivityKeys[child.id] = nil
+        activeAgentCoordinationKeys[child.id] = nil
+        _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
+            id: checkpointID
+        )
+    }
+
+    private func scheduleAgentContinuationCleanupRefresh() {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = try? await self.refresh(
+                publication: .researchRecords,
+                failureDisposition: .failed(affectedVaultIDs: [])
+            )
+        }
+    }
+
+    private func validatePreparedAgentContinuation(
+        _ child: LocalResearchExecutionRecord,
+        record: AgentNoteChangeRequestRecord,
+        target: AgentNoteChangeTarget,
+        lineage: ResearchContinuationLineage
+    ) throws {
+        guard child.triptychID == services.manifest.id,
+              child.snapshot.runID == child.id,
+              child.snapshot.continuationLineage == lineage,
+              child.snapshot.checkpointID != nil,
+              let action = child.snapshot.actionSnapshot,
+              action.target.noteID == target.noteID,
+              action.target.note == target.note,
+              action.target.fingerprint == target.expectedFingerprint,
+              try AgentNoteChangeActionRevision(actionSnapshot: action)
+                == record.request.requestedAction,
+              action.authority.writableNotes == [action.target],
+              !action.authority.writeOperations.isEmpty,
+              Set(action.authority.writeOperations).isSubset(
+                  of: Set(record.request.operations)
+              ),
+              child.grant?.activityID == child.id,
+              child.grant?.allowedTargets.map(\.noteID) == [target.noteID] else {
+            throw AgentNoteChangeOperationError.continuationUnavailable(
+                record.id
+            )
+        }
+    }
+
+    private func agentContinuationParameterValues(
+        for profile: ResearchActionProfile,
+        target: ResearchActionNoteSnapshot,
+        contextNotes: [ResearchActionNoteSnapshot]
+    ) -> [ResearchActionModuleID: ResearchActionParameterValue] {
+        guard let module = profile.modules.first(where: {
+            $0.kind == .materialSelector
+        }) else { return [:] }
+        let readableRoles = Set(profile.capabilities.readableRoles)
+        let maximum = module.maximumSelectionCount ?? 0
+        let selected = contextNotes.filter {
+            $0.noteID != target.noteID && readableRoles.contains($0.role)
+        }.prefix(maximum)
+        guard !selected.isEmpty else { return [:] }
+        return [module.id: .notes(Array(selected))]
+    }
+
+    private func agentContinuationContextNotes(
+        parent: LocalResearchExecutionRecord
+    ) async throws -> [ResearchActionNoteSnapshot] {
+        guard let action = parent.snapshot.actionSnapshot else { return [] }
+        var result: [ResearchActionNoteSnapshot] = []
+        var seen: Set<UUID> = []
+        let completion = parent.completion
+
+        for prepared in action.authority.readableNotes {
+            let expected: DocumentFingerprint
+            if prepared.noteID == action.target.noteID,
+               let completion {
+                expected = completion.targetFingerprint
+            } else if let completed = completion?.materialFingerprints[
+                prepared.noteID
+            ] {
+                expected = completed
+            } else {
+                expected = prepared.fingerprint
+            }
+            let requested = try AgentNoteChangeTarget(
+                noteID: prepared.noteID,
+                note: prepared.note,
+                role: prepared.role,
+                expectedFingerprint: expected
+            )
+            guard let current = try await currentAgentChangeTarget(requested) else {
+                throw AgentNoteChangeOperationError.continuationUnavailable(
+                    parent.snapshot.runID
+                )
+            }
+            if seen.insert(current.noteID).inserted { result.append(current) }
+        }
+
+        if let output = parent.snapshot.preparedOutput,
+           let expected = completion?.outputFingerprint,
+           let identity = try await services.controlStore.identityRecord(
+                vaultID: output.note.vaultID,
+                relativePath: output.note.relativePath
+           ) {
+            let requested = try AgentNoteChangeTarget(
+                noteID: identity.id,
+                note: output.note,
+                role: .work,
+                expectedFingerprint: expected
+            )
+            guard let current = try await currentAgentChangeTarget(requested) else {
+                throw AgentNoteChangeOperationError.continuationUnavailable(
+                    parent.snapshot.runID
+                )
+            }
+            if seen.insert(current.noteID).inserted { result.insert(current, at: 0) }
+        }
+        return result
     }
 
     private static func actionRole(
@@ -607,11 +970,16 @@ extension ResearchOperations {
         receivedAt: Date = Date(),
         validFor: TimeInterval = 10 * 60
     ) async throws -> AgentNoteChangeRequestRecord {
-        try await reference.requireHandle().submitAgentNoteChangeRequest(
+        let handle = try await reference.requireHandle()
+        let record = try await handle.submitAgentNoteChangeRequest(
             request,
             receivedAt: receivedAt,
             validFor: validFor
         )
+        if record.decision.state == .allowedSubset {
+            _ = try? await handle.agentNoteChangeContinuations(id: record.id)
+        }
+        return record
     }
 
     public func agentNoteChangeRequest(
@@ -671,22 +1039,41 @@ extension ResearchOperations {
         allowedNoteIDs: [UUID] = [],
         decidedAt: Date = Date()
     ) async throws -> AgentNoteChangeRequestRecord {
-        try await reference.requireHandle().resolveAgentNoteChangeRequest(
+        let handle = try await reference.requireHandle()
+        let record = try await handle.resolveAgentNoteChangeRequest(
             id: id,
             state: state,
             allowedNoteIDs: allowedNoteIDs,
             decidedAt: decidedAt
         )
+        if record.decision.state == .allowedSubset {
+            _ = try? await handle.agentNoteChangeContinuations(id: record.id)
+        }
+        return record
     }
 
     public func applyStandingPermissionToAgentNoteChangeRequest(
         id: UUID,
         decidedAt: Date = Date()
     ) async throws -> AgentNoteChangeRequestRecord {
-        try await reference.requireHandle()
-            .applyStandingPermissionToAgentNoteChangeRequest(
+        let handle = try await reference.requireHandle()
+        let record = try await handle.applyStandingPermissionToAgentNoteChangeRequest(
                 id: id,
                 decidedAt: decidedAt
             )
+        if record.decision.state == .allowedSubset {
+            _ = try? await handle.agentNoteChangeContinuations(id: record.id)
+        }
+        return record
+    }
+
+    public func agentNoteChangeContinuations(
+        id: UUID,
+        now: Date = Date()
+    ) async throws -> AgentNoteChangeContinuationResult {
+        try await reference.requireHandle().agentNoteChangeContinuations(
+            id: id,
+            now: now
+        )
     }
 }

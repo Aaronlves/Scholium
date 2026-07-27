@@ -4438,6 +4438,846 @@ struct ResearchFunctionOperationsTests {
         await secondRuntime.shutdown()
     }
 
+    @Test("Allowed subsets prepare independent continuation children with recovery, Fidelity, and durable lineage")
+    func permissionBoundContinuationChildren() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let topicSources = [
+            ("Continuation One.md", "# Continuation One\n\nFirst candidate.\n"),
+            ("Continuation Two.md", "# Continuation Two\n\nSecond candidate.\n"),
+            ("Continuation Three.md", "# Continuation Three\n\nThird candidate.\n"),
+            ("Continuation Four.md", "# Continuation Four\n\nUnapproved candidate.\n"),
+        ]
+        let topicsURL = fixture.rootURL.appendingPathComponent(
+            "Topics",
+            isDirectory: true
+        )
+        for (name, source) in topicSources {
+            try Data(source.utf8).write(
+                to: topicsURL.appendingPathComponent(name),
+                options: .atomic
+            )
+        }
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topicVaultID = try #require(
+            fixture.assignment.vault(for: .topicKnowledge)?.id
+        )
+        let topicIDs = topicSources.map {
+            VaultQualifiedNoteID(vaultID: topicVaultID, relativePath: $0.0)
+        }
+        var topics: [ResearchFunctionTarget] = []
+        for topicID in topicIDs {
+            topics.append(try await researchFunctionTarget(
+                topicID,
+                role: .topic,
+                handle: handle
+            ))
+        }
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let parent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let parentRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: parent.snapshot
+        )
+        let synthesisProbe = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topics[0])
+            )
+        )
+        let requestedRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: synthesisProbe.snapshot
+        )
+        try await handle.research.cancelFunction(runID: synthesisProbe.runID)
+
+        let localExecutionURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(
+                fixture.assignment.id.uuidString,
+                isDirectory: true
+            )
+            .appendingPathComponent("research-execution-v2", isDirectory: true)
+        let parentRecordURL = localExecutionURL.appendingPathComponent(
+            parent.runID.uuidString.lowercased() + ".json"
+        )
+        let parentBefore = try Data(contentsOf: parentRecordURL)
+        let request = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: parent.runID,
+            parentAction: parentRevision,
+            requestedAction: requestedRevision,
+            targets: try topics.map { try agentChangeTarget($0) },
+            operations: [.modifyMarkdown],
+            agentReason: "Synthesize only the researcher-approved Topic subset."
+        )
+        let pending = try await handle.submitAgentNoteChangeRequest(request)
+        #expect(pending.decision.state == .pending)
+        let approvedIDs = topics.prefix(3).map(\.noteID)
+        let allowed = try await handle.resolveAgentNoteChangeRequest(
+            id: request.id,
+            state: .allowedSubset,
+            allowedNoteIDs: approvedIDs
+        )
+        #expect(allowed.continuationPlan?.childPhases.map(\.noteID).sorted {
+            $0.uuidString < $1.uuidString
+        } == approvedIDs.sorted { $0.uuidString < $1.uuidString })
+
+        let continuation = try await handle.agentNoteChangeContinuations(
+            id: request.id
+        )
+        #expect(continuation.childPreparations.count == 3)
+        #expect(Set(continuation.childPreparations.map(\.noteID)) == Set(approvedIDs))
+        #expect(!continuation.childPreparations.contains {
+            $0.noteID == topics[3].noteID
+        })
+        #expect(try Data(contentsOf: parentRecordURL) == parentBefore)
+
+        let plan = try #require(allowed.continuationPlan)
+        var childrenByNote = Dictionary(uniqueKeysWithValues:
+            continuation.childPreparations.map { ($0.noteID, $0.preparation) }
+        )
+        for approvedID in approvedIDs {
+            let child = try #require(childrenByNote[approvedID])
+            #expect(child.snapshot.actionSnapshot?.definition.id == .synthesize)
+            #expect(child.snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
+                == [approvedID])
+            #expect(child.snapshot.checkpointID != nil)
+            #expect(child.snapshot.continuationLineage == ResearchContinuationLineage(
+                groupID: plan.groupID,
+                parentRunID: parent.runID,
+                requestID: request.id,
+                kind: .approvedAction
+            ))
+        }
+        let firstRetry = try await handle.agentNoteChangeContinuations(id: request.id)
+        #expect(firstRetry.childPreparations.map(\.preparation.runID)
+            == continuation.childPreparations.map(\.preparation.runID))
+        #expect(try Data(contentsOf: parentRecordURL) == parentBefore)
+
+        // Model a process interruption after only part of the reserved child
+        // set became durable. No caller can receive a partial result from the
+        // production API; removing one undelivered fixture record recreates
+        // that on-disk state deterministically for retry verification.
+        let interruptedChild = try #require(
+            childrenByNote[approvedIDs[2]]
+        )
+        let interruptedLineage = try #require(
+            interruptedChild.snapshot.continuationLineage
+        )
+        try await handle.services.localResearchExecutionStore
+            .discardFailedContinuation(
+                runID: interruptedChild.runID,
+                expectedLineage: interruptedLineage
+            )
+        _ = try await handle.services.checkpointStore.discardAutomaticCheckpoint(
+            id: try #require(interruptedChild.snapshot.checkpointID)
+        )
+        let recoveredPreparation = try await handle.agentNoteChangeContinuations(
+            id: request.id
+        )
+        #expect(recoveredPreparation.childPreparations.map(\.preparation.runID)
+            == continuation.childPreparations.map(\.preparation.runID))
+        #expect(recoveredPreparation.childPreparations.allSatisfy {
+            $0.preparation.snapshot.continuationLineage == interruptedLineage
+                && $0.preparation.snapshot.checkpointID != nil
+        })
+        childrenByNote = Dictionary(uniqueKeysWithValues:
+            recoveredPreparation.childPreparations.map {
+                ($0.noteID, $0.preparation)
+            }
+        )
+
+        let firstChild = try #require(childrenByNote[topics[0].noteID])
+        let firstMaterialFingerprints = Dictionary(uniqueKeysWithValues:
+            firstChild.snapshot.request.materials.map {
+                ($0.noteID, $0.fingerprint)
+            }
+        )
+        let firstActivity = try researchActivityCompletion(
+            for: firstChild,
+            candidateModifiedNotes: [],
+            summary: "The first approved Topic required no change."
+        )
+        let firstCompletion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: firstChild.runID,
+                confirmationToken: firstChild.snapshot.confirmationToken,
+                finalMaterialFingerprints: firstMaterialFingerprints,
+                summary: "The first approved Topic required no change.",
+                didModifyTarget: false,
+                activityCompletion: firstActivity
+            )
+        )
+        #expect(firstCompletion.state == .complete)
+
+        let secondChild = try #require(childrenByNote[topics[1].noteID])
+        let secondMaterialFingerprints = Dictionary(uniqueKeysWithValues:
+            secondChild.snapshot.request.materials.map {
+                ($0.noteID, $0.fingerprint)
+            }
+        )
+        let secondOriginal = try await handle.documents.load(topicIDs[1])
+        let secondSaved = try await handle.documents.save(
+            topicIDs[1],
+            changeSet: .exactContent(
+                secondOriginal.rawContent
+                    + "\nA bounded synthesis of the selected Analysis.\n"
+            ),
+            expectedRevision: secondOriginal.fingerprint
+        )
+        let secondActivity = try researchActivityCompletion(
+            for: secondChild,
+            candidateModifiedNotes: [topicIDs[1]],
+            summary: "Synthesized one bounded Topic claim."
+        )
+        let awaitingFidelity = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: secondChild.runID,
+                confirmationToken: secondChild.snapshot.confirmationToken,
+                finalMaterialFingerprints: secondMaterialFingerprints,
+                summary: "Synthesized one bounded Topic claim.",
+                didModifyTarget: true,
+                activityCompletion: secondActivity
+            )
+        )
+        #expect(awaitingFidelity.state == .awaitingFidelity)
+        let automaticFidelity = try await handle.research.prepareAutomaticFidelity(
+            parentRunID: secondChild.runID
+        )
+        #expect(automaticFidelity.preparation.snapshot.continuationLineage
+            == ResearchContinuationLineage(
+                groupID: plan.groupID,
+                parentRunID: secondChild.runID,
+                requestID: request.id,
+                kind: .fidelity
+            ))
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: automaticFidelity.preparation.runID,
+                confirmationToken:
+                    automaticFidelity.preparation.snapshot.confirmationToken,
+                finalTargetFingerprint: secondSaved.document.fingerprint,
+                finalMaterialFingerprints: secondMaterialFingerprints,
+                summary: "Checked the child final revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: [.passedContent]
+            )
+        )
+        let secondVerifiedSubmission = ResearchFunctionCompletionSubmission(
+            runID: secondChild.runID,
+            confirmationToken: secondChild.snapshot.confirmationToken,
+            finalMaterialFingerprints: secondMaterialFingerprints,
+            summary: "Synthesized one bounded Topic claim.",
+            didModifyTarget: true,
+            activityCompletion: secondActivity,
+            childRunIDs: [automaticFidelity.preparation.runID]
+        )
+        let verifiedSecond = try await handle.research.completeFunction(
+            secondVerifiedSubmission
+        )
+        #expect(verifiedSecond.state == .complete)
+        #expect(verifiedSecond.childRunIDs == [automaticFidelity.preparation.runID])
+
+        let thirdChild = try #require(childrenByNote[topics[2].noteID])
+        let thirdCheckpointID = try #require(thirdChild.snapshot.checkpointID)
+        let thirdOriginal = try await handle.documents.load(topicIDs[2])
+        let conflictingSave = try await handle.documents.save(
+            topicIDs[2],
+            changeSet: .exactContent(
+                thirdOriginal.rawContent + "\nA concurrent participant changed this Topic.\n"
+            ),
+            expectedRevision: thirdOriginal.fingerprint
+        )
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await handle.documents.save(
+                topicIDs[2],
+                changeSet: .exactContent(
+                    thirdOriginal.rawContent + "\nA stale child overwrite.\n"
+                ),
+                expectedRevision: thirdOriginal.fingerprint
+            )
+        }
+        try await handle.research.cancelFunction(runID: thirdChild.runID)
+        let cancelledChild = try await handle.research.functionRun(
+            id: thirdChild.runID
+        )
+        #expect(cancelledChild.state == .cancelled)
+        #expect(cancelledChild.snapshot.checkpointID == thirdCheckpointID)
+        _ = try await handle.research.restoreNote(
+            topicIDs[2],
+            from: thirdCheckpointID,
+            expectedRevision: conflictingSave.document.fingerprint
+        )
+        #expect(try await handle.documents.load(topicIDs[2]).sourceBytes
+            == thirdOriginal.sourceBytes)
+
+        let runRecords = try await handle.snapshot().research.functionRuns
+        #expect(runRecords.first { $0.id == firstChild.runID }?.completion?.state
+            == .complete)
+        #expect(runRecords.first { $0.id == secondChild.runID }?.completion?.state
+            == .complete)
+        #expect(runRecords.first { $0.id == thirdChild.runID }?.completion?.state
+            == .cancelled)
+        let terminalReplay = try await handle.agentNoteChangeContinuations(
+            id: request.id
+        )
+        #expect(terminalReplay.childPreparations.map(\.preparation.runID)
+            == continuation.childPreparations.map(\.preparation.runID))
+        #expect(terminalReplay.childPreparations.map(\.preparation.state).sorted {
+            $0.rawValue < $1.rawValue
+        } == [.cancelled, .complete, .complete])
+        #expect(try Data(contentsOf: parentRecordURL) == parentBefore)
+        try await handle.research.cancelFunction(runID: parent.runID)
+        #expect(try await handle.research.completeFunction(
+            secondVerifiedSubmission
+        ) == verifiedSecond)
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(secondChild.runID.uuidString.lowercased() + ".json")
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: portableURL)
+        )
+        #expect(portable.continuationLineage == secondChild.snapshot.continuationLineage)
+        let fidelityPortableURL = portableURL.deletingLastPathComponent()
+            .appendingPathComponent(
+                automaticFidelity.preparation.runID.uuidString.lowercased()
+                    + ".json"
+            )
+        let fidelityPortable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: fidelityPortableURL)
+        )
+        #expect(fidelityPortable.continuationLineage
+            == automaticFidelity.preparation.snapshot.continuationLineage)
+
+        let independentParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let independentRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: independentParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: independentParent.snapshot
+            ),
+            requestedAction: requestedRevision,
+            targets: [try agentChangeTarget(topics[3])],
+            operations: [.modifyMarkdown],
+            agentReason: "Complete this delivered child under only its own grant."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(independentRequest)
+        _ = try await handle.resolveAgentNoteChangeRequest(
+            id: independentRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [topics[3].noteID]
+        )
+        let independentChild = try #require(
+            try await handle.agentNoteChangeContinuations(
+                id: independentRequest.id
+            ).childPreparations.first?.preparation
+        )
+        try await handle.research.cancelFunction(runID: independentParent.runID)
+        let independentMaterials = Dictionary(uniqueKeysWithValues:
+            independentChild.snapshot.request.materials.map {
+                ($0.noteID, $0.fingerprint)
+            }
+        )
+        let independentCompletion = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: independentChild.runID,
+                confirmationToken:
+                    independentChild.snapshot.confirmationToken,
+                finalMaterialFingerprints: independentMaterials,
+                summary: "The independently granted child required no change.",
+                didModifyTarget: false,
+                activityCompletion: try researchActivityCompletion(
+                    for: independentChild,
+                    candidateModifiedNotes: [],
+                    summary: "The independently granted child required no change."
+                )
+            )
+        )
+        #expect(independentCompletion.state == .complete)
+
+        let cancellationParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let cancellationRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: cancellationParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: cancellationParent.snapshot
+            ),
+            requestedAction: requestedRevision,
+            targets: [try agentChangeTarget(topics[3])],
+            operations: [.modifyMarkdown],
+            agentReason: "This child must not survive parent cancellation."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(cancellationRequest)
+        _ = try await handle.resolveAgentNoteChangeRequest(
+            id: cancellationRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [topics[3].noteID]
+        )
+        try await handle.research.cancelFunction(runID: cancellationParent.runID)
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.agentNoteChangeContinuations(
+                id: cancellationRequest.id
+            )
+        }
+
+        let changedNoteParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let changedNoteRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: changedNoteParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: changedNoteParent.snapshot
+            ),
+            requestedAction: requestedRevision,
+            targets: [try agentChangeTarget(topics[3])],
+            operations: [.modifyMarkdown],
+            agentReason: "Refuse this continuation if its approved Note changes."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(changedNoteRequest)
+        _ = try await handle.resolveAgentNoteChangeRequest(
+            id: changedNoteRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [topics[3].noteID]
+        )
+        let fourthDocument = try await handle.documents.load(topicIDs[3])
+        _ = try await handle.documents.save(
+            topicIDs[3],
+            changeSet: .exactContent(
+                fourthDocument.rawContent + "\nChanged after approval.\n"
+            ),
+            expectedRevision: fourthDocument.fingerprint
+        )
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.agentNoteChangeContinuations(
+                id: changedNoteRequest.id
+            )
+        }
+
+        let stableTopic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let changedSkillParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let changedSkillRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: changedSkillParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: changedSkillParent.snapshot
+            ),
+            requestedAction: requestedRevision,
+            targets: [try agentChangeTarget(stableTopic)],
+            operations: [.modifyMarkdown],
+            agentReason: "Refuse this continuation if its Method Skill changes."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(changedSkillRequest)
+        _ = try await handle.resolveAgentNoteChangeRequest(
+            id: changedSkillRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [stableTopic.noteID]
+        )
+        let synthesizeSkill = try #require(
+            try await handle.research.skills().first {
+                $0.id == requestedRevision.packageID && $0.origin == .triptych
+            }
+        )
+        let synthesizeSkillRevision = try #require(synthesizeSkill.revision)
+        let synthesizeBindings = try #require(
+            try await handle.research.workingMethodBindings()
+        )
+        _ = try await handle.research.saveWorkingMethod(
+            for: .synthesize,
+            source: synthesizeSkill.source
+                + "\nPreserve the independently approved continuation boundary.\n",
+            expectedPackageRevision: synthesizeSkillRevision,
+            expectedBindingRevision: synthesizeBindings.revision
+        )
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.agentNoteChangeContinuations(
+                id: changedSkillRequest.id
+            )
+        }
+
+        let customActionID = try #require(
+            ResearchActionID(researcherOwnedRawValue: "continuation-profile-race")
+        )
+        let customDefinition = try ResearchActionDefinition(
+            researcherOwnedID: customActionID,
+            executionKind: .writing
+        )
+        let customSkill = try await handle.research.createSkill(
+            id: "continuation-profile-race",
+            source: """
+            ---
+            name: Continuation Profile Race
+            description: Exercise one revision-bound continuation Profile.
+            scholium:
+              role: specialist
+              supported_actions: [continuation-profile-race]
+              supported_functions: [revise]
+              capabilities: []
+              supported_modes: [all]
+              required_skills: []
+            ---
+            Revise only the exact independently authorized Work.
+            """ + "\n"
+        )
+        let initialCustomProfile = try ResearchActionProfileBinding(
+            packageID: customSkill.id,
+            profile: ResearchActionProfile(
+                definition: customDefinition,
+                buttonName: "Continuation Write",
+                order: 30,
+                applicableRoles: [.work],
+                showInActions: true,
+                modules: [],
+                sourceRequirement: .none,
+                capabilities: try ResearchActionCapabilityDeclaration(
+                    readableRoles: [.work],
+                    candidateWritableRoles: [.work],
+                    candidateWriteOperations: [.modifyMarkdown]
+                ),
+                feedbackRequirement: .requested
+            )
+        )
+        let initialProfileDocument = try await handle.research.saveActionProfile(
+            initialCustomProfile,
+            expectedDocumentRevision: nil
+        )
+        let stableWork = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let customProbe = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: customActionID,
+                target: actionNote(stableWork)
+            )
+        )
+        let customRequestedRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: customProbe.snapshot
+        )
+        try await handle.research.cancelFunction(runID: customProbe.runID)
+        let changedProfileParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let changedProfileRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: changedProfileParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: changedProfileParent.snapshot
+            ),
+            requestedAction: customRequestedRevision,
+            targets: [try agentChangeTarget(stableWork)],
+            operations: [.modifyMarkdown],
+            agentReason: "Refuse this continuation if its Action Profile changes."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(changedProfileRequest)
+        _ = try await handle.resolveAgentNoteChangeRequest(
+            id: changedProfileRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [stableWork.noteID]
+        )
+        _ = try await handle.research.saveActionProfile(
+            try ResearchActionProfileBinding(
+                packageID: customSkill.id,
+                profile: ResearchActionProfile(
+                    definition: customDefinition,
+                    buttonName: "Continuation Write Revised",
+                    order: 31,
+                    applicableRoles: [.work],
+                    showInActions: true,
+                    modules: [],
+                    sourceRequirement: .none,
+                    capabilities: try ResearchActionCapabilityDeclaration(
+                        readableRoles: [.work, .topic],
+                        candidateWritableRoles: [.work],
+                        candidateWriteOperations: [.modifyMarkdown]
+                    ),
+                    feedbackRequirement: .requested
+                )
+            ),
+            expectedDocumentRevision: initialProfileDocument.revision
+        )
+        await #expect(throws: AgentNoteChangeOperationError.self) {
+            _ = try await handle.agentNoteChangeContinuations(
+                id: changedProfileRequest.id
+            )
+        }
+
+        let reopenedProfileProbe = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: customActionID,
+                target: actionNote(stableWork)
+            )
+        )
+        let reopenedProfileRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: reopenedProfileProbe.snapshot
+        )
+        try await handle.research.cancelFunction(runID: reopenedProfileProbe.runID)
+        let reopenParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let reopenRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: reopenParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: reopenParent.snapshot
+            ),
+            requestedAction: reopenedProfileRevision,
+            targets: [try agentChangeTarget(stableWork)],
+            operations: [.modifyMarkdown],
+            agentReason: "Prove persisted lineage cannot restore a plaintext grant key."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(reopenRequest)
+        _ = try await handle.resolveAgentNoteChangeRequest(
+            id: reopenRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [stableWork.noteID]
+        )
+        let activeBeforeReopen = try #require(
+            try await handle.agentNoteChangeContinuations(id: reopenRequest.id)
+                .childPreparations.first?.preparation
+        )
+        #expect(activeBeforeReopen.instructions.contains("Activity key:"))
+
+        await runtime.shutdown()
+        let reopenedRuntime = fixture.runtime()
+        let reopened = try await reopenedRuntime.openWorkspace(
+            id: fixture.assignment.id
+        )
+        let reopenedChild = try await reopened.research.functionRun(
+            id: activeBeforeReopen.runID
+        )
+        #expect(reopenedChild.snapshot.continuationLineage
+            == activeBeforeReopen.snapshot.continuationLineage)
+        #expect(reopenedChild.state == .prepared)
+        #expect(!reopenedChild.instructions.contains("Activity key:"))
+        #expect(reopenedChild.instructions.contains(
+            "delivery-only activity key is no longer available"
+        ))
+        let reopenedDelivery = try await reopened.agentNoteChangeContinuations(
+            id: reopenRequest.id
+        )
+        #expect(reopenedDelivery.childPreparations.first?.preparation.runID
+            == activeBeforeReopen.runID)
+        #expect(!(reopenedDelivery.childPreparations.first?.preparation.instructions
+            .contains("Activity key:") ?? true))
+        try await reopened.research.cancelFunction(runID: activeBeforeReopen.runID)
+        await reopenedRuntime.shutdown()
+    }
+
+    @Test("Critique and optional Manuscript parents prepare separate Write continuations")
+    func critiqueAndManuscriptPermissionBoundContinuations() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let worksURL = fixture.rootURL.appendingPathComponent(
+            "Works",
+            isDirectory: true
+        )
+        let workSources = [
+            ("Critique Continuation.md", "# Critique Continuation\n\nA bounded draft.\n"),
+            ("Manuscript Continuation.md", "# Manuscript Continuation\n\nA chapter section.\n"),
+        ]
+        for (name, source) in workSources {
+            try Data(source.utf8).write(
+                to: worksURL.appendingPathComponent(name),
+                options: .atomic
+            )
+        }
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let workVaultID = try #require(
+            fixture.assignment.vault(for: .output)?.id
+        )
+        var continuationTargets: [ResearchFunctionTarget] = []
+        for (name, _) in workSources {
+            continuationTargets.append(try await researchFunctionTarget(
+                VaultQualifiedNoteID(vaultID: workVaultID, relativePath: name),
+                role: .work,
+                handle: handle
+            ))
+        }
+        let baseWork = try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        )
+        let writeProbe = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .write,
+                target: actionNote(continuationTargets[0])
+            )
+        )
+        let writeRevision = try AgentNoteChangeActionRevision(
+            actionSnapshot: writeProbe.snapshot
+        )
+        try await handle.research.cancelFunction(runID: writeProbe.runID)
+
+        let critiqueParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .critique,
+                target: actionNote(baseWork)
+            )
+        )
+        let critiqueRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: critiqueParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: critiqueParent.snapshot
+            ),
+            requestedAction: writeRevision,
+            targets: [try agentChangeTarget(continuationTargets[0])],
+            operations: [.modifyMarkdown],
+            agentReason: "Address the selected Critique in a separate Work child."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(critiqueRequest)
+        let allowedCritique = try await handle.resolveAgentNoteChangeRequest(
+            id: critiqueRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [continuationTargets[0].noteID]
+        )
+        let critiqueContinuation = try await handle.agentNoteChangeContinuations(
+            id: critiqueRequest.id
+        )
+        let critiqueChild = try #require(
+            critiqueContinuation.childPreparations.first?.preparation
+        )
+        #expect(critiqueChild.snapshot.actionSnapshot?.definition.id == .write)
+        #expect(critiqueChild.snapshot.continuationLineage?.parentRunID
+            == critiqueParent.runID)
+        #expect(critiqueChild.snapshot.continuationLineage?.groupID
+            == allowedCritique.continuationPlan?.groupID)
+        try await handle.research.cancelFunction(runID: critiqueChild.runID)
+
+        let manuscriptMethod = try await handle.research.duplicateBundledSkill(
+            id: "scholium-manuscript",
+            as: "session-18-manuscript-method"
+        )
+        let bindings = try #require(
+            try await handle.research.workingMethodBindings()
+        )
+        _ = try await handle.research.activateResearcherSkill(
+            packageID: manuscriptMethod.id,
+            for: .manuscript,
+            expectedBindingRevision: bindings.revision
+        )
+        _ = try await handle.research.saveActionProfile(
+            try ResearchActionProfileBinding(
+                packageID: manuscriptMethod.id,
+                profile: ResearchActionProfile(
+                    definition: .manuscript,
+                    buttonName: "Manuscript",
+                    order: 100,
+                    applicableRoles: [.work],
+                    showInActions: true,
+                    modules: [],
+                    sourceRequirement: .none,
+                    capabilities: try ResearchActionCapabilityDeclaration(
+                        readableRoles: [.work],
+                        candidateWritableRoles: [.work],
+                        candidateWriteOperations: [.modifyMarkdown]
+                    ),
+                    feedbackRequirement: .requested
+                )
+            ),
+            expectedDocumentRevision: nil
+        )
+        let manuscriptParent = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .manuscript,
+                target: actionNote(baseWork)
+            )
+        )
+        let manuscriptRequest = try AgentNoteChangeRequest(
+            triptychID: fixture.assignment.id,
+            parentRunID: manuscriptParent.runID,
+            parentAction: try AgentNoteChangeActionRevision(
+                actionSnapshot: manuscriptParent.snapshot
+            ),
+            requestedAction: writeRevision,
+            targets: [try agentChangeTarget(continuationTargets[1])],
+            operations: [.modifyMarkdown],
+            agentReason: "Coordinate this explicit Manuscript child as a separate Write."
+        )
+        _ = try await handle.submitAgentNoteChangeRequest(manuscriptRequest)
+        let allowedManuscript = try await handle.resolveAgentNoteChangeRequest(
+            id: manuscriptRequest.id,
+            state: .allowedSubset,
+            allowedNoteIDs: [continuationTargets[1].noteID]
+        )
+        let manuscriptContinuation = try await handle.agentNoteChangeContinuations(
+            id: manuscriptRequest.id
+        )
+        let manuscriptChild = try #require(
+            manuscriptContinuation.childPreparations.first?.preparation
+        )
+        #expect(manuscriptChild.snapshot.actionSnapshot?.definition.id == .write)
+        #expect(manuscriptChild.snapshot.continuationLineage?.parentRunID
+            == manuscriptParent.runID)
+        #expect(manuscriptChild.snapshot.continuationLineage?.groupID
+            == allowedManuscript.continuationPlan?.groupID)
+        #expect(manuscriptChild.snapshot.continuationLineage?.groupID
+            != critiqueChild.snapshot.continuationLineage?.groupID)
+        try await handle.research.cancelFunction(runID: manuscriptChild.runID)
+        await runtime.shutdown()
+    }
+
     @Test("Agent Note Change requests authenticate parents, replay idempotently, expire, and reject stale scope")
     func agentNoteChangeRequestCoordination() async throws {
         let fixture = try await ResearchFixture.make()

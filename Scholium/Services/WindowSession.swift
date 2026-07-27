@@ -217,7 +217,11 @@ final class WorkspaceStore: ObservableObject {
                         record,
                         intent: .submit
                     )
-                    return record
+                    if record.canDeliverContinuations {
+                        return try await handle.research
+                            .agentNoteChangeContinuations(id: record.id)
+                    }
+                    return AgentNoteChangeContinuationResult(record: record)
                 case .status:
                     guard let requestID = request.changeRequestID else {
                         throw LocalAgentBridgeError.invalidRequest
@@ -230,7 +234,11 @@ final class WorkspaceStore: ObservableObject {
                         record,
                         intent: .showExisting
                     )
-                    return record
+                    if record.canDeliverContinuations {
+                        return try await handle.research
+                            .agentNoteChangeContinuations(id: record.id)
+                    }
+                    return AgentNoteChangeContinuationResult(record: record)
                 case .cancel:
                     guard let requestID = request.changeRequestID else {
                         throw LocalAgentBridgeError.invalidRequest
@@ -244,7 +252,7 @@ final class WorkspaceStore: ObservableObject {
                         record,
                         intent: .cancel
                     )
-                    return record
+                    return AgentNoteChangeContinuationResult(record: record)
                 }
             }
             localAgentBridgeStartupFailure = nil

@@ -71,18 +71,32 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
             }
             let arguments = parameters["arguments"] as? [String: Any] ?? [:]
             let request = try bridgeRequest(tool: name, arguments: arguments)
-            let record = try client.send(request).record
+            let response = try client.send(request)
+            let record = response.record
             guard let record else { throw AgentMCPError.invalidResponse }
             let recordData = try encode(record)
-            guard let structured = try JSONSerialization.jsonObject(
+            guard var structured = try JSONSerialization.jsonObject(
                 with: recordData
             ) as? [String: Any] else {
                 throw AgentMCPError.invalidResponse
             }
+            if !response.childPreparations.isEmpty {
+                let childData = try encode(response.childPreparations)
+                guard let children = try JSONSerialization.jsonObject(
+                    with: childData
+                ) as? [[String: Any]] else {
+                    throw AgentMCPError.invalidResponse
+                }
+                structured["child_preparations"] = children
+            }
+            let outputData = try JSONSerialization.data(
+                withJSONObject: structured,
+                options: [.sortedKeys, .withoutEscapingSlashes]
+            )
             return [
                 "content": [[
                     "type": "text",
-                    "text": String(decoding: recordData, as: UTF8.self),
+                    "text": String(decoding: outputData, as: UTF8.self),
                 ]],
                 "structuredContent": structured,
                 "isError": false,
@@ -163,11 +177,11 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         }
     }
 
-    private func encode(_ record: AgentNoteChangeRequestRecord) throws -> Data {
+    private func encode(_ value: some Encodable) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .deferredToDate
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return try encoder.encode(record)
+        return try encoder.encode(value)
     }
 
     private func response(

@@ -1156,6 +1156,7 @@ public actor PortableResearchRecordStore {
             action: record.action,
             method: record.method,
             sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
             primaryNoteID: record.primaryNoteID,
             participatingNotes: participatingNotes,
             statements: record.statements,
@@ -1430,6 +1431,27 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && $0.parentRunID == snapshot.runID
                 && $0.actionRevision == coordinationRevision
         } ?? true
+        let continuationMatches: Bool
+        switch snapshot.continuationLineage?.kind {
+        case nil:
+            continuationMatches = true
+        case .approvedAction:
+            continuationMatches = snapshot.continuationLineage?.parentRunID
+                    != snapshot.runID
+                && snapshot.checkpointID != nil
+                && grant?.activityID == snapshot.runID
+                && grant?.allowedTargets.map(\.noteID)
+                    == snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
+        case .fidelity:
+            if case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
+                continuationMatches = snapshot.request.function == .fidelity
+                    && snapshot.continuationLineage?.parentRunID == parentRunID
+                    && snapshot.checkpointID == nil
+                    && grant == nil
+            } else {
+                continuationMatches = false
+            }
+        }
         guard snapshot.actionSnapshot != nil,
               snapshot.runID == snapshot.recordID,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024,
@@ -1437,6 +1459,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               dialogue?.functionSnapshot == snapshot || dialogue == nil,
               grant?.activityID == snapshot.activityID || grant == nil,
               coordinationGrantMatches,
+              continuationMatches,
               agentCoordinationRequestID == nil
                 || agentCoordinationGrant != nil,
               completion?.runID == snapshot.runID || completion == nil,
@@ -2076,6 +2099,32 @@ public actor LocalResearchExecutionStore {
                 throw ResearchRecordStoreV1Error.executionAlreadyCompleted(runID)
             }
             try storage.removeIfPresent(directory: nil, fileName: Self.fileName(runID))
+        }
+    }
+
+    /// Removes one preparation that was never deliverable because its sibling
+    /// child set failed to prepare. The exact lineage prevents an unrelated
+    /// reserved run identity from being treated as rollback debris. A
+    /// cancelled record is accepted so older interrupted preparation cleanup
+    /// can converge on retry; completed scholarly work is never removed.
+    public func discardFailedContinuation(
+        runID: UUID,
+        expectedLineage: ResearchContinuationLineage
+    ) throws {
+        try lock.withExclusiveLock {
+            let current = try readRecord(id: runID)
+            guard expectedLineage.kind == .approvedAction,
+                  current.snapshot.continuationLineage == expectedLineage,
+                  current.snapshot.checkpointID != nil,
+                  current.completion == nil
+                    || current.completion?.state == .cancelled,
+                  current.grant?.state != .completed else {
+                throw ResearchRecordStoreV1Error.executionAlreadyCompleted(runID)
+            }
+            try storage.removeIfPresent(
+                directory: nil,
+                fileName: Self.fileName(runID)
+            )
         }
     }
 

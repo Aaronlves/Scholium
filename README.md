@@ -148,8 +148,11 @@ agent turns stay in that exchange, Close leaves it active, and explicit Finish
 creates one neutral portable Research Record without an approval or truth
 verdict. Machine-local standing permissions now let the researcher choose a
 Triptych default and exact-envelope per-Skill overrides without enlarging any
-Skill, Profile, or frozen run. The independent two-panel Research Record
-window, mid-run change requests, child phases, Record Trash, and disposable
+Skill, Profile, or frozen run. An allowed authenticated mid-run change request
+now prepares one independent child per approved Note, with its own frozen
+Action, Method, checkpoint, grant, Fidelity, completion verification, and
+durable parent/request/group lineage; it never mutates the parent authority.
+The independent two-panel Research Record window, Record Trash, and disposable
 diffs remain later migration work.
 Actions itself now exposes only the role-valid default matrix, active
 Discussions, one Researcher Skills group, and Settle. It contains no Research
@@ -158,9 +161,13 @@ The common sheet keeps Copy Only and Copy and Open in its footer and performs
 the exact preparation boundary internally; there is no separate Prepare button
 or need to scroll for handoff. A prepared run can reuse its frozen instructions
 for either handoff, while cancellation and conflict safeguards remain owned by
-Scholium. Current Actions flush only the current Target and create no automatic
-whole-Triptych checkpoint. Exact displaced bytes are preserved per written Note;
-manual Triptych checkpoints remain available as researcher-chosen milestones.
+Scholium. Initial Actions flush only the current Target and create no automatic
+whole-Triptych checkpoint. A later permission-bound continuation child is the
+narrow exception: it owns an exact-Note continuation recovery checkpoint that
+is outside rolling automatic retention and is never shared with or written
+into its parent. Exact displaced bytes are preserved per written Note; manual
+Triptych checkpoints remain available as
+researcher-chosen milestones.
 
 ## Requirements
 
@@ -378,7 +385,9 @@ the App, queue work, grant writes, or accept coordination keys in command-line
 arguments. If a request times out after dispatch, query the same request ID;
 do not retry it under a new ID because the outcome may already be durable. One
 coordination key is consumed by one request ID; terminal state never frees it
-for a different request.
+for a different request. An allowed result returns independently prepared
+`child_preparations`; each packet authorizes only its own frozen child run and
+must not be merged with the parent or a sibling child.
 
 For isolated CLI testing:
 

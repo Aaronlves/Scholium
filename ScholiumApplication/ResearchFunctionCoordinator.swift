@@ -530,10 +530,19 @@ extension WorkspaceHandle {
             for: request,
             executionStorage: .localExecutionV2
         )
+        let fidelityLineage = parent.snapshot.continuationLineage.map {
+            ResearchContinuationLineage(
+                groupID: $0.groupID,
+                parentRunID: parentRunID,
+                requestID: $0.requestID,
+                kind: .fidelity
+            )
+        }
         let preparation = try await prepareResearchFunction(
             request,
             fidelityInvocation: .automatic(parentRunID: parentRunID),
-            actionContext: actionContext
+            actionContext: actionContext,
+            continuationLineage: fidelityLineage
         )
         return AutomaticFidelityPreparation(
             parentRunID: parentRunID,
@@ -577,7 +586,11 @@ extension WorkspaceHandle {
     func prepareResearchFunction(
         _ proposedRequest: ResearchFunctionRequest,
         fidelityInvocation: FidelityInvocationKind? = nil,
-        actionContext: ResolvedResearchActionContext
+        actionContext: ResolvedResearchActionContext,
+        runIDOverride: UUID? = nil,
+        continuationLineage: ResearchContinuationLineage? = nil,
+        requiresAutomaticCheckpoint: Bool = false,
+        suppressRefresh: Bool = false
     ) async throws -> ResearchFunctionPreparation {
         try requireActive()
         guard actionContext.function == proposedRequest.function,
@@ -673,11 +686,33 @@ extension WorkspaceHandle {
             commentOnlyDiscussion = nil
         }
 
+        let runID = runIDOverride ?? commentOnlyDiscussion?.id ?? UUID()
+        guard continuationLineage?.kind != .approvedAction
+                || runIDOverride != nil else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "A continuation child requires its reserved run identity."
+            )
+        }
+
         // A retained legacy checkpoint follows all non-mutating validation and
         // snapshot resolution. Current Actions rely on exact-note recovery only
-        // when a mediated write actually replaces bytes.
+        // when a mediated write actually replaces bytes. An agent-requested
+        // write child is the narrow exception: its allowed decision reserves an
+        // independently restorable exact-Note recovery checkpoint before the
+        // child grant; it does not enter rolling automatic retention.
         let checkpoint: TriptychCheckpoint?
-        if request.function.requiresCheckpoint,
+        if requiresAutomaticCheckpoint,
+           request.function.requiresCheckpoint,
+           request.function != .critique,
+           actionContext.executionStorage == .localExecutionV2 {
+            checkpoint = try await services.checkpointStore
+                .createResearchContinuation(
+                name: "Before Agent-Requested Continuation",
+                key: researchContinuationCheckpointKey(for: request.target),
+                expectedFingerprint: request.target.fingerprint,
+                roots: services.roots
+            )
+        } else if request.function.requiresCheckpoint,
            request.function != .critique,
            actionContext.executionStorage == .legacyFunction {
             checkpoint = try await createCheckpoint(
@@ -714,7 +749,6 @@ extension WorkspaceHandle {
             throw error
         }
 
-        let runID = commentOnlyDiscussion?.id ?? UUID()
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
         let activityAuthorization: ResearchActivityGrantAuthorization?
@@ -779,6 +813,7 @@ extension WorkspaceHandle {
             evidenceRevisions: evidenceRevisions,
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
+            continuationLineage: continuationLineage,
             fidelityHandoff: handoff,
             fidelityInvocation: fidelityInvocation,
             confirmationToken: confirmationToken,
@@ -965,11 +1000,17 @@ extension WorkspaceHandle {
             activeAgentCoordinationKeys[runID] = coordinationAuthorization?
                 .coordinationKey
         }
-        let refreshWarning = try await recoverableResearchRefreshWarning {
-            try await refreshAfterCommittedOperation(
-                "The Research Function preparation",
-                publication: .researchRecords
-            )
+        let refreshWarning: String?
+        if suppressRefresh {
+            refreshWarning = nil
+            scheduleResearchFunctionRefreshRecovery()
+        } else {
+            refreshWarning = try await recoverableResearchRefreshWarning {
+                try await refreshAfterCommittedOperation(
+                    "The Research Function preparation",
+                    publication: .researchRecords
+                )
+            }
         }
         var returnedInstructions = deliveryInstructions
         if request.function == .discuss,
@@ -1302,6 +1343,7 @@ extension WorkspaceHandle {
                 break
             }
         }
+        try await validateResearchContinuation(snapshot, stored: stored)
         guard !submission.summary.isEmpty else {
             throw ResearchFunctionContractError.invalidCompletion(
                 "A completion summary is required."
@@ -3145,6 +3187,7 @@ extension WorkspaceHandle {
             action: ResearchActionRecordIdentity(snapshot: actionSnapshot),
             method: try PortableResearchMethodReference(snapshot: actionSnapshot),
             sourceReference: snapshot.sourceReference,
+            continuationLineage: snapshot.continuationLineage,
             participatingNotes: participatingNotes,
             statements: [feedback],
             actuallyUsedMaterials: [],
@@ -3410,8 +3453,21 @@ extension WorkspaceHandle {
         finalMaterialFingerprints: [UUID: DocumentFingerprint]
     ) async throws -> ResearchFunctionCompletion {
         let records = try await authoritativeFunctionRecords()
+        let lineageMatches: Bool
+        if let parentLineage = parent.continuationLineage {
+            lineageMatches = records.first(where: { $0.id == runID })?
+                .snapshot.continuationLineage == ResearchContinuationLineage(
+                    groupID: parentLineage.groupID,
+                    parentRunID: parent.runID,
+                    requestID: parentLineage.requestID,
+                    kind: .fidelity
+                )
+        } else {
+            lineageMatches = true
+        }
         guard runID != parent.runID,
               let child = records.first(where: { $0.id == runID }),
+              lineageMatches,
               child.snapshot.request.function == .fidelity,
               child.snapshot.preparedAt >= parent.preparedAt,
               let completion = child.completion,
@@ -3545,6 +3601,94 @@ extension WorkspaceHandle {
         return ManuscriptChildEvidence(
             fidelity: finalFidelity?.completion,
             hasRevision: false
+        )
+    }
+
+    private func validateResearchContinuation(
+        _ snapshot: ResearchFunctionSnapshot,
+        stored: StoredFunctionRecord
+    ) async throws {
+        guard let lineage = snapshot.continuationLineage else { return }
+        let record = try await services.agentNoteChangeRequestStore
+            .recordForAuthentication(id: lineage.requestID)
+        guard stored.isLocalExecutionV2,
+              record.decision.state == .allowedSubset,
+              let plan = record.continuationPlan,
+              plan.groupID == lineage.groupID,
+              plan.requestID == lineage.requestID else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The continuation lineage no longer has its exact allowed request decision."
+            )
+        }
+
+        switch lineage.kind {
+        case .approvedAction:
+            guard lineage.parentRunID == record.request.parentRunID,
+                  plan.parentRunID == lineage.parentRunID,
+                  plan.childPhases.contains(where: {
+                      $0.runID == snapshot.runID
+                          && $0.noteID == snapshot.request.target.noteID
+                  }),
+                  let target = record.request.targets.first(where: {
+                      $0.noteID == snapshot.request.target.noteID
+                  }),
+                  target.note == snapshot.request.target.note,
+                  target.expectedFingerprint == snapshot.request.target.fingerprint,
+                  let action = snapshot.actionSnapshot,
+                  try AgentNoteChangeActionRevision(actionSnapshot: action)
+                    == record.request.requestedAction,
+                  action.authority.writableNotes == [action.target],
+                  !action.authority.writeOperations.isEmpty,
+                  Set(action.authority.writeOperations).isSubset(
+                      of: Set(record.request.operations)
+                  ),
+                  let checkpointID = snapshot.checkpointID,
+                  let checkpoint = try? await services.checkpointStore
+                    .checkpoint(id: checkpointID),
+                  checkpoint.triptychID == services.manifest.id,
+                  checkpoint.kind == .researchContinuation,
+                  checkpoint.files == [TriptychCheckpointFile(
+                    key: researchContinuationCheckpointKey(
+                        for: snapshot.request.target
+                    ),
+                    fingerprint: snapshot.request.target.fingerprint
+                  )] else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The continuation child no longer matches its parent, approved subset, Action, or checkpoint."
+                )
+            }
+        case .fidelity:
+            guard case .automatic(let fidelityParentID)? =
+                    snapshot.resolvedFidelityInvocation,
+                  fidelityParentID == lineage.parentRunID,
+                  let parent = try await services.localResearchExecutionStore
+                    .recordIfPresent(id: lineage.parentRunID),
+                  let parentLineage = parent.snapshot.continuationLineage,
+                  parentLineage.kind == .approvedAction,
+                  parentLineage.groupID == lineage.groupID,
+                  parentLineage.requestID == lineage.requestID,
+                  parent.completion.map({
+                      [.awaitingFidelity, .unverified, .complete]
+                        .contains($0.state)
+                  }) == true else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The continuation Fidelity run no longer matches its independently completed write child."
+                )
+            }
+        }
+    }
+
+    private func researchContinuationCheckpointKey(
+        for target: ResearchFunctionTarget
+    ) -> TriptychCheckpointFileKey {
+        let area: TriptychCheckpointArea = switch target.role {
+        case .analysis: .analyses
+        case .topic: .topics
+        case .work: .works
+        }
+        return TriptychCheckpointFileKey(
+            area: area,
+            relativePath: target.note.relativePath
         )
     }
 

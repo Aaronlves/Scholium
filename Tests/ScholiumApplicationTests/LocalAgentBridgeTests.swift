@@ -130,7 +130,7 @@ struct LocalAgentBridgeTests {
                 throw error
             }
             committed.set()
-            return record
+            return AgentNoteChangeContinuationResult(record: record)
         }
         let client = try LocalAgentBridgeClient(
             applicationSupportURL: fixture.support,
@@ -177,7 +177,7 @@ struct LocalAgentBridgeTests {
         ) { _ in
             entered.set()
             await release.wait()
-            return record
+            return AgentNoteChangeContinuationResult(record: record)
         }
         let client = try LocalAgentBridgeClient(
             applicationSupportURL: fixture.support,
@@ -219,7 +219,7 @@ struct LocalAgentBridgeTests {
             entered.set()
             await release.wait()
             try Task.checkCancellation()
-            return record
+            return AgentNoteChangeContinuationResult(record: record)
         }
         let client = try LocalAgentBridgeClient(
             applicationSupportURL: fixture.support,
@@ -281,7 +281,7 @@ struct LocalAgentBridgeTests {
                 throw error
             }
             committed.set()
-            return record
+            return AgentNoteChangeContinuationResult(record: record)
         }
         let client = try LocalAgentBridgeClient(
             applicationSupportURL: fixture.support,
@@ -343,6 +343,56 @@ struct LocalAgentBridgeTests {
             from: encoded
         )
         #expect(decoded.record == resolved)
+    }
+
+    @Test("Current allowed bridge records require an exact prepared child delivery")
+    func continuationDeliveryValidation() throws {
+        let result = try makeContinuationResult()
+        #expect(throws: LocalAgentBridgeError.self) {
+            _ = try LocalAgentBridgeResponse(
+                correlationID: UUID(),
+                record: result.record
+            )
+        }
+        let response = try LocalAgentBridgeResponse(
+            correlationID: UUID(),
+            record: result.record,
+            childPreparations: result.childPreparations
+        )
+        let decoded = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(response)
+        )
+        #expect(decoded.record == result.record)
+        #expect(decoded.childPreparations == result.childPreparations)
+    }
+
+    @Test("Schema-v1 allowed records remain readable without child delivery")
+    func legacyAllowedRecordHasNoImplicitContinuation() throws {
+        let current = try makeContinuationResult().record
+        var object = try #require(
+            JSONSerialization.jsonObject(
+                with: LocalAgentBridgeWireCoding.encode(current)
+            ) as? [String: Any]
+        )
+        object["schema_version"] = 1
+        object.removeValue(forKey: "continuation_plan")
+        let legacy = try LocalAgentBridgeWireCoding.decode(
+            AgentNoteChangeRequestRecord.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        #expect(legacy.decision.state == .allowedSubset)
+        #expect(!legacy.canDeliverContinuations)
+        let response = try LocalAgentBridgeResponse(
+            correlationID: UUID(),
+            record: legacy
+        )
+        #expect(response.childPreparations.isEmpty)
+        #expect(try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(response)
+        ).record == legacy)
     }
 
     @Test("A closed App returns typed unavailable and is never launched")
@@ -436,6 +486,139 @@ struct LocalAgentBridgeTests {
             request: request,
             receivedAt: receivedAt,
             validFor: validFor
+        )
+    }
+
+    private func makeContinuationResult() throws
+        -> AgentNoteChangeContinuationResult
+    {
+        let parentRunID = UUID()
+        let requestID = UUID()
+        let childRunID = UUID()
+        let groupID = UUID()
+        let note = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Prepared Child.md"
+        )
+        let target = ResearchFunctionTarget(
+            noteID: UUID(),
+            note: note,
+            role: .work,
+            fingerprint: DocumentFingerprint(content: "prepared child"),
+            title: "Prepared Child"
+        )
+        let actionTarget = ResearchActionNoteSnapshot(
+            noteID: target.noteID,
+            note: note,
+            role: .work,
+            lifecycle: .active,
+            fingerprint: target.fingerprint,
+            title: target.title
+        )
+        let profile = try ResearchActionProfile(
+            definition: .write,
+            buttonName: "Write",
+            order: 40,
+            applicableRoles: [.work],
+            showInActions: true,
+            modules: [],
+            sourceRequirement: .none,
+            capabilities: ResearchActionCapabilityDeclaration(
+                readableRoles: [.work],
+                candidateWritableRoles: [.work],
+                candidateWriteOperations: [.modifyMarkdown]
+            ),
+            feedbackRequirement: .requested
+        )
+        let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
+            origin: .applicationDefault,
+            profile: profile,
+            profileRevision: profile.contentRevision(),
+            profileDocumentRevision: nil
+        )
+        let action = try ResearchActionSnapshot(
+            definition: .write,
+            target: actionTarget,
+            method: ResearchActionMethodSnapshot(
+                packageID: "scholium-working-write",
+                origin: .triptych,
+                version: "1.0.0",
+                packageRevision: DocumentFingerprint(content: "method"),
+                loadedResources: [ResearchActionResourceSnapshot(
+                    relativePath: "SKILL.md",
+                    revision: DocumentFingerprint(content: "method source")
+                )]
+            ),
+            resolvedProfile: resolvedProfile,
+            parameters: try ResearchActionParameterModel(
+                profile: profile,
+                rawValues: [:]
+            ),
+            authority: ResearchAuthorityEnvelope(
+                readableNotes: [actionTarget],
+                writableNotes: [actionTarget],
+                writeOperations: [.modifyMarkdown],
+                editablePropertyKeys: []
+            )
+        )
+        let lineage = ResearchContinuationLineage(
+            groupID: groupID,
+            parentRunID: parentRunID,
+            requestID: requestID,
+            kind: .approvedAction
+        )
+        let preparation = ResearchFunctionPreparation(
+            snapshot: ResearchFunctionSnapshot(
+                runID: childRunID,
+                request: ResearchFunctionRequest(
+                    function: .revise,
+                    target: target
+                ),
+                actionSnapshot: action,
+                recordKind: .functionEnvelope,
+                checkpointID: UUID(),
+                activityID: childRunID,
+                continuationLineage: lineage
+            ),
+            instructions: "Activity key: transient"
+        )
+        let revision = try AgentNoteChangeActionRevision(actionSnapshot: action)
+        let request = try AgentNoteChangeRequest(
+            requestID: requestID,
+            triptychID: UUID(),
+            parentRunID: parentRunID,
+            parentAction: revision,
+            requestedAction: revision,
+            targets: [try AgentNoteChangeTarget(snapshot: actionTarget)],
+            operations: [.modifyMarkdown],
+            agentReason: "Prepare one exact child delivery."
+        )
+        let pending = try AgentNoteChangeRequestRecord(
+            request: request,
+            receivedAt: Date(timeIntervalSinceReferenceDate: 100),
+            validFor: 60
+        )
+        let plan = try AgentNoteChangeContinuationPlan(
+            groupID: groupID,
+            parentRunID: parentRunID,
+            requestID: requestID,
+            childPhases: [AgentNoteChangeChildPhasePlan(
+                runID: childRunID,
+                noteID: target.noteID
+            )]
+        )
+        let allowed = try pending.resolving(
+            state: .allowedSubset,
+            allowedNoteIDs: [target.noteID],
+            continuationPlan: plan,
+            at: pending.receivedAt.addingTimeInterval(1)
+        )
+        return AgentNoteChangeContinuationResult(
+            record: allowed,
+            childPreparations: [AgentNoteChangeChildPreparation(
+                noteID: target.noteID,
+                preparation: preparation
+            )]
         )
     }
 

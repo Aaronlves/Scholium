@@ -4,11 +4,11 @@
 
 **Branch:** `codex/researcher-governed-skills`
 
-**Completed product Session:** 17
+**Completed product Session:** 18
 
-**Session 17 commit:** `aa76d9d692b7f906340030042c9497a073a0a511`
+**Session 18 commit:** this commit, `Add permission-bound research continuations`
 
-**Next product Session:** 18
+**Next product Session:** 19
 
 This document lets a fresh Codex task continue the researcher-governed Skills
 migration without depending on an earlier conversation. It records sequencing,
@@ -213,9 +213,11 @@ write scope.
   - optional Manuscript continuation through the same mechanism.
 - If the request is denied, continued without changes, stale, expired, or the
   parent is no longer eligible, create no child grant. Silence grants nothing.
-- A parent cancellation, Note revision change, lifecycle change, Skill/Profile
-  change, conflict, or failed checkpoint/recovery preparation must fail closed
-  without partially authorizing a child.
+- A parent cancellation before child preparation, Note revision change,
+  lifecycle change, Skill/Profile change, conflict, or failed
+  checkpoint/recovery preparation must fail closed without partially
+  authorizing a child. Once delivered, the child completes only against its
+  own snapshot, recovery checkpoint, grant, and verification boundary.
 - Portable and machine-local evidence must keep parent decision, child
   execution, and final Research Record facts semantically distinct.
 
@@ -224,6 +226,8 @@ write scope.
 - subset approval creates only a separately frozen child scope;
 - parent snapshot and grant remain byte- and authority-unchanged;
 - parent cancellation before child preparation refuses continuation;
+- parent cancellation after child delivery does not revoke that independent
+  child's exact grant;
 - stale decision, changed Note, changed Profile/Skill, and cross-Triptych input
   refuse continuation;
 - child conflict and cancellation preserve recovery;
@@ -232,6 +236,8 @@ write scope.
 - lineage survives reopen and cannot authorize execution;
 - Analyze to Synthesize, Critique to Write, and optional Manuscript fixtures;
 - idempotent retry does not create duplicate child runs or grants.
+- interrupted partial child preparation is cleaned up and can retry the same
+  reserved identities without retaining a partial grant set.
 
 ### Explicit deferrals
 
@@ -385,18 +391,18 @@ Use this prompt for the next task, replacing the Session number, base commit,
 and exact Session section when appropriate:
 
 ```text
-Continue the Scholium researcher-governed Skills implementation with Session 18
+Continue the Scholium researcher-governed Skills implementation with Session 19
 only. Work in /Users/jacuqeas73/Developer/Scholium on branch
 codex/researcher-governed-skills. Read AGENTS.md and
 Docs/RESEARCHER_GOVERNED_SKILLS_IMPLEMENTATION_ROADMAP.md completely, then
-follow its Session 18 contract and mandatory Session protocol. Confirm the
-current clean HEAD is the documentation handoff commit whose ancestry contains
-Session 17 commit aa76d9d692b7f906340030042c9497a073a0a511. Search current
+follow its Session 19 contract and mandatory Session protocol. Confirm the
+current clean HEAD is the Session 18 commit named
+`Add permission-bound research continuations`. Search current
 official documentation before programming. Follow the roadmap's minimum
 sufficient execution rule: preserve every required quality gate, but do not
 repeat reads, builds, reviews, tests, or UI journeys without a concrete need.
 Review, run focused tests and the complete verify.sh, then create exactly one
 commit named
-"Add permission-bound research continuations", report the full SHA and open
-uncertainty, then end the task. Do not begin Session 19 and do not push.
+"Build the scholarly Research Record window", report the full SHA and open
+uncertainty, then end the task. Do not begin Session 20 and do not push.
 ```

@@ -26,6 +26,30 @@ private enum SecureTriptychFileOperations {
     private static let directoryMode = mode_t(0o755)
     private static let fileMode = mode_t(0o600)
 
+    static func readRegularFile(root: URL, relativePath: String) throws -> Data {
+        let components = try validatedComponents(relativePath)
+        let rootDescriptor = try openRoot(root, relativePath: relativePath)
+        defer { Darwin.close(rootDescriptor) }
+        let parentDescriptor = try openParent(
+            rootDescriptor: rootDescriptor,
+            components: Array(components.dropLast()),
+            createDirectories: false,
+            relativePath: relativePath
+        )
+        defer { Darwin.close(parentDescriptor) }
+        let leaf = components[components.count - 1]
+        try requireRegularFile(
+            parentDescriptor: parentDescriptor,
+            leaf: leaf,
+            relativePath: relativePath
+        )
+        return try readRegularFile(
+            parentDescriptor: parentDescriptor,
+            leaf: leaf,
+            relativePath: relativePath
+        )
+    }
+
     static func atomicWrite(_ data: Data, root: URL, relativePath: String) throws -> Data {
         let components = try validatedComponents(relativePath)
         let rootDescriptor = try openRoot(root, relativePath: relativePath)
@@ -382,12 +406,102 @@ public actor TriptychCheckpointStore {
         kind: TriptychCheckpointKind,
         roots: TriptychRoots
     ) throws -> TriptychCheckpoint {
-        try create(
+        guard kind != .researchContinuation else {
+            throw TriptychCheckpointError.invalidKind(kind)
+        }
+        return try create(
             name: requestedName,
             kind: kind,
             roots: roots,
             pruneAutomaticAfterCreation: true
         )
+    }
+
+    /// Captures one exact Note for an independently authorized continuation.
+    /// These checkpoints are outside rolling automatic retention so one active
+    /// child can never prune a sibling's still-required recovery evidence.
+    @discardableResult
+    public func createResearchContinuation(
+        name requestedName: String,
+        key: TriptychCheckpointFileKey,
+        expectedFingerprint: DocumentFingerprint,
+        roots: TriptychRoots
+    ) throws -> TriptychCheckpoint {
+        let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw TriptychCheckpointError.invalidName }
+        guard key.area != .control else {
+            throw TriptychCheckpointError.invalidRelativePath(key.relativePath)
+        }
+        try validateRoots(roots)
+        try fileManager.createDirectory(
+            at: storageURL,
+            withIntermediateDirectories: true
+        )
+        let id = UUID()
+        let temporary = storageURL.appendingPathComponent(
+            ".creating-\(id.uuidString)",
+            isDirectory: true
+        )
+        let destination = checkpointURL(id: id)
+        let snapshotFile = temporary
+            .appendingPathComponent("snapshot", isDirectory: true)
+            .appendingPathComponent(key.area.rawValue, isDirectory: true)
+            .appendingPathComponent(key.relativePath)
+        try? fileManager.removeItem(at: temporary)
+
+        do {
+            let root = roots.url(for: key.area)
+            let data = try SecureTriptychFileOperations.readRegularFile(
+                root: root,
+                relativePath: key.relativePath
+            )
+            guard DocumentFingerprint(data: data) == expectedFingerprint else {
+                throw TriptychCheckpointError.sourceChangedDuringCapture(
+                    "\(key.area.rawValue)/\(key.relativePath)"
+                )
+            }
+            try fileManager.createDirectory(
+                at: snapshotFile.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: snapshotFile, options: .atomic)
+            let readback = try Data(contentsOf: snapshotFile, options: [.mappedIfSafe])
+            guard DocumentFingerprint(data: readback) == expectedFingerprint else {
+                throw TriptychCheckpointError.snapshotWriteFailed(
+                    "\(key.area.rawValue)/\(key.relativePath)"
+                )
+            }
+            let finalSource = try SecureTriptychFileOperations.readRegularFile(
+                root: root,
+                relativePath: key.relativePath
+            )
+            guard DocumentFingerprint(data: finalSource) == expectedFingerprint else {
+                throw TriptychCheckpointError.sourceChangedDuringCapture(
+                    "\(key.area.rawValue)/\(key.relativePath)"
+                )
+            }
+            let file = TriptychCheckpointFile(
+                key: key,
+                fingerprint: expectedFingerprint
+            )
+            let checkpoint = TriptychCheckpoint(
+                id: id,
+                triptychID: triptychID,
+                name: name,
+                kind: .researchContinuation,
+                triptychFingerprint: Self.aggregateFingerprint([file]),
+                files: [file]
+            )
+            try encode(
+                checkpoint,
+                to: temporary.appendingPathComponent("metadata.json")
+            )
+            try fileManager.moveItem(at: temporary, to: destination)
+            return checkpoint
+        } catch {
+            try? fileManager.removeItem(at: temporary)
+            throw error
+        }
     }
 
     private func create(
@@ -545,14 +659,16 @@ public actor TriptychCheckpointStore {
         return checkpoint
     }
 
-    /// Removes exactly one automatic checkpoint created by a preparation that
-    /// subsequently failed. This is deliberately narrower than retention or
-    /// note-purge operations: the metadata identity, Triptych, inventory, and
-    /// automatic kind are all validated before one directory is removed.
+    /// Removes exactly one automatic or continuation-recovery checkpoint made
+    /// by a preparation that subsequently failed. This is deliberately
+    /// narrower than retention or note-purge operations: metadata identity,
+    /// Triptych, inventory, and preparation-owned kind are all validated before
+    /// one directory is removed.
     @discardableResult
     public func discardAutomaticCheckpoint(id: UUID) throws -> TriptychCheckpoint {
         let checkpoint = try checkpoint(id: id)
-        guard checkpoint.kind == .automatic else {
+        guard checkpoint.kind == .automatic
+                || checkpoint.kind == .researchContinuation else {
             throw TriptychCheckpointError.cannotDiscardManualCheckpoint(id)
         }
         let destination = checkpointURL(id: id).standardizedFileURL
@@ -680,7 +796,21 @@ public actor TriptychCheckpointStore {
 
     public func comparison(checkpointID: UUID, roots: TriptychRoots) throws -> [TriptychCheckpointChange] {
         let checkpoint = try checkpoint(id: checkpointID)
-        let currentFiles = try inventory(roots: roots)
+        let currentFiles: [TriptychCheckpointFile]
+        if checkpoint.kind == .researchContinuation {
+            currentFiles = checkpoint.files.compactMap { file in
+                guard let data = try? SecureTriptychFileOperations.readRegularFile(
+                    root: roots.url(for: file.key.area),
+                    relativePath: file.key.relativePath
+                ) else { return nil }
+                return TriptychCheckpointFile(
+                    key: file.key,
+                    fingerprint: DocumentFingerprint(data: data)
+                )
+            }
+        } else {
+            currentFiles = try inventory(roots: roots)
+        }
         let checkpointByKey = Dictionary(uniqueKeysWithValues: checkpoint.files.map { ($0.key, $0) })
         let currentByKey = Dictionary(uniqueKeysWithValues: currentFiles.map { ($0.key, $0) })
         var changes: [TriptychCheckpointChange] = []
@@ -756,6 +886,26 @@ public actor TriptychCheckpointStore {
         repositories: [WorkspaceVaultSlot: VaultRepository]
     ) async throws -> TriptychCheckpointRestoreResult {
         let selectedCheckpoint = try checkpoint(id: checkpointID)
+        if selectedCheckpoint.kind == .researchContinuation {
+            let isExactSelection: Bool = switch selection {
+            case .files(let keys):
+                !keys.isEmpty
+                    && keys.allSatisfy { selectedCheckpoint.files.map(\.key).contains($0) }
+            case .mappedFiles(let files):
+                !files.isEmpty
+                    && files.allSatisfy {
+                        $0.source == $0.destination
+                            && selectedCheckpoint.files.map(\.key).contains($0.source)
+                    }
+            case .completeTriptych:
+                false
+            }
+            guard isExactSelection else {
+                throw TriptychCheckpointError.invalidRelativePath(
+                    "Research continuation recovery restores only its exact Note."
+                )
+            }
+        }
         // Retention is deliberately deferred until the restore completes. If
         // the researcher selects the oldest of ten automatic checkpoints, the
         // new safety checkpoint would otherwise prune the selected snapshot
@@ -902,6 +1052,12 @@ public actor TriptychCheckpointStore {
             throw TriptychCheckpointError.invalidRelativePath(destinationKey.relativePath)
         }
         let checkpoint = try checkpoint(id: checkpointID)
+        guard checkpoint.kind != .researchContinuation
+                || sourceKey == destinationKey else {
+            throw TriptychCheckpointError.invalidRelativePath(
+                destinationKey.relativePath
+            )
+        }
         guard let sourceRecord = checkpoint.files.first(where: { $0.key == sourceKey }) else {
             throw TriptychCheckpointError.invalidRelativePath(sourceKey.relativePath)
         }

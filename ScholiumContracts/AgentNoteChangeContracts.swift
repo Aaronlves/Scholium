@@ -492,6 +492,115 @@ public struct AgentNoteChangeRequest: Codable, Hashable, Identifiable, Sendable 
     }
 }
 
+/// One independently prepared child Action reserved by an allowed request.
+///
+/// This is correlation state only. The run identifier and Note identity do
+/// not grant read or write authority; Application must still prepare and
+/// validate the complete child execution.
+public struct AgentNoteChangeChildPhasePlan: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let runID: UUID
+    public let noteID: UUID
+
+    public init(runID: UUID = UUID(), noteID: UUID) {
+        schemaVersion = Self.currentSchemaVersion
+        self.runID = runID
+        self.noteID = noteID
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case runID = "run_id"
+        case noteID = "note_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try AgentNoteChangeValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try container.decode(Int.self, forKey: .schemaVersion)
+        guard version == Self.currentSchemaVersion else {
+            throw AgentNoteChangeContractError.unsupportedSchemaVersion(version)
+        }
+        self.init(
+            runID: try container.decode(UUID.self, forKey: .runID),
+            noteID: try container.decode(UUID.self, forKey: .noteID)
+        )
+    }
+}
+
+/// Durable correlation plan connecting one allowed request to independently
+/// prepared child Actions. The group is shared by later nested Fidelity runs,
+/// while every child keeps its own run identity and authority boundary.
+public struct AgentNoteChangeContinuationPlan: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let groupID: UUID
+    public let parentRunID: UUID
+    public let requestID: UUID
+    public let childPhases: [AgentNoteChangeChildPhasePlan]
+
+    public init(
+        groupID: UUID,
+        parentRunID: UUID,
+        requestID: UUID,
+        childPhases: [AgentNoteChangeChildPhasePlan]
+    ) throws {
+        let phases = childPhases.sorted {
+            if $0.noteID != $1.noteID {
+                return $0.noteID.uuidString < $1.noteID.uuidString
+            }
+            return $0.runID.uuidString < $1.runID.uuidString
+        }
+        guard !phases.isEmpty,
+              phases.count <= AgentNoteChangeRequest.maximumTargetCount,
+              Set(phases.map(\.noteID)).count == phases.count,
+              Set(phases.map(\.runID)).count == phases.count,
+              !phases.contains(where: { $0.runID == parentRunID }) else {
+            throw AgentNoteChangeContractError.invalidContinuationPlan
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.groupID = groupID
+        self.parentRunID = parentRunID
+        self.requestID = requestID
+        self.childPhases = phases
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case groupID = "group_id"
+        case parentRunID = "parent_run_id"
+        case requestID = "request_id"
+        case childPhases = "child_phases"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try AgentNoteChangeValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try container.decode(Int.self, forKey: .schemaVersion)
+        guard version == Self.currentSchemaVersion else {
+            throw AgentNoteChangeContractError.unsupportedSchemaVersion(version)
+        }
+        try self.init(
+            groupID: container.decode(UUID.self, forKey: .groupID),
+            parentRunID: container.decode(UUID.self, forKey: .parentRunID),
+            requestID: container.decode(UUID.self, forKey: .requestID),
+            childPhases: container.decode(
+                [AgentNoteChangeChildPhasePlan].self,
+                forKey: .childPhases
+            )
+        )
+    }
+}
+
 public enum AgentNoteChangeDecisionState: String, Codable, CaseIterable,
     Hashable, Sendable
 {
@@ -582,7 +691,7 @@ public struct AgentNoteChangeDecision: Codable, Hashable, Sendable {
 public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
     Sendable
 {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let maximumLifetime: TimeInterval = 30 * 60
 
     public let schemaVersion: Int
@@ -591,9 +700,18 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
     public let receivedAt: Date
     public let expiresAt: Date
     public let decision: AgentNoteChangeDecision
+    public let continuationPlan: AgentNoteChangeContinuationPlan?
 
     public var id: UUID { request.id }
     public var isUnresolved: Bool { decision.state == .pending }
+    /// Only schema-v2 allowed records carry the independently reserved child
+    /// identities needed for live continuation delivery. Readable schema-v1
+    /// decisions remain historical outcomes, not implicit child authority.
+    public var canDeliverContinuations: Bool {
+        schemaVersion == Self.currentSchemaVersion
+            && decision.state == .allowedSubset
+            && continuationPlan != nil
+    }
 
     public init(
         request: AgentNoteChangeRequest,
@@ -619,14 +737,17 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
             state: initialState,
             decidedAt: initialState == .pending ? nil : receivedAt
         )
+        continuationPlan = nil
     }
 
     private init(
+        schemaVersion: Int,
         request: AgentNoteChangeRequest,
         requestDigest: DocumentFingerprint,
         receivedAt: Date,
         expiresAt: Date,
-        decision: AgentNoteChangeDecision
+        decision: AgentNoteChangeDecision,
+        continuationPlan: AgentNoteChangeContinuationPlan?
     ) throws {
         let receivedAtValue = receivedAt.timeIntervalSinceReferenceDate
         let expiresAtValue = expiresAt.timeIntervalSinceReferenceDate
@@ -643,7 +764,19 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
         } else {
             decisionTimelineIsValid = false
         }
-        guard requestDigest == (try request.payloadDigest()),
+        let planIsValid: Bool
+        if let continuationPlan {
+            planIsValid = schemaVersion == Self.currentSchemaVersion
+                && decision.state == .allowedSubset
+                && continuationPlan.parentRunID == request.parentRunID
+                && continuationPlan.requestID == request.id
+                && Set(continuationPlan.childPhases.map(\.noteID))
+                    == Set(decision.allowedNoteIDs)
+        } else {
+            planIsValid = decision.state != .allowedSubset || schemaVersion == 1
+        }
+        guard [1, Self.currentSchemaVersion].contains(schemaVersion),
+              requestDigest == (try request.payloadDigest()),
               request.id == decision.requestID,
               requestDigest == decision.requestDigest,
               receivedAtValue.isFinite,
@@ -651,17 +784,19 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
               expiresAt > receivedAt,
               expiresAt.timeIntervalSince(receivedAt) <= Self.maximumLifetime,
               decisionTimelineIsValid,
+              planIsValid,
               Set(decision.allowedNoteIDs).isSubset(
                   of: Set(request.targets.map(\.noteID))
               ) else {
             throw AgentNoteChangeContractError.invalidRecord
         }
-        schemaVersion = Self.currentSchemaVersion
+        self.schemaVersion = schemaVersion
         self.request = request
         self.requestDigest = requestDigest
         self.receivedAt = receivedAt
         self.expiresAt = expiresAt
         self.decision = decision
+        self.continuationPlan = continuationPlan
     }
 
     public func expiringIfNeeded(at date: Date) throws -> Self {
@@ -672,6 +807,7 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
     public func resolving(
         state: AgentNoteChangeDecisionState,
         allowedNoteIDs: [UUID] = [],
+        continuationPlan: AgentNoteChangeContinuationPlan? = nil,
         at date: Date
     ) throws -> Self {
         guard decision.state == .pending,
@@ -690,11 +826,13 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
             decidedAt: date
         )
         return try Self(
+            schemaVersion: Self.currentSchemaVersion,
             request: request,
             requestDigest: requestDigest,
             receivedAt: receivedAt,
             expiresAt: expiresAt,
-            decision: resolved
+            decision: resolved,
+            continuationPlan: continuationPlan
         )
     }
 
@@ -705,6 +843,7 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
         case receivedAt = "received_at"
         case expiresAt = "expires_at"
         case decision
+        case continuationPlan = "continuation_plan"
     }
 
     public init(from decoder: Decoder) throws {
@@ -714,10 +853,11 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let version = try container.decode(Int.self, forKey: .schemaVersion)
-        guard version == Self.currentSchemaVersion else {
+        guard version == 1 || version == Self.currentSchemaVersion else {
             throw AgentNoteChangeContractError.unsupportedSchemaVersion(version)
         }
         try self.init(
+            schemaVersion: version,
             request: container.decode(
                 AgentNoteChangeRequest.self,
                 forKey: .request
@@ -731,8 +871,63 @@ public struct AgentNoteChangeRequestRecord: Codable, Hashable, Identifiable,
             decision: container.decode(
                 AgentNoteChangeDecision.self,
                 forKey: .decision
+            ),
+            continuationPlan: container.decodeIfPresent(
+                AgentNoteChangeContinuationPlan.self,
+                forKey: .continuationPlan
             )
         )
+    }
+}
+
+/// One live, delivery-only child packet returned after an allowed request has
+/// been independently prepared. Its instructions may contain plaintext grant
+/// keys and therefore must never be written to a request or Research Record.
+public struct AgentNoteChangeChildPreparation: Codable, Hashable, Sendable {
+    public let noteID: UUID
+    public let preparation: ResearchFunctionPreparation
+
+    public init(noteID: UUID, preparation: ResearchFunctionPreparation) {
+        self.noteID = noteID
+        self.preparation = preparation
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case noteID = "note_id"
+        case preparation
+    }
+
+    public init(from decoder: Decoder) throws {
+        try AgentNoteChangeValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            noteID: try container.decode(UUID.self, forKey: .noteID),
+            preparation: try container.decode(
+                ResearchFunctionPreparation.self,
+                forKey: .preparation
+            )
+        )
+    }
+}
+
+/// Current request state plus any live child packets available to the same
+/// authenticated bridge caller. Pending and terminal non-allow decisions have
+/// no child packets.
+public struct AgentNoteChangeContinuationResult: Codable, Hashable, Sendable {
+    public let record: AgentNoteChangeRequestRecord
+    public let childPreparations: [AgentNoteChangeChildPreparation]
+
+    public init(
+        record: AgentNoteChangeRequestRecord,
+        childPreparations: [AgentNoteChangeChildPreparation] = []
+    ) {
+        self.record = record
+        self.childPreparations = childPreparations.sorted {
+            $0.noteID.uuidString < $1.noteID.uuidString
+        }
     }
 }
 
@@ -744,6 +939,7 @@ public enum AgentNoteChangeContractError: LocalizedError, Hashable, Sendable {
     case invalidDecision
     case invalidRecord
     case invalidCoordinationGrant
+    case invalidContinuationPlan
 
     public var errorDescription: String? {
         switch self {
@@ -761,6 +957,8 @@ public enum AgentNoteChangeContractError: LocalizedError, Hashable, Sendable {
             "The Agent Note Change record is invalid."
         case .invalidCoordinationGrant:
             "The Agent coordination grant is invalid."
+        case .invalidContinuationPlan:
+            "The Agent Note Change continuation plan is invalid."
         }
     }
 }

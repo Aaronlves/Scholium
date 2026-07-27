@@ -4,6 +4,40 @@ import Testing
 
 @Suite("Research Function boundary contracts")
 struct ResearchFunctionContractsTests {
+    @Test("Continuation lineage round-trips as strict non-authorizing provenance")
+    func continuationLineageRoundTrip() throws {
+        let lineage = ResearchContinuationLineage(
+            groupID: UUID(),
+            parentRunID: UUID(),
+            requestID: UUID(),
+            kind: .approvedAction
+        )
+        let data = try JSONEncoder().encode(lineage)
+        #expect(try JSONDecoder().decode(
+            ResearchContinuationLineage.self,
+            from: data
+        ) == lineage)
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object["grant"] = true
+        #expect(throws: ResearchFunctionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchContinuationLineage.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        object.removeValue(forKey: "grant")
+        object["schema_version"] = 99
+        #expect(throws: ResearchFunctionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchContinuationLineage.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+    }
+
     @Test("Function roles, write authority, checkpoints, and Fidelity requirements are explicit")
     func functionRoleMatrix() {
         #expect(ResearchFunctionID.develop.allowedTargetRoles == [.analysis, .topic])

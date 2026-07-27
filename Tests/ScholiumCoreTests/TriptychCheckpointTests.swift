@@ -69,6 +69,102 @@ struct TriptychCheckpointTests {
         #expect(checkpoints.filter { $0.kind == .manual }.map(\.name) == ["Manual"])
     }
 
+    @Test("Continuation recovery checkpoints are exact-note and never enter automatic retention")
+    func continuationRecoveryRetention() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychCheckpointStore(
+            triptychID: fixture.triptychID,
+            applicationSupportURL: fixture.support
+        )
+        for index in 0..<10 {
+            try Data("# Analysis \(index)\n".utf8).write(to: fixture.analysis)
+            _ = try await store.create(
+                name: "Automatic \(index)",
+                kind: .automatic,
+                roots: fixture.roots
+            )
+        }
+
+        let key = TriptychCheckpointFileKey(
+            area: .analyses,
+            relativePath: "Paper.md"
+        )
+        await #expect(throws: TriptychCheckpointError.self) {
+            _ = try await store.create(
+                name: "Invalid generic continuation",
+                kind: .researchContinuation,
+                roots: fixture.roots
+            )
+        }
+        let fingerprint = DocumentFingerprint(
+            data: try Data(contentsOf: fixture.analysis)
+        )
+        var continuationIDs: Set<UUID> = []
+        for index in 0..<12 {
+            let checkpoint = try await store.createResearchContinuation(
+                name: "Continuation \(index)",
+                key: key,
+                expectedFingerprint: fingerprint,
+                roots: fixture.roots
+            )
+            continuationIDs.insert(checkpoint.id)
+            #expect(checkpoint.kind == .researchContinuation)
+            #expect(checkpoint.files == [TriptychCheckpointFile(
+                key: key,
+                fingerprint: fingerprint
+            )])
+        }
+
+        _ = try await store.create(
+            name: "Automatic 10",
+            kind: .automatic,
+            roots: fixture.roots
+        )
+        let checkpoints = await store.checkpoints()
+        #expect(checkpoints.filter { $0.kind == .automatic }.count == 10)
+        #expect(Set(checkpoints.filter {
+            $0.kind == .researchContinuation
+        }.map(\.id)) == continuationIDs)
+
+        let continuationID = try #require(continuationIDs.first)
+        await #expect(throws: TriptychCheckpointError.self) {
+            _ = try await store.restore(
+                checkpointID: continuationID,
+                selection: .completeTriptych,
+                roots: fixture.roots,
+                repositories: fixture.repositories()
+            )
+        }
+        let sibling = TriptychCheckpointFileKey(
+            area: .analyses,
+            relativePath: "Sibling.md"
+        )
+        await #expect(throws: TriptychCheckpointError.self) {
+            _ = try await store.restore(
+                checkpointID: continuationID,
+                selection: .mappedFiles([TriptychCheckpointFileRestore(
+                    source: key,
+                    destination: sibling
+                )]),
+                roots: fixture.roots,
+                repositories: fixture.repositories()
+            )
+        }
+        await #expect(throws: TriptychCheckpointError.self) {
+            _ = try await store.restoreNoteFile(
+                checkpointID: continuationID,
+                sourceKey: key,
+                destinationKey: sibling,
+                roots: fixture.roots,
+                repositories: fixture.repositories()
+            )
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: fixture.analyses.appendingPathComponent("Sibling.md").path
+        ))
+    }
+
     @Test("Preparation rollback discards exactly one verified automatic checkpoint")
     func discardsOnlyAutomaticCheckpoint() async throws {
         let fixture = try Fixture()

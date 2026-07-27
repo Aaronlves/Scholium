@@ -125,15 +125,86 @@ struct AgentNoteChangeContractsTests {
         let allowed = try pending.resolving(
             state: .allowedSubset,
             allowedNoteIDs: [request.targets[0].noteID],
+            continuationPlan: try continuationPlan(
+                request: request,
+                allowedNoteIDs: [request.targets[0].noteID]
+            ),
             at: receivedAt.addingTimeInterval(1)
         )
         #expect(allowed.decision.state == .allowedSubset)
         #expect(allowed.decision.allowedNoteIDs == [request.targets[0].noteID])
+        #expect(allowed.canDeliverContinuations)
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try pending.resolving(
+                state: .allowedSubset,
+                allowedNoteIDs: [request.targets[0].noteID],
+                at: receivedAt.addingTimeInterval(1)
+            )
+        }
         #expect(throws: AgentNoteChangeContractError.self) {
             _ = try pending.resolving(
                 state: .continueWithoutChanges,
                 allowedNoteIDs: [request.targets[0].noteID],
                 at: receivedAt.addingTimeInterval(1)
+            )
+        }
+    }
+
+    @Test("Continuation plans are versioned correlation only and reject ambiguous children")
+    func continuationPlanValidation() throws {
+        let request = try makeRequest(targets: [try note(index: 1), try note(index: 2)])
+        let plan = try continuationPlan(
+            request: request,
+            allowedNoteIDs: request.targets.map(\.noteID)
+        )
+        let data = try JSONEncoder().encode(plan)
+        #expect(try JSONDecoder().decode(
+            AgentNoteChangeContinuationPlan.self,
+            from: data
+        ) == plan)
+
+        let repeatedRunID = UUID()
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try AgentNoteChangeContinuationPlan(
+                groupID: request.parentRunID,
+                parentRunID: request.parentRunID,
+                requestID: request.id,
+                childPhases: request.targets.map {
+                    AgentNoteChangeChildPhasePlan(
+                        runID: repeatedRunID,
+                        noteID: $0.noteID
+                    )
+                }
+            )
+        }
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try AgentNoteChangeContinuationPlan(
+                groupID: request.parentRunID,
+                parentRunID: request.parentRunID,
+                requestID: request.id,
+                childPhases: [
+                    AgentNoteChangeChildPhasePlan(noteID: request.targets[0].noteID),
+                    AgentNoteChangeChildPhasePlan(noteID: request.targets[0].noteID),
+                ]
+            )
+        }
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object["unexpected_authority"] = true
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try JSONDecoder().decode(
+                AgentNoteChangeContinuationPlan.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        object.removeValue(forKey: "unexpected_authority")
+        object["schema_version"] = 99
+        #expect(throws: AgentNoteChangeContractError.self) {
+            _ = try JSONDecoder().decode(
+                AgentNoteChangeContinuationPlan.self,
+                from: JSONSerialization.data(withJSONObject: object)
             )
         }
     }
@@ -213,6 +284,10 @@ struct AgentNoteChangeContractsTests {
         let allowed = try pending.resolving(
             state: .allowedSubset,
             allowedNoteIDs: [request.targets[0].noteID],
+            continuationPlan: try continuationPlan(
+                request: request,
+                allowedNoteIDs: [request.targets[0].noteID]
+            ),
             at: receivedAt.addingTimeInterval(1)
         )
         let expired = try pending.expiringIfNeeded(
@@ -257,6 +332,20 @@ struct AgentNoteChangeContractsTests {
             targets: targets ?? [try note(index: 1)],
             operations: operations,
             agentReason: reason
+        )
+    }
+
+    private func continuationPlan(
+        request: AgentNoteChangeRequest,
+        allowedNoteIDs: [UUID]
+    ) throws -> AgentNoteChangeContinuationPlan {
+        try AgentNoteChangeContinuationPlan(
+            groupID: request.parentRunID,
+            parentRunID: request.parentRunID,
+            requestID: request.id,
+            childPhases: allowedNoteIDs.map {
+                AgentNoteChangeChildPhasePlan(noteID: $0)
+            }
         )
     }
 
