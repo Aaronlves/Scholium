@@ -67,6 +67,54 @@ The remaining work must preserve these boundaries:
 Every Session is one fresh Codex task, one bounded implementation step, and one
 commit. It must use this order:
 
+### Minimum sufficient execution
+
+Quality and speed are joint requirements. The required standard is the
+smallest evidence-complete implementation, not the largest amount of activity.
+An Agent must not perform extra operations merely to appear thorough.
+
+- At the start, name the exact deliverable, the trust or regression risks that
+  could invalidate it, and the minimum proof needed for those risks. Do not
+  expand that proof set without a concrete finding.
+- Conduct one bounded external-research pass and stop when current primary
+  documentation answers the implementation-facing question. Do not collect
+  redundant examples, product inspiration, or general background.
+- Load only the relevant specification sections, live call sites, tests, and
+  minimum Skill references. Do not scan the entire repository, activate every
+  related Skill, or repeatedly reread unchanged sources.
+- Prefer parallel read-only inspection where it is genuinely independent, but
+  do not create parallel work that must later be reconciled without benefit.
+- During implementation, run the narrow owning tests. Do not repeatedly run a
+  clean build, the complete `verify.sh`, the whole UI suite, packaging, or
+  release checks while still iterating.
+- Run the required complete verification once, after the patch and reviewer
+  fixes are stable. Rerun an expensive passing gate only if a later change can
+  affect what that gate established; a documentation-only correction does not
+  justify rebuilding the product.
+- For interface work, prove state and logic deterministically first, then run
+  only the representative disposable UI journeys named by the Session. Do not
+  automate every visual variation when the result still requires later human
+  acceptance.
+- Ask for researcher input only when product intent or authority is genuinely
+  missing. Do not pause for permissions already granted by `AGENTS.md`.
+- Request the independent reviewer once the diff is stable. Request another
+  review only after fixing a material finding that could introduce a new
+  defect, not after wording or formatting changes.
+- Reuse the selected toolchain and repository-local caches. If an expected
+  cached operation becomes unexpectedly expensive, diagnose the cache or
+  command before repeating it.
+- Stop immediately when the Session's implementation, review, focused tests,
+  final gate, commit, and clean-worktree checks are complete. Do not perform
+  adjacent cleanup, speculative hardening, stylistic modernization, additional
+  screenshots, or the next Session's work.
+
+These limits do not relax source fidelity, researcher authority, exact-byte
+safety, failure-closed behavior, required recovery, or the Session's explicit
+acceptance gates. They prevent ritual and duplication while preserving the
+evidence that can actually invalidate the result.
+
+### Session sequence
+
 1. Open the repository root and confirm the active branch is
    `codex/researcher-governed-skills`.
 2. Confirm `HEAD` is the previous Session's reported commit and that its
@@ -344,8 +392,11 @@ Docs/RESEARCHER_GOVERNED_SKILLS_IMPLEMENTATION_ROADMAP.md completely, then
 follow its Session 18 contract and mandatory Session protocol. Confirm the
 current clean HEAD is the documentation handoff commit whose ancestry contains
 Session 17 commit aa76d9d692b7f906340030042c9497a073a0a511. Search current
-official documentation before programming. Review, run focused tests and the
-complete verify.sh, create exactly one commit named
+official documentation before programming. Follow the roadmap's minimum
+sufficient execution rule: preserve every required quality gate, but do not
+repeat reads, builds, reviews, tests, or UI journeys without a concrete need.
+Review, run focused tests and the complete verify.sh, then create exactly one
+commit named
 "Add permission-bound research continuations", report the full SHA and open
 uncertainty, then end the task. Do not begin Session 19 and do not push.
 ```
