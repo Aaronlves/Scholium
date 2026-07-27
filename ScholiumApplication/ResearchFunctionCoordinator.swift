@@ -589,10 +589,17 @@ extension WorkspaceHandle {
         actionContext: ResolvedResearchActionContext,
         runIDOverride: UUID? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
+        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         requiresAutomaticCheckpoint: Bool = false,
         suppressRefresh: Bool = false
     ) async throws -> ResearchFunctionPreparation {
         try requireActive()
+        guard (continuationLineage?.kind == .resynthesis)
+                == (resynthesisContext != nil) else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "A Resynthesize child requires its exact revision-bound context."
+            )
+        }
         guard actionContext.function == proposedRequest.function,
               actionContext.availability.definition.id
                 == actionContext.availability.profile.profile.actionID else {
@@ -707,7 +714,9 @@ extension WorkspaceHandle {
            actionContext.executionStorage == .localExecutionV2 {
             checkpoint = try await services.checkpointStore
                 .createResearchContinuation(
-                name: "Before Agent-Requested Continuation",
+                name: resynthesisContext == nil
+                    ? "Before Agent-Requested Continuation"
+                    : "Before Resynthesis",
                 key: researchContinuationCheckpointKey(for: request.target),
                 expectedFingerprint: request.target.fingerprint,
                 roots: services.roots
@@ -814,6 +823,7 @@ extension WorkspaceHandle {
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
             continuationLineage: continuationLineage,
+            resynthesisContext: resynthesisContext,
             fidelityHandoff: handoff,
             fidelityInvocation: fidelityInvocation,
             confirmationToken: confirmationToken,
@@ -1538,6 +1548,13 @@ extension WorkspaceHandle {
                 expected: material.fingerprint
             ))
         }
+        let actuallyUsedMaterialNoteIDs = submission.actuallyUsedMaterialNoteIDs ?? []
+        guard Set(actuallyUsedMaterialNoteIDs).count == actuallyUsedMaterialNoteIDs.count,
+              Set(actuallyUsedMaterialNoteIDs).isSubset(of: materialIDs) else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Actually-used Material identities must be a distinct subset of the prepared Material set."
+            )
+        }
         let currentEvidence = try await selectedFunctionComments(
             ids: snapshot.request.commentIDs,
             selected: [currentTarget] + currentMaterials
@@ -1794,6 +1811,7 @@ extension WorkspaceHandle {
             state: state,
             targetFingerprint: finalTargetFingerprint,
             materialFingerprints: finalMaterialFingerprints,
+            actuallyUsedMaterialNoteIDs: actuallyUsedMaterialNoteIDs,
             summary: stored.completion?.summary ?? submission.summary,
             didModifyTarget: targetChanged,
             outputFingerprint: submission.outputFingerprint,
@@ -1929,6 +1947,7 @@ extension WorkspaceHandle {
             state: completion.state,
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
+            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs ?? [],
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             outputFingerprint: completion.outputFingerprint,
@@ -1965,6 +1984,8 @@ extension WorkspaceHandle {
                     confirmationToken: submission.confirmationToken,
                     finalTargetFingerprint: submission.finalTargetFingerprint,
                     finalMaterialFingerprints: submission.finalMaterialFingerprints,
+                    actuallyUsedMaterialNoteIDs:
+                        submission.actuallyUsedMaterialNoteIDs ?? [],
                     summary: submission.summary,
                     didModifyTarget: submission.didModifyTarget,
                     outputFingerprint: submission.outputFingerprint,
@@ -2655,7 +2676,7 @@ extension WorkspaceHandle {
             confirmationToken: confirmationToken
         )
         sections += [
-            "Submit completion with this run ID and confirmation token. Supply the final full Target fingerprint and a full final Material fingerprint keyed by every Material note ID above. Scholium does not infer that an edit or audit occurred.",
+            "Submit completion with this run ID and confirmation token. Supply the final full Target fingerprint and a full final Material fingerprint keyed by every Material note ID above. Report only the stable Note IDs of Materials actually used; leave the list empty rather than treating selection as use. Scholium does not infer that an edit, use, or audit occurred.",
             "This function-specific schema is intentionally not directly submittable: replace every REPLACE_WITH value. For a write, supply the final Target fingerprint and set didModifyTarget truthfully. Supply the exact Fidelity outcomes, Critique output fingerprint, or Manuscript child run IDs shown for this function.",
             "Completion submission template (JSON):",
             completionTemplate,
@@ -2685,6 +2706,7 @@ extension WorkspaceHandle {
             "confirmationToken": confirmationToken.uuidString.lowercased(),
             "finalTargetFingerprint": targetFingerprint,
             "finalMaterialFingerprints": materialFingerprints,
+            "actuallyUsedMaterialNoteIDs": [],
             "summary": "REPLACE_WITH_ATTRIBUTED_COMPLETION_SUMMARY",
             "didModifyTarget": false,
             "fidelityOutcomes": [],
@@ -2791,6 +2813,7 @@ extension WorkspaceHandle {
             state: completion.state,
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
+            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs ?? [],
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             outputFingerprint: completion.outputFingerprint,
@@ -2818,6 +2841,8 @@ extension WorkspaceHandle {
                 confirmationToken: parent.snapshot.confirmationToken,
                 finalTargetFingerprint: parentCompletion.targetFingerprint,
                 finalMaterialFingerprints: parentCompletion.materialFingerprints,
+                actuallyUsedMaterialNoteIDs:
+                    parentCompletion.actuallyUsedMaterialNoteIDs ?? [],
                 summary: parentCompletion.summary,
                 didModifyTarget: parentCompletion.didModifyTarget,
                 outputFingerprint: parentCompletion.outputFingerprint,
@@ -3180,6 +3205,29 @@ extension WorkspaceHandle {
             text: completion.summary,
             createdAt: completion.completedAt
         )
+        let materialsByID = Dictionary(
+            uniqueKeysWithValues: snapshot.request.materials.map { ($0.noteID, $0) }
+        )
+        let actuallyUsedMaterials = try (completion.actuallyUsedMaterialNoteIDs ?? [])
+            .map { noteID -> PortableResearchMaterialUse in
+                guard let material = materialsByID[noteID] else {
+                    throw ResearchFunctionContractError.invalidCompletion(
+                        "A recorded actually-used Material is outside the frozen request."
+                    )
+                }
+                let role: ResearchActionTargetRole = switch material.role {
+                case .analysis: .analysis
+                case .topic: .topic
+                case .work: .work
+                }
+                return try PortableResearchMaterialUse(
+                    noteID: material.noteID,
+                    note: material.note,
+                    role: role,
+                    title: material.title,
+                    revision: material.fingerprint
+                )
+            }
         return try PortableResearchRecord(
             id: completion.runID,
             triptychID: services.manifest.id,
@@ -3188,9 +3236,10 @@ extension WorkspaceHandle {
             method: try PortableResearchMethodReference(snapshot: actionSnapshot),
             sourceReference: snapshot.sourceReference,
             continuationLineage: snapshot.continuationLineage,
+            primaryNoteID: actionSnapshot.target.noteID,
             participatingNotes: participatingNotes,
             statements: [feedback],
-            actuallyUsedMaterials: [],
+            actuallyUsedMaterials: actuallyUsedMaterials,
             confirmedChanges: changes,
             discrepancies: discrepancies,
             startedAt: snapshot.preparedAt,
@@ -3323,6 +3372,8 @@ extension WorkspaceHandle {
                     state: .stale,
                     targetFingerprint: completion.targetFingerprint,
                     materialFingerprints: completion.materialFingerprints,
+                    actuallyUsedMaterialNoteIDs:
+                        completion.actuallyUsedMaterialNoteIDs ?? [],
                     summary: completion.summary,
                     didModifyTarget: completion.didModifyTarget,
                     outputFingerprint: completion.outputFingerprint,
@@ -3355,6 +3406,13 @@ extension WorkspaceHandle {
 
             guard Set(completion.materialFingerprints.keys)
                     == Set(snapshot.request.materials.map(\.noteID)) else {
+                return false
+            }
+            let actuallyUsedIDs = completion.actuallyUsedMaterialNoteIDs ?? []
+            guard Set(actuallyUsedIDs).count == actuallyUsedIDs.count,
+                  Set(actuallyUsedIDs).isSubset(
+                    of: Set(snapshot.request.materials.map(\.noteID))
+                  ) else {
                 return false
             }
             for material in snapshot.request.materials {
@@ -3609,21 +3667,21 @@ extension WorkspaceHandle {
         stored: StoredFunctionRecord
     ) async throws {
         guard let lineage = snapshot.continuationLineage else { return }
-        let record = try await services.agentNoteChangeRequestStore
-            .recordForAuthentication(id: lineage.requestID)
-        guard stored.isLocalExecutionV2,
-              record.decision.state == .allowedSubset,
-              let plan = record.continuationPlan,
-              plan.groupID == lineage.groupID,
-              plan.requestID == lineage.requestID else {
+        guard stored.isLocalExecutionV2 else {
             throw ResearchFunctionContractError.invalidCompletion(
-                "The continuation lineage no longer has its exact allowed request decision."
+                "A continuation requires its independent Local Execution v2 boundary."
             )
         }
 
         switch lineage.kind {
         case .approvedAction:
-            guard lineage.parentRunID == record.request.parentRunID,
+            let record = try await services.agentNoteChangeRequestStore
+                .recordForAuthentication(id: lineage.requestID)
+            guard record.decision.state == .allowedSubset,
+                  let plan = record.continuationPlan,
+                  plan.groupID == lineage.groupID,
+                  plan.requestID == lineage.requestID,
+                  lineage.parentRunID == record.request.parentRunID,
                   plan.parentRunID == lineage.parentRunID,
                   plan.childPhases.contains(where: {
                       $0.runID == snapshot.runID
@@ -3657,6 +3715,42 @@ extension WorkspaceHandle {
                     "The continuation child no longer matches its parent, approved subset, Action, or checkpoint."
                 )
             }
+        case .resynthesis:
+            guard lineage.requestID == snapshot.runID,
+                  let context = snapshot.resynthesisContext,
+                  context.triptychID == services.manifest.id,
+                  context.recordID == lineage.parentRunID,
+                  context.topicNoteID == snapshot.request.target.noteID,
+                  context.material.stableNoteID.flatMap(UUID.init(uuidString:))
+                    == context.materialNoteID,
+                  context.recordedRevision != context.currentRevision,
+                  snapshot.request.function == .develop,
+                  snapshot.request.target.role == .topic,
+                  let action = snapshot.actionSnapshot,
+                  action.actionID == .synthesize,
+                  action.authority.writableNotes == [action.target],
+                  snapshot.request.materials.contains(where: {
+                      $0.noteID == context.materialNoteID
+                          && $0.role == .analysis
+                          && $0.note.vaultID == context.material.vaultID
+                          && $0.note.relativePath == context.material.relativePath
+                          && $0.fingerprint == context.currentRevision
+                  }),
+                  let checkpointID = snapshot.checkpointID,
+                  let checkpoint = try? await services.checkpointStore
+                    .checkpoint(id: checkpointID),
+                  checkpoint.triptychID == services.manifest.id,
+                  checkpoint.kind == .researchContinuation,
+                  checkpoint.files == [TriptychCheckpointFile(
+                    key: researchContinuationCheckpointKey(
+                        for: snapshot.request.target
+                    ),
+                    fingerprint: snapshot.request.target.fingerprint
+                  )] else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The Resynthesize child no longer matches its exact revision pair, Target, Material, or recovery checkpoint."
+                )
+            }
         case .fidelity:
             guard case .automatic(let fidelityParentID)? =
                     snapshot.resolvedFidelityInvocation,
@@ -3664,7 +3758,7 @@ extension WorkspaceHandle {
                   let parent = try await services.localResearchExecutionStore
                     .recordIfPresent(id: lineage.parentRunID),
                   let parentLineage = parent.snapshot.continuationLineage,
-                  parentLineage.kind == .approvedAction,
+                  [.approvedAction, .resynthesis].contains(parentLineage.kind),
                   parentLineage.groupID == lineage.groupID,
                   parentLineage.requestID == lineage.requestID,
                   parent.completion.map({
@@ -3673,6 +3767,21 @@ extension WorkspaceHandle {
                   }) == true else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "The continuation Fidelity run no longer matches its independently completed write child."
+                )
+            }
+            if parentLineage.kind == .approvedAction {
+                let record = try await services.agentNoteChangeRequestStore
+                    .recordForAuthentication(id: parentLineage.requestID)
+                guard record.decision.state == .allowedSubset,
+                      record.continuationPlan?.groupID == parentLineage.groupID,
+                      record.continuationPlan?.requestID == parentLineage.requestID else {
+                    throw ResearchFunctionContractError.invalidCompletion(
+                        "The continuation Fidelity run no longer has its exact allowed request decision."
+                    )
+                }
+            } else if parent.snapshot.resynthesisContext == nil {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The continuation Fidelity run lost its Resynthesize preparation evidence."
                 )
             }
         }
@@ -3940,6 +4049,7 @@ extension WorkspaceHandle {
         let payload: [String: Any] = [
             "runID": runID.uuidString.lowercased(),
             "confirmationToken": confirmationToken.uuidString.lowercased(),
+            "actuallyUsedMaterialNoteIDs": [],
             "summary": "REPLACE_WITH_ATTRIBUTED_COMPLETION_SUMMARY",
             "didModifyTarget": false,
             "fidelityOutcomes": [],
@@ -3972,7 +4082,7 @@ extension WorkspaceHandle {
         Write scope: \(grant.writeScope.rawValue)
         Activity key: \(authorization.activityKey)
 
-        The key authorizes only completion reporting for the frozen Write set. It is not filesystem access. Do not create, delete, or rename notes. Report only paths you believe this activity changed. Scholium checks all authorized revisions and reports unreported changes separately.
+        The key authorizes only completion reporting for the frozen Write set. It is not filesystem access. Do not create, delete, or rename notes. Report only paths you believe this activity changed, and list only stable Material Note IDs actually used; selection alone is not use. Scholium checks all authorized revisions and reports unreported changes separately.
 
         Completion submission template (JSON):
         \(template)

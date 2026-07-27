@@ -59,6 +59,88 @@ extension WorkspaceHandle {
         )
     }
 
+    func prepareResearchResynthesis(
+        _ request: ResearchActionExecutionRequest,
+        context: MaterialChangedSinceUseAttentionContext
+    ) async throws -> ResearchActionPreparation {
+        guard request.actionID == .synthesize,
+              request.expectedExecutionKind == .synthesis,
+              context.triptychID == services.manifest.id,
+              context.recordedRevision != context.currentRevision,
+              context.material.stableNoteID.flatMap(UUID.init(uuidString:))
+                == context.materialNoteID else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let record = try await services.portableResearchRecordStore.record(
+            id: context.recordID
+        )
+        guard record.triptychID == services.manifest.id,
+              record.kind == .action,
+              record.action?.actionID == .synthesize,
+              record.primaryNoteID == context.topicNoteID,
+              record.participatingNotes.contains(where: {
+                  $0.noteID == context.topicNoteID && $0.role == .topic
+              }),
+              record.actuallyUsedMaterials.contains(where: {
+                  $0.noteID == context.materialNoteID
+                      && $0.role == .analysis
+                      && $0.revision == context.recordedRevision
+              }) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let recordListing = try await services.portableResearchRecordStore.listing(
+            location: .records
+        )
+        guard WorkspaceSnapshotBuilder.isLatestSynthesisMaterialUse(
+            recordID: context.recordID,
+            topicNoteID: context.topicNoteID,
+            materialNoteID: context.materialNoteID,
+            records: recordListing.records
+        ) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+
+        let resolved = try await resolvedResearchActionExecution(request)
+        guard resolved.request.target.noteID == context.topicNoteID,
+              resolved.request.target.role == .topic,
+              resolved.request.materials.contains(where: {
+                  $0.noteID == context.materialNoteID
+                      && $0.role == .analysis
+                      && $0.note.vaultID == context.material.vaultID
+                      && $0.note.relativePath == context.material.relativePath
+                      && $0.fingerprint == context.currentRevision
+              }) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+
+        let runID = UUID()
+        let lineage = ResearchContinuationLineage(
+            groupID: record.continuationLineage?.groupID ?? record.id,
+            parentRunID: record.id,
+            requestID: runID,
+            kind: .resynthesis
+        )
+        let functionPreparation = try await prepareResearchFunction(
+            resolved.request,
+            actionContext: resolved.context,
+            runIDOverride: runID,
+            continuationLineage: lineage,
+            resynthesisContext: context,
+            requiresAutomaticCheckpoint: true
+        )
+        guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        return ResearchActionPreparation(
+            snapshot: snapshot,
+            runID: functionPreparation.runID,
+            instructions: functionPreparation.instructions,
+            state: functionPreparation.state,
+            derivedRefreshWarning: functionPreparation.derivedRefreshWarning,
+            nextActions: functionPreparation.nextActions ?? []
+        )
+    }
+
     func resolvedResearchActionExecution(
         _ request: ResearchActionExecutionRequest
     ) async throws -> (

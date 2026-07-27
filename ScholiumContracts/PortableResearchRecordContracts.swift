@@ -600,7 +600,13 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               Set(actuallyUsedMaterials.map(\.noteID)).count == actuallyUsedMaterials.count,
               Set(confirmedChanges.map(\.noteID)).count == confirmedChanges.count,
               actuallyUsedMaterials.allSatisfy({ material in
-                  participatingByID[material.noteID]?.startingRevision == material.revision
+                  guard let participant = participatingByID[material.noteID] else {
+                      return false
+                  }
+                  return participant.note == material.note
+                      && participant.role == material.role
+                      && participant.title == material.title
+                      && participant.startingRevision == material.revision
               }),
               confirmedChanges.allSatisfy({ change in
                   guard let participant = participatingByID[change.noteID] else {
@@ -618,7 +624,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         }
         switch kind {
         case .action:
-            guard action != nil, method != nil, primaryNoteID == nil else {
+            guard action != nil,
+                  method != nil,
+                  primaryNoteID.map({ participatingByID[$0] != nil }) ?? true else {
                 throw PortableResearchRecordError.invalidRecord
             }
         case .discussion:

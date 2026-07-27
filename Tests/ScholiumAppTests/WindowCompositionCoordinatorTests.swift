@@ -15,17 +15,42 @@ struct WindowCompositionCoordinatorTests {
             prepare: { events.append("obsolete prepare") },
             operation: { events.append("obsolete operation") },
             didFail: { _ in Issue.record("Obsolete transition failed") },
+            didSucceed: { events.append("obsolete success") },
             didFinish: { events.append("obsolete finish") }
         )
         coordinator.enqueue(
             prepare: { events.append("prepare") },
             operation: { events.append("operation") },
             didFail: { error in Issue.record("Unexpected transition failure: \(error)") },
+            didSucceed: { events.append("success") },
             didFinish: { events.append("finish") }
         )
 
         await coordinator.waitForIdle()
-        #expect(events == ["obsolete finish", "prepare", "operation", "finish"])
+        #expect(events == [
+            "obsolete finish", "prepare", "operation", "success", "finish",
+        ])
+    }
+
+    @Test("A failed document transition finishes cleanup without reporting success")
+    func failedTransitionDoesNotSucceed() async {
+        struct ExpectedFailure: Error {}
+        let coordinator = DocumentTransitionCoordinator()
+        var events: [String] = []
+
+        coordinator.enqueue(
+            prepare: { events.append("prepare") },
+            operation: {
+                events.append("operation")
+                throw ExpectedFailure()
+            },
+            didFail: { _ in events.append("failure") },
+            didSucceed: { events.append("success") },
+            didFinish: { events.append("finish") }
+        )
+
+        await coordinator.waitForIdle()
+        #expect(events == ["prepare", "operation", "failure", "finish"])
     }
 
     @Test("A superseding presentation save cancels the older completion")

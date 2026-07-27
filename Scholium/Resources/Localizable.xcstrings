@@ -17,6 +17,30 @@
         }
       }
     },
+    "Inspect" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Inspect" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "检查" } }
+      }
+    },
+    "Leave Unchanged" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Leave Unchanged" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保持不变" } }
+      }
+    },
+    "Material Changed Since Use" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Material Changed Since Use" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "材料在使用后已更改" } }
+      }
+    },
+    "Resynthesize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Resynthesize" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新综合" } }
+      }
+    },
     "Compare Revisions" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "new", "value" : "Compare Revisions" } },
@@ -7802,35 +7826,35 @@
         }
       }
     },
-    "Dismissed items return after %@." : {
+    "Timed dismissals return after %@; Leave Unchanged returns only for a later Material revision or when restored in Settings." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Dismissed items return after %@."
+            "value" : "Timed dismissals return after %@; Leave Unchanged returns only for a later Material revision or when restored in Settings."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已忽略的项目在 %@ 后返回。"
+            "value" : "定时忽略的项目会在 %@ 后返回；“保持不变”仅会在材料出现后续修订或在设置中恢复时返回。"
           }
         }
       }
     },
-    "Dismissed items return after %arg." : {
+    "Timed dismissals return after %arg; Leave Unchanged returns only for a later Material revision or when restored in Settings." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Dismissed items return after %arg."
+            "value" : "Timed dismissals return after %arg; Leave Unchanged returns only for a later Material revision or when restored in Settings."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已忽略的项目在 %arg 后返回。"
+            "value" : "定时忽略的项目会在 %arg 后返回；“保持不变”仅会在材料出现后续修订或在设置中恢复时返回。"
           }
         }
       }
@@ -8560,18 +8584,18 @@
         }
       }
     },
-    "Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, or research activity records." : {
+    "Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, or research activity records."
+            "value" : "Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每个关注项都可忽略。忽略只会在所选时段内隐藏派生提醒；它不会更改笔记、连接或研究活动记录。"
+            "value" : "定时忽略只会在所选时段内隐藏派生提醒。“保持不变”仅隐藏准确的材料修订对，直到材料再次变化或你在此恢复已忽略项目。两种操作都不会更改笔记、连接或研究记录事实。"
           }
         }
       }
@@ -20307,35 +20331,35 @@
         }
       }
     },
-    "Scholium found no matching derived issues. Dismissed items return after %@." : {
+    "Scholium found no matching derived issues. Timed dismissals return after %@; Leave Unchanged returns only for a later Material revision or when restored in Settings." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Scholium found no matching derived issues. Dismissed items return after %@."
+            "value" : "Scholium found no matching derived issues. Timed dismissals return after %@; Leave Unchanged returns only for a later Material revision or when restored in Settings."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 未发现匹配的派生问题。已忽略的项目在 %@ 后返回。"
+            "value" : "Scholium 未发现匹配的派生问题。定时忽略的项目会在 %@ 后返回；“保持不变”仅会在材料出现后续修订或在设置中恢复时返回。"
           }
         }
       }
     },
-    "Scholium found no matching derived issues. Dismissed items return after %arg." : {
+    "Scholium found no matching derived issues. Timed dismissals return after %arg; Leave Unchanged returns only for a later Material revision or when restored in Settings." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Scholium found no matching derived issues. Dismissed items return after %arg."
+            "value" : "Scholium found no matching derived issues. Timed dismissals return after %arg; Leave Unchanged returns only for a later Material revision or when restored in Settings."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 未发现匹配的派生问题。已忽略的项目在 %arg 后返回。"
+            "value" : "Scholium 未发现匹配的派生问题。定时忽略的项目会在 %arg 后返回；“保持不变”仅会在材料出现后续修订或在设置中恢复时返回。"
           }
         }
       }

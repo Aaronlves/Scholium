@@ -121,9 +121,9 @@ private struct AttentionSettingsView: View {
                     ledger.removeAll()
                     dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
                 }
-                .disabled(AttentionPreferences.decodeLedger(dismissalLedgerData).dismissedUntilByItemID.isEmpty)
+                .disabled(!hasDismissedAttention)
 
-                Text("Every Attention item is dismissible. Dismissal hides only the derived reminder for the selected duration; it never changes the note, its Connections, or research activity records.")
+                Text("Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -152,6 +152,12 @@ private struct AttentionSettingsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var hasDismissedAttention: Bool {
+        let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
+        return !ledger.dismissedUntilByItemID.isEmpty
+            || !ledger.revisionBoundItemIDs.isEmpty
     }
 
     private func save() {

@@ -241,6 +241,12 @@ struct ContentView: View {
             isRefreshing: appState.isRefreshingWorkspaceCatalog,
             dismissalDays: appState.triptychSettings.attentionDismissalDays,
             refresh: { await appState.refreshWorkspaceCatalog() },
+            inspectMaterial: { item in
+                guard let context = item.materialChangedSinceUse else { return }
+                appState.discoveryController.showAttentionQueue(false)
+                appState.requestOpenNote(context.material)
+            },
+            resynthesize: { appState.requestResynthesis($0) },
             close: { appState.discoveryController.showAttentionQueue(false) }
         )
     }

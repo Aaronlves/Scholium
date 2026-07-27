@@ -36,6 +36,48 @@ struct ResearchFunctionContractsTests {
                 from: JSONSerialization.data(withJSONObject: object)
             )
         }
+
+        let resynthesis = ResearchContinuationLineage(
+            groupID: UUID(),
+            parentRunID: UUID(),
+            requestID: UUID(),
+            kind: .resynthesis
+        )
+        #expect(try JSONDecoder().decode(
+            ResearchContinuationLineage.self,
+            from: JSONEncoder().encode(resynthesis)
+        ) == resynthesis)
+    }
+
+    @Test("Actually-used Material testimony is optional and deterministic on the wire")
+    func actuallyUsedMaterialTestimonyCompatibility() throws {
+        let first = UUID()
+        let second = UUID()
+        let submission = ResearchFunctionCompletionSubmission(
+            runID: UUID(),
+            confirmationToken: UUID(),
+            actuallyUsedMaterialNoteIDs: [second, first],
+            summary: "Used both selected analyses.",
+            didModifyTarget: false
+        )
+        let data = try JSONEncoder().encode(submission)
+        #expect(submission.actuallyUsedMaterialNoteIDs == [first, second].sorted {
+            $0.uuidString < $1.uuidString
+        })
+        #expect(try JSONDecoder().decode(
+            ResearchFunctionCompletionSubmission.self,
+            from: data
+        ) == submission)
+
+        var legacy = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        legacy.removeValue(forKey: "actuallyUsedMaterialNoteIDs")
+        let decodedLegacy = try JSONDecoder().decode(
+            ResearchFunctionCompletionSubmission.self,
+            from: JSONSerialization.data(withJSONObject: legacy)
+        )
+        #expect(decodedLegacy.actuallyUsedMaterialNoteIDs == nil)
     }
 
     @Test("Function roles, write authority, checkpoints, and Fidelity requirements are explicit")

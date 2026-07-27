@@ -89,7 +89,7 @@ struct PortableResearchRecordContractsTests {
             "schema_version", "id", "triptych_id", "kind", "action", "method",
             "participating_notes", "statements", "actually_used_materials",
             "confirmed_changes", "discrepancies", "started_at", "finished_at",
-            "is_pinned",
+            "is_pinned", "primary_note_id",
         ])
         let source = String(decoding: data, as: UTF8.self)
         for forbidden in [
@@ -103,6 +103,41 @@ struct PortableResearchRecordContractsTests {
             PortableResearchRecord.self,
             from: data
         ) == record)
+    }
+
+    @Test("Actually-used Materials must match their portable participant facts")
+    func actuallyUsedMaterialsMatchParticipants() throws {
+        let record = try makeRecord(includeMaterialUse: true)
+        var object = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder.scholium.encode(record)
+            ) as? [String: Any]
+        )
+        var materials = try #require(
+            object["actually_used_materials"] as? [[String: Any]]
+        )
+        var material = try #require(materials.first)
+
+        for (key, replacement) in [
+            ("role", "work"),
+            ("title", "Contradictory title"),
+            ("note", [
+                "vaultID": UUID().uuidString,
+                "relativePath": "Analysis.md",
+            ]),
+        ] as [(String, Any)] {
+            let original = material[key]
+            material[key] = replacement
+            materials[0] = material
+            object["actually_used_materials"] = materials
+            #expect(throws: PortableResearchRecordError.self) {
+                _ = try JSONDecoder.scholium.decode(
+                    PortableResearchRecord.self,
+                    from: JSONSerialization.data(withJSONObject: object)
+                )
+            }
+            material[key] = original
+        }
     }
 
     @Test("Unknown portable fields and absolute paths fail closed")
@@ -353,7 +388,8 @@ struct PortableResearchRecordContractsTests {
     }
 
     private func makeRecord(
-        sourceReference: ResearchSourceReference? = nil
+        sourceReference: ResearchSourceReference? = nil,
+        includeMaterialUse: Bool = false
     ) throws -> PortableResearchRecord {
         let snapshot = try makeActionSnapshot()
         let ending = DocumentFingerprint(content: "# Topic\nRevised")
@@ -372,6 +408,29 @@ struct PortableResearchRecordContractsTests {
             text: "I qualified the objection and left the residual pressure open.",
             createdAt: Date(timeIntervalSince1970: 20)
         )
+        let analysisID = UUID(
+            uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE"
+        )!
+        let analysisNote = VaultQualifiedNoteID(
+            vaultID: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,
+            relativePath: "Analysis.md"
+        )
+        let analysisRevision = DocumentFingerprint(content: "# Analysis\n")
+        let analysisParticipant = try PortableResearchNoteRevision(
+            noteID: analysisID,
+            note: analysisNote,
+            role: .analysis,
+            title: "Analysis",
+            startingRevision: analysisRevision,
+            endingRevision: analysisRevision
+        )
+        let materialUse = try PortableResearchMaterialUse(
+            noteID: analysisID,
+            note: analysisNote,
+            role: .analysis,
+            title: "Analysis",
+            revision: analysisRevision
+        )
         return try PortableResearchRecord(
             id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
@@ -379,8 +438,10 @@ struct PortableResearchRecordContractsTests {
             action: ResearchActionRecordIdentity(snapshot: snapshot),
             method: try PortableResearchMethodReference(snapshot: snapshot),
             sourceReference: sourceReference,
-            participatingNotes: [note],
+            primaryNoteID: snapshot.target.noteID,
+            participatingNotes: includeMaterialUse ? [note, analysisParticipant] : [note],
             statements: [feedback],
+            actuallyUsedMaterials: includeMaterialUse ? [materialUse] : [],
             confirmedChanges: [try PortableResearchConfirmedChange(
                 noteID: snapshot.target.noteID,
                 startingRevision: snapshot.target.fingerprint,

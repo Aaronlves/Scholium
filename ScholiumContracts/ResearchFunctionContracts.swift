@@ -885,6 +885,7 @@ public struct ResearchContinuationLineage: Codable, Hashable, Sendable {
     public enum Kind: String, Codable, Hashable, Sendable {
         case approvedAction = "approved_action"
         case fidelity
+        case resynthesis
     }
 
     public let schemaVersion: Int
@@ -989,6 +990,9 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// projection contains no bookmark, absolute path, or source bytes.
     public let sourceReference: ResearchSourceReference?
     public let continuationLineage: ResearchContinuationLineage?
+    /// Machine-local preparation evidence for a researcher-requested
+    /// Resynthesize child. It never enters the portable Research Record.
+    public let resynthesisContext: MaterialChangedSinceUseAttentionContext?
     public let fidelityHandoff: ResearchFunctionFidelityHandoff?
     /// Present only for Fidelity runs.
     public let fidelityInvocation: FidelityInvocationKind?
@@ -1011,6 +1015,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         sourceReference: ResearchSourceReference? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
+        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         fidelityHandoff: ResearchFunctionFidelityHandoff? = nil,
         fidelityInvocation: FidelityInvocationKind? = nil,
         confirmationToken: UUID = UUID(),
@@ -1033,6 +1038,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.zoteroBibliographicContext = zoteroBibliographicContext
         self.sourceReference = sourceReference
         self.continuationLineage = continuationLineage
+        self.resynthesisContext = resynthesisContext
         self.fidelityHandoff = fidelityHandoff
         self.fidelityInvocation = request.function == .fidelity
             ? (fidelityInvocation ?? .manual)
@@ -1200,6 +1206,10 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
     /// omits this value because Scholium reads every frozen target itself.
     public let finalTargetFingerprint: DocumentFingerprint?
     public let finalMaterialFingerprints: [UUID: DocumentFingerprint]
+    /// Stable IDs the agent reports actually using. Application validation
+    /// intersects this testimony with the frozen Material set and exact
+    /// revisions before it can enter a portable Research Record.
+    public let actuallyUsedMaterialNoteIDs: [UUID]?
     public let summary: String
     public let didModifyTarget: Bool
     /// Required only for a keyed Develop or Revise completion. It carries no
@@ -1218,6 +1228,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         confirmationToken: UUID,
         finalTargetFingerprint: DocumentFingerprint? = nil,
         finalMaterialFingerprints: [UUID: DocumentFingerprint] = [:],
+        actuallyUsedMaterialNoteIDs: [UUID] = [],
         summary: String,
         didModifyTarget: Bool,
         activityCompletion: ResearchActivityCompletionSubmission? = nil,
@@ -1231,6 +1242,9 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         self.confirmationToken = confirmationToken
         self.finalTargetFingerprint = finalTargetFingerprint
         self.finalMaterialFingerprints = finalMaterialFingerprints
+        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs.isEmpty
+            ? nil
+            : actuallyUsedMaterialNoteIDs.sorted { $0.uuidString < $1.uuidString }
         self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.didModifyTarget = didModifyTarget
         self.activityCompletion = activityCompletion
@@ -1252,6 +1266,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     public let state: ResearchFunctionRunState
     public let targetFingerprint: DocumentFingerprint
     public let materialFingerprints: [UUID: DocumentFingerprint]
+    public let actuallyUsedMaterialNoteIDs: [UUID]?
     public let summary: String
     public let didModifyTarget: Bool
     public let outputFingerprint: DocumentFingerprint?
@@ -1276,6 +1291,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         state: ResearchFunctionRunState,
         targetFingerprint: DocumentFingerprint,
         materialFingerprints: [UUID: DocumentFingerprint],
+        actuallyUsedMaterialNoteIDs: [UUID] = [],
         summary: String,
         didModifyTarget: Bool,
         outputFingerprint: DocumentFingerprint? = nil,
@@ -1293,6 +1309,9 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         self.state = state
         self.targetFingerprint = targetFingerprint
         self.materialFingerprints = materialFingerprints
+        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs.isEmpty
+            ? nil
+            : actuallyUsedMaterialNoteIDs.sorted { $0.uuidString < $1.uuidString }
         self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.didModifyTarget = didModifyTarget
         self.outputFingerprint = outputFingerprint

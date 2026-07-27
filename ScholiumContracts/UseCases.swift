@@ -286,6 +286,11 @@ public protocol ResearchActionUseCases: Sendable {
     func prepareAction(
         _ request: ResearchActionExecutionRequest
     ) async throws -> ResearchActionPreparation
+
+    func prepareResynthesis(
+        _ request: ResearchActionExecutionRequest,
+        context: MaterialChangedSinceUseAttentionContext
+    ) async throws -> ResearchActionPreparation
 }
 
 public protocol ResearchPermissionUseCases: Sendable {

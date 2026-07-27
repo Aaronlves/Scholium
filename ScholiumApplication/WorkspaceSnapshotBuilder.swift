@@ -453,12 +453,16 @@ enum WorkspaceSnapshotBuilder {
                 )
             }
         }
+        let materialChangedSinceUseAttention = Self.materialChangedSinceUseAttention(
+            records: finishedResearchRecordListing.records,
+            loadedVaults: loadedVaults
+        )
         let catalog = WorkspaceCatalogBuilder.build(
             vaults: loadedVaults.map(\.vault),
             documents: documentsByVault,
             semanticDocuments: semanticDocuments,
             settlementStates: settlementStates,
-            additionalAttention: attributionAttention,
+            additionalAttention: attributionAttention + materialChangedSinceUseAttention,
             graph: graph
         )
 
@@ -778,6 +782,8 @@ enum WorkspaceSnapshotBuilder {
                         state: .stale,
                         targetFingerprint: completion.targetFingerprint,
                         materialFingerprints: completion.materialFingerprints,
+                        actuallyUsedMaterialNoteIDs:
+                            completion.actuallyUsedMaterialNoteIDs ?? [],
                         summary: completion.summary,
                         didModifyTarget: completion.didModifyTarget,
                         outputFingerprint: completion.outputFingerprint,
@@ -865,6 +871,150 @@ enum WorkspaceSnapshotBuilder {
                     .reduce(0) { $0 + $1.document.sourceBytes.count }
             )
         )
+    }
+
+    private struct CurrentAttentionNote {
+        let noteID: UUID
+        let reference: VaultNoteReference
+        let role: ResearchActionTargetRole
+        let fingerprint: DocumentFingerprint
+    }
+
+    private struct MaterialUseKey: Hashable {
+        let topicNoteID: UUID
+        let materialNoteID: UUID
+    }
+
+    private struct RecordedMaterialUse {
+        let record: PortableResearchRecord
+        let material: PortableResearchMaterialUse
+    }
+
+    /// Selects the same one current portable-use fact for snapshot derivation
+    /// and click-time revalidation. Tombstones and internally inconsistent
+    /// participant/material pairs never qualify as validated use evidence.
+    private static func latestSynthesisMaterialUses(
+        records: [PortableResearchRecord]
+    ) -> [MaterialUseKey: RecordedMaterialUse] {
+        var latestByUse: [MaterialUseKey: RecordedMaterialUse] = [:]
+        for record in records where record.kind == .action
+            && record.action?.actionID == .synthesize {
+            guard let topicNoteID = record.primaryNoteID,
+                  record.participatingNotes.contains(where: {
+                      $0.noteID == topicNoteID
+                          && $0.role == .topic
+                          && !$0.isTombstone
+                  }) else { continue }
+            let participantsByID = Dictionary(
+                uniqueKeysWithValues: record.participatingNotes.map {
+                    ($0.noteID, $0)
+                }
+            )
+            for material in record.actuallyUsedMaterials where material.role == .analysis {
+                guard let participant = participantsByID[material.noteID],
+                      !participant.isTombstone,
+                      participant.role == .analysis,
+                      participant.note == material.note,
+                      participant.title == material.title,
+                      participant.startingRevision == material.revision else {
+                    continue
+                }
+                let key = MaterialUseKey(
+                    topicNoteID: topicNoteID,
+                    materialNoteID: material.noteID
+                )
+                if let existing = latestByUse[key],
+                   existing.record.finishedAt > record.finishedAt
+                    || (existing.record.finishedAt == record.finishedAt
+                        && existing.record.id.uuidString < record.id.uuidString) {
+                    continue
+                }
+                latestByUse[key] = RecordedMaterialUse(
+                    record: record,
+                    material: material
+                )
+            }
+        }
+        return latestByUse
+    }
+
+    static func isLatestSynthesisMaterialUse(
+        recordID: UUID,
+        topicNoteID: UUID,
+        materialNoteID: UUID,
+        records: [PortableResearchRecord]
+    ) -> Bool {
+        latestSynthesisMaterialUses(records: records)[MaterialUseKey(
+            topicNoteID: topicNoteID,
+            materialNoteID: materialNoteID
+        )]?.record.id == recordID
+    }
+
+    /// Rebuilds the latest completed Synthesize use relationship for each
+    /// Topic/Analysis pair. Selected-but-unused, deleted, tombstoned, or
+    /// identity-unresolved Materials cannot create a condition.
+    private static func materialChangedSinceUseAttention(
+        records: [PortableResearchRecord],
+        loadedVaults: [LoadedVault]
+    ) -> [AttentionQueueItem] {
+        var currentByNoteID: [UUID: CurrentAttentionNote] = [:]
+        for loaded in loadedVaults {
+            guard let functionRole = ResearchFunctionTargetRole(
+                vaultRole: loaded.vault.role
+            ) else {
+                continue
+            }
+            let role: ResearchActionTargetRole = switch functionRole {
+            case .analysis: .analysis
+            case .topic: .topic
+            case .work: .work
+            }
+            for document in loaded.activeDocuments {
+                guard case .resolved(let noteID) = loaded.identityStates[
+                    document.relativePath
+                ] else { continue }
+                currentByNoteID[noteID] = CurrentAttentionNote(
+                    noteID: noteID,
+                    reference: VaultNoteReference(
+                        vaultID: loaded.vault.id,
+                        vaultName: loaded.vault.name,
+                        vaultRole: loaded.vault.role,
+                        relativePath: document.relativePath,
+                        stableNoteID: noteID.uuidString.lowercased()
+                    ),
+                    role: role,
+                    fingerprint: document.fingerprint
+                )
+            }
+        }
+
+        let latestByUse = latestSynthesisMaterialUses(records: records)
+
+        return latestByUse.compactMap { key, use in
+            guard let topic = currentByNoteID[key.topicNoteID],
+                  topic.role == .topic,
+                  let material = currentByNoteID[key.materialNoteID],
+                  material.role == .analysis,
+                  material.fingerprint != use.material.revision else {
+                return nil
+            }
+            let context = MaterialChangedSinceUseAttentionContext(
+                triptychID: use.record.triptychID,
+                recordID: use.record.id,
+                topicNoteID: topic.noteID,
+                materialNoteID: material.noteID,
+                material: material.reference,
+                recordedRevision: use.material.revision,
+                currentRevision: material.fingerprint
+            )
+            return AttentionQueueItem(
+                kind: .materialChangedSinceUse,
+                severity: .warning,
+                note: topic.reference,
+                message: "The Analysis “\(use.material.title)” changed after this Topic's completed Synthesize record actually used it. Inspect the revisions or choose whether to resynthesize.",
+                materialChangedSinceUse: context
+            )
+        }.sorted { $0.id < $1.id }
     }
 
 }

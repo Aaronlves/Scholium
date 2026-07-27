@@ -1596,6 +1596,17 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && grant?.activityID == snapshot.runID
                 && grant?.allowedTargets.map(\.noteID)
                     == snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
+        case .resynthesis:
+            continuationMatches = snapshot.continuationLineage?.requestID
+                    == snapshot.runID
+                && snapshot.continuationLineage?.parentRunID
+                    == snapshot.resynthesisContext?.recordID
+                && snapshot.resynthesisContext?.topicNoteID
+                    == snapshot.request.target.noteID
+                && snapshot.checkpointID != nil
+                && grant?.activityID == snapshot.runID
+                && grant?.allowedTargets.map(\.noteID)
+                    == snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
         case .fidelity:
             if case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
                 continuationMatches = snapshot.request.function == .fidelity

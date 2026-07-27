@@ -12,6 +12,7 @@ final class DocumentTransitionCoordinator {
         prepare: @escaping @MainActor () async throws -> Void,
         operation: @escaping @MainActor () async throws -> Void,
         didFail: @escaping @MainActor (Error) -> Void,
+        didSucceed: @escaping @MainActor () -> Void = {},
         didFinish: @escaping @MainActor () -> Void = {}
     ) {
         generation &+= 1
@@ -25,6 +26,8 @@ final class DocumentTransitionCoordinator {
                 try await prepare()
                 guard requestedGeneration == generation else { return }
                 try await operation()
+                guard requestedGeneration == generation else { return }
+                didSucceed()
             } catch is CancellationError {
                 return
             } catch {

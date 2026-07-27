@@ -3761,11 +3761,22 @@ struct ResearchFunctionOperationsTests {
             role: .topic,
             handle: handle
         )
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let materialsModuleID = try #require(
+            ResearchActionModuleID(rawValue: "materials")
+        )
         let action = try await handle.research.prepareAction(
             try await actionRequest(
                 handle: handle,
                 actionID: .synthesize,
-                target: actionNote(topic)
+                target: actionNote(topic),
+                parameterValues: [
+                    materialsModuleID: .notes([actionNote(analysis)]),
+                ]
             )
         )
         let protectedRun = try await handle.research.functionRun(id: action.runID)
@@ -3781,6 +3792,7 @@ struct ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
+                    actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "I read /Users/researcher/private/source.pdf.",
                     didModifyTarget: false,
                     activityCompletion: activity,
@@ -3791,6 +3803,7 @@ struct ResearchFunctionOperationsTests {
         let submission = ResearchFunctionCompletionSubmission(
             runID: protectedRun.runID,
             confirmationToken: protectedRun.snapshot.confirmationToken,
+            actuallyUsedMaterialNoteIDs: [analysis.noteID],
             summary: "No Topic change was warranted by the selected information.",
             didModifyTarget: false,
             activityCompletion: activity,
@@ -3811,6 +3824,7 @@ struct ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
+                    actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "No Topic change was warranted by the selected information.",
                     didModifyTarget: false,
                     activityCompletion: activity,
@@ -3833,7 +3847,14 @@ struct ResearchFunctionOperationsTests {
         )
         #expect(portable.id == action.runID)
         #expect(portable.action?.actionID == .synthesize)
-        #expect(portable.actuallyUsedMaterials.isEmpty)
+        #expect(portable.primaryNoteID == topic.noteID)
+        #expect(portable.actuallyUsedMaterials == [try PortableResearchMaterialUse(
+            noteID: analysis.noteID,
+            note: analysis.note,
+            role: .analysis,
+            title: analysis.title,
+            revision: analysis.fingerprint
+        )])
         #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.discrepancies == [PortableResearchDiscrepancy(
             id: PortableResearchDiscrepancy.stableID(
@@ -3859,6 +3880,277 @@ struct ResearchFunctionOperationsTests {
             #expect(try LegacyResearchFileCanary(url: url) == canary)
         }
         #expect(handle.research.legacyResearchDataURL == triptychSupport)
+
+        let topicBytes = try await handle.documents.load(fixture.topicID).sourceBytes
+        try Data("# Analysis\n\nA materially revised reconstruction.\n".utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            options: .atomic
+        )
+        let changed = try await handle.refresh()
+        let attention = try #require(changed.discovery.catalog.attention.first {
+            $0.kind == .materialChangedSinceUse
+        })
+        #expect(attention.note.stableNoteID == topic.noteID.uuidString.lowercased())
+        #expect(attention.materialChangedSinceUse?.recordID == portable.id)
+        #expect(attention.materialChangedSinceUse?.materialNoteID == analysis.noteID)
+        #expect(attention.materialChangedSinceUse?.recordedRevision == analysis.fingerprint)
+        #expect(attention.materialChangedSinceUse?.currentRevision != analysis.fingerprint)
+        #expect(!attention.message.lowercased().contains("wrong"))
+        #expect(!attention.message.lowercased().contains("outdated"))
+
+        let attentionContext = try #require(attention.materialChangedSinceUse)
+        let refreshedTopic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let refreshedAnalysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let resynthesisRequest = try await actionRequest(
+            handle: handle,
+            actionID: .synthesize,
+            target: actionNote(refreshedTopic),
+            parameterValues: [
+                materialsModuleID: .notes([actionNote(refreshedAnalysis)]),
+            ]
+        )
+        let resynthesis = try await handle.research.prepareResynthesis(
+            resynthesisRequest,
+            context: attentionContext
+        )
+        let child = try await handle.research.functionRun(id: resynthesis.runID)
+        #expect(child.snapshot.continuationLineage?.kind == .resynthesis)
+        #expect(child.snapshot.continuationLineage?.parentRunID == portable.id)
+        #expect(child.snapshot.continuationLineage?.requestID == resynthesis.runID)
+        #expect(child.snapshot.resynthesisContext == attentionContext)
+        #expect(child.snapshot.checkpointID != nil)
+        #expect(child.snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
+            == [topic.noteID])
+
+        let rebuilt = try await handle.refresh()
+        #expect(rebuilt.discovery.catalog.attention.first {
+            $0.kind == .materialChangedSinceUse
+        }?.id == attention.id)
+        #expect(try await handle.documents.load(fixture.topicID).sourceBytes == topicBytes)
+        #expect(try Data(contentsOf: portableURL) == portableData)
+
+        let resynthesisActivity = try researchActivityCompletion(
+            for: child,
+            candidateModifiedNotes: [refreshedTopic.note],
+            summary: "The current Analysis revision was used without changing the Topic."
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: child.runID,
+                confirmationToken: child.snapshot.confirmationToken,
+                actuallyUsedMaterialNoteIDs: [refreshedAnalysis.noteID],
+                summary: "The current Analysis revision was used without changing the Topic.",
+                didModifyTarget: false,
+                activityCompletion: resynthesisActivity
+            )
+        )
+        let afterNewerSynthesis = try await handle.refresh()
+        #expect(!afterNewerSynthesis.discovery.catalog.attention.contains {
+            $0.kind == .materialChangedSinceUse
+        })
+        await #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try await handle.research.prepareResynthesis(
+                resynthesisRequest,
+                context: attentionContext
+            )
+        }
+        #expect(try await handle.documents.load(fixture.topicID).sourceBytes == topicBytes)
+        #expect(try Data(contentsOf: portableURL) == portableData)
+        await runtime.shutdown()
+    }
+
+    @Test("Selected but unused Materials never create synthesis Attention")
+    func unusedSynthesisMaterialDoesNotCreateAttention() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let materialsModuleID = try #require(
+            ResearchActionModuleID(rawValue: "materials")
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic),
+                parameterValues: [
+                    materialsModuleID: .notes([actionNote(analysis)]),
+                ]
+            )
+        )
+        let run = try await handle.research.functionRun(id: preparation.runID)
+        let submittedAt = Date()
+        let activity = try researchActivityCompletion(
+            for: run,
+            candidateModifiedNotes: [topic.note],
+            summary: "The selected Analysis was not used.",
+            submittedAt: submittedAt
+        )
+
+        for invalid in [[UUID()], [analysis.noteID, analysis.noteID]] {
+            await #expect(throws: ResearchFunctionContractError.self) {
+                _ = try await handle.research.completeFunction(
+                    ResearchFunctionCompletionSubmission(
+                        runID: run.runID,
+                        confirmationToken: run.snapshot.confirmationToken,
+                        actuallyUsedMaterialNoteIDs: invalid,
+                        summary: "Invalid actually-used testimony.",
+                        didModifyTarget: false,
+                        activityCompletion: activity,
+                        submittedAt: submittedAt
+                    )
+                )
+            }
+        }
+
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: run.runID,
+                confirmationToken: run.snapshot.confirmationToken,
+                summary: "The selected Analysis was not used.",
+                didModifyTarget: false,
+                activityCompletion: activity,
+                submittedAt: submittedAt
+            )
+        )
+        try Data("# Analysis\n\nChanged but unused.\n".utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            options: .atomic
+        )
+        let refreshed = try await handle.refresh()
+        #expect(!refreshed.discovery.catalog.attention.contains {
+            $0.kind == .materialChangedSinceUse
+        })
+        await runtime.shutdown()
+    }
+
+    @Test("Multiple used Materials derive independently and disappear on tombstone or record deletion")
+    func multipleUsedMaterialsRespectLifecycleAndRecordExistence() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let secondURL = fixture.analysesURL.appendingPathComponent("Second.md")
+        try Data("---\ntitle: Second Analysis\n---\n# Second Analysis\n".utf8)
+            .write(to: secondURL, options: .atomic)
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        _ = try await handle.refresh()
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let first = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let secondID = VaultQualifiedNoteID(
+            vaultID: fixture.analysisID.vaultID,
+            relativePath: "Second.md"
+        )
+        let second = try await researchFunctionTarget(
+            secondID,
+            role: .analysis,
+            handle: handle
+        )
+        let materialsModuleID = try #require(
+            ResearchActionModuleID(rawValue: "materials")
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic),
+                parameterValues: [
+                    materialsModuleID: .notes([
+                        actionNote(first), actionNote(second),
+                    ]),
+                ]
+            )
+        )
+        let run = try await handle.research.functionRun(id: preparation.runID)
+        let activity = try researchActivityCompletion(
+            for: run,
+            candidateModifiedNotes: [topic.note],
+            summary: "Both Analyses were used."
+        )
+        _ = try await handle.research.completeFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: run.runID,
+                confirmationToken: run.snapshot.confirmationToken,
+                actuallyUsedMaterialNoteIDs: [first.noteID, second.noteID],
+                summary: "Both Analyses were used.",
+                didModifyTarget: false,
+                activityCompletion: activity
+            )
+        )
+
+        try Data("# Analysis\n\nFirst revision changed.\n".utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            options: .atomic
+        )
+        try Data("# Second Analysis\n\nSecond revision changed.\n".utf8).write(
+            to: secondURL,
+            options: .atomic
+        )
+        var refreshed = try await handle.refresh()
+        #expect(refreshed.discovery.catalog.attention.filter {
+            $0.kind == .materialChangedSinceUse
+        }.count == 2)
+
+        let currentSecond = try await handle.documents.load(secondID)
+        let movedSecond = try await handle.documents.move(
+            secondID,
+            to: "Trash/Second.md",
+            expectedRevision: currentSecond.fingerprint
+        )
+        let trashedSecond = try await handle.documents.load(movedSecond.destination)
+        _ = try await handle.documents.deletePermanently(
+            movedSecond.destination,
+            expectedRevision: trashedSecond.fingerprint
+        )
+        refreshed = try await handle.refresh()
+        let surviving = refreshed.discovery.catalog.attention.filter {
+            $0.kind == .materialChangedSinceUse
+        }
+        #expect(surviving.count == 1)
+        #expect(surviving.first?.materialChangedSinceUse?.materialNoteID == first.noteID)
+        let tombstonedRecord = try #require(
+            try await handle.research.finishedResearchRecords(noteID: nil)
+                .first { $0.id == preparation.runID }
+        )
+        #expect(tombstonedRecord.participatingNotes.contains {
+            $0.noteID == second.noteID && $0.isTombstone
+        })
+        #expect(tombstonedRecord.actuallyUsedMaterials.contains {
+            $0.noteID == second.noteID
+        })
+
+        try await handle.research.deleteResearchRecordPermanently(
+            id: preparation.runID
+        )
+        refreshed = try await handle.refresh()
+        #expect(!refreshed.discovery.catalog.attention.contains {
+            $0.kind == .materialChangedSinceUse
+        })
         await runtime.shutdown()
     }
 

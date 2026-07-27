@@ -18,7 +18,8 @@ struct ResearchActionClient {
         URL
     ) async throws -> ResearchSourceReference
     let prepare: @MainActor (
-        ResearchActionExecutionRequest
+        ResearchActionExecutionRequest,
+        MaterialChangedSinceUseAttentionContext?
     ) async throws -> ResearchActionPreparation
     let cancel: @MainActor (UUID) async throws -> Void
     let openActiveDiscussion: @MainActor (UUID) -> Void
@@ -77,6 +78,7 @@ final class ResearchActionController: ObservableObject {
     @Published var usesPassage = true
 
     private var passage: CommentAnchor?
+    private var resynthesisContext: MaterialChangedSinceUseAttentionContext?
     private var client: ResearchActionClient?
     private var generation: UInt64 = 0
     private var availabilityGeneration: UInt64 = 0
@@ -171,6 +173,8 @@ final class ResearchActionController: ObservableObject {
         availability selected: ResearchActionAvailability,
         selection: CommentAnchor?,
         initialInstruction: String? = nil,
+        initialMaterialNoteIDs: Set<UUID> = [],
+        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         presentationID: UUID
     ) -> Bool {
         guard !hasCancellationBarrier else { return false }
@@ -180,6 +184,7 @@ final class ResearchActionController: ObservableObject {
         activeActionID = selected.id
         self.presentationID = presentationID
         passage = selection
+        self.resynthesisContext = resynthesisContext
         usesPassage = selection != nil
         presentationAvailability = selected
         guard selected.canPresentInInterface else {
@@ -189,6 +194,12 @@ final class ResearchActionController: ObservableObject {
             return true
         }
         initializeValues(for: selected.profile.profile)
+        if !initialMaterialNoteIDs.isEmpty,
+           let module = selected.profile.profile.modules.first(where: {
+               $0.kind == .materialSelector
+           }) {
+            noteValues[module.id.rawValue] = initialMaterialNoteIDs
+        }
         if let initialInstruction,
            let module = selected.profile.profile.modules.first(where: {
                $0.kind == .boundedText
@@ -359,7 +370,7 @@ final class ResearchActionController: ObservableObject {
         errorMessage = nil
         preparationTask = Task { @MainActor [self] in
             do {
-                let result = try await client.prepare(request)
+                let result = try await client.prepare(request, resynthesisContext)
                 guard self.accepts(token), self.presentationID == presentationID else {
                     // Preparation can cross a durable recovery/grant
                     // boundary even when its caller was cancelled. Reclaim a
@@ -610,6 +621,7 @@ final class ResearchActionController: ObservableObject {
         choiceValues = [:]
         noteValues = [:]
         passage = nil
+        resynthesisContext = nil
         usesPassage = true
         phase = .idle
         if clearAvailability {

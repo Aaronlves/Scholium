@@ -357,6 +357,9 @@ struct ResearchActionPanelView: View {
                         Text(verbatim: candidate.title)
                     }
                     .toggleStyle(.checkbox)
+                    .accessibilityIdentifier(
+                        "scholium.researchAction.note.\(module.id.rawValue).\(candidate.noteID.uuidString.lowercased())"
+                    )
                     .help(candidate.note.relativePath)
                     .padding(.vertical, 5)
                 }

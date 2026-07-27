@@ -97,6 +97,77 @@ struct ResearchActionControllerTests {
         #expect(captured?.parameterValues[checksID.rawValue] == .choices([citations, content]))
     }
 
+    @Test("Resynthesize preselects the exact Material and preserves its revision context")
+    func resynthesisContextReachesPreparation() async throws {
+        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
+        let module = try ResearchActionModuleDefinition.materialSelector(
+            id: materialsID,
+            label: "Materials",
+            isRequired: false,
+            roleScope: [.analysis],
+            maximumSelectionCount: 4
+        )
+        let action = try availability(
+            .synthesize,
+            order: 100,
+            modules: [module]
+        )
+        let topic = target()
+        let material = target(
+            title: "Analysis",
+            path: "Analysis.md",
+            role: .analysis
+        )
+        let context = MaterialChangedSinceUseAttentionContext(
+            triptychID: UUID(),
+            recordID: UUID(),
+            topicNoteID: topic.noteID,
+            materialNoteID: material.noteID,
+            material: VaultNoteReference(
+                vaultID: material.note.vaultID,
+                vaultName: "Analyses",
+                vaultRole: .sourceCorpus,
+                relativePath: material.note.relativePath,
+                stableNoteID: material.noteID.uuidString.lowercased()
+            ),
+            recordedRevision: DocumentFingerprint(content: "recorded"),
+            currentRevision: material.fingerprint
+        )
+        var capturedContext: MaterialChangedSinceUseAttentionContext?
+        var capturedRequest: ResearchActionExecutionRequest?
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in [action] },
+            materialCandidates: { _, _ in [material] },
+            sourceAccess: { _ in .repairRequired(.missingBinding) },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { request, context in
+                capturedRequest = request
+                capturedContext = context
+                throw TestFailure.stopAfterCapture
+            },
+            cancel: { _ in },
+            openActiveDiscussion: { _ in }
+        ))
+
+        #expect(controller.begin(
+            target: topic,
+            availability: action,
+            selection: nil,
+            initialMaterialNoteIDs: [material.noteID],
+            resynthesisContext: context,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.materialCandidates == [material] }
+        #expect(controller.noteValues[materialsID.rawValue] == [material.noteID])
+        #expect(controller.canPrepare)
+        controller.prepare()
+        await waitUntil { controller.phase == .failed }
+        #expect(capturedContext == context)
+        #expect(capturedRequest?.parameterValues[materialsID.rawValue]
+            == .notes([material]))
+    }
+
     @Test("Single-selection modules replace the prior value")
     func singleSelectionReplacement() async throws {
         let choiceID = try #require(ResearchActionModuleID(rawValue: "approach"))
@@ -186,7 +257,7 @@ struct ResearchActionControllerTests {
                 didBind = true
                 return reference
             },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -242,7 +313,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in throw TestFailure.stopAfterCapture },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -308,7 +379,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -359,7 +430,7 @@ struct ResearchActionControllerTests {
             },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -394,7 +465,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -419,7 +490,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -469,7 +540,7 @@ struct ResearchActionControllerTests {
             },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         ))
@@ -512,7 +583,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in
+            prepare: { _, _ in
                 await withCheckedContinuation { continuation in
                     preparationContinuation = continuation
                 }
@@ -572,7 +643,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in result },
+            prepare: { _, _ in result },
             cancel: { requestedRunID in
                 cancelledRunIDs.append(requestedRunID)
                 if cancelledRunIDs.count == 1 {
@@ -633,7 +704,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in [] },
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: { _ in
+            prepare: { _, _ in
                 await withCheckedContinuation { continuation in
                     preparationContinuation = continuation
                 }
@@ -707,7 +778,7 @@ struct ResearchActionControllerTests {
             materialCandidates: { _, _ in candidates },
             sourceAccess: { _ in sourceStatus },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
-            prepare: prepare,
+            prepare: { request, _ in try await prepare(request) },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         )

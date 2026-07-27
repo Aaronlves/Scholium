@@ -2520,6 +2520,7 @@ final class WindowModel: ObservableObject {
     private func enqueueDocumentTransition(
         _ operation: @escaping @MainActor () async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
+        didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
         documentTransitionCoordinator.enqueue(
@@ -2545,6 +2546,7 @@ final class WindowModel: ObservableObject {
                     )
                 }
             },
+            didSucceed: { didSucceed?() },
             didFinish: { didFinish?() }
         )
     }
@@ -2773,6 +2775,63 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    /// Opens the common Synthesize sheet for one exact, derived
+    /// Topic/Analysis revision condition. Preparation remains fail-closed at
+    /// the Application boundary if either source or record changed meanwhile.
+    func requestResynthesis(_ item: AttentionQueueItem) {
+        guard item.kind == .materialChangedSinceUse,
+              let context = item.materialChangedSinceUse else { return }
+        discoveryController.showAttentionQueue(false)
+        enqueueDocumentTransition({ [weak self] in
+            guard let self else { return }
+            try self.activateWorkspaceReference(
+                item.note,
+                tabActivation: .place(.replaceSelected)
+            )
+            guard let target = self.currentResearchActionTarget,
+                  target.noteID == context.topicNoteID else {
+                throw WindowNavigationError.noteUnavailable(
+                    item.note.relativePath
+                )
+            }
+            await self.researchController.actions.refreshAvailability(
+                for: target
+            )
+            // ContentView also refreshes Actions when the active target
+            // changes. If that task superseded this request, make one final
+            // request so the transition itself owns a confirmed availability
+            // snapshot before presenting the sheet.
+            if !self.hasConfirmedCurrentResearchActionAvailability {
+                await self.researchController.actions.refreshAvailability(
+                    for: target
+                )
+            }
+            let synthesis = self.researchController.actions.availability.first {
+                $0.id == .synthesize
+            }
+            guard self.hasConfirmedCurrentResearchActionAvailability,
+                  synthesis?.canPresentInInterface == true else {
+                let reason = synthesis?.repairReasons.first?.interfaceDescription
+                    ?? String(
+                        localized: "Scholium could not confirm that this Action is available for the current note.",
+                        table: "Localizable",
+                        bundle: .module
+                    )
+                throw ScholiumApplicationError.researchStoreUnavailable(
+                    reason
+                )
+            }
+        }, didFail: { [weak self] error in
+            self?.showToast(error.localizedDescription, kind: .warning)
+        }, didSucceed: { [weak self] in
+            self?.openResearchAction(
+                .synthesize,
+                initialMaterialNoteIDs: [context.materialNoteID],
+                resynthesisContext: context
+            )
+        })
+    }
+
     func requestOpenNote(
         _ note: VaultQualifiedNoteID,
         stableNoteID: UUID,
@@ -2934,7 +2993,9 @@ final class WindowModel: ObservableObject {
 
     func openResearchAction(
         _ actionID: ResearchActionID,
-        selection: CommentAnchor? = nil
+        selection: CommentAnchor? = nil,
+        initialMaterialNoteIDs: Set<UUID> = [],
+        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil
     ) {
         guard let initialTarget = currentResearchActionTarget else { return }
         if actionID == .discuss,
@@ -3043,6 +3104,8 @@ final class WindowModel: ObservableObject {
                     initialInstruction: actionID == .discuss
                         ? "Discuss this note, including any existing Comments."
                         : nil,
+                    initialMaterialNoteIDs: initialMaterialNoteIDs,
+                    resynthesisContext: resynthesisContext,
                     presentationID: presentationID
                       ) else {
                     self.showToast(
@@ -3825,10 +3888,16 @@ final class WindowModel: ObservableObject {
                     )
                 )
             },
-            prepare: { [weak self] request in
+            prepare: { [weak self] request, resynthesisContext in
                 guard self != nil else {
                     throw ScholiumApplicationError.researchStoreUnavailable(
                         "No workspace is active."
+                    )
+                }
+                if let resynthesisContext {
+                    return try await capabilities.research.prepareResynthesis(
+                        request,
+                        context: resynthesisContext
                     )
                 }
                 return try await capabilities.research.prepareAction(request)

@@ -79,6 +79,7 @@ final class ScholiumUITests: XCTestCase {
     private var homeDirectory: URL!
     private var triptychDirectory: URL!
     private var secondTriptychDirectory: URL?
+    private var synthesisAttentionFixture: QAResearchRecordFixture?
 
     private struct QAResearchRecordFixture {
         let recordID: UUID
@@ -198,6 +199,7 @@ final class ScholiumUITests: XCTestCase {
         testDirectory = nil
         homeDirectory = nil
         triptychDirectory = nil
+        synthesisAttentionFixture = nil
     }
 
     /// The default final QA route. It keeps one isolated application process
@@ -4435,6 +4437,96 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testMaterialChangedSinceUseAttentionJourney() throws {
+        app.terminate()
+        synthesisAttentionFixture = try seedSynthesisAttentionFixture()
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest,
+            usesFixtureWorkspace: false
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        let fixture = try XCTUnwrap(synthesisAttentionFixture)
+        let attentionLocation = app.descendants(matching: .any)[
+            "scholium.location.attention"
+        ]
+        XCTAssertTrue(attentionLocation.waitForExistence(timeout: 8))
+        attentionLocation.click()
+
+        let queue = app.descendants(matching: .any)[
+            "scholium.libraryAttentionQueue"
+        ]
+        XCTAssertTrue(queue.waitForExistence(timeout: 10))
+        let inspect = app.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.attention.materialChanged.inspect."
+            )
+        ).firstMatch
+        let resynthesize = app.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.attention.materialChanged.resynthesize."
+            )
+        ).firstMatch
+        let leaveUnchanged = app.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.attention.materialChanged.leaveUnchanged."
+            )
+        ).firstMatch
+        XCTAssertTrue(inspect.waitForExistence(timeout: 8))
+        XCTAssertTrue(resynthesize.exists)
+        XCTAssertTrue(leaveUnchanged.exists)
+
+        leaveUnchanged.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !resynthesize.exists })
+
+        let analysisURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave A.md"
+        )
+        let currentSource = try String(contentsOf: analysisURL, encoding: .utf8)
+        try write(
+            currentSource + "\nA later Analysis revision must create a new condition.\n",
+            to: analysisURL
+        )
+        XCTAssertTrue(
+            resynthesize.waitForExistence(timeout: 15),
+            "A later current revision must not inherit Leave Unchanged."
+        )
+
+        inspect.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !queue.exists })
+        let documentTitle = app.staticTexts[
+            "scholium.documentNoteName"
+        ].firstMatch
+        XCTAssertTrue(documentTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+
+        attentionLocation.click()
+        XCTAssertTrue(queue.waitForExistence(timeout: 8))
+        XCTAssertTrue(resynthesize.waitForExistence(timeout: 8))
+        resynthesize.click()
+
+        let sheet = app.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15))
+        XCTAssertEqual(documentTitle.value as? String, "QA Topic")
+        let selectedMaterial = app.checkBoxes[
+            "scholium.researchAction.note.materials.\(fixture.analysisNoteID.uuidString.lowercased())"
+        ]
+        XCTAssertTrue(selectedMaterial.waitForExistence(timeout: 10))
+        XCTAssertEqual((selectedMaterial.value as? NSNumber)?.intValue, 1)
+        XCTAssertTrue(app.staticTexts["Synthesize"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+    }
+
+    @MainActor
     func testTrashAndPutBackPreserveExactSourceThroughTheLifecycleUI() throws {
         let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let trashURL = triptychDirectory.appendingPathComponent("01-analyses/Trash/QA Autosave A.md")
@@ -6588,7 +6680,8 @@ final class ScholiumUITests: XCTestCase {
     }
 
     private func seedResearchRecordFixture(
-        hasUnavailableTopicRevision: Bool = false
+        hasUnavailableTopicRevision: Bool = false,
+        createsSynthesisAttention: Bool = false
     ) throws -> QAResearchRecordFixture {
         let triptychID = try triptychID(at: triptychDirectory)
         let manifestURL = triptychDirectory.appendingPathComponent(
@@ -6681,17 +6774,19 @@ final class ScholiumUITests: XCTestCase {
         }
         topicParticipant["starting_revision"] = topicStartingRevision
 
-        let portableRecord: [String: Any] = [
+        var portableRecord: [String: Any] = [
             "schema_version": 2,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "kind": "action",
             "action": [
                 "schema_version": 1,
-                "action_id": "analyze",
+                "action_id": createsSynthesisAttention ? "synthesize" : "analyze",
             ],
             "method": [
-                "package_id": "scholium-analyze",
+                "package_id": createsSynthesisAttention
+                    ? "scholium-synthesize"
+                    : "scholium-analyze",
                 "origin": "bundled",
                 "version": "1.0.0",
                 "package_revision": methodRevision,
@@ -6725,14 +6820,22 @@ final class ScholiumUITests: XCTestCase {
                 "created_at": finishedAt,
             ]],
             "actually_used_materials": [[
-                "note_id": topic.noteID.uuidString,
+                "note_id": createsSynthesisAttention
+                    ? analysis.noteID.uuidString
+                    : topic.noteID.uuidString,
                 "note": [
-                    "vaultID": topic.vaultID.uuidString,
-                    "relativePath": "Historical/QA Topic Before Rename.md",
+                    "vaultID": createsSynthesisAttention
+                        ? analysis.vaultID.uuidString
+                        : topic.vaultID.uuidString,
+                    "relativePath": createsSynthesisAttention
+                        ? analysis.relativePath
+                        : "Historical/QA Topic Before Rename.md",
                 ],
-                "role": "topic",
-                "title": "QA Topic",
-                "revision": topicStartingRevision,
+                "role": createsSynthesisAttention ? "analysis" : "topic",
+                "title": createsSynthesisAttention ? "QA Autosave A" : "QA Topic",
+                "revision": createsSynthesisAttention
+                    ? analysis.fingerprint
+                    : topicStartingRevision,
             ]],
             "confirmed_changes": [],
             "discrepancies": [],
@@ -6740,6 +6843,9 @@ final class ScholiumUITests: XCTestCase {
             "finished_at": finishedAt,
             "is_pinned": false,
         ]
+        if createsSynthesisAttention {
+            portableRecord["primary_note_id"] = topic.noteID.uuidString
+        }
 
         let recordsDirectory = triptychDirectory.appendingPathComponent(
             ".scholium/research-records/v1/records",
@@ -6762,12 +6868,27 @@ final class ScholiumUITests: XCTestCase {
             ofItemAtPath: recordURL.path
         )
 
+        if createsSynthesisAttention {
+            let analysisURL = triptychDirectory.appendingPathComponent(
+                "01-analyses/QA Autosave A.md"
+            )
+            let source = try String(contentsOf: analysisURL, encoding: .utf8)
+            try write(
+                source + "\nA changed Analysis revision for bounded Attention QA.\n",
+                to: analysisURL
+            )
+        }
+
         return QAResearchRecordFixture(
             recordID: recordID,
             analysisNoteID: analysis.noteID,
             topicNoteID: topic.noteID,
             tombstoneNoteID: tombstoneNoteID
         )
+    }
+
+    private func seedSynthesisAttentionFixture() throws -> QAResearchRecordFixture {
+        try seedResearchRecordFixture(createsSynthesisAttention: true)
     }
 
     private func createSecondTriptychFixture() throws -> URL {
@@ -6854,7 +6975,8 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
             || name.contains("testLineCommentDiscussReopenAndFinish")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
-            || name.contains("testResearchActionPanelFits") {
+            || name.contains("testResearchActionPanelFits")
+            || name.contains("testMaterialChangedSinceUseAttentionJourney") {
             // These journeys exercise the new-Triptych Action surface. Remove
             // only the disposable copy's durable bootstrap marker so the real
             // bootstrap path installs editable Working Methods before launch.

@@ -885,6 +885,17 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.prepareResearchAction(request)
     }
 
+    public func prepareResynthesis(
+        _ request: ResearchActionExecutionRequest,
+        context: MaterialChangedSinceUseAttentionContext
+    ) async throws -> ResearchActionPreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareResearchResynthesis(
+            request,
+            context: context
+        )
+    }
+
     public func actionProfiles() async throws -> ResearchActionProfileSnapshot? {
         let handle = try await reference.requireHandle()
         return try await handle.actionProfiles()

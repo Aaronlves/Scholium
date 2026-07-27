@@ -505,6 +505,13 @@ Note identity. Portable record contracts whitelist Action identity, exact
 Method/Profile revisions, the path-free Source Reference when present,
 participating Note revisions, attributed statements, agent-reported
 actually-used Materials, Application-confirmed changes, and discrepancies.
+Every new Action record also identifies its primary Target Note. Completion
+accepts actually-used Material IDs only as a unique subset of the frozen,
+exact-revision Material selection; merely selecting a Material never creates
+use evidence. The portable record stores the Material's frozen revision and
+role, not a later projection. Strict record validation cross-checks the use's
+Note identity, qualified reference, role, title, and revision against its
+participant fact while still retaining a later deletion tombstone as history.
 They have no generic metadata escape hatch and cannot encode a
 protected Function ID, assembled instructions, raw key, bookmark, absolute
 path, diff, token count, transport log, or window state. Strict decoding is
@@ -828,6 +835,22 @@ summary. Recommended Bibliography is likewise rendered at the fixed Library
 bottom; its current Analysis-locked Application preparation identity is
 migration debt recorded in Implementation Status.
 
+Snapshot assembly derives Material Changed Since Use only from the latest
+completed Synthesize Action record for a Topic/Material pair whose
+agent-reported, Application-validated actually-used set contains that Analysis.
+It compares the recorded exact revision with the current active, resolved
+Analysis revision; selected-but-unused, deleted-record, tombstoned, deleted,
+and identity-unresolved inputs create no condition. Each item ID also
+distinguishes its affected Topic. The dismissal key includes the Triptych and
+binds only Material identity, recorded revision, and current revision within
+it. Inspect opens the current Analysis; Resynthesize rechecks that latest
+record before opening the ordinary Synthesize sheet with the Analysis
+preselected; Leave Unchanged stores only that exact condition key in
+machine-local presentation preferences. A later current revision therefore
+becomes visible again, and Settings can explicitly restore the decision. None
+of these projections mutates Markdown or the portable record, and the warning
+expresses no philosophical verdict.
+
 The Research Inspector receives immutable `ResearchOverviewPresentation` and
 `ResearchActionsPresentation` values composed at the window root. It owns no
 workspace refresh, Comment, Critique, availability, or run state. Its Overview,
@@ -1112,6 +1135,16 @@ delivers those live child packets only after their complete persisted evidence
 matches the plan; plaintext keys remain delivery-only. Neither the plan nor
 lineage is consulted as authority without the exact allowed request, current
 parent, Action snapshot, checkpoint, and grant.
+
+Revision-bound Resynthesize reuses the same independent Local Execution v2
+child mechanics without impersonating an Agent change request. Application
+rereads the completed Synthesize record, exact Topic Target, actually-used
+Analysis revision, and current changed revision before reserving a new run.
+That child owns a new activity grant, an exact-Topic **Before Resynthesis**
+checkpoint, frozen Synthesize Action snapshot, cancellation/conflict/recovery
+path, optional final-revision Fidelity, and `resynthesis` lineage back to the
+source record. Its revision context is validation evidence, never a grant; the
+child may write only the current Topic authorized by its own envelope.
 
 Action assembly seeds protected Core, Research Integration, and Discussion
 mechanism independently of any editable Method dependency list. A Triptych

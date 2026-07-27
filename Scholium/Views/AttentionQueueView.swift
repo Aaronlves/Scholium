@@ -9,6 +9,8 @@ struct AttentionQueueContext {
     let isRefreshing: Bool
     let dismissalDays: Int
     let refresh: () async -> Void
+    let inspectMaterial: (AttentionQueueItem) -> Void
+    let resynthesize: (AttentionQueueItem) -> Void
     let close: () -> Void
 }
 
@@ -90,7 +92,7 @@ struct AttentionQueueView: View {
                         ? "No Items in This View"
                         : "No Matching Attention",
                     systemImage: "checkmark.circle",
-                    description: Text("Scholium found no matching derived issues. Dismissed items return after \(dismissalDurationText).")
+                    description: Text("Scholium found no matching derived issues. Timed dismissals return after \(dismissalDurationText); Leave Unchanged returns only for a later Material revision or when restored in Settings.")
                 )
             } else {
                 List(visibleItems) { item in
@@ -104,7 +106,7 @@ struct AttentionQueueView: View {
                             open(item)
                         } label: {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(item.kind.displayName)
+                                Text(attentionTitle(for: item.kind))
                                     .font(.headline)
                                 Text(item.message)
                                     .foregroundStyle(.secondary)
@@ -119,11 +121,15 @@ struct AttentionQueueView: View {
                         .buttonStyle(.plain)
                         .accessibilityHint("Open the affected note and exact source line when available")
 
-                        Button(dismissalActionTitle) {
-                            dismissAttention(item)
+                        if item.materialChangedSinceUse != nil {
+                            materialRevisionActions(item)
+                        } else {
+                            Button(dismissalActionTitle) {
+                                dismissAttention(item)
+                            }
+                            .controlSize(.small)
+                            .help("Hide this derived reminder for \(dismissalDurationText)")
                         }
-                        .controlSize(.small)
-                        .help("Hide this derived reminder for \(dismissalDurationText)")
                     }
                     .padding(.vertical, 4)
                 }
@@ -144,7 +150,7 @@ struct AttentionQueueView: View {
         Picker("Kind", selection: kindBinding) {
             Text("All Attention").tag(AttentionQueueKind?.none)
             ForEach(AttentionQueueKind.allCases, id: \.self) { kind in
-                Text(kind.displayName).tag(Optional(kind))
+                Text(attentionTitle(for: kind)).tag(Optional(kind))
             }
         }
         .frame(maxWidth: 280)
@@ -163,7 +169,7 @@ struct AttentionQueueView: View {
             Text("\(dismissedCount) dismissed")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .help("Dismissed items return after \(dismissalDurationText).")
+                .help("Timed dismissals return after \(dismissalDurationText); Leave Unchanged returns only for a later Material revision or when restored in Settings.")
         }
         if context.isRefreshing {
             ProgressView("Refreshing Attention")
@@ -206,6 +212,50 @@ struct AttentionQueueView: View {
         dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
     }
 
+    @ViewBuilder
+    private func materialRevisionActions(_ item: AttentionQueueItem) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                materialRevisionButtons(item)
+            }
+            VStack(alignment: .trailing, spacing: 6) {
+                materialRevisionButtons(item)
+            }
+        }
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private func materialRevisionButtons(_ item: AttentionQueueItem) -> some View {
+        Button("Inspect") {
+            context.inspectMaterial(item)
+        }
+        .accessibilityIdentifier(
+            "scholium.attention.materialChanged.inspect.\(item.id)"
+        )
+
+        Button("Resynthesize") {
+            context.resynthesize(item)
+        }
+        .accessibilityIdentifier(
+            "scholium.attention.materialChanged.resynthesize.\(item.id)"
+        )
+
+        Button("Leave Unchanged") {
+            leaveMaterialRevisionUnchanged(item)
+        }
+        .accessibilityIdentifier(
+            "scholium.attention.materialChanged.leaveUnchanged.\(item.id)"
+        )
+    }
+
+    private func leaveMaterialRevisionUnchanged(_ item: AttentionQueueItem) {
+        var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
+        ledger.removeExpired()
+        ledger.leaveUnchanged(item)
+        dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
+    }
+
     private func pruneExpiredDismissals() {
         var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
         ledger.removeExpired()
@@ -216,11 +266,27 @@ struct AttentionQueueView: View {
         switch kind {
         case .possibleOrphan: "circle.dashed"
         case .changedSinceSettled: "clock.arrow.circlepath"
+        case .materialChangedSinceUse: "arrow.trianglehead.2.clockwise.rotate.90"
         case .changeAttributionNeeded: "person.crop.circle.badge.questionmark"
         case .malformedMetadata: "exclamationmark.braces"
         case .brokenConnection: "link.badge.plus"
         case .ambiguousConnection: "questionmark.diamond"
         case .unresolvedIdentity: "person.text.rectangle"
+        }
+    }
+
+    private func attentionTitle(
+        for kind: AttentionQueueKind
+    ) -> LocalizedStringResource {
+        switch kind {
+        case .possibleOrphan: "Possible Orphan"
+        case .changedSinceSettled: "Changed Since Settled"
+        case .materialChangedSinceUse: "Material Changed Since Use"
+        case .changeAttributionNeeded: "Change Attribution Needed"
+        case .malformedMetadata: "Malformed Metadata"
+        case .brokenConnection: "Broken Connection"
+        case .ambiguousConnection: "Ambiguous Connection"
+        case .unresolvedIdentity: "Unresolved Identity"
         }
     }
 

@@ -344,6 +344,110 @@ struct WorkspaceCatalogTests {
         #expect(ledger.dismissedUntilByItemID.isEmpty)
     }
 
+    @Test("Leave Unchanged binds one Triptych Material revision pair")
+    func materialRevisionDismissalIsExactAndBackwardCompatible() throws {
+        let triptychID = UUID()
+        let topicID = UUID()
+        let materialID = UUID()
+        let material = VaultNoteReference(
+            vaultID: UUID(),
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            relativePath: "Analysis.md",
+            stableNoteID: materialID.uuidString.lowercased()
+        )
+        let topic = VaultNoteReference(
+            vaultID: UUID(),
+            vaultName: "Topics",
+            vaultRole: .topicKnowledge,
+            relativePath: "Topic.md",
+            stableNoteID: topicID.uuidString.lowercased()
+        )
+        let recorded = DocumentFingerprint(content: "recorded")
+        func item(recordID: UUID, current: String) -> AttentionQueueItem {
+            AttentionQueueItem(
+                kind: .materialChangedSinceUse,
+                severity: .warning,
+                note: topic,
+                message: "The actually-used Analysis revision changed.",
+                materialChangedSinceUse: MaterialChangedSinceUseAttentionContext(
+                    triptychID: triptychID,
+                    recordID: recordID,
+                    topicNoteID: topicID,
+                    materialNoteID: materialID,
+                    material: material,
+                    recordedRevision: recorded,
+                    currentRevision: DocumentFingerprint(content: current)
+                )
+            )
+        }
+
+        let first = item(recordID: UUID(), current: "current-one")
+        let equivalentRecord = item(recordID: UUID(), current: "current-one")
+        let laterRevision = item(recordID: UUID(), current: "current-two")
+        let otherTopicID = UUID()
+        let otherTopic = AttentionQueueItem(
+            kind: .materialChangedSinceUse,
+            severity: .warning,
+            note: VaultNoteReference(
+                vaultID: topic.vaultID,
+                vaultName: topic.vaultName,
+                vaultRole: topic.vaultRole,
+                relativePath: "Other Topic.md",
+                stableNoteID: otherTopicID.uuidString.lowercased()
+            ),
+            message: "The same actually-used Analysis revision changed.",
+            materialChangedSinceUse: MaterialChangedSinceUseAttentionContext(
+                triptychID: triptychID,
+                recordID: UUID(),
+                topicNoteID: otherTopicID,
+                materialNoteID: materialID,
+                material: material,
+                recordedRevision: recorded,
+                currentRevision: DocumentFingerprint(content: "current-one")
+            )
+        )
+        let otherTriptych = AttentionQueueItem(
+            kind: .materialChangedSinceUse,
+            severity: .warning,
+            note: topic,
+            message: "A copied Triptych owns an independent decision.",
+            materialChangedSinceUse: MaterialChangedSinceUseAttentionContext(
+                triptychID: UUID(),
+                recordID: UUID(),
+                topicNoteID: topicID,
+                materialNoteID: materialID,
+                material: material,
+                recordedRevision: recorded,
+                currentRevision: DocumentFingerprint(content: "current-one")
+            )
+        )
+        #expect(first.id == equivalentRecord.id)
+        #expect(first.id != otherTopic.id)
+        #expect(first.id != otherTriptych.id)
+        #expect(first.id != laterRevision.id)
+
+        var ledger = AttentionDismissalLedger()
+        ledger.leaveUnchanged(first)
+        #expect(ledger.visible([
+            first, equivalentRecord, otherTopic, laterRevision, otherTriptych,
+        ]) == [laterRevision, otherTriptych])
+
+        let encoded = try JSONEncoder().encode(ledger)
+        #expect(try JSONDecoder().decode(
+            AttentionDismissalLedger.self,
+            from: encoded
+        ) == ledger)
+        var legacy = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        legacy.removeValue(forKey: "revisionBoundItemIDs")
+        #expect(try JSONDecoder().decode(
+            AttentionDismissalLedger.self,
+            from: JSONSerialization.data(withJSONObject: legacy)
+        ).revisionBoundItemIDs.isEmpty)
+    }
+
     @Test("Set Aside and Trash remain outside ordinary Attention")
     func inactiveLocationsAreExcluded() {
         let topics = vault("Topics", .topicKnowledge)
